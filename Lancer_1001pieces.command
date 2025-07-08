@@ -32,20 +32,25 @@ if [ $? -ne 0 ]; then
 fi
 
 # Vérifier que l'application existe
-if [ ! -f "run.py" ]; then
-    echo "❌ Fichier run.py introuvable"
+if [ ! -f "launch_app.py" ]; then
+    echo "❌ Fichier launch_app.py introuvable"
     echo "Assurez-vous que le script est dans le bon répertoire"
     read -p "Appuyez sur Entrée pour fermer..."
     exit 1
 fi
 
-# Lancer l'application
-echo "🎯 Lancement de l'application..."
-python3 run.py
+# Lancer l'application sans terminal (méthode moderne)
+echo "🎯 Lancement de l'application (sans terminal)..."
+echo "✨ Le terminal va se fermer automatiquement..."
 
-# Si l'application se ferme avec une erreur
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "❌ L'application s'est fermée avec une erreur"
-    read -p "Appuyez sur Entrée pour fermer..."
-fi
+# Utiliser nohup pour détacher le processus du terminal et fermer automatiquement
+nohup python3 launch_app.py > /dev/null 2>&1 &
+
+# Attendre un instant pour s'assurer que l'application démarre
+sleep 2
+
+# Fermer automatiquement ce terminal en arrière-plan
+osascript -e 'tell application "Terminal" to close (every window whose name contains "Lancer_1001pieces.command")' > /dev/null 2>&1 &
+
+# Fermer immédiatement ce script
+exit 0
