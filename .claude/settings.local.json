@@ -22,7 +22,9 @@
       "Bash(./push_to_github.sh)",
       "Bash(bash 1001pieces_autofill.command)",
       "Bash(timeout:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(sips:*)",
+      "Bash(iconutil:*)"
     ],
     "deny": []
   }
