@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
     QToolBar, QAction, QStatusBar, QSplitter, QTabWidget, 
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
-    QProgressDialog, QCheckBox
+    QProgressDialog, QCheckBox, QMenu
 )
 from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor
 from PyQt5.QtCore import QSize
@@ -503,6 +503,8 @@ class MainWindow(QMainWindow):
         # Liste des pièces
         self.pieces_list = QListWidget()
         self.pieces_list.itemDoubleClicked.connect(self._edit_piece)
+        self.pieces_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.pieces_list.customContextMenuRequested.connect(self._show_pieces_context_menu)
         self.pieces_tabs.addTab(self.pieces_list, "Pièces Associées")
         
         # Ajout de pièce
@@ -1516,6 +1518,12 @@ class MainWindow(QMainWindow):
             else:
                 self.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
                 
+                # Ajouter l'export dans l'historique avec le chemin du fichier
+                if export_format == ExportFormat.CSV:
+                    self._add_to_history(f"Export CSV: {result}")
+                else:
+                    self._add_to_history(f"Export {export_format.value}: {result}")
+                
         except ExportError as e:
             self._show_error(f"Erreur d'export: {e}")
 
@@ -1817,6 +1825,70 @@ class MainWindow(QMainWindow):
                     )
             except DatabaseError as e:
                 self._show_error(f"Erreur lors de la modification: {e}")
+    
+    def _show_pieces_context_menu(self, position):
+        """Afficher le menu contextuel pour les pièces"""
+        item = self.pieces_list.itemAt(position)
+        if not item:
+            return
+        
+        menu = QMenu(self)
+        
+        # Action modifier
+        edit_action = menu.addAction("✏️ Modifier")
+        edit_action.triggered.connect(lambda: self._edit_piece(item))
+        
+        # Action supprimer
+        delete_action = menu.addAction("🗑️ Supprimer")
+        delete_action.triggered.connect(lambda: self._delete_piece(item))
+        
+        # Afficher le menu
+        menu.exec_(self.pieces_list.mapToGlobal(position))
+    
+    def _delete_piece(self, item: QListWidgetItem):
+        """Supprimer une pièce avec confirmation"""
+        ref_piece = item.data(Qt.UserRole)
+        if not ref_piece:
+            return
+        
+        # Demander confirmation
+        reply = QMessageBox.question(
+            self, "Confirmer la suppression",
+            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                # Obtenir l'ID de l'appareil sélectionné
+                current_row = self.table.currentRow()
+                if current_row < 0:
+                    self._show_error("Aucun appareil sélectionné")
+                    return
+                
+                # Obtenir l'ID de l'appareil à partir de la ligne courante
+                appareil_id = self.data[current_row][0]  # ID est dans la première colonne
+                
+                # Supprimer la pièce
+                success = self.db_manager.delete_piece(ref_piece, appareil_id)
+                if success:
+                    self._update_pieces_panel()
+                    self.statusbar.showMessage(
+                        f"Pièce supprimée: {ref_piece}", 
+                        Config.STATUS_MESSAGE_TIMEOUT
+                    )
+                    
+                    # Ajouter à l'historique
+                    self._add_to_history(f"Suppression de pièce: {ref_piece}")
+                else:
+                    self._show_error("Erreur lors de la suppression de la pièce")
+                    
+            except DatabaseError as e:
+                self._show_error(f"Erreur lors de la suppression: {e}")
+            except Exception as e:
+                app_logger.error(f"Erreur inattendue lors de la suppression de pièce: {e}")
+                self._show_error(f"Erreur inattendue: {e}")
 
     def _undo(self):
         """Annuler la dernière action"""

@@ -404,7 +404,7 @@ class DataExporter:
         return report
     
     def _generate_filename(self, search_term: str, export_format: ExportFormat) -> str:
-        """Générer un nom de fichier pour l'export"""
+        """Générer un chemin complet vers le Bureau pour l'export"""
         # Nettoyer le terme de recherche
         clean_term = "".join(c for c in search_term if c.isalnum() or c in (' ', '-', '_')).strip()
         clean_term = clean_term.replace(' ', '_')
@@ -415,7 +415,14 @@ class DataExporter:
         # Construire le nom de fichier
         filename = f"{clean_term}_{timestamp}.{export_format.value}"
         
-        return filename
+        # Obtenir le chemin du Bureau
+        import os
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+        
+        # Créer le chemin complet
+        full_path = os.path.join(desktop_path, filename)
+        
+        return full_path
     
     def _escape_xml(self, text: str) -> str:
         """Échapper les caractères spéciaux pour XML"""

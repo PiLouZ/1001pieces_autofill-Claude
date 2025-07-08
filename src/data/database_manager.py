@@ -552,6 +552,32 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la mise à jour de la pièce: {e}")
     
+    def delete_piece(self, ref_piece: str, appareil_id: int) -> bool:
+        """Supprimer une pièce spécifique d'un appareil"""
+        try:
+            query = """
+                DELETE FROM pieces 
+                WHERE ref_piece = ? AND appareil_id = ?
+            """
+            self.cursor.execute(query, (ref_piece, appareil_id))
+            self.conn.commit()
+            return self.cursor.rowcount > 0
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la suppression de la pièce: {e}")
+    
+    def delete_pieces_by_appareil(self, appareil_id: int) -> int:
+        """Supprimer toutes les pièces d'un appareil"""
+        try:
+            query = "DELETE FROM pieces WHERE appareil_id = ?"
+            self.cursor.execute(query, (appareil_id,))
+            deleted_count = self.cursor.rowcount
+            self.conn.commit()
+            return deleted_count
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la suppression des pièces: {e}")
+    
     def get_categories(self) -> List[str]:
         """Récupérer toutes les catégories"""
         try:
