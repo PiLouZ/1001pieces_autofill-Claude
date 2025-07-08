@@ -345,8 +345,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("📊 " + Config.WINDOW_TITLE)
         self.resize(Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT)
         
-        # Style moderne global
-        self.setStyleSheet(self._get_modern_style())
+        # Style moderne global (appliqué à l'application entière dans main())
         
         # Restaurer la géométrie
         geometry = self.settings.value("geometry", b"")
@@ -695,13 +694,13 @@ class MainWindow(QMainWindow):
         self.addToolBar(toolbar)
         
         # Groupe Édition
-        self.undo_action = QAction("← Annuler", self)
+        self.undo_action = QAction("←", self)
         self.undo_action.setShortcut(QKeySequence.Undo)
         self.undo_action.setToolTip("Annuler la dernière action (Cmd+Z)")
         self.undo_action.triggered.connect(self._undo)
         toolbar.addAction(self.undo_action)
         
-        self.redo_action = QAction("→ Rétablir", self)
+        self.redo_action = QAction("→", self)
         self.redo_action.setShortcut(QKeySequence.Redo)
         self.redo_action.setToolTip("Rétablir l'action annulée (Cmd+Y)")
         self.redo_action.triggered.connect(self._redo)
@@ -725,7 +724,7 @@ class MainWindow(QMainWindow):
         self._add_toolbar_separator(toolbar)
         
         # Groupe Sauvegarde
-        save_action = QAction("💾 Sauvegarder", self)
+        save_action = QAction("💾", self)
         save_action.setShortcut(QKeySequence.Save)
         save_action.setToolTip("Sauvegarder toutes les modifications (Cmd+S)")
         save_action.triggered.connect(self._manual_save)
@@ -1033,8 +1032,10 @@ class MainWindow(QMainWindow):
             background-color: white;
             color: #007bff;
             border: 1px solid #dee2e6;
-            padding: 6px 12px;
+            padding: 4px 8px;
             margin: 2px;
+            min-width: 24px;
+            max-width: 32px;
         }
         
         QPushButton#paginationBtn:hover {
@@ -1122,6 +1123,32 @@ class MainWindow(QMainWindow):
             border-left: none;
         }
         
+        /* ComboBox dropdown styles */
+        QComboBox QAbstractItemView {
+            background-color: white;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            outline: none;
+            selection-background-color: #007bff;
+        }
+        
+        QComboBox QAbstractItemView::item {
+            padding: 4px 8px;
+            border: none;
+            color: #212529 !important;
+            background-color: transparent;
+        }
+        
+        QComboBox QAbstractItemView::item:selected {
+            background-color: #007bff;
+            color: white !important;
+        }
+        
+        QComboBox QAbstractItemView::item:hover {
+            background-color: #f8f9fa;
+            color: #212529 !important;
+        }
+        
         /* Labels */
         QLabel {
             color: #495057;
@@ -1180,7 +1207,7 @@ class MainWindow(QMainWindow):
             color: #495057;
             border: 1px solid transparent;
             border-radius: 6px;
-            padding: 6px 12px;
+            padding: 4px 8px;
             margin: 2px;
             font-weight: 500;
         }
@@ -1500,6 +1527,26 @@ class MainWindow(QMainWindow):
         self._position_drag_handle()
         self._update_pieces_panel()
 
+    # --- Méthodes utilitaires ---
+
+    def _get_column_display_name(self, col_index):
+        """
+        Récupère le nom d'affichage d'une colonne basé sur son index
+        
+        Args:
+            col_index (int): Index de la colonne (0-based)
+            
+        Returns:
+            str: Nom d'affichage de la colonne
+        """
+        try:
+            if 0 <= col_index < len(Config.UI_HEADERS):
+                return Config.UI_HEADERS[col_index]
+            else:
+                return f"Colonne {col_index + 1}"
+        except Exception as e:
+            return f"Colonne {col_index + 1}"
+
     # --- Méthodes d'export ---
 
     def _export_data(self, export_format: ExportFormat):
@@ -1675,12 +1722,17 @@ class MainWindow(QMainWindow):
         """Sauvegarde manuelle"""
         self._auto_save()
         self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
+        # Ajouter à l'historique
+        self._add_to_history("Sauvegarde manuelle effectuée")
 
     def _update_cell_in_db(self, item: QTableWidgetItem):
         """Mettre à jour une cellule dans la base de données"""
         try:
             row, col = item.row(), item.column()
             new_value = item.text()
+
+            # Récupérer l'ancienne valeur depuis self.previous_values
+            old_value = self.previous_values.get((row, col), '')
 
             # Récupérer le db_id depuis les données de l'item
             db_id = item.data(Qt.ItemDataRole.UserRole)
@@ -1700,6 +1752,12 @@ class MainWindow(QMainWindow):
             success = self.db_manager.update_cell(db_id, column_name, new_value)
             
             if success:
+                # Ajouter à l'historique seulement si la valeur a réellement changé
+                if old_value != new_value:
+                    # Nom de la colonne plus convivial
+                    column_display_name = self._get_column_display_name(col)
+                    self._add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
+                
                 # Retirer de la liste des modifications
                 self.modified_cells.discard((row, col))
                 item.setBackground(QColor(255, 255, 255))  # Blanc
@@ -1869,23 +1927,82 @@ class MainWindow(QMainWindow):
         if not ref_piece:
             return
         
-        # Demander la nouvelle description
-        new_desc, ok = QInputDialog.getText(
-            self, "Modifier la pièce", 
-            f"Description pour '{ref_piece}':"
-        )
+        # Obtenir l'ID de l'appareil actuel
+        current_row = self.table.currentRow()
+        if current_row < 0:
+            self._show_error("Aucun appareil sélectionné")
+            return
         
-        if ok:
+        try:
+            # Récupérer l'ID de l'appareil
+            appareil_id = self._get_db_id_from_row(current_row)
+            
+            # Récupérer les informations actuelles de la pièce
+            piece_info = self.db_manager.get_piece_info(ref_piece, appareil_id)
+            if not piece_info:
+                self._show_error(f"Pièce '{ref_piece}' introuvable")
+                return
+                
+            current_ref, current_desc = piece_info
+            
+            # Obtenir la référence de l'appareil pour l'historique
+            appareil_ref = ""
             try:
-                success = self.db_manager.update_piece(ref_piece, new_desc.strip() if new_desc else None)
-                if success:
-                    self._update_pieces_panel()
+                # Essayer d'obtenir la référence modèle (colonne 2)
+                ref_modele_item = self.table.item(current_row, 2)
+                if ref_modele_item and ref_modele_item.text().strip():
+                    appareil_ref = ref_modele_item.text().strip()
+                else:
+                    # Sinon, utiliser la référence commerciale (colonne 3)
+                    commercial_ref_item = self.table.item(current_row, 3)
+                    if commercial_ref_item and commercial_ref_item.text().strip():
+                        appareil_ref = commercial_ref_item.text().strip()
+                    else:
+                        # En dernier recours, utiliser l'ID
+                        appareil_ref = f"ID:{appareil_id}"
+            except Exception:
+                appareil_ref = f"ID:{appareil_id}"
+            
+            # Demander la nouvelle description (pré-remplir avec la description actuelle)
+            new_desc, ok = QInputDialog.getText(
+                self, "Modifier la pièce", 
+                f"Description pour '{ref_piece}':",
+                text=current_desc or ""
+            )
+            
+            if ok:
+                new_desc_stripped = new_desc.strip() if new_desc else None
+                
+                # Vérifier si la description a réellement changé
+                if new_desc_stripped != current_desc:
+                    success = self.db_manager.update_piece(ref_piece, new_desc_stripped)
+                    if success:
+                        self._update_pieces_panel()
+                        self.statusbar.showMessage(
+                            Config.get_message('piece_updated') + f": {ref_piece}", 
+                            Config.STATUS_MESSAGE_TIMEOUT
+                        )
+                        
+                        # Ajouter à l'historique avec les détails de la modification
+                        old_desc_display = f"'{current_desc}'" if current_desc else "vide"
+                        new_desc_display = f"'{new_desc_stripped}'" if new_desc_stripped else "vide"
+                        self._add_to_history(
+                            f"Modification de pièce: {ref_piece} (appareil: {appareil_ref}) - "
+                            f"Description: {old_desc_display} → {new_desc_display}"
+                        )
+                    else:
+                        self._show_error("Erreur lors de la modification de la pièce")
+                else:
+                    # Aucune modification, pas besoin de mettre à jour
                     self.statusbar.showMessage(
-                        Config.get_message('piece_updated') + f": {ref_piece}", 
+                        f"Aucune modification pour la pièce: {ref_piece}", 
                         Config.STATUS_MESSAGE_TIMEOUT
                     )
-            except DatabaseError as e:
-                self._show_error(f"Erreur lors de la modification: {e}")
+                    
+        except DatabaseError as e:
+            self._show_error(f"Erreur lors de la modification: {e}")
+        except Exception as e:
+            self._show_error(f"Erreur inattendue: {e}")
     
     def _show_pieces_context_menu(self, position):
         """Afficher le menu contextuel pour les pièces"""
@@ -2506,6 +2623,9 @@ class MainWindow(QMainWindow):
                 if item:
                     self.table.editItem(item)
             
+            # Ajouter à l'historique
+            self._add_to_history(f"Nouvel appareil ajouté (ID: {db_id})")
+            
             self.statusbar.showMessage(
                 Config.get_message('new_row_added'), 
                 Config.STATUS_MESSAGE_TIMEOUT
@@ -2547,6 +2667,23 @@ class MainWindow(QMainWindow):
                 )
                 if not ok2:
                     return
+
+            # Vérifier si on a 3 colonnes et demander le choix de destination
+            third_column_choice = "other_ref"  # Valeur par défaut
+            if any(len(row.split('\t')) == 3 for row in clipboard_text.strip().split('\n')):
+                choice, ok3 = QInputDialog.getItem(
+                    self, "3ème Colonne", 
+                    "Où stocker la 3ème colonne ?",
+                    ["Autre Référence", "Notes", "Ignorer"], 0, False
+                )
+                if not ok3:
+                    return
+                if choice == "Autre Référence":
+                    third_column_choice = "other_ref"
+                elif choice == "Notes":
+                    third_column_choice = "notes"
+                else:  # Ignorer
+                    third_column_choice = "ignore"
 
             # Insérer les données
             inserted_count = 0
@@ -2603,19 +2740,26 @@ class MainWindow(QMainWindow):
                             appareil_data[header] = ''
                             
                 elif num_cols == 2 or num_cols == 3:
-                    # 2-3 colonnes : insérer à partir de la colonne C (Ref_Modele, Commercial_Ref, Other_Ref)
+                    # 2-3 colonnes : insérer à partir de la colonne C (Ref_Modele, Commercial_Ref, Other_Ref/Notes)
                     # Laisser Type et Fabricant vides pour auto-completion
                     appareil_data['type'] = ''  # Colonne A vide
                     appareil_data['manufacturer'] = ''  # Colonne B vide
                     
                     # Mapper à partir de la colonne C (ref_modele)
-                    mapping_headers = ['ref_modele', 'commercial_ref', 'other_ref']
+                    if num_cols == 2:
+                        mapping_headers = ['ref_modele', 'commercial_ref']
+                    else:  # num_cols == 3
+                        if third_column_choice == "ignore":
+                            mapping_headers = ['ref_modele', 'commercial_ref']
+                        else:
+                            mapping_headers = ['ref_modele', 'commercial_ref', third_column_choice]
+                    
                     for i, value in enumerate(clean_row):
                         if i < len(mapping_headers):
                             appareil_data[mapping_headers[i]] = value
                     
                     # Compléter les autres champs
-                    remaining_headers = ['category', 'notes']
+                    remaining_headers = ['other_ref', 'category', 'notes']
                     for header in remaining_headers:
                         if header not in appareil_data:
                             appareil_data[header] = ''
@@ -2843,6 +2987,8 @@ def main():
     
     try:
         window = MainWindow()
+        # Appliquer les styles CSS globalement pour toutes les fenêtres
+        app.setStyleSheet(window._get_modern_style())
         window.show()
         sys.exit(app.exec_())
     except Exception as e:

@@ -552,6 +552,36 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la mise à jour de la pièce: {e}")
     
+    def get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
+        """Récupérer les informations d'une pièce spécifique"""
+        try:
+            # Vérifier si la colonne description existe
+            self.cursor.execute("PRAGMA table_info(pieces)")
+            columns = {row[1] for row in self.cursor.fetchall()}
+            
+            if 'description' in columns:
+                query = """
+                    SELECT ref_piece, description 
+                    FROM pieces 
+                    WHERE ref_piece = ? AND appareil_id = ?
+                """
+                self.cursor.execute(query, (ref_piece, appareil_id))
+                result = self.cursor.fetchone()
+                return result if result else None
+            else:
+                # Si la colonne n'existe pas, retourner seulement la référence
+                query = """
+                    SELECT ref_piece, '' as description 
+                    FROM pieces 
+                    WHERE ref_piece = ? AND appareil_id = ?
+                """
+                self.cursor.execute(query, (ref_piece, appareil_id))
+                result = self.cursor.fetchone()
+                return result if result else None
+                
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la récupération des informations de la pièce: {e}")
+    
     def delete_piece(self, ref_piece: str, appareil_id: int) -> bool:
         """Supprimer une pièce spécifique d'un appareil"""
         try:

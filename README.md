@@ -1,4 +1,4 @@
-# 🔧 Gestionnaire d'Appareils - Version Moderne et Interactive
+# 🔧 1001pieces_autofill - Gestionnaire d'Appareils
 
 Application moderne de gestion d'appareils avec interface PyQt5 avancée, gestion de 83 000+ enregistrements et outils de validation interactifs.
 
@@ -6,7 +6,8 @@ Application moderne de gestion d'appareils avec interface PyQt5 avancée, gestio
 
 ### 🖱️ **Le plus simple - Sans terminal**
 ```bash
-python3 launch_app.py
+# Double-cliquez sur le fichier
+1001pieces_autofill.command
 ```
 
 ### ⌨️ **En ligne de commande classique**
@@ -23,10 +24,12 @@ python3 -m src.ui.main_refactored
 
 ```
 📦 1001pieces_autofill/
-├── 🚀 launch_app.py               # Lanceur sans terminal
+├── 🚀 1001pieces_autofill.command  # Lanceur sans terminal (double-clic)
 ├── 🚀 run.py                      # Point d'entrée principal  
 ├── 📋 README.md                   # Ce fichier
 ├── 📄 requirements.txt            # Dépendances Python
+├── 🖼️ logo.webp                   # Logo de l'application
+├── 📱 1001pieces_autofill.app     # Bundle macOS (optionnel)
 │
 ├── 📂 src/                        # Code source principal
 │   ├── 🔧 core/                   # Configuration centrale
@@ -94,10 +97,11 @@ pip3 install PyQt5
 
 ### 📋 **Gestion des Données**
 - ✅ **CRUD complet** - Création, lecture, modification, suppression
-- ✅ **Import/Export** - CSV, JSON, HTML, XML
+- ✅ **Import/Export** - CSV vers Bureau, JSON, HTML, XML
 - ✅ **Autocomplétion** - Suggestions intelligentes
 - ✅ **Duplication intelligente** - Poignée de duplication avancée
 - ✅ **Validation en temps réel** - Contrôles de cohérence automatiques
+- ✅ **Gestion des pièces** - Suppression avec menu contextuel et historique
 
 ### 🔍 **Recherche et Filtrage**
 - ✅ **Recherche globale** - Dans tous les champs et pièces associées
@@ -116,6 +120,8 @@ pip3 install PyQt5
 - ✅ **Échap** - Réinitialiser recherche et filtres
 - ✅ **F5** - Actualiser
 - ✅ **F12** - Logs
+- ✅ **Entrée** - Confirmer les actions
+- ✅ **Échap** - Annuler les confirmations
 
 ### 🔧 **Outils Avancés**
 - ✅ **Détection d'incohérences** - Références avec valeurs différentes
@@ -146,10 +152,13 @@ pip3 install PyQt5
 
 ## 🆘 Dépannage
 
-### Terminal qui s'ouvre
+### Lancement de l'application
 ```bash
-# Utiliser le nouveau lanceur sans terminal
-python3 launch_app.py
+# Méthode recommandée : double-clic sur le fichier
+1001pieces_autofill.command
+
+# Alternative ligne de commande
+python3 run.py
 ```
 
 ### Performance lente
@@ -198,6 +207,15 @@ Cette version représente une refonte complète avec :
 - **🔧 Outils avancés** - Validation interactive et gestion des colonnes
 - **💾 Stabilité renforcée** - Gestion d'erreurs et sauvegarde automatique
 - **🎯 Expérience utilisateur** - Intuitive et productive
+
+### 🆕 Dernières Améliorations
+
+- **✅ Launcher optimisé** - Fichier .command avec vérifications automatiques
+- **✅ Export CSV amélioré** - Sauvegarde automatique sur le Bureau
+- **✅ Gestion des pièces** - Suppression avec menu contextuel
+- **✅ Raccourcis clavier** - Entrée/Échap pour les confirmations
+- **✅ Historique enrichi** - Référence de l'appareil lors des suppressions
+- **✅ Headers CSV** - Format standardisé (product, type, manufacturer...)
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
 **📅 Version 2025 - Stable et optimisée pour la production**
