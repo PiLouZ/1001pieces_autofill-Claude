@@ -1092,6 +1092,7 @@ class MainWindow(QMainWindow):
         
         QListWidget::item:hover {
             background-color: #f8f9fa;
+            color: #212529;
         }
         
         /* ComboBox */
@@ -1868,7 +1869,7 @@ class MainWindow(QMainWindow):
                     return
                 
                 # Obtenir l'ID de l'appareil à partir de la ligne courante
-                appareil_id = self.data[current_row][0]  # ID est dans la première colonne
+                appareil_id = self._get_db_id_from_row(current_row)
                 
                 # Supprimer la pièce
                 success = self.db_manager.delete_piece(ref_piece, appareil_id)
