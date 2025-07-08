@@ -1537,6 +1537,66 @@ class MainWindow(QMainWindow):
     def _show_info(self, message: str):
         """Afficher une information"""
         QMessageBox.information(self, "Information", message)
+    
+    def _show_confirmation(self, title: str, message: str, default_yes: bool = False) -> bool:
+        """Afficher une confirmation avec support des raccourcis clavier (Entrée/Échap)"""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Question)
+        
+        # Créer les boutons
+        yes_btn = msg_box.addButton("Oui", QMessageBox.YesRole)
+        no_btn = msg_box.addButton("Non", QMessageBox.NoRole)
+        
+        # Configurer le bouton par défaut
+        if default_yes:
+            msg_box.setDefaultButton(yes_btn)
+            yes_btn.setDefault(True)
+        else:
+            msg_box.setDefaultButton(no_btn)
+            no_btn.setDefault(True)
+        
+        # Configurer les raccourcis clavier
+        yes_btn.setShortcut("Return")  # Entrée
+        no_btn.setShortcut("Escape")   # Échap
+        
+        # Afficher et récupérer le résultat
+        result = msg_box.exec_()
+        return msg_box.clickedButton() == yes_btn
+    
+    def _show_save_confirmation(self, title: str, message: str):
+        """Afficher une confirmation Oui/Non/Annuler avec raccourcis clavier"""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Question)
+        
+        # Créer les boutons
+        yes_btn = msg_box.addButton("Oui", QMessageBox.YesRole)
+        no_btn = msg_box.addButton("Non", QMessageBox.NoRole) 
+        cancel_btn = msg_box.addButton("Annuler", QMessageBox.RejectRole)
+        
+        # Configurer le bouton par défaut
+        msg_box.setDefaultButton(yes_btn)
+        yes_btn.setDefault(True)
+        
+        # Configurer les raccourcis clavier
+        yes_btn.setShortcut("Return")  # Entrée pour Oui (sauvegarder)
+        cancel_btn.setShortcut("Escape")  # Échap pour Annuler
+        # N pour Non
+        no_btn.setShortcut("N")
+        
+        # Afficher et récupérer le résultat
+        result = msg_box.exec_()
+        clicked_button = msg_box.clickedButton()
+        
+        if clicked_button == yes_btn:
+            return "yes"
+        elif clicked_button == no_btn:
+            return "no"
+        else:  # cancel_btn ou fermeture
+            return "cancel"
 
     def _update_counter(self):
         """Mettre à jour le compteur de lignes"""
@@ -1852,15 +1912,14 @@ class MainWindow(QMainWindow):
         if not ref_piece:
             return
         
-        # Demander confirmation
-        reply = QMessageBox.question(
-            self, "Confirmer la suppression",
+        # Demander confirmation avec raccourcis clavier
+        confirmed = self._show_confirmation(
+            "Confirmer la suppression",
             f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            default_yes=False
         )
         
-        if reply == QMessageBox.Yes:
+        if confirmed:
             try:
                 # Obtenir l'ID de l'appareil sélectionné
                 current_row = self.table.currentRow()
@@ -2756,17 +2815,15 @@ class MainWindow(QMainWindow):
         """Gestion de la fermeture"""
         # Sauvegarder les modifications en attente
         if self.modified_cells:
-            reply = QMessageBox.question(
-                self, "Modifications non sauvegardées", 
-                "Des modifications ne sont pas sauvegardées. Les sauvegarder avant de quitter ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel, 
-                QMessageBox.StandardButton.Yes
+            reply = self._show_save_confirmation(
+                "Modifications non sauvegardées", 
+                "Des modifications ne sont pas sauvegardées. Les sauvegarder avant de quitter ?"
             )
             
-            if reply == QMessageBox.StandardButton.Cancel:
+            if reply == "cancel":
                 event.ignore()
                 return
-            elif reply == QMessageBox.StandardButton.Yes:
+            elif reply == "yes":
                 self._auto_save()
         
         # Sauvegarder les paramètres
