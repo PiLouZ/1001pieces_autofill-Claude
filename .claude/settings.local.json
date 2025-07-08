@@ -24,7 +24,10 @@
       "Bash(timeout:*)",
       "Bash(bash:*)",
       "Bash(sips:*)",
-      "Bash(iconutil:*)"
+      "Bash(iconutil:*)",
+      "Bash(touch:*)",
+      "Bash(/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f 1001pieces_autofill.app)",
+      "Bash(mdls:*)"
     ],
     "deny": []
   }

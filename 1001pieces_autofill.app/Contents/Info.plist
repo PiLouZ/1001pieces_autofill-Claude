@@ -22,5 +22,17 @@
     <string>10.9</string>
     <key>CFBundleIconFile</key>
     <string>1001pieces_icon</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>LSRequiresCarbon</key>
+    <false/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
 </dict>
 </plist>
