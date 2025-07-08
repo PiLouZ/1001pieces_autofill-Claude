@@ -1871,6 +1871,24 @@ class MainWindow(QMainWindow):
                 # Obtenir l'ID de l'appareil à partir de la ligne courante
                 appareil_id = self._get_db_id_from_row(current_row)
                 
+                # Obtenir la référence de l'appareil pour l'historique
+                appareil_ref = ""
+                try:
+                    # Essayer d'obtenir la référence modèle (colonne 2)
+                    ref_modele_item = self.table.item(current_row, 2)
+                    if ref_modele_item and ref_modele_item.text().strip():
+                        appareil_ref = ref_modele_item.text().strip()
+                    else:
+                        # Sinon, utiliser la référence commerciale (colonne 3)
+                        commercial_ref_item = self.table.item(current_row, 3)
+                        if commercial_ref_item and commercial_ref_item.text().strip():
+                            appareil_ref = commercial_ref_item.text().strip()
+                        else:
+                            # En dernier recours, utiliser l'ID
+                            appareil_ref = f"ID:{appareil_id}"
+                except Exception:
+                    appareil_ref = f"ID:{appareil_id}"
+                
                 # Supprimer la pièce
                 success = self.db_manager.delete_piece(ref_piece, appareil_id)
                 if success:
@@ -1880,8 +1898,8 @@ class MainWindow(QMainWindow):
                         Config.STATUS_MESSAGE_TIMEOUT
                     )
                     
-                    # Ajouter à l'historique
-                    self._add_to_history(f"Suppression de pièce: {ref_piece}")
+                    # Ajouter à l'historique avec la référence de l'appareil
+                    self._add_to_history(f"Suppression de pièce: {ref_piece} (appareil: {appareil_ref})")
                 else:
                     self._show_error("Erreur lors de la suppression de la pièce")
                     
