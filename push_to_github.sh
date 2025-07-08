@@ -7,7 +7,7 @@ echo "🎉 Préparation pour GitHub - 1001pieces_autofill v2.0.0"
 echo "=================================================="
 
 # Vérifier qu'on est dans le bon répertoire
-if [ ! -f "launch_app.py" ]; then
+if [ ! -f "run.py" ]; then
     echo "❌ Erreur: Veuillez exécuter ce script depuis le répertoire du projet"
     exit 1
 fi
