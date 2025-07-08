@@ -1,0 +1,2 @@
+# Requirements for 1001pieces_autofill
+PyQt5>=5.15.0

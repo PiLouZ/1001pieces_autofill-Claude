@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# PyQt
+*.qmlc
+*.jsc
+
+# Database backups
+data/*.db.backup
+data/*_backup.db
+data/*.db.bak
+
+# Logs
+logs/*.log
+*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Application bundles (keep the built app but ignore temp files)
+*.app/Contents/MacOS/*
+*.app/Contents/Resources/.localized
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# User-specific files
+config/user_settings.json
+*.personal
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

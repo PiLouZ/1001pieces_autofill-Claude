@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(chmod:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(true)",
+      "Bash(sqlite3:*)",
+      "Bash(python:*)",
+      "Bash(pip3 install:*)",
+      "Bash(/Library/Frameworks/Python.framework/Versions/3.13/bin/python3:*)",
+      "Bash(\"/Users/emg1/Desktop/1001 projects/1001pieces_autofill Claude/1001pieces_autofill.app/Contents/MacOS/1001pieces_autofill\")",
+      "Bash(cp:*)",
+      "Bash(xattr:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(timeout 10s python3:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(./push_to_github.sh)"
+    ],
+    "deny": []
+  }
+}
