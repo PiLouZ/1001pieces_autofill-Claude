@@ -39,18 +39,17 @@ if [ ! -f "launch_app.py" ]; then
     exit 1
 fi
 
-# Lancer l'application sans terminal (méthode moderne)
-echo "🎯 Lancement de l'application (sans terminal)..."
-echo "✨ Le terminal va se fermer automatiquement..."
+# Lancer l'application
+echo "🎯 Lancement de l'application..."
+echo "✨ L'application va s'ouvrir dans quelques secondes..."
 
-# Utiliser nohup pour détacher le processus du terminal et fermer automatiquement
-nohup python3 launch_app.py > /dev/null 2>&1 &
+# Lancer l'application avec launch_app.py (qui masque déjà le terminal)
+python3 launch_app.py &
 
-# Attendre un instant pour s'assurer que l'application démarre
-sleep 2
+# Attendre un peu que l'application démarre
+sleep 3
 
-# Fermer automatiquement ce terminal en arrière-plan
-osascript -e 'tell application "Terminal" to close (every window whose name contains "Lancer_1001pieces.command")' > /dev/null 2>&1 &
+# Fermer ce terminal automatiquement une fois l'application lancée
+osascript -e 'tell application "Terminal" to close (every window whose name contains "1001pieces_autofill.command")' > /dev/null 2>&1
 
-# Fermer immédiatement ce script
 exit 0

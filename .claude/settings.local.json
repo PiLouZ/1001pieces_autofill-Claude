@@ -19,7 +19,8 @@
       "Bash(timeout 10s python3:*)",
       "Bash(find:*)",
       "Bash(ls:*)",
-      "Bash(./push_to_github.sh)"
+      "Bash(./push_to_github.sh)",
+      "Bash(bash 1001pieces_autofill.command)"
     ],
     "deny": []
   }
