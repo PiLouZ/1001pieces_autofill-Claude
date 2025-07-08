@@ -94,12 +94,12 @@ class DataExporter:
                 
                 # En-têtes
                 headers = [
-                    'Référence de la pièce',
-                    'Type de l\'appareil',
-                    'Marque de l\'appareil',
-                    'Modèle de l\'appareil',
-                    'Référence technique de l\'appareil',
-                    'Référence commerciale de l\'appareil'
+                    'product',
+                    'type',
+                    'manufacturer',
+                    'modele_name',
+                    'reference_modele',
+                    'commercial_reference'
                 ]
                 writer.writerow(headers)
                 
