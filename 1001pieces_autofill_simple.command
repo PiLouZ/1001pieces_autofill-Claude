@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 # Lancer l'application directement
 echo "🚀 Lancement de 1001pieces_autofill..."
-python3 launch_app.py
+python3 run.py
 
 # Maintenir le terminal ouvert en cas de problème
 if [ $? -ne 0 ]; then

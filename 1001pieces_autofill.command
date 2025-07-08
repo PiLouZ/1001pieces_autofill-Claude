@@ -32,24 +32,16 @@ if [ $? -ne 0 ]; then
 fi
 
 # Vérifier que l'application existe
-if [ ! -f "launch_app.py" ]; then
-    echo "❌ Fichier launch_app.py introuvable"
+if [ ! -f "run.py" ]; then
+    echo "❌ Fichier run.py introuvable"
     echo "Assurez-vous que le script est dans le bon répertoire"
     read -p "Appuyez sur Entrée pour fermer..."
     exit 1
 fi
 
-# Lancer l'application
+# Lancer l'application avec run.py (plus robuste)
 echo "🎯 Lancement de l'application..."
-echo "✨ L'application va s'ouvrir dans quelques secondes..."
+python3 run.py
 
-# Lancer l'application avec launch_app.py (qui masque déjà le terminal)
-python3 launch_app.py &
-
-# Attendre un peu que l'application démarre
-sleep 3
-
-# Fermer ce terminal automatiquement une fois l'application lancée
-osascript -e 'tell application "Terminal" to close (every window whose name contains "1001pieces_autofill.command")' > /dev/null 2>&1
-
-exit 0
+# Si on arrive ici, l'application s'est fermée normalement
+echo "👋 Application fermée"
