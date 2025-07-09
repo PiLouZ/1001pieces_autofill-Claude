@@ -90,7 +90,7 @@ class DragHandle(QWidget):
         # Variables pour le défilement automatique
         self.auto_scroll_timer = None
         self.auto_scroll_direction = None
-        self.auto_scroll_zone = 30  # pixels depuis le bord pour déclencher le défilement
+        self.auto_scroll_zone = 50  # pixels depuis le bord pour déclencher le défilement
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -273,19 +273,26 @@ class DragHandle(QWidget):
         viewport_pos = self.table.viewport().mapFromGlobal(event.globalPos())
         viewport_rect = self.table.viewport().rect()
         
-        # Calculer la distance du bord pour ajuster la vitesse
-        if viewport_pos.y() < self.auto_scroll_zone:
-            # Zone de défilement vers le haut
-            distance_from_edge = viewport_pos.y()
-            speed = max(50, 200 - (distance_from_edge * 5))  # Plus proche = plus rapide
-            self._start_auto_scroll('up', speed)
-        elif viewport_pos.y() > viewport_rect.height() - self.auto_scroll_zone:
-            # Zone de défilement vers le bas
-            distance_from_edge = viewport_rect.height() - viewport_pos.y()
-            speed = max(50, 200 - (distance_from_edge * 5))  # Plus proche = plus rapide
-            self._start_auto_scroll('down', speed)
+        # Zone étendue plus large pour éviter l'arrêt quand la souris sort
+        extended_rect = viewport_rect.adjusted(-60, -60, 60, 60)  # Zone étendue augmentée
+        
+        if extended_rect.contains(viewport_pos):
+            # Calculer la distance du bord pour ajuster la vitesse
+            if viewport_pos.y() < self.auto_scroll_zone:
+                # Zone de défilement vers le haut
+                distance_from_edge = max(0, viewport_pos.y())
+                speed = max(15, 80 - (distance_from_edge * 2))  # Plus rapide
+                self._start_auto_scroll('up', speed)
+            elif viewport_pos.y() > viewport_rect.height() - self.auto_scroll_zone:
+                # Zone de défilement vers le bas
+                distance_from_edge = max(0, viewport_rect.height() - viewport_pos.y())
+                speed = max(15, 80 - (distance_from_edge * 2))  # Plus rapide
+                self._start_auto_scroll('down', speed)
+            else:
+                # Arrêter le défilement si on n'est plus dans une zone de défilement
+                self._stop_auto_scroll()
         else:
-            # Arrêter le défilement si on n'est plus dans une zone de défilement
+            # Arrêter le défilement si on sort de la zone étendue
             self._stop_auto_scroll()
     
     def _start_auto_scroll(self, direction, speed=100):
@@ -334,7 +341,7 @@ class DragHandle(QWidget):
         current_value = scroll_bar.value()
         
         # Défilement plus rapide pour une meilleure réactivité
-        step_size = 3  # Augmenter le pas de défilement
+        step_size = 8  # Augmenter le pas de défilement pour plus de rapidité
         
         if self.auto_scroll_direction == 'up':
             new_value = max(0, current_value - step_size)
@@ -359,8 +366,7 @@ class DragHandle(QWidget):
         """Continuer la duplication pendant le défilement"""
         try:
             # Recalculer la position pour continuer la duplication
-            if hasattr(self, 'last_mouse_pos'):
-                from PyQt5.QtCore import QPoint
+            if hasattr(self, 'last_mouse_pos') and self.start_pos:
                 # Simuler un mouseMoveEvent pour continuer la duplication
                 delta_y = self.last_mouse_pos.y() - self.start_pos.y()
                 row_height = self.table.rowHeight(0) or 24
@@ -2889,7 +2895,7 @@ class MainWindow(QMainWindow):
         type_layout = QHBoxLayout()
         type_layout.addWidget(QLabel("Type d'import:"))
         type_combo = QComboBox()
-        type_combo.addItems(["2 colonnes (type, manufacturer)", "3 colonnes (type, manufacturer, reference)"])
+        type_combo.addItems(["2 colonnes (ref_modele, commercial_ref)", "3 colonnes (ref_modele, commercial_ref, autre)"])
         type_layout.addWidget(type_combo)
         layout.addLayout(type_layout)
         
@@ -2941,32 +2947,46 @@ class MainWindow(QMainWindow):
         for row in imported_data:
             try:
                 if import_type == 2:
-                    # 2 colonnes: type, manufacturer
-                    device_type = row[0].strip()
-                    manufacturer = row[1].strip()
-                    ref_modele = ""
+                    # 2 colonnes: ref_modele, commercial_ref (colonnes C et D)
+                    ref_modele = row[0].strip() if len(row) > 0 else ""
+                    commercial_ref = row[1].strip() if len(row) > 1 else ""
                 elif import_type == 3:
-                    # 3 colonnes: type, manufacturer, reference
-                    device_type = row[0].strip()
-                    manufacturer = row[1].strip()
-                    ref_modele = row[2].strip() if len(row) > 2 else ""
+                    # 3 colonnes: ref_modele, commercial_ref, autre_info
+                    ref_modele = row[0].strip() if len(row) > 0 else ""
+                    commercial_ref = row[1].strip() if len(row) > 1 else ""
+                    autre_info = row[2].strip() if len(row) > 2 else ""
                 
-                # Vérifier si l'appareil existe déjà
-                existing_device = self._find_existing_device(device_type, manufacturer, ref_modele)
+                # Chercher l'appareil existant par ses références (colonnes C et D)
+                existing_device = self._find_existing_device_by_refs(ref_modele, commercial_ref)
                 
                 if existing_device:
-                    # Appareil existant - créer association si référence de pièce fournie
+                    # Appareil existant trouvé - compléter avec les infos importées
+                    device_id = existing_device['id']
+                    
+                    # Mettre à jour les champs si nécessaire
+                    updates = {}
+                    if ref_modele and not existing_device.get('ref_modele'):
+                        updates['ref_modele'] = ref_modele
+                    if commercial_ref:
+                        updates['commercial_ref'] = commercial_ref
+                    
+                    # Appliquer les mises à jour
+                    if updates:
+                        self._update_device_info(device_id, updates)
+                    
+                    # Créer association si référence de pièce fournie
                     if ref_piece:
-                        if not self._piece_already_associated(existing_device['id'], ref_piece):
-                            self.db_manager.add_piece(ref_piece, existing_device['id'], "")
+                        if not self._piece_already_associated(device_id, ref_piece):
+                            self.db_manager.add_piece(ref_piece, device_id, "")
                             results['associations_created'] += 1
                         else:
                             results['duplicates_skipped'] += 1
+                    
                     results['matches_found'] += 1
                     # NE PAS créer de nouvelle ligne dans le tableau
                 else:
-                    # Nouvel appareil seulement
-                    device_id = self._create_new_device(device_type, manufacturer, ref_modele)
+                    # Nouvel appareil - créer avec les infos partielles
+                    device_id = self._create_new_device_from_refs(ref_modele, commercial_ref)
                     if device_id:
                         results['new_entries'] += 1
                         if ref_piece:
@@ -2984,22 +3004,25 @@ class MainWindow(QMainWindow):
         
         return results
     
-    def _find_existing_device(self, device_type, manufacturer, ref_modele):
-        """Chercher un appareil existant dans la base"""
+    def _find_existing_device_by_refs(self, ref_modele, commercial_ref):
+        """Chercher un appareil existant par ses références (colonnes C et D)"""
         try:
-            # Recherche flexible selon les champs disponibles
+            # Recherche prioritaire par ref_modele (colonne C)
             if ref_modele and ref_modele.strip():
-                # Si ref_modele est fourni, recherche exacte avec tous les champs
-                query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ? AND ref_modele = ?"
-                params = [device_type, manufacturer, ref_modele.strip()]
-            else:
-                # Si pas de ref_modele, recherche par type et manufacturer seulement
-                query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ? AND (ref_modele IS NULL OR ref_modele = '')"
-                params = [device_type, manufacturer]
+                query = "SELECT id, type, manufacturer FROM appareils WHERE ref_modele = ?"
+                params = [ref_modele.strip()]
+                result = self.db_manager.execute_query(query, params)
+                if result:
+                    return {'id': result[0][0], 'type': result[0][1], 'manufacturer': result[0][2]}
             
-            result = self.db_manager.execute_query(query, params)
-            if result:
-                return {'id': result[0][0]}  # Retourner un dict avec l'ID
+            # Recherche secondaire par commercial_ref (colonne D)
+            if commercial_ref and commercial_ref.strip():
+                query = "SELECT id, type, manufacturer FROM appareils WHERE commercial_ref = ?"
+                params = [commercial_ref.strip()]
+                result = self.db_manager.execute_query(query, params)
+                if result:
+                    return {'id': result[0][0], 'type': result[0][1], 'manufacturer': result[0][2]}
+            
             return None
         except Exception as e:
             print(f"Erreur recherche appareil: {e}")
@@ -3022,6 +3045,37 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Erreur création appareil: {e}")
             return None
+    
+    def _create_new_device_from_refs(self, ref_modele, commercial_ref):
+        """Créer un nouvel appareil à partir des références seulement"""
+        try:
+            query = "INSERT INTO appareils (ref_modele, commercial_ref) VALUES (?, ?)"
+            return self.db_manager.execute_insert(query, [ref_modele or "", commercial_ref or ""])
+        except Exception as e:
+            print(f"Erreur création appareil depuis références: {e}")
+            return None
+    
+    def _update_device_info(self, device_id, updates):
+        """Mettre à jour les informations d'un appareil"""
+        try:
+            if not updates:
+                return
+            
+            set_clauses = []
+            params = []
+            
+            for field, value in updates.items():
+                set_clauses.append(f"{field} = ?")
+                params.append(value)
+            
+            params.append(device_id)
+            query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
+            
+            self.db_manager.cursor.execute(query, params)
+            self.db_manager.conn.commit()
+            
+        except Exception as e:
+            print(f"Erreur mise à jour appareil: {e}")
     
     def _show_import_summary(self, results, ref_piece):
         """Afficher la synthèse d'import"""

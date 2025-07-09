@@ -338,7 +338,7 @@ class ValidationWindow(QDialog):
         lines.append("")
         
         # Incohérences
-        lines.append("⚠️ INCOHÉRENCES:")
+        lines.append("📋 INCOHÉRENCES:")
         if self.inconsistency_data and len(self.inconsistency_data) > 0:
             lines.append(f"  🔍 {len(self.inconsistency_data)} référence(s) avec valeurs différentes")
             lines.append("")
