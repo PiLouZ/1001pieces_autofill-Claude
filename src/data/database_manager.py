@@ -700,6 +700,32 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'exécution de la requête personnalisée: {e}")
     
+    def execute_insert(self, query: str, params: Optional[List] = None) -> Optional[int]:
+        """Exécuter une requête INSERT et retourner l'ID de la ligne insérée"""
+        try:
+            if params is None:
+                params = []
+            
+            self.cursor.execute(query, params)
+            self.conn.commit()
+            return self.cursor.lastrowid
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors de l'exécution de la requête INSERT: {e}")
+    
+    def execute_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
+        """Exécuter une requête SQL de lecture (SELECT)"""
+        try:
+            if params is None:
+                params = []
+            
+            self.cursor.execute(query, params)
+            return self.cursor.fetchall()
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de l'exécution de la requête SELECT: {e}")
+    
     def close(self):
         """Fermer la connexion à la base de données"""
         if self.conn:
