@@ -320,11 +320,13 @@ class ValidationWindow(QDialog):
                 duplicates = self.parent_window.db_manager.get_duplicate_references()
                 if duplicates:
                     lines.append("     Références dupliquées :")
-                    for type_val, manufacturer, ref_modele, count in duplicates[:10]:  # Limiter à 10
+                    for type_val, manufacturer, ref_modele, commercial_ref, other_ref, count in duplicates[:10]:  # Limiter à 10
                         clean_type = clean_display_text(type_val)
                         clean_manufacturer = clean_display_text(manufacturer)
                         clean_ref = clean_display_text(ref_modele)
-                        lines.append(f"     • {clean_type} | {clean_manufacturer} | {clean_ref} ({count}x)")
+                        clean_comm_ref = clean_display_text(commercial_ref)
+                        clean_other_ref = clean_display_text(other_ref)
+                        lines.append(f"     • {clean_type} | {clean_manufacturer} | {clean_ref} | {clean_comm_ref} | {clean_other_ref} ({count}x)")
                     if len(duplicates) > 10:
                         lines.append(f"     ... et {len(duplicates) - 10} autres")
             except Exception as e:
@@ -396,13 +398,15 @@ class ValidationWindow(QDialog):
                 # Ajouter le détail des références en doublon
                 try:
                     duplicates = self.parent_window.db_manager.get_duplicate_references()
-                    for type_val, manufacturer, ref_modele, count in duplicates[:20]:  # Limiter à 20
+                    for type_val, manufacturer, ref_modele, commercial_ref, other_ref, count in duplicates[:20]:  # Limiter à 20
                         clean_type = clean_display_text(type_val)
                         clean_manufacturer = clean_display_text(manufacturer)
                         clean_ref = clean_display_text(ref_modele)
+                        clean_comm_ref = clean_display_text(commercial_ref)
+                        clean_other_ref = clean_display_text(other_ref)
                         
                         duplicate_detail = QTreeWidgetItem([
-                            f"{clean_type} | {clean_manufacturer} | {clean_ref}",
+                            f"{clean_type} | {clean_manufacturer} | {clean_ref} | {clean_comm_ref} | {clean_other_ref}",
                             f"{count} occurrences",
                             str(count),
                             "Rechercher"

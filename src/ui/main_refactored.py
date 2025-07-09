@@ -3009,19 +3009,37 @@ class MainWindow(QMainWindow):
         try:
             # Recherche prioritaire par ref_modele (colonne C)
             if ref_modele and ref_modele.strip():
-                query = "SELECT id, type, manufacturer FROM appareils WHERE ref_modele = ?"
+                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE ref_modele = ?"
                 params = [ref_modele.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
-                    return {'id': result[0][0], 'type': result[0][1], 'manufacturer': result[0][2]}
+                    return {
+                        'id': result[0][0], 
+                        'type': result[0][1], 
+                        'manufacturer': result[0][2],
+                        'ref_modele': result[0][3],
+                        'commercial_ref': result[0][4],
+                        'other_ref': result[0][5],
+                        'category': result[0][6],
+                        'notes': result[0][7]
+                    }
             
             # Recherche secondaire par commercial_ref (colonne D)
             if commercial_ref and commercial_ref.strip():
-                query = "SELECT id, type, manufacturer FROM appareils WHERE commercial_ref = ?"
+                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE commercial_ref = ?"
                 params = [commercial_ref.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
-                    return {'id': result[0][0], 'type': result[0][1], 'manufacturer': result[0][2]}
+                    return {
+                        'id': result[0][0], 
+                        'type': result[0][1], 
+                        'manufacturer': result[0][2],
+                        'ref_modele': result[0][3],
+                        'commercial_ref': result[0][4],
+                        'other_ref': result[0][5],
+                        'category': result[0][6],
+                        'notes': result[0][7]
+                    }
             
             return None
         except Exception as e:
@@ -3453,6 +3471,7 @@ class MainWindow(QMainWindow):
 
             # Insérer les données
             inserted_count = 0
+            updated_count = 0
             ignored_count = 0
             total_rows = len(rows)
             
@@ -3548,17 +3567,46 @@ class MainWindow(QMainWindow):
                     print(f"⚠️ Ligne {row_idx + 1}: {validation_result.error_message} - Continuant l'import...")
                     # Continue au lieu d'arrêter l'import
                 
-                # Essayer de compléter automatiquement Type et Fabricant si vides
-                if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
-                    self._try_auto_complete(appareil_data)
+                # Chercher d'abord si l'appareil existe déjà
+                existing_device = self._find_existing_device_by_refs(
+                    appareil_data.get('ref_modele', ''), 
+                    appareil_data.get('commercial_ref', '')
+                )
                 
-                # Insérer l'appareil
-                appareil_id = self.db_manager.insert_appareil(appareil_data)
-                inserted_count += 1
-                
-                # Ajouter la pièce si spécifiée
-                if ref_piece and ref_piece.strip():
-                    self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                if existing_device:
+                    # Appareil existant trouvé - mettre à jour les champs manquants
+                    appareil_id = existing_device['id']
+                    
+                    # Préparer les mises à jour nécessaires
+                    updates = {}
+                    for field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref', 'other_ref', 'category', 'notes']:
+                        new_value = appareil_data.get(field, '').strip()
+                        if new_value and not existing_device.get(field):
+                            updates[field] = new_value
+                    
+                    # Appliquer les mises à jour
+                    if updates:
+                        self._update_device_info(appareil_id, updates)
+                    
+                    # Ajouter la pièce si spécifiée
+                    if ref_piece and ref_piece.strip():
+                        if not self._piece_already_associated(appareil_id, ref_piece.strip()):
+                            self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                    
+                    updated_count += 1
+                    
+                else:
+                    # Nouvel appareil - essayer de compléter automatiquement Type et Fabricant
+                    if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
+                        self._try_auto_complete(appareil_data)
+                    
+                    # Insérer le nouvel appareil
+                    appareil_id = self.db_manager.insert_appareil(appareil_data)
+                    inserted_count += 1
+                    
+                    # Ajouter la pièce si spécifiée
+                    if ref_piece and ref_piece.strip():
+                        self.db_manager.add_piece(ref_piece.strip(), appareil_id)
             
             # Fermer la barre de progression
             if progress_dialog:
@@ -3567,13 +3615,25 @@ class MainWindow(QMainWindow):
             
             # Forcer le rafraîchissement et afficher le résultat
             self._force_refresh_display(reset_page=True, clear_filters=True)
-            self.statusbar.showMessage(
-                f"✅ {inserted_count} ligne(s) ajoutée(s) depuis le presse-papiers", 
-                Config.LONG_STATUS_MESSAGE_TIMEOUT
-            )
+            
+            # Message de statut plus informatif
+            status_parts = []
+            if inserted_count > 0:
+                status_parts.append(f"{inserted_count} nouveau(x) appareil(s)")
+            if updated_count > 0:
+                status_parts.append(f"{updated_count} appareil(s) mis à jour")
+            
+            status_message = f"✅ {' et '.join(status_parts)} depuis le presse-papiers"
+            self.statusbar.showMessage(status_message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
             
             # Ajouter à l'historique
-            history_message = f"Collage: {inserted_count} appareil(s) ajouté(s)"
+            history_parts = []
+            if inserted_count > 0:
+                history_parts.append(f"{inserted_count} appareil(s) ajouté(s)")
+            if updated_count > 0:
+                history_parts.append(f"{updated_count} appareil(s) mis à jour")
+            
+            history_message = f"Collage: {' et '.join(history_parts)}"
             if ignored_count > 0:
                 history_message += f", {ignored_count} ligne(s) ignorée(s)"
             if ref_piece:

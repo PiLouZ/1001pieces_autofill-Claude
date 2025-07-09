@@ -393,13 +393,14 @@ class DatabaseManager:
             self.cursor.execute(f"DELETE FROM appareils WHERE {condition_vide}")
             deleted_empty = self.cursor.rowcount
             
-            # Identifier les doublons - utiliser seulement les champs critiques
-            # Considérer comme doublons: même type, manufacturer, ref_modele, commercial_ref
+            # Identifier les doublons - colonnes A, B, C, D, E identiques
+            # Considérer comme doublons: même type, manufacturer, ref_modele, commercial_ref, other_ref
             duplicates_query = """
                 SELECT GROUP_CONCAT(id) as ids, MIN(id) as keep_id
                 FROM appareils
                 GROUP BY COALESCE([type],''), COALESCE([manufacturer],''), 
-                         COALESCE([ref_modele],''), COALESCE([commercial_ref],'')
+                         COALESCE([ref_modele],''), COALESCE([commercial_ref],''),
+                         COALESCE([other_ref],'')
                 HAVING COUNT(*) > 1
             """
             
@@ -620,15 +621,15 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce: {e}")
     
-    def get_duplicate_references(self) -> List[Tuple[str, str, str, int]]:
-        """Récupérer les références d'appareils en doublon"""
+    def get_duplicate_references(self) -> List[Tuple[str, str, str, str, str, int]]:
+        """Récupérer les références d'appareils en doublon (colonnes A,B,C,D,E identiques)"""
         try:
             query = """
-                SELECT type, manufacturer, ref_modele, COUNT(*) as count 
+                SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, COUNT(*) as count 
                 FROM appareils 
-                GROUP BY type, manufacturer, ref_modele 
+                GROUP BY type, manufacturer, ref_modele, commercial_ref, other_ref 
                 HAVING COUNT(*) > 1
-                ORDER BY count DESC, type, manufacturer, ref_modele
+                ORDER BY count DESC, type, manufacturer, ref_modele, commercial_ref, other_ref
             """
             return self.execute_custom_query(query)
         except sqlite3.Error as e:
@@ -637,17 +638,17 @@ class DatabaseManager:
     def remove_duplicate_devices(self) -> int:
         """Supprimer les appareils en doublon en gardant le plus ancien"""
         try:
-            # Récupérer les doublons
+            # Récupérer les doublons (colonnes A,B,C,D,E identiques)
             duplicates_query = """
-                SELECT type, manufacturer, ref_modele, GROUP_CONCAT(id) as ids, MIN(id) as keep_id
+                SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, GROUP_CONCAT(id) as ids, MIN(id) as keep_id
                 FROM appareils 
-                GROUP BY type, manufacturer, ref_modele 
+                GROUP BY type, manufacturer, ref_modele, commercial_ref, other_ref 
                 HAVING COUNT(*) > 1
             """
             duplicates = self.execute_custom_query(duplicates_query)
             
             deleted_count = 0
-            for type_val, manufacturer, ref_modele, ids_str, keep_id in duplicates:
+            for type_val, manufacturer, ref_modele, commercial_ref, other_ref, ids_str, keep_id in duplicates:
                 all_ids = [int(x) for x in ids_str.split(',')]
                 ids_to_delete = [x for x in all_ids if x != keep_id]
                 
