@@ -811,6 +811,15 @@ class MainWindow(QMainWindow):
         
         pagination_layout.addWidget(QLabel("|  "))
         
+        # Bouton pour afficher toutes les lignes
+        self.show_all_btn = QPushButton("📋 Toutes les lignes")
+        self.show_all_btn.setObjectName("paginationBtn")
+        self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
+        self.show_all_btn.clicked.connect(self._toggle_show_all)
+        pagination_layout.addWidget(self.show_all_btn)
+        
+        pagination_layout.addWidget(QLabel("|  "))
+        
         # Indicateur de performance
         self.perf_label = QLabel("⚡ Prêt")
         self.perf_label.setObjectName("perfLabel")
@@ -942,6 +951,11 @@ class MainWindow(QMainWindow):
         start_time = time.time()
         
         try:
+            # Indicateur de chargement
+            self.perf_label.setText("⏳ Chargement...")
+            self.statusbar.showMessage("⏳ Chargement des données en cours...")
+            QApplication.processEvents()  # Forcer l'affichage
+            
             self.table.blockSignals(True)
             self.table.setRowCount(0)
             
@@ -962,21 +976,60 @@ class MainWindow(QMainWindow):
             # Compter le total de lignes
             self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
             
+            # Préparer une barre de progression pour les gros volumes
+            progress_dialog = None
+            if self.total_rows > 50000:  # Seuil pour afficher la barre de progression
+                progress_dialog = QProgressDialog(
+                    f"Chargement de {self.total_rows} lignes...",
+                    "Annuler",
+                    0, 100,
+                    self
+                )
+                progress_dialog.setWindowTitle("Chargement des données")
+                progress_dialog.setWindowModality(Qt.WindowModal)
+                progress_dialog.show()
+                QApplication.processEvents()
+            
             # Déterminer si utiliser la pagination
             if self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
                 # Calculer offset pour la pagination
                 offset = self.current_page * self.page_size
                 limit = self.page_size
                 
+                if progress_dialog:
+                    progress_dialog.setLabelText(f"Chargement page {self.current_page + 1}...")
+                    progress_dialog.setValue(50)
+                    QApplication.processEvents()
+                
                 # Charger seulement la page courante avec tri
                 records = self.db_manager.load_data(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
             else:
+                if progress_dialog:
+                    progress_dialog.setLabelText(f"Chargement de toutes les {self.total_rows} lignes...")
+                    progress_dialog.setValue(20)
+                    QApplication.processEvents()
+                
                 # Charger toutes les données (pour les petites bases ou recherches) avec tri
                 records = self.db_manager.load_data(search_term, column_filters, None, None, sort_column, sort_order, incomplete_filter)
             
             # Remplir le tableau
             self.table.setRowCount(len(records))
+            
+            # Mise à jour de la barre de progression pendant le remplissage
+            if progress_dialog:
+                progress_dialog.setLabelText("Remplissage du tableau...")
+                progress_dialog.setValue(60)
+                QApplication.processEvents()
+            
             for row_idx, record in enumerate(records):
+                # Mise à jour de la progression pour les gros volumes
+                if progress_dialog and row_idx % 1000 == 0:
+                    if progress_dialog.wasCanceled():
+                        break
+                    progress_value = 60 + (row_idx / len(records)) * 35  # 60% -> 95%
+                    progress_dialog.setValue(int(progress_value))
+                    progress_dialog.setLabelText(f"Remplissage du tableau... {row_idx}/{len(records)} lignes")
+                    QApplication.processEvents()
                 db_id = record[0]
                 # Ne plus utiliser les en-têtes verticaux pour stocker db_id
                 self.table.setVerticalHeaderItem(row_idx, QTableWidgetItem(str(row_idx + 1)))
@@ -1014,6 +1067,12 @@ class MainWindow(QMainWindow):
                     
                     self.table.setItem(row_idx, col_idx, item)
             
+            # Finalisation
+            if progress_dialog:
+                progress_dialog.setLabelText("Finalisation...")
+                progress_dialog.setValue(95)
+                QApplication.processEvents()
+            
             self.table.resizeColumnsToContents()
             self._update_counter()
             self._update_pagination_controls()
@@ -1021,10 +1080,47 @@ class MainWindow(QMainWindow):
             # Initialiser les valeurs précédentes pour le tracking des modifications
             self._init_previous_values()
             
-            # Afficher les performances
+            # Fermer la barre de progression
+            if progress_dialog:
+                progress_dialog.setValue(100)
+                progress_dialog.close()
+            
+            # Afficher les performances avec plus de détails
             load_time = time.time() - start_time
             if hasattr(self, 'perf_label'):
-                self.perf_label.setText(f"⚡ {load_time:.2f}s ({len(records)} lignes)")
+                # Déterminer la couleur en fonction du temps de chargement
+                if load_time < 0.5:
+                    color = "#28a745"  # Vert - Très rapide
+                    icon = "🚀"
+                elif load_time < 2.0:
+                    color = "#ffc107"  # Jaune - Correct
+                    icon = "⚡"
+                else:
+                    color = "#dc3545"  # Rouge - Lent
+                    icon = "🐌"
+                
+                # Message détaillé
+                perf_text = f"{icon} {load_time:.2f}s"
+                if len(records) < self.total_rows:
+                    perf_text += f" ({len(records)}/{self.total_rows} lignes)"
+                else:
+                    perf_text += f" ({len(records)} lignes)"
+                
+                # Ajouter des détails si c'est lent
+                if load_time > 2.0:
+                    perf_text += " - Chargement lent"
+                
+                self.perf_label.setText(perf_text)
+                self.perf_label.setStyleSheet(f"color: {color}; font-weight: bold;")
+                
+                # Message dans la barre de statut
+                status_msg = f"✅ Chargement terminé en {load_time:.2f}s"
+                if len(records) < self.total_rows:
+                    status_msg += f" - Page {self.current_page + 1} ({len(records)} lignes affichées sur {self.total_rows} total)"
+                else:
+                    status_msg += f" - {len(records)} lignes affichées"
+                
+                self.statusbar.showMessage(status_msg, 3000)
             
         except DatabaseError as e:
             self._show_error(f"Erreur de base de données: {e}")
@@ -1536,6 +1632,36 @@ class MainWindow(QMainWindow):
             
         except ValueError:
             pass  # Ignorer les valeurs non valides
+    
+    def _toggle_show_all(self):
+        """Basculer entre affichage paginé et affichage de toutes les lignes"""
+        try:
+            if self.use_pagination:
+                # Passer en mode "Toutes les lignes"
+                reply = QMessageBox.question(
+                    self,
+                    "Afficher toutes les lignes",
+                    f"Voulez-vous afficher toutes les {self.total_rows} lignes?\n\n"
+                    "⚠️ Cela peut être lent si vous avez beaucoup de données.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                
+                if reply == QMessageBox.Yes:
+                    self.use_pagination = False
+                    self.show_all_btn.setText("📄 Pagination")
+                    self.show_all_btn.setToolTip("Revenir à l'affichage paginé")
+                    self.load_data()
+            else:
+                # Revenir en mode pagination
+                self.use_pagination = True
+                self.show_all_btn.setText("📋 Toutes les lignes")
+                self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
+                self.current_page = 0
+                self.load_data()
+                
+        except Exception as e:
+            app_logger.error(f"Erreur basculement affichage: {e}")
     
     def _navigate_to_empty_cell(self, direction='down'):
         """Naviguer vers la prochaine cellule vide dans la colonne actuelle"""
