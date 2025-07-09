@@ -86,6 +86,11 @@ class DragHandle(QWidget):
         self.orig_selection = None
         self.drag_direction = None
         self.history_pending = False
+        
+        # Variables pour le défilement automatique
+        self.auto_scroll_timer = None
+        self.auto_scroll_direction = None
+        self.auto_scroll_zone = 30  # pixels depuis le bord pour déclencher le défilement
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -115,6 +120,9 @@ class DragHandle(QWidget):
     def mouseMoveEvent(self, event):
         if not self.dragging or not self.orig_selection or self.table.rowCount() == 0:
             return
+
+        # Vérifier si le défilement automatique est nécessaire
+        self._check_auto_scroll(event)
 
         delta_y = event.globalPos().y() - self.start_pos.y()
         row_height = self.table.rowHeight(0) or 24
@@ -249,6 +257,71 @@ class DragHandle(QWidget):
         self.dragging = False
         self.history_pending = False
         self.drag_direction = None
+        
+        # Arrêter le défilement automatique
+        self._stop_auto_scroll()
+    
+    def _check_auto_scroll(self, event):
+        """Vérifier si le défilement automatique est nécessaire"""
+        if not self.table:
+            return
+        
+        # Convertir la position globale en position locale du viewport
+        viewport_pos = self.table.viewport().mapFromGlobal(event.globalPos())
+        viewport_rect = self.table.viewport().rect()
+        
+        # Vérifier si la souris est dans la zone de défilement
+        if viewport_pos.y() < self.auto_scroll_zone:
+            # Zone de défilement vers le haut
+            self._start_auto_scroll('up')
+        elif viewport_pos.y() > viewport_rect.height() - self.auto_scroll_zone:
+            # Zone de défilement vers le bas
+            self._start_auto_scroll('down')
+        else:
+            # Arrêter le défilement si on n'est plus dans une zone de défilement
+            self._stop_auto_scroll()
+    
+    def _start_auto_scroll(self, direction):
+        """Démarrer le défilement automatique"""
+        from PyQt5.QtCore import QTimer
+        
+        if self.auto_scroll_direction == direction and self.auto_scroll_timer:
+            return  # Déjà en cours dans cette direction
+        
+        # Arrêter l'ancien timer s'il existe
+        self._stop_auto_scroll()
+        
+        self.auto_scroll_direction = direction
+        self.auto_scroll_timer = QTimer()
+        self.auto_scroll_timer.timeout.connect(self._auto_scroll_step)
+        self.auto_scroll_timer.start(100)  # Défilement toutes les 100ms
+    
+    def _stop_auto_scroll(self):
+        """Arrêter le défilement automatique"""
+        if self.auto_scroll_timer:
+            self.auto_scroll_timer.stop()
+            self.auto_scroll_timer = None
+        self.auto_scroll_direction = None
+    
+    def _auto_scroll_step(self):
+        """Effectuer une étape de défilement automatique"""
+        if not self.table or not self.auto_scroll_direction:
+            return
+        
+        scroll_bar = self.table.verticalScrollBar()
+        current_value = scroll_bar.value()
+        
+        if self.auto_scroll_direction == 'up':
+            new_value = max(0, current_value - 1)
+        else:  # down
+            new_value = min(scroll_bar.maximum(), current_value + 1)
+        
+        if new_value != current_value:
+            scroll_bar.setValue(new_value)
+            
+            # Repositionner la poignée après le défilement
+            if self.main_window and hasattr(self.main_window, '_position_drag_handle'):
+                self.main_window._position_drag_handle()
 
 
 class CategoryDialog(QInputDialog):
@@ -1103,50 +1176,77 @@ class MainWindow(QMainWindow):
             border-radius: 6px;
             padding: 6px 30px 6px 12px;
             min-width: 80px;
+            color: #212529;
+            font-size: 14px;
         }
         
         QComboBox:hover {
             border-color: #80bdff;
+            background-color: #f8f9fa;
+        }
+        
+        QComboBox:focus {
+            border-color: #007bff;
+            background-color: white;
+            outline: none;
+        }
+        
+        QComboBox:disabled {
+            background-color: #e9ecef;
+            color: #6c757d;
+            border-color: #dee2e6;
         }
         
         QComboBox::drop-down {
             border: none;
             width: 20px;
+            background-color: transparent;
         }
         
         QComboBox::down-arrow {
             image: none;
-            border: 2px solid #6c757d;
+            border: 2px solid #495057;
             width: 6px;
             height: 6px;
             border-top: none;
             border-left: none;
+            margin-right: 4px;
         }
         
-        /* ComboBox dropdown styles */
+        QComboBox::down-arrow:hover {
+            border-color: #007bff;
+        }
+        
+        /* ComboBox dropdown styles améliorés */
         QComboBox QAbstractItemView {
             background-color: white;
             border: 1px solid #ced4da;
             border-radius: 6px;
             outline: none;
             selection-background-color: #007bff;
+            selection-color: white;
         }
         
         QComboBox QAbstractItemView::item {
-            padding: 4px 8px;
+            padding: 8px 12px;
             border: none;
-            color: #212529 !important;
+            color: #212529;
             background-color: transparent;
+            min-height: 20px;
         }
         
         QComboBox QAbstractItemView::item:selected {
             background-color: #007bff;
-            color: white !important;
+            color: white;
         }
         
         QComboBox QAbstractItemView::item:hover {
+            background-color: #e9ecef;
+            color: #212529;
+        }
+        
+        QComboBox QAbstractItemView::item:alternate {
             background-color: #f8f9fa;
-            color: #212529 !important;
         }
         
         /* Labels */
@@ -1516,6 +1616,39 @@ class MainWindow(QMainWindow):
             'new_value': new_value,
             'db_id': self.table.verticalHeaderItem(row).text() if self.table.verticalHeaderItem(row) else None
         })
+        
+        # Ajouter à l'historique enrichi
+        try:
+            # Obtenir le nom de la colonne
+            column_name = self._get_column_display_name(col)
+            
+            # Obtenir la référence de l'appareil
+            appareil_ref = ""
+            try:
+                db_id = self._get_db_id_from_row(row)
+                # Logique pour obtenir la référence (comme dans _edit_piece)
+                ref_modele_item = self.table.item(row, 2)
+                if ref_modele_item and ref_modele_item.text().strip():
+                    appareil_ref = ref_modele_item.text().strip()
+                else:
+                    commercial_ref_item = self.table.item(row, 3)
+                    if commercial_ref_item and commercial_ref_item.text().strip():
+                        appareil_ref = commercial_ref_item.text().strip()
+                    else:
+                        appareil_ref = f"ID:{db_id}"
+            except Exception:
+                appareil_ref = f"Ligne {row + 1}"
+            
+            # Formater les valeurs pour affichage
+            old_display = f"'{old_value}'" if old_value else "vide"
+            new_display = f"'{new_value}'" if new_value else "vide"
+            
+            # Ajouter le message à l'historique
+            self._add_to_history(
+                f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
+            )
+        except Exception as e:
+            print(f"Erreur ajout historique: {e}")
         
         # Mettre à jour la valeur précédente
         self.previous_values[key] = new_value
@@ -2020,6 +2153,18 @@ class MainWindow(QMainWindow):
         delete_action = menu.addAction("🗑️ Supprimer")
         delete_action.triggered.connect(lambda: self._delete_piece(item))
         
+        # Vérifier s'il y a plusieurs appareils sélectionnés
+        selected_ranges = self.table.selectedRanges()
+        multiple_selection = len(selected_ranges) > 0 and sum(
+            range_sel.bottomRow() - range_sel.topRow() + 1 
+            for range_sel in selected_ranges
+        ) > 1
+        
+        if multiple_selection:
+            menu.addSeparator()
+            delete_from_all_action = menu.addAction("🗑️ Supprimer de tous les appareils sélectionnés")
+            delete_from_all_action.triggered.connect(lambda: self._delete_piece_from_selected(item))
+        
         # Afficher le menu
         menu.exec_(self.pieces_list.mapToGlobal(position))
     
@@ -2083,6 +2228,76 @@ class MainWindow(QMainWindow):
                 self._show_error(f"Erreur lors de la suppression: {e}")
             except Exception as e:
                 app_logger.error(f"Erreur inattendue lors de la suppression de pièce: {e}")
+                self._show_error(f"Erreur inattendue: {e}")
+    
+    def _delete_piece_from_selected(self, item: QListWidgetItem):
+        """Supprimer une pièce de tous les appareils sélectionnés"""
+        ref_piece = item.data(Qt.UserRole)
+        if not ref_piece:
+            return
+        
+        # Récupérer les appareils sélectionnés
+        selected_rows = set()
+        selected_ranges = self.table.selectedRanges()
+        
+        if selected_ranges:
+            for range_sel in selected_ranges:
+                for row in range(range_sel.topRow(), range_sel.bottomRow() + 1):
+                    selected_rows.add(row)
+        
+        if len(selected_rows) <= 1:
+            # Fallback vers la suppression normale si un seul appareil
+            self._delete_piece(item)
+            return
+        
+        # Demander confirmation
+        confirmed = self._show_confirmation(
+            "Confirmer la suppression multiple",
+            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' de {len(selected_rows)} appareils ?",
+            default_yes=False
+        )
+        
+        if confirmed:
+            try:
+                # Récupérer les IDs des appareils sélectionnés
+                appareil_ids = []
+                for row in selected_rows:
+                    try:
+                        appareil_id = self._get_db_id_from_row(row)
+                        appareil_ids.append(appareil_id)
+                    except (ValueError, IndexError):
+                        continue
+                
+                if not appareil_ids:
+                    self._show_error("Aucun appareil valide sélectionné")
+                    return
+                
+                # Supprimer la pièce de tous les appareils
+                deleted_count = self.db_manager.delete_piece_from_multiple_appareils(ref_piece, appareil_ids)
+                
+                if deleted_count > 0:
+                    # Mettre à jour l'interface
+                    self._update_pieces_panel()
+                    self.statusbar.showMessage(
+                        f"Pièce '{ref_piece}' supprimée de {deleted_count} appareils", 
+                        Config.STATUS_MESSAGE_TIMEOUT
+                    )
+                    
+                    # Ajouter à l'historique
+                    self.undo_manager.add_action({
+                        'type': 'delete_piece_multiple',
+                        'ref_piece': ref_piece,
+                        'appareil_ids': appareil_ids,
+                        'deleted_count': deleted_count,
+                        'description': f"Suppression multiple de pièce: {ref_piece} ({deleted_count} appareils)"
+                    })
+                else:
+                    self._show_error("Aucune pièce n'a été supprimée")
+                    
+            except DatabaseError as e:
+                self._show_error(f"Erreur lors de la suppression multiple: {e}")
+            except Exception as e:
+                app_logger.error(f"Erreur inattendue lors de la suppression multiple: {e}")
                 self._show_error(f"Erreur inattendue: {e}")
 
     def _undo(self):
@@ -2355,10 +2570,230 @@ class MainWindow(QMainWindow):
         
         if filename:
             try:
-                # Logique d'import à implémenter
-                self._show_info("Fonctionnalité d'import à implémenter")
+                import csv
+                from datetime import datetime
+                
+                # Dialogue pour choisir le type d'import
+                import_type, ref_piece = self._get_import_options()
+                if import_type is None:
+                    return
+                
+                # Lire le fichier CSV
+                imported_data = []
+                with open(filename, 'r', encoding='utf-8') as file:
+                    reader = csv.reader(file)
+                    for row in reader:
+                        if len(row) >= 2:  # Au moins 2 colonnes (type, manufacturer)
+                            imported_data.append(row)
+                
+                if not imported_data:
+                    self._show_error("Aucune donnée valide trouvée dans le fichier CSV")
+                    return
+                
+                # Traiter l'import
+                results = self._process_import(imported_data, import_type, ref_piece)
+                
+                # Afficher la synthèse
+                self._show_import_summary(results, ref_piece)
+                
+                # Enregistrer dans l'historique
+                self._log_import_to_history(results, ref_piece, filename)
+                
+                # Actualiser l'affichage
+                self._refresh_table()
+                
             except Exception as e:
                 self._show_error(f"Erreur lors de l'import: {e}")
+    
+    def _get_import_options(self):
+        """Dialogue pour choisir les options d'import"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Options d'import")
+        dialog.setModal(True)
+        
+        layout = QVBoxLayout()
+        
+        # Type d'import
+        type_layout = QHBoxLayout()
+        type_layout.addWidget(QLabel("Type d'import:"))
+        type_combo = QComboBox()
+        type_combo.addItems(["2 colonnes (type, manufacturer)", "3 colonnes (type, manufacturer, reference)"])
+        type_layout.addWidget(type_combo)
+        layout.addLayout(type_layout)
+        
+        # Référence de pièce (optionnelle)
+        ref_layout = QHBoxLayout()
+        ref_layout.addWidget(QLabel("Référence de pièce (optionnelle):"))
+        ref_input = QLineEdit()
+        ref_layout.addWidget(ref_input)
+        layout.addLayout(ref_layout)
+        
+        # Boutons
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton("OK")
+        cancel_button = QPushButton("Annuler")
+        button_layout.addWidget(ok_button)
+        button_layout.addWidget(cancel_button)
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        
+        result = [None, None]
+        
+        def on_ok():
+            result[0] = type_combo.currentIndex() + 2  # 2 ou 3 colonnes
+            result[1] = ref_input.text().strip() if ref_input.text().strip() else None
+            dialog.accept()
+        
+        def on_cancel():
+            dialog.reject()
+        
+        ok_button.clicked.connect(on_ok)
+        cancel_button.clicked.connect(on_cancel)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            return result[0], result[1]
+        return None, None
+    
+    def _process_import(self, imported_data, import_type, ref_piece):
+        """Traiter les données d'import"""
+        results = {
+            'total_imported': 0,
+            'matches_found': 0,
+            'manual_completion': 0,
+            'duplicates_skipped': 0,
+            'new_entries': 0,
+            'associations_created': 0
+        }
+        
+        for row in imported_data:
+            try:
+                if import_type == 2:
+                    # 2 colonnes: type, manufacturer
+                    device_type = row[0].strip()
+                    manufacturer = row[1].strip()
+                    ref_modele = ""
+                elif import_type == 3:
+                    # 3 colonnes: type, manufacturer, reference
+                    device_type = row[0].strip()
+                    manufacturer = row[1].strip()
+                    ref_modele = row[2].strip() if len(row) > 2 else ""
+                
+                # Vérifier si l'appareil existe déjà
+                existing_device = self._find_existing_device(device_type, manufacturer, ref_modele)
+                
+                if existing_device:
+                    # Appareil existant - créer association si référence de pièce fournie
+                    if ref_piece:
+                        if not self._piece_already_associated(existing_device['id'], ref_piece):
+                            self.db_manager.add_piece(ref_piece, existing_device['id'], "")
+                            results['associations_created'] += 1
+                        else:
+                            results['duplicates_skipped'] += 1
+                    results['matches_found'] += 1
+                else:
+                    # Nouvel appareil
+                    device_id = self._create_new_device(device_type, manufacturer, ref_modele)
+                    if device_id:
+                        results['new_entries'] += 1
+                        if ref_piece:
+                            self.db_manager.add_piece(ref_piece, device_id, "")
+                            results['associations_created'] += 1
+                        else:
+                            results['manual_completion'] += 1
+                
+                results['total_imported'] += 1
+                
+            except Exception as e:
+                print(f"Erreur lors du traitement de la ligne {row}: {e}")
+                continue
+        
+        return results
+    
+    def _find_existing_device(self, device_type, manufacturer, ref_modele):
+        """Chercher un appareil existant dans la base"""
+        try:
+            query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ?"
+            params = [device_type, manufacturer]
+            
+            if ref_modele:
+                query += " AND ref_modele = ?"
+                params.append(ref_modele)
+            
+            result = self.db_manager.execute_query(query, params)
+            return result[0] if result else None
+        except:
+            return None
+    
+    def _piece_already_associated(self, device_id, ref_piece):
+        """Vérifier si la pièce est déjà associée à l'appareil"""
+        try:
+            query = "SELECT id FROM pieces WHERE appareil_id = ? AND ref_piece = ?"
+            result = self.db_manager.execute_query(query, [device_id, ref_piece])
+            return len(result) > 0
+        except:
+            return False
+    
+    def _create_new_device(self, device_type, manufacturer, ref_modele):
+        """Créer un nouvel appareil"""
+        try:
+            query = "INSERT INTO appareils (type, manufacturer, ref_modele) VALUES (?, ?, ?)"
+            cursor = self.db_manager.cursor
+            cursor.execute(query, [device_type, manufacturer, ref_modele])
+            return cursor.lastrowid
+        except:
+            return None
+    
+    def _show_import_summary(self, results, ref_piece):
+        """Afficher la synthèse d'import"""
+        summary = f"{results['total_imported']} appareils importés"
+        if ref_piece:
+            summary += f" et associés à la référence {ref_piece}"
+        summary += f"\n→ {results['matches_found']} correspondances trouvées"
+        summary += f"\n→ {results['manual_completion']} appareils à compléter manuellement"
+        
+        if results['duplicates_skipped'] > 0:
+            summary += f"\n→ {results['duplicates_skipped']} associations dupliquées ignorées"
+        
+        if results['new_entries'] > 0:
+            summary += f"\n→ {results['new_entries']} nouveaux appareils créés"
+        
+        if results['associations_created'] > 0:
+            summary += f"\n→ {results['associations_created']} associations créées"
+        
+        self._show_info(summary)
+    
+    def _log_import_to_history(self, results, ref_piece, filename):
+        """Enregistrer l'import dans l'historique"""
+        from datetime import datetime
+        
+        summary = f"{results['total_imported']} appareils importés"
+        if ref_piece:
+            summary += f" et associés à la référence {ref_piece}"
+        summary += f" → {results['matches_found']} correspondances trouvées"
+        summary += f" → {results['manual_completion']} appareils à compléter manuellement"
+        
+        # Enregistrer dans les logs
+        if hasattr(self, 'logger'):
+            self.logger.log_data_operation(
+                "import_csv",
+                {
+                    'filename': filename,
+                    'ref_piece': ref_piece,
+                    'results': results,
+                    'summary': summary
+                }
+            )
+        
+        # Ajouter à l'historique des actions
+        self.undo_manager.add_action(
+            "import_csv",
+            f"Import CSV: {summary}",
+            None,  # Pas de données avant
+            results  # Données après
+        )
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""

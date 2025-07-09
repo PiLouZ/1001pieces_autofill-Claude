@@ -27,7 +27,11 @@
       "Bash(iconutil:*)",
       "Bash(touch:*)",
       "Bash(/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f 1001pieces_autofill.app)",
-      "Bash(mdls:*)"
+      "Bash(mdls:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   }

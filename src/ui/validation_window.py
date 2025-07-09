@@ -2,11 +2,40 @@
 Fenêtre interactive de validation et détection d'incohérences
 """
 
+import re
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QTextEdit, QWidget, QTabWidget, QTreeWidget, QTreeWidgetItem
 )
 from PyQt5.QtCore import Qt
+
+
+def clean_display_text(text):
+    """
+    Nettoie le texte pour l'affichage en supprimant les caractères illisibles
+    """
+    if not text:
+        return ""
+    
+    # Convertir en string si nécessaire
+    text = str(text)
+    
+    # Supprimer les caractères de contrôle (sauf retour à la ligne et tabulation)
+    text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]', '', text)
+    
+    # Remplacer les caractères non-UTF8 par un caractère de substitution
+    try:
+        text = text.encode('utf-8', errors='replace').decode('utf-8')
+    except:
+        text = "???"
+    
+    # Supprimer les espaces multiples
+    text = re.sub(r'\s+', ' ', text)
+    
+    # Nettoyer les caractères invisibles ou problématiques
+    text = text.strip()
+    
+    return text
 
 
 class ValidationWindow(QDialog):
@@ -228,8 +257,8 @@ class ValidationWindow(QDialog):
                     if ref_modele not in self.inconsistency_data:
                         self.inconsistency_data[ref_modele] = []
                     self.inconsistency_data[ref_modele].append({
-                        'type': type_val or '(vide)',
-                        'manufacturer': manufacturer or '(vide)',
+                        'type': clean_display_text(type_val) or '(vide)',
+                        'manufacturer': clean_display_text(manufacturer) or '(vide)',
                         'count': count
                     })
             
@@ -288,9 +317,12 @@ class ValidationWindow(QDialog):
             
             # Détailler les incohérences
             for ref_modele, variations in list(self.inconsistency_data.items())[:5]:  # Limiter à 5 pour l'aperçu
-                lines.append(f"  - '{ref_modele}' -> {len(variations)} variation(s)")
+                clean_ref = clean_display_text(ref_modele)
+                lines.append(f"  - '{clean_ref}' -> {len(variations)} variation(s)")
                 for variation in variations[:2]:  # Limiter à 2 variations par référence
-                    lines.append(f"      * {variation['type']} | {variation['manufacturer']} ({variation['count']} occ.)")
+                    clean_type = clean_display_text(variation['type'])
+                    clean_manufacturer = clean_display_text(variation['manufacturer'])
+                    lines.append(f"      * {clean_type} | {clean_manufacturer} ({variation['count']} occ.)")
             
             if len(self.inconsistency_data) > 5:
                 lines.append(f"  ... et {len(self.inconsistency_data) - 5} autres références")
@@ -358,8 +390,9 @@ class ValidationWindow(QDialog):
             ])
             
             for ref_modele, variations in self.inconsistency_data.items():
+                clean_ref = clean_display_text(ref_modele)
                 ref_item = QTreeWidgetItem([
-                    f"{ref_modele}", 
+                    f"{clean_ref}", 
                     f"{len(variations)} variations trouvées", 
                     str(len(variations)), 
                     "Rechercher"
@@ -400,7 +433,8 @@ class ValidationWindow(QDialog):
                 # Afficher la première incohérence trouvée
                 if self.inconsistency_data:
                     first_ref = list(self.inconsistency_data.keys())[0]
-                    self.parent_window.search_input.setText(first_ref)
+                    clean_first_ref = clean_display_text(first_ref)
+                    self.parent_window.search_input.setText(clean_first_ref)
                     self.parent_window.load_data(first_ref)
                     self.parent_window.statusbar.showMessage(f"🔍 Recherche de '{first_ref}' (première incohérence)", 3000)
                 
@@ -422,6 +456,7 @@ class ValidationWindow(QDialog):
             elif item.parent() and "Incohérences" in item.parent().text(0):
                 # Recherche d'une référence spécifique
                 ref_modele = item.text(0).replace("📋 ", "")
-                self.parent_window.search_input.setText(ref_modele)
-                self.parent_window.load_data(ref_modele)
-                self.parent_window.statusbar.showMessage(f"🔍 Recherche de '{ref_modele}'", 3000)
+                clean_ref_modele = clean_display_text(ref_modele)
+                self.parent_window.search_input.setText(clean_ref_modele)
+                self.parent_window.load_data(clean_ref_modele)
+                self.parent_window.statusbar.showMessage(f"🔍 Recherche de '{clean_ref_modele}'", 3000)

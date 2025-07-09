@@ -90,7 +90,7 @@ class DataExporter:
         """Exporter vers CSV"""
         try:
             with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
+                writer = csv.writer(csvfile, delimiter=';')
                 
                 # En-têtes
                 headers = [
@@ -290,7 +290,7 @@ class DataExporter:
         """Exporter toutes les données vers CSV"""
         try:
             with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
+                writer = csv.writer(csvfile, delimiter=';')
                 
                 # En-têtes
                 writer.writerow(Config.UI_HEADERS)

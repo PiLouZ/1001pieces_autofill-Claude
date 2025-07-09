@@ -608,6 +608,18 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la suppression des pièces: {e}")
     
+    def delete_piece_from_multiple_appareils(self, ref_piece: str, appareil_ids: List[int]) -> int:
+        """Supprimer une pièce de plusieurs appareils"""
+        try:
+            deleted_count = 0
+            for appareil_id in appareil_ids:
+                if self.delete_piece(ref_piece, appareil_id):
+                    deleted_count += 1
+            return deleted_count
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce: {e}")
+    
     def get_categories(self) -> List[str]:
         """Récupérer toutes les catégories"""
         try:
