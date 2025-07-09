@@ -232,36 +232,48 @@ class ValidationWindow(QDialog):
             issues = self.parent_window.db_manager.validate_database()
             self.validation_data = issues
             
-            # 2. Détection des incohérences
+            # 2. Détection des incohérences - requête simplifiée
             query = """
             SELECT ref_modele, type, manufacturer, COUNT(*) as count
             FROM appareils 
             WHERE ref_modele IS NOT NULL AND ref_modele != ''
-            GROUP BY ref_modele, type, manufacturer
-            HAVING ref_modele IN (
-                SELECT ref_modele 
-                FROM appareils 
-                WHERE ref_modele IS NOT NULL AND ref_modele != ''
-                GROUP BY ref_modele 
-                HAVING COUNT(DISTINCT type || '|' || manufacturer) > 1
-            )
-            ORDER BY ref_modele, type, manufacturer
+            GROUP BY ref_modele
+            HAVING COUNT(DISTINCT type || '|' || manufacturer) > 1
+            ORDER BY ref_modele
             """
             
-            inconsistency_results = self.parent_window.db_manager.execute_custom_query(query)
-            self.inconsistency_data = {}
-            
-            if inconsistency_results:
-                for row in inconsistency_results:
-                    ref_modele, type_val, manufacturer, count = row
-                    clean_ref_modele = clean_display_text(ref_modele)
-                    if clean_ref_modele not in self.inconsistency_data:
-                        self.inconsistency_data[clean_ref_modele] = []
-                    self.inconsistency_data[clean_ref_modele].append({
-                        'type': clean_display_text(type_val) or '(vide)',
-                        'manufacturer': clean_display_text(manufacturer) or '(vide)',
-                        'count': count
-                    })
+            try:
+                inconsistency_results = self.parent_window.db_manager.execute_custom_query(query)
+                self.inconsistency_data = {}
+                
+                if inconsistency_results:
+                    # Pour chaque référence avec incohérences, récupérer les variations
+                    for row in inconsistency_results:
+                        ref_modele = row[0]
+                        clean_ref_modele = clean_display_text(ref_modele)
+                        
+                        # Récupérer toutes les variations pour cette référence
+                        detail_query = """
+                        SELECT DISTINCT type, manufacturer, COUNT(*) as count
+                        FROM appareils 
+                        WHERE ref_modele = ?
+                        GROUP BY type, manufacturer
+                        ORDER BY count DESC
+                        """
+                        variations = self.parent_window.db_manager.execute_custom_query(detail_query, [ref_modele])
+                        
+                        if variations and len(variations) > 1:  # Seulement s'il y a vraiment des variations
+                            self.inconsistency_data[clean_ref_modele] = []
+                            for type_val, manufacturer, count in variations:
+                                self.inconsistency_data[clean_ref_modele].append({
+                                    'type': clean_display_text(type_val) or '(vide)',
+                                    'manufacturer': clean_display_text(manufacturer) or '(vide)',
+                                    'count': count
+                                })
+                        
+            except Exception as e:
+                print(f"Erreur lors de la détection des incohérences: {e}")
+                self.inconsistency_data = {}
             
             self._update_display()
             
@@ -327,7 +339,7 @@ class ValidationWindow(QDialog):
         
         # Incohérences
         lines.append("⚠️ INCOHÉRENCES:")
-        if self.inconsistency_data:
+        if self.inconsistency_data and len(self.inconsistency_data) > 0:
             lines.append(f"  🔍 {len(self.inconsistency_data)} référence(s) avec valeurs différentes")
             lines.append("")
             

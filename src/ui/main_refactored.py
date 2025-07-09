@@ -698,7 +698,7 @@ class MainWindow(QMainWindow):
         fill_btn.clicked.connect(self._fill_empty_fields)
         btn_layout.addWidget(fill_btn)
         
-        clean_btn = QPushButton("Supprimer Doublons/Lignes Vides")
+        clean_btn = QPushButton("🧹 Nettoyer doublons")
         clean_btn.clicked.connect(self._clean_data)
         btn_layout.addWidget(clean_btn)
         
@@ -714,8 +714,12 @@ class MainWindow(QMainWindow):
         # Variable pour le filtre des incomplètes
         self.show_incomplete_only = False
         
-        self.counter_label = QLabel("Lignes : 0")
-        btn_layout.addWidget(self.counter_label)
+        # Bouton de validation des incohérences
+        validate_btn = QPushButton("🔍 Validation Incohérences")
+        validate_btn.setToolTip("Valider la cohérence de la base et détecter les incohérences")
+        validate_btn.clicked.connect(self._validate_and_detect_inconsistencies)
+        validate_btn.setObjectName("validationBtn")
+        btn_layout.addWidget(validate_btn)
         
         layout.addLayout(btn_layout)
         
@@ -777,6 +781,13 @@ class MainWindow(QMainWindow):
         pagination_layout.addWidget(self.page_size_combo)
         
         pagination_layout.addStretch()
+        
+        # Compteur de lignes
+        self.counter_label = QLabel("Lignes : 0")
+        self.counter_label.setObjectName("counterLabel")
+        pagination_layout.addWidget(self.counter_label)
+        
+        pagination_layout.addWidget(QLabel("|  "))
         
         # Indicateur de performance
         self.perf_label = QLabel("⚡ Prêt")
@@ -858,10 +869,6 @@ class MainWindow(QMainWindow):
         import_action.triggered.connect(self._import_csv)
         toolbar.addAction(import_action)
         
-        validate_action = QAction("🔍 Valider & Incohérences", self)
-        validate_action.setToolTip("Valider la cohérence de la base et détecter les incohérences")
-        validate_action.triggered.connect(self._validate_and_detect_inconsistencies)
-        toolbar.addAction(validate_action)
         
         self._add_toolbar_separator(toolbar)
         
@@ -871,11 +878,6 @@ class MainWindow(QMainWindow):
         logs_action.triggered.connect(self._open_log_viewer)
         toolbar.addAction(logs_action)
         
-        # Action de nettoyage des doublons
-        clean_duplicates_action = QAction("🧹 Nettoyer doublons", self)
-        clean_duplicates_action.setToolTip("Supprimer les doublons d'appareils et de pièces")
-        clean_duplicates_action.triggered.connect(self._clean_duplicates)
-        toolbar.addAction(clean_duplicates_action)
         
         self._add_toolbar_separator(toolbar)
         
@@ -1124,6 +1126,23 @@ class MainWindow(QMainWindow):
             color: white;
         }
         
+        /* Bouton de validation des incohérences */
+        QPushButton#validationBtn {
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            font-weight: 500;
+        }
+        
+        QPushButton#validationBtn:hover {
+            background-color: #138496;
+        }
+        
+        QPushButton#validationBtn:pressed {
+            background-color: #0c5460;
+        }
+        
         /* Bouton refresh moderne */
         QPushButton#refreshBtn {
             background-color: transparent;
@@ -1318,6 +1337,12 @@ class MainWindow(QMainWindow):
         
         QLabel#perfLabel {
             color: #28a745;
+            font-weight: 500;
+            font-size: 12px;
+        }
+        
+        QLabel#counterLabel {
+            color: #6c757d;
             font-weight: 500;
             font-size: 12px;
         }
@@ -2935,12 +2960,9 @@ class MainWindow(QMainWindow):
     def _find_existing_device(self, device_type, manufacturer, ref_modele):
         """Chercher un appareil existant dans la base"""
         try:
-            query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ?"
-            params = [device_type, manufacturer]
-            
-            if ref_modele:
-                query += " AND ref_modele = ?"
-                params.append(ref_modele)
+            # Recherche exacte avec tous les champs
+            query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ? AND ref_modele = ?"
+            params = [device_type, manufacturer, ref_modele or ""]
             
             result = self.db_manager.execute_query(query, params)
             if result:
