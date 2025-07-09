@@ -121,6 +121,9 @@ class DragHandle(QWidget):
         if not self.dragging or not self.orig_selection or self.table.rowCount() == 0:
             return
 
+        # Stocker la position actuelle pour la duplication continue
+        self.last_mouse_pos = event.globalPos()
+
         # Vérifier si le défilement automatique est nécessaire
         self._check_auto_scroll(event)
 
@@ -270,31 +273,40 @@ class DragHandle(QWidget):
         viewport_pos = self.table.viewport().mapFromGlobal(event.globalPos())
         viewport_rect = self.table.viewport().rect()
         
-        # Vérifier si la souris est dans la zone de défilement
+        # Calculer la distance du bord pour ajuster la vitesse
         if viewport_pos.y() < self.auto_scroll_zone:
             # Zone de défilement vers le haut
-            self._start_auto_scroll('up')
+            distance_from_edge = viewport_pos.y()
+            speed = max(50, 200 - (distance_from_edge * 5))  # Plus proche = plus rapide
+            self._start_auto_scroll('up', speed)
         elif viewport_pos.y() > viewport_rect.height() - self.auto_scroll_zone:
             # Zone de défilement vers le bas
-            self._start_auto_scroll('down')
+            distance_from_edge = viewport_rect.height() - viewport_pos.y()
+            speed = max(50, 200 - (distance_from_edge * 5))  # Plus proche = plus rapide
+            self._start_auto_scroll('down', speed)
         else:
             # Arrêter le défilement si on n'est plus dans une zone de défilement
             self._stop_auto_scroll()
     
-    def _start_auto_scroll(self, direction):
+    def _start_auto_scroll(self, direction, speed=100):
         """Démarrer le défilement automatique"""
         from PyQt5.QtCore import QTimer
         
         if self.auto_scroll_direction == direction and self.auto_scroll_timer:
-            return  # Déjà en cours dans cette direction
+            # Ajuster la vitesse si nécessaire
+            if hasattr(self, 'current_scroll_speed') and self.current_scroll_speed != speed:
+                self.auto_scroll_timer.setInterval(speed)
+                self.current_scroll_speed = speed
+            return
         
         # Arrêter l'ancien timer s'il existe
         self._stop_auto_scroll()
         
         self.auto_scroll_direction = direction
+        self.current_scroll_speed = speed
         self.auto_scroll_timer = QTimer()
         self.auto_scroll_timer.timeout.connect(self._auto_scroll_step)
-        self.auto_scroll_timer.start(100)  # Défilement toutes les 100ms
+        self.auto_scroll_timer.start(speed)
     
     def _stop_auto_scroll(self):
         """Arrêter le défilement automatique"""
@@ -311,17 +323,39 @@ class DragHandle(QWidget):
         scroll_bar = self.table.verticalScrollBar()
         current_value = scroll_bar.value()
         
+        # Défilement plus rapide pour une meilleure réactivité
+        step_size = 3  # Augmenter le pas de défilement
+        
         if self.auto_scroll_direction == 'up':
-            new_value = max(0, current_value - 1)
+            new_value = max(0, current_value - step_size)
         else:  # down
-            new_value = min(scroll_bar.maximum(), current_value + 1)
+            new_value = min(scroll_bar.maximum(), current_value + step_size)
         
         if new_value != current_value:
             scroll_bar.setValue(new_value)
             
+            # Continuer la duplication pendant le défilement
+            if self.dragging and self.orig_selection:
+                self._continue_drag_fill()
+            
             # Repositionner la poignée après le défilement
             if self.main_window and hasattr(self.main_window, '_position_drag_handle'):
                 self.main_window._position_drag_handle()
+    
+    def _continue_drag_fill(self):
+        """Continuer la duplication pendant le défilement"""
+        try:
+            # Recalculer la position pour continuer la duplication
+            if hasattr(self, 'last_mouse_pos'):
+                from PyQt5.QtCore import QPoint
+                # Simuler un mouseMoveEvent pour continuer la duplication
+                delta_y = self.last_mouse_pos.y() - self.start_pos.y()
+                row_height = self.table.rowHeight(0) or 24
+                
+                if abs(delta_y) > row_height / 2:
+                    self._handle_drag_fill(delta_y, row_height)
+        except Exception as e:
+            print(f"Erreur continue drag: {e}")
 
 
 class CategoryDialog(QInputDialog):
@@ -1932,25 +1966,93 @@ class MainWindow(QMainWindow):
             self._show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
 
     def _update_pieces_panel(self):
-        """Mettre à jour le panneau des pièces"""
+        """Mettre à jour le panneau des pièces (communes pour sélection multiple)"""
         self.pieces_list.clear()
         
-        current_row = self.table.currentRow()
-        if current_row < 0:
+        # Récupérer toutes les lignes sélectionnées
+        selected_rows = set()
+        selected_ranges = self.table.selectedRanges()
+        
+        if selected_ranges:
+            # Utiliser les plages sélectionnées
+            for range_sel in selected_ranges:
+                for row in range(range_sel.topRow(), range_sel.bottomRow() + 1):
+                    selected_rows.add(row)
+        else:
+            # Fallback sur la ligne courante si aucune sélection
+            current_row = self.table.currentRow()
+            if current_row >= 0:
+                selected_rows.add(current_row)
+        
+        if not selected_rows:
             return
         
         try:
-            db_id = self._get_db_id_from_row(current_row)
-            pieces = self.db_manager.get_pieces_for_appareil(db_id)
-            
-            for ref_piece, description in pieces:
-                item_text = ref_piece
-                if description:
-                    item_text += f" - {description}"
+            if len(selected_rows) == 1:
+                # Un seul appareil sélectionné - comportement normal
+                row = list(selected_rows)[0]
+                db_id = self._get_db_id_from_row(row)
+                pieces = self.db_manager.get_pieces_for_appareil(db_id)
                 
-                item = QListWidgetItem(item_text)
-                item.setData(Qt.UserRole, ref_piece)
-                self.pieces_list.addItem(item)
+                for ref_piece, description in pieces:
+                    item_text = ref_piece
+                    if description:
+                        item_text += f" - {description}"
+                    
+                    item = QListWidgetItem(item_text)
+                    item.setData(Qt.UserRole, ref_piece)
+                    self.pieces_list.addItem(item)
+            
+            else:
+                # Plusieurs appareils sélectionnés - afficher seulement les pièces communes
+                all_pieces_sets = []
+                
+                for row in selected_rows:
+                    try:
+                        db_id = self._get_db_id_from_row(row)
+                        pieces = self.db_manager.get_pieces_for_appareil(db_id)
+                        # Créer un set des références de pièces pour cet appareil
+                        piece_refs = {ref_piece for ref_piece, description in pieces}
+                        all_pieces_sets.append(piece_refs)
+                    except Exception:
+                        continue
+                
+                if all_pieces_sets:
+                    # Calculer l'intersection de tous les sets (pièces communes)
+                    common_pieces = set.intersection(*all_pieces_sets)
+                    
+                    if common_pieces:
+                        # Récupérer les descriptions des pièces communes
+                        # Prendre la description du premier appareil qui contient la pièce
+                        for common_ref in sorted(common_pieces):
+                            description = ""
+                            for row in selected_rows:
+                                try:
+                                    db_id = self._get_db_id_from_row(row)
+                                    pieces = self.db_manager.get_pieces_for_appareil(db_id)
+                                    for ref_piece, desc in pieces:
+                                        if ref_piece == common_ref and desc:
+                                            description = desc
+                                            break
+                                    if description:
+                                        break
+                                except Exception:
+                                    continue
+                            
+                            item_text = f"{common_ref} (commune à {len(selected_rows)} appareils)"
+                            if description:
+                                item_text = f"{common_ref} - {description} (commune à {len(selected_rows)} appareils)"
+                            
+                            item = QListWidgetItem(item_text)
+                            item.setData(Qt.UserRole, common_ref)
+                            # Marquer visuellement les pièces communes
+                            item.setBackground(QColor(240, 248, 255))  # Bleu très clair
+                            self.pieces_list.addItem(item)
+                    else:
+                        # Aucune pièce commune
+                        item = QListWidgetItem(f"Aucune pièce commune aux {len(selected_rows)} appareils sélectionnés")
+                        item.setForeground(QColor(108, 117, 125))  # Gris
+                        self.pieces_list.addItem(item)
                 
         except Exception as e:
             self._show_error(f"Erreur lors de la mise à jour des pièces: {e}")
@@ -2723,8 +2825,11 @@ class MainWindow(QMainWindow):
                 params.append(ref_modele)
             
             result = self.db_manager.execute_query(query, params)
-            return result[0] if result else None
-        except:
+            if result:
+                return {'id': result[0][0]}  # Retourner un dict avec l'ID
+            return None
+        except Exception as e:
+            print(f"Erreur recherche appareil: {e}")
             return None
     
     def _piece_already_associated(self, device_id, ref_piece):
@@ -2740,10 +2845,9 @@ class MainWindow(QMainWindow):
         """Créer un nouvel appareil"""
         try:
             query = "INSERT INTO appareils (type, manufacturer, ref_modele) VALUES (?, ?, ?)"
-            cursor = self.db_manager.cursor
-            cursor.execute(query, [device_type, manufacturer, ref_modele])
-            return cursor.lastrowid
-        except:
+            return self.db_manager.execute_insert(query, [device_type, manufacturer, ref_modele])
+        except Exception as e:
+            print(f"Erreur création appareil: {e}")
             return None
     
     def _show_import_summary(self, results, ref_piece):

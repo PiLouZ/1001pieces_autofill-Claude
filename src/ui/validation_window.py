@@ -254,9 +254,10 @@ class ValidationWindow(QDialog):
             if inconsistency_results:
                 for row in inconsistency_results:
                     ref_modele, type_val, manufacturer, count = row
-                    if ref_modele not in self.inconsistency_data:
-                        self.inconsistency_data[ref_modele] = []
-                    self.inconsistency_data[ref_modele].append({
+                    clean_ref_modele = clean_display_text(ref_modele)
+                    if clean_ref_modele not in self.inconsistency_data:
+                        self.inconsistency_data[clean_ref_modele] = []
+                    self.inconsistency_data[clean_ref_modele].append({
                         'type': clean_display_text(type_val) or '(vide)',
                         'manufacturer': clean_display_text(manufacturer) or '(vide)',
                         'count': count
