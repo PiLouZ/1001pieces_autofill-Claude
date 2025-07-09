@@ -302,6 +302,21 @@ class ValidationWindow(QDialog):
             lines.append(f"  🔗 {self.validation_data['orphaned_pieces']} pièce(s) orpheline(s)")
         if self.validation_data.get('duplicate_refs', 0) > 0:
             lines.append(f"  📋 {self.validation_data['duplicate_refs']} référence(s) en doublon")
+            
+            # Lister les références en doublon
+            try:
+                duplicates = self.parent_window.db_manager.get_duplicate_references()
+                if duplicates:
+                    lines.append("     Références dupliquées :")
+                    for type_val, manufacturer, ref_modele, count in duplicates[:10]:  # Limiter à 10
+                        clean_type = clean_display_text(type_val)
+                        clean_manufacturer = clean_display_text(manufacturer)
+                        clean_ref = clean_display_text(ref_modele)
+                        lines.append(f"     • {clean_type} | {clean_manufacturer} | {clean_ref} ({count}x)")
+                    if len(duplicates) > 10:
+                        lines.append(f"     ... et {len(duplicates) - 10} autres")
+            except Exception as e:
+                lines.append(f"     Erreur lors de la récupération des doublons: {e}")
         if self.validation_data.get('empty_critical', 0) > 0:
             lines.append(f"  ❌ {self.validation_data['empty_critical']} appareil(s) sans type ni fabricant")
         

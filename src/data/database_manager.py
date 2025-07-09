@@ -620,6 +620,82 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce: {e}")
     
+    def get_duplicate_references(self) -> List[Tuple[str, str, str, int]]:
+        """Récupérer les références d'appareils en doublon"""
+        try:
+            query = """
+                SELECT type, manufacturer, ref_modele, COUNT(*) as count 
+                FROM appareils 
+                GROUP BY type, manufacturer, ref_modele 
+                HAVING COUNT(*) > 1
+                ORDER BY count DESC, type, manufacturer, ref_modele
+            """
+            return self.execute_custom_query(query)
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la récupération des doublons: {e}")
+    
+    def remove_duplicate_devices(self) -> int:
+        """Supprimer les appareils en doublon en gardant le plus ancien"""
+        try:
+            # Récupérer les doublons
+            duplicates_query = """
+                SELECT type, manufacturer, ref_modele, GROUP_CONCAT(id) as ids, MIN(id) as keep_id
+                FROM appareils 
+                GROUP BY type, manufacturer, ref_modele 
+                HAVING COUNT(*) > 1
+            """
+            duplicates = self.execute_custom_query(duplicates_query)
+            
+            deleted_count = 0
+            for type_val, manufacturer, ref_modele, ids_str, keep_id in duplicates:
+                all_ids = [int(x) for x in ids_str.split(',')]
+                ids_to_delete = [x for x in all_ids if x != keep_id]
+                
+                for delete_id in ids_to_delete:
+                    # Transférer les pièces vers l'appareil à conserver
+                    transfer_query = """
+                        UPDATE pieces SET appareil_id = ? 
+                        WHERE appareil_id = ? AND ref_piece NOT IN (
+                            SELECT ref_piece FROM pieces WHERE appareil_id = ?
+                        )
+                    """
+                    self.cursor.execute(transfer_query, (keep_id, delete_id, keep_id))
+                    
+                    # Supprimer les pièces doublons restantes
+                    self.cursor.execute("DELETE FROM pieces WHERE appareil_id = ?", (delete_id,))
+                    
+                    # Supprimer l'appareil doublon
+                    self.cursor.execute("DELETE FROM appareils WHERE id = ?", (delete_id,))
+                    deleted_count += 1
+            
+            self.conn.commit()
+            return deleted_count
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors de la suppression des doublons: {e}")
+    
+    def remove_duplicate_pieces(self) -> int:
+        """Supprimer les références de pièces dupliquées"""
+        try:
+            # Récupérer et supprimer les doublons de pièces
+            duplicate_pieces_query = """
+                DELETE FROM pieces 
+                WHERE id NOT IN (
+                    SELECT MIN(id) 
+                    FROM pieces 
+                    GROUP BY appareil_id, ref_piece
+                )
+            """
+            self.cursor.execute(duplicate_pieces_query)
+            deleted_count = self.cursor.rowcount
+            self.conn.commit()
+            return deleted_count
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors de la suppression des pièces dupliquées: {e}")
+    
     def get_categories(self) -> List[str]:
         """Récupérer toutes les catégories"""
         try:

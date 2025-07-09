@@ -871,6 +871,12 @@ class MainWindow(QMainWindow):
         logs_action.triggered.connect(self._open_log_viewer)
         toolbar.addAction(logs_action)
         
+        # Action de nettoyage des doublons
+        clean_duplicates_action = QAction("🧹 Nettoyer doublons", self)
+        clean_duplicates_action.setToolTip("Supprimer les doublons d'appareils et de pièces")
+        clean_duplicates_action.triggered.connect(self._clean_duplicates)
+        toolbar.addAction(clean_duplicates_action)
+        
         self._add_toolbar_separator(toolbar)
         
         # Bouton configuration des colonnes
@@ -2121,9 +2127,14 @@ class MainWindow(QMainWindow):
                 try:
                     db_id = self._get_db_id_from_row(row)
                     
-                    # Ajouter la pièce sans description
-                    self.db_manager.add_piece(ref_piece, db_id, None)
-                    added_count += 1
+                    # Vérifier si la pièce n'est pas déjà associée
+                    if not self._piece_already_associated(db_id, ref_piece):
+                        # Ajouter la pièce sans description
+                        self.db_manager.add_piece(ref_piece, db_id, None)
+                        added_count += 1
+                    else:
+                        error_count += 1
+                        print(f"Pièce {ref_piece} déjà associée à l'appareil ligne {row}")
                     
                 except (ValueError, DatabaseError) as e:
                     error_count += 1
@@ -2613,6 +2624,113 @@ class MainWindow(QMainWindow):
             self._force_refresh_display(reset_page=True, clear_filters=True)
         except DatabaseError as e:
             self._show_error(f"Erreur lors du nettoyage: {e}")
+    
+    def _clean_duplicates(self):
+        """Nettoyer tous les doublons (appareils et pièces)"""
+        reply = QMessageBox.question(
+            self, 
+            "Nettoyer les doublons",
+            "Cette opération va :\n"
+            "• Supprimer les appareils en doublon (garder le plus ancien)\n"
+            "• Transférer les pièces vers l'appareil conservé\n"
+            "• Supprimer les références de pièces dupliquées\n\n"
+            "Cette action est irréversible. Continuer ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        try:
+            # Nettoyer les doublons d'appareils
+            devices_deleted = self.db_manager.remove_duplicate_devices()
+            
+            # Nettoyer les doublons de pièces
+            pieces_deleted = self.db_manager.remove_duplicate_pieces()
+            
+            # Message de résultat
+            message_parts = []
+            if devices_deleted > 0:
+                message_parts.append(f"{devices_deleted} appareils en doublon supprimés")
+            if pieces_deleted > 0:
+                message_parts.append(f"{pieces_deleted} références de pièces dupliquées supprimées")
+            
+            if message_parts:
+                message = f"Nettoyage terminé: {', '.join(message_parts)}"
+            else:
+                message = "Nettoyage terminé: Aucun doublon détecté"
+            
+            self._add_to_history(message)
+            self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
+            self._force_refresh_display(reset_page=True, clear_filters=True)
+            
+            # Actualiser la fenêtre de validation si elle est ouverte
+            if hasattr(self, 'validation_window') and self.validation_window:
+                self.validation_window._load_data()
+                
+        except DatabaseError as e:
+            self._show_error(f"Erreur lors du nettoyage des doublons: {e}")
+    
+    def _clean_duplicate_devices(self):
+        """Supprimer seulement les doublons d'appareils"""
+        reply = QMessageBox.question(
+            self, 
+            "Supprimer doublons d'appareils",
+            "Cette opération va supprimer les appareils en doublon en gardant le plus ancien.\n"
+            "Les pièces seront transférées vers l'appareil conservé.\n\n"
+            "Cette action est irréversible. Continuer ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        try:
+            deleted_count = self.db_manager.remove_duplicate_devices()
+            
+            if deleted_count > 0:
+                message = f"Nettoyage terminé: {deleted_count} appareils en doublon supprimés"
+            else:
+                message = "Nettoyage terminé: Aucun doublon d'appareil détecté"
+            
+            self._add_to_history(message)
+            self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
+            self._force_refresh_display(reset_page=True, clear_filters=True)
+            
+        except DatabaseError as e:
+            self._show_error(f"Erreur lors de la suppression des doublons d'appareils: {e}")
+    
+    def _clean_duplicate_pieces(self):
+        """Supprimer seulement les doublons de pièces"""
+        reply = QMessageBox.question(
+            self, 
+            "Supprimer doublons de pièces",
+            "Cette opération va supprimer les références de pièces dupliquées.\n"
+            "Seule la première occurrence de chaque référence sera conservée.\n\n"
+            "Cette action est irréversible. Continuer ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        try:
+            deleted_count = self.db_manager.remove_duplicate_pieces()
+            
+            if deleted_count > 0:
+                message = f"Nettoyage terminé: {deleted_count} références de pièces dupliquées supprimées"
+            else:
+                message = "Nettoyage terminé: Aucun doublon de pièce détecté"
+            
+            self._add_to_history(message)
+            self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
+            self._update_pieces_panel()  # Actualiser le panneau des pièces
+            
+        except DatabaseError as e:
+            self._show_error(f"Erreur lors de la suppression des doublons de pièces: {e}")
 
     def _manage_categories(self):
         """Gérer les catégories"""
@@ -2795,18 +2913,18 @@ class MainWindow(QMainWindow):
                         else:
                             results['duplicates_skipped'] += 1
                     results['matches_found'] += 1
+                    # NE PAS incrémenter total_imported car l'appareil existe déjà
                 else:
                     # Nouvel appareil
                     device_id = self._create_new_device(device_type, manufacturer, ref_modele)
                     if device_id:
                         results['new_entries'] += 1
+                        results['total_imported'] += 1  # Compter seulement les nouveaux appareils
                         if ref_piece:
                             self.db_manager.add_piece(ref_piece, device_id, "")
                             results['associations_created'] += 1
                         else:
                             results['manual_completion'] += 1
-                
-                results['total_imported'] += 1
                 
             except Exception as e:
                 print(f"Erreur lors du traitement de la ligne {row}: {e}")
