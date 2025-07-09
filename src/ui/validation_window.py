@@ -392,6 +392,41 @@ class ValidationWindow(QDialog):
                     str(self.validation_data['duplicate_refs']), 
                     "Rechercher"
                 ])
+                
+                # Ajouter le détail des références en doublon
+                try:
+                    duplicates = self.parent_window.db_manager.get_duplicate_references()
+                    for type_val, manufacturer, ref_modele, count in duplicates[:20]:  # Limiter à 20
+                        clean_type = clean_display_text(type_val)
+                        clean_manufacturer = clean_display_text(manufacturer)
+                        clean_ref = clean_display_text(ref_modele)
+                        
+                        duplicate_detail = QTreeWidgetItem([
+                            f"{clean_type} | {clean_manufacturer} | {clean_ref}",
+                            f"{count} occurrences",
+                            str(count),
+                            "Rechercher"
+                        ])
+                        duplicate_item.addChild(duplicate_detail)
+                    
+                    if len(duplicates) > 20:
+                        more_item = QTreeWidgetItem([
+                            f"... et {len(duplicates) - 20} autres",
+                            "",
+                            "",
+                            ""
+                        ])
+                        duplicate_item.addChild(more_item)
+                        
+                except Exception as e:
+                    error_item = QTreeWidgetItem([
+                        "Erreur lors du chargement des détails",
+                        str(e),
+                        "",
+                        ""
+                    ])
+                    duplicate_item.addChild(error_item)
+                
                 validation_item.addChild(duplicate_item)
             
             if show_empty and self.validation_data.get('empty_critical', 0) > 0:

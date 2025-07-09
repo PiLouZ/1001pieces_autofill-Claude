@@ -312,12 +312,22 @@ class DragHandle(QWidget):
         """Arrêter le défilement automatique"""
         if self.auto_scroll_timer:
             self.auto_scroll_timer.stop()
+            try:
+                self.auto_scroll_timer.disconnect()
+            except:
+                pass
+            self.auto_scroll_timer.deleteLater()
             self.auto_scroll_timer = None
         self.auto_scroll_direction = None
+        # Forcer le nettoyage
+        if hasattr(self, 'current_scroll_speed'):
+            delattr(self, 'current_scroll_speed')
     
     def _auto_scroll_step(self):
         """Effectuer une étape de défilement automatique"""
-        if not self.table or not self.auto_scroll_direction:
+        if not self.table or not self.auto_scroll_direction or not self.dragging:
+            # Arrêter le défilement si les conditions ne sont plus remplies
+            self._stop_auto_scroll()
             return
         
         scroll_bar = self.table.verticalScrollBar()
@@ -341,6 +351,9 @@ class DragHandle(QWidget):
             # Repositionner la poignée après le défilement
             if self.main_window and hasattr(self.main_window, '_position_drag_handle'):
                 self.main_window._position_drag_handle()
+        else:
+            # Si on ne peut plus défiler, arrêter le défilement automatique
+            self._stop_auto_scroll()
     
     def _continue_drag_fill(self):
         """Continuer la duplication pendant le défilement"""
@@ -495,7 +508,7 @@ class MainWindow(QMainWindow):
         filter_layout = QHBoxLayout()
         for i, header in enumerate(Config.UI_HEADERS):
             filter_input = QLineEdit()
-            filter_input.setPlaceholderText(f"Filtrer {header}...")
+            filter_input.setPlaceholderText(f"{header}...")
             filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
             self.filter_widgets[i] = filter_input
             filter_layout.addWidget(filter_input)
@@ -551,7 +564,7 @@ class MainWindow(QMainWindow):
         search_section_layout.addWidget(search_icon)
         
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Rechercher dans tous les champs et pièces...")
+        self.search_input.setPlaceholderText("Recherche globale (appareils et pièces)...")
         self.search_input.textChanged.connect(self._search_table)
         search_section_layout.addWidget(self.search_input)
         
@@ -611,7 +624,7 @@ class MainWindow(QMainWindow):
         self.pieces_list.itemDoubleClicked.connect(self._edit_piece)
         self.pieces_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pieces_list.customContextMenuRequested.connect(self._show_pieces_context_menu)
-        self.pieces_tabs.addTab(self.pieces_list, "Pièces Associées")
+        self.pieces_tabs.addTab(self.pieces_list, "Liste des pièces associées")
         
         # Ajout de pièce
         pieces_add_widget = QWidget()
@@ -621,16 +634,17 @@ class MainWindow(QMainWindow):
         self.piece_input.setPlaceholderText("Référence de la pièce...")
         pieces_add_layout.addWidget(self.piece_input)
         
-        add_piece_btn = QPushButton("Ajouter Pièce")
+        add_piece_btn = QPushButton("Ajouter")
         add_piece_btn.clicked.connect(self._add_piece)
         pieces_add_layout.addWidget(add_piece_btn)
         
         pieces_add_layout.addStretch()
-        self.pieces_tabs.addTab(pieces_add_widget, "Ajouter Pièce")
+        self.pieces_tabs.addTab(pieces_add_widget, "+")
         
         top_layout.addWidget(self.pieces_tabs)
         pieces_splitter.addWidget(top_widget)
         
+
         # Partie basse - Historique des modifications
         history_widget = QWidget()
         history_layout = QVBoxLayout(history_widget)
@@ -694,16 +708,17 @@ class MainWindow(QMainWindow):
         """Ajouter les boutons d'action"""
         btn_layout = QHBoxLayout()
         
-        fill_btn = QPushButton("Compléter Type/Fabricant")
+        fill_btn = QPushButton("≔ Autocomplétion")
+        fill_btn.setToolTip("Complète automatiquement les champs vides")
         fill_btn.clicked.connect(self._fill_empty_fields)
         btn_layout.addWidget(fill_btn)
         
-        clean_btn = QPushButton("🧹 Nettoyer doublons")
+        clean_btn = QPushButton("🧹 Nettoyer les doublons")
         clean_btn.clicked.connect(self._clean_data)
         btn_layout.addWidget(clean_btn)
         
         # Bouton moderne pour afficher seulement les lignes incomplètes
-        incomplete_btn = QPushButton("📋 Incomplètes")
+        incomplete_btn = QPushButton("📋 Lignes à traiter")
         incomplete_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
         incomplete_btn.setCheckable(True)
         incomplete_btn.clicked.connect(self._toggle_incomplete_filter)
@@ -715,7 +730,7 @@ class MainWindow(QMainWindow):
         self.show_incomplete_only = False
         
         # Bouton de validation des incohérences
-        validate_btn = QPushButton("🔍 Validation Incohérences")
+        validate_btn = QPushButton("🔍 Incohérences")
         validate_btn.setToolTip("Valider la cohérence de la base et détecter les incohérences")
         validate_btn.clicked.connect(self._validate_and_detect_inconsistencies)
         validate_btn.setObjectName("validationBtn")
@@ -1200,7 +1215,7 @@ class MainWindow(QMainWindow):
             font-weight: 600;
             color: #495057;
             font-size: 14px;
-            padding: 4px 0px;
+            padding: 2px 0px;
         }
         
         /* Listes */
@@ -1617,15 +1632,15 @@ class MainWindow(QMainWindow):
             column_mapping = {
                 0: 'type',           # Colonne A -> Type
                 1: 'manufacturer',   # Colonne B -> Fabricant  
-                2: 'ref_modele',     # Colonne C -> Référence Modèle
-                3: 'commercial_ref', # Colonne D -> Référence Commerciale ✅
-                4: 'other_ref',      # Colonne E -> Autre Référence
+                2: 'ref_modele',     # Colonne C -> Référence modèle
+                3: 'commercial_ref', # Colonne D -> Référence commerciale ✅
+                4: 'other_ref',      # Colonne E -> Autre référence
                 5: 'category',       # Colonne F -> Catégorie
                 6: 'notes'           # Colonne G -> Notes
             }
             return column_mapping.get(ui_column)
         else:
-            # Colonne 7 = Nb Pièces (lecture seule, pas de champ DB correspondant)
+            # Colonne 7 = Nb pièces (lecture seule, pas de champ DB correspondant)
             return None
 
     def _on_current_item_changed(self, current, previous):
@@ -2650,15 +2665,16 @@ class MainWindow(QMainWindow):
         except DatabaseError as e:
             self._show_error(f"Erreur lors du nettoyage: {e}")
     
-    def _clean_duplicates(self):
-        """Nettoyer tous les doublons (appareils et pièces)"""
+    def _clean_data(self):
+        """Nettoyer les données (cumuler doublons et supprimer lignes vides)"""
         reply = QMessageBox.question(
             self, 
-            "Nettoyer les doublons",
+            "Nettoyer les données",
             "Cette opération va :\n"
-            "• Supprimer les appareils en doublon (garder le plus ancien)\n"
+            "• Cumuler les appareils en doublon (garder le plus ancien)\n"
             "• Transférer les pièces vers l'appareil conservé\n"
-            "• Supprimer les références de pièces dupliquées\n\n"
+            "• Cumuler les références de pièces dupliquées\n"
+            "• Supprimer les lignes vides\n\n"
             "Cette action est irréversible. Continuer ?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
@@ -2674,17 +2690,26 @@ class MainWindow(QMainWindow):
             # Nettoyer les doublons de pièces
             pieces_deleted = self.db_manager.remove_duplicate_pieces()
             
+            # Nettoyer les données (fonction originale)
+            result = self.db_manager.clean_data()
+            
             # Message de résultat
             message_parts = []
             if devices_deleted > 0:
-                message_parts.append(f"{devices_deleted} appareils en doublon supprimés")
+                message_parts.append(f"{devices_deleted} appareils dupliqués cumulés")
             if pieces_deleted > 0:
-                message_parts.append(f"{pieces_deleted} références de pièces dupliquées supprimées")
+                message_parts.append(f"{pieces_deleted} références de pièces dupliquées cumulées")
+            if result.get('deleted_empty', 0) > 0:
+                message_parts.append(f"{result['deleted_empty']} lignes vides supprimées")
+            if result.get('deleted_duplicates', 0) > 0:
+                message_parts.append(f"{result['deleted_duplicates']} doublons supprimés")
+            if result.get('merged_notes', 0) > 0:
+                message_parts.append(f"{result['merged_notes']} notes fusionnées")
             
             if message_parts:
                 message = f"Nettoyage terminé: {', '.join(message_parts)}"
             else:
-                message = "Nettoyage terminé: Aucun doublon détecté"
+                message = "Nettoyage terminé: Aucun problème détecté"
             
             self._add_to_history(message)
             self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
@@ -2695,7 +2720,7 @@ class MainWindow(QMainWindow):
                 self.validation_window._load_data()
                 
         except DatabaseError as e:
-            self._show_error(f"Erreur lors du nettoyage des doublons: {e}")
+            self._show_error(f"Erreur lors du nettoyage: {e}")
     
     def _clean_duplicate_devices(self):
         """Supprimer seulement les doublons d'appareils"""
@@ -2938,18 +2963,20 @@ class MainWindow(QMainWindow):
                         else:
                             results['duplicates_skipped'] += 1
                     results['matches_found'] += 1
-                    # NE PAS incrémenter total_imported car l'appareil existe déjà
+                    # NE PAS créer de nouvelle ligne dans le tableau
                 else:
-                    # Nouvel appareil
+                    # Nouvel appareil seulement
                     device_id = self._create_new_device(device_type, manufacturer, ref_modele)
                     if device_id:
                         results['new_entries'] += 1
-                        results['total_imported'] += 1  # Compter seulement les nouveaux appareils
                         if ref_piece:
                             self.db_manager.add_piece(ref_piece, device_id, "")
                             results['associations_created'] += 1
                         else:
                             results['manual_completion'] += 1
+                
+                # Compter chaque ligne traitée
+                results['total_imported'] += 1
                 
             except Exception as e:
                 print(f"Erreur lors du traitement de la ligne {row}: {e}")
@@ -2960,9 +2987,15 @@ class MainWindow(QMainWindow):
     def _find_existing_device(self, device_type, manufacturer, ref_modele):
         """Chercher un appareil existant dans la base"""
         try:
-            # Recherche exacte avec tous les champs
-            query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ? AND ref_modele = ?"
-            params = [device_type, manufacturer, ref_modele or ""]
+            # Recherche flexible selon les champs disponibles
+            if ref_modele and ref_modele.strip():
+                # Si ref_modele est fourni, recherche exacte avec tous les champs
+                query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ? AND ref_modele = ?"
+                params = [device_type, manufacturer, ref_modele.strip()]
+            else:
+                # Si pas de ref_modele, recherche par type et manufacturer seulement
+                query = "SELECT id FROM appareils WHERE type = ? AND manufacturer = ? AND (ref_modele IS NULL OR ref_modele = '')"
+                params = [device_type, manufacturer]
             
             result = self.db_manager.execute_query(query, params)
             if result:
@@ -3329,7 +3362,7 @@ class MainWindow(QMainWindow):
             # Demander une référence de pièce optionnelle
             ref_piece, ok1 = QInputDialog.getText(
                 self, "Pièce Associée", 
-                "Entrer une référence de pièce pour ce lot (optionnel):"
+                "Associer une référence de pièce pour ce lot (optionnel) :"
             )
             if not ok1:
                 return
@@ -3353,11 +3386,11 @@ class MainWindow(QMainWindow):
                 choice, ok3 = QInputDialog.getItem(
                     self, "3ème Colonne", 
                     "Où stocker la 3ème colonne ?",
-                    ["Autre Référence", "Notes", "Ignorer"], 0, False
+                    ["Autre référence", "Notes", "Ignorer"], 0, False
                 )
                 if not ok3:
                     return
-                if choice == "Autre Référence":
+                if choice == "Autre référence":
                     third_column_choice = "other_ref"
                 elif choice == "Notes":
                     third_column_choice = "notes"
