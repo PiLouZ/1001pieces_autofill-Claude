@@ -1694,11 +1694,8 @@ class MainWindow(QMainWindow):
         key = (row, col)
         old_value = self.previous_values.get(key, '')
         
-        print(f"DEBUG: Cellule ({row},{col}) - Ancienne: '{old_value}' -> Nouvelle: '{new_value}'")
-        
         # Ne pas traiter si la valeur n'a pas changé
         if old_value == new_value:
-            print(f"DEBUG: Valeur identique, ignorée")
             return
         
         # Validation (en excluant la colonne Nb Pièces)
@@ -1760,9 +1757,9 @@ class MainWindow(QMainWindow):
             new_display = f"'{new_value}'" if new_value else "vide"
             
             # Ajouter le message à l'historique
-            history_msg = f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
-            print(f"DEBUG: Ajout à l'historique: {history_msg}")
-            self._add_to_history(history_msg)
+            self._add_to_history(
+                f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
+            )
         except Exception as e:
             print(f"Erreur ajout historique: {e}")
         
