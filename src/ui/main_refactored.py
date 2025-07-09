@@ -543,6 +543,7 @@ class MainWindow(QMainWindow):
         self.table.itemChanged.connect(self._on_cell_changed)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.currentItemChanged.connect(self._on_current_item_changed)
+        self.table.itemDoubleClicked.connect(self._on_item_double_clicked)
         
         # Connecter le signal de clic sur header pour notre tri personnalisé
         self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
@@ -1016,6 +1017,9 @@ class MainWindow(QMainWindow):
             self.table.resizeColumnsToContents()
             self._update_counter()
             self._update_pagination_controls()
+            
+            # Initialiser les valeurs précédentes pour le tracking des modifications
+            self._init_previous_values()
             
             # Afficher les performances
             load_time = time.time() - start_time
@@ -1654,6 +1658,29 @@ class MainWindow(QMainWindow):
         if previous:
             key = (previous.row(), previous.column())
             self.previous_values[key] = previous.text()
+        
+        # Capturer aussi la valeur de la cellule actuelle
+        if current:
+            key = (current.row(), current.column())
+            self.previous_values[key] = current.text()
+    
+    def _on_item_double_clicked(self, item):
+        """Capturer la valeur avant l'édition lors du double-clic"""
+        if item:
+            key = (item.row(), item.column())
+            self.previous_values[key] = item.text()
+    
+    def _init_previous_values(self):
+        """Initialiser les valeurs précédentes pour toutes les cellules après le chargement"""
+        try:
+            for row in range(self.table.rowCount()):
+                for col in range(self.table.columnCount()):
+                    item = self.table.item(row, col)
+                    if item:
+                        key = (row, col)
+                        self.previous_values[key] = item.text()
+        except Exception as e:
+            print(f"Erreur lors de l'initialisation des valeurs précédentes: {e}")
     
     def _on_cell_changed(self, item: QTableWidgetItem):
         """Gérer les modifications de cellules"""
@@ -1667,8 +1694,11 @@ class MainWindow(QMainWindow):
         key = (row, col)
         old_value = self.previous_values.get(key, '')
         
+        print(f"DEBUG: Cellule ({row},{col}) - Ancienne: '{old_value}' -> Nouvelle: '{new_value}'")
+        
         # Ne pas traiter si la valeur n'a pas changé
         if old_value == new_value:
+            print(f"DEBUG: Valeur identique, ignorée")
             return
         
         # Validation (en excluant la colonne Nb Pièces)
@@ -1730,9 +1760,9 @@ class MainWindow(QMainWindow):
             new_display = f"'{new_value}'" if new_value else "vide"
             
             # Ajouter le message à l'historique
-            self._add_to_history(
-                f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
-            )
+            history_msg = f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
+            print(f"DEBUG: Ajout à l'historique: {history_msg}")
+            self._add_to_history(history_msg)
         except Exception as e:
             print(f"Erreur ajout historique: {e}")
         
