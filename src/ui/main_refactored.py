@@ -683,6 +683,11 @@ class MainWindow(QMainWindow):
         self.history_list = QListWidget()
         # Supprimer la limitation de hauteur pour permettre l'étirement
         # self.history_list.setMaximumHeight(150) 
+        
+        # Forcer le retour à la ligne et supprimer l'ascenseur horizontal
+        self.history_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.history_list.setWordWrap(True)
+        
         history_layout.addWidget(self.history_list)
         
         pieces_splitter.addWidget(history_widget)
@@ -748,6 +753,13 @@ class MainWindow(QMainWindow):
         validate_btn.clicked.connect(self._validate_and_detect_inconsistencies)
         validate_btn.setObjectName("validationBtn")
         btn_layout.addWidget(validate_btn)
+        
+        # Bouton de gestion des pièces
+        pieces_btn = QPushButton("🔧 Gestion Pièces")
+        pieces_btn.setToolTip("Gérer les références de pièces et détecter les orphelines")
+        pieces_btn.clicked.connect(self._open_pieces_manager)
+        pieces_btn.setObjectName("piecesBtn")
+        btn_layout.addWidget(pieces_btn)
         
         layout.addLayout(btn_layout)
         
@@ -3032,7 +3044,7 @@ class MainWindow(QMainWindow):
                 from datetime import datetime
                 
                 # Dialogue pour choisir le type d'import
-                import_type, ref_piece = self._get_import_options()
+                import_type, ref_piece, third_column_choice = self._get_import_options()
                 if import_type is None:
                     return
                 
@@ -3066,7 +3078,7 @@ class MainWindow(QMainWindow):
                     return
                 
                 # Traiter l'import
-                results = self._process_import(imported_data, import_type, ref_piece)
+                results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
                 
                 # Afficher la synthèse
                 self._show_import_summary(results, ref_piece)
@@ -3105,6 +3117,14 @@ class MainWindow(QMainWindow):
         ref_layout.addWidget(ref_input)
         layout.addLayout(ref_layout)
         
+        # Gestion de la 3ème colonne (pour le cas 3 colonnes)
+        third_col_layout = QHBoxLayout()
+        third_col_layout.addWidget(QLabel("Si 3 colonnes, stocker la 3ème dans:"))
+        third_col_combo = QComboBox()
+        third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
+        third_col_layout.addWidget(third_col_combo)
+        layout.addLayout(third_col_layout)
+        
         # Boutons
         button_layout = QHBoxLayout()
         ok_button = QPushButton("OK")
@@ -3115,11 +3135,21 @@ class MainWindow(QMainWindow):
         
         dialog.setLayout(layout)
         
-        result = [None, None]
+        result = [None, None, None]
         
         def on_ok():
             result[0] = type_combo.currentIndex() + 2  # 2 ou 3 colonnes
             result[1] = ref_input.text().strip() if ref_input.text().strip() else None
+            # Choix pour la 3ème colonne
+            third_choice = third_col_combo.currentText()
+            if third_choice == "Ignorer":
+                result[2] = "ignore"
+            elif third_choice == "Autre référence":
+                result[2] = "other_ref"
+            elif third_choice == "Notes":
+                result[2] = "notes"
+            else:
+                result[2] = "ignore"
             dialog.accept()
         
         def on_cancel():
@@ -3129,10 +3159,10 @@ class MainWindow(QMainWindow):
         cancel_button.clicked.connect(on_cancel)
         
         if dialog.exec_() == QDialog.Accepted:
-            return result[0], result[1]
-        return None, None
+            return result[0], result[1], result[2]
+        return None, None, None
     
-    def _process_import(self, imported_data, import_type, ref_piece):
+    def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore"):
         """Traiter les données d'import"""
         results = {
             'total_imported': 0,
@@ -3150,10 +3180,15 @@ class MainWindow(QMainWindow):
                     ref_modele = row[0].strip() if len(row) > 0 else ""
                     commercial_ref = row[1].strip() if len(row) > 1 else ""
                 elif import_type == 3:
-                    # 3 colonnes: ref_modele, commercial_ref, autre_info
+                    # 3 colonnes: ref_modele, commercial_ref, 3ème colonne selon choix
                     ref_modele = row[0].strip() if len(row) > 0 else ""
                     commercial_ref = row[1].strip() if len(row) > 1 else ""
-                    autre_info = row[2].strip() if len(row) > 2 else ""
+                    third_value = row[2].strip() if len(row) > 2 else ""
+                    
+                    # Gérer la 3ème colonne selon le choix utilisateur
+                    other_ref = third_value if third_column_choice == "other_ref" else ""
+                    notes = third_value if third_column_choice == "notes" else ""
+                    # Si "ignore", les deux restent vides
                 
                 # Chercher l'appareil existant par ses références (colonnes C et D)
                 existing_device = self._find_existing_device_by_refs(ref_modele, commercial_ref)
@@ -3411,6 +3446,20 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             self._show_error(f"Erreur lors de l'ouverture de la validation: {e}")
+    
+    def _open_pieces_manager(self):
+        """Ouvrir la fenêtre de gestion des pièces"""
+        try:
+            from .pieces_manager import PiecesManagerWindow
+            if not hasattr(self, 'pieces_manager') or not self.pieces_manager:
+                self.pieces_manager = PiecesManagerWindow(self, self.db_manager)
+            
+            self.pieces_manager.show()
+            self.pieces_manager.raise_()
+            self.pieces_manager.activateWindow()
+            
+        except Exception as e:
+            self._show_error(f"Erreur lors de l'ouverture du gestionnaire de pièces: {e}")
     
     def _clear_column_filters(self):
         """Nettoyer tous les filtres de colonnes"""
@@ -3713,15 +3762,17 @@ class MainWindow(QMainWindow):
                 choice, ok3 = QInputDialog.getItem(
                     self, "3ème Colonne", 
                     "Où stocker la 3ème colonne ?",
-                    ["Autre référence", "Notes", "Ignorer"], 0, False
+                    ["Ignorer", "Autre référence", "Notes"], 0, False
                 )
                 if not ok3:
                     return
-                if choice == "Autre référence":
+                if choice == "Ignorer":
+                    third_column_choice = "ignore"
+                elif choice == "Autre référence":
                     third_column_choice = "other_ref"
                 elif choice == "Notes":
                     third_column_choice = "notes"
-                else:  # Ignorer
+                else:  # Fallback
                     third_column_choice = "ignore"
 
             # Insérer les données
