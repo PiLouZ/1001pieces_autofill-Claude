@@ -491,7 +491,6 @@ class MainWindow(QMainWindow):
         
         self._setup_central_widget()
         self._setup_toolbar()
-        self._setup_menubar()
         self._setup_statusbar()
 
     def _setup_central_widget(self):
@@ -903,11 +902,48 @@ class MainWindow(QMainWindow):
         
         self._add_toolbar_separator(toolbar)
         
-        # Groupe Données
+        # Groupe Menus déroulants
+        # Menu Gestion dans la toolbar
+        gestion_btn = QPushButton("Gestion ▼")
+        gestion_btn.setObjectName("menuButton")
+        gestion_menu = QMenu()
+        
+        categories_action = QAction("🏷️ Catégories", self)
+        categories_action.triggered.connect(self._manage_categories)
+        gestion_menu.addAction(categories_action)
+        
+        pieces_action = QAction("🔧 Pièces", self) 
+        pieces_action.triggered.connect(self._open_pieces_manager)
+        gestion_menu.addAction(pieces_action)
+        
+        validate_action = QAction("🔍 Incohérences", self)
+        validate_action.triggered.connect(self._validate_and_detect_inconsistencies)
+        gestion_menu.addAction(validate_action)
+        
+        gestion_btn.setMenu(gestion_menu)
+        toolbar.addWidget(gestion_btn)
+        
+        # Menu Action dans la toolbar
+        action_btn = QPushButton("Action ▼")
+        action_btn.setObjectName("menuButton")
+        action_menu = QMenu()
+        
         import_action = QAction("📈 Import", self)
-        import_action.setToolTip("Importer des données depuis un fichier CSV")
         import_action.triggered.connect(self._import_csv)
-        toolbar.addAction(import_action)
+        action_menu.addAction(import_action)
+        
+        action_menu.addSeparator()
+        
+        autocomplete_action = QAction("≔ Autocomplétion", self)
+        autocomplete_action.triggered.connect(self._fill_empty_fields)
+        action_menu.addAction(autocomplete_action)
+        
+        clean_action = QAction("🧹 Nettoyer les doublons", self)
+        clean_action.triggered.connect(self._clean_data)
+        action_menu.addAction(clean_action)
+        
+        action_btn.setMenu(action_menu)
+        toolbar.addWidget(action_btn)
         
         self._add_toolbar_separator(toolbar)
         
@@ -931,44 +967,6 @@ class MainWindow(QMainWindow):
         toolbar.addAction(columns_action)
         
         self._update_toolbar_states()
-    
-    def _setup_menubar(self):
-        """Configurer la barre de menu"""
-        menubar = self.menuBar()
-        
-        # Forcer l'affichage de la barre de menu sur macOS
-        menubar.setNativeMenuBar(False)
-        
-        # Menu Gestion
-        gestion_menu = menubar.addMenu("Gestion")
-        
-        categories_action = QAction("🏷️ Catégories", self)
-        categories_action.setToolTip("Gérer les catégories d'appareils")
-        categories_action.triggered.connect(self._manage_categories)
-        gestion_menu.addAction(categories_action)
-        
-        pieces_action = QAction("🔧 Pièces", self)
-        pieces_action.setToolTip("Gérer les références de pièces et détecter les orphelines")
-        pieces_action.triggered.connect(self._open_pieces_manager)
-        gestion_menu.addAction(pieces_action)
-        
-        validate_action = QAction("🔍 Incohérences", self)
-        validate_action.setToolTip("Valider la cohérence de la base et détecter les incohérences")
-        validate_action.triggered.connect(self._validate_and_detect_inconsistencies)
-        gestion_menu.addAction(validate_action)
-        
-        # Menu Action  
-        action_menu = menubar.addMenu("Action")
-        
-        autocomplete_action = QAction("≔ Autocomplétion", self)
-        autocomplete_action.setToolTip("Complète automatiquement les champs vides")
-        autocomplete_action.triggered.connect(self._fill_empty_fields)
-        action_menu.addAction(autocomplete_action)
-        
-        clean_action = QAction("🧹 Nettoyer les doublons", self)
-        clean_action.setToolTip("Nettoyer et optimiser la base de données")
-        clean_action.triggered.connect(self._clean_data)
-        action_menu.addAction(clean_action)
     
     def _add_toolbar_separator(self, toolbar):
         """Ajouter un séparateur moderne à la toolbar"""
