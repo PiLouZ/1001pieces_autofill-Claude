@@ -784,7 +784,9 @@ class MainWindow(QMainWindow):
         
         pagination_layout.addWidget(QLabel("|  "))
         
-        # Sélecteur de taille de page moderne
+        pagination_layout.addStretch()
+        
+        # Sélecteur de taille de page aligné à droite
         size_label = QLabel("Afficher:")
         size_label.setObjectName("inlineLabel")
         pagination_layout.addWidget(size_label)
@@ -795,37 +797,16 @@ class MainWindow(QMainWindow):
         self.page_size_combo.currentTextChanged.connect(self._change_page_size)
         pagination_layout.addWidget(self.page_size_combo)
         
-        pagination_layout.addStretch()
-        
-        # Compteur de lignes
-        self.counter_label = QLabel("Lignes : 0")
-        self.counter_label.setObjectName("counterLabel")
-        pagination_layout.addWidget(self.counter_label)
-        
-        pagination_layout.addWidget(QLabel("|  "))
-        
-        # Bouton pour afficher toutes les lignes (masqué car option "Tout" existe dans la selectlist)
-        self.show_all_btn = QPushButton("📋 Toutes les lignes")
-        self.show_all_btn.setObjectName("paginationBtn")
-        self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
-        self.show_all_btn.clicked.connect(self._toggle_show_all)
-        self.show_all_btn.setVisible(False)  # Masqué
-        pagination_layout.addWidget(self.show_all_btn)
-        
-        pagination_layout.addWidget(QLabel("|  "))
-        
-        # Indicateur de performance
-        self.perf_label = QLabel("⚡ Prêt")
-        self.perf_label.setObjectName("perfLabel")
-        pagination_layout.addWidget(self.perf_label)
-        
         pagination_section_layout.addLayout(pagination_layout)
         
-        # Deuxième ligne de pagination avec bouton Incomplète
+        # Deuxième ligne avec bouton Incomplète centré et informations à droite
         pagination_layout_2 = QHBoxLayout()
         pagination_layout_2.setSpacing(4)
         
-        # Bouton pour afficher seulement les lignes incomplètes (déplacé ici)
+        # Espace pour centrer le bouton Incomplète
+        pagination_layout_2.addStretch()
+        
+        # Bouton pour afficher seulement les lignes incomplètes (centré)
         incomplete_btn = QPushButton("📋 Lignes à traiter")
         incomplete_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
         incomplete_btn.setCheckable(True)
@@ -834,7 +815,28 @@ class MainWindow(QMainWindow):
         pagination_layout_2.addWidget(incomplete_btn)
         self.incomplete_filter_btn = incomplete_btn
         
+        # Espace pour centrer le bouton et pousser les infos à droite
         pagination_layout_2.addStretch()
+        
+        # Compteur de lignes et indicateur de performance alignés à droite
+        self.counter_label = QLabel("Lignes : 0")
+        self.counter_label.setObjectName("counterLabel")
+        pagination_layout_2.addWidget(self.counter_label)
+        
+        pagination_layout_2.addWidget(QLabel("  |  "))
+        
+        # Indicateur de performance
+        self.perf_label = QLabel("⚡ Prêt")
+        self.perf_label.setObjectName("perfLabel")
+        pagination_layout_2.addWidget(self.perf_label)
+        
+        # Bouton pour afficher toutes les lignes (masqué car option "Tout" existe dans la selectlist)
+        self.show_all_btn = QPushButton("📋 Toutes les lignes")
+        self.show_all_btn.setObjectName("paginationBtn")
+        self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
+        self.show_all_btn.clicked.connect(self._toggle_show_all)
+        self.show_all_btn.setVisible(False)  # Masqué
+        pagination_layout_2.addWidget(self.show_all_btn)
         
         pagination_section_layout.addLayout(pagination_layout_2)
         layout.addWidget(pagination_section)
@@ -933,6 +935,9 @@ class MainWindow(QMainWindow):
     def _setup_menubar(self):
         """Configurer la barre de menu"""
         menubar = self.menuBar()
+        
+        # Forcer l'affichage de la barre de menu sur macOS
+        menubar.setNativeMenuBar(False)
         
         # Menu Gestion
         gestion_menu = menubar.addMenu("Gestion")
