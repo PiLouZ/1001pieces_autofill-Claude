@@ -3235,12 +3235,36 @@ class MainWindow(QMainWindow):
     def _find_existing_device_by_refs(self, ref_modele, commercial_ref):
         """Chercher un appareil existant par ses références (colonnes C et D)"""
         try:
-            # Recherche prioritaire par ref_modele (colonne C)
-            if ref_modele and ref_modele.strip():
+            # NOUVELLE LOGIQUE: Recherche exacte par ref_modele ET commercial_ref
+            # Pour éviter les faux doublons avec références commerciales partagées
+            
+            # 1. Si on a les deux références, chercher la combinaison exacte
+            if ref_modele and ref_modele.strip() and commercial_ref and commercial_ref.strip():
+                query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
+                          FROM appareils 
+                          WHERE ref_modele = ? AND commercial_ref = ?"""
+                params = [ref_modele.strip(), commercial_ref.strip()]
+                result = self.db_manager.execute_query(query, params)
+                if result:
+                    print(f"  ✅ Appareil existant trouvé par combinaison exacte: {ref_modele} + {commercial_ref}")
+                    return {
+                        'id': result[0][0], 
+                        'type': result[0][1], 
+                        'manufacturer': result[0][2],
+                        'ref_modele': result[0][3],
+                        'commercial_ref': result[0][4],
+                        'other_ref': result[0][5],
+                        'category': result[0][6],
+                        'notes': result[0][7]
+                    }
+            
+            # 2. Sinon, recherche par ref_modele uniquement (si c'est la seule référence disponible)
+            if ref_modele and ref_modele.strip() and (not commercial_ref or not commercial_ref.strip()):
                 query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE ref_modele = ?"
                 params = [ref_modele.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
+                    print(f"  ✅ Appareil existant trouvé par ref_modele seul: {ref_modele}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -3252,12 +3276,13 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
             
-            # Recherche secondaire par commercial_ref (colonne D)
-            if commercial_ref and commercial_ref.strip():
+            # 3. Recherche par commercial_ref uniquement (si c'est la seule référence disponible)
+            if commercial_ref and commercial_ref.strip() and (not ref_modele or not ref_modele.strip()):
                 query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE commercial_ref = ?"
                 params = [commercial_ref.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
+                    print(f"  ✅ Appareil existant trouvé par commercial_ref seul: {commercial_ref}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -3269,6 +3294,8 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
             
+            # Aucun appareil existant trouvé
+            print(f"  🆕 Aucun appareil existant pour: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
             return None
         except Exception as e:
             print(f"Erreur recherche appareil: {e}")
