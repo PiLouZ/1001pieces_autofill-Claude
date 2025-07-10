@@ -4,6 +4,30 @@ Configuration centralisée pour l'application de gestion d'appareils
 
 import os
 
+
+def pluralize(count, singular, plural=None):
+    """
+    Fonction globale pour gérer les pluriels correctement
+    
+    Args:
+        count: Nombre d'éléments
+        singular: Forme singulière
+        plural: Forme plurielle (optionnel, ajoute 's' par défaut)
+    
+    Returns:
+        str: Texte avec la forme correcte
+        
+    Exemples:
+        pluralize(1, "appareil") -> "1 appareil"
+        pluralize(3, "appareil") -> "3 appareils"
+        pluralize(1, "cheval", "chevaux") -> "1 cheval"
+        pluralize(2, "cheval", "chevaux") -> "2 chevaux"
+    """
+    if plural is None:
+        plural = singular + "s"
+    return f"{count} {singular if count <= 1 else plural}"
+
+
 class Config:
     """Configuration et constantes de l'application"""
     

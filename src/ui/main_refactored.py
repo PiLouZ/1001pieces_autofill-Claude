@@ -14,8 +14,8 @@ from PyQt5.QtWidgets import (
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
     QProgressDialog, QCheckBox, QMenu
 )
-from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor
-from PyQt5.QtCore import QSize
+from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent
+from PyQt5.QtCore import QSize, QMimeData, QUrl
 from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
 # Imports des modules refactorisés
@@ -476,6 +476,7 @@ class MainWindow(QMainWindow):
         """Initialiser l'interface utilisateur moderne"""
         self.setWindowTitle("📊 " + Config.WINDOW_TITLE)
         self.resize(Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT)
+        self.setAcceptDrops(True)  # Activer le glisser/déposer pour les fichiers CSV
         
         # Style moderne global (appliqué à l'application entière dans main())
         
@@ -533,6 +534,8 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget()
         self.table.setColumnCount(len(Config.UI_HEADERS))
         self.table.setHorizontalHeaderLabels(Config.UI_HEADERS)
+        self.table.setAcceptDrops(True)  # Activer le glisser/déposer pour les fichiers CSV
+        self.table.setDragDropMode(QTableWidget.DragDropMode.DropOnly)  # Seulement accepter les drops
         
         # Appliquer la visibilité des colonnes
         self._apply_column_visibility()
@@ -754,13 +757,6 @@ class MainWindow(QMainWindow):
         validate_btn.setObjectName("validationBtn")
         btn_layout.addWidget(validate_btn)
         
-        # Bouton de gestion des pièces
-        pieces_btn = QPushButton("🔧 Gestion Pièces")
-        pieces_btn.setToolTip("Gérer les références de pièces et détecter les orphelines")
-        pieces_btn.clicked.connect(self._open_pieces_manager)
-        pieces_btn.setObjectName("piecesBtn")
-        btn_layout.addWidget(pieces_btn)
-        
         layout.addLayout(btn_layout)
         
         # Ajouter les contrôles de pagination
@@ -910,6 +906,11 @@ class MainWindow(QMainWindow):
         notes_action.triggered.connect(self._edit_notes)
         toolbar.addAction(notes_action)
         
+        pieces_action = QAction("🔧 Pièces", self)
+        pieces_action.setToolTip("Gérer les références de pièces et détecter les orphelines")
+        pieces_action.triggered.connect(self._open_pieces_manager)
+        toolbar.addAction(pieces_action)
+        
         self._add_toolbar_separator(toolbar)
         
         # Groupe Données
@@ -926,6 +927,11 @@ class MainWindow(QMainWindow):
         logs_action.setToolTip("Ouvrir le visualiseur de logs")
         logs_action.triggered.connect(self._open_log_viewer)
         toolbar.addAction(logs_action)
+        
+        guide_action = QAction("📖 Guide", self)
+        guide_action.setToolTip("Ouvrir le guide d'utilisation")
+        guide_action.triggered.connect(self._open_user_guide)
+        toolbar.addAction(guide_action)
         
         
         self._add_toolbar_separator(toolbar)
@@ -2393,7 +2399,8 @@ class MainWindow(QMainWindow):
             
             # Ajouter à l'historique
             if added_count > 0:
-                history_message = f"Pièce '{ref_piece}' ajoutée à {added_count} appareil(s)"
+                from src.core.config import pluralize
+                history_message = f"Pièce '{ref_piece}' ajoutée à {pluralize(added_count, 'appareil')}"
                 if error_count > 0:
                     history_message += f" ({error_count} erreur(s))"
                 self._add_to_history(history_message)
@@ -3041,16 +3048,26 @@ class MainWindow(QMainWindow):
         if filename:
             try:
                 import csv
+                import os
                 from datetime import datetime
                 
-                # Dialogue pour choisir le type d'import
-                import_type, ref_piece, third_column_choice = self._get_import_options()
+                # D'abord, analyser le fichier pour détecter le nombre de colonnes
+                detected_columns = self._detect_csv_columns(filename)
+                if detected_columns is None:
+                    return
+                
+                # Extraire le nom du fichier sans extension pour la référence de pièce
+                filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
+                
+                # Dialogue pour choisir le type d'import (avec référence pré-remplie)
+                import_type, ref_piece, third_column_choice = self._get_import_options(detected_columns, filename_without_ext)
                 if import_type is None:
                     return
                 
-                # Lire le fichier CSV avec détection automatique du séparateur
+                # Lire le fichier CSV avec détection automatique du séparateur et de l'encodage
+                encoding = self._detect_file_encoding(filename)
                 imported_data = []
-                with open(filename, 'r', encoding='utf-8') as file:
+                with open(filename, 'r', encoding=encoding) as file:
                     # Lire un échantillon pour détecter le séparateur
                     sample = file.read(1024)
                     file.seek(0)
@@ -3092,7 +3109,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self._show_error(f"Erreur lors de l'import: {e}")
     
-    def _get_import_options(self):
+    def _get_import_options(self, detected_columns=None, default_ref_piece=None):
         """Dialogue pour choisir les options d'import"""
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
         
@@ -3102,11 +3119,25 @@ class MainWindow(QMainWindow):
         
         layout = QVBoxLayout()
         
-        # Type d'import
+        # Type d'import (adapté au nombre de colonnes détecté)
+        if detected_columns:
+            info_label = QLabel(f"📊 Fichier détecté: {detected_columns} colonnes")
+            info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
+            layout.addWidget(info_label)
+        
         type_layout = QHBoxLayout()
         type_layout.addWidget(QLabel("Type d'import:"))
         type_combo = QComboBox()
-        type_combo.addItems(["2 colonnes (ref_modele, commercial_ref)", "3 colonnes (ref_modele, commercial_ref, autre)"])
+        
+        # Adapter les options selon le nombre de colonnes détecté
+        if detected_columns == 2:
+            type_combo.addItems(["2 colonnes (ref_modele, commercial_ref)"])
+        elif detected_columns == 3:
+            type_combo.addItems(["3 colonnes (ref_modele, commercial_ref, autre)"])
+        else:
+            # Cas général ou non détecté
+            type_combo.addItems(["2 colonnes (ref_modele, commercial_ref)", "3 colonnes (ref_modele, commercial_ref, autre)"])
+        
         type_layout.addWidget(type_combo)
         layout.addLayout(type_layout)
         
@@ -3114,16 +3145,22 @@ class MainWindow(QMainWindow):
         ref_layout = QHBoxLayout()
         ref_layout.addWidget(QLabel("Référence de pièce (optionnelle):"))
         ref_input = QLineEdit()
+        ref_input.setText(default_ref_piece if default_ref_piece else "")  # Pré-remplir avec le nom du fichier
         ref_layout.addWidget(ref_input)
         layout.addLayout(ref_layout)
         
-        # Gestion de la 3ème colonne (pour le cas 3 colonnes)
-        third_col_layout = QHBoxLayout()
-        third_col_layout.addWidget(QLabel("Si 3 colonnes, stocker la 3ème dans:"))
-        third_col_combo = QComboBox()
-        third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
-        third_col_layout.addWidget(third_col_combo)
-        layout.addLayout(third_col_layout)
+        # Gestion de la 3ème colonne (seulement si nécessaire)
+        third_col_layout = None
+        third_col_combo = None
+        
+        if detected_columns == 3 or detected_columns is None:  # Montrer si 3 colonnes ou indéterminé
+            third_col_layout = QHBoxLayout()
+            label_text = "Stocker la 3ème colonne dans:" if detected_columns == 3 else "Si 3 colonnes, stocker la 3ème dans:"
+            third_col_layout.addWidget(QLabel(label_text))
+            third_col_combo = QComboBox()
+            third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
+            third_col_layout.addWidget(third_col_combo)
+            layout.addLayout(third_col_layout)
         
         # Boutons
         button_layout = QHBoxLayout()
@@ -3138,18 +3175,29 @@ class MainWindow(QMainWindow):
         result = [None, None, None]
         
         def on_ok():
-            result[0] = type_combo.currentIndex() + 2  # 2 ou 3 colonnes
-            result[1] = ref_input.text().strip() if ref_input.text().strip() else None
-            # Choix pour la 3ème colonne
-            third_choice = third_col_combo.currentText()
-            if third_choice == "Ignorer":
-                result[2] = "ignore"
-            elif third_choice == "Autre référence":
-                result[2] = "other_ref"
-            elif third_choice == "Notes":
-                result[2] = "notes"
+            # Déterminer le nombre de colonnes
+            if detected_columns == 2:
+                result[0] = 2
+            elif detected_columns == 3:
+                result[0] = 3
             else:
-                result[2] = "ignore"
+                result[0] = type_combo.currentIndex() + 2  # 2 ou 3 colonnes
+            
+            result[1] = ref_input.text().strip() if ref_input.text().strip() else None
+            
+            # Choix pour la 3ème colonne (seulement si applicable)
+            if third_col_combo:
+                third_choice = third_col_combo.currentText()
+                if third_choice == "Ignorer":
+                    result[2] = "ignore"
+                elif third_choice == "Autre référence":
+                    result[2] = "other_ref"
+                elif third_choice == "Notes":
+                    result[2] = "notes"
+                else:
+                    result[2] = "ignore"
+            else:
+                result[2] = "ignore"  # Par défaut pour 2 colonnes
             dialog.accept()
         
         def on_cancel():
@@ -3161,6 +3209,110 @@ class MainWindow(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             return result[0], result[1], result[2]
         return None, None, None
+    
+    def _detect_csv_columns(self, filename):
+        """Détecter automatiquement le nombre de colonnes du fichier CSV"""
+        try:
+            import csv
+            
+            # Détecter l'encodage automatiquement
+            encoding = self._detect_file_encoding(filename)
+            
+            with open(filename, 'r', encoding=encoding) as file:
+                # Lire un échantillon pour détecter le séparateur
+                sample = file.read(1024)
+                file.seek(0)
+                
+                # Détecter le séparateur
+                sniffer = csv.Sniffer()
+                try:
+                    dialect = sniffer.sniff(sample, delimiters=',;\t')
+                    reader = csv.reader(file, dialect)
+                except csv.Error:
+                    if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
+                        reader = csv.reader(file, delimiter=';')
+                    elif sample.count('\t') > sample.count(','):
+                        reader = csv.reader(file, delimiter='\t')
+                    else:
+                        reader = csv.reader(file, delimiter=',')
+                
+                # Analyser les premières lignes pour déterminer le nombre de colonnes
+                column_counts = []
+                for i, row in enumerate(reader):
+                    if i >= 5:  # Analyser les 5 premières lignes
+                        break
+                    if row:  # Ignorer les lignes vides
+                        column_counts.append(len(row))
+                
+                if not column_counts:
+                    QMessageBox.warning(self, "Fichier vide", "Le fichier CSV semble être vide.")
+                    return None
+                
+                # Prendre le nombre de colonnes le plus fréquent
+                most_common_columns = max(set(column_counts), key=column_counts.count)
+                
+                return most_common_columns
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur d'analyse", f"Erreur lors de l'analyse du fichier: {e}")
+            return None
+    
+    def _detect_file_encoding(self, filename):
+        """Détecter automatiquement l'encodage d'un fichier"""
+        import chardet
+        
+        # Encodages courants à tester
+        encodings_to_try = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1', 'utf-16']
+        
+        # D'abord essayer avec chardet si disponible
+        try:
+            with open(filename, 'rb') as file:
+                raw_data = file.read(10000)  # Lire les premiers 10KB
+                detected = chardet.detect(raw_data)
+                if detected and detected['encoding'] and detected['confidence'] > 0.7:
+                    return detected['encoding']
+        except (ImportError, Exception):
+            pass
+        
+        # Sinon, tester manuellement les encodages courants
+        for encoding in encodings_to_try:
+            try:
+                with open(filename, 'r', encoding=encoding) as file:
+                    file.read(1000)  # Essayer de lire le début du fichier
+                    return encoding
+            except UnicodeDecodeError:
+                continue
+            except Exception:
+                continue
+        
+        # Par défaut, retourner latin-1 qui peut lire tous les bytes
+        return 'latin-1'
+    
+    def _detect_separator(self, filename):
+        """Détecter automatiquement le séparateur CSV"""
+        try:
+            import csv
+            
+            # Détecter l'encodage d'abord
+            encoding = self._detect_file_encoding(filename)
+            
+            with open(filename, 'r', encoding=encoding) as file:
+                sample = file.read(1024)
+                
+                sniffer = csv.Sniffer()
+                try:
+                    dialect = sniffer.sniff(sample, delimiters=',;\t')
+                    return dialect.delimiter
+                except csv.Error:
+                    if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
+                        return ';'
+                    elif sample.count('\t') > sample.count(','):
+                        return '\t'
+                    else:
+                        return ','
+                        
+        except Exception as e:
+            return ','  # Default fallback
     
     def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore"):
         """Traiter les données d'import"""
@@ -3543,6 +3695,107 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._show_error(f"Erreur lors de l'ouverture du visualiseur de logs: {e}")
     
+    def _open_user_guide(self):
+        """Ouvrir le guide d'utilisation"""
+        try:
+            # URL du guide d'utilisation (vous pouvez la modifier selon vos besoins)
+            guide_url = "https://github.com/username/repository/wiki/Guide-Utilisation"
+            
+            # Message informatif avec options
+            from PyQt5.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self, 
+                "Guide d'utilisation",
+                "Le guide d'utilisation sera ouvert dans votre navigateur web.\n\n"
+                "📖 Contenu du guide :\n"
+                "• Import de fichiers CSV et collage de données\n"
+                "• Gestion des pièces et associations\n"
+                "• Fonctionnalités avancées et raccourcis\n"
+                "• Résolution des problèmes courants\n\n"
+                "Souhaitez-vous continuer ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                import webbrowser
+                webbrowser.open(guide_url)
+                
+        except Exception as e:
+            # En cas d'erreur, afficher un guide local simple
+            self._show_local_guide()
+    
+    def _show_local_guide(self):
+        """Afficher un guide d'utilisation local en cas d'erreur"""
+        try:
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
+            
+            dialog = QDialog(self)
+            dialog.setWindowTitle("📖 Guide d'utilisation - 1001 Pièces")
+            dialog.resize(800, 600)
+            
+            layout = QVBoxLayout()
+            
+            # Contenu du guide
+            guide_text = QTextEdit()
+            guide_text.setReadOnly(True)
+            guide_content = """
+# Guide d'utilisation - 1001 Pièces
+
+## 🚀 Démarrage rapide
+
+### Import de données
+1. **Import CSV** : Utilisez le bouton "📈 Import" ou glissez/déposez un fichier CSV sur le tableau
+2. **Collage** : Copiez des données depuis Excel/Calc et collez avec Ctrl+V
+3. **Référence de pièce** : Lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier
+
+### Navigation et édition
+- **Double-clic** sur une cellule pour l'éditer
+- **Ctrl+N** : Ajouter une nouvelle ligne
+- **Ctrl+S** : Sauvegarder
+- **Ctrl+Z/Y** : Annuler/Refaire
+- **Ctrl+F** : Rechercher
+
+### Gestion des pièces
+- **Gestionnaire de pièces** : Accessible via l'icône 🔧 dans la barre d'outils
+- **Sélection multiple** : Ctrl+Clic pour sélectionner plusieurs pièces à supprimer
+- **Filtrage** : Recherche et filtre des pièces orphelines
+
+### Fonctionnalités avancées
+- **Glisser/Déposer** : Déposez des fichiers CSV directement sur le tableau
+- **Auto-complétion** : Les champs vides sont automatiquement complétés
+- **Historique** : Toutes les modifications sont tracées dans l'historique
+- **Validation** : Détection automatique des doublons et inconsistances
+
+## 🔧 Dépannage
+
+### Problèmes d'import
+- Vérifiez l'encodage du fichier (UTF-8 recommandé)
+- Assurez-vous que le fichier CSV a au moins 2 colonnes
+- Première ligne = en-têtes (ignorée lors de l'import)
+
+### Performance
+- L'application pagine automatiquement les gros datasets
+- Utilisez les filtres pour réduire l'affichage
+- La recherche est limitée à 5000 résultats
+
+## 📞 Support
+En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outils.
+            """
+            guide_text.setMarkdown(guide_content)
+            layout.addWidget(guide_text)
+            
+            # Bouton de fermeture
+            close_button = QPushButton("Fermer")
+            close_button.clicked.connect(dialog.close)
+            layout.addWidget(close_button)
+            
+            dialog.setLayout(layout)
+            dialog.exec_()
+            
+        except Exception as e:
+            self._show_error(f"Erreur lors de l'affichage du guide local: {e}")
+    
     def _apply_column_visibility(self):
         """Appliquer la visibilité des colonnes au tableau"""
         for col_idx, visible in self.visible_columns.items():
@@ -3645,6 +3898,128 @@ class MainWindow(QMainWindow):
             if event.type() in [QEvent.Type.Resize, QEvent.Type.Paint]:
                 self._position_drag_handle()
         return super().eventFilter(source, event)
+
+    def dragEnterEvent(self, event):
+        """Gérer l'entrée d'un glisser/déposer"""
+        if event.mimeData().hasUrls():
+            # Vérifier si au moins un fichier est un CSV
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    if file_path.lower().endswith('.csv'):
+                        event.acceptProposedAction()
+                        return
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Gérer le mouvement d'un glisser/déposer"""
+        if event.mimeData().hasUrls():
+            # Vérifier si au moins un fichier est un CSV
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    if file_path.lower().endswith('.csv'):
+                        event.acceptProposedAction()
+                        return
+        event.ignore()
+
+    def dropEvent(self, event):
+        """Gérer le déposer d'un fichier CSV"""
+        if event.mimeData().hasUrls():
+            csv_files = []
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    if file_path.lower().endswith('.csv'):
+                        csv_files.append(file_path)
+            
+            if csv_files:
+                # Traiter le premier fichier CSV trouvé
+                self._import_csv_from_path(csv_files[0])
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+    def _import_csv_from_path(self, file_path):
+        """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)"""
+        try:
+            import csv
+            from datetime import datetime
+            
+            # D'abord, analyser le fichier pour détecter le nombre de colonnes
+            detected_columns = self._detect_csv_columns(file_path)
+            if detected_columns is None:
+                return
+            
+            # Extraire le nom du fichier sans extension pour la référence de pièce
+            import os
+            filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
+            
+            # Dialogue pour choisir le type d'import (avec référence pré-remplie)
+            import_type, ref_piece, third_column_choice = self._get_import_options(detected_columns, filename_without_ext)
+            if import_type is None:
+                return
+            
+            # Le reste du traitement est identique à _import_csv
+            separator = self._detect_separator(file_path)
+            encoding = self._detect_file_encoding(file_path)
+            
+            imported_data = []
+            with open(file_path, 'r', encoding=encoding) as file:
+                csv_reader = csv.reader(file, delimiter=separator)
+                
+                for row_index, row in enumerate(csv_reader):
+                    if row_index == 0:  # Header
+                        continue
+                    
+                    if len(row) < 2:  # Ignorer les lignes avec moins de 2 colonnes
+                        continue
+                    
+                    # Traitement des colonnes selon le nombre détecté
+                    if detected_columns == 2:
+                        type_val, manufacturer_val = row[0], row[1]
+                        ref_modele_val = commercial_ref_val = ""
+                    else:  # 3 colonnes ou plus
+                        type_val, manufacturer_val = row[0], row[1]
+                        third_col_val = row[2] if len(row) > 2 else ""
+                        
+                        if third_column_choice == "ref_modele":
+                            ref_modele_val = third_col_val
+                            commercial_ref_val = ""
+                        elif third_column_choice == "commercial_ref":
+                            commercial_ref_val = third_col_val
+                            ref_modele_val = ""
+                        else:  # "ignore"
+                            ref_modele_val = commercial_ref_val = ""
+                    
+                    # Nettoyer et valider les données
+                    device_data = {
+                        'type': type_val.strip() if type_val else "",
+                        'manufacturer': manufacturer_val.strip() if manufacturer_val else "",
+                        'ref_modele': ref_modele_val.strip() if ref_modele_val else "",
+                        'commercial_ref': commercial_ref_val.strip() if commercial_ref_val else "",
+                        'other_ref': "",
+                        'category': "",
+                        'notes': ""
+                    }
+                    
+                    # Filtrer les lignes vides ou invalides
+                    if any(device_data[field].strip() for field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref']):
+                        imported_data.append(device_data)
+            
+            if not imported_data:
+                QMessageBox.warning(self, "Import CSV", "Aucune donnée valide trouvée dans le fichier.")
+                return
+            
+            # Traitement de l'import
+            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
+            
+            # Affichage du résumé et ajout à l'historique
+            self._show_import_summary(results, ref_piece)
+            self._log_import_to_history(results, ref_piece, f"CSV (Glisser/Déposer - {os.path.basename(file_path)})")
+            
+        except Exception as e:
+            self._show_error(f"Erreur lors de l'import CSV par glisser/déposer: {e}")
 
     def keyPressEvent(self, event):
         """Gestion des raccourcis clavier"""
@@ -3967,13 +4342,14 @@ class MainWindow(QMainWindow):
             self._force_refresh_display(reset_page=True, clear_filters=True)
             
             # Résumé détaillé pour debugging ET historique
+            from src.core.config import pluralize
             detailed_summary = f"📊 Résumé de l'import par collage:\n"
-            detailed_summary += f"  Total lignes traitées: {total_rows}\n"
-            detailed_summary += f"  Lignes rejetées: {ignored_count}\n"
-            detailed_summary += f"  Appareils nouveaux: {inserted_count}\n"
-            detailed_summary += f"  Appareils mis à jour: {updated_count}\n"
-            detailed_summary += f"  Associations créées: {associations_created}\n"
-            detailed_summary += f"  Doublons ignorés: {duplicates_skipped}"
+            detailed_summary += f"  Total {pluralize(total_rows, 'ligne traitée')}\n"
+            detailed_summary += f"  {pluralize(ignored_count, 'ligne rejetée')}\n"
+            detailed_summary += f"  {pluralize(inserted_count, 'appareil nouveau', 'appareils nouveaux')}\n"
+            detailed_summary += f"  {pluralize(updated_count, 'appareil mis à jour')}\n"
+            detailed_summary += f"  {pluralize(associations_created, 'association créée')}\n"
+            detailed_summary += f"  {pluralize(duplicates_skipped, 'doublon ignoré')}"
             
             print(f"\n{detailed_summary}")
             

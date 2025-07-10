@@ -66,9 +66,9 @@ class PiecesManagerWindow(QDialog):
         
         # Tableau des pièces
         self.pieces_table = QTableWidget()
-        self.pieces_table.setColumnCount(4)
+        self.pieces_table.setColumnCount(3)
         self.pieces_table.setHorizontalHeaderLabels([
-            "Référence Pièce", "Nb Appareils", "Type d'Appareils", "Actions"
+            "Référence Pièce", "Nb Appareils", "Type d'Appareils"
         ])
         
         # Configuration du tableau
@@ -76,10 +76,11 @@ class PiecesManagerWindow(QDialog):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Référence
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Nb
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Types
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Actions
         
         self.pieces_table.setAlternatingRowColors(True)
         self.pieces_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.pieces_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # Sélection multiple
+        self.pieces_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Empêche l'édition
         self.pieces_table.itemSelectionChanged.connect(self._on_piece_selected)
         
         splitter.addWidget(self.pieces_table)
@@ -100,6 +101,12 @@ class PiecesManagerWindow(QDialog):
         export_btn = QPushButton("📊 Exporter la liste")
         export_btn.clicked.connect(self._export_pieces)
         buttons_layout.addWidget(export_btn)
+        
+        delete_btn = QPushButton("🗑️ Supprimer pièce(s)")
+        delete_btn.setToolTip("Supprimer les références de pièces sélectionnées (Ctrl+Clic pour sélection multiple)")
+        delete_btn.clicked.connect(self._delete_selected_pieces)
+        delete_btn.setStyleSheet("QPushButton { background-color: #dc3545; color: white; }")
+        buttons_layout.addWidget(delete_btn)
         
         close_btn = QPushButton("Fermer")
         close_btn.clicked.connect(self.close)
@@ -131,10 +138,11 @@ class PiecesManagerWindow(QDialog):
             orphan_pieces = len([r for r in results if r[1] == 0])
             total_associations = sum(r[1] for r in results)
             
+            from src.core.config import pluralize
             self.stats_label.setText(
-                f"📊 {total_pieces} références • "
-                f"⚠️ {orphan_pieces} orphelines • "
-                f"🔗 {total_associations} associations"
+                f"📊 {pluralize(total_pieces, 'référence')} • "
+                f"⚠️ {pluralize(orphan_pieces, 'orpheline')} • "
+                f"🔗 {pluralize(total_associations, 'association')}"
             )
             
             # Stocker les données pour le filtrage
@@ -160,6 +168,7 @@ class PiecesManagerWindow(QDialog):
             nb_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
             # Colorer selon le statut
+            from src.core.config import pluralize
             if nb_appareils == 0:
                 nb_item.setBackground(QColor(255, 200, 200))  # Rouge clair pour orphelines
                 nb_item.setToolTip("⚠️ Pièce orpheline - aucun appareil associé")
@@ -168,7 +177,7 @@ class PiecesManagerWindow(QDialog):
                 nb_item.setToolTip("⚡ Pièce associée à un seul appareil")
             else:
                 nb_item.setBackground(QColor(200, 255, 200))  # Vert pour multiples
-                nb_item.setToolTip(f"✅ Pièce associée à {nb_appareils} appareils")
+                nb_item.setToolTip(f"✅ Pièce associée à {pluralize(nb_appareils, 'appareil')}")
                 
             self.pieces_table.setItem(row_idx, 1, nb_item)
             
@@ -179,12 +188,6 @@ class PiecesManagerWindow(QDialog):
             types_item = QTableWidgetItem(types_display)
             types_item.setToolTip(types_appareils or "Aucun type")
             self.pieces_table.setItem(row_idx, 2, types_item)
-            
-            # Actions
-            action_text = "🗑️ Supprimer" if nb_appareils == 0 else "👁️ Voir"
-            action_item = QTableWidgetItem(action_text)
-            action_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.pieces_table.setItem(row_idx, 3, action_item)
             
     def _get_filtered_data(self):
         """Obtenir les données filtrées selon les critères"""
@@ -249,7 +252,8 @@ class PiecesManagerWindow(QDialog):
                 self.details_text.setText(f"⚠️ Aucun appareil associé à la pièce '{ref_piece}'")
                 return
                 
-            details = f"🔧 Détails de la pièce '{ref_piece}' ({len(results)} appareil(s)):\n\n"
+            from src.core.config import pluralize
+            details = f"🔧 Détails de la pièce '{ref_piece}' ({pluralize(len(results), 'appareil')}):\n\n"
             
             for appareil in results:
                 details += f"• ID {appareil[0]}: {appareil[1] or 'N/A'} | "
@@ -289,3 +293,104 @@ class PiecesManagerWindow(QDialog):
                 
         except Exception as e:
             QMessageBox.critical(self, "Erreur d'export", f"Erreur lors de l'export: {e}")
+    
+    def _delete_selected_pieces(self):
+        """Supprimer les références de pièces sélectionnées"""
+        selected_rows = list(set([item.row() for item in self.pieces_table.selectedItems()]))
+        
+        if not selected_rows:
+            QMessageBox.warning(self, "Aucune sélection", "Veuillez sélectionner au moins une référence de pièce à supprimer.")
+            return
+        
+        # Collecter les informations des pièces sélectionnées
+        pieces_to_delete = []
+        total_associations = 0
+        
+        for row in selected_rows:
+            ref_item = self.pieces_table.item(row, 0)
+            nb_item = self.pieces_table.item(row, 1)
+            if ref_item and nb_item:
+                ref_piece = ref_item.text()
+                nb_appareils = int(nb_item.text())
+                pieces_to_delete.append((ref_piece, nb_appareils))
+                total_associations += nb_appareils
+        
+        if not pieces_to_delete:
+            return
+            
+        # Confirmation
+        from src.core.config import pluralize
+        if len(pieces_to_delete) == 1:
+            ref_piece, nb_appareils = pieces_to_delete[0]
+            message = f"Supprimer la référence de pièce '{ref_piece}' ?\n\n"
+            if nb_appareils > 0:
+                message += f"⚠️ Cette pièce est associée à {pluralize(nb_appareils, 'appareil')}.\n"
+                message += "Toutes les associations seront supprimées.\n\n"
+        else:
+            message = f"Supprimer {pluralize(len(pieces_to_delete), 'référence')} de pièces ?\n\n"
+            if total_associations > 0:
+                message += f"⚠️ Ces pièces sont associées à {pluralize(total_associations, 'appareil')} au total.\n"
+                message += "Toutes les associations seront supprimées.\n\n"
+                
+        message += "Cette action est irréversible. Continuer ?"
+        
+        reply = QMessageBox.question(
+            self, "Confirmation de suppression",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+            
+        try:
+            deleted_count = 0
+            deleted_associations = 0
+            
+            # Supprimer chaque pièce
+            for ref_piece, nb_appareils in pieces_to_delete:
+                query = "DELETE FROM pieces WHERE ref_piece = ?"
+                result = self.db_manager.execute_query(query, [ref_piece])
+                deleted_count += 1
+                deleted_associations += nb_appareils
+                
+                # Ajouter à l'historique de la fenêtre principale
+                self._add_to_main_history(ref_piece, nb_appareils)
+            
+            # Valider la transaction
+            self.db_manager.conn.commit()
+            
+            # Message de succès
+            if len(pieces_to_delete) == 1:
+                QMessageBox.information(
+                    self, "Suppression réussie",
+                    f"La référence '{pieces_to_delete[0][0]}' et ses {pluralize(pieces_to_delete[0][1], 'association')} ont été supprimées."
+                )
+            else:
+                QMessageBox.information(
+                    self, "Suppression réussie",
+                    f"{pluralize(deleted_count, 'référence')} supprimées avec {pluralize(deleted_associations, 'association')} au total."
+                )
+            
+            # Recharger les données (sans fermer la fenêtre)
+            self._load_pieces_data()
+            
+            # Informer la fenêtre principale si elle existe (sans forcer le refresh qui pourrait fermer cette fenêtre)
+            # Note: Le refresh est fait automatiquement par l'historique
+            # if hasattr(self.parent(), '_force_refresh_display'):
+            #     self.parent()._force_refresh_display()
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur de suppression", f"Erreur lors de la suppression: {e}")
+            
+    def _add_to_main_history(self, ref_piece, nb_associations):
+        """Ajouter une entrée dans l'historique de la fenêtre principale"""
+        try:
+            if hasattr(self.parent(), '_add_to_history'):
+                # Ajouter directement à l'historique visible de la fenêtre principale
+                from src.core.config import pluralize
+                summary = f"🗑️ Suppression de la pièce '{ref_piece}' ({pluralize(nb_associations, 'association')})"
+                self.parent()._add_to_history(summary)
+        except Exception as e:
+            print(f"Erreur lors de l'ajout à l'historique: {e}")
