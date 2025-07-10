@@ -949,7 +949,7 @@ class MainWindow(QMainWindow):
         
         validate_action = QAction("🔍 Incohérences", self)
         validate_action.setToolTip("Valider la cohérence de la base et détecter les incohérences")
-        validate_action.triggered.connect(self._validate_data)
+        validate_action.triggered.connect(self._validate_and_detect_inconsistencies)
         gestion_menu.addAction(validate_action)
         
         # Menu Action  
