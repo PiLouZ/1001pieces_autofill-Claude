@@ -3036,12 +3036,29 @@ class MainWindow(QMainWindow):
                 if import_type is None:
                     return
                 
-                # Lire le fichier CSV
+                # Lire le fichier CSV avec détection automatique du séparateur
                 imported_data = []
                 with open(filename, 'r', encoding='utf-8') as file:
-                    reader = csv.reader(file)
+                    # Lire un échantillon pour détecter le séparateur
+                    sample = file.read(1024)
+                    file.seek(0)
+                    
+                    # Détecter le séparateur le plus probable
+                    sniffer = csv.Sniffer()
+                    try:
+                        dialect = sniffer.sniff(sample, delimiters=',;\t')
+                        reader = csv.reader(file, dialect)
+                    except csv.Error:
+                        # Fallback: essayer les séparateurs dans l'ordre de préférence
+                        if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
+                            reader = csv.reader(file, delimiter=';')
+                        elif sample.count('\t') > sample.count(','):
+                            reader = csv.reader(file, delimiter='\t')
+                        else:
+                            reader = csv.reader(file, delimiter=',')
+                    
                     for row in reader:
-                        if len(row) >= 2:  # Au moins 2 colonnes (type, manufacturer)
+                        if len(row) >= 2:  # Au moins 2 colonnes
                             imported_data.append(row)
                 
                 if not imported_data:
@@ -3782,6 +3799,7 @@ class MainWindow(QMainWindow):
                 if existing_device:
                     # Appareil existant trouvé - mettre à jour les champs manquants
                     appareil_id = existing_device['id']
+                    print(f"🔄 Ligne {row_idx + 1}: Appareil existant trouvé (ID: {appareil_id})")
                     
                     # Préparer les mises à jour nécessaires
                     updates = {}
@@ -3793,11 +3811,15 @@ class MainWindow(QMainWindow):
                     # Appliquer les mises à jour
                     if updates:
                         self._update_device_info(appareil_id, updates)
+                        print(f"  ⚙️ Mis à jour: {list(updates.keys())}")
                     
                     # Ajouter la pièce si spécifiée
                     if ref_piece and ref_piece.strip():
                         if not self._piece_already_associated(appareil_id, ref_piece.strip()):
                             self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                            print(f"  🔗 Pièce {ref_piece.strip()} associée")
+                        else:
+                            print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
                     
                     updated_count += 1
                     
@@ -3828,10 +3850,12 @@ class MainWindow(QMainWindow):
                         if filtered_data:  # Seulement si on a des données réelles
                             appareil_id = self.db_manager.insert_appareil(filtered_data)
                             inserted_count += 1
+                            print(f"✨ Ligne {row_idx + 1}: Nouvel appareil créé (ID: {appareil_id})")
                             
                             # Ajouter la pièce si spécifiée
                             if ref_piece and ref_piece.strip():
                                 self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                                print(f"  🔗 Pièce {ref_piece.strip()} associée")
                         else:
                             print(f"⚠️ Ligne {row_idx + 1} ignorée : aucune donnée valide détectée")
                             ignored_count += 1
