@@ -3342,12 +3342,13 @@ class MainWindow(QMainWindow):
             )
         
         # Ajouter à l'historique des actions
-        self.undo_manager.add_action(
-            "import_csv",
-            f"Import CSV: {summary}",
-            None,  # Pas de données avant
-            results  # Données après
-        )
+        self.undo_manager.add_action({
+            'type': 'import_csv',
+            'description': f"Import CSV: {summary}",
+            'before_data': None,
+            'after_data': results,
+            'source': source
+        })
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
