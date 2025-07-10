@@ -3075,7 +3075,7 @@ class MainWindow(QMainWindow):
                 self._log_import_to_history(results, ref_piece, filename)
                 
                 # Actualiser l'affichage
-                self._refresh_table()
+                self._force_refresh_display(reset_page=True, clear_filters=True)
                 
             except Exception as e:
                 self._show_error(f"Erreur lors de l'import: {e}")
@@ -3360,12 +3360,15 @@ class MainWindow(QMainWindow):
         
         # Ajouter à l'historique des actions
         self.undo_manager.add_action({
-            'type': 'import_csv',
-            'description': f"Import CSV: {summary}",
+            'type': operation_type,
+            'description': f"Import {source}: {summary}",
             'before_data': None,
             'after_data': results,
             'source': source
         })
+        
+        # Ajouter à l'historique visible
+        self._add_to_history(summary)
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
@@ -3696,6 +3699,8 @@ class MainWindow(QMainWindow):
             inserted_count = 0
             updated_count = 0
             ignored_count = 0
+            associations_created = 0  # Compter les vraies associations créées
+            duplicates_skipped = 0   # Compter les associations déjà existantes
             total_rows = len(rows)
             
             # Créer une barre de progression pour les gros imports (10K+ lignes)
@@ -3816,9 +3821,11 @@ class MainWindow(QMainWindow):
                     # Ajouter la pièce si spécifiée
                     if ref_piece and ref_piece.strip():
                         if not self._piece_already_associated(appareil_id, ref_piece.strip()):
-                            self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                            self.db_manager.add_piece(ref_piece.strip(), appareil_id, "")
+                            associations_created += 1
                             print(f"  🔗 Pièce {ref_piece.strip()} associée")
                         else:
+                            duplicates_skipped += 1
                             print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
                     
                     updated_count += 1
@@ -3854,7 +3861,8 @@ class MainWindow(QMainWindow):
                             
                             # Ajouter la pièce si spécifiée
                             if ref_piece and ref_piece.strip():
-                                self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                                self.db_manager.add_piece(ref_piece.strip(), appareil_id, "")
+                                associations_created += 1
                                 print(f"  🔗 Pièce {ref_piece.strip()} associée")
                         else:
                             print(f"⚠️ Ligne {row_idx + 1} ignorée : aucune donnée valide détectée")
@@ -3876,9 +3884,9 @@ class MainWindow(QMainWindow):
                 'total_imported': total_rows - ignored_count,
                 'matches_found': updated_count,
                 'manual_completion': inserted_count if not ref_piece or not ref_piece.strip() else 0,
-                'duplicates_skipped': 0,
+                'duplicates_skipped': duplicates_skipped,
                 'new_entries': inserted_count,
-                'associations_created': inserted_count if ref_piece and ref_piece.strip() else 0
+                'associations_created': associations_created
             }
             
             # Utiliser la même méthode d'affichage que l'import CSV
