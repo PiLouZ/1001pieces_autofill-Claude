@@ -3076,8 +3076,10 @@ class MainWindow(QMainWindow):
                         else:
                             reader = csv.reader(file, delimiter=',')
                     
-                    for row in reader:
-                        if len(row) >= 2:  # Au moins 2 colonnes
+                    for row_index, row in enumerate(reader):
+                        if row_index == 0:  # Ignorer la ligne d'en-tête
+                            continue
+                        if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
                             imported_data.append(row)
                 
                 if not imported_data:
@@ -4035,7 +4037,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     if row_index == 0:  # Header
                         continue
                     
-                    if len(row) >= 2:  # Au moins 2 colonnes
+                    if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
                         imported_data.append(row)
             
             if not imported_data:
