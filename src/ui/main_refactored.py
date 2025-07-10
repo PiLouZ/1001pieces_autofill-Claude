@@ -3316,6 +3316,14 @@ class MainWindow(QMainWindow):
         
         for row in imported_data:
             try:
+                # Initialiser les variables par défaut
+                type_val = ""
+                manufacturer = ""
+                ref_modele = ""
+                commercial_ref = ""
+                other_ref = ""
+                notes = ""
+                
                 if import_type == 2:
                     # 2 colonnes: ref_modele, commercial_ref (colonnes C et D)
                     ref_modele = row[0].strip() if len(row) > 0 else ""
@@ -3330,6 +3338,14 @@ class MainWindow(QMainWindow):
                     other_ref = third_value if third_column_choice == "other_ref" else ""
                     notes = third_value if third_column_choice == "notes" else ""
                     # Si "ignore", les deux restent vides
+                elif import_type >= 4:
+                    # 4+ colonnes: type, manufacturer, ref_modele, commercial_ref, other_ref, ...
+                    type_val = row[0].strip() if len(row) > 0 else ""
+                    manufacturer = row[1].strip() if len(row) > 1 else ""
+                    ref_modele = row[2].strip() if len(row) > 2 else ""
+                    commercial_ref = row[3].strip() if len(row) > 3 else ""
+                    other_ref = row[4].strip() if len(row) > 4 else ""
+                    # notes peuvent être en colonne 5 si présentes
                 
                 # Chercher l'appareil existant par ses références (colonnes C et D)
                 existing_device = self._find_existing_device_by_refs(ref_modele, commercial_ref)
@@ -3340,10 +3356,18 @@ class MainWindow(QMainWindow):
                     
                     # Mettre à jour les champs si nécessaire
                     updates = {}
+                    if type_val and not existing_device.get('type'):
+                        updates['type'] = type_val
+                    if manufacturer and not existing_device.get('manufacturer'):
+                        updates['manufacturer'] = manufacturer
                     if ref_modele and not existing_device.get('ref_modele'):
                         updates['ref_modele'] = ref_modele
                     if commercial_ref:
                         updates['commercial_ref'] = commercial_ref
+                    if other_ref and not existing_device.get('other_ref'):
+                        updates['other_ref'] = other_ref
+                    if notes and not existing_device.get('notes'):
+                        updates['notes'] = notes
                     
                     # Appliquer les mises à jour
                     if updates:
@@ -3364,13 +3388,13 @@ class MainWindow(QMainWindow):
                     if ref_modele.strip() or commercial_ref.strip():
                         # Préparer les données d'appareil comme dans _handle_paste
                         appareil_data = {
-                            'type': '',
-                            'manufacturer': '',
+                            'type': type_val.strip(),
+                            'manufacturer': manufacturer.strip(),
                             'ref_modele': ref_modele.strip(),
                             'commercial_ref': commercial_ref.strip(),
-                            'other_ref': '',
+                            'other_ref': other_ref.strip(),
                             'category': '',
-                            'notes': ''
+                            'notes': notes.strip()
                         }
                         
                         # Essayer l'auto-complétion
@@ -3539,14 +3563,48 @@ class MainWindow(QMainWindow):
         self._show_info(summary)
     
     def _log_import_to_history(self, results, ref_piece, source):
-        """Enregistrer l'import dans l'historique (CSV ou Collage)"""
+        """Enregistrer l'import dans l'historique avec format détaillé (CSV ou Collage)"""
         from datetime import datetime
+        from src.core.config import pluralize
         
-        summary = f"{results['total_imported']} appareils importés depuis {source}"
+        # Créer un résumé détaillé comme pour le collage
+        detailed_summary = f"📊 Résumé de l'import {source}"
         if ref_piece:
-            summary += f" et associés à la référence {ref_piece}"
-        summary += f" → {results['matches_found']} correspondances trouvées"
-        summary += f" → {results['manual_completion']} appareils à compléter manuellement"
+            detailed_summary += f" - Référence pièce: {ref_piece}"
+        detailed_summary += ":\n"
+        
+        # Calculer le total traité
+        total_processed = results.get('total_imported', 0) + results.get('duplicates_skipped', 0)
+        
+        detailed_summary += f"  Total {pluralize(total_processed, 'ligne traitée')}\n"
+        
+        # Nouveaux appareils créés
+        new_entries = results.get('new_entries', 0)
+        if new_entries > 0:
+            detailed_summary += f"  {pluralize(new_entries, 'appareil nouveau', 'appareils nouveaux')}\n"
+        
+        # Appareils mis à jour (correspondances trouvées)
+        matches_found = results.get('matches_found', 0)
+        if matches_found > 0:
+            detailed_summary += f"  {pluralize(matches_found, 'appareil mis à jour')}\n"
+        
+        # Associations créées
+        associations_created = results.get('associations_created', 0)
+        if associations_created > 0:
+            detailed_summary += f"  {pluralize(associations_created, 'association créée')}\n"
+        
+        # Doublons ignorés
+        duplicates_skipped = results.get('duplicates_skipped', 0)
+        if duplicates_skipped > 0:
+            detailed_summary += f"  {pluralize(duplicates_skipped, 'doublon ignoré')}\n"
+        
+        # Appareils nécessitant complétion manuelle
+        manual_completion = results.get('manual_completion', 0)
+        if manual_completion > 0:
+            detailed_summary += f"  {pluralize(manual_completion, 'appareil à compléter manuellement')}"
+        else:
+            # Supprimer le dernier \n si pas de complétion manuelle
+            detailed_summary = detailed_summary.rstrip('\n')
         
         # Déterminer le type d'opération
         operation_type = "import_csv" if source != "Collage" else "import_paste"
@@ -3559,21 +3617,21 @@ class MainWindow(QMainWindow):
                     'source': source,
                     'ref_piece': ref_piece,
                     'results': results,
-                    'summary': summary
+                    'summary': detailed_summary
                 }
             )
         
         # Ajouter à l'historique des actions
         self.undo_manager.add_action({
             'type': operation_type,
-            'description': f"Import {source}: {summary}",
+            'description': f"Import {source}: {detailed_summary.split(':')[0]}",
             'before_data': None,
             'after_data': results,
             'source': source
         })
         
-        # Ajouter à l'historique visible
-        self._add_to_history(summary)
+        # Ajouter à l'historique visible avec le format détaillé
+        self._add_to_history(detailed_summary)
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
@@ -3968,6 +4026,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             separator = self._detect_separator(file_path)
             encoding = self._detect_file_encoding(file_path)
             
+            # Utiliser la même logique que l'import CSV classique : passer des listes brutes
             imported_data = []
             with open(file_path, 'r', encoding=encoding) as file:
                 csv_reader = csv.reader(file, delimiter=separator)
@@ -3976,47 +4035,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     if row_index == 0:  # Header
                         continue
                     
-                    if len(row) < 2:  # Ignorer les lignes avec moins de 2 colonnes
-                        continue
-                    
-                    # Traitement des colonnes selon le nombre détecté
-                    if detected_columns == 2:
-                        type_val, manufacturer_val = row[0], row[1]
-                        ref_modele_val = commercial_ref_val = ""
-                    else:  # 3 colonnes ou plus
-                        type_val, manufacturer_val = row[0], row[1]
-                        third_col_val = row[2] if len(row) > 2 else ""
-                        
-                        if third_column_choice == "ref_modele":
-                            ref_modele_val = third_col_val
-                            commercial_ref_val = ""
-                        elif third_column_choice == "commercial_ref":
-                            commercial_ref_val = third_col_val
-                            ref_modele_val = ""
-                        else:  # "ignore"
-                            ref_modele_val = commercial_ref_val = ""
-                    
-                    # Nettoyer et valider les données
-                    device_data = {
-                        'type': type_val.strip() if type_val else "",
-                        'manufacturer': manufacturer_val.strip() if manufacturer_val else "",
-                        'ref_modele': ref_modele_val.strip() if ref_modele_val else "",
-                        'commercial_ref': commercial_ref_val.strip() if commercial_ref_val else "",
-                        'other_ref': "",
-                        'category': "",
-                        'notes': ""
-                    }
-                    
-                    # Filtrer les lignes vides ou invalides
-                    if any(device_data[field].strip() for field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref']):
-                        imported_data.append(device_data)
+                    if len(row) >= 2:  # Au moins 2 colonnes
+                        imported_data.append(row)
             
             if not imported_data:
                 QMessageBox.warning(self, "Import CSV", "Aucune donnée valide trouvée dans le fichier.")
                 return
             
-            # Traitement de l'import
-            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
+            # Traitement de l'import (utiliser detected_columns comme import_type)
+            results = self._process_import(imported_data, detected_columns, ref_piece, third_column_choice)
             
             # Affichage du résumé et ajout à l'historique
             self._show_import_summary(results, ref_piece)
