@@ -471,6 +471,10 @@ class MainWindow(QMainWindow):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._perform_delayed_search)
         self.pending_search_term = None
+        
+        # Gestion débouncing des barres de progression
+        self.last_progress_update = 0
+        self.progress_update_interval = 100  # ms minimum entre les mises à jour
 
     def _init_ui(self):
         """Initialiser l'interface utilisateur moderne"""
@@ -1010,7 +1014,7 @@ class MainWindow(QMainWindow):
             
             # Préparer une barre de progression pour les gros volumes
             progress_dialog = None
-            if self.total_rows > 50000 and not is_search:  # Seuil pour afficher la barre de progression (pas pour les recherches)
+            if self.total_rows > 100000 and not is_search:  # Seuil augmenté pour éviter affichage trop fréquent
                 progress_dialog = QProgressDialog(
                     f"Chargement de {self.total_rows} lignes...",
                     "Annuler",
@@ -1028,18 +1032,12 @@ class MainWindow(QMainWindow):
                 offset = self.current_page * self.page_size
                 limit = self.page_size
                 
-                if progress_dialog:
-                    progress_dialog.setLabelText(f"Chargement page {self.current_page + 1}...")
-                    progress_dialog.setValue(50)
-                    QApplication.processEvents()
+                self._update_progress_with_debounce(progress_dialog, 50, f"Chargement page {self.current_page + 1}...")
                 
                 # Charger seulement la page courante avec tri
                 records = self.db_manager.load_data(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
             else:
-                if progress_dialog:
-                    progress_dialog.setLabelText(f"Chargement de toutes les {self.total_rows} lignes...")
-                    progress_dialog.setValue(20)
-                    QApplication.processEvents()
+                self._update_progress_with_debounce(progress_dialog, 20, f"Chargement de toutes les {self.total_rows} lignes...")
                 
                 # Charger toutes les données (pour les petites bases ou recherches) avec tri
                 records = self.db_manager.load_data(search_term, column_filters, None, None, sort_column, sort_order, incomplete_filter)
@@ -1047,21 +1045,16 @@ class MainWindow(QMainWindow):
             # Remplir le tableau
             self.table.setRowCount(len(records))
             
-            # Mise à jour de la barre de progression pendant le remplissage
-            if progress_dialog:
-                progress_dialog.setLabelText("Remplissage du tableau...")
-                progress_dialog.setValue(60)
-                QApplication.processEvents()
+            self._update_progress_with_debounce(progress_dialog, 60, "Remplissage du tableau...")
             
             for row_idx, record in enumerate(records):
-                # Mise à jour de la progression pour les gros volumes
-                if progress_dialog and row_idx % 1000 == 0:
+                # Mise à jour de la progression pour les gros volumes (moins fréquente)
+                if progress_dialog and row_idx % 5000 == 0:  # Réduire la fréquence des mises à jour
                     if progress_dialog.wasCanceled():
                         break
                     progress_value = 60 + (row_idx / len(records)) * 35  # 60% -> 95%
-                    progress_dialog.setValue(int(progress_value))
-                    progress_dialog.setLabelText(f"Remplissage du tableau... {row_idx}/{len(records)} lignes")
-                    QApplication.processEvents()
+                    self._update_progress_with_debounce(progress_dialog, int(progress_value), 
+                                                       f"Remplissage du tableau... {row_idx}/{len(records)} lignes")
                 db_id = record[0]
                 # Ne plus utiliser les en-têtes verticaux pour stocker db_id
                 self.table.setVerticalHeaderItem(row_idx, QTableWidgetItem(str(row_idx + 1)))
@@ -1100,10 +1093,7 @@ class MainWindow(QMainWindow):
                     self.table.setItem(row_idx, col_idx, item)
             
             # Finalisation
-            if progress_dialog:
-                progress_dialog.setLabelText("Finalisation...")
-                progress_dialog.setValue(95)
-                QApplication.processEvents()
+            self._update_progress_with_debounce(progress_dialog, 95, "Finalisation...")
             
             self.table.resizeColumnsToContents()
             self._update_counter()
@@ -1113,8 +1103,8 @@ class MainWindow(QMainWindow):
             self._init_previous_values()
             
             # Fermer la barre de progression
+            self._update_progress_with_debounce(progress_dialog, 100, "Terminé")
             if progress_dialog:
-                progress_dialog.setValue(100)
                 progress_dialog.close()
             
             # Afficher les performances avec plus de détails
@@ -3259,13 +3249,12 @@ class MainWindow(QMainWindow):
     
     def _detect_file_encoding(self, filename):
         """Détecter automatiquement l'encodage d'un fichier"""
-        import chardet
-        
         # Encodages courants à tester
         encodings_to_try = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1', 'utf-16']
         
         # D'abord essayer avec chardet si disponible
         try:
+            import chardet
             with open(filename, 'rb') as file:
                 raw_data = file.read(10000)  # Lire les premiers 10KB
                 detected = chardet.detect(raw_data)
@@ -3898,6 +3887,21 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if event.type() in [QEvent.Type.Resize, QEvent.Type.Paint]:
                 self._position_drag_handle()
         return super().eventFilter(source, event)
+    
+    def _update_progress_with_debounce(self, progress_dialog, value, text=None):
+        """Mettre à jour la barre de progression avec débouncing"""
+        if not progress_dialog:
+            return
+            
+        current_time = __import__('time').time() * 1000  # Convertir en ms
+        
+        # Forcer la mise à jour pour 0% et 100%, sinon respecter l'intervalle
+        if value == 0 or value >= progress_dialog.maximum() or (current_time - self.last_progress_update) >= self.progress_update_interval:
+            progress_dialog.setValue(value)
+            if text:
+                progress_dialog.setLabelText(text)
+            QApplication.processEvents()
+            self.last_progress_update = current_time
 
     def dragEnterEvent(self, event):
         """Gérer l'entrée d'un glisser/déposer"""
@@ -4369,8 +4373,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Utiliser la même méthode d'affichage que l'import CSV
             self._show_import_summary(results, ref_piece.strip() if ref_piece else None)
             
-            # Enregistrer dans l'historique avec le même format
-            self._log_import_to_history(results, ref_piece.strip() if ref_piece else None, "Collage")
+            # Note: Ne pas appeler _log_import_to_history ici pour éviter la duplication avec detailed_summary
             
         except DatabaseError as e:
             self._show_error(f"Erreur lors du collage: {e}")
