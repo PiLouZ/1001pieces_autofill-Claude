@@ -3345,9 +3345,11 @@ class MainWindow(QMainWindow):
         summary += f" → {results['matches_found']} correspondances trouvées"
         summary += f" → {results['manual_completion']} appareils à compléter manuellement"
         
+        # Déterminer le type d'opération
+        operation_type = "import_csv" if source != "Collage" else "import_paste"
+        
         # Enregistrer dans les logs
         if hasattr(self, 'logger'):
-            operation_type = "import_csv" if source != "Collage" else "import_paste"
             self.logger.log_data_operation(
                 operation_type,
                 {
