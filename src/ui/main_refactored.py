@@ -465,6 +465,12 @@ class MainWindow(QMainWindow):
         self.auto_save_timer = QTimer()
         self.auto_save_timer.timeout.connect(self._auto_save)
         self.auto_save_timer.start(Config.AUTO_SAVE_INTERVAL)
+        
+        # Timer pour débounce de la recherche
+        self.search_timer = QTimer()
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self._perform_delayed_search)
+        self.pending_search_term = None
 
     def _init_ui(self):
         """Initialiser l'interface utilisateur moderne"""
@@ -945,16 +951,24 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes de gestion des données ---
 
-    def load_data(self, search_term: str = None):
+    def load_data(self, search_term: str = None, is_search: bool = False):
         """Charger les données depuis la base avec pagination"""
         import time
         start_time = time.time()
         
         try:
-            # Indicateur de chargement
-            self.perf_label.setText("⏳ Chargement...")
-            self.statusbar.showMessage("⏳ Chargement des données en cours...")
-            QApplication.processEvents()  # Forcer l'affichage
+            # Indicateur de chargement intelligent - seulement pour les opérations non-recherche
+            # ou les recherches avec beaucoup de données
+            show_loading_indicator = not is_search
+            if is_search:
+                # Pour les recherches, estimer si ce sera long
+                estimated_rows = self.db_manager.count_data(search_term) if search_term else self.total_rows if hasattr(self, 'total_rows') else 0
+                show_loading_indicator = estimated_rows > 5000  # Seuil pour afficher l'indicateur lors des recherches
+            
+            if show_loading_indicator:
+                self.perf_label.setText("⏳ Chargement...")
+                self.statusbar.showMessage("⏳ Chargement des données en cours...")
+                QApplication.processEvents()  # Forcer l'affichage
             
             self.table.blockSignals(True)
             self.table.setRowCount(0)
@@ -978,7 +992,7 @@ class MainWindow(QMainWindow):
             
             # Préparer une barre de progression pour les gros volumes
             progress_dialog = None
-            if self.total_rows > 50000:  # Seuil pour afficher la barre de progression
+            if self.total_rows > 50000 and not is_search:  # Seuil pour afficher la barre de progression (pas pour les recherches)
                 progress_dialog = QProgressDialog(
                     f"Chargement de {self.total_rows} lignes...",
                     "Annuler",
@@ -1113,14 +1127,16 @@ class MainWindow(QMainWindow):
                 self.perf_label.setText(perf_text)
                 self.perf_label.setStyleSheet(f"color: {color}; font-weight: bold;")
                 
-                # Message dans la barre de statut
-                status_msg = f"✅ Chargement terminé en {load_time:.2f}s"
-                if len(records) < self.total_rows:
-                    status_msg += f" - Page {self.current_page + 1} ({len(records)} lignes affichées sur {self.total_rows} total)"
-                else:
-                    status_msg += f" - {len(records)} lignes affichées"
-                
-                self.statusbar.showMessage(status_msg, 3000)
+                # Message dans la barre de statut - seulement si l'indicateur était affiché ou si c'est lent
+                if show_loading_indicator or load_time > 1.0:
+                    status_msg = f"✅ Chargement terminé en {load_time:.2f}s"
+                    if len(records) < self.total_rows:
+                        status_msg += f" - Page {self.current_page + 1} ({len(records)} lignes affichées sur {self.total_rows} total)"
+                    else:
+                        status_msg += f" - {len(records)} lignes affichées"
+                    
+                    timeout = 1500 if is_search else 3000  # Timeout plus court pour les recherches
+                    self.statusbar.showMessage(status_msg, timeout)
             
         except DatabaseError as e:
             self._show_error(f"Erreur de base de données: {e}")
@@ -1595,13 +1611,15 @@ class MainWindow(QMainWindow):
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
             if self.current_page < total_pages - 1:
                 self.current_page += 1
-                self.load_data(self.search_input.text())
+                search_text = self.search_input.text()
+                self.load_data(search_text, is_search=bool(search_text.strip()))
     
     def _previous_page(self):
         """Aller à la page précédente"""
         if self.current_page > 0:
             self.current_page -= 1
-            self.load_data(self.search_input.text())
+            search_text = self.search_input.text()
+            self.load_data(search_text, is_search=bool(search_text.strip()))
     
     def _go_to_page(self, page: int):
         """Aller à une page spécifique"""
@@ -1609,7 +1627,8 @@ class MainWindow(QMainWindow):
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
             if 0 <= page < total_pages:
                 self.current_page = page
-                self.load_data(self.search_input.text())
+                search_text = self.search_input.text()
+                self.load_data(search_text, is_search=bool(search_text.strip()))
     
     def _go_to_last_page(self):
         """Aller à la dernière page"""
@@ -1628,7 +1647,8 @@ class MainWindow(QMainWindow):
                 self.page_size = int(size_text)
                 
             self.current_page = 0  # Retour à la première page
-            self.load_data(self.search_input.text())
+            search_text = self.search_input.text()
+            self.load_data(search_text, is_search=bool(search_text.strip()))
             
         except ValueError:
             pass  # Ignorer les valeurs non valides
@@ -2067,15 +2087,24 @@ class MainWindow(QMainWindow):
         self.load_data(self.search_input.text())
 
     def _search_table(self, text: str):
-        """Rechercher dans le tableau"""
+        """Rechercher dans le tableau avec débounce"""
         search_term = text.strip()
-        self.load_data(search_term if search_term else None)
+        self.pending_search_term = search_term if search_term else None
         
-        # Activer/désactiver les boutons d'export
+        # Arrêter le timer précédent et démarrer un nouveau délai
+        self.search_timer.stop()
+        self.search_timer.start(300)  # Attendre 300ms avant de lancer la recherche
+        
+        # Activer/désactiver les boutons d'export immédiatement
         has_search = bool(search_term)
         self.export_csv_btn.setEnabled(has_search)
         self.export_html_brands_btn.setEnabled(has_search)
         self.export_html_details_btn.setEnabled(has_search)
+    
+    def _perform_delayed_search(self):
+        """Effectuer la recherche après le délai de débounce"""
+        if hasattr(self, 'pending_search_term'):
+            self.load_data(self.pending_search_term, is_search=True)
 
     def _auto_save(self):
         """Sauvegarde automatique"""
@@ -3138,15 +3167,44 @@ class MainWindow(QMainWindow):
                     results['matches_found'] += 1
                     # NE PAS créer de nouvelle ligne dans le tableau
                 else:
-                    # Nouvel appareil - créer avec les infos partielles
-                    device_id = self._create_new_device_from_refs(ref_modele, commercial_ref)
-                    if device_id:
-                        results['new_entries'] += 1
-                        if ref_piece:
-                            self.db_manager.add_piece(ref_piece, device_id, "")
-                            results['associations_created'] += 1
-                        else:
-                            results['manual_completion'] += 1
+                    # Nouvel appareil - utiliser la même logique harmonisée que le collage
+                    if ref_modele.strip() or commercial_ref.strip():
+                        # Préparer les données d'appareil comme dans _handle_paste
+                        appareil_data = {
+                            'type': '',
+                            'manufacturer': '',
+                            'ref_modele': ref_modele.strip(),
+                            'commercial_ref': commercial_ref.strip(),
+                            'other_ref': '',
+                            'category': '',
+                            'notes': ''
+                        }
+                        
+                        # Essayer l'auto-complétion
+                        if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
+                            self._try_auto_complete(appareil_data)
+                        
+                        # Filtrer les données vides comme dans _handle_paste
+                        filtered_data = {}
+                        for field, value in appareil_data.items():
+                            if value and str(value).strip():
+                                filtered_data[field] = value
+                        
+                        # S'assurer qu'on a les références essentielles
+                        if 'ref_modele' not in filtered_data and ref_modele.strip():
+                            filtered_data['ref_modele'] = ref_modele.strip()
+                        if 'commercial_ref' not in filtered_data and commercial_ref.strip():
+                            filtered_data['commercial_ref'] = commercial_ref.strip()
+                        
+                        if filtered_data:
+                            device_id = self.db_manager.insert_appareil(filtered_data)
+                            if device_id:
+                                results['new_entries'] += 1
+                                if ref_piece:
+                                    self.db_manager.add_piece(ref_piece, device_id, "")
+                                    results['associations_created'] += 1
+                                else:
+                                    results['manual_completion'] += 1
                 
                 # Compter chaque ligne traitée
                 results['total_imported'] += 1
@@ -3217,14 +3275,7 @@ class MainWindow(QMainWindow):
             print(f"Erreur création appareil: {e}")
             return None
     
-    def _create_new_device_from_refs(self, ref_modele, commercial_ref):
-        """Créer un nouvel appareil à partir des références seulement"""
-        try:
-            query = "INSERT INTO appareils (ref_modele, commercial_ref) VALUES (?, ?)"
-            return self.db_manager.execute_insert(query, [ref_modele or "", commercial_ref or ""])
-        except Exception as e:
-            print(f"Erreur création appareil depuis références: {e}")
-            return None
+    # Méthode supprimée - logique harmonisée avec _handle_paste dans _process_import
     
     def _update_device_info(self, device_id, updates):
         """Mettre à jour les informations d'un appareil"""
@@ -3267,11 +3318,11 @@ class MainWindow(QMainWindow):
         
         self._show_info(summary)
     
-    def _log_import_to_history(self, results, ref_piece, filename):
-        """Enregistrer l'import dans l'historique"""
+    def _log_import_to_history(self, results, ref_piece, source):
+        """Enregistrer l'import dans l'historique (CSV ou Collage)"""
         from datetime import datetime
         
-        summary = f"{results['total_imported']} appareils importés"
+        summary = f"{results['total_imported']} appareils importés depuis {source}"
         if ref_piece:
             summary += f" et associés à la référence {ref_piece}"
         summary += f" → {results['matches_found']} correspondances trouvées"
@@ -3279,10 +3330,11 @@ class MainWindow(QMainWindow):
         
         # Enregistrer dans les logs
         if hasattr(self, 'logger'):
+            operation_type = "import_csv" if source != "Collage" else "import_paste"
             self.logger.log_data_operation(
-                "import_csv",
+                operation_type,
                 {
-                    'filename': filename,
+                    'source': source,
                     'ref_piece': ref_piece,
                     'results': results,
                     'summary': summary
@@ -3749,17 +3801,42 @@ class MainWindow(QMainWindow):
                     updated_count += 1
                     
                 else:
-                    # Nouvel appareil - essayer de compléter automatiquement Type et Fabricant
-                    if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
-                        self._try_auto_complete(appareil_data)
+                    # Nouvel appareil - utiliser la même logique que l'import CSV
+                    # Créer avec seulement les références essentielles pour éviter les appareils vides
+                    ref_modele = appareil_data.get('ref_modele', '').strip()
+                    commercial_ref = appareil_data.get('commercial_ref', '').strip()
                     
-                    # Insérer le nouvel appareil
-                    appareil_id = self.db_manager.insert_appareil(appareil_data)
-                    inserted_count += 1
-                    
-                    # Ajouter la pièce si spécifiée
-                    if ref_piece and ref_piece.strip():
-                        self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                    # Vérifier qu'on a au moins une référence valide
+                    if ref_modele or commercial_ref:
+                        # Essayer d'abord l'auto-complétion avec les références
+                        if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
+                            self._try_auto_complete(appareil_data)
+                        
+                        # Créer l'appareil avec les données disponibles (non vides seulement)
+                        filtered_data = {}
+                        for field, value in appareil_data.items():
+                            if value and str(value).strip():  # Seulement les valeurs non vides
+                                filtered_data[field] = value
+                        
+                        # S'assurer qu'on a au moins les références
+                        if 'ref_modele' not in filtered_data and ref_modele:
+                            filtered_data['ref_modele'] = ref_modele
+                        if 'commercial_ref' not in filtered_data and commercial_ref:
+                            filtered_data['commercial_ref'] = commercial_ref
+                        
+                        if filtered_data:  # Seulement si on a des données réelles
+                            appareil_id = self.db_manager.insert_appareil(filtered_data)
+                            inserted_count += 1
+                            
+                            # Ajouter la pièce si spécifiée
+                            if ref_piece and ref_piece.strip():
+                                self.db_manager.add_piece(ref_piece.strip(), appareil_id)
+                        else:
+                            print(f"⚠️ Ligne {row_idx + 1} ignorée : aucune donnée valide détectée")
+                            ignored_count += 1
+                    else:
+                        print(f"⚠️ Ligne {row_idx + 1} ignorée : aucune référence valide (ref_modele ou commercial_ref requis)")
+                        ignored_count += 1
             
             # Fermer la barre de progression
             if progress_dialog:
@@ -3769,32 +3846,21 @@ class MainWindow(QMainWindow):
             # Forcer le rafraîchissement et afficher le résultat
             self._force_refresh_display(reset_page=True, clear_filters=True)
             
-            # Message de statut plus informatif
-            status_parts = []
-            if inserted_count > 0:
-                status_parts.append(f"{inserted_count} nouveau(x) appareil(s)")
-            if updated_count > 0:
-                status_parts.append(f"{updated_count} appareil(s) mis à jour")
+            # Afficher la synthèse comme pour l'import CSV
+            results = {
+                'total_imported': total_rows - ignored_count,
+                'matches_found': updated_count,
+                'manual_completion': inserted_count if not ref_piece or not ref_piece.strip() else 0,
+                'duplicates_skipped': 0,
+                'new_entries': inserted_count,
+                'associations_created': inserted_count if ref_piece and ref_piece.strip() else 0
+            }
             
-            status_message = f"✅ {' et '.join(status_parts)} depuis le presse-papiers"
-            self.statusbar.showMessage(status_message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
+            # Utiliser la même méthode d'affichage que l'import CSV
+            self._show_import_summary(results, ref_piece.strip() if ref_piece else None)
             
-            # Ajouter à l'historique
-            history_parts = []
-            if inserted_count > 0:
-                history_parts.append(f"{inserted_count} appareil(s) ajouté(s)")
-            if updated_count > 0:
-                history_parts.append(f"{updated_count} appareil(s) mis à jour")
-            
-            history_message = f"Collage: {' et '.join(history_parts)}"
-            if ignored_count > 0:
-                history_message += f", {ignored_count} ligne(s) ignorée(s)"
-            if ref_piece:
-                history_message += f", pièce '{ref_piece}' associée"
-            if category:
-                history_message += f", catégorie '{category}'"
-            
-            self._add_to_history(history_message)
+            # Enregistrer dans l'historique avec le même format
+            self._log_import_to_history(results, ref_piece.strip() if ref_piece else None, "Collage")
             
         except DatabaseError as e:
             self._show_error(f"Erreur lors du collage: {e}")
