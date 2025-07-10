@@ -59,6 +59,18 @@ python3 -m src.ui.main_refactored
 
 ## ✨ Nouvelles Fonctionnalités Majeures
 
+### 🎨 **Interface Réorganisée et Moderne (v2.1.0)**
+- **Menus structurés** - "Gestion" (Catégories, Pièces, Incohérences) et "Action" (Autocomplétion, Nettoyage)
+- **Bouton Rafraîchir** déplacé dans la toolbar avec raccourci F5
+- **Pagination optimisée** sur 2 lignes avec bouton "Lignes à traiter" intégré
+- **Interface épurée** - Suppression des boutons redondants
+
+### 📊 **Import CSV Configurable**
+- **Option d'en-têtes configurable** - Cochez si votre fichier a une ligne d'en-têtes
+- **Comptage précis** - Résolution des discordances de lignes importées
+- **Compatibilité étendue** - Support de tous types de fichiers CSV
+- **Détection automatique** du nombre de colonnes
+
 ### 🔍 **Validation et Incohérences Interactive**
 - **Fenêtre dédiée** avec onglets Vue d'ensemble et Détails
 - **Filtrage avancé** par type d'erreur (validation, incohérences, orphelins...)
@@ -208,14 +220,17 @@ Cette version représente une refonte complète avec :
 - **💾 Stabilité renforcée** - Gestion d'erreurs et sauvegarde automatique
 - **🎯 Expérience utilisateur** - Intuitive et productive
 
-### 🆕 Dernières Améliorations
+### 🆕 Dernières Améliorations (v2.1.0)
 
-- **✅ Launcher optimisé** - Fichier .command avec vérifications automatiques
+- **✅ Option en-têtes CSV** - Configuration d'import précise et flexible
+- **✅ Interface réorganisée** - Menus "Gestion" et "Action" structurés
+- **✅ Bouton Rafraîchir** - Déplacé dans la toolbar avec raccourci F5
+- **✅ Pagination optimisée** - Sur 2 lignes avec "Lignes à traiter" intégré
+- **✅ Interface épurée** - Suppression des boutons redondants
 - **✅ Export CSV amélioré** - Sauvegarde automatique sur le Bureau
 - **✅ Gestion des pièces** - Suppression avec menu contextuel
 - **✅ Raccourcis clavier** - Entrée/Échap pour les confirmations
 - **✅ Historique enrichi** - Référence de l'appareil lors des suppressions
-- **✅ Headers CSV** - Format standardisé (product, type, manufacturer...)
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
 **📅 Version 2025 - Stable et optimisée pour la production**

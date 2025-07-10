@@ -2,6 +2,48 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.1.0] - 2025-07-10 - Amélioration majeure de l'interface utilisateur
+
+### ✨ Nouvelles Fonctionnalités
+
+#### 📊 **Configuration d'import CSV améliorée**
+- Option configurable "Le fichier contient une ligne d'en-têtes" 
+- Décoché par défaut pour les fichiers sans en-têtes
+- Résolution des discordances de comptage (2952 vs 2951 lignes)
+- Compatibilité avec tous types de fichiers CSV
+
+#### 🎨 **Réorganisation majeure de l'interface**
+- Nouveau bouton "Rafraîchir" dans la toolbar (avant undo/redo, raccourci F5)
+- Création du menu "Gestion" avec :
+  - 🏷️ Catégories
+  - 🔧 Pièces  
+  - 🔍 Incohérences
+- Création du menu "Action" avec :
+  - ≔ Autocomplétion
+  - 🧹 Nettoyer les doublons
+
+#### 📋 **Pagination optimisée**
+- Bouton "Afficher toutes les lignes" masqué (redondant avec option "Tout")
+- Bouton "Lignes à traiter" déplacé dans la zone de pagination
+- Pagination répartie sur 2 lignes pour une meilleure ergonomie
+- Interface plus épurée et fonctionnelle
+
+### 🔧 **Améliorations Techniques**
+
+#### 🗂️ **Réorganisation des contrôles**
+- Suppression des boutons redondants de la barre d'outils
+- Menus contextuels pour actions spécialisées
+- Interface plus cohérente et professionnelle
+- Accès simplifié aux fonctions de gestion
+
+#### ⚡ **Expérience utilisateur améliorée**
+- Menus logiquement organisés par type d'action
+- Raccourcis clavier maintenus pour toutes les fonctions
+- Interface plus claire et moins encombrée
+- Navigation intuitive entre les différentes sections
+
+---
+
 ## [2.0.0] - 2025-01-08 - Version Moderne et Interactive
 
 ### ✨ Nouvelles Fonctionnalités Majeures
