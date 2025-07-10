@@ -491,6 +491,7 @@ class MainWindow(QMainWindow):
         
         self._setup_central_widget()
         self._setup_toolbar()
+        self._setup_menubar()
         self._setup_statusbar()
 
     def _setup_central_widget(self):
@@ -677,12 +678,7 @@ class MainWindow(QMainWindow):
         history_label.setObjectName("historyTitle")
         history_header_layout.addWidget(history_label)
         
-        # Bouton moderne pour rafraîchir
-        refresh_btn = QPushButton("↻")
-        refresh_btn.setObjectName("refreshBtn")
-        refresh_btn.setToolTip("Rafraîchir l'application")
-        refresh_btn.clicked.connect(self._refresh_application)
-        history_header_layout.addWidget(refresh_btn)
+        # Le bouton rafraîchir est maintenant dans la toolbar
         
         history_layout.addLayout(history_header_layout)
         history_layout.setContentsMargins(8, 8, 8, 8)  # Padding moderne
@@ -733,35 +729,14 @@ class MainWindow(QMainWindow):
         """Ajouter les boutons d'action"""
         btn_layout = QHBoxLayout()
         
-        fill_btn = QPushButton("≔ Autocomplétion")
-        fill_btn.setToolTip("Complète automatiquement les champs vides")
-        fill_btn.clicked.connect(self._fill_empty_fields)
-        btn_layout.addWidget(fill_btn)
-        
-        clean_btn = QPushButton("🧹 Nettoyer les doublons")
-        clean_btn.clicked.connect(self._clean_data)
-        btn_layout.addWidget(clean_btn)
-        
-        # Bouton moderne pour afficher seulement les lignes incomplètes
-        incomplete_btn = QPushButton("📋 Lignes à traiter")
-        incomplete_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
-        incomplete_btn.setCheckable(True)
-        incomplete_btn.clicked.connect(self._toggle_incomplete_filter)
-        incomplete_btn.setObjectName("incompleteBtn")
-        btn_layout.addWidget(incomplete_btn)
-        self.incomplete_filter_btn = incomplete_btn
+        # Les boutons Autocomplétion et Nettoyer doublons sont maintenant dans le menu Action
+        # Le bouton Incomplète est déplacé dans la zone de pagination
         
         # Variable pour le filtre des incomplètes
         self.show_incomplete_only = False
         
-        # Bouton de validation des incohérences
-        validate_btn = QPushButton("🔍 Incohérences")
-        validate_btn.setToolTip("Valider la cohérence de la base et détecter les incohérences")
-        validate_btn.clicked.connect(self._validate_and_detect_inconsistencies)
-        validate_btn.setObjectName("validationBtn")
-        btn_layout.addWidget(validate_btn)
-        
-        layout.addLayout(btn_layout)
+        # Tous les boutons sont maintenant dans les menus ou la zone de pagination
+        # layout.addLayout(btn_layout)  # Commenté car plus de boutons dans cette section
         
         # Ajouter les contrôles de pagination
         self._add_pagination_controls(layout)
@@ -829,11 +804,12 @@ class MainWindow(QMainWindow):
         
         pagination_layout.addWidget(QLabel("|  "))
         
-        # Bouton pour afficher toutes les lignes
+        # Bouton pour afficher toutes les lignes (masqué car option "Tout" existe dans la selectlist)
         self.show_all_btn = QPushButton("📋 Toutes les lignes")
         self.show_all_btn.setObjectName("paginationBtn")
         self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
         self.show_all_btn.clicked.connect(self._toggle_show_all)
+        self.show_all_btn.setVisible(False)  # Masqué
         pagination_layout.addWidget(self.show_all_btn)
         
         pagination_layout.addWidget(QLabel("|  "))
@@ -844,6 +820,23 @@ class MainWindow(QMainWindow):
         pagination_layout.addWidget(self.perf_label)
         
         pagination_section_layout.addLayout(pagination_layout)
+        
+        # Deuxième ligne de pagination avec bouton Incomplète
+        pagination_layout_2 = QHBoxLayout()
+        pagination_layout_2.setSpacing(4)
+        
+        # Bouton pour afficher seulement les lignes incomplètes (déplacé ici)
+        incomplete_btn = QPushButton("📋 Lignes à traiter")
+        incomplete_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
+        incomplete_btn.setCheckable(True)
+        incomplete_btn.clicked.connect(self._toggle_incomplete_filter)
+        incomplete_btn.setObjectName("incompleteBtn")
+        pagination_layout_2.addWidget(incomplete_btn)
+        self.incomplete_filter_btn = incomplete_btn
+        
+        pagination_layout_2.addStretch()
+        
+        pagination_section_layout.addLayout(pagination_layout_2)
         layout.addWidget(pagination_section)
 
     def _setup_drag_handle(self):
@@ -859,6 +852,15 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)  # Fixer la barre pour un look plus moderne
         toolbar.setIconSize(QSize(20, 20))  # Icônes de taille uniforme
         self.addToolBar(toolbar)
+        
+        # Groupe Actualisation
+        refresh_action = QAction("↻", self)
+        refresh_action.setShortcut("F5")
+        refresh_action.setToolTip("Rafraîchir l'application (F5)")
+        refresh_action.triggered.connect(self._refresh_application)
+        toolbar.addAction(refresh_action)
+        
+        self._add_toolbar_separator(toolbar)
         
         # Groupe Édition
         self.undo_action = QAction("←", self)
@@ -899,30 +901,11 @@ class MainWindow(QMainWindow):
         
         self._add_toolbar_separator(toolbar)
         
-        # Groupe Gestion
-        categories_action = QAction("🏷️ Catégories", self)
-        categories_action.setToolTip("Gérer les catégories d'appareils")
-        categories_action.triggered.connect(self._manage_categories)
-        toolbar.addAction(categories_action)
-        
-        notes_action = QAction("📄 Notes", self)
-        notes_action.setToolTip("Éditer les notes de l'appareil sélectionné")
-        notes_action.triggered.connect(self._edit_notes)
-        toolbar.addAction(notes_action)
-        
-        pieces_action = QAction("🔧 Pièces", self)
-        pieces_action.setToolTip("Gérer les références de pièces et détecter les orphelines")
-        pieces_action.triggered.connect(self._open_pieces_manager)
-        toolbar.addAction(pieces_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
         # Groupe Données
         import_action = QAction("📈 Import", self)
         import_action.setToolTip("Importer des données depuis un fichier CSV")
         import_action.triggered.connect(self._import_csv)
         toolbar.addAction(import_action)
-        
         
         self._add_toolbar_separator(toolbar)
         
@@ -937,7 +920,6 @@ class MainWindow(QMainWindow):
         guide_action.triggered.connect(self._open_user_guide)
         toolbar.addAction(guide_action)
         
-        
         self._add_toolbar_separator(toolbar)
         
         # Bouton configuration des colonnes
@@ -947,6 +929,41 @@ class MainWindow(QMainWindow):
         toolbar.addAction(columns_action)
         
         self._update_toolbar_states()
+    
+    def _setup_menubar(self):
+        """Configurer la barre de menu"""
+        menubar = self.menuBar()
+        
+        # Menu Gestion
+        gestion_menu = menubar.addMenu("Gestion")
+        
+        categories_action = QAction("🏷️ Catégories", self)
+        categories_action.setToolTip("Gérer les catégories d'appareils")
+        categories_action.triggered.connect(self._manage_categories)
+        gestion_menu.addAction(categories_action)
+        
+        pieces_action = QAction("🔧 Pièces", self)
+        pieces_action.setToolTip("Gérer les références de pièces et détecter les orphelines")
+        pieces_action.triggered.connect(self._open_pieces_manager)
+        gestion_menu.addAction(pieces_action)
+        
+        validate_action = QAction("🔍 Incohérences", self)
+        validate_action.setToolTip("Valider la cohérence de la base et détecter les incohérences")
+        validate_action.triggered.connect(self._validate_data)
+        gestion_menu.addAction(validate_action)
+        
+        # Menu Action  
+        action_menu = menubar.addMenu("Action")
+        
+        autocomplete_action = QAction("≔ Autocomplétion", self)
+        autocomplete_action.setToolTip("Complète automatiquement les champs vides")
+        autocomplete_action.triggered.connect(self._fill_empty_fields)
+        action_menu.addAction(autocomplete_action)
+        
+        clean_action = QAction("🧹 Nettoyer les doublons", self)
+        clean_action.setToolTip("Nettoyer et optimiser la base de données")
+        clean_action.triggered.connect(self._clean_data)
+        action_menu.addAction(clean_action)
     
     def _add_toolbar_separator(self, toolbar):
         """Ajouter un séparateur moderne à la toolbar"""
@@ -3050,7 +3067,7 @@ class MainWindow(QMainWindow):
                 filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
                 
                 # Dialogue pour choisir le type d'import (avec référence pré-remplie)
-                import_type, ref_piece, third_column_choice = self._get_import_options(detected_columns, filename_without_ext)
+                import_type, ref_piece, third_column_choice, has_headers = self._get_import_options(detected_columns, filename_without_ext)
                 if import_type is None:
                     return
                 
@@ -3077,7 +3094,7 @@ class MainWindow(QMainWindow):
                             reader = csv.reader(file, delimiter=',')
                     
                     for row_index, row in enumerate(reader):
-                        if row_index == 0:  # Ignorer la ligne d'en-tête
+                        if row_index == 0 and has_headers:  # Ignorer la ligne d'en-tête seulement si spécifié
                             continue
                         if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
                             imported_data.append(row)
@@ -3103,7 +3120,7 @@ class MainWindow(QMainWindow):
     
     def _get_import_options(self, detected_columns=None, default_ref_piece=None):
         """Dialogue pour choisir les options d'import"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Options d'import")
@@ -3141,6 +3158,12 @@ class MainWindow(QMainWindow):
         ref_layout.addWidget(ref_input)
         layout.addLayout(ref_layout)
         
+        # Case à cocher pour les en-têtes
+        headers_checkbox = QCheckBox("Le fichier contient une ligne d'en-têtes (ignorer la première ligne)")
+        headers_checkbox.setChecked(False)  # Par défaut, pas d'en-têtes
+        headers_checkbox.setToolTip("Cochez cette case si la première ligne de votre fichier contient les noms des colonnes")
+        layout.addWidget(headers_checkbox)
+        
         # Gestion de la 3ème colonne (seulement si nécessaire)
         third_col_layout = None
         third_col_combo = None
@@ -3164,7 +3187,7 @@ class MainWindow(QMainWindow):
         
         dialog.setLayout(layout)
         
-        result = [None, None, None]
+        result = [None, None, None, None]
         
         def on_ok():
             # Déterminer le nombre de colonnes
@@ -3190,6 +3213,9 @@ class MainWindow(QMainWindow):
                     result[2] = "ignore"
             else:
                 result[2] = "ignore"  # Par défaut pour 2 colonnes
+            
+            # Récupérer l'option d'en-têtes
+            result[3] = headers_checkbox.isChecked()
             dialog.accept()
         
         def on_cancel():
@@ -3199,8 +3225,8 @@ class MainWindow(QMainWindow):
         cancel_button.clicked.connect(on_cancel)
         
         if dialog.exec_() == QDialog.Accepted:
-            return result[0], result[1], result[2]
-        return None, None, None
+            return result[0], result[1], result[2], result[3]
+        return None, None, None, None
     
     def _detect_csv_columns(self, filename):
         """Détecter automatiquement le nombre de colonnes du fichier CSV"""
@@ -4020,7 +4046,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
             
             # Dialogue pour choisir le type d'import (avec référence pré-remplie)
-            import_type, ref_piece, third_column_choice = self._get_import_options(detected_columns, filename_without_ext)
+            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options(detected_columns, filename_without_ext)
             if import_type is None:
                 return
             
@@ -4034,7 +4060,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 csv_reader = csv.reader(file, delimiter=separator)
                 
                 for row_index, row in enumerate(csv_reader):
-                    if row_index == 0:  # Header
+                    if row_index == 0 and has_headers:  # Header (seulement si spécifié)
                         continue
                     
                     if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
@@ -4044,8 +4070,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 QMessageBox.warning(self, "Import CSV", "Aucune donnée valide trouvée dans le fichier.")
                 return
             
-            # Traitement de l'import (utiliser detected_columns comme import_type)
-            results = self._process_import(imported_data, detected_columns, ref_piece, third_column_choice)
+            # Traitement de l'import (utiliser import_type)
+            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
             
             # Affichage du résumé et ajout à l'historique
             self._show_import_summary(results, ref_piece)
