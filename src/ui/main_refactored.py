@@ -3072,7 +3072,7 @@ class MainWindow(QMainWindow):
                 self._show_import_summary(results, ref_piece)
                 
                 # Enregistrer dans l'historique
-                self._log_import_to_history(results, ref_piece, filename)
+                self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
                 
                 # Actualiser l'affichage
                 self._force_refresh_display(reset_page=True, clear_filters=True)
@@ -3719,6 +3719,7 @@ class MainWindow(QMainWindow):
                 progress_dialog.show()
                 QApplication.processEvents()  # Forcer l'affichage
             
+            print(f"\n🔍 Début du traitement de {len(rows)} lignes d'import par collage")
             for row_idx, row_data in enumerate(rows):
                 # Mettre à jour la barre de progression
                 if progress_dialog:
@@ -3742,6 +3743,7 @@ class MainWindow(QMainWindow):
                         clean_row.append('')
                 
                 num_cols = len(clean_row)
+                print(f"\n🔵 Ligne {row_idx + 1}: {num_cols} colonnes - {clean_row[:4]}{'...' if len(clean_row) > 4 else ''}")
                 
                 # Appliquer les règles de mapping selon le nombre de colonnes
                 appareil_data = {}
@@ -3781,7 +3783,8 @@ class MainWindow(QMainWindow):
                             
                 else:
                     # Nombre de colonnes non supporté
-                    print(f"⚠️ Ligne {row_idx + 1} ignorée : {num_cols} colonne(s) non supportée(s) (attendu: 2-3 ou 4+)")
+                    print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: {num_cols} colonne(s) non supportée(s) (attendu: 2-3 ou 4+)")
+                    print(f"    Données: {clean_row}")
                     ignored_count += 1
                     continue
                 
@@ -3794,7 +3797,8 @@ class MainWindow(QMainWindow):
                 if not validation_result.is_valid:
                     # Log l'erreur mais continue l'import avec un avertissement
                     app_logger.warning(f"Données ligne {row_idx + 1} avec avertissement: {validation_result.error_message}")
-                    print(f"⚠️ Ligne {row_idx + 1}: {validation_result.error_message} - Continuant l'import...")
+                    print(f"⚠️ Ligne {row_idx + 1}: VALIDATION: {validation_result.error_message} - Continuant l'import...")
+                    print(f"    Données concernées: {appareil_data}")
                     # Continue au lieu d'arrêter l'import
                 
                 # Chercher d'abord si l'appareil existe déjà
@@ -3867,10 +3871,13 @@ class MainWindow(QMainWindow):
                                 associations_created += 1
                                 print(f"  🔗 Pièce {ref_piece.strip()} associée")
                         else:
-                            print(f"⚠️ Ligne {row_idx + 1} ignorée : aucune donnée valide détectée")
+                            print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: aucune donnée valide détectée après filtrage")
+                            print(f"    Données filtrées vides: {appareil_data}")
                             ignored_count += 1
                     else:
-                        print(f"⚠️ Ligne {row_idx + 1} ignorée : aucune référence valide (ref_modele ou commercial_ref requis)")
+                        print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: aucune référence valide")
+                        print(f"    ref_modele: '{ref_modele}', commercial_ref: '{commercial_ref}'")
+                        print(f"    Données complètes: {appareil_data}")
                         ignored_count += 1
             
             # Fermer la barre de progression
@@ -3880,6 +3887,15 @@ class MainWindow(QMainWindow):
             
             # Forcer le rafraîchissement et afficher le résultat
             self._force_refresh_display(reset_page=True, clear_filters=True)
+            
+            # Résumé détaillé pour debugging
+            print(f"\n📊 Résumé de l'import par collage:")
+            print(f"  Total lignes traitées: {total_rows}")
+            print(f"  Lignes rejetées: {ignored_count}")
+            print(f"  Appareils nouveaux: {inserted_count}")
+            print(f"  Appareils mis à jour: {updated_count}")
+            print(f"  Associations créées: {associations_created}")
+            print(f"  Doublons ignorés: {duplicates_skipped}")
             
             # Afficher la synthèse comme pour l'import CSV
             results = {
