@@ -3888,14 +3888,19 @@ class MainWindow(QMainWindow):
             # Forcer le rafraîchissement et afficher le résultat
             self._force_refresh_display(reset_page=True, clear_filters=True)
             
-            # Résumé détaillé pour debugging
-            print(f"\n📊 Résumé de l'import par collage:")
-            print(f"  Total lignes traitées: {total_rows}")
-            print(f"  Lignes rejetées: {ignored_count}")
-            print(f"  Appareils nouveaux: {inserted_count}")
-            print(f"  Appareils mis à jour: {updated_count}")
-            print(f"  Associations créées: {associations_created}")
-            print(f"  Doublons ignorés: {duplicates_skipped}")
+            # Résumé détaillé pour debugging ET historique
+            detailed_summary = f"📊 Résumé de l'import par collage:\n"
+            detailed_summary += f"  Total lignes traitées: {total_rows}\n"
+            detailed_summary += f"  Lignes rejetées: {ignored_count}\n"
+            detailed_summary += f"  Appareils nouveaux: {inserted_count}\n"
+            detailed_summary += f"  Appareils mis à jour: {updated_count}\n"
+            detailed_summary += f"  Associations créées: {associations_created}\n"
+            detailed_summary += f"  Doublons ignorés: {duplicates_skipped}"
+            
+            print(f"\n{detailed_summary}")
+            
+            # Ajouter le résumé détaillé directement à l'historique
+            self._add_to_history(detailed_summary)
             
             # Afficher la synthèse comme pour l'import CSV
             results = {
