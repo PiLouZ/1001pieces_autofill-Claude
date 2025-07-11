@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
     QToolBar, QAction, QStatusBar, QSplitter, QTabWidget, 
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
-    QProgressDialog, QCheckBox, QMenu
+    QProgressDialog, QCheckBox, QMenu, QDialog
 )
 from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent
 from PyQt5.QtCore import QSize, QMimeData, QUrl
@@ -904,7 +904,7 @@ class MainWindow(QMainWindow):
         
         # Groupe Menus déroulants
         # Menu Gestion dans la toolbar
-        gestion_btn = QPushButton("Gestion ▼")
+        gestion_btn = QPushButton("Gestion")
         gestion_btn.setObjectName("menuButton")
         gestion_menu = QMenu()
         
@@ -924,7 +924,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(gestion_btn)
         
         # Menu Action dans la toolbar
-        action_btn = QPushButton("Action ▼")
+        action_btn = QPushButton("Action")
         action_btn.setObjectName("menuButton")
         action_menu = QMenu()
         
@@ -934,7 +934,7 @@ class MainWindow(QMainWindow):
         
         action_menu.addSeparator()
         
-        autocomplete_action = QAction("≔ Autocomplétion", self)
+        autocomplete_action = QAction("🗯️ Autocomplétion", self)
         autocomplete_action.triggered.connect(self._fill_empty_fields)
         action_menu.addAction(autocomplete_action)
         
@@ -2858,54 +2858,115 @@ class MainWindow(QMainWindow):
             self._show_error(f"Erreur lors de la complétion: {e}")
 
     def _clean_data(self):
-        """Nettoyer les données"""
-        try:
-            result = self.db_manager.clean_data()
+        """Nettoyer les données avec prévisualisation détaillée"""
+        from .cleanup_preview import CleanupPreviewDialog
+        
+        # Ouvrir la fenêtre de prévisualisation
+        preview_dialog = CleanupPreviewDialog(self)
+        
+        if preview_dialog.exec_() != QDialog.Accepted:
+            return
+        
+        # Récupérer les options de nettoyage
+        cleanup_options = preview_dialog.get_cleanup_options()
+        
+        # Si aucun doublon trouvé, ne rien faire
+        if not cleanup_options['analysis_data'] or \
+           (cleanup_options['analysis_data']['statistics']['total_devices_to_delete'] == 0 and \
+            cleanup_options['analysis_data']['statistics']['total_duplicate_pieces'] == 0 and \
+            cleanup_options['analysis_data']['statistics']['inconsistencies_count'] == 0):
+            self._show_info("✅ Aucun doublon trouvé ! La base de données est déjà propre.")
+            return
+        
+        # Confirmation finale
+        stats = cleanup_options['analysis_data']['statistics']
+        operations = []
+        
+        if cleanup_options['clean_devices'] and stats['total_devices_to_delete'] > 0:
+            operations.append(f"• Supprimer {stats['total_devices_to_delete']} appareils en doublon")
+            operations.append(f"• Transférer {stats['total_pieces_to_transfer']} pièces associées")
+        
+        if cleanup_options['clean_pieces'] and stats['total_duplicate_pieces'] > 0:
+            operations.append(f"• Supprimer {stats['total_duplicate_pieces']} références de pièces dupliquées")
+        
+        if cleanup_options['clean_inconsistencies'] and stats['inconsistencies_count'] > 0:
+            inconsistencies_to_merge = 0
+            for group_data in cleanup_options.get('inconsistencies_fusion_data', []):
+                if group_data.get('master_device'):
+                    # Compter les appareils qui seront fusionnés (tous sauf le maître)
+                    inconsistencies_to_merge += len(group_data['devices']) - 1
+            if inconsistencies_to_merge > 0:
+                operations.append(f"• Fusionner {inconsistencies_to_merge} appareils avec doublons de références")
+        
+        if not operations:
+            # Message plus informatif selon le contexte
+            debug_info = []
+            if stats['total_devices_to_delete'] > 0:
+                debug_info.append(f"Appareils en doublon: {stats['total_devices_to_delete']} (option cochée: {cleanup_options['clean_devices']})")
+            if stats['total_duplicate_pieces'] > 0:
+                debug_info.append(f"Pièces dupliquées: {stats['total_duplicate_pieces']} (option cochée: {cleanup_options['clean_pieces']})")
+            if stats['inconsistencies_count'] > 0:
+                fusion_count = len(cleanup_options.get('inconsistencies_fusion_data', []))
+                debug_info.append(f"Doublons de références: {stats['inconsistencies_count']} détectés, {fusion_count} avec sélection (option cochée: {cleanup_options['clean_inconsistencies']})")
             
-            # Message détaillé avec fusion des données
-            message_parts = []
-            if result['deleted_empty'] > 0:
-                message_parts.append(f"{result['deleted_empty']} lignes vides supprimées")
-            if result['deleted_duplicates'] > 0:
-                message_parts.append(f"{result['deleted_duplicates']} doublons supprimés")
-            if result.get('merged_notes', 0) > 0:
-                message_parts.append(f"{result['merged_notes']} notes fusionnées")
-            
-            if message_parts:
-                message = f"Nettoyage terminé: {', '.join(message_parts)}"
+            message = "Aucune opération sélectionnée.\n\n"
+            if debug_info:
+                message += "État actuel:\n" + "\n".join(f"• {info}" for info in debug_info)
+                message += "\n\nVeuillez cocher les options de nettoyage souhaitées et/ou sélectionner des appareils à fusionner."
             else:
-                message = "Nettoyage terminé: Aucun problème détecté"
-                
-            self._add_to_history(message)
-            self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-            self._force_refresh_display(reset_page=True, clear_filters=True)
-        except DatabaseError as e:
-            self._show_error(f"Erreur lors du nettoyage: {e}")
-    
-    def _clean_data(self):
-        """Nettoyer les données (cumuler doublons et supprimer lignes vides)"""
-        reply = QMessageBox.question(
-            self, 
-            "Nettoyer les données",
-            "Cette opération va :\n"
-            "• Cumuler les appareils en doublon (garder le plus ancien)\n"
-            "• Transférer les pièces vers l'appareil conservé\n"
-            "• Cumuler les références de pièces dupliquées\n"
-            "• Supprimer les lignes vides\n\n"
-            "Cette action est irréversible. Continuer ?",
+                message += "Veuillez cocher au moins une option de nettoyage."
+            
+            self._show_info(message)
+            return
+        
+        final_confirmation = QMessageBox.question(
+            self,
+            "Confirmation finale",
+            "Opérations à effectuer :\n\n" + "\n".join(operations) + 
+            "\n\n⚠️ Cette action est IRRÉVERSIBLE !\n\nÊtes-vous absolument certain ?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
         
-        if reply != QMessageBox.Yes:
+        if final_confirmation != QMessageBox.Yes:
             return
         
         try:
-            # Nettoyer les doublons d'appareils
-            devices_deleted = self.db_manager.remove_duplicate_devices()
+            devices_deleted = 0
+            pieces_deleted = 0
             
-            # Nettoyer les doublons de pièces
-            pieces_deleted = self.db_manager.remove_duplicate_pieces()
+            # Nettoyer selon les options choisies
+            if cleanup_options['clean_devices'] and stats['total_devices_to_delete'] > 0:
+                devices_deleted = self.db_manager.remove_duplicate_devices()
+            
+            if cleanup_options['clean_pieces'] and stats['total_duplicate_pieces'] > 0:
+                pieces_deleted = self.db_manager.remove_duplicate_pieces()
+            
+            # Fusionner les doublons de références selon les choix utilisateur
+            inconsistencies_merged = 0
+            if cleanup_options['clean_inconsistencies'] and stats['inconsistencies_count'] > 0:
+                for group_data in cleanup_options.get('inconsistencies_fusion_data', []):
+                    master_device = group_data.get('master_device')
+                    if not master_device:
+                        continue
+                        
+                    master_id = master_device['id']
+                    
+                    # Appliquer les modifications du maître s'il y en a
+                    if master_device.get('modified', False):
+                        current_data = master_device['current_data']
+                        for field, value in current_data.items():
+                            if field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref', 'other_ref', 'category', 'notes']:
+                                self.db_manager.update_cell(master_id, field, value)
+                    
+                    # Fusionner tous les autres appareils vers le maître
+                    for device in group_data['devices']:
+                        if device['id'] != master_id and not device.get('is_master', False):
+                            # Transférer les pièces vers l'appareil maître
+                            self.db_manager.transfer_pieces(device['id'], master_id)
+                            # Supprimer l'appareil
+                            self.db_manager.delete_appareils([device['id']])
+                            inconsistencies_merged += 1
             
             # Nettoyer les données (fonction originale)
             result = self.db_manager.clean_data()
@@ -2916,6 +2977,8 @@ class MainWindow(QMainWindow):
                 message_parts.append(f"{devices_deleted} appareils dupliqués cumulés")
             if pieces_deleted > 0:
                 message_parts.append(f"{pieces_deleted} références de pièces dupliquées cumulées")
+            if inconsistencies_merged > 0:
+                message_parts.append(f"{inconsistencies_merged} appareils avec incohérences fusionnés")
             if result.get('deleted_empty', 0) > 0:
                 message_parts.append(f"{result['deleted_empty']} lignes vides supprimées")
             if result.get('deleted_duplicates', 0) > 0:
@@ -3452,7 +3515,10 @@ class MainWindow(QMainWindow):
                                     self.db_manager.add_piece(ref_piece, device_id, "")
                                     results['associations_created'] += 1
                                 else:
-                                    results['manual_completion'] += 1
+                                    # Vérifier si l'appareil nécessite encore une complétion manuelle
+                                    # après auto-complétion (seuls ceux sans type ET fabricant)
+                                    if self._needs_manual_completion(appareil_data):
+                                        results['manual_completion'] += 1
                 
                 # Compter chaque ligne traitée
                 results['total_imported'] += 1
@@ -4218,6 +4284,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             ignored_count = 0
             associations_created = 0  # Compter les vraies associations créées
             duplicates_skipped = 0   # Compter les associations déjà existantes
+            manual_completion_count = 0  # Compter les appareils nécessitant complétion manuelle
             total_rows = len(rows)
             
             # Créer une barre de progression pour les gros imports (10K+ lignes)
@@ -4380,6 +4447,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             inserted_count += 1
                             print(f"✨ Ligne {row_idx + 1}: Nouvel appareil créé (ID: {appareil_id})")
                             
+                            # Vérifier si l'appareil nécessite une complétion manuelle
+                            # seulement pour les appareils sans référence de pièce associée
+                            if not ref_piece or not ref_piece.strip():
+                                if self._needs_manual_completion(appareil_data):
+                                    manual_completion_count += 1
+                            
                             # Ajouter la pièce si spécifiée
                             if ref_piece and ref_piece.strip():
                                 self.db_manager.add_piece(ref_piece.strip(), appareil_id, "")
@@ -4418,11 +4491,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Ajouter le résumé détaillé directement à l'historique
             self._add_to_history(detailed_summary)
             
+            
             # Afficher la synthèse comme pour l'import CSV
             results = {
                 'total_imported': total_rows - ignored_count,
                 'matches_found': updated_count,
-                'manual_completion': inserted_count if not ref_piece or not ref_piece.strip() else 0,
+                'manual_completion': manual_completion_count,  # Sera mis à jour plus bas
                 'duplicates_skipped': duplicates_skipped,
                 'new_entries': inserted_count,
                 'associations_created': associations_created
@@ -4464,6 +4538,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
         except Exception as e:
             self._show_error(f"Erreur lors de la copie: {e}")
+
+    def _needs_manual_completion(self, appareil_data: dict) -> bool:
+        """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""
+        type_empty = not appareil_data.get('type', '').strip()
+        manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
+        return type_empty and manufacturer_empty
 
     def _try_auto_complete(self, appareil_data: dict):
         """Essayer de compléter automatiquement Type et Fabricant à partir des références"""

@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 
+
 def clean_display_text(text):
     """
     Nettoie le texte pour l'affichage en supprimant les caractères illisibles
@@ -85,7 +86,6 @@ class ValidationWindow(QDialog):
             "Tout afficher",
             "🔧 Problèmes de validation",
             "🔄 Références avec variations",
-            "🔗 Pièces orphelines", 
             "📋 Références en doublon",
             "❌ Champs critiques vides"
         ])
@@ -310,25 +310,19 @@ class ValidationWindow(QDialog):
         
         # Validation
         lines.append("📋 VALIDATION DE LA BASE:")
-        if self.validation_data.get('orphaned_pieces', 0) > 0:
-            lines.append(f"  🔗 {self.validation_data['orphaned_pieces']} pièce(s) orpheline(s)")
         if self.validation_data.get('duplicate_refs', 0) > 0:
             lines.append(f"  📋 {self.validation_data['duplicate_refs']} référence(s) en doublon")
             
-            # Lister les références en doublon
+            # Lister les références en doublon (par ref_modele)
             try:
-                duplicates = self.parent_window.db_manager.get_duplicate_references()
+                duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
                 if duplicates:
-                    lines.append("     Références dupliquées :")
-                    for type_val, manufacturer, ref_modele, commercial_ref, other_ref, count in duplicates[:10]:  # Limiter à 10
-                        clean_type = clean_display_text(type_val)
-                        clean_manufacturer = clean_display_text(manufacturer)
+                    lines.append("     Références modèle dupliquées :")
+                    for ref_modele, count in duplicates[:10]:  # Limiter à 10
                         clean_ref = clean_display_text(ref_modele)
-                        clean_comm_ref = clean_display_text(commercial_ref)
-                        clean_other_ref = clean_display_text(other_ref)
-                        lines.append(f"     • {clean_type} | {clean_manufacturer} | {clean_ref} | {clean_comm_ref} | {clean_other_ref} ({count}x)")
+                        lines.append(f"     • '{clean_ref}' ({count} appareils)")
                     if len(duplicates) > 10:
-                        lines.append(f"     ... et {len(duplicates) - 10} autres")
+                        lines.append(f"     ... et {len(duplicates) - 10} autres références")
             except Exception as e:
                 lines.append(f"     Erreur lors de la récupération des doublons: {e}")
         if self.validation_data.get('empty_critical', 0) > 0:
@@ -366,7 +360,7 @@ class ValidationWindow(QDialog):
         self.details_tree.clear()
         
         # Appliquer le filtrage selon la sélection
-        show_validation = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "🔗 Pièces orphelines", "📋 Références en doublon", "❌ Champs critiques vides"]
+        show_validation = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "📋 Références en doublon", "❌ Champs critiques vides"]
         show_inconsistencies = self.current_filter in ["Tout afficher", "🔄 Références avec variations"]
         
         # Ajouter les problèmes de validation
@@ -374,18 +368,8 @@ class ValidationWindow(QDialog):
             validation_item = QTreeWidgetItem(["🔧 Problèmes de validation", "", str(sum(self.validation_data.values())), ""])
             
             # Filtres spécifiques
-            show_orphaned = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "🔗 Pièces orphelines"]
             show_duplicates = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "📋 Références en doublon"]
             show_empty = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "❌ Champs critiques vides"]
-            
-            if show_orphaned and self.validation_data.get('orphaned_pieces', 0) > 0:
-                orphaned_item = QTreeWidgetItem([
-                    "🔗 Pièces orphelines", 
-                    f"{self.validation_data['orphaned_pieces']} pièces sans appareil parent", 
-                    str(self.validation_data['orphaned_pieces']), 
-                    "Rechercher"
-                ])
-                validation_item.addChild(orphaned_item)
             
             if show_duplicates and self.validation_data.get('duplicate_refs', 0) > 0:
                 duplicate_item = QTreeWidgetItem([
@@ -395,27 +379,23 @@ class ValidationWindow(QDialog):
                     "Rechercher"
                 ])
                 
-                # Ajouter le détail des références en doublon
+                # Ajouter le détail des références en doublon (par ref_modele)
                 try:
-                    duplicates = self.parent_window.db_manager.get_duplicate_references()
-                    for type_val, manufacturer, ref_modele, commercial_ref, other_ref, count in duplicates[:20]:  # Limiter à 20
-                        clean_type = clean_display_text(type_val)
-                        clean_manufacturer = clean_display_text(manufacturer)
+                    duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
+                    for ref_modele, count in duplicates[:50]:  # Limiter à 50 pour éviter surcharge
                         clean_ref = clean_display_text(ref_modele)
-                        clean_comm_ref = clean_display_text(commercial_ref)
-                        clean_other_ref = clean_display_text(other_ref)
                         
                         duplicate_detail = QTreeWidgetItem([
-                            f"{clean_type} | {clean_manufacturer} | {clean_ref} | {clean_comm_ref} | {clean_other_ref}",
-                            f"{count} occurrences",
+                            f"📋 {clean_ref}",
+                            f"{count} appareils avec cette référence",
                             str(count),
                             "Rechercher"
                         ])
                         duplicate_item.addChild(duplicate_detail)
                     
-                    if len(duplicates) > 20:
+                    if len(duplicates) > 50:
                         more_item = QTreeWidgetItem([
-                            f"... et {len(duplicates) - 20} autres",
+                            f"... et {len(duplicates) - 50} autres références",
                             "",
                             "",
                             ""
@@ -481,11 +461,7 @@ class ValidationWindow(QDialog):
     def _quick_search(self, search_type):
         """Effectuer une recherche rapide dans la fenêtre principale"""
         try:
-            if search_type == "orphaned":
-                # Rechercher les pièces orphelines - pas d'action directe sur le tableau principal
-                self.parent_window.statusbar.showMessage("🔗 Pièces orphelines trouvées dans l'onglet Détails", 3000)
-                
-            elif search_type == "duplicates":
+            if search_type == "duplicates":
                 # Rechercher les doublons - recherche générale
                 self.parent_window.search_input.clear()
                 self.parent_window.statusbar.showMessage("📋 Voir l'onglet Détails pour les références en doublon", 3000)
@@ -514,14 +490,12 @@ class ValidationWindow(QDialog):
         if column == 3 and item.text(3) == "Rechercher":
             # Effectuer une recherche basée sur le type d'élément
             item_type = item.text(0)
-            if "orphelines" in item_type:
-                self._quick_search("orphaned")
-            elif "doublon" in item_type:
+            if "doublon" in item_type:
                 self._quick_search("duplicates")
             elif "vides" in item_type:
                 self._quick_search("empty")
-            elif item.parent() and "Incohérences" in item.parent().text(0):
-                # Recherche d'une référence spécifique
+            elif item.parent() and ("Incohérences" in item.parent().text(0) or "doublon" in item.parent().text(0)):
+                # Recherche d'une référence spécifique (incohérences ou doublons)
                 ref_modele = item.text(0).replace("📋 ", "")
                 clean_ref_modele = clean_display_text(ref_modele)
                 self.parent_window.search_input.setText(clean_ref_modele)

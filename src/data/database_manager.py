@@ -621,6 +621,27 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce: {e}")
     
+    def get_duplicate_ref_modeles(self) -> List[Tuple[str, int]]:
+        """Récupérer les ref_modele en doublon avec leur nombre d'occurrences"""
+        try:
+            query = Config.get_query('duplicate_refs')
+            return self.execute_custom_query(query)
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la récupération des doublons ref_modele: {e}")
+    
+    def get_devices_by_ref_modele(self, ref_modele: str) -> List[Tuple]:
+        """Récupérer tous les appareils ayant la même ref_modele"""
+        try:
+            query = """
+                SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
+                FROM appareils 
+                WHERE ref_modele = ?
+                ORDER BY id
+            """
+            return self.execute_custom_query(query, [ref_modele])
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la récupération des appareils: {e}")
+
     def get_duplicate_references(self) -> List[Tuple[str, str, str, str, str, int]]:
         """Récupérer les références d'appareils en doublon (colonnes A,B,C,D,E identiques)"""
         try:
@@ -635,6 +656,27 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des doublons: {e}")
     
+    def transfer_pieces(self, from_device_id: int, to_device_id: int):
+        """Transférer les pièces d'un appareil vers un autre"""
+        try:
+            # Transférer les pièces vers l'appareil de destination (éviter les doublons)
+            transfer_query = """
+                UPDATE pieces SET appareil_id = ? 
+                WHERE appareil_id = ? AND ref_piece NOT IN (
+                    SELECT ref_piece FROM pieces WHERE appareil_id = ?
+                )
+            """
+            self.cursor.execute(transfer_query, (to_device_id, from_device_id, to_device_id))
+            
+            # Supprimer les pièces restantes de l'appareil source (doublons)
+            self.cursor.execute("DELETE FROM pieces WHERE appareil_id = ?", (from_device_id,))
+            
+            self.conn.commit()
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors du transfert des pièces: {e}")
+
     def remove_duplicate_devices(self) -> int:
         """Supprimer les appareils en doublon en gardant le plus ancien"""
         try:
