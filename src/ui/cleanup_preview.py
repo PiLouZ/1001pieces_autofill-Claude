@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, 
     QTableWidgetItem, QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
     QGroupBox, QTabWidget, QWidget, QProgressBar, QCheckBox, QTreeWidget,
-    QTreeWidgetItem, QMenu, QAction, QApplication
+    QTreeWidgetItem, QApplication
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
@@ -250,9 +250,9 @@ class CleanupPreviewDialog(QDialog):
         self.inconsistencies_tree.setRootIsDecorated(True)
         self.inconsistencies_tree.setItemsExpandable(True)
         
-        # Configurer le menu contextuel pour copier les valeurs
+        # Configurer le clic droit pour copier directement les valeurs
         self.inconsistencies_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.inconsistencies_tree.customContextMenuRequested.connect(self._show_context_menu)
+        self.inconsistencies_tree.customContextMenuRequested.connect(self._copy_cell_on_right_click)
         
         layout.addWidget(self.inconsistencies_tree)
         
@@ -866,8 +866,8 @@ class CleanupPreviewDialog(QDialog):
         self.proceed_btn.setText("Fermer")
         self.proceed_btn.setEnabled(True)
     
-    def _show_context_menu(self, position):
-        """Afficher le menu contextuel pour copier les valeurs de cellules"""
+    def _copy_cell_on_right_click(self, position):
+        """Copier directement la valeur de la cellule sous le clic droit"""
         # Vérifier qu'on a cliqué sur un élément valide
         item = self.inconsistencies_tree.itemAt(position)
         if not item:
@@ -883,24 +883,8 @@ class CleanupPreviewDialog(QDialog):
         if not cell_value or cell_value.strip() == "":
             return
         
-        # Créer le menu contextuel
-        context_menu = QMenu(self)
-        
-        # Action pour copier la valeur
-        copy_action = QAction(f"📋 Copier '{cell_value}'", self)
-        copy_action.triggered.connect(lambda: self._copy_to_clipboard(cell_value))
-        context_menu.addAction(copy_action)
-        
-        # Ajouter une action avec le nom de la colonne pour plus de clarté
-        headers = ["", "ID", "Type", "Fabricant", "Ref Modèle", "Ref Comm.", "Autre Ref", "Catégorie", "Notes"]
-        if column < len(headers):
-            column_name = headers[column]
-            copy_detailed_action = QAction(f"📝 Copier {column_name}: '{cell_value}'", self)
-            copy_detailed_action.triggered.connect(lambda: self._copy_to_clipboard(cell_value))
-            context_menu.addAction(copy_detailed_action)
-        
-        # Afficher le menu à la position du clic
-        context_menu.exec_(self.inconsistencies_tree.mapToGlobal(position))
+        # Copier directement dans le presse-papiers
+        self._copy_to_clipboard(cell_value)
     
     def _copy_to_clipboard(self, text):
         """Copier le texte dans le presse-papiers"""
