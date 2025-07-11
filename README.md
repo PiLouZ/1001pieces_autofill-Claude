@@ -77,6 +77,15 @@ python3 -m src.ui.main_refactored
 - **Cartes visuelles** avec statistiques colorées
 - **Actions rapides** pour traiter les problèmes détectés
 
+### 🏗️ **Gestion Hiérarchique des Doublons (v2.2.0)**
+- **Interface QTreeWidget** - Vue hiérarchique intuitive avec appareils parents/enfants
+- **Référence principale automatique** - Appareil le plus ancien comme référent par défaut
+- **Sélection manuelle sécurisée** - Cases à cocher pour choix de base de fusion
+- **Édition directe** - Modification des données directement dans l'arbre
+- **Auto-sélection intelligente** - Plus ancien ou plus complet selon préférence
+- **Fusion contrôlée** - Transfert de pièces et consolidation des données
+- **Prévisualisation détaillée** - Aperçu complet avant validation des opérations
+
 ### ⚙️ **Gestion des Colonnes Personnalisable**
 - **Affichage configurable** - Masquer/afficher les colonnes selon les besoins
 - **Sauvegarde automatique** des préférences d'affichage
@@ -137,7 +146,9 @@ pip3 install PyQt5
 
 ### 🔧 **Outils Avancés**
 - ✅ **Détection d'incohérences** - Références avec valeurs différentes
-- ✅ **Nettoyage automatique** - Suppression doublons et lignes vides
+- ✅ **Nettoyage hiérarchique** - Gestion des doublons avec interface intuitive
+- ✅ **Fusion contrôlée** - Sélection manuelle des appareils de référence
+- ✅ **Prévisualisation complète** - Aperçu détaillé avant toute opération
 - ✅ **Gestion des pièces** - Association appareils/pièces avec compteurs
 - ✅ **Historique complet** - Traçabilité de toutes les modifications
 - ✅ **Auto-sauvegarde** - Protection contre la perte de données
@@ -220,17 +231,23 @@ Cette version représente une refonte complète avec :
 - **💾 Stabilité renforcée** - Gestion d'erreurs et sauvegarde automatique
 - **🎯 Expérience utilisateur** - Intuitive et productive
 
-### 🆕 Dernières Améliorations (v2.1.0)
+### 🆕 Dernières Améliorations (v2.2.0)
 
+#### 🏗️ **Gestion Hiérarchique des Doublons - Révolution UX**
+- **✅ Interface QTreeWidget** - Vue hiérarchique avec référent principal et doublons indentés
+- **✅ Sélection manuelle sécurisée** - Cases à cocher sans pré-sélection pour éviter les erreurs
+- **✅ Édition temps réel** - Modification directe des données dans l'arbre
+- **✅ Auto-sélection intelligente** - Boutons pour choisir automatiquement (plus ancien/plus complet)
+- **✅ Fusion contrôlée** - Transfert de pièces et consolidation des données avec aperçu détaillé
+- **✅ Checkbox automatique** - Se coche automatiquement lors d'une sélection d'appareil
+
+#### 🔧 **Améliorations Précédentes (v2.1.0)**
 - **✅ Option en-têtes CSV** - Configuration d'import précise et flexible
 - **✅ Interface réorganisée** - Menus "Gestion" et "Action" structurés
 - **✅ Bouton Rafraîchir** - Déplacé dans la toolbar avec raccourci F5
 - **✅ Pagination optimisée** - Sur 2 lignes avec "Lignes à traiter" intégré
-- **✅ Interface épurée** - Suppression des boutons redondants
 - **✅ Export CSV amélioré** - Sauvegarde automatique sur le Bureau
 - **✅ Gestion des pièces** - Suppression avec menu contextuel
-- **✅ Raccourcis clavier** - Entrée/Échap pour les confirmations
-- **✅ Historique enrichi** - Référence de l'appareil lors des suppressions
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
 **📅 Version 2025 - Stable et optimisée pour la production**

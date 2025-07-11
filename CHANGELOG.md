@@ -2,6 +2,65 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.2.0] - 2025-07-11 - 🏗️ Gestion Hiérarchique des Doublons
+
+### 🎯 **Révolution UX : Interface Hiérarchique**
+
+Cette version introduit une approche complètement nouvelle pour la gestion des doublons avec une interface hiérarchique intuitive et sécurisée.
+
+#### ✨ **Nouvelles Fonctionnalités Majeures**
+
+##### 🌳 **Interface QTreeWidget Hiérarchique**
+- Vue hiérarchique intuitive avec appareil le plus ancien comme référent principal (🏆)
+- Doublons affichés comme sous-éléments indentés avec icône distinctif (📋)
+- Navigation claire avec boutons Expand/Collapse All
+- Colonnes redimensionnables et interface responsive
+
+##### 🛡️ **Sélection Manuelle Sécurisée**
+- Cases à cocher pour chaque appareil SANS pré-sélection automatique
+- Prévention des fusions accidentelles grâce à l'absence de sélection par défaut
+- Une seule sélection possible par groupe pour éviter les conflits
+- Checkbox "Fusionner les doublons de références" se coche automatiquement lors d'une sélection
+
+##### ✏️ **Édition Directe des Données**
+- Modification en temps réel des cellules directement dans l'arbre
+- Double-clic ou touche Édition pour modifier les valeurs
+- Tracking automatique des modifications pour application lors de la fusion
+- Synchronisation parfaite entre interface et données
+
+##### 🤖 **Auto-Sélection Intelligente**
+- **"⏰ Auto: sélectionner les plus anciens"** - Choisit l'appareil avec l'ID le plus bas
+- **"✅ Auto: sélectionner les plus complets"** - Choisit l'appareil avec le plus de champs remplis
+- Gestion intelligente des égalités avec fallback sur l'âge
+- Mise à jour automatique de la checkbox de fusion
+
+##### 🔗 **Fusion Contrôlée et Sécurisée**
+- Transfert intelligent des pièces associées vers l'appareil de référence sélectionné
+- Application des modifications utilisateur sur l'appareil conservé  
+- Suppression sécurisée des appareils fusionnés avec préservation des données
+- Prévisualisation complète des opérations avant validation
+
+#### 🔧 **Fichiers Impactés**
+- **NOUVEAU**: `src/ui/cleanup_preview.py` - Interface hiérarchique complète (1000+ lignes)
+- **NOUVEAU**: `src/ui/duplicates_manager.py` - Gestionnaire dédié aux doublons
+- **MODIFIÉ**: `src/ui/main_refactored.py` - Intégration du nouveau workflow
+- **MODIFIÉ**: `src/data/database_manager.py` - Nouvelles méthodes `transfer_pieces()` et `get_devices_by_ref_modele()`
+- **MODIFIÉ**: `src/ui/validation_window.py` - Harmonisation de la logique
+
+#### 🛡️ **Robustesse et Sécurité**
+- **Source de vérité unique** - Utilisation de l'état réel des checkboxes plutôt que des données stockées
+- **Validation renforcée** - Vérification de cohérence avant toute opération
+- **Messages informatifs** - Debug détaillé en cas de problème de sélection
+- **Gestion d'erreurs** - Messages explicites avec état actuel des sélections
+
+#### 🎨 **Améliorations UX**
+- Interface plus intuitive avec hiérarchie visuelle claire
+- Prévention totale des erreurs de manipulation grâce à la sélection manuelle
+- Feedback temps réel sur les sélections et modifications
+- Workflow complet de la sélection à la fusion avec aperçu détaillé
+
+---
+
 ## [2.1.0] - 2025-07-10 - Amélioration majeure de l'interface utilisateur
 
 ### ✨ Nouvelles Fonctionnalités
