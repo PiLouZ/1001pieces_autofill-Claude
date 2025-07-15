@@ -3475,6 +3475,13 @@ class MainWindow(QMainWindow):
                         else:
                             results['duplicates_skipped'] += 1
                     
+                    # Vérifier si l'appareil nécessite encore une complétion manuelle
+                    # après mise à jour (seuls ceux sans type ET fabricant)
+                    final_device_data = dict(existing_device)
+                    final_device_data.update(updates)
+                    if self._needs_manual_completion(final_device_data):
+                        results['manual_completion'] += 1
+                    
                     results['matches_found'] += 1
                     # NE PAS créer de nouvelle ligne dans le tableau
                 else:
@@ -4416,6 +4423,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             duplicates_skipped += 1
                             print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
                     
+                    # Vérifier si l'appareil nécessite encore une complétion manuelle
+                    # après mise à jour (seuls ceux sans type ET fabricant)
+                    final_device_data = dict(existing_device)
+                    final_device_data.update(updates)
+                    if self._needs_manual_completion(final_device_data):
+                        manual_completion_count += 1
+                    
                     updated_count += 1
                     
                 else:
@@ -4448,10 +4462,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             print(f"✨ Ligne {row_idx + 1}: Nouvel appareil créé (ID: {appareil_id})")
                             
                             # Vérifier si l'appareil nécessite une complétion manuelle
-                            # seulement pour les appareils sans référence de pièce associée
-                            if not ref_piece or not ref_piece.strip():
-                                if self._needs_manual_completion(appareil_data):
-                                    manual_completion_count += 1
+                            # après auto-complétion (seuls ceux sans type ET fabricant)
+                            if self._needs_manual_completion(appareil_data):
+                                manual_completion_count += 1
                             
                             # Ajouter la pièce si spécifiée
                             if ref_piece and ref_piece.strip():
