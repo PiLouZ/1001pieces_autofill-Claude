@@ -179,8 +179,11 @@ class DataExporter:
             raise ExportError(f"Erreur lors de l'export HTML marques: {e}")
     
     def _export_html_details(self, data: List[Tuple], search_term: str) -> str:
-        """Exporter les détails en HTML pour le presse-papiers"""
+        """Exporter les détails en HTML pour le presse-papiers avec gestion de la limite de caractères"""
         try:
+            # Limite de caractères pour le site web
+            CHAR_LIMIT = 195000
+            
             # Grouper par marque
             brands_data = defaultdict(list)
             for record in data:
@@ -189,31 +192,110 @@ class DataExporter:
                 commercial_ref = record[3] # Index 3 = commercial_ref
                 
                 if manufacturer and manufacturer.strip():
-                    modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
-                    if modele_complet and modele_complet != ' - ':
-                        brands_data[manufacturer].append(modele_complet)
+                    brands_data[manufacturer].append({
+                        'ref_modele': ref_modele or '',
+                        'commercial_ref': commercial_ref or ''
+                    })
             
-            # Générer le HTML
-            html_parts = []
-            for brand in sorted(brands_data.keys()):
-                models = brands_data[brand]
-                html_parts.append(f'<div id="{brand}"><b><u>{brand}</u></b></div>')
+            # Fonction pour calculer les caractères non-HTML
+            def count_non_html_chars(html_content):
+                import re
+                # Supprimer toutes les balises HTML
+                text_only = re.sub(r'<[^>]+>', '', html_content)
+                # Remplacer les entités HTML courantes
+                text_only = text_only.replace('&nbsp;', ' ')
+                text_only = text_only.replace('&amp;', '&')
+                text_only = text_only.replace('&lt;', '<')
+                text_only = text_only.replace('&gt;', '>')
+                return len(text_only)
+            
+            # Essai 1: Format complet (ref_modele - commercial_ref)
+            html_output = self._generate_html_content(brands_data, 'full')
+            char_count = count_non_html_chars(html_output)
+            if char_count <= CHAR_LIMIT:
+                # Stocker les informations pour le message utilisateur
+                self._last_export_info = {
+                    'format_used': 'complet',
+                    'char_count': char_count,
+                    'char_limit': CHAR_LIMIT,
+                    'description': 'Référence Modèle - Référence Commerciale'
+                }
+                return html_output
                 
-                for model in sorted(set(models)):  # Éviter les doublons
-                    html_parts.append(f'<div>{model}</div>')
+            # Essai 2: Seulement ref_modele
+            html_output = self._generate_html_content(brands_data, 'ref_modele')
+            char_count = count_non_html_chars(html_output)
+            if char_count <= CHAR_LIMIT:
+                # Stocker les informations pour le message utilisateur
+                self._last_export_info = {
+                    'format_used': 'ref_modele',
+                    'char_count': char_count,
+                    'char_limit': CHAR_LIMIT,
+                    'description': 'Référence Modèle uniquement'
+                }
+                return html_output
                 
-                html_parts.append('<div>&nbsp;</div>')
-            
-            # Retirer le dernier espace
-            if html_parts and html_parts[-1] == '<div>&nbsp;</div>':
-                html_parts.pop()
-            
-            html_output = '\n'.join(html_parts)
-            
+            # Essai 3: Seulement commercial_ref (sans doublons)
+            html_output = self._generate_html_content(brands_data, 'commercial_ref')
+            char_count = count_non_html_chars(html_output)
+            # Stocker les informations pour le message utilisateur
+            self._last_export_info = {
+                'format_used': 'commercial_ref',
+                'char_count': char_count,
+                'char_limit': CHAR_LIMIT,
+                'description': 'Référence Commerciale uniquement'
+            }
             return html_output
             
         except Exception as e:
             raise ExportError(f"Erreur lors de l'export HTML détails: {e}")
+    
+    def get_last_export_info(self):
+        """Récupérer les informations du dernier export HTML détails"""
+        return getattr(self, '_last_export_info', None)
+    
+    def _generate_html_content(self, brands_data: dict, format_type: str) -> str:
+        """Générer le contenu HTML selon le format spécifié"""
+        html_parts = []
+        
+        for brand in sorted(brands_data.keys()):
+            models_info = brands_data[brand]
+            html_parts.append(f'<div id="{brand}"><b><u>{brand}</u></b></div>')
+            
+            # Préparer les modèles selon le format
+            models_to_display = []
+            
+            for model_info in models_info:
+                ref_modele = model_info['ref_modele']
+                commercial_ref = model_info['commercial_ref']
+                
+                if format_type == 'full':
+                    # Format complet: ref_modele - commercial_ref
+                    modele_complet = f"{ref_modele} - {commercial_ref}".strip(' -')
+                    if modele_complet and modele_complet != ' - ':
+                        models_to_display.append(modele_complet)
+                        
+                elif format_type == 'ref_modele':
+                    # Seulement ref_modele
+                    if ref_modele and ref_modele.strip():
+                        models_to_display.append(ref_modele.strip())
+                        
+                elif format_type == 'commercial_ref':
+                    # Seulement commercial_ref
+                    if commercial_ref and commercial_ref.strip():
+                        models_to_display.append(commercial_ref.strip())
+            
+            # Ajouter les modèles (sans doublons)
+            for model in sorted(set(models_to_display)):
+                html_parts.append(f'<div>{model}</div>')
+            
+            html_parts.append('<div>&nbsp;</div>')
+        
+        # Retirer le dernier espace
+        if html_parts and html_parts[-1] == '<div>&nbsp;</div>':
+            html_parts.pop()
+        
+        return '\n'.join(html_parts)
     
     def _export_to_xml(self, data: List[Tuple], filename: str, search_term: str) -> str:
         """Exporter vers XML"""

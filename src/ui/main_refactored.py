@@ -1982,7 +1982,19 @@ class MainWindow(QMainWindow):
             if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
                 # Copier dans le presse-papiers
                 QApplication.clipboard().setText(result)
-                self.statusbar.showMessage(Config.get_message('data_copied'), Config.STATUS_MESSAGE_TIMEOUT)
+                
+                # Afficher les informations sur le format utilisé pour HTML Détails
+                if export_format == ExportFormat.HTML_DETAILS:
+                    export_info = self.exporter.get_last_export_info()
+                    if export_info:
+                        format_msg = f"Export HTML copié ({export_info['description']}) - {export_info['char_count']:,} caractères"
+                        if export_info['format_used'] != 'complet':
+                            format_msg += f" (limite: {export_info['char_limit']:,})"
+                        self.statusbar.showMessage(format_msg, Config.LONG_STATUS_MESSAGE_TIMEOUT * 2)
+                    else:
+                        self.statusbar.showMessage(Config.get_message('data_copied'), Config.STATUS_MESSAGE_TIMEOUT)
+                else:
+                    self.statusbar.showMessage(Config.get_message('data_copied'), Config.STATUS_MESSAGE_TIMEOUT)
             else:
                 self.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
                 
