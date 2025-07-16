@@ -103,7 +103,8 @@ class DatabaseManager:
                     appareil_id INTEGER,
                     description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE
+                    FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
+                    UNIQUE(appareil_id, ref_piece)
                 )
             """)
             
@@ -119,6 +120,9 @@ class DatabaseManager:
             
             # Ajouter les colonnes manquantes pour la table pieces
             self._add_missing_pieces_columns()
+            
+            # Ajouter la contrainte unique pour prévenir les doublons
+            self._add_unique_constraint_pieces()
             
             # Index pour les performances
             self._create_indexes()
@@ -170,6 +174,56 @@ class DatabaseManager:
                     
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout des colonnes pieces: {e}")
+    
+    def _add_unique_constraint_pieces(self):
+        """Ajouter la contrainte unique pour prévenir les doublons de pièces"""
+        try:
+            # Vérifier si la contrainte unique existe déjà
+            self.cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='pieces'")
+            table_sql = self.cursor.fetchone()
+            
+            if table_sql and 'UNIQUE(appareil_id, ref_piece)' not in table_sql[0]:
+                # Nettoyer les doublons existants avant d'ajouter la contrainte
+                self.remove_duplicate_pieces()
+                
+                # Recréer la table avec la contrainte unique
+                self.cursor.execute("BEGIN TRANSACTION")
+                
+                # Créer une table temporaire avec la contrainte
+                self.cursor.execute("""
+                    CREATE TABLE pieces_temp (
+                        id INTEGER PRIMARY KEY,
+                        ref_piece TEXT NOT NULL,
+                        appareil_id INTEGER,
+                        description TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
+                        UNIQUE(appareil_id, ref_piece)
+                    )
+                """)
+                
+                # Copier les données (sans doublons)
+                self.cursor.execute("""
+                    INSERT INTO pieces_temp (id, ref_piece, appareil_id, description, created_at)
+                    SELECT id, ref_piece, appareil_id, description, created_at
+                    FROM pieces
+                    WHERE id IN (
+                        SELECT MIN(id)
+                        FROM pieces
+                        GROUP BY appareil_id, ref_piece
+                    )
+                """)
+                
+                # Supprimer l'ancienne table et renommer la nouvelle
+                self.cursor.execute("DROP TABLE pieces")
+                self.cursor.execute("ALTER TABLE pieces_temp RENAME TO pieces")
+                
+                self.cursor.execute("COMMIT")
+                print("Contrainte unique ajoutée à la table pieces")
+                
+        except sqlite3.Error as e:
+            self.cursor.execute("ROLLBACK")
+            print(f"Erreur lors de l'ajout de la contrainte unique: {e}")
     
     def _create_indexes(self):
         """Créer les index pour optimiser les performances"""
@@ -365,6 +419,20 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la suppression: {e}")
     
+    def delete_appareil(self, appareil_id: int) -> bool:
+        """Supprimer un appareil par ID"""
+        try:
+            query = "DELETE FROM appareils WHERE id = ?"
+            
+            self.cursor.execute(query, [appareil_id])
+            success = self.cursor.rowcount > 0
+            self.conn.commit()
+            
+            return success
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la suppression: {e}")
+    
     def check_duplicate_reference(self, ref: str, exclude_id: Optional[int] = None) -> bool:
         """Vérifier si une référence existe déjà"""
         try:
@@ -509,7 +577,7 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors du comptage des pièces: {e}")
     
     def add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None) -> int:
-        """Ajouter une pièce à un appareil"""
+        """Ajouter une pièce à un appareil (avec vérification des doublons)"""
         try:
             # Vérifier si la colonne description existe
             self.cursor.execute("PRAGMA table_info(pieces)")
@@ -520,16 +588,26 @@ class DatabaseManager:
                     INSERT INTO pieces (ref_piece, appareil_id, description)
                     VALUES (?, ?, ?)
                 """
-                self.cursor.execute(query, (ref_piece, appareil_id, description))
+                params = (ref_piece, appareil_id, description)
             else:
                 query = """
                     INSERT INTO pieces (ref_piece, appareil_id)
                     VALUES (?, ?)
                 """
-                self.cursor.execute(query, (ref_piece, appareil_id))
+                params = (ref_piece, appareil_id)
             
-            self.conn.commit()
-            return self.cursor.lastrowid
+            try:
+                self.cursor.execute(query, params)
+                self.conn.commit()
+                return self.cursor.lastrowid
+            except sqlite3.IntegrityError:
+                # Contrainte unique violée - la pièce existe déjà
+                check_query = "SELECT id FROM pieces WHERE appareil_id = ? AND ref_piece = ? LIMIT 1"
+                existing = self.execute_query(check_query, [appareil_id, ref_piece])
+                if existing:
+                    return existing[0][0]
+                else:
+                    raise DatabaseError(f"Violation de contrainte unique inattendue pour {ref_piece} sur appareil {appareil_id}")
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout de la pièce: {e}")
@@ -738,6 +816,41 @@ class DatabaseManager:
         except sqlite3.Error as e:
             self.conn.rollback()
             raise DatabaseError(f"Erreur lors de la suppression des pièces dupliquées: {e}")
+    
+    def get_duplicate_pieces_count(self) -> int:
+        """Compter les références de pièces dupliquées"""
+        try:
+            query = """
+                SELECT COUNT(*) - COUNT(DISTINCT appareil_id || '|' || ref_piece)
+                FROM pieces 
+                WHERE ref_piece IS NOT NULL AND ref_piece != ''
+            """
+            self.cursor.execute(query)
+            result = self.cursor.fetchone()
+            return result[0] if result else 0
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors du comptage des pièces dupliquées: {e}")
+    
+    def analyze_piece_duplicates(self) -> List[Tuple]:
+        """Analyser les doublons de pièces en détail"""
+        try:
+            query = """
+                SELECT 
+                    ref_piece,
+                    appareil_id,
+                    COUNT(*) as count
+                FROM pieces 
+                WHERE ref_piece IS NOT NULL AND ref_piece != ''
+                GROUP BY appareil_id, ref_piece
+                HAVING COUNT(*) > 1
+                ORDER BY count DESC, ref_piece, appareil_id
+            """
+            self.cursor.execute(query)
+            return self.cursor.fetchall()
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de l'analyse des doublons: {e}")
     
     def get_categories(self) -> List[str]:
         """Récupérer toutes les catégories"""

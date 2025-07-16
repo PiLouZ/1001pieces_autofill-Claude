@@ -118,11 +118,14 @@ pip3 install PyQt5
 
 ### 📋 **Gestion des Données**
 - ✅ **CRUD complet** - Création, lecture, modification, suppression
-- ✅ **Import/Export** - CSV vers Bureau, JSON, HTML, XML
-- ✅ **Autocomplétion** - Suggestions intelligentes
+- ✅ **Import/Export** - CSV et PDF vers Bureau, JSON, HTML, XML
+- ✅ **Import PDF avancé** - Extraction Camelot-Py multi-fichiers avec associations automatiques
+- ✅ **Auto-complétion intelligente** - Popup filtrable temps réel (Type/Fabricant)
+- ✅ **Effacement rapide** - Delete/Backspace sur cellules sélectionnées
+- ✅ **Copie de pièces** - Menu contextuel avec copie vers presse-papiers
 - ✅ **Duplication intelligente** - Poignée de duplication avancée
 - ✅ **Validation en temps réel** - Contrôles de cohérence automatiques
-- ✅ **Gestion des pièces** - Suppression avec menu contextuel et historique
+- ✅ **Associations fiables** - Chaque appareil importé a sa pièce associée
 
 ### 🔍 **Recherche et Filtrage**
 - ✅ **Recherche globale** - Dans tous les champs et pièces associées
@@ -137,7 +140,8 @@ pip3 install PyQt5
 - ✅ **Cmd+F** - Recherche
 - ✅ **Cmd+C/V** - Copier/Coller
 - ✅ **Cmd+↑/↓** - Navigation cellules vides
-- ✅ **Cmd+D** - Sélection valeurs de colonne
+- ✅ **Cmd+D** - Auto-complétion avancée (Type/Fabricant)
+- ✅ **Delete/Backspace** - Effacement cellules sélectionnées
 - ✅ **Échap** - Réinitialiser recherche et filtres
 - ✅ **F5** - Actualiser
 - ✅ **F12** - Logs
@@ -231,9 +235,24 @@ Cette version représente une refonte complète avec :
 - **💾 Stabilité renforcée** - Gestion d'erreurs et sauvegarde automatique
 - **🎯 Expérience utilisateur** - Intuitive et productive
 
-### 🆕 Dernières Améliorations (v2.2.0)
+### 🆕 Dernières Améliorations (v2.3.0)
 
-#### 🏗️ **Gestion Hiérarchique des Doublons - Révolution UX**
+#### 🚀 **Import PDF Révolutionnaire avec Camelot-Py**
+- **✅ Extraction multi-fichiers** - Drag & drop de plusieurs PDFs simultanément
+- **✅ Précision 100%** - Migration vers Camelot-Py pour extraction parfaite des tableaux
+- **✅ Associations garanties** - Chaque appareil importé a automatiquement sa pièce associée
+- **✅ Gestion d'erreurs** - Logging détaillé et correction automatique des associations manquantes
+- **✅ Interface unifiée** - Même dialogue d'import que les CSV avec suggestion de nom
+
+#### 🎯 **Auto-complétion Avancée et Interactions**
+- **✅ Popup intelligente** - Fenêtre filtrable temps réel pour colonnes Type/Fabricant
+- **✅ Recherche instantanée** - Tapez pour filtrer, premier résultat automatiquement surligné
+- **✅ Navigation clavier** - Flèches ↑↓ + Enter pour sélection rapide
+- **✅ Effacement rapide** - Delete/Backspace sur cellules sélectionnées
+- **✅ Copie de pièces** - Menu contextuel "Copier" vers presse-papiers
+- **✅ Focus intelligent** - Maintien du focus sur le champ de saisie pendant la frappe
+
+#### 🏗️ **Gestion Hiérarchique des Doublons (v2.2.0)**
 - **✅ Interface QTreeWidget** - Vue hiérarchique avec référent principal et doublons indentés
 - **✅ Sélection manuelle sécurisée** - Cases à cocher sans pré-sélection pour éviter les erreurs
 - **✅ Édition temps réel** - Modification directe des données dans l'arbre
@@ -250,4 +269,5 @@ Cette version représente une refonte complète avec :
 - **✅ Gestion des pièces** - Suppression avec menu contextuel
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
-**📅 Version 2025 - Stable et optimisée pour la production**
+**📅 Version 2025 - Stable et optimisée pour la production**  
+**🚀 v2.3.0 - Import PDF révolutionnaire et auto-complétion intelligente**

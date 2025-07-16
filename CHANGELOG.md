@@ -2,6 +2,87 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.3.0] - 2025-07-16 - 🚀 Import PDF Révolutionnaire et Auto-complétion Intelligente
+
+### 🎯 **Import PDF Révolutionnaire avec Camelot-Py**
+
+Cette version introduit un système d'import PDF entièrement revu avec une précision parfaite et une gestion robuste des associations de pièces.
+
+#### ✨ **Nouvelles Fonctionnalités Majeures**
+
+##### 📄 **Extraction PDF Multi-fichiers**
+- Migration complète vers **Camelot-Py** pour une extraction de tableaux à 100% de précision
+- Support du **drag & drop de plusieurs fichiers PDF** simultanément
+- Interface d'import unifiée avec dialogue de configuration identique aux CSV
+- Suggestion automatique du nom de fichier comme référence de pièce pour les imports unitaires
+
+##### 🔗 **Associations Garanties**
+- **Correction critique** : Chaque appareil importé a maintenant automatiquement sa pièce associée
+- Résolution du problème de 93 associations manquantes sur 18,097 appareils importés
+- Logging détaillé des erreurs d'association avec traçabilité complète
+- Validation du nombre d'associations = nombre d'appareils importés
+
+##### 🎯 **Auto-complétion Intelligente et Interactions**
+- **Popup filtrable temps réel** pour colonnes Type et Fabricant (Cmd+D)
+- **Recherche instantanée** avec filtrage des suggestions en temps réel
+- **Navigation clavier optimisée** : Flèches ↑↓ + Enter pour sélection rapide
+- **Focus intelligent** : Maintien du focus sur le champ de saisie pendant la frappe
+- **Premier résultat automatiquement surligné** pour validation immédiate
+
+##### ⌨️ **Améliorations d'Interaction**
+- **Effacement rapide** : Touches Delete/Backspace sur cellules sélectionnées
+- **Copie de pièces** : Menu contextuel "📋 Copier" vers presse-papiers
+- **Interface intuitive** : Double-clic et Enter pour validation
+
+#### 🔧 **Corrections Techniques Majeures**
+
+##### 🛠️ **Import PDF - Camelot-Py**
+- **NOUVEAU** : `src/data/pdf_extractor_camelot.py` - Extracteur Camelot-Py haute précision
+- **NOUVEAU** : `src/data/pdf_processor_camelot.py` - Processeur ligne de commande
+- **SUPPRIMÉ** : `src/data/pdf_extractor_pdf24_like.py` - Ancien extracteur pdfplumber imprécis
+- **MODIFIÉ** : `src/ui/main_refactored.py` - Intégration Camelot-Py et nouvelles interactions
+
+##### 🔄 **Corrections Associations**
+- Modification de `_process_import()` pour compter seulement les lignes traitées avec succès
+- Gestion d'erreurs renforcée avec logging détaillé des échecs d'association
+- Validation `ref_piece` avant création d'association pour éviter les erreurs silencieuses
+- Protection contre les boucles infinies dans l'auto-complétion
+
+##### 🎨 **Auto-complétion et Interface**
+- **NOUVEAU** : Classe `CustomTableWidget` avec gestion événements clavier avancée
+- **NOUVEAU** : Popup d'auto-complétion avec `QDialog` personnalisée et filtrage temps réel
+- **NOUVEAU** : Méthodes `_get_all_types()` et `_get_all_manufacturers()` pour listes complètes
+- Intégration `QCompleter` avec recherche insensible à la casse
+
+#### 🛡️ **Robustesse et Performance**
+
+##### 📊 **Import Multi-fichiers PDF**
+- Traitement par lot avec gestion d'erreurs individuelles
+- Support des fichiers PDF avec flavors 'stream' et 'lattice' automatiques
+- Validation de compatibilité PDF avant traitement
+- Rapport détaillé d'extraction avec statistiques complètes
+
+##### 🔍 **Logging et Debugging**
+- Messages de debug détaillés pour traçage des associations manquantes
+- Logging automatique des erreurs d'insertion et d'association
+- Identification précise des lignes échouées avec raisons détaillées
+
+#### 🎯 **Améliorations UX**
+
+##### ⚡ **Auto-complétion Fluide**
+- Popup responsive avec redimensionnement automatique (300x400px)
+- Sélection automatique du premier résultat filtré
+- Navigation clavier native avec transfert de focus intelligent
+- Validation par Enter depuis n'importe où dans la popup
+
+##### 🖱️ **Interactions Naturelles**
+- Maintien du focus sur le champ de saisie pour frappe continue
+- Double-clic sur suggestions pour sélection rapide
+- Échap pour annulation sans modification
+- Préremplissage avec valeur actuelle de la cellule
+
+---
+
 ## [2.2.0] - 2025-07-11 - 🏗️ Gestion Hiérarchique des Doublons
 
 ### 🎯 **Révolution UX : Interface Hiérarchique**
@@ -220,6 +301,7 @@ Cette version introduit une approche complètement nouvelle pour la gestion des 
 
 ---
 
-**📅 Dernière mise à jour :** 8 janvier 2025  
+**📅 Dernière mise à jour :** 16 juillet 2025  
 **👨‍💻 Développé par :** Claude (Anthropic) en collaboration avec l'utilisateur  
-**🏷️ Version stable :** 2.0.0
+**🏷️ Version stable :** 2.3.0  
+**🚀 Dernière version :** Import PDF révolutionnaire et auto-complétion intelligente

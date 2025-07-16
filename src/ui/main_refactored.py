@@ -12,10 +12,10 @@ from PyQt5.QtWidgets import (
     QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
     QToolBar, QAction, QStatusBar, QSplitter, QTabWidget, 
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
-    QProgressDialog, QCheckBox, QMenu, QDialog
+    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter
 )
-from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush
-from PyQt5.QtCore import QSize, QMimeData, QUrl
+from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent
+from PyQt5.QtCore import QSize, QMimeData, QUrl, QStringListModel
 from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
 # Imports des modules refactorisés
@@ -30,6 +30,211 @@ from src.data.data_validator import DataValidator, ValidationResult
 from src.data.data_exporter import DataExporter, ExportFormat, ExportError
 from src.ui.log_viewer import LogViewer
 from src.ui.validation_window import ValidationWindow
+
+
+class CustomTableWidget(QTableWidget):
+    """Table personnalisée avec gestion des touches Delete/Backspace et auto-complétion"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.db_manager = None
+        
+    def set_db_manager(self, db_manager):
+        """Définir le gestionnaire de base de données pour l'auto-complétion"""
+        self.db_manager = db_manager
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """Gestion des événements clavier"""
+        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+            # Effacer le contenu des cellules sélectionnées
+            selected_items = self.selectedItems()
+            if selected_items:
+                for item in selected_items:
+                    if item:
+                        item.setText("")
+                return
+        
+        # Popup avec liste complète via Cmd+D (ou Ctrl+D sur Windows/Linux)
+        if event.key() == Qt.Key_D and (event.modifiers() & Qt.MetaModifier or event.modifiers() & Qt.ControlModifier):
+            self._show_completion_popup()
+            return
+        
+        # Appeler la méthode parent pour les autres touches
+        super().keyPressEvent(event)
+    
+    def _show_completion_popup(self):
+        """Afficher popup avec auto-complétion avancée via Cmd+D"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem
+        
+        current_item = self.currentItem()
+        if not current_item or not self.db_manager:
+            return
+            
+        column = current_item.column()
+        
+        # Popup seulement pour les colonnes 0 (Type) et 1 (Fabricant)
+        if column == 0:  # Colonne Type
+            suggestions = self._get_all_types()
+            column_name = "Type"
+        elif column == 1:  # Colonne Fabricant
+            suggestions = self._get_all_manufacturers()
+            column_name = "Fabricant"
+        else:
+            return
+        
+        if not suggestions:
+            return
+        
+        # Créer une boîte de dialogue personnalisée
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Auto-complétion {column_name}")
+        dialog.setModal(True)
+        dialog.resize(300, 400)
+        
+        layout = QVBoxLayout()
+        
+        # Champ de recherche
+        search_input = QLineEdit()
+        search_input.setPlaceholderText(f"Tapez pour filtrer les {column_name.lower()}s...")
+        search_input.setText(current_item.text())  # Préremplir avec la valeur actuelle
+        layout.addWidget(search_input)
+        
+        # Liste des suggestions
+        suggestions_list = QListWidget()
+        layout.addWidget(suggestions_list)
+        
+        # Fonction pour filtrer les suggestions
+        def filter_suggestions():
+            text = search_input.text().lower()
+            suggestions_list.clear()
+            
+            for suggestion in suggestions:
+                if text in suggestion.lower():
+                    item = QListWidgetItem(suggestion)
+                    suggestions_list.addItem(item)
+            
+            # Sélectionner automatiquement le premier élément
+            if suggestions_list.count() > 0:
+                suggestions_list.setCurrentRow(0)
+                # Ne pas donner le focus à la liste pour garder le focus sur le champ de saisie
+        
+        # Fonction pour appliquer la sélection
+        def apply_selection():
+            current_list_item = suggestions_list.currentItem()
+            if current_list_item:
+                current_item.setText(current_list_item.text())
+                dialog.accept()
+            elif search_input.text():
+                current_item.setText(search_input.text())
+                dialog.accept()
+        
+        # Gestion des touches clavier pour la navigation
+        def handle_key_press(event):
+            if event.key() == Qt.Key_Down:
+                if suggestions_list.currentRow() < suggestions_list.count() - 1:
+                    suggestions_list.setCurrentRow(suggestions_list.currentRow() + 1)
+                suggestions_list.setFocus()  # Donner le focus seulement quand on navigue
+            elif event.key() == Qt.Key_Up:
+                if suggestions_list.currentRow() > 0:
+                    suggestions_list.setCurrentRow(suggestions_list.currentRow() - 1)
+                suggestions_list.setFocus()  # Donner le focus seulement quand on navigue
+            elif event.key() in [Qt.Key_Return, Qt.Key_Enter]:
+                apply_selection()
+            else:
+                QLineEdit.keyPressEvent(search_input, event)
+        
+        search_input.keyPressEvent = handle_key_press
+        
+        # Gestion des touches pour la liste
+        def handle_list_key_press(event):
+            if event.key() in [Qt.Key_Return, Qt.Key_Enter]:
+                apply_selection()
+            elif event.key() == Qt.Key_Escape:
+                dialog.reject()
+            else:
+                QListWidget.keyPressEvent(suggestions_list, event)
+        
+        suggestions_list.keyPressEvent = handle_list_key_press
+        
+        # Connecter les événements
+        search_input.textChanged.connect(filter_suggestions)
+        suggestions_list.itemDoubleClicked.connect(apply_selection)
+        
+        # Filtrer initialement
+        filter_suggestions()
+        
+        dialog.setLayout(layout)
+        search_input.setFocus()
+        search_input.selectAll()
+        
+        dialog.exec_()
+    
+    
+    def _get_type_suggestions(self, partial_text: str) -> List[str]:
+        """Obtenir des suggestions pour la colonne Type"""
+        if not self.db_manager:
+            return []
+        
+        try:
+            result = self.db_manager.execute_query("""
+                SELECT DISTINCT type FROM appareils 
+                WHERE type LIKE ? AND type != '' 
+                ORDER BY type
+                LIMIT 20
+            """, (f"{partial_text}%",))
+            
+            return [row[0] for row in result]
+        except Exception:
+            return []
+    
+    def _get_manufacturer_suggestions(self, partial_text: str) -> List[str]:
+        """Obtenir des suggestions pour la colonne Fabricant"""
+        if not self.db_manager:
+            return []
+        
+        try:
+            result = self.db_manager.execute_query("""
+                SELECT DISTINCT manufacturer FROM appareils 
+                WHERE manufacturer LIKE ? AND manufacturer != '' 
+                ORDER BY manufacturer
+                LIMIT 20
+            """, (f"{partial_text}%",))
+            
+            return [row[0] for row in result]
+        except Exception:
+            return []
+    
+    def _get_all_types(self) -> List[str]:
+        """Obtenir toutes les valeurs Type disponibles"""
+        if not self.db_manager:
+            return []
+        
+        try:
+            result = self.db_manager.execute_query("""
+                SELECT DISTINCT type FROM appareils 
+                WHERE type != '' 
+                ORDER BY type
+            """)
+            
+            return [row[0] for row in result]
+        except Exception:
+            return []
+    
+    def _get_all_manufacturers(self) -> List[str]:
+        """Obtenir toutes les valeurs Fabricant disponibles"""
+        if not self.db_manager:
+            return []
+        
+        try:
+            result = self.db_manager.execute_query("""
+                SELECT DISTINCT manufacturer FROM appareils 
+                WHERE manufacturer != '' 
+                ORDER BY manufacturer
+            """)
+            
+            return [row[0] for row in result]
+        except Exception:
+            return []
 
 
 class UndoRedoManager:
@@ -534,10 +739,11 @@ class MainWindow(QMainWindow):
         # Sauvegarder la référence du layout des filtres pour la visibilité
         self.filter_layout = filter_layout
         
-        # Tableau principal
-        self.table = QTableWidget()
+        # Tableau principal avec gestion des touches
+        self.table = CustomTableWidget()
         self.table.setColumnCount(len(Config.UI_HEADERS))
         self.table.setHorizontalHeaderLabels(Config.UI_HEADERS)
+        self.table.set_db_manager(self.db_manager)  # Configurer l'auto-complétion
         self.table.setAcceptDrops(True)  # Activer le glisser/déposer pour les fichiers CSV
         self.table.setDragDropMode(QTableWidget.DragDropMode.DropOnly)  # Seulement accepter les drops
         
@@ -1871,6 +2077,10 @@ class MainWindow(QMainWindow):
         row, col = item.row(), item.column()
         new_value = item.text()
         
+        # Auto-complétion désactivée temporairement pour éviter les plantages
+        # if col in [0, 1] and new_value and (row, col) not in getattr(self.table, 'active_combos', {}):  # Colonnes Type (0) et Fabricant (1)
+        #     self.table._activate_autocomplete_cell(row, col)
+        
         # Obtenir l'ancienne valeur
         key = (row, col)
         old_value = self.previous_values.get(key, '')
@@ -2538,6 +2748,10 @@ class MainWindow(QMainWindow):
         edit_action = menu.addAction("✏️ Modifier")
         edit_action.triggered.connect(lambda: self._edit_piece(item))
         
+        # Action copier
+        copy_action = menu.addAction("📋 Copier")
+        copy_action.triggered.connect(lambda: self._copy_piece(item))
+        
         # Action supprimer
         delete_action = menu.addAction("🗑️ Supprimer")
         delete_action.triggered.connect(lambda: self._delete_piece(item))
@@ -2618,6 +2832,22 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 app_logger.error(f"Erreur inattendue lors de la suppression de pièce: {e}")
                 self._show_error(f"Erreur inattendue: {e}")
+    
+    def _copy_piece(self, item: QListWidgetItem):
+        """Copier une pièce dans le presse-papiers"""
+        ref_piece = item.data(Qt.UserRole)
+        if not ref_piece:
+            return
+        
+        # Copier la référence de la pièce dans le presse-papiers
+        clipboard = QApplication.clipboard()
+        clipboard.setText(ref_piece)
+        
+        # Afficher un message de confirmation
+        self.statusbar.showMessage(
+            f"Pièce copiée: {ref_piece}", 
+            Config.STATUS_MESSAGE_TIMEOUT
+        )
     
     def _delete_piece_from_selected(self, item: QListWidgetItem):
         """Supprimer une pièce de tous les appareils sélectionnés"""
@@ -3487,12 +3717,19 @@ class MainWindow(QMainWindow):
                         self._update_device_info(device_id, updates)
                     
                     # Créer association si référence de pièce fournie
-                    if ref_piece:
-                        if not self._piece_already_associated(device_id, ref_piece):
-                            self.db_manager.add_piece(ref_piece, device_id, "")
-                            results['associations_created'] += 1
-                        else:
-                            results['duplicates_skipped'] += 1
+                    if ref_piece and ref_piece.strip():
+                        try:
+                            if not self._piece_already_associated(device_id, ref_piece.strip()):
+                                self.db_manager.add_piece(ref_piece.strip(), device_id, "")
+                                results['associations_created'] += 1
+                            else:
+                                results['duplicates_skipped'] += 1
+                        except Exception as piece_error:
+                            print(f"❌ Échec association pièce {ref_piece.strip()} avec appareil {device_id}: {piece_error}")
+                            app_logger.error(f"Échec association pièce {ref_piece.strip()} avec appareil {device_id}: {piece_error}")
+                    else:
+                        print(f"⚠️ Pas de référence de pièce fournie pour appareil {device_id}")
+                        app_logger.warning(f"Pas de référence de pièce fournie pour appareil {device_id}")
                     
                     # Vérifier si l'appareil nécessite encore une complétion manuelle
                     # (basé sur l'état d'origine avant mise à jour)
@@ -3500,6 +3737,7 @@ class MainWindow(QMainWindow):
                         results['manual_completion'] += 1
                     
                     results['matches_found'] += 1
+                    results['total_imported'] += 1  # Compter après succès
                     # NE PAS créer de nouvelle ligne dans le tableau
                 else:
                     # Nouvel appareil - utiliser la même logique harmonisée que le collage
@@ -3538,19 +3776,34 @@ class MainWindow(QMainWindow):
                             device_id = self.db_manager.insert_appareil(filtered_data)
                             if device_id:
                                 results['new_entries'] += 1
-                                if ref_piece:
-                                    self.db_manager.add_piece(ref_piece, device_id, "")
-                                    results['associations_created'] += 1
+                                results['total_imported'] += 1  # Compter après succès
+                                if ref_piece and ref_piece.strip():
+                                    try:
+                                        self.db_manager.add_piece(ref_piece.strip(), device_id, "")
+                                        results['associations_created'] += 1
+                                    except Exception as piece_error:
+                                        print(f"❌ Échec association pièce {ref_piece.strip()} avec nouvel appareil {device_id}: {piece_error}")
+                                        app_logger.error(f"Échec association pièce {ref_piece.strip()} avec nouvel appareil {device_id}: {piece_error}")
+                                else:
+                                    print(f"⚠️ Pas de référence de pièce fournie pour nouvel appareil {device_id}")
+                                    app_logger.warning(f"Pas de référence de pièce fournie pour nouvel appareil {device_id}")
                                 
                                 # Compter si nécessite complétion manuelle (basé sur l'état d'origine)
                                 if needs_completion:
                                     results['manual_completion'] += 1
-                
-                # Compter chaque ligne traitée
-                results['total_imported'] += 1
+                            else:
+                                # Échec de l'insertion, logger l'erreur
+                                print(f"❌ Échec insertion appareil: {filtered_data}")
+                                app_logger.error(f"Échec insertion appareil: {filtered_data}")
+                        else:
+                            # Pas de données valides, logger l'erreur
+                            print(f"❌ Aucune donnée valide pour ligne: {row}")
+                            app_logger.error(f"Aucune donnée valide pour ligne: {row}")
                 
             except Exception as e:
-                print(f"Erreur lors du traitement de la ligne {row}: {e}")
+                print(f"❌ ERREUR lors du traitement de la ligne {row}: {e}")
+                app_logger.error(f"Erreur traitement ligne {row}: {e}")
+                # Ne pas compter cette ligne comme traitée si elle échoue
                 continue
         
         return results
