@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
     QProgressDialog, QCheckBox, QMenu, QDialog
 )
-from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent
+from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush
 from PyQt5.QtCore import QSize, QMimeData, QUrl
 from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
@@ -540,6 +540,13 @@ class MainWindow(QMainWindow):
         self.table.setHorizontalHeaderLabels(Config.UI_HEADERS)
         self.table.setAcceptDrops(True)  # Activer le glisser/déposer pour les fichiers CSV
         self.table.setDragDropMode(QTableWidget.DragDropMode.DropOnly)  # Seulement accepter les drops
+        
+        # Variables pour l'effet visuel de drag-and-drop
+        self.drag_overlay_active = False
+        
+        # Configurer le menu contextuel
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_table_context_menu)
         
         # Appliquer la visibilité des colonnes
         self._apply_column_visibility()
@@ -3185,7 +3192,7 @@ class MainWindow(QMainWindow):
                 results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
                 
                 # Afficher la synthèse
-                self._show_import_summary(results, ref_piece)
+                self._show_import_summary(results, ref_piece, "CSV")
                 
                 # Enregistrer dans l'historique
                 self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
@@ -3488,10 +3495,8 @@ class MainWindow(QMainWindow):
                             results['duplicates_skipped'] += 1
                     
                     # Vérifier si l'appareil nécessite encore une complétion manuelle
-                    # après mise à jour (seuls ceux sans type ET fabricant)
-                    final_device_data = dict(existing_device)
-                    final_device_data.update(updates)
-                    if self._needs_manual_completion(final_device_data):
+                    # (basé sur l'état d'origine avant mise à jour)
+                    if self._needs_manual_completion(existing_device):
                         results['manual_completion'] += 1
                     
                     results['matches_found'] += 1
@@ -3509,6 +3514,9 @@ class MainWindow(QMainWindow):
                             'category': '',
                             'notes': notes.strip()
                         }
+                        
+                        # Vérifier si l'appareil nécessite une complétion manuelle AVANT auto-complétion
+                        needs_completion = self._needs_manual_completion(appareil_data)
                         
                         # Essayer l'auto-complétion
                         if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
@@ -3533,11 +3541,10 @@ class MainWindow(QMainWindow):
                                 if ref_piece:
                                     self.db_manager.add_piece(ref_piece, device_id, "")
                                     results['associations_created'] += 1
-                                else:
-                                    # Vérifier si l'appareil nécessite encore une complétion manuelle
-                                    # après auto-complétion (seuls ceux sans type ET fabricant)
-                                    if self._needs_manual_completion(appareil_data):
-                                        results['manual_completion'] += 1
+                                
+                                # Compter si nécessite complétion manuelle (basé sur l'état d'origine)
+                                if needs_completion:
+                                    results['manual_completion'] += 1
                 
                 # Compter chaque ligne traitée
                 results['total_imported'] += 1
@@ -3620,10 +3627,11 @@ class MainWindow(QMainWindow):
     def _piece_already_associated(self, device_id, ref_piece):
         """Vérifier si la pièce est déjà associée à l'appareil"""
         try:
-            query = "SELECT id FROM pieces WHERE appareil_id = ? AND ref_piece = ?"
+            query = "SELECT id FROM pieces WHERE appareil_id = ? AND ref_piece = ? LIMIT 1"
             result = self.db_manager.execute_query(query, [device_id, ref_piece])
             return len(result) > 0
-        except:
+        except Exception as e:
+            print(f"Erreur lors de la vérification de l'association: {e}")
             return False
     
     def _create_new_device(self, device_type, manufacturer, ref_modele):
@@ -3659,22 +3667,50 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Erreur mise à jour appareil: {e}")
     
-    def _show_import_summary(self, results, ref_piece):
-        """Afficher la synthèse d'import"""
-        summary = f"{results['total_imported']} appareils importés"
-        if ref_piece:
-            summary += f" et associés à la référence {ref_piece}"
-        summary += f"\n→ {results['matches_found']} correspondances trouvées"
-        summary += f"\n→ {results['manual_completion']} appareils à compléter manuellement"
+    def _show_import_summary(self, results, ref_piece, method="CSV"):
+        """Afficher la synthèse d'import avec le nouveau format unifié"""
+        # Calculer le total traité
+        total_processed = results.get('total_imported', 0) + results.get('duplicates_skipped', 0)
         
-        if results['duplicates_skipped'] > 0:
-            summary += f"\n→ {results['duplicates_skipped']} associations dupliquées ignorées"
+        # Nouveau format unifié
+        summary = f"📊 Résumé de l'import {method} :\n"
+        summary += f"  Total {total_processed} lignes traitées\n"
         
-        if results['new_entries'] > 0:
-            summary += f"\n→ {results['new_entries']} nouveaux appareils créés"
+        # Nouveaux appareils
+        new_entries = results.get('new_entries', 0)
+        if new_entries > 0:
+            summary += f"  {new_entries} nouveaux appareils\n"
+            
+            # Détail des nouveaux appareils
+            auto_completed = results.get('auto_completed', 0)
+            manual_completion = results.get('manual_completion', 0)
+            
+            if auto_completed > 0:
+                summary += f"   -> {auto_completed} completés automatiquement\n"
+            if manual_completion > 0:
+                summary += f"   -> {manual_completion} à compléter manuellement\n"
         
-        if results['associations_created'] > 0:
-            summary += f"\n→ {results['associations_created']} associations créées"
+        # Appareils mis à jour
+        matches_found = results.get('matches_found', 0)
+        if matches_found > 0:
+            summary += f"  {matches_found} appareils mis à jours\n"
+        
+        # Associations créées
+        associations_created = results.get('associations_created', 0)
+        if associations_created > 0:
+            summary += f"  {associations_created} associations de pièce créées\n"
+        
+        # Doublons ignorés
+        duplicates_skipped = results.get('duplicates_skipped', 0)
+        if duplicates_skipped > 0:
+            summary += f"  {duplicates_skipped} doublon ignoré\n"
+        
+        # Lignes rejetées
+        rejected_lines = results.get('rejected_lines', 0)
+        if rejected_lines > 0:
+            summary += f"  {rejected_lines} ligne rejetée\n"
+        else:
+            summary += f"  0 ligne rejetée\n"
         
         self._show_info(summary)
     
@@ -4080,40 +4116,56 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def dragEnterEvent(self, event):
         """Gérer l'entrée d'un glisser/déposer"""
         if event.mimeData().hasUrls():
-            # Vérifier si au moins un fichier est un CSV
+            # Vérifier si au moins un fichier est un CSV ou PDF
             for url in event.mimeData().urls():
                 if url.isLocalFile():
                     file_path = url.toLocalFile()
-                    if file_path.lower().endswith('.csv'):
+                    if file_path.lower().endswith(('.csv', '.pdf')):
                         event.acceptProposedAction()
+                        self._show_drag_overlay()
                         return
         event.ignore()
 
     def dragMoveEvent(self, event):
         """Gérer le mouvement d'un glisser/déposer"""
         if event.mimeData().hasUrls():
-            # Vérifier si au moins un fichier est un CSV
+            # Vérifier si au moins un fichier est un CSV ou PDF
             for url in event.mimeData().urls():
                 if url.isLocalFile():
                     file_path = url.toLocalFile()
-                    if file_path.lower().endswith('.csv'):
+                    if file_path.lower().endswith(('.csv', '.pdf')):
                         event.acceptProposedAction()
                         return
         event.ignore()
+        
+    def dragLeaveEvent(self, event):
+        """Gérer la sortie d'un glisser/déposer"""
+        self._hide_drag_overlay()
+        event.accept()
 
     def dropEvent(self, event):
-        """Gérer le déposer d'un fichier CSV"""
+        """Gérer le déposer d'un ou plusieurs fichiers CSV ou PDF"""
+        self._hide_drag_overlay()
+        
         if event.mimeData().hasUrls():
             csv_files = []
+            pdf_files = []
             for url in event.mimeData().urls():
                 if url.isLocalFile():
                     file_path = url.toLocalFile()
                     if file_path.lower().endswith('.csv'):
                         csv_files.append(file_path)
+                    elif file_path.lower().endswith('.pdf'):
+                        pdf_files.append(file_path)
             
+            # Priorité aux fichiers CSV (un seul à la fois)
             if csv_files:
-                # Traiter le premier fichier CSV trouvé
                 self._import_csv_from_path(csv_files[0])
+                event.acceptProposedAction()
+                return
+            elif pdf_files:
+                # Supporter plusieurs fichiers PDF
+                self._import_pdf_from_path(pdf_files)
                 event.acceptProposedAction()
                 return
         event.ignore()
@@ -4162,11 +4214,318 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
             
             # Affichage du résumé et ajout à l'historique
-            self._show_import_summary(results, ref_piece)
+            self._show_import_summary(results, ref_piece, "CSV")
             self._log_import_to_history(results, ref_piece, f"CSV (Glisser/Déposer - {os.path.basename(file_path)})")
             
         except Exception as e:
             self._show_error(f"Erreur lors de l'import CSV par glisser/déposer: {e}")
+    
+    def _import_pdf_from_path(self, file_paths):
+        """Importer un ou plusieurs fichiers PDF depuis des chemins donnés"""
+        try:
+            from src.data.pdf_extractor_camelot import CamelotPDFExtractor, PDFExtractionError
+            import os
+            
+            # Assurer que file_paths est une liste
+            if isinstance(file_paths, str):
+                file_paths = [file_paths]
+            
+            # Extraire le nom du fichier pour la référence de pièce (si un seul fichier)
+            suggested_ref_piece = None
+            if len(file_paths) == 1:
+                suggested_ref_piece = os.path.splitext(os.path.basename(file_paths[0]))[0]
+            
+            # Afficher la boîte de dialogue d'options d'import
+            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_pdf(suggested_ref_piece)
+            if import_type is None:
+                return
+            
+            # Créer l'extracteur Camelot
+            extractor = CamelotPDFExtractor()
+            
+            # Traiter tous les fichiers
+            all_converted_data = []
+            processed_files = []
+            
+            for file_path in file_paths:
+                try:
+                    # Valider la compatibilité
+                    is_compatible, error_msg = extractor.validate_pdf_compatibility(file_path)
+                    if not is_compatible:
+                        self._show_error(f"PDF non compatible ({os.path.basename(file_path)}): {error_msg}")
+                        continue
+                    
+                    # Extraire les données
+                    extracted_data = extractor.extract_data(file_path)
+                    
+                    if not extracted_data:
+                        self._show_error(f"Aucune donnée extraite du fichier PDF: {os.path.basename(file_path)}")
+                        continue
+                    
+                    # Convertir les données extraites en format compatible avec _process_import
+                    for row in extracted_data:
+                        # Les données PDF sont déjà en format [ref_technique, ref_commerciale, description]
+                        # On les convertit selon le choix de l'utilisateur
+                        if third_column_choice == "notes":
+                            all_converted_data.append([row[0], row[1], "", row[2]])  # [ref_modele, commercial_ref, other_ref, notes]
+                        elif third_column_choice == "other_ref":
+                            all_converted_data.append([row[0], row[1], row[2], ""])  # [ref_modele, commercial_ref, other_ref, notes]
+                        else:  # ignore
+                            all_converted_data.append([row[0], row[1], "", ""])  # [ref_modele, commercial_ref, other_ref, notes]
+                    
+                    processed_files.append(os.path.basename(file_path))
+                    
+                except Exception as e:
+                    self._show_error(f"Erreur lors du traitement de {os.path.basename(file_path)}: {e}")
+                    continue
+            
+            if not all_converted_data:
+                self._show_error("Aucune donnée extraite des fichiers PDF")
+                return
+            
+            # Traiter l'import avec la même logique que CSV
+            results = self._process_import(all_converted_data, import_type, ref_piece, third_column_choice)
+            
+            # Afficher la synthèse
+            self._show_import_summary(results, ref_piece, "PDF")
+            
+            # Enregistrer dans l'historique
+            if len(processed_files) == 1:
+                source_info = f"PDF ({processed_files[0]})"
+            else:
+                source_info = f"PDF ({len(processed_files)} fichiers)"
+            
+            self._log_import_to_history(results, ref_piece, source_info)
+            
+            # Actualiser l'affichage
+            self._force_refresh_display(reset_page=True, clear_filters=True)
+            
+        except PDFExtractionError as e:
+            self._show_error(f"Erreur d'extraction PDF: {e}")
+        except Exception as e:
+            self._show_error(f"Erreur lors de l'import PDF: {e}")
+    
+
+    def _get_import_options_pdf(self, suggested_ref_piece=None):
+        """Dialogue pour choisir les options d'import PDF"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Options d'import PDF")
+        dialog.setModal(True)
+        
+        layout = QVBoxLayout()
+        
+        # Information sur le PDF
+        info_label = QLabel("📄 Données PDF détectées: 3 colonnes (Réf. technique, Réf. commerciale, Description)")
+        info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
+        layout.addWidget(info_label)
+        
+        # Référence de pièce (optionnelle) - pré-remplie avec le nom du fichier
+        ref_layout = QHBoxLayout()
+        ref_layout.addWidget(QLabel("Référence de pièce (optionnelle):"))
+        ref_input = QLineEdit()
+        if suggested_ref_piece:
+            ref_input.setText(suggested_ref_piece)
+        ref_layout.addWidget(ref_input)
+        layout.addLayout(ref_layout)
+        
+        # Gestion de la 3ème colonne (Description)
+        third_col_layout = QHBoxLayout()
+        third_col_layout.addWidget(QLabel("Stocker la Description dans:"))
+        third_col_combo = QComboBox()
+        third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
+        third_col_combo.setCurrentIndex(0)  # Ignorer par défaut
+        third_col_layout.addWidget(third_col_combo)
+        layout.addLayout(third_col_layout)
+        
+        # Boutons
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton("OK")
+        cancel_button = QPushButton("Annuler")
+        button_layout.addWidget(ok_button)
+        button_layout.addWidget(cancel_button)
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        
+        result = [None, None, None, None]
+        
+        def on_ok():
+            result[0] = 3  # Toujours 3 colonnes pour PDF
+            result[1] = ref_input.text().strip() if ref_input.text().strip() else None
+            
+            third_choice = third_col_combo.currentText()
+            if third_choice == "Ignorer":
+                result[2] = "ignore"
+            elif third_choice == "Autre référence":
+                result[2] = "other_ref"
+            elif third_choice == "Notes":
+                result[2] = "notes"
+            else:
+                result[2] = "ignore"  # Par défaut
+            
+            result[3] = False  # Pas d'en-têtes dans les données extraites
+            dialog.accept()
+        
+        def on_cancel():
+            dialog.reject()
+        
+        ok_button.clicked.connect(on_ok)
+        cancel_button.clicked.connect(on_cancel)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            return result[0], result[1], result[2], result[3]
+        return None, None, None, None
+    
+    def _show_drag_overlay(self):
+        """Afficher l'overlay de glisser/déposer"""
+        if not self.drag_overlay_active:
+            self.drag_overlay_active = True
+            self.table.setStyleSheet(self.table.styleSheet() + """
+                QTableWidget {
+                    background-color: rgba(0, 123, 255, 0.1);
+                    border: 2px dashed #007bff;
+                }
+                QTableWidget::item {
+                    background-color: rgba(0, 123, 255, 0.05);
+                }
+            """)
+            
+            # Créer ou mettre à jour le label d'overlay
+            if not hasattr(self, 'drag_overlay_label'):
+                self.drag_overlay_label = QLabel("📁 Déposer votre fichier CSV/PDF ici", self.table)
+                self.drag_overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.drag_overlay_label.setStyleSheet("""
+                    QLabel {
+                        background-color: rgba(0, 123, 255, 0.9);
+                        color: white;
+                        font-size: 18px;
+                        font-weight: bold;
+                        padding: 20px;
+                        border-radius: 10px;
+                        border: 2px solid #007bff;
+                    }
+                """)
+            
+            # Positionner le label au centre du tableau
+            self.drag_overlay_label.resize(400, 100)
+            table_center = self.table.rect().center()
+            label_center = self.drag_overlay_label.rect().center()
+            self.drag_overlay_label.move(table_center - label_center)
+            self.drag_overlay_label.show()
+    
+    def _hide_drag_overlay(self):
+        """Masquer l'overlay de glisser/déposer"""
+        if self.drag_overlay_active:
+            self.drag_overlay_active = False
+            # Restaurer le style original du tableau
+            self.table.setStyleSheet(self.table.styleSheet().replace("""
+                QTableWidget {
+                    background-color: rgba(0, 123, 255, 0.1);
+                    border: 2px dashed #007bff;
+                }
+                QTableWidget::item {
+                    background-color: rgba(0, 123, 255, 0.05);
+                }
+            """, ""))
+            
+            # Masquer le label d'overlay
+            if hasattr(self, 'drag_overlay_label'):
+                self.drag_overlay_label.hide()
+    
+    def _show_table_context_menu(self, position):
+        """Afficher le menu contextuel du tableau"""
+        # Vérifier qu'il y a des lignes sélectionnées
+        selected_rows = list(set([item.row() for item in self.table.selectedItems()]))
+        
+        if not selected_rows:
+            return
+        
+        # Créer le menu contextuel
+        context_menu = QMenu(self)
+        
+        # Action pour supprimer les lignes
+        delete_action = QAction("🗑️ Supprimer la/les ligne(s) sélectionnée(s)", self)
+        delete_action.triggered.connect(lambda: self._delete_selected_rows(selected_rows))
+        context_menu.addAction(delete_action)
+        
+        # Ajouter un séparateur
+        context_menu.addSeparator()
+        
+        # Action pour copier les données
+        copy_action = QAction("📋 Copier", self)
+        copy_action.triggered.connect(self._handle_copy)
+        context_menu.addAction(copy_action)
+        
+        # Afficher le menu
+        context_menu.exec_(self.table.mapToGlobal(position))
+    
+    def _delete_selected_rows(self, selected_rows):
+        """Supprimer les lignes sélectionnées"""
+        if not selected_rows:
+            return
+        
+        # Trier les lignes par ordre décroissant pour éviter les décalages d'index
+        selected_rows.sort(reverse=True)
+        
+        # Confirmation
+        from src.core.config import pluralize
+        row_count = len(selected_rows)
+        
+        if row_count == 1:
+            message = f"Supprimer la ligne sélectionnée ?"
+        else:
+            message = f"Supprimer les {row_count} lignes sélectionnées ?"
+        
+        message += "\n\nCette action est irréversible."
+        
+        reply = QMessageBox.question(
+            self, "Confirmation de suppression",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        try:
+            deleted_count = 0
+            deleted_ids = []
+            
+            for row in selected_rows:
+                # Récupérer l'ID de l'appareil
+                db_id = self._get_db_id_from_row(row)
+                if db_id:
+                    # Supprimer de la base de données
+                    success = self.db_manager.delete_appareil(db_id)
+                    if success:
+                        deleted_count += 1
+                        deleted_ids.append(db_id)
+                        
+                        # Supprimer la ligne du tableau
+                        self.table.removeRow(row)
+            
+            # Message de confirmation
+            if deleted_count > 0:
+                if deleted_count == 1:
+                    message = f"1 ligne supprimée"
+                else:
+                    message = f"{deleted_count} lignes supprimées"
+                
+                self.statusbar.showMessage(message, Config.STATUS_MESSAGE_TIMEOUT)
+                
+                # Ajouter à l'historique
+                self._add_to_history(f"🗑️ Suppression de {pluralize(deleted_count, 'ligne')}")
+                
+                # Actualiser l'affichage
+                self._force_refresh_display()
+            else:
+                self._show_error("Aucune ligne n'a pu être supprimée")
+                
+        except Exception as e:
+            self._show_error(f"Erreur lors de la suppression des lignes: {e}")
 
     def keyPressEvent(self, event):
         """Gestion des raccourcis clavier"""
@@ -4436,10 +4795,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
                     
                     # Vérifier si l'appareil nécessite encore une complétion manuelle
-                    # après mise à jour (seuls ceux sans type ET fabricant)
-                    final_device_data = dict(existing_device)
-                    final_device_data.update(updates)
-                    if self._needs_manual_completion(final_device_data):
+                    # (basé sur l'état d'origine avant mise à jour)
+                    if self._needs_manual_completion(existing_device):
                         manual_completion_count += 1
                     
                     updated_count += 1
@@ -4452,6 +4809,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     
                     # Vérifier qu'on a au moins une référence valide
                     if ref_modele or commercial_ref:
+                        # Vérifier si l'appareil nécessite une complétion manuelle AVANT auto-complétion
+                        needs_completion = self._needs_manual_completion(appareil_data)
+                        
                         # Essayer d'abord l'auto-complétion avec les références
                         if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
                             self._try_auto_complete(appareil_data)
@@ -4473,9 +4833,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             inserted_count += 1
                             print(f"✨ Ligne {row_idx + 1}: Nouvel appareil créé (ID: {appareil_id})")
                             
-                            # Vérifier si l'appareil nécessite une complétion manuelle
-                            # après auto-complétion (seuls ceux sans type ET fabricant)
-                            if self._needs_manual_completion(appareil_data):
+                            # Compter si nécessite complétion manuelle (basé sur l'état d'origine)
+                            if needs_completion:
                                 manual_completion_count += 1
                             
                             # Ajouter la pièce si spécifiée
@@ -4528,7 +4887,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             }
             
             # Utiliser la même méthode d'affichage que l'import CSV
-            self._show_import_summary(results, ref_piece.strip() if ref_piece else None)
+            self._show_import_summary(results, ref_piece.strip() if ref_piece else None, "COLLAGE")
             
             # Note: Ne pas appeler _log_import_to_history ici pour éviter la duplication avec detailed_summary
             
