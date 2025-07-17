@@ -797,10 +797,35 @@ class MainWindow(QMainWindow):
         search_icon.setStyleSheet("padding: 4px;")
         search_section_layout.addWidget(search_icon)
         
+        # Conteneur pour la barre de recherche et les options
+        search_container = QVBoxLayout()
+        search_container.setSpacing(4)
+        
+        # Première ligne : barre de recherche
+        search_row = QHBoxLayout()
+        search_row.setSpacing(4)
+        
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Recherche globale (appareils et pièces)...")
+        self.search_input.setPlaceholderText("Recherche avancée : terme1 && terme2, terme3 || terme4...")
         self.search_input.textChanged.connect(self._search_table)
-        search_section_layout.addWidget(self.search_input)
+        search_row.addWidget(self.search_input)
+        
+        # Case à cocher pour les expressions régulières
+        self.regex_checkbox = QCheckBox("RegEx")
+        self.regex_checkbox.setToolTip("Activer les expressions régulières")
+        self.regex_checkbox.setStyleSheet("QCheckBox { color: #6c757d; font-size: 11px; }")
+        search_row.addWidget(self.regex_checkbox)
+        
+        search_container.addLayout(search_row)
+        
+        # Deuxième ligne : aide sur la syntaxe
+        help_text = QLabel("💡 Opérateurs : && (ET), || (OU), RegEx activable")
+        help_text.setStyleSheet("QLabel { color: #6c757d; font-size: 10px; font-style: italic; }")
+        help_text.setWordWrap(True)
+        search_container.addWidget(help_text)
+        
+        # Ajouter le conteneur à la section de recherche
+        search_section_layout.addLayout(search_container)
         
         # Bouton de réinitialisation de la recherche
         search_clear_btn = QPushButton("×")
@@ -1331,8 +1356,42 @@ class MainWindow(QMainWindow):
                     item.setData(Qt.ItemDataRole.UserRole, db_id)
                     
                     # Mise en évidence des résultats de recherche (sauf pour la colonne Nb Pièces)
-                    if search_term and col_idx < len(Config.DB_HEADERS) and search_term.lower() in str(item.text()).lower():
-                        item.setBackground(QColor(*Config.SEARCH_HIGHLIGHT_COLOR))
+                    if search_term and col_idx < len(Config.DB_HEADERS):
+                        # Gérer les différents types de search_term
+                        if isinstance(search_term, str):
+                            # Recherche simple (chaîne)
+                            if search_term.lower() in str(item.text()).lower():
+                                item.setBackground(QColor(*Config.SEARCH_HIGHLIGHT_COLOR))
+                        elif isinstance(search_term, dict):
+                            # Recherche parsée (dictionnaire)
+                            should_highlight = False
+                            item_text = str(item.text()).lower()
+                            
+                            if search_term.get('type') == 'simple':
+                                # Recherche simple parsée
+                                terms = search_term.get('terms', [])
+                                if terms and terms[0].lower() in item_text:
+                                    should_highlight = True
+                            elif search_term.get('type') == 'regex':
+                                # Recherche par expression régulière
+                                try:
+                                    import re
+                                    pattern = search_term.get('pattern', '')
+                                    if re.search(pattern, item_text, re.IGNORECASE):
+                                        should_highlight = True
+                                except:
+                                    pass
+                            elif search_term.get('type') == 'or':
+                                # Recherche avec opérateurs OR
+                                for group in search_term.get('groups', []):
+                                    if group.get('type') == 'and':
+                                        # Tous les termes doivent être présents
+                                        if all(term.lower() in item_text for term in group.get('terms', [])):
+                                            should_highlight = True
+                                            break
+                            
+                            if should_highlight:
+                                item.setBackground(QColor(*Config.SEARCH_HIGHLIGHT_COLOR))
                     
                     self.table.setItem(row_idx, col_idx, item)
             
@@ -1439,8 +1498,9 @@ class MainWindow(QMainWindow):
             )
             
             # Recharger les données avec le nouveau tri
-            current_search = self.search_input.text().strip()
-            self.load_data(current_search if current_search else None)
+            # Utiliser la recherche parsée actuelle
+            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            self.load_data(search_term)
             
         except Exception as e:
             app_logger.error(f"Erreur lors de l'application du tri: {e}")
@@ -1863,8 +1923,9 @@ class MainWindow(QMainWindow):
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
             if self.current_page < total_pages - 1:
                 self.current_page += 1
-                search_text = self.search_input.text()
-                self.load_data(search_text, is_search=bool(search_text.strip()))
+                # Utiliser la recherche parsée actuelle
+                search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+                self.load_data(search_term, is_search=bool(search_term))
     
     def _previous_page(self):
         """Aller à la page précédente"""
@@ -1879,15 +1940,18 @@ class MainWindow(QMainWindow):
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
             if 0 <= page < total_pages:
                 self.current_page = page
-                search_text = self.search_input.text()
-                self.load_data(search_text, is_search=bool(search_text.strip()))
+                # Utiliser la recherche parsée actuelle
+                search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+                self.load_data(search_term, is_search=bool(search_term))
     
     def _go_to_last_page(self):
         """Aller à la dernière page"""
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
             self.current_page = max(0, total_pages - 1)
-            self.load_data(self.search_input.text())
+            # Utiliser la recherche parsée actuelle
+            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            self.load_data(search_term)
     
     def _change_page_size(self, size_text: str):
         """Changer la taille de page"""
@@ -1899,8 +1963,9 @@ class MainWindow(QMainWindow):
                 self.page_size = int(size_text)
                 
             self.current_page = 0  # Retour à la première page
-            search_text = self.search_input.text()
-            self.load_data(search_text, is_search=bool(search_text.strip()))
+            # Utiliser la recherche parsée actuelle
+            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            self.load_data(search_term, is_search=bool(search_term))
             
         except ValueError:
             pass  # Ignorer les valeurs non valides
@@ -2367,12 +2432,70 @@ class MainWindow(QMainWindow):
 
     def _apply_column_filter(self, column: int, text: str):
         """Appliquer un filtre sur une colonne"""
-        self.load_data(self.search_input.text())
+        # Utiliser la recherche parsée actuelle
+        search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+        self.load_data(search_term)
 
+    def _parse_advanced_search(self, text: str):
+        """Parser la recherche avancée avec opérateurs && et ||"""
+        import re
+        
+        if not text.strip():
+            return None
+        
+        # Vérifier si c'est une expression régulière
+        if self.regex_checkbox.isChecked():
+            try:
+                # Tester la validité de l'expression régulière
+                re.compile(text)
+                return {
+                    'type': 'regex',
+                    'pattern': text
+                }
+            except re.error:
+                # Expression régulière invalide, traiter comme recherche normale
+                return {
+                    'type': 'simple',
+                    'terms': [text.strip()]
+                }
+        
+        # Parser les opérateurs logiques
+        # Diviser d'abord par || (OU)
+        or_groups = text.split('||')
+        
+        parsed_groups = []
+        for group in or_groups:
+            group = group.strip()
+            if not group:
+                continue
+                
+            # Diviser chaque groupe par && (ET)
+            and_terms = [term.strip() for term in group.split('&&') if term.strip()]
+            if and_terms:
+                parsed_groups.append({
+                    'type': 'and',
+                    'terms': and_terms
+                })
+        
+        if not parsed_groups:
+            # Pas d'opérateurs trouvés, recherche simple
+            return {
+                'type': 'simple',
+                'terms': [text.strip()]
+            }
+        
+        return {
+            'type': 'or',
+            'groups': parsed_groups
+        }
+    
     def _search_table(self, text: str):
-        """Rechercher dans le tableau avec débounce"""
+        """Rechercher dans le tableau avec débounce et support avancé"""
         search_term = text.strip()
-        self.pending_search_term = search_term if search_term else None
+        
+        # Parser la recherche avancée
+        parsed_search = self._parse_advanced_search(search_term) if search_term else None
+        self.pending_search_term = parsed_search
         
         # Arrêter le timer précédent et démarrer un nouveau délai
         self.search_timer.stop()
@@ -4030,10 +4153,24 @@ class MainWindow(QMainWindow):
         
         return results
     
+    def _normalize_reference(self, ref):
+        """Normaliser une référence pour la comparaison fuzzy"""
+        if not ref:
+            return ""
+        
+        # Supprimer les espaces et convertir en majuscules
+        normalized = str(ref).strip().upper()
+        
+        # Supprimer les zéros initiaux mais garder au moins un chiffre
+        if normalized.isdigit():
+            normalized = normalized.lstrip('0') or '0'
+        
+        return normalized
+
     def _find_existing_device_by_refs(self, ref_modele, commercial_ref):
-        """Chercher un appareil existant par ses références (colonnes C et D)"""
+        """Chercher un appareil existant par ses références (colonnes C et D) avec détection de références partielles"""
         try:
-            # NOUVELLE LOGIQUE: Recherche exacte par ref_modele ET commercial_ref
+            # NOUVELLE LOGIQUE: Recherche exacte puis fuzzy par ref_modele ET commercial_ref
             # Pour éviter les faux doublons avec références commerciales partagées
             
             # 1. Si on a les deux références, chercher la combinaison exacte
@@ -4056,13 +4193,17 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
             
-            # 2. Sinon, recherche par ref_modele uniquement (si c'est la seule référence disponible)
-            if ref_modele and ref_modele.strip() and (not commercial_ref or not commercial_ref.strip()):
+            # 2. Recherche par ref_modele avec fuzzy matching (références partielles)
+            if ref_modele and ref_modele.strip():
+                # Normaliser la référence recherchée
+                normalized_ref = self._normalize_reference(ref_modele)
+                
+                # Recherche exacte d'abord
                 query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE ref_modele = ?"
                 params = [ref_modele.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
-                    print(f"  ✅ Appareil existant trouvé par ref_modele seul: {ref_modele}")
+                    print(f"  ✅ Appareil existant trouvé par ref_modele exact: {ref_modele}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -4073,14 +4214,41 @@ class MainWindow(QMainWindow):
                         'category': result[0][6],
                         'notes': result[0][7]
                     }
+                
+                # Recherche fuzzy si pas de résultat exact
+                if normalized_ref and len(normalized_ref) > 3:  # Éviter les matches trop courts
+                    # Recherche par "contains" dans les deux sens
+                    query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
+                              FROM appareils 
+                              WHERE (UPPER(ref_modele) LIKE '%' || UPPER(?) || '%' 
+                                     OR UPPER(?) LIKE '%' || UPPER(ref_modele) || '%')
+                              AND ref_modele != ''"""
+                    params = [normalized_ref, normalized_ref]
+                    result = self.db_manager.execute_query(query, params)
+                    if result:
+                        print(f"  🔍 Appareil existant trouvé par ref_modele fuzzy: {ref_modele} → {result[0][3]}")
+                        return {
+                            'id': result[0][0], 
+                            'type': result[0][1], 
+                            'manufacturer': result[0][2],
+                            'ref_modele': result[0][3],
+                            'commercial_ref': result[0][4],
+                            'other_ref': result[0][5],
+                            'category': result[0][6],
+                            'notes': result[0][7]
+                        }
             
-            # 3. Recherche par commercial_ref uniquement (si c'est la seule référence disponible)
-            if commercial_ref and commercial_ref.strip() and (not ref_modele or not ref_modele.strip()):
+            # 3. Recherche par commercial_ref avec fuzzy matching
+            if commercial_ref and commercial_ref.strip():
+                # Normaliser la référence recherchée
+                normalized_ref = self._normalize_reference(commercial_ref)
+                
+                # Recherche exacte d'abord
                 query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE commercial_ref = ?"
                 params = [commercial_ref.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
-                    print(f"  ✅ Appareil existant trouvé par commercial_ref seul: {commercial_ref}")
+                    print(f"  ✅ Appareil existant trouvé par commercial_ref exact: {commercial_ref}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -4091,6 +4259,28 @@ class MainWindow(QMainWindow):
                         'category': result[0][6],
                         'notes': result[0][7]
                     }
+                
+                # Recherche fuzzy si pas de résultat exact
+                if normalized_ref and len(normalized_ref) > 3:  # Éviter les matches trop courts
+                    query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
+                              FROM appareils 
+                              WHERE (UPPER(commercial_ref) LIKE '%' || UPPER(?) || '%' 
+                                     OR UPPER(?) LIKE '%' || UPPER(commercial_ref) || '%')
+                              AND commercial_ref != ''"""
+                    params = [normalized_ref, normalized_ref]
+                    result = self.db_manager.execute_query(query, params)
+                    if result:
+                        print(f"  🔍 Appareil existant trouvé par commercial_ref fuzzy: {commercial_ref} → {result[0][4]}")
+                        return {
+                            'id': result[0][0], 
+                            'type': result[0][1], 
+                            'manufacturer': result[0][2],
+                            'ref_modele': result[0][3],
+                            'commercial_ref': result[0][4],
+                            'other_ref': result[0][5],
+                            'category': result[0][6],
+                            'notes': result[0][7]
+                        }
             
             # Aucun appareil existant trouvé
             print(f"  🆕 Aucun appareil existant pour: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
@@ -4508,14 +4698,15 @@ class MainWindow(QMainWindow):
         
         # Recharger les données avec ou sans filtre
         self.current_page = 0  # Retour à la première page
-        self.load_data()
+        # Utiliser la recherche parsée actuelle
+        search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+        self.load_data(search_term)
     
     def _force_refresh_display(self, reset_page=False, clear_filters=False):
         """Forcer le rafraîchissement complet de l'affichage du tableau"""
         try:
             # Sauvegarder l'état de recherche actuel
-            current_search = self.search_input.text().strip()
-            temp_search = current_search if current_search else None
+            temp_search = self.pending_search_term if hasattr(self, 'pending_search_term') else None
             
             # Retourner à la première page si demandé (après modifications globales)
             if reset_page:
@@ -5306,7 +5497,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             else:
                 super().keyPressEvent(event)
         elif event.key() == Qt.Key.Key_F5:
-            self.load_data(self.search_input.text())
+            # Utiliser la recherche parsée actuelle
+            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            self.load_data(search_term)
         elif event.key() == Qt.Key.Key_F12:
             self._open_log_viewer()
         elif event.key() == Qt.Key.Key_Escape:
@@ -5322,7 +5515,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             db_id = self.db_manager.insert_appareil(empty_data)
             
             # Recharger et se positionner sur la nouvelle ligne
-            self.load_data(self.search_input.text())
+            # Utiliser la recherche parsée actuelle
+            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            self.load_data(search_term)
             
             if self.table.rowCount() > 0:
                 self.table.setCurrentCell(0, 0)  # Première ligne (tri DESC)
@@ -5356,6 +5551,22 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
             # Analyser les données pour déterminer le nombre de colonnes
             detected_columns = self._detect_paste_columns(clipboard_text)
+            
+            # Vérifier si on a au moins 2 colonnes
+            if detected_columns < 2:
+                QMessageBox.warning(
+                    self, 
+                    "Format de données invalide", 
+                    "❌ Format de collage invalide !\n\n"
+                    "Le collage nécessite au minimum 2 colonnes (séparées par des tabulations) :\n"
+                    "• Colonne 1 : Référence technique\n"
+                    "• Colonne 2 : Référence commerciale\n"
+                    "• Colonne 3 (optionnelle) : Description/Autre\n\n"
+                    f"Détecté : {detected_columns} colonne(s)\n\n"
+                    "💡 Astuce : Copiez les données depuis un tableur (Excel, Calc, etc.) "
+                    "pour conserver la séparation par tabulations."
+                )
+                return
             
             # Demander les options d'import avec la fenêtre unifiée
             import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_unified(detected_columns, None, "COLLAGE")
@@ -5766,8 +5977,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _refresh_application(self):
         """Rafraîchir l'application"""
-        current_search = self.search_input.text()
-        self.load_data(current_search)
+        # Utiliser la recherche parsée actuelle
+        search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+        self.load_data(search_term)
         self.statusbar.showMessage("Application rafraîchie", Config.STATUS_MESSAGE_TIMEOUT)
     
     def _refresh_pieces_count_column(self):
