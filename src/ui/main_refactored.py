@@ -12,9 +12,9 @@ from PyQt5.QtWidgets import (
     QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
     QToolBar, QAction, QStatusBar, QSplitter, QTabWidget, 
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
-    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter
+    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser
 )
-from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent
+from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont
 from PyQt5.QtCore import QSize, QMimeData, QUrl, QStringListModel
 from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
@@ -647,6 +647,7 @@ class MainWindow(QMainWindow):
             self.modified_cells = set()
             self.filter_widgets = {}
             self.log_viewer = None
+            self.import_duplicates_history = []  # Stockage des doublons d'import
             
             # Timers
             self._setup_timers()
@@ -895,13 +896,23 @@ class MainWindow(QMainWindow):
         history_layout.addLayout(history_header_layout)
         history_layout.setContentsMargins(8, 8, 8, 8)  # Padding moderne
         
-        self.history_list = QListWidget()
-        # Supprimer la limitation de hauteur pour permettre l'étirement
-        # self.history_list.setMaximumHeight(150) 
+        self.history_list = QTextBrowser()
+        self.history_list.setOpenExternalLinks(False)  # Gérer les liens nous-mêmes
         
-        # Forcer le retour à la ligne et supprimer l'ascenseur horizontal
-        self.history_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.history_list.setWordWrap(True)
+        # Style pour ressembler à une liste
+        self.history_list.setStyleSheet("""
+            QTextBrowser {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 4px;
+                font-family: monospace;
+                font-size: 12px;
+            }
+        """)
+        
+        # Connecter la gestion des liens
+        self.history_list.anchorClicked.connect(self._handle_history_link)
         
         history_layout.addWidget(self.history_list)
         
@@ -2310,32 +2321,47 @@ class MainWindow(QMainWindow):
 
     def _position_drag_handle(self):
         """Positionner la poignée de glisser-déposer"""
-        selected = self.table.selectedRanges()
-        if not selected:
-            self.drag_handle.hide()
+        # Vérifier si tous les objets existent encore
+        if not hasattr(self, 'table') or self.table is None:
             return
         
-        sel_range = selected[0]
-        bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
+        if not hasattr(self, 'drag_handle') or self.drag_handle is None:
+            return
         
-        if bottom_right_item:
-            rect = self.table.visualItemRect(bottom_right_item)
-            if rect.isValid():
-                handle_x = rect.right() - self.drag_handle.width() + 1
-                handle_y = rect.bottom() - self.drag_handle.height() + 1
-                
-                viewport_rect = self.table.viewport().rect()
-                if (handle_x >= 0 and handle_y >= 0 and 
-                    handle_x < viewport_rect.width() and 
-                    handle_y < viewport_rect.height()):
-                    self.drag_handle.move(handle_x, handle_y)
-                    self.drag_handle.show()
+        try:
+            selected = self.table.selectedRanges()
+            if not selected:
+                self.drag_handle.hide()
+                return
+        except RuntimeError:
+            # L'objet table a été détruit
+            return
+        
+        try:
+            sel_range = selected[0]
+            bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
+            
+            if bottom_right_item:
+                rect = self.table.visualItemRect(bottom_right_item)
+                if rect.isValid():
+                    handle_x = rect.right() - self.drag_handle.width() + 1
+                    handle_y = rect.bottom() - self.drag_handle.height() + 1
+                    
+                    viewport_rect = self.table.viewport().rect()
+                    if (handle_x >= 0 and handle_y >= 0 and 
+                        handle_x < viewport_rect.width() and 
+                        handle_y < viewport_rect.height()):
+                        self.drag_handle.move(handle_x, handle_y)
+                        self.drag_handle.show()
+                    else:
+                        self.drag_handle.hide()
                 else:
                     self.drag_handle.hide()
             else:
                 self.drag_handle.hide()
-        else:
-            self.drag_handle.hide()
+        except RuntimeError:
+            # L'objet table ou drag_handle a été détruit
+            return
 
     # --- Méthodes d'action (stubs pour les fonctionnalités à implémenter) ---
 
@@ -2552,12 +2578,81 @@ class MainWindow(QMainWindow):
         """Ajouter un message à l'historique"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
-        history_item = QListWidgetItem(f"[{timestamp}] {message}")
-        self.history_list.insertItem(0, history_item)  # Ajouter en haut
+        formatted_message = f"<div style='margin-bottom: 5px;'>[{timestamp}] {message}</div>"
         
-        # Limiter l'historique à 50 entrées
-        if self.history_list.count() > 50:
-            self.history_list.takeItem(self.history_list.count() - 1)
+        # Récupérer le contenu HTML actuel
+        current_html = self.history_list.toHtml()
+        
+        # Si le document est vide, l'initialiser avec un document HTML valide
+        if not current_html.strip() or current_html.strip() == "<html><head></head><body></body></html>":
+            base_html = """<html><head></head><body style='font-family: monospace; font-size: 12px; margin: 4px;'></body></html>"""
+            self.history_list.setHtml(base_html)
+        
+        # Ajouter le nouveau message en haut
+        cursor = self.history_list.textCursor()
+        cursor.movePosition(cursor.MoveOperation.Start)
+        cursor.movePosition(cursor.MoveOperation.NextWord)  # Aller après <body>
+        cursor.insertHtml(formatted_message)
+        
+        # Limiter l'historique à 50 entrées (approximativement)
+        content = self.history_list.toHtml()
+        lines = content.split('<div')
+        if len(lines) > 52:  # 50 + quelques lignes de header HTML
+            # Garder seulement les 50 premières entrées
+            header_parts = lines[0]  # Garder <html><head></head><body>
+            entries = lines[1:52]  # Garder 50 entrées
+            truncated_content = header_parts + '<div' + '<div'.join(entries) + "</body></html>"
+            self.history_list.setHtml(truncated_content)
+        
+        # Revenir en haut
+        cursor = self.history_list.textCursor()
+        cursor.movePosition(cursor.MoveOperation.Start)
+        self.history_list.setTextCursor(cursor)
+
+    def _handle_history_link(self, url):
+        """Gérer les clics sur les liens dans l'historique"""
+        from PyQt5.QtCore import QUrl
+        
+        url_str = url.toString() if isinstance(url, QUrl) else str(url)
+        
+        try:
+            if url_str.startswith('duplicates_'):
+                # Extraire l'index de la session de doublons
+                index = int(url_str.split('_')[1])
+                
+                if 0 <= index < len(self.import_duplicates_history):
+                    session = self.import_duplicates_history[index]
+                    self._show_duplicates_list(session['duplicates'])
+                else:
+                    self._show_error("Session de doublons non trouvée")
+            else:
+                self._show_error(f"Lien non reconnu: {url_str}")
+                
+        except Exception as e:
+            self._show_error(f"Erreur lors du traitement du lien: {e}")
+
+    def _handle_import_duplicates(self, results, import_method, ref_piece=None):
+        """Gérer l'affichage et l'historique des doublons pour tous les types d'import"""
+        duplicates_list = results.get('duplicates_list', [])
+        if not duplicates_list:
+            return
+        
+        # Sauvegarder pour consultation ultérieure
+        from datetime import datetime
+        import_session = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'method': import_method,
+            'ref_piece': ref_piece,
+            'duplicates': duplicates_list,
+            'count': len(duplicates_list)
+        }
+        self.import_duplicates_history.append(import_session)
+        
+        # Afficher la fenêtre des doublons
+        self._show_duplicates_list(duplicates_list)
+        
+        # Ajouter un lien dans l'historique
+        self._add_to_history(f"🔍 {len(duplicates_list)} doublons détectés - <a href='duplicates_{len(self.import_duplicates_history)-1}'>Consulter la liste</a>")
     
     def _update_pieces_count_for_rows(self, rows: set):
         """Mettre à jour la colonne Nb Pièces pour les lignes spécifiées"""
@@ -3382,7 +3477,7 @@ class MainWindow(QMainWindow):
                 filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
                 
                 # Dialogue pour choisir le type d'import (avec référence pré-remplie)
-                import_type, ref_piece, third_column_choice, has_headers = self._get_import_options(detected_columns, filename_without_ext)
+                import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV")
                 if import_type is None:
                     return
                 
@@ -3418,14 +3513,36 @@ class MainWindow(QMainWindow):
                     self._show_error("Aucune donnée valide trouvée dans le fichier CSV")
                     return
                 
+                # Créer une barre de progression pour les gros imports
+                progress_dialog = None
+                if len(imported_data) >= 1000:
+                    progress_dialog = QProgressDialog(
+                        f"Traitement des lignes... 0 / {len(imported_data)}",
+                        "Annuler",
+                        0, len(imported_data),
+                        self
+                    )
+                    progress_dialog.setWindowTitle("Import CSV")
+                    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+                    progress_dialog.show()
+                    QApplication.processEvents()
+                
                 # Traiter l'import
-                results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
+                results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog)
+                
+                # Fermer la barre de progression
+                if progress_dialog:
+                    progress_dialog.setValue(len(imported_data))
+                    progress_dialog.close()
                 
                 # Afficher la synthèse
                 self._show_import_summary(results, ref_piece, "CSV")
                 
                 # Enregistrer dans l'historique
                 self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
+                
+                # Gérer les doublons s'il y en a
+                self._handle_import_duplicates(results, 'CSV', ref_piece)
                 
                 # Actualiser l'affichage
                 self._force_refresh_display(reset_page=True, clear_filters=True)
@@ -3646,7 +3763,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             return ','  # Default fallback
     
-    def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore"):
+    def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore", progress_dialog=None):
         """Traiter les données d'import"""
         results = {
             'total_imported': 0,
@@ -3657,7 +3774,19 @@ class MainWindow(QMainWindow):
             'associations_created': 0
         }
         
-        for row in imported_data:
+        # Log de démarrage avec format unifié
+        print(f"\n🔍 Début du traitement de {len(imported_data)} lignes d'import")
+        
+        for row_idx, row in enumerate(imported_data):
+            # Mettre à jour la barre de progression
+            if progress_dialog:
+                if progress_dialog.wasCanceled():
+                    break
+                progress_dialog.setValue(row_idx)
+                progress_dialog.setLabelText(f"Traitement des lignes... {row_idx + 1} / {len(imported_data)}")
+                if row_idx % 100 == 0:  # Traiter les événements toutes les 100 lignes
+                    QApplication.processEvents()
+            
             try:
                 # Initialiser les variables par défaut
                 type_val = ""
@@ -3690,12 +3819,17 @@ class MainWindow(QMainWindow):
                     other_ref = row[4].strip() if len(row) > 4 else ""
                     # notes peuvent être en colonne 5 si présentes
                 
+                # Log de la ligne en cours
+                print(f"\n🔵 Ligne {row_idx + 1}: {len(row)} colonnes - {row[:4]}{'...' if len(row) > 4 else ''}")
+                
                 # Chercher l'appareil existant par ses références (colonnes C et D)
                 existing_device = self._find_existing_device_by_refs(ref_modele, commercial_ref)
                 
                 if existing_device:
                     # Appareil existant trouvé - compléter avec les infos importées
                     device_id = existing_device['id']
+                    print(f"  ✅ Appareil existant trouvé par combinaison exacte: {ref_modele} + {commercial_ref}")
+                    print(f"🔄 Ligne {row_idx + 1}: Appareil existant trouvé (ID: {device_id})")
                     
                     # Mettre à jour les champs si nécessaire
                     updates = {}
@@ -3715,6 +3849,7 @@ class MainWindow(QMainWindow):
                     # Appliquer les mises à jour
                     if updates:
                         self._update_device_info(device_id, updates)
+                        print(f"  ⚙️ Mis à jour: {list(updates.keys())}")
                     
                     # Créer association si référence de pièce fournie
                     if ref_piece and ref_piece.strip():
@@ -3722,14 +3857,32 @@ class MainWindow(QMainWindow):
                             if not self._piece_already_associated(device_id, ref_piece.strip()):
                                 self.db_manager.add_piece(ref_piece.strip(), device_id, "")
                                 results['associations_created'] += 1
+                                print(f"  🔗 Pièce {ref_piece.strip()} associée")
                             else:
                                 results['duplicates_skipped'] += 1
+                                print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
+                                
+                                # Collecter les détails du doublon pour CSV/PDF
+                                if not hasattr(self, '_current_import_duplicates'):
+                                    self._current_import_duplicates = []
+                                self._current_import_duplicates.append({
+                                    'ligne': row_idx + 1,
+                                    'appareil_id': device_id,
+                                    'ref_piece': ref_piece.strip(),
+                                    'appareil_data': {
+                                        'ref_modele': existing_device.get('ref_modele', ''),
+                                        'commercial_ref': existing_device.get('commercial_ref', ''),
+                                        'type': existing_device.get('type', ''),
+                                        'manufacturer': existing_device.get('manufacturer', '')
+                                    }
+                                })
                         except Exception as piece_error:
                             print(f"❌ Échec association pièce {ref_piece.strip()} avec appareil {device_id}: {piece_error}")
                             app_logger.error(f"Échec association pièce {ref_piece.strip()} avec appareil {device_id}: {piece_error}")
                     else:
-                        print(f"⚠️ Pas de référence de pièce fournie pour appareil {device_id}")
-                        app_logger.warning(f"Pas de référence de pièce fournie pour appareil {device_id}")
+                        # Ligne sans référence de pièce - compter dans les associations manquantes
+                        results['no_piece_ref'] = results.get('no_piece_ref', 0) + 1
+                        print(f"  ⚠️ Ligne {row_idx + 1}: Appareil traité mais pas de référence de pièce")
                     
                     # Vérifier si l'appareil nécessite encore une complétion manuelle
                     # (basé sur l'état d'origine avant mise à jour)
@@ -3742,6 +3895,7 @@ class MainWindow(QMainWindow):
                 else:
                     # Nouvel appareil - utiliser la même logique harmonisée que le collage
                     if ref_modele.strip() or commercial_ref.strip():
+                        print(f"✨ Ligne {row_idx + 1}: Création d'un nouvel appareil")
                         # Préparer les données d'appareil comme dans _handle_paste
                         appareil_data = {
                             'type': type_val.strip(),
@@ -3777,16 +3931,38 @@ class MainWindow(QMainWindow):
                             if device_id:
                                 results['new_entries'] += 1
                                 results['total_imported'] += 1  # Compter après succès
+                                print(f"  ✅ Nouvel appareil créé (ID: {device_id})")
                                 if ref_piece and ref_piece.strip():
                                     try:
-                                        self.db_manager.add_piece(ref_piece.strip(), device_id, "")
-                                        results['associations_created'] += 1
+                                        if not self._piece_already_associated(device_id, ref_piece.strip()):
+                                            self.db_manager.add_piece(ref_piece.strip(), device_id, "")
+                                            results['associations_created'] += 1
+                                            print(f"  🔗 Pièce {ref_piece.strip()} associée")
+                                        else:
+                                            results['duplicates_skipped'] += 1
+                                            print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
+                                            
+                                            # Collecter les détails du doublon pour CSV/PDF
+                                            if not hasattr(self, '_current_import_duplicates'):
+                                                self._current_import_duplicates = []
+                                            self._current_import_duplicates.append({
+                                                'ligne': row_idx + 1,
+                                                'appareil_id': device_id,
+                                                'ref_piece': ref_piece.strip(),
+                                                'appareil_data': {
+                                                    'ref_modele': ref_modele.strip(),
+                                                    'commercial_ref': commercial_ref.strip(),
+                                                    'type': type_val.strip(),
+                                                    'manufacturer': manufacturer.strip()
+                                                }
+                                            })
                                     except Exception as piece_error:
                                         print(f"❌ Échec association pièce {ref_piece.strip()} avec nouvel appareil {device_id}: {piece_error}")
                                         app_logger.error(f"Échec association pièce {ref_piece.strip()} avec nouvel appareil {device_id}: {piece_error}")
                                 else:
-                                    print(f"⚠️ Pas de référence de pièce fournie pour nouvel appareil {device_id}")
-                                    app_logger.warning(f"Pas de référence de pièce fournie pour nouvel appareil {device_id}")
+                                    # Nouvel appareil sans référence de pièce - compter dans les associations manquantes
+                                    results['no_piece_ref'] = results.get('no_piece_ref', 0) + 1
+                                    print(f"  ⚠️ Ligne {row_idx + 1}: Nouvel appareil créé mais pas de référence de pièce")
                                 
                                 # Compter si nécessite complétion manuelle (basé sur l'état d'origine)
                                 if needs_completion:
@@ -3805,6 +3981,20 @@ class MainWindow(QMainWindow):
                 app_logger.error(f"Erreur traitement ligne {row}: {e}")
                 # Ne pas compter cette ligne comme traitée si elle échoue
                 continue
+        
+        # Résumé final unifié
+        from src.core.config import pluralize
+        print(f"\n📊 Résumé du traitement:")
+        print(f"  Total {pluralize(results['total_imported'], 'ligne traitée')}")
+        print(f"  {pluralize(results['new_entries'], 'appareil nouveau', 'appareils nouveaux')}")
+        print(f"  {pluralize(results['matches_found'], 'appareil mis à jour')}")
+        print(f"  {pluralize(results['associations_created'], 'association créée')}")
+        print(f"  {pluralize(results['duplicates_skipped'], 'doublon ignoré')}")
+        
+        # Ajouter les doublons collectés aux résultats
+        if hasattr(self, '_current_import_duplicates'):
+            results['duplicates_list'] = self._current_import_duplicates
+            delattr(self, '_current_import_duplicates')  # Nettoyer
         
         return results
     
@@ -3920,6 +4110,192 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Erreur mise à jour appareil: {e}")
     
+    def _show_duplicates_list(self, duplicates_list):
+        """Afficher la liste des doublons ignorés pour intervention manuelle"""
+        if not duplicates_list:
+            return
+            
+        # Créer le contenu de la fenêtre
+        content = f"🔍 Liste des {len(duplicates_list)} doublons ignorés lors de l'import :\n\n"
+        
+        for i, duplicate in enumerate(duplicates_list, 1):
+            content += f"{i}. Ligne {duplicate['ligne']} :\n"
+            content += f"   • Pièce : {duplicate['ref_piece']}\n"
+            content += f"   • Appareil (ID: {duplicate['appareil_id']}) :\n"
+            
+            appareil_data = duplicate['appareil_data']
+            content += f"     - Réf. Modèle : {appareil_data['ref_modele']}\n"
+            content += f"     - Réf. Commerciale : {appareil_data['commercial_ref']}\n"
+            content += f"     - Type : {appareil_data['type']}\n"
+            content += f"     - Fabricant : {appareil_data['manufacturer']}\n"
+            content += "\n"
+        
+        content += "\n💡 Ces associations de pièces existent déjà dans la base de données.\n"
+        content += "Vérifiez si ces doublons sont légitimes ou nécessitent une intervention manuelle."
+        
+        # Afficher dans une fenêtre de dialogue scrollable
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Doublons Ignorés - Intervention Manuelle")
+        dialog.setMinimumSize(600, 400)
+        
+        layout = QVBoxLayout()
+        
+        # Zone de texte scrollable
+        text_area = QTextEdit()
+        text_area.setPlainText(content)
+        text_area.setReadOnly(True)
+        text_area.setFont(QFont("Courier", 10))
+        layout.addWidget(text_area)
+        
+        # Boutons
+        button_layout = QHBoxLayout()
+        
+        
+        close_button = QPushButton("Fermer")
+        close_button.clicked.connect(dialog.accept)
+        button_layout.addWidget(close_button)
+        
+        layout.addLayout(button_layout)
+        dialog.setLayout(layout)
+        
+        dialog.exec()
+
+
+    def _detect_paste_columns(self, clipboard_text):
+        """Détecter le nombre de colonnes dans les données collées"""
+        rows = clipboard_text.strip().split('\n')
+        if not rows:
+            return 0
+            
+        # Compter les colonnes de chaque ligne
+        column_counts = []
+        for row in rows:
+            if row.strip():  # Ignorer les lignes vides
+                columns = row.split('\t')
+                column_counts.append(len(columns))
+        
+        if not column_counts:
+            return 0
+            
+        # Retourner le nombre de colonnes le plus fréquent
+        most_common_count = max(set(column_counts), key=column_counts.count)
+        return most_common_count
+
+    def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV"):
+        """Dialogue unifié pour choisir les options d'import (CSV, PDF, COLLAGE)"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Options d'import {import_method}")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(400)
+        
+        layout = QVBoxLayout()
+        
+        # Information sur les colonnes détectées
+        if detected_columns:
+            if import_method == "CSV":
+                info_label = QLabel(f"📊 Fichier détecté: {detected_columns} colonnes")
+            elif import_method == "PDF":
+                info_label = QLabel(f"📄 Données PDF détectées: {detected_columns} colonnes")
+            else:  # COLLAGE
+                info_label = QLabel(f"📋 Données détectées: {detected_columns} colonnes")
+            info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
+            layout.addWidget(info_label)
+        
+        # Description du format
+        format_label = QLabel("Format reconnu:")
+        format_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        layout.addWidget(format_label)
+        
+        if detected_columns == 2:
+            format_desc = QLabel("• 2 colonnes → Réf. Modèle + Réf. Commerciale")
+        elif detected_columns == 3:
+            if import_method == "PDF":
+                format_desc = QLabel("• 3 colonnes → Réf. technique + Réf. commerciale + Description")
+            else:
+                format_desc = QLabel("• 3 colonnes → Réf. Modèle + Réf. Commerciale + Autre")
+        elif detected_columns >= 4:
+            format_desc = QLabel("• 4+ colonnes → Format complet (Type, Fabricant, Réf. Modèle, Réf. Commerciale, ...)")
+        else:
+            format_desc = QLabel("• Format non reconnu")
+        
+        format_desc.setStyleSheet("color: #6c757d; margin-left: 20px;")
+        layout.addWidget(format_desc)
+        
+        # Référence de pièce (optionnelle)
+        ref_layout = QHBoxLayout()
+        ref_layout.addWidget(QLabel("Référence de pièce (optionnelle):"))
+        ref_input = QLineEdit()
+        ref_input.setText(default_ref_piece if default_ref_piece else "")
+        ref_input.setPlaceholderText("Référence de la pièce à associer à tous les appareils")
+        ref_layout.addWidget(ref_input)
+        layout.addLayout(ref_layout)
+        
+        # Case à cocher pour les en-têtes (CSV uniquement)
+        headers_checkbox = None
+        if import_method == "CSV":
+            headers_checkbox = QCheckBox("Le fichier contient une ligne d'en-têtes (ignorer la première ligne)")
+            headers_checkbox.setChecked(False)
+            headers_checkbox.setToolTip("Cochez cette case si la première ligne de votre fichier contient les noms des colonnes")
+            layout.addWidget(headers_checkbox)
+        
+        # Gestion de la 3ème colonne (seulement si 3 colonnes)
+        third_col_combo = None
+        if detected_columns == 3:
+            third_col_layout = QHBoxLayout()
+            if import_method == "PDF":
+                third_col_layout.addWidget(QLabel("Destination Description:"))
+            else:
+                third_col_layout.addWidget(QLabel("Destination 3ème colonne:"))
+            third_col_combo = QComboBox()
+            third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
+            third_col_combo.setCurrentIndex(0)  # Par défaut "Ignorer"
+            third_col_layout.addWidget(third_col_combo)
+            layout.addLayout(third_col_layout)
+        
+        # Boutons
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton("Importer")
+        ok_button.setDefault(True)
+        ok_button.setStyleSheet("QPushButton { background-color: #28a745; color: white; font-weight: bold; padding: 8px 16px; }")
+        cancel_button = QPushButton("Annuler")
+        cancel_button.setStyleSheet("QPushButton { padding: 8px 16px; }")
+        
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(ok_button)
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        
+        # Connexions des boutons
+        ok_button.clicked.connect(dialog.accept)
+        cancel_button.clicked.connect(dialog.reject)
+        
+        # Afficher le dialogue
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Déterminer le type d'import
+            import_type = detected_columns if detected_columns else 3
+            
+            # Mapper le choix de la 3ème colonne
+            third_column_choice = "ignore"  # Valeur par défaut
+            if third_col_combo:
+                choice = third_col_combo.currentText()
+                if choice == "Ignorer":
+                    third_column_choice = "ignore"
+                elif choice == "Autre référence":
+                    third_column_choice = "other_ref"
+                elif choice == "Notes":
+                    third_column_choice = "notes"
+            
+            # Récupérer l'option d'en-têtes (CSV uniquement)
+            has_headers = headers_checkbox.isChecked() if headers_checkbox else False
+            
+            return import_type, ref_input.text().strip(), third_column_choice, has_headers
+        
+        return None, None, None, None
+
     def _show_import_summary(self, results, ref_piece, method="CSV"):
         """Afficher la synthèse d'import avec le nouveau format unifié"""
         # Calculer le total traité
@@ -3965,6 +4341,11 @@ class MainWindow(QMainWindow):
         else:
             summary += f"  0 ligne rejetée\n"
         
+        # Lignes sans référence de pièce
+        no_piece_ref = results.get('no_piece_ref', 0)
+        if no_piece_ref > 0:
+            summary += f"  {no_piece_ref} ligne sans référence de pièce\n"
+        
         self._show_info(summary)
     
     def _log_import_to_history(self, results, ref_piece, source):
@@ -4006,10 +4387,15 @@ class MainWindow(QMainWindow):
         # Appareils nécessitant complétion manuelle
         manual_completion = results.get('manual_completion', 0)
         if manual_completion > 0:
-            detailed_summary += f"  {pluralize(manual_completion, 'appareil à compléter manuellement')}"
-        else:
-            # Supprimer le dernier \n si pas de complétion manuelle
-            detailed_summary = detailed_summary.rstrip('\n')
+            detailed_summary += f"  {pluralize(manual_completion, 'appareil à compléter manuellement')}\n"
+        
+        # Lignes sans référence de pièce
+        no_piece_ref = results.get('no_piece_ref', 0)
+        if no_piece_ref > 0:
+            detailed_summary += f"  {pluralize(no_piece_ref, 'ligne sans référence de pièce')}\n"
+        
+        # Supprimer le dernier \n
+        detailed_summary = detailed_summary.rstrip('\n')
         
         # Déterminer le type d'opération
         operation_type = "import_csv" if source != "Collage" else "import_paste"
@@ -4346,7 +4732,20 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def eventFilter(self, source, event):
         """Filtrer les événements pour la gestion du drag handle"""
-        if source is self.table.viewport():
+        # Vérifier si l'objet table existe encore
+        if not hasattr(self, 'table') or self.table is None:
+            return super().eventFilter(source, event)
+        
+        # Vérifier si l'objet viewport existe encore
+        try:
+            viewport = self.table.viewport()
+            if viewport is None:
+                return super().eventFilter(source, event)
+        except RuntimeError:
+            # L'objet C++ a été détruit
+            return super().eventFilter(source, event)
+        
+        if source is viewport:
             if event.type() in [QEvent.Type.Resize, QEvent.Type.Paint]:
                 self._position_drag_handle()
         return super().eventFilter(source, event)
@@ -4489,7 +4888,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 suggested_ref_piece = os.path.splitext(os.path.basename(file_paths[0]))[0]
             
             # Afficher la boîte de dialogue d'options d'import
-            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_pdf(suggested_ref_piece)
+            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_unified(3, suggested_ref_piece, "PDF")
             if import_type is None:
                 return
             
@@ -4500,7 +4899,27 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             all_converted_data = []
             processed_files = []
             
-            for file_path in file_paths:
+            # Créer une barre de progression pour l'import PDF
+            total_files = len(file_paths)
+            progress_dialog = QProgressDialog(
+                f"Import PDF en cours... 0 / {total_files} fichier(s)",
+                "Annuler",
+                0, total_files,
+                self
+            )
+            progress_dialog.setWindowTitle("Import PDF")
+            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            progress_dialog.show()
+            QApplication.processEvents()  # Forcer l'affichage
+            
+            for file_idx, file_path in enumerate(file_paths):
+                # Mettre à jour la barre de progression
+                if progress_dialog.wasCanceled():
+                    break
+                    
+                progress_dialog.setValue(file_idx)
+                progress_dialog.setLabelText(f"Traitement: {os.path.basename(file_path)} ({file_idx + 1} / {total_files})")
+                QApplication.processEvents()
                 try:
                     # Valider la compatibilité
                     is_compatible, error_msg = extractor.validate_pdf_compatibility(file_path)
@@ -4514,6 +4933,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     if not extracted_data:
                         self._show_error(f"Aucune donnée extraite du fichier PDF: {os.path.basename(file_path)}")
                         continue
+                    
+                    # Debug : afficher le nombre de lignes extraites
+                    print(f"📄 Fichier PDF {os.path.basename(file_path)}: {len(extracted_data)} lignes extraites")
                     
                     # Convertir les données extraites en format compatible avec _process_import
                     for row in extracted_data:
@@ -4532,12 +4954,39 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     self._show_error(f"Erreur lors du traitement de {os.path.basename(file_path)}: {e}")
                     continue
             
+            # Fermer la barre de progression
+            if progress_dialog:
+                progress_dialog.setValue(total_files)
+                progress_dialog.close()
+            
             if not all_converted_data:
                 self._show_error("Aucune donnée extraite des fichiers PDF")
                 return
             
+            # Debug : afficher le total des lignes converties
+            print(f"📊 Total des lignes converties pour traitement: {len(all_converted_data)}")
+            
+            # Créer une barre de progression pour le traitement des lignes
+            lines_progress = None
+            if len(all_converted_data) >= 1000:  # Seulement pour les gros imports
+                lines_progress = QProgressDialog(
+                    f"Traitement des lignes... 0 / {len(all_converted_data)}",
+                    "Annuler",
+                    0, len(all_converted_data),
+                    self
+                )
+                lines_progress.setWindowTitle("Traitement des données")
+                lines_progress.setWindowModality(Qt.WindowModality.WindowModal)
+                lines_progress.show()
+                QApplication.processEvents()
+            
             # Traiter l'import avec la même logique que CSV
-            results = self._process_import(all_converted_data, import_type, ref_piece, third_column_choice)
+            results = self._process_import(all_converted_data, import_type, ref_piece, third_column_choice, lines_progress)
+            
+            # Fermer la barre de progression des lignes
+            if lines_progress:
+                lines_progress.setValue(len(all_converted_data))
+                lines_progress.close()
             
             # Afficher la synthèse
             self._show_import_summary(results, ref_piece, "PDF")
@@ -4549,6 +4998,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 source_info = f"PDF ({len(processed_files)} fichiers)"
             
             self._log_import_to_history(results, ref_piece, source_info)
+            
+            # Gérer les doublons s'il y en a
+            self._handle_import_duplicates(results, 'PDF', ref_piece)
             
             # Actualiser l'affichage
             self._force_refresh_display(reset_page=True, clear_filters=True)
@@ -4869,45 +5321,16 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if not rows:
                 return
 
-            # Demander une référence de pièce optionnelle
-            ref_piece, ok1 = QInputDialog.getText(
-                self, "Pièce Associée", 
-                "Associer une référence de pièce pour ce lot (optionnel) :"
-            )
-            if not ok1:
+            # Analyser les données pour déterminer le nombre de colonnes
+            detected_columns = self._detect_paste_columns(clipboard_text)
+            
+            # Demander les options d'import avec la fenêtre unifiée
+            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_unified(detected_columns, None, "COLLAGE")
+            if import_type is None:
                 return
-            
-            # Récupérer les catégories disponibles
-            categories = self.db_manager.get_categories()
-            
-            category = ""
-            if categories:
-                category, ok2 = QInputDialog.getItem(
-                    self, "Catégorie", 
-                    "Sélectionner une catégorie (optionnel):",
-                    [""] + categories, 0, True
-                )
-                if not ok2:
-                    return
-
-            # Vérifier si on a 3 colonnes et demander le choix de destination
-            third_column_choice = "other_ref"  # Valeur par défaut
-            if any(len(row.split('\t')) == 3 for row in clipboard_text.strip().split('\n')):
-                choice, ok3 = QInputDialog.getItem(
-                    self, "3ème Colonne", 
-                    "Où stocker la 3ème colonne ?",
-                    ["Ignorer", "Autre référence", "Notes"], 0, False
-                )
-                if not ok3:
-                    return
-                if choice == "Ignorer":
-                    third_column_choice = "ignore"
-                elif choice == "Autre référence":
-                    third_column_choice = "other_ref"
-                elif choice == "Notes":
-                    third_column_choice = "notes"
-                else:  # Fallback
-                    third_column_choice = "ignore"
+                
+            # Le collage n'utilise pas import_type mais on récupère les autres paramètres
+            category = ""  # Pas de catégorie dans la fenêtre unifiée pour l'instant
 
             # Insérer les données
             inserted_count = 0
@@ -4916,7 +5339,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             associations_created = 0  # Compter les vraies associations créées
             duplicates_skipped = 0   # Compter les associations déjà existantes
             manual_completion_count = 0  # Compter les appareils nécessitant complétion manuelle
+            no_piece_ref_count = 0  # Compter les lignes sans référence de pièce
             total_rows = len(rows)
+            duplicates_list = []  # Liste des doublons pour intervention manuelle
             
             # Créer une barre de progression pour les gros imports (10K+ lignes)
             progress_dialog = None
@@ -5045,7 +5470,23 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             print(f"  🔗 Pièce {ref_piece.strip()} associée")
                         else:
                             duplicates_skipped += 1
+                            # Enregistrer les détails du doublon
+                            duplicates_list.append({
+                                'ligne': row_idx + 1,
+                                'appareil_id': appareil_id,
+                                'ref_piece': ref_piece.strip(),
+                                'appareil_data': {
+                                    'ref_modele': existing_device.get('ref_modele', ''),
+                                    'commercial_ref': existing_device.get('commercial_ref', ''),
+                                    'type': existing_device.get('type', ''),
+                                    'manufacturer': existing_device.get('manufacturer', '')
+                                }
+                            })
                             print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
+                    else:
+                        # Ligne sans référence de pièce - compter dans les associations manquantes
+                        no_piece_ref_count += 1
+                        print(f"  ⚠️ Ligne {row_idx + 1}: Appareil traité mais pas de référence de pièce")
                     
                     # Vérifier si l'appareil nécessite encore une complétion manuelle
                     # (basé sur l'état d'origine avant mise à jour)
@@ -5095,6 +5536,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                                 self.db_manager.add_piece(ref_piece.strip(), appareil_id, "")
                                 associations_created += 1
                                 print(f"  🔗 Pièce {ref_piece.strip()} associée")
+                            else:
+                                # Nouvel appareil sans référence de pièce - compter dans les associations manquantes
+                                no_piece_ref_count += 1
+                                print(f"  ⚠️ Ligne {row_idx + 1}: Nouvel appareil créé mais pas de référence de pièce")
                         else:
                             print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: aucune donnée valide détectée après filtrage")
                             print(f"    Données filtrées vides: {appareil_data}")
@@ -5113,7 +5558,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Forcer le rafraîchissement et afficher le résultat
             self._force_refresh_display(reset_page=True, clear_filters=True)
             
-            # Résumé détaillé pour debugging ET historique
+            # Résumé détaillé pour debugging uniquement
             from src.core.config import pluralize
             detailed_summary = f"📊 Résumé de l'import par collage:\n"
             detailed_summary += f"  Total {pluralize(total_rows, 'ligne traitée')}\n"
@@ -5121,28 +5566,35 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             detailed_summary += f"  {pluralize(inserted_count, 'appareil nouveau', 'appareils nouveaux')}\n"
             detailed_summary += f"  {pluralize(updated_count, 'appareil mis à jour')}\n"
             detailed_summary += f"  {pluralize(associations_created, 'association créée')}\n"
-            detailed_summary += f"  {pluralize(duplicates_skipped, 'doublon ignoré')}"
+            detailed_summary += f"  {pluralize(duplicates_skipped, 'doublon ignoré')}\n"
+            detailed_summary += f"  {pluralize(no_piece_ref_count, 'ligne sans référence de pièce')}"
             
             print(f"\n{detailed_summary}")
-            
-            # Ajouter le résumé détaillé directement à l'historique
-            self._add_to_history(detailed_summary)
             
             
             # Afficher la synthèse comme pour l'import CSV
             results = {
                 'total_imported': total_rows - ignored_count,
                 'matches_found': updated_count,
-                'manual_completion': manual_completion_count,  # Sera mis à jour plus bas
+                'manual_completion': manual_completion_count,
                 'duplicates_skipped': duplicates_skipped,
                 'new_entries': inserted_count,
-                'associations_created': associations_created
+                'associations_created': associations_created,
+                'rejected_lines': ignored_count,
+                'no_piece_ref': no_piece_ref_count
             }
             
             # Utiliser la même méthode d'affichage que l'import CSV
             self._show_import_summary(results, ref_piece.strip() if ref_piece else None, "COLLAGE")
             
-            # Note: Ne pas appeler _log_import_to_history ici pour éviter la duplication avec detailed_summary
+            # Ajouter à l'historique avec le bon format
+            self._log_import_to_history(results, ref_piece.strip() if ref_piece else None, "par collage")
+            
+            # Gérer les doublons s'il y en a
+            if duplicates_list:
+                # Ajouter aux résultats pour traitement unifié
+                results['duplicates_list'] = duplicates_list
+                self._handle_import_duplicates(results, 'COLLAGE', ref_piece.strip() if ref_piece else None)
             
         except DatabaseError as e:
             self._show_error(f"Erreur lors du collage: {e}")
@@ -5306,6 +5758,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         # Sauvegarder les paramètres
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
+        
+        # Désinstaller l'eventFilter pour éviter les erreurs lors de la fermeture
+        if hasattr(self, 'table') and self.table is not None:
+            try:
+                self.table.viewport().removeEventFilter(self)
+            except (RuntimeError, AttributeError):
+                pass  # L'objet est peut-être déjà détruit
         
         # Fermer la base de données
         if hasattr(self, 'db_manager'):
