@@ -2578,31 +2578,62 @@ class MainWindow(QMainWindow):
         """Ajouter un message à l'historique"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted_message = f"<div style='margin-bottom: 5px;'>[{timestamp}] {message}</div>"
+        
+        # Assurer que le message est correctement formaté avec structure HTML
+        formatted_message = f"<p style='margin: 2px 0; font-size: 12px; color: #333;'><span style='color: #666;'>[{timestamp}]</span> {message}</p>"
         
         # Récupérer le contenu HTML actuel
         current_html = self.history_list.toHtml()
         
-        # Si le document est vide, l'initialiser avec un document HTML valide
-        if not current_html.strip() or current_html.strip() == "<html><head></head><body></body></html>":
-            base_html = """<html><head></head><body style='font-family: monospace; font-size: 12px; margin: 4px;'></body></html>"""
+        # Si le document est vide ou invalide, l'initialiser avec un document HTML valide
+        if not current_html.strip() or current_html.strip() == "<html><head></head><body></body></html>" or "<!DOCTYPE HTML PUBLIC" in current_html:
+            # Réinitialiser avec un document HTML propre
+            base_html = """<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: monospace; font-size: 12px; margin: 4px; padding: 4px; }
+        p { margin: 2px 0; }
+        .timestamp { color: #666; }
+        .message { color: #333; }
+    </style>
+</head>
+<body>
+</body>
+</html>"""
             self.history_list.setHtml(base_html)
         
-        # Ajouter le nouveau message en haut
+        # Ajouter le nouveau message en haut du body
         cursor = self.history_list.textCursor()
         cursor.movePosition(cursor.MoveOperation.Start)
-        cursor.movePosition(cursor.MoveOperation.NextWord)  # Aller après <body>
-        cursor.insertHtml(formatted_message)
         
-        # Limiter l'historique à 50 entrées (approximativement)
+        # Trouver le début du contenu body
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.movePosition(cursor.MoveOperation.StartOfLine)
+        
+        # Insérer le nouveau message avant </body>
+        body_end_pos = self.history_list.toPlainText().rfind('</body>')
+        if body_end_pos != -1:
+            cursor.setPosition(body_end_pos)
+            cursor.insertHtml(formatted_message)
+        else:
+            # Fallback: ajouter à la fin
+            cursor.movePosition(cursor.MoveOperation.End)
+            cursor.insertHtml(formatted_message)
+        
+        # Limiter l'historique à 50 entrées pour éviter la surcharge
         content = self.history_list.toHtml()
-        lines = content.split('<div')
-        if len(lines) > 52:  # 50 + quelques lignes de header HTML
-            # Garder seulement les 50 premières entrées
-            header_parts = lines[0]  # Garder <html><head></head><body>
-            entries = lines[1:52]  # Garder 50 entrées
-            truncated_content = header_parts + '<div' + '<div'.join(entries) + "</body></html>"
-            self.history_list.setHtml(truncated_content)
+        p_tags = content.count('<p style')
+        if p_tags > 50:
+            # Trouver les positions des 50 premiers paragraphes
+            lines = content.split('<p style')
+            if len(lines) > 51:  # 50 + header
+                # Reconstruire avec seulement les 50 premiers
+                header = lines[0]
+                entries = lines[1:51]
+                footer = "</body></html>"
+                truncated_content = header + '<p style' + '<p style'.join(entries) + footer
+                self.history_list.setHtml(truncated_content)
         
         # Revenir en haut
         cursor = self.history_list.textCursor()
@@ -3989,7 +4020,8 @@ class MainWindow(QMainWindow):
         print(f"  {pluralize(results['new_entries'], 'appareil nouveau', 'appareils nouveaux')}")
         print(f"  {pluralize(results['matches_found'], 'appareil mis à jour')}")
         print(f"  {pluralize(results['associations_created'], 'association créée')}")
-        print(f"  {pluralize(results['duplicates_skipped'], 'doublon ignoré')}")
+        msg = "ligne ignorée (doublon dans l'import)"
+        print(f"  {pluralize(results['duplicates_skipped'], msg)}")
         
         # Ajouter les doublons collectés aux résultats
         if hasattr(self, '_current_import_duplicates'):
@@ -4111,12 +4143,12 @@ class MainWindow(QMainWindow):
             print(f"Erreur mise à jour appareil: {e}")
     
     def _show_duplicates_list(self, duplicates_list):
-        """Afficher la liste des doublons ignorés pour intervention manuelle"""
+        """Afficher la liste des lignes ignorées (doublons dans l'import) pour intervention manuelle"""
         if not duplicates_list:
             return
             
         # Créer le contenu de la fenêtre
-        content = f"🔍 Liste des {len(duplicates_list)} doublons ignorés lors de l'import :\n\n"
+        content = f"🔍 Liste des {len(duplicates_list)} lignes ignorées (doublons dans l'import) :\n\n"
         
         for i, duplicate in enumerate(duplicates_list, 1):
             content += f"{i}. Ligne {duplicate['ligne']} :\n"
@@ -4332,7 +4364,7 @@ class MainWindow(QMainWindow):
         # Doublons ignorés
         duplicates_skipped = results.get('duplicates_skipped', 0)
         if duplicates_skipped > 0:
-            summary += f"  {duplicates_skipped} doublon ignoré\n"
+            summary += f"  {duplicates_skipped} ligne ignorée (doublon dans l'import)\n"
         
         # Lignes rejetées
         rejected_lines = results.get('rejected_lines', 0)
@@ -4382,7 +4414,8 @@ class MainWindow(QMainWindow):
         # Doublons ignorés
         duplicates_skipped = results.get('duplicates_skipped', 0)
         if duplicates_skipped > 0:
-            detailed_summary += f"  {pluralize(duplicates_skipped, 'doublon ignoré')}\n"
+            msg = "ligne ignorée (doublon dans l'import)"
+            detailed_summary += f"  {pluralize(duplicates_skipped, msg)}\n"
         
         # Appareils nécessitant complétion manuelle
         manual_completion = results.get('manual_completion', 0)
@@ -5566,7 +5599,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             detailed_summary += f"  {pluralize(inserted_count, 'appareil nouveau', 'appareils nouveaux')}\n"
             detailed_summary += f"  {pluralize(updated_count, 'appareil mis à jour')}\n"
             detailed_summary += f"  {pluralize(associations_created, 'association créée')}\n"
-            detailed_summary += f"  {pluralize(duplicates_skipped, 'doublon ignoré')}\n"
+            msg = "ligne ignorée (doublon dans l'import)"
+            detailed_summary += f"  {pluralize(duplicates_skipped, msg)}\n"
             detailed_summary += f"  {pluralize(no_piece_ref_count, 'ligne sans référence de pièce')}"
             
             print(f"\n{detailed_summary}")
