@@ -504,7 +504,7 @@ class DatabaseManager:
                 FROM appareils a
                 LEFT JOIN (
                     SELECT appareil_id, COUNT(*) as pieces_count
-                    FROM pieces
+                    FROM piece_associations
                     GROUP BY appareil_id
                 ) p ON a.id = p.appareil_id
             """
