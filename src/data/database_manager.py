@@ -167,15 +167,7 @@ class DatabaseManager:
             # Ajouter les colonnes manquantes
             self._add_missing_columns()
             
-            # Table pièces (nouvelle structure normalisée)
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS pieces_new (
-                    id INTEGER PRIMARY KEY,
-                    ref_piece TEXT NOT NULL UNIQUE,
-                    description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+            # Table pièces (sera créée/recréée par la migration)
             
             # Table associations pièce-appareil (nouvelle structure)
             self.cursor.execute("""
@@ -333,7 +325,7 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_appareils_other_ref ON appareils(other_ref)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_category ON appareils(category)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_id_desc ON appareils(id DESC)",  # Pour ORDER BY id DESC
-            "CREATE INDEX IF NOT EXISTS idx_pieces_ref ON pieces_new(ref_piece)",
+            "CREATE INDEX IF NOT EXISTS idx_pieces_ref ON pieces(ref_piece)",
             "CREATE INDEX IF NOT EXISTS idx_piece_associations_piece ON piece_associations(piece_id)",
             "CREATE INDEX IF NOT EXISTS idx_piece_associations_appareil ON piece_associations(appareil_id)"
         ]
@@ -348,24 +340,45 @@ class DatabaseManager:
         """Migrer les données de l'ancienne structure vers la nouvelle structure normalisée"""
         try:
             # Vérifier si la migration a déjà été effectuée
-            self.cursor.execute("SELECT COUNT(*) FROM pieces_new")
-            if self.cursor.fetchone()[0] > 0:
-                print("Migration déjà effectuée, skip")
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
+            pieces_exists = self.cursor.fetchone()
+            
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='piece_associations'")
+            assoc_exists = self.cursor.fetchone()
+            
+            if not pieces_exists or not assoc_exists:
+                print("Tables de migration manquantes, skip")
                 return
             
-            # Vérifier si l'ancienne table existe
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
-            if not self.cursor.fetchone():
-                print("Pas d'ancienne table pieces à migrer")
+            # Vérifier la structure de la table pieces actuelle
+            self.cursor.execute("PRAGMA table_info(pieces)")
+            pieces_columns = [row[1] for row in self.cursor.fetchall()]
+            print(f"Colonnes de pieces: {pieces_columns}")
+            
+            # Si la table pieces n'a pas de colonne 'appareil_id', la migration a déjà été effectuée
+            if 'appareil_id' not in pieces_columns:
+                print("Migration déjà effectuée (pas de colonne appareil_id), skip")
+                return
+                
+            # Vérifier si les nouvelles tables sont vides
+            self.cursor.execute("SELECT COUNT(*) FROM pieces")
+            old_pieces_count = self.cursor.fetchone()[0]
+            
+            self.cursor.execute("SELECT COUNT(*) FROM piece_associations")
+            assoc_count = self.cursor.fetchone()[0]
+            
+            if old_pieces_count == 0:
+                print("Pas de données à migrer")
+                return
+                
+            if assoc_count > 0:
+                print("Migration déjà effectuée (associations existantes), skip")
                 return
             
             print("🔄 Début de la migration des pièces vers la nouvelle structure...")
             
             # Étape 1: Sauvegarder les anciennes données
-            # Vérifier la structure de la table pieces actuelle
-            self.cursor.execute("PRAGMA table_info(pieces)")
-            pieces_columns = [row[1] for row in self.cursor.fetchall()]
-            print(f"Colonnes de pieces: {pieces_columns}")
+            print("📋 Sauvegarde des anciennes données...")
             
             # Adapter la requête selon les colonnes disponibles
             if 'description' in pieces_columns:
@@ -379,81 +392,68 @@ class DatabaseManager:
                 # Table simple sans description
                 self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id) SELECT id, ref_piece, appareil_id FROM pieces")
             
-            # Étape 2: Migrer les pièces uniques vers pieces_new
+            # Étape 2: Créer les nouvelles pièces uniques
+            print("📦 Création des pièces uniques...")
+            pieces_data = {}
+            
+            # Récupérer toutes les pièces avec leurs données
             if 'description' in pieces_columns and 'created_at' in pieces_columns:
-                # Migrer avec descriptions et created_at
-                self.cursor.execute("""
-                    INSERT INTO pieces_new (ref_piece, description, created_at)
-                    SELECT 
-                        ref_piece,
-                        -- Prendre la première description non vide trouvée
-                        (SELECT description FROM pieces p2 
-                         WHERE p2.ref_piece = p1.ref_piece 
-                         AND p2.description IS NOT NULL 
-                         AND TRIM(p2.description) != '' 
-                         LIMIT 1) as description,
-                        MIN(created_at) as created_at
-                    FROM pieces p1
-                    GROUP BY ref_piece
-                    ORDER BY ref_piece
-                """)
+                self.cursor.execute("SELECT ref_piece, description, created_at FROM pieces")
+                for ref_piece, description, created_at in self.cursor.fetchall():
+                    if ref_piece not in pieces_data:
+                        pieces_data[ref_piece] = {'description': description, 'created_at': created_at}
+                    elif description and not pieces_data[ref_piece]['description']:
+                        pieces_data[ref_piece]['description'] = description
             elif 'description' in pieces_columns:
-                # Migrer avec descriptions mais sans created_at
-                self.cursor.execute("""
-                    INSERT INTO pieces_new (ref_piece, description)
-                    SELECT 
-                        ref_piece,
-                        -- Prendre la première description non vide trouvée
-                        (SELECT description FROM pieces p2 
-                         WHERE p2.ref_piece = p1.ref_piece 
-                         AND p2.description IS NOT NULL 
-                         AND TRIM(p2.description) != '' 
-                         LIMIT 1) as description
-                    FROM pieces p1
-                    GROUP BY ref_piece
-                    ORDER BY ref_piece
-                """)
-            elif 'created_at' in pieces_columns:
-                # Migrer avec created_at mais sans description
-                self.cursor.execute("""
-                    INSERT INTO pieces_new (ref_piece, created_at)
-                    SELECT 
-                        ref_piece,
-                        MIN(created_at) as created_at
-                    FROM pieces p1
-                    GROUP BY ref_piece
-                    ORDER BY ref_piece
-                """)
+                self.cursor.execute("SELECT ref_piece, description FROM pieces")
+                for ref_piece, description in self.cursor.fetchall():
+                    if ref_piece not in pieces_data:
+                        pieces_data[ref_piece] = {'description': description, 'created_at': None}
+                    elif description and not pieces_data[ref_piece]['description']:
+                        pieces_data[ref_piece]['description'] = description
             else:
-                # Migrer seulement ref_piece
-                self.cursor.execute("""
-                    INSERT INTO pieces_new (ref_piece)
-                    SELECT DISTINCT ref_piece
-                    FROM pieces p1
-                    ORDER BY ref_piece
-                """)
+                self.cursor.execute("SELECT DISTINCT ref_piece FROM pieces")
+                for (ref_piece,) in self.cursor.fetchall():
+                    pieces_data[ref_piece] = {'description': None, 'created_at': None}
             
-            pieces_migrated = self.cursor.rowcount
-            print(f"📦 {pieces_migrated} pièces uniques migrées")
+            # Étape 3: Recréer la table pieces avec la nouvelle structure
+            print("🔄 Recréation de la table pieces...")
+            self.cursor.execute("DROP TABLE pieces")
+            self.cursor.execute("""
+                CREATE TABLE pieces (
+                    id INTEGER PRIMARY KEY,
+                    ref_piece TEXT NOT NULL UNIQUE,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
-            # Étape 3: Créer les associations dans piece_associations
+            # Insérer les pièces uniques dans la nouvelle table
+            for ref_piece, data in pieces_data.items():
+                if data['created_at']:
+                    self.cursor.execute("INSERT INTO pieces (ref_piece, description, created_at) VALUES (?, ?, ?)", 
+                                      (ref_piece, data['description'], data['created_at']))
+                else:
+                    self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", 
+                                      (ref_piece, data['description']))
+            
+            print(f"📦 {len(pieces_data)} pièces uniques créées")
+            
+            # Étape 4: Créer les associations dans piece_associations
+            print("🔗 Création des associations...")
             self.cursor.execute("""
                 INSERT INTO piece_associations (piece_id, appareil_id, created_at)
                 SELECT 
-                    pn.id as piece_id,
-                    p.appareil_id,
-                    p.created_at
-                FROM pieces p
-                JOIN pieces_new pn ON p.ref_piece = pn.ref_piece
-                WHERE p.appareil_id IS NOT NULL
+                    p_new.id as piece_id,
+                    p_old.appareil_id,
+                    COALESCE(p_old.created_at, CURRENT_TIMESTAMP) as created_at
+                FROM pieces_old p_old
+                JOIN pieces p_new ON p_old.ref_piece = p_new.ref_piece
+                WHERE p_old.appareil_id IS NOT NULL
             """)
             
             associations_migrated = self.cursor.rowcount
             print(f"🔗 {associations_migrated} associations migrées")
-            
-            # Étape 4: Renommer les tables
-            self.cursor.execute("DROP TABLE pieces")
-            self.cursor.execute("ALTER TABLE pieces_new RENAME TO pieces")
             
             print("✅ Migration terminée avec succès")
             
@@ -461,7 +461,6 @@ class DatabaseManager:
             print(f"❌ Erreur lors de la migration: {e}")
             # En cas d'erreur, essayer de restaurer
             try:
-                self.cursor.execute("DROP TABLE IF EXISTS pieces_new")
                 self.cursor.execute("DROP TABLE IF EXISTS piece_associations")
                 self.cursor.execute("ROLLBACK")
             except:
