@@ -323,7 +323,7 @@ class PiecesManagerWindow(QDialog):
         
         for row in selected_rows:
             ref_item = self.pieces_table.item(row, 0)
-            nb_item = self.pieces_table.item(row, 1)
+            nb_item = self.pieces_table.item(row, 2)  # Colonne 2 pour le nombre d'appareils
             if ref_item and nb_item:
                 ref_piece = ref_item.text()
                 nb_appareils = int(nb_item.text())
