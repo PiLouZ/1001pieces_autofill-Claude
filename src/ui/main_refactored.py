@@ -785,6 +785,9 @@ class MainWindow(QMainWindow):
         self.total_rows = 0
         self.use_pagination = True
         
+        # Cache des décisions utilisateur pour les conflits de description
+        self._piece_description_decisions = {}
+        
         # Section recherche moderne
         search_section = QWidget()
         search_section.setObjectName("searchSection")
@@ -892,6 +895,10 @@ class MainWindow(QMainWindow):
         self.piece_input = QLineEdit()
         self.piece_input.setPlaceholderText("Référence de la pièce...")
         pieces_add_layout.addWidget(self.piece_input)
+        
+        self.piece_libelle_input = QLineEdit()
+        self.piece_libelle_input.setPlaceholderText("Libellé de la pièce (optionnel)...")
+        pieces_add_layout.addWidget(self.piece_libelle_input)
         
         add_piece_btn = QPushButton("Ajouter")
         add_piece_btn.clicked.connect(self._add_piece)
@@ -2697,21 +2704,104 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._show_error(f"Erreur lors de la mise à jour des pièces: {e}")
     
+    def _confirm_piece_description_update(self, ref_piece: str, existing_desc: str, new_desc: str) -> str:
+        """
+        Demander à l'utilisateur de confirmer la mise à jour d'une description de pièce.
+        Retourne la description finale à utiliser.
+        Utilise un cache pour éviter de redemander pour la même référence.
+        """
+        # Vérifier si on a déjà une décision pour cette référence + nouvelle description
+        cache_key = f"{ref_piece}|{existing_desc}|{new_desc}"
+        if cache_key in self._piece_description_decisions:
+            return self._piece_description_decisions[cache_key]
+        
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Conflit de description de pièce")
+        dialog.setModal(True)
+        dialog.resize(500, 300)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Message d'information
+        info_label = QLabel(f"La référence <b>{ref_piece}</b> possède déjà un libellé.")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        
+        # Description existante
+        layout.addWidget(QLabel("Libellé actuel :"))
+        existing_label = QLabel(f"<i>{existing_desc}</i>")
+        existing_label.setStyleSheet("background-color: #f0f0f0; padding: 5px; border: 1px solid #ccc;")
+        existing_label.setWordWrap(True)
+        layout.addWidget(existing_label)
+        
+        # Nouvelle description éditable
+        layout.addWidget(QLabel("Nouveau libellé (éditable) :"))
+        new_desc_input = QLineEdit()
+        new_desc_input.setText(new_desc)
+        new_desc_input.selectAll()  # Sélectionner tout le texte
+        layout.addWidget(new_desc_input)
+        
+        # Boutons
+        button_layout = QHBoxLayout()
+        
+        keep_existing_btn = QPushButton("Conserver l'actuel")
+        keep_existing_btn.clicked.connect(lambda: dialog.done(0))
+        
+        use_new_btn = QPushButton("Utiliser le nouveau")
+        use_new_btn.clicked.connect(lambda: dialog.done(1))
+        use_new_btn.setDefault(True)
+        
+        button_layout.addWidget(keep_existing_btn)
+        button_layout.addWidget(use_new_btn)
+        layout.addLayout(button_layout)
+        
+        # Afficher le dialogue
+        result = dialog.exec()
+        
+        if result == 1:  # Utiliser le nouveau
+            final_desc = new_desc_input.text().strip()
+            if final_desc:
+                # Mettre à jour toutes les entrées de cette référence
+                try:
+                    update_query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
+                    self.db_manager.cursor.execute(update_query, (final_desc, ref_piece))
+                    self.db_manager.conn.commit()
+                    print(f"  📝 Toutes les descriptions mises à jour pour {ref_piece}")
+                    
+                    # Mettre en cache la décision
+                    self._piece_description_decisions[cache_key] = final_desc
+                    return final_desc
+                except Exception as e:
+                    print(f"Erreur mise à jour globale: {e}")
+                    self._piece_description_decisions[cache_key] = existing_desc
+                    return existing_desc
+            else:
+                self._piece_description_decisions[cache_key] = existing_desc
+                return existing_desc
+        else:  # Conserver l'existant
+            self._piece_description_decisions[cache_key] = existing_desc
+            return existing_desc
+    
     def _add_to_history(self, message: str):
         """Ajouter un message à l'historique"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
         
-        # Assurer que le message est correctement formaté avec structure HTML
-        formatted_message = f"<p style='margin: 2px 0; font-size: 12px; color: #333;'><span style='color: #666;'>[{timestamp}]</span> {message}</p>"
+        # Initialiser ou récupérer la liste des messages d'historique
+        if not hasattr(self, '_history_messages'):
+            self._history_messages = []
         
-        # Récupérer le contenu HTML actuel
-        current_html = self.history_list.toHtml()
+        # Ajouter le nouveau message au début de la liste
+        self._history_messages.insert(0, f"[{timestamp}] {message}")
         
-        # Si le document est vide ou invalide, l'initialiser avec un document HTML valide
-        if not current_html.strip() or current_html.strip() == "<html><head></head><body></body></html>" or "<!DOCTYPE HTML PUBLIC" in current_html:
-            # Réinitialiser avec un document HTML propre
-            base_html = """<!DOCTYPE html>
+        # Limiter à 50 entrées
+        if len(self._history_messages) > 50:
+            self._history_messages = self._history_messages[:50]
+        
+        # Reconstruire tout le HTML
+        html_content = """<!DOCTYPE html>
 <html>
 <head>
     <style>
@@ -2722,43 +2812,65 @@ class MainWindow(QMainWindow):
     </style>
 </head>
 <body>
-</body>
-</html>"""
-            self.history_list.setHtml(base_html)
+"""
         
-        # Ajouter le nouveau message en haut du body
+        # Ajouter tous les messages
+        for msg in self._history_messages:
+            # Séparer timestamp et contenu pour styling
+            if msg.startswith('[') and '] ' in msg:
+                parts = msg.split('] ', 1)
+                timestamp_part = parts[0] + ']'
+                content_part = parts[1] if len(parts) > 1 else ''
+                html_content += f"<p style='margin: 6px 0; line-height: 1.4; padding: 2px 0;'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
+            else:
+                html_content += f"<p style='margin: 6px 0; line-height: 1.4; padding: 2px 0;' class='message'>{msg}</p>\n"
+        
+        html_content += """</body>
+</html>"""
+        
+        # Définir le contenu HTML en une fois
+        self.history_list.setHtml(html_content)
+        
+        # Positionner en haut pour voir la dernière entrée
         cursor = self.history_list.textCursor()
         cursor.movePosition(cursor.MoveOperation.Start)
+        self.history_list.setTextCursor(cursor)
+
+    def _rebuild_history_display(self):
+        """Reconstruire l'affichage de l'historique sans ajouter de nouveau message"""
+        if not hasattr(self, '_history_messages') or not self._history_messages:
+            return
+            
+        # Reconstruire le HTML
+        html_content = """<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: monospace; font-size: 12px; margin: 4px; padding: 4px; }
+        p { margin: 2px 0; }
+        .timestamp { color: #666; }
+        .message { color: #333; }
+    </style>
+</head>
+<body>
+"""
         
-        # Trouver le début du contenu body
-        cursor.movePosition(cursor.MoveOperation.End)
-        cursor.movePosition(cursor.MoveOperation.StartOfLine)
+        # Ajouter tous les messages
+        for msg in self._history_messages:
+            if msg.startswith('[') and '] ' in msg:
+                parts = msg.split('] ', 1)
+                timestamp_part = parts[0] + ']'
+                content_part = parts[1] if len(parts) > 1 else ''
+                html_content += f"<p style='margin: 4px 0; line-height: 1.3;'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
+            else:
+                html_content += f"<p style='margin: 4px 0; line-height: 1.3;' class='message'>{msg}</p>\n"
         
-        # Insérer le nouveau message avant </body>
-        body_end_pos = self.history_list.toPlainText().rfind('</body>')
-        if body_end_pos != -1:
-            cursor.setPosition(body_end_pos)
-            cursor.insertHtml(formatted_message)
-        else:
-            # Fallback: ajouter à la fin
-            cursor.movePosition(cursor.MoveOperation.End)
-            cursor.insertHtml(formatted_message)
+        html_content += """</body>
+</html>"""
         
-        # Limiter l'historique à 50 entrées pour éviter la surcharge
-        content = self.history_list.toHtml()
-        p_tags = content.count('<p style')
-        if p_tags > 50:
-            # Trouver les positions des 50 premiers paragraphes
-            lines = content.split('<p style')
-            if len(lines) > 51:  # 50 + header
-                # Reconstruire avec seulement les 50 premiers
-                header = lines[0]
-                entries = lines[1:51]
-                footer = "</body></html>"
-                truncated_content = header + '<p style' + '<p style'.join(entries) + footer
-                self.history_list.setHtml(truncated_content)
+        self.history_list.setHtml(html_content)
         
-        # Revenir en haut
+        # Positionner en haut
         cursor = self.history_list.textCursor()
         cursor.movePosition(cursor.MoveOperation.Start)
         self.history_list.setTextCursor(cursor)
@@ -2802,10 +2914,10 @@ class MainWindow(QMainWindow):
         }
         self.import_duplicates_history.append(import_session)
         
-        # Afficher la fenêtre des doublons
-        self._show_duplicates_list(duplicates_list)
+        # NE PLUS afficher automatiquement la fenêtre des doublons
+        # self._show_duplicates_list(duplicates_list)  # Commenté pour éviter l'affichage automatique
         
-        # Ajouter un lien dans l'historique
+        # Ajouter seulement un lien dans l'historique
         self._add_to_history(f"🔍 {len(duplicates_list)} doublons détectés - <a href='duplicates_{len(self.import_duplicates_history)-1}'>Consulter la liste</a>")
     
     def _update_pieces_count_for_rows(self, rows: set):
@@ -2822,6 +2934,10 @@ class MainWindow(QMainWindow):
 
     def _add_piece(self):
         """Ajouter une pièce"""
+        # Récupérer la référence et le libellé
+        ref_piece = self.piece_input.text().strip()
+        libelle_piece = self.piece_libelle_input.text().strip()
+        
         # Récupérer toutes les lignes sélectionnées
         selected_rows = set()
         selected_ranges = self.table.selectedRanges()
@@ -2841,7 +2957,6 @@ class MainWindow(QMainWindow):
             self._show_info(Config.get_message('no_selection'))
             return
         
-        ref_piece = self.piece_input.text().strip()
         if not ref_piece:
             self._show_info(Config.get_message('no_piece_ref'))
             return
@@ -2863,8 +2978,8 @@ class MainWindow(QMainWindow):
                     
                     # Vérifier si la pièce n'est pas déjà associée
                     if not self._piece_already_associated(db_id, ref_piece):
-                        # Ajouter la pièce sans description
-                        self.db_manager.add_piece(ref_piece, db_id, None)
+                        # Ajouter la pièce avec libellé optionnel
+                        self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
                         added_count += 1
                     else:
                         error_count += 1
@@ -2894,6 +3009,10 @@ class MainWindow(QMainWindow):
                 self._add_to_history(history_message)
                 
                 self.statusbar.showMessage(history_message, Config.STATUS_MESSAGE_TIMEOUT)
+                
+                # Vider les champs après ajout réussi
+                self.piece_input.clear()
+                self.piece_libelle_input.clear()
             else:
                 self._add_to_history(f"Erreur: Aucune pièce n'a pu être ajoutée pour '{ref_piece}'")
             
@@ -3631,7 +3750,7 @@ class MainWindow(QMainWindow):
                 filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
                 
                 # Dialogue pour choisir le type d'import (avec référence pré-remplie)
-                import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV")
+                import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV")
                 if import_type is None:
                     return
                 
@@ -3682,7 +3801,7 @@ class MainWindow(QMainWindow):
                     QApplication.processEvents()
                 
                 # Traiter l'import
-                results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog)
+                results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog, libelle_piece)
                 
                 # Fermer la barre de progression
                 if progress_dialog:
@@ -3917,8 +4036,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             return ','  # Default fallback
     
-    def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore", progress_dialog=None):
+    def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore", progress_dialog=None, libelle_piece=None):
         """Traiter les données d'import"""
+        # Vider le cache des décisions de description au début de chaque import
+        self._piece_description_decisions.clear()
+        
         results = {
             'total_imported': 0,
             'matches_found': 0,
@@ -3950,7 +4072,11 @@ class MainWindow(QMainWindow):
                 other_ref = ""
                 notes = ""
                 
-                if import_type == 2:
+                if import_type == 1:
+                    # 1 colonne: importer dans ref_modele uniquement
+                    ref_modele = row[0].strip() if len(row) > 0 else ""
+                    commercial_ref = ""
+                elif import_type == 2:
                     # 2 colonnes: ref_modele, commercial_ref (colonnes C et D)
                     ref_modele = row[0].strip() if len(row) > 0 else ""
                     commercial_ref = row[1].strip() if len(row) > 1 else ""
@@ -4009,7 +4135,7 @@ class MainWindow(QMainWindow):
                     if ref_piece and ref_piece.strip():
                         try:
                             if not self._piece_already_associated(device_id, ref_piece.strip()):
-                                self.db_manager.add_piece(ref_piece.strip(), device_id, "")
+                                self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
                                 results['associations_created'] += 1
                                 print(f"  🔗 Pièce {ref_piece.strip()} associée")
                             else:
@@ -4089,7 +4215,7 @@ class MainWindow(QMainWindow):
                                 if ref_piece and ref_piece.strip():
                                     try:
                                         if not self._piece_already_associated(device_id, ref_piece.strip()):
-                                            self.db_manager.add_piece(ref_piece.strip(), device_id, "")
+                                            self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
                                             results['associations_created'] += 1
                                             print(f"  🔗 Pièce {ref_piece.strip()} associée")
                                         else:
@@ -4336,6 +4462,9 @@ class MainWindow(QMainWindow):
         """Afficher la liste des lignes ignorées (doublons dans l'import) pour intervention manuelle"""
         if not duplicates_list:
             return
+        
+        # Sauvegarder l'historique pour éviter qu'il se vide à la fermeture
+        history_backup = getattr(self, '_history_messages', []).copy()
             
         # Créer le contenu de la fenêtre
         content = f"🔍 Liste des {len(duplicates_list)} lignes ignorées (doublons dans l'import) :\n\n"
@@ -4380,7 +4509,13 @@ class MainWindow(QMainWindow):
         layout.addLayout(button_layout)
         dialog.setLayout(layout)
         
-        dialog.exec()
+        # Exécuter le dialogue
+        result = dialog.exec()
+        
+        # Restaurer l'historique après fermeture de la fenêtre
+        if history_backup:
+            self._history_messages = history_backup
+            self._rebuild_history_display()
 
 
     def _detect_paste_columns(self, clipboard_text):
@@ -4430,7 +4565,9 @@ class MainWindow(QMainWindow):
         format_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         layout.addWidget(format_label)
         
-        if detected_columns == 2:
+        if detected_columns == 1:
+            format_desc = QLabel("• 1 colonne → Réf. Modèle uniquement")
+        elif detected_columns == 2:
             format_desc = QLabel("• 2 colonnes → Réf. Modèle + Réf. Commerciale")
         elif detected_columns == 3:
             if import_method == "PDF":
@@ -4453,6 +4590,14 @@ class MainWindow(QMainWindow):
         ref_input.setPlaceholderText("Référence de la pièce à associer à tous les appareils")
         ref_layout.addWidget(ref_input)
         layout.addLayout(ref_layout)
+        
+        # Libellé de la pièce (optionnel)
+        libelle_layout = QHBoxLayout()
+        libelle_layout.addWidget(QLabel("Libellé de la pièce (optionnel):"))
+        libelle_input = QLineEdit()
+        libelle_input.setPlaceholderText("Description/libellé de la pièce")
+        libelle_layout.addWidget(libelle_input)
+        layout.addLayout(libelle_layout)
         
         # Case à cocher pour les en-têtes (CSV uniquement)
         headers_checkbox = None
@@ -4514,9 +4659,9 @@ class MainWindow(QMainWindow):
             # Récupérer l'option d'en-têtes (CSV uniquement)
             has_headers = headers_checkbox.isChecked() if headers_checkbox else False
             
-            return import_type, ref_input.text().strip(), third_column_choice, has_headers
+            return import_type, ref_input.text().strip(), third_column_choice, has_headers, libelle_input.text().strip()
         
-        return None, None, None, None
+        return None, None, None, None, None
 
     def _show_import_summary(self, results, ref_piece, method="CSV"):
         """Afficher la synthèse d'import avec le nouveau format unifié"""
@@ -5087,7 +5232,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 return
             
             # Traitement de l'import (utiliser import_type)
-            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice)
+            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, None, libelle_piece)
             
             # Affichage du résumé et ajout à l'historique
             self._show_import_summary(results, ref_piece, "CSV")
@@ -5112,7 +5257,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 suggested_ref_piece = os.path.splitext(os.path.basename(file_paths[0]))[0]
             
             # Afficher la boîte de dialogue d'options d'import
-            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_unified(3, suggested_ref_piece, "PDF")
+            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(3, suggested_ref_piece, "PDF")
             if import_type is None:
                 return
             
@@ -5205,7 +5350,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 QApplication.processEvents()
             
             # Traiter l'import avec la même logique que CSV
-            results = self._process_import(all_converted_data, import_type, ref_piece, third_column_choice, lines_progress)
+            results = self._process_import(all_converted_data, import_type, ref_piece, third_column_choice, lines_progress, libelle_piece)
             
             # Fermer la barre de progression des lignes
             if lines_progress:
@@ -5538,6 +5683,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _handle_paste(self):
         """Gestion du collage de données depuis le presse-papiers"""
+        # Vider le cache des décisions de description au début de chaque import
+        self._piece_description_decisions.clear()
+        
         clipboard_text = QApplication.clipboard().text()
         if not clipboard_text.strip():
             QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
@@ -5552,16 +5700,16 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Analyser les données pour déterminer le nombre de colonnes
             detected_columns = self._detect_paste_columns(clipboard_text)
             
-            # Vérifier si on a au moins 2 colonnes
-            if detected_columns < 2:
+            # Vérifier si on a au moins 1 colonne (modifié pour accepter 1 colonne)
+            if detected_columns < 1:
                 QMessageBox.warning(
                     self, 
                     "Format de données invalide", 
                     "❌ Format de collage invalide !\n\n"
-                    "Le collage nécessite au minimum 2 colonnes (séparées par des tabulations) :\n"
-                    "• Colonne 1 : Référence technique\n"
-                    "• Colonne 2 : Référence commerciale\n"
-                    "• Colonne 3 (optionnelle) : Description/Autre\n\n"
+                    "Le collage nécessite au minimum 1 colonne :\n"
+                    "• 1 colonne : Référence modèle\n"
+                    "• 2 colonnes : Référence modèle + Référence commerciale\n"
+                    "• 3 colonnes : Référence modèle + Référence commerciale + Description/Autre\n\n"
                     f"Détecté : {detected_columns} colonne(s)\n\n"
                     "💡 Astuce : Copiez les données depuis un tableur (Excel, Calc, etc.) "
                     "pour conserver la séparation par tabulations."
@@ -5569,7 +5717,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 return
             
             # Demander les options d'import avec la fenêtre unifiée
-            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options_unified(detected_columns, None, "COLLAGE")
+            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, None, "COLLAGE")
             if import_type is None:
                 return
                 
@@ -5709,7 +5857,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     # Ajouter la pièce si spécifiée
                     if ref_piece and ref_piece.strip():
                         if not self._piece_already_associated(appareil_id, ref_piece.strip()):
-                            self.db_manager.add_piece(ref_piece.strip(), appareil_id, "")
+                            self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
                             associations_created += 1
                             print(f"  🔗 Pièce {ref_piece.strip()} associée")
                         else:
@@ -5777,7 +5925,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             
                             # Ajouter la pièce si spécifiée
                             if ref_piece and ref_piece.strip():
-                                self.db_manager.add_piece(ref_piece.strip(), appareil_id, "")
+                                self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
                                 associations_created += 1
                                 print(f"  🔗 Pièce {ref_piece.strip()} associée")
                             else:

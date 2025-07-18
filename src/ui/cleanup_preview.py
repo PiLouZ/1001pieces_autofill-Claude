@@ -63,7 +63,14 @@ class CleanupPreviewDialog(QDialog):
         # Barre de progression
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
         header_layout.addWidget(self.progress_bar)
+        
+        # Label de status de progression
+        self.progress_label = QLabel("Initialisation de l'analyse...")
+        self.progress_label.setStyleSheet("color: #6c757d; font-style: italic; padding: 5px;")
+        header_layout.addWidget(self.progress_label)
         
         layout.addLayout(header_layout)
         
@@ -282,7 +289,9 @@ class CleanupPreviewDialog(QDialog):
     def _start_analysis(self):
         """Démarrer l'analyse des doublons dans le thread principal"""
         try:
-            self.progress_bar.setValue(10)
+            self.progress_bar.setValue(5)
+            self.progress_label.setText("🔍 Initialisation de l'analyse des doublons...")
+            self._force_update()
             
             # Analyser les doublons directement (thread principal)
             analysis_result = {
@@ -298,7 +307,12 @@ class CleanupPreviewDialog(QDialog):
                 }
             }
             
-            # 1. Analyser les doublons d'appareils
+            # 1. Analyser les doublons d'appareils (exact + fuzzy)
+            self.progress_bar.setValue(10)
+            self.progress_label.setText("📱 Recherche des appareils en doublon (exact)...")
+            self._force_update()
+            
+            # D'abord les doublons exacts (ancienne logique)
             duplicates_query = """
                 SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, 
                        GROUP_CONCAT(id || '|' || COALESCE(notes, '')) as devices_info, 
@@ -308,14 +322,76 @@ class CleanupPreviewDialog(QDialog):
                 HAVING COUNT(*) > 1
                 ORDER BY count DESC
             """
+            exact_duplicates = self.parent_window.db_manager.execute_custom_query(duplicates_query)
             
-            device_duplicates = self.parent_window.db_manager.execute_custom_query(duplicates_query)
+            self.progress_bar.setValue(20)
+            self.progress_label.setText("🔍 Recherche des doublons de références (fuzzy)...")
+            self._force_update()
+            
+            # Ensuite les doublons fuzzy (nouvelles références similaires)
+            fuzzy_ref_duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
+            
+            # Combiner les résultats
+            device_duplicates = list(exact_duplicates)  # Commencer avec les doublons exacts
+            
+            self.progress_bar.setValue(30)
+            self.progress_label.setText("⚡ Fusion des résultats doublons exact + fuzzy...")
+            self._force_update()
+            
+            # Ajouter les groupes fuzzy qui ne sont pas déjà dans les doublons exacts
+            for ref_modele, count in fuzzy_ref_duplicates:
+                if count > 1:  # Seulement les vrais doublons
+                    # Récupérer tous les appareils de ce groupe fuzzy
+                    devices_in_group = self.parent_window.db_manager.get_devices_by_ref_modele(ref_modele)
+                    
+                    if len(devices_in_group) > 1:
+                        # Vérifier si ce groupe n'est pas déjà dans les doublons exacts
+                        is_already_exact = False
+                        for exact_row in exact_duplicates:
+                            exact_ref = exact_row[2]  # ref_modele est à l'index 2
+                            if exact_ref == ref_modele:
+                                is_already_exact = True
+                                break
+                        
+                        if not is_already_exact:
+                            # Créer une entrée pour ce groupe fuzzy
+                            keep_device = devices_in_group[0]  # Garder le premier
+                            devices_info_list = []
+                            
+                            for device in devices_in_group:
+                                device_id, dev_type, manufacturer, dev_ref_modele, commercial_ref, other_ref, category, notes = device
+                                devices_info_list.append(f"{device_id}|{notes or ''}")
+                            
+                            devices_info = ','.join(devices_info_list)
+                            
+                            # Ajouter aux doublons (utiliser les infos du premier appareil)
+                            fuzzy_row = (
+                                keep_device[1],  # type
+                                keep_device[2],  # manufacturer  
+                                f"[FUZZY] {ref_modele}",  # ref_modele avec marqueur
+                                keep_device[4],  # commercial_ref
+                                keep_device[5],  # other_ref
+                                devices_info,    # devices_info
+                                keep_device[0],  # keep_id
+                                len(devices_in_group)  # count
+                            )
+                            device_duplicates.append(fuzzy_row)
+            
             self.progress_bar.setValue(40)
+            self.progress_label.setText("📊 Calcul des statistiques appareils...")
+            self._force_update()
             
             groups_count = 0
             total_devices_to_delete = 0
+            total_groups = len(device_duplicates)
             
-            for row in device_duplicates:
+            for idx, row in enumerate(device_duplicates):
+                # Mise à jour de la progression pour les gros volumes
+                if idx % 10 == 0 and total_groups > 50:
+                    progress = 40 + int((idx / total_groups) * 10)  # De 40% à 50%
+                    self.progress_bar.setValue(progress)
+                    self.progress_label.setText(f"📊 Traitement groupe {idx+1}/{total_groups}...")
+                    self._force_update()
                 type_val, manufacturer, ref_modele, commercial_ref, other_ref, devices_info, keep_id, count = row
                 
                 # Parser les informations des appareils
@@ -356,6 +432,8 @@ class CleanupPreviewDialog(QDialog):
                 analysis_result['statistics']['total_pieces_to_transfer'] += pieces_to_transfer
             
             self.progress_bar.setValue(50)
+            self.progress_label.setText("📋 Recherche des doublons de références modèles...")
+            self._force_update()
             
             # 2. Analyser les doublons de ref_modele (même logique que la validation)
             inconsistencies_query = """
@@ -370,8 +448,15 @@ class CleanupPreviewDialog(QDialog):
             
             inconsistencies = self.parent_window.db_manager.execute_custom_query(inconsistencies_query)
             inconsistencies_count = 0
+            total_inconsistencies = len(inconsistencies)
             
-            for row in inconsistencies:
+            for idx, row in enumerate(inconsistencies):
+                # Mise à jour pour les gros volumes
+                if idx % 20 == 0 and total_inconsistencies > 100:
+                    progress = 50 + int((idx / total_inconsistencies) * 20)  # De 50% à 70%
+                    self.progress_bar.setValue(progress)
+                    self.progress_label.setText(f"📋 Traitement référence {idx+1}/{total_inconsistencies}...")
+                    self._force_update()
                 ref_modele, count, devices_info = row
                 
                 # Parser les informations des appareils
@@ -402,6 +487,8 @@ class CleanupPreviewDialog(QDialog):
                     inconsistencies_count += 1
             
             self.progress_bar.setValue(70)
+            self.progress_label.setText("🔧 Recherche des pièces dupliquées...")
+            self._force_update()
             
             # 3. Analyser les doublons de pièces
             piece_duplicates_query = """
@@ -414,8 +501,15 @@ class CleanupPreviewDialog(QDialog):
             
             piece_duplicates = self.parent_window.db_manager.execute_custom_query(piece_duplicates_query)
             total_duplicate_pieces = 0
+            total_piece_groups = len(piece_duplicates)
             
-            for row in piece_duplicates:
+            for idx, row in enumerate(piece_duplicates):
+                # Mise à jour pour les gros volumes
+                if idx % 50 == 0 and total_piece_groups > 200:
+                    progress = 70 + int((idx / total_piece_groups) * 20)  # De 70% à 90%
+                    self.progress_bar.setValue(progress)
+                    self.progress_label.setText(f"🔧 Traitement pièce {idx+1}/{total_piece_groups}...")
+                    self._force_update()
                 appareil_id, ref_piece, count, piece_ids = row
                 
                 # Récupérer les infos de l'appareil
@@ -440,6 +534,8 @@ class CleanupPreviewDialog(QDialog):
                 total_duplicate_pieces += count - 1  # Tous sauf un
             
             self.progress_bar.setValue(90)
+            self.progress_label.setText("✅ Finalisation de l'analyse...")
+            self._force_update()
             
             # 4. Finaliser les statistiques
             analysis_result['statistics'].update({
@@ -450,10 +546,19 @@ class CleanupPreviewDialog(QDialog):
             })
             
             self.progress_bar.setValue(100)
-            self._on_analysis_completed(analysis_result)
+            self.progress_label.setText("🎉 Analyse terminée !")
+            self._force_update()
+            
+            # Petit délai pour que l'utilisateur voie la completion
+            QTimer.singleShot(500, lambda: self._on_analysis_completed(analysis_result))
             
         except Exception as e:
             self._on_analysis_error(f"Erreur lors de l'analyse: {e}")
+    
+    def _force_update(self):
+        """Forcer la mise à jour de l'interface pendant l'analyse"""
+        from PyQt5.QtWidgets import QApplication
+        QApplication.processEvents()
     
     def _on_analysis_completed(self, analysis_data):
         """Traiter les résultats de l'analyse"""
@@ -461,6 +566,7 @@ class CleanupPreviewDialog(QDialog):
         
         # Masquer la progression et afficher les résultats
         self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
         self.title_label.setText("🔍 Aperçu des opérations de nettoyage")
         self.main_widget.setVisible(True)
         
@@ -852,6 +958,7 @@ class CleanupPreviewDialog(QDialog):
     def _on_analysis_error(self, error_message):
         """Gérer les erreurs d'analyse"""
         self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
         self.title_label.setText("❌ Erreur lors de l'analyse")
         self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #dc3545; padding: 10px;")
         

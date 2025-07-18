@@ -73,6 +73,78 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Impossible de se connecter à la base de données: {e}")
     
+    def _build_search_condition(self, search_term):
+        """Construire une condition de recherche basée sur le terme de recherche (simple ou avancé)"""
+        import re
+        
+        # Si c'est une chaîne simple (ancienne API), traiter comme recherche simple
+        if isinstance(search_term, str):
+            if not search_term.strip():
+                return None
+            search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
+            search_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
+            return {
+                'condition': f"({' OR '.join(search_conditions)})",
+                'params': [f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1)
+            }
+        
+        # Si c'est None, pas de recherche
+        if not search_term:
+            return None
+        
+        # Recherche avancée
+        search_type = search_term.get('type', 'simple')
+        
+        if search_type == 'simple':
+            # Recherche simple avec un seul terme
+            terms = search_term.get('terms', [])
+            if not terms:
+                return None
+            
+            term = terms[0]
+            search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
+            search_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
+            return {
+                'condition': f"({' OR '.join(search_conditions)})",
+                'params': [f"%{term}%"] * (len(Config.DB_HEADERS) + 1)
+            }
+        
+        elif search_type == 'or':
+            # Recherche avec groupes OR
+            groups = search_term.get('groups', [])
+            if not groups:
+                return None
+            
+            group_conditions = []
+            all_params = []
+            
+            for group in groups:
+                if group['type'] == 'and':
+                    # Groupe AND : tous les termes doivent être présents
+                    terms = group.get('terms', [])
+                    if not terms:
+                        continue
+                    
+                    and_conditions = []
+                    for term in terms:
+                        # Chaque terme doit être trouvé dans au moins une colonne
+                        term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
+                        term_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
+                        
+                        and_conditions.append(f"({' OR '.join(term_conditions)})")
+                        all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
+                    
+                    if and_conditions:
+                        group_conditions.append(f"({' AND '.join(and_conditions)})")
+            
+            if group_conditions:
+                return {
+                    'condition': f"({' OR '.join(group_conditions)})",
+                    'params': all_params
+                }
+        
+        return None
+    
     def _setup_database(self):
         """Configuration et création des tables"""
         try:
@@ -269,12 +341,12 @@ class DatabaseManager:
             params = []
             conditions = []
             
-            # Recherche globale pour load_data
+            # Recherche globale pour load_data (avec support recherche avancée)
             if search_term:
-                search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                search_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
-                conditions.append(f"({' OR '.join(search_conditions)})")
-                params.extend([f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1))
+                search_condition = self._build_search_condition(search_term)
+                if search_condition:
+                    conditions.append(search_condition['condition'])
+                    params.extend(search_condition['params'])
             
             # Filtres par colonne pour load_data
             if column_filters:
@@ -327,12 +399,19 @@ class DatabaseManager:
             params = []
             conditions = []
             
-            # Recherche globale pour count_data
+            # Recherche globale pour count_data (avec support recherche avancée)
             if search_term:
-                search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                search_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
-                conditions.append(f"({' OR '.join(search_conditions)})")
-                params.extend([f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1))
+                search_condition = self._build_search_condition(search_term)
+                if search_condition:
+                    # Si c'est une recherche regex, on ne peut pas compter précisément avec SQLite
+                    # On retourne une estimation pour éviter l'erreur
+                    if 'regex_filter' in search_condition:
+                        # Pour les regex, retourner un count approximatif (total)
+                        # Le vrai filtrage se fera côté Python
+                        return self.cursor.execute("SELECT COUNT(*) FROM appareils").fetchone()[0]
+                    else:
+                        conditions.append(search_condition['condition'])
+                        params.extend(search_condition['params'])
             
             # Filtres par colonne pour count_data
             if column_filters:
@@ -612,6 +691,47 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout de la pièce: {e}")
     
+    def add_or_update_piece_with_description(self, ref_piece: str, appareil_id: int, description: str = None, confirm_callback=None) -> int:
+        """
+        Ajouter une pièce ou mettre à jour sa description si elle existe déjà.
+        LOGIQUE SIMPLIFIÉE: Une référence de pièce = une seule description globale.
+        """
+        try:
+            # Nettoyer la description d'entrée
+            clean_description = None
+            if description:
+                cleaned = str(description).strip()
+                if cleaned:
+                    clean_description = cleaned
+            
+            print(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
+            
+            # Vérifier si cette association existe déjà
+            existing_query = "SELECT id, description FROM pieces WHERE ref_piece = ? AND appareil_id = ?"
+            existing_result = self.execute_query(existing_query, [ref_piece, appareil_id])
+            
+            if existing_result:
+                # Association existante
+                piece_id = existing_result[0][0]
+                current_desc = existing_result[0][1]
+                print(f"  ✅ Association existante (ID: {piece_id})")
+                
+                # Mettre à jour la description si nécessaire
+                if clean_description and clean_description != current_desc:
+                    self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
+                    self.conn.commit()
+                    print(f"  📝 Description mise à jour")
+                
+                return piece_id
+            
+            else:
+                # Nouvelle association - utiliser add_piece
+                print(f"  ➕ Nouvelle association pour appareil {appareil_id}")
+                return self.add_piece(ref_piece, appareil_id, clean_description)
+                
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de l'ajout/mise à jour de la pièce: {e}")
+    
     def update_piece(self, ref_piece: str, description: str) -> bool:
         """Mettre à jour la description d'une pièce"""
         try:
@@ -700,16 +820,25 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce: {e}")
     
     def get_duplicate_ref_modeles(self) -> List[Tuple[str, int]]:
-        """Récupérer les ref_modele en doublon avec leur nombre d'occurrences"""
+        """Récupérer les ref_modele en doublon avec leur nombre d'occurrences (recherche exacte uniquement)"""
         try:
+            # Récupérer uniquement les doublons exacts
             query = Config.get_query('duplicate_refs')
-            return self.execute_custom_query(query)
+            exact_duplicates = self.execute_custom_query(query)
+            
+            # Retourner sous forme de liste triée
+            return sorted(exact_duplicates, key=lambda x: x[1], reverse=True)
+            
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des doublons ref_modele: {e}")
     
+    
+    
+    
     def get_devices_by_ref_modele(self, ref_modele: str) -> List[Tuple]:
-        """Récupérer tous les appareils ayant la même ref_modele"""
+        """Récupérer tous les appareils ayant exactement la même ref_modele"""
         try:
+            # Récupérer uniquement les appareils avec la référence exacte
             query = """
                 SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
                 FROM appareils 
@@ -717,8 +846,10 @@ class DatabaseManager:
                 ORDER BY id
             """
             return self.execute_custom_query(query, [ref_modele])
+            
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des appareils: {e}")
+    
 
     def get_duplicate_references(self) -> List[Tuple[str, str, str, str, str, int]]:
         """Récupérer les références d'appareils en doublon (colonnes A,B,C,D,E identiques)"""

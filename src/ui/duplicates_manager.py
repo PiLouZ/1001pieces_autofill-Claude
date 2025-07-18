@@ -102,7 +102,7 @@ class DuplicatesManager(QDialog):
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("🔍 Recherche:"))
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Filtrer par type, fabricant ou référence...")
+        self.search_input.setPlaceholderText("Filtrer par référence (ex: 3000240000)...")
         self.search_input.textChanged.connect(self._filter_duplicates)
         search_layout.addWidget(self.search_input)
         layout.addLayout(search_layout)
@@ -256,9 +256,16 @@ class DuplicatesManager(QDialog):
         total_groups = len(self.duplicates_data)
         total_duplicates = sum(count for _, count in self.duplicates_data)
         
-        self.stats_label.setText(
-            f"📊 {total_groups} références en doublon • {total_duplicates} appareils dupliqués"
-        )
+        # Afficher le nombre de groupes filtrés vs total
+        filtered_groups = self.duplicates_table.rowCount()
+        if filtered_groups == total_groups:
+            self.stats_label.setText(
+                f"📊 {total_groups} références en doublon • {total_duplicates} appareils dupliqués"
+            )
+        else:
+            self.stats_label.setText(
+                f"📊 {filtered_groups}/{total_groups} références affichées (utilisez la recherche pour filtrer)"
+            )
     
     def _filter_duplicates(self):
         """Filtrer la liste des doublons"""
