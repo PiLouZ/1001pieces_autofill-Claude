@@ -815,20 +815,48 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors du comptage des pièces: {e}")
     
-    def add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None) -> int:
+    def add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None, confirm_callback=None) -> int:
         """Ajouter une pièce à un appareil (nouvelle structure)"""
         try:
+            # Nettoyer la description d'entrée
+            clean_description = None
+            if description:
+                cleaned = str(description).strip()
+                if cleaned:
+                    clean_description = cleaned
             # Étape 1: Vérifier si la pièce existe déjà
-            piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
+            piece_query = "SELECT id, description FROM pieces WHERE ref_piece = ?"
             self.cursor.execute(piece_query, (ref_piece,))
             piece_result = self.cursor.fetchone()
             
             if piece_result:
-                piece_id = piece_result[0]
+                piece_id, current_desc = piece_result
+                print(f"  📦 Pièce existante trouvée (ID: {piece_id})")
+                
+                # Gérer les conflits de description
+                if clean_description and current_desc and clean_description != current_desc:
+                    if confirm_callback:
+                        print(f"  ⚠️ Conflit description: '{current_desc}' vs '{clean_description}'")
+                        final_description = confirm_callback(ref_piece, current_desc, clean_description)
+                        if final_description != current_desc:
+                            self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
+                            self.conn.commit()
+                            print(f"  📝 Description mise à jour: '{final_description}'")
+                    else:
+                        print(f"  ⚠️ Conflit description ignoré: garde '{current_desc}'")
+                elif clean_description and not current_desc:
+                    # Ajouter description à une pièce sans description
+                    self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
+                    self.conn.commit()
+                    print(f"  📝 Description ajoutée: '{clean_description}'")
+                    
             else:
                 # Créer la nouvelle pièce
-                self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, description))
+                print(f"  ✨ Nouvelle pièce: {ref_piece}")
+                self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
                 piece_id = self.cursor.lastrowid
+                self.conn.commit()
+                print(f"  📦 Pièce créée (ID: {piece_id})")
             
             # Étape 2: Vérifier si l'association existe déjà
             assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"

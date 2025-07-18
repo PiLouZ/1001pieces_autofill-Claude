@@ -4341,28 +4341,10 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
                 
-                # Recherche fuzzy si pas de résultat exact
-                if normalized_ref and len(normalized_ref) > 3:  # Éviter les matches trop courts
-                    # Recherche par "contains" dans les deux sens
-                    query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
-                              FROM appareils 
-                              WHERE (UPPER(ref_modele) LIKE '%' || UPPER(?) || '%' 
-                                     OR UPPER(?) LIKE '%' || UPPER(ref_modele) || '%')
-                              AND ref_modele != ''"""
-                    params = [normalized_ref, normalized_ref]
-                    result = self.db_manager.execute_query(query, params)
-                    if result:
-                        print(f"  🔍 Appareil existant trouvé par ref_modele fuzzy: {ref_modele} → {result[0][3]}")
-                        return {
-                            'id': result[0][0], 
-                            'type': result[0][1], 
-                            'manufacturer': result[0][2],
-                            'ref_modele': result[0][3],
-                            'commercial_ref': result[0][4],
-                            'other_ref': result[0][5],
-                            'category': result[0][6],
-                            'notes': result[0][7]
-                        }
+                # Recherche fuzzy DÉSACTIVÉE pour éviter les faux positifs
+                # Exemple: Q1457ATGW ne doit PAS matcher Q1457ATGW/XEN
+                print(f"  ❌ Aucun appareil trouvé pour ref_modele exact: {ref_modele}")
+                # Pas de recherche fuzzy pour éviter les matches incorrects
             
             # 3. Recherche par commercial_ref avec fuzzy matching
             if commercial_ref and commercial_ref.strip():
@@ -4386,27 +4368,9 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
                 
-                # Recherche fuzzy si pas de résultat exact
-                if normalized_ref and len(normalized_ref) > 3:  # Éviter les matches trop courts
-                    query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
-                              FROM appareils 
-                              WHERE (UPPER(commercial_ref) LIKE '%' || UPPER(?) || '%' 
-                                     OR UPPER(?) LIKE '%' || UPPER(commercial_ref) || '%')
-                              AND commercial_ref != ''"""
-                    params = [normalized_ref, normalized_ref]
-                    result = self.db_manager.execute_query(query, params)
-                    if result:
-                        print(f"  🔍 Appareil existant trouvé par commercial_ref fuzzy: {commercial_ref} → {result[0][4]}")
-                        return {
-                            'id': result[0][0], 
-                            'type': result[0][1], 
-                            'manufacturer': result[0][2],
-                            'ref_modele': result[0][3],
-                            'commercial_ref': result[0][4],
-                            'other_ref': result[0][5],
-                            'category': result[0][6],
-                            'notes': result[0][7]
-                        }
+                # Recherche fuzzy DÉSACTIVÉE pour éviter les faux positifs
+                print(f"  ❌ Aucun appareil trouvé pour commercial_ref exact: {commercial_ref}")
+                # Pas de recherche fuzzy pour éviter les matches incorrects
             
             # Aucun appareil existant trouvé
             print(f"  🆕 Aucun appareil existant pour: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
