@@ -4416,9 +4416,15 @@ class MainWindow(QMainWindow):
             return None
     
     def _piece_already_associated(self, device_id, ref_piece):
-        """Vérifier si la pièce est déjà associée à l'appareil"""
+        """Vérifier si la pièce est déjà associée à l'appareil (nouvelle structure)"""
         try:
-            query = "SELECT id FROM pieces WHERE appareil_id = ? AND ref_piece = ? LIMIT 1"
+            query = """
+                SELECT pa.id 
+                FROM piece_associations pa
+                JOIN pieces p ON pa.piece_id = p.id
+                WHERE pa.appareil_id = ? AND p.ref_piece = ? 
+                LIMIT 1
+            """
             result = self.db_manager.execute_query(query, [device_id, ref_piece])
             return len(result) > 0
         except Exception as e:

@@ -167,9 +167,32 @@ class DatabaseManager:
             # Ajouter les colonnes manquantes
             self._add_missing_columns()
             
-            # Table pièces
+            # Table pièces (nouvelle structure normalisée)
             self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS pieces (
+                CREATE TABLE IF NOT EXISTS pieces_new (
+                    id INTEGER PRIMARY KEY,
+                    ref_piece TEXT NOT NULL UNIQUE,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Table associations pièce-appareil (nouvelle structure)
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS piece_associations (
+                    id INTEGER PRIMARY KEY,
+                    piece_id INTEGER NOT NULL,
+                    appareil_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(piece_id) REFERENCES pieces_new(id) ON DELETE CASCADE,
+                    FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
+                    UNIQUE(piece_id, appareil_id)
+                )
+            """)
+            
+            # Garder l'ancienne table pour migration
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pieces_old (
                     id INTEGER PRIMARY KEY,
                     ref_piece TEXT NOT NULL,
                     appareil_id INTEGER,
@@ -198,6 +221,9 @@ class DatabaseManager:
             
             # Index pour les performances
             self._create_indexes()
+            
+            # Migration des données vers la nouvelle structure
+            self._migrate_pieces_to_new_structure()
             
             self.conn.commit()
             
@@ -307,8 +333,9 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_appareils_other_ref ON appareils(other_ref)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_category ON appareils(category)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_id_desc ON appareils(id DESC)",  # Pour ORDER BY id DESC
-            "CREATE INDEX IF NOT EXISTS idx_pieces_ref ON pieces(ref_piece)",
-            "CREATE INDEX IF NOT EXISTS idx_pieces_appareil ON pieces(appareil_id)"
+            "CREATE INDEX IF NOT EXISTS idx_pieces_ref ON pieces_new(ref_piece)",
+            "CREATE INDEX IF NOT EXISTS idx_piece_associations_piece ON piece_associations(piece_id)",
+            "CREATE INDEX IF NOT EXISTS idx_piece_associations_appareil ON piece_associations(appareil_id)"
         ]
         
         for index_query in indexes:
@@ -316,6 +343,78 @@ class DatabaseManager:
                 self.cursor.execute(index_query)
             except sqlite3.Error as e:
                 raise DatabaseError(f"Erreur lors de la création des index: {e}")
+    
+    def _migrate_pieces_to_new_structure(self):
+        """Migrer les données de l'ancienne structure vers la nouvelle structure normalisée"""
+        try:
+            # Vérifier si la migration a déjà été effectuée
+            self.cursor.execute("SELECT COUNT(*) FROM pieces_new")
+            if self.cursor.fetchone()[0] > 0:
+                print("Migration déjà effectuée, skip")
+                return
+            
+            # Vérifier si l'ancienne table existe
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
+            if not self.cursor.fetchone():
+                print("Pas d'ancienne table pieces à migrer")
+                return
+            
+            print("🔄 Début de la migration des pièces vers la nouvelle structure...")
+            
+            # Étape 1: Sauvegarder les anciennes données
+            self.cursor.execute("INSERT INTO pieces_old SELECT * FROM pieces")
+            
+            # Étape 2: Migrer les pièces uniques vers pieces_new
+            self.cursor.execute("""
+                INSERT INTO pieces_new (ref_piece, description, created_at)
+                SELECT 
+                    ref_piece,
+                    -- Prendre la première description non vide trouvée
+                    (SELECT description FROM pieces p2 
+                     WHERE p2.ref_piece = p1.ref_piece 
+                     AND p2.description IS NOT NULL 
+                     AND TRIM(p2.description) != '' 
+                     LIMIT 1) as description,
+                    MIN(created_at) as created_at
+                FROM pieces p1
+                GROUP BY ref_piece
+                ORDER BY ref_piece
+            """)
+            
+            pieces_migrated = self.cursor.rowcount
+            print(f"📦 {pieces_migrated} pièces uniques migrées")
+            
+            # Étape 3: Créer les associations dans piece_associations
+            self.cursor.execute("""
+                INSERT INTO piece_associations (piece_id, appareil_id, created_at)
+                SELECT 
+                    pn.id as piece_id,
+                    p.appareil_id,
+                    p.created_at
+                FROM pieces p
+                JOIN pieces_new pn ON p.ref_piece = pn.ref_piece
+                WHERE p.appareil_id IS NOT NULL
+            """)
+            
+            associations_migrated = self.cursor.rowcount
+            print(f"🔗 {associations_migrated} associations migrées")
+            
+            # Étape 4: Renommer les tables
+            self.cursor.execute("DROP TABLE pieces")
+            self.cursor.execute("ALTER TABLE pieces_new RENAME TO pieces")
+            
+            print("✅ Migration terminée avec succès")
+            
+        except sqlite3.Error as e:
+            print(f"❌ Erreur lors de la migration: {e}")
+            # En cas d'erreur, essayer de restaurer
+            try:
+                self.cursor.execute("DROP TABLE IF EXISTS pieces_new")
+                self.cursor.execute("DROP TABLE IF EXISTS piece_associations")
+                self.cursor.execute("ROLLBACK")
+            except:
+                pass
+            raise DatabaseError(f"Erreur lors de la migration des pièces: {e}")
     
     def load_data(self, search_term: Optional[str] = None, 
                   column_filters: Optional[Dict[int, str]] = None, 
@@ -614,38 +713,28 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors du nettoyage: {e}")
     
     def get_pieces_for_appareil(self, appareil_id: int) -> List[Tuple]:
-        """Récupérer les pièces associées à un appareil"""
+        """Récupérer les pièces associées à un appareil (nouvelle structure)"""
         try:
-            # D'abord essayer avec description, si ça échoue, utiliser sans description
-            try:
-                query = """
-                    SELECT ref_piece, description 
-                    FROM pieces 
-                    WHERE appareil_id = ?
-                    ORDER BY ref_piece
-                """
-                self.cursor.execute(query, (appareil_id,))
-                return self.cursor.fetchall()
-            except sqlite3.OperationalError:
-                # La colonne description n'existe pas, utiliser une requête sans
-                query = """
-                    SELECT ref_piece, '' as description 
-                    FROM pieces 
-                    WHERE appareil_id = ?
-                    ORDER BY ref_piece
-                """
-                self.cursor.execute(query, (appareil_id,))
-                return self.cursor.fetchall()
+            query = """
+                SELECT p.ref_piece, p.description 
+                FROM pieces p
+                JOIN piece_associations pa ON p.id = pa.piece_id
+                WHERE pa.appareil_id = ?
+                ORDER BY p.ref_piece
+            """
+            
+            self.cursor.execute(query, (appareil_id,))
+            return self.cursor.fetchall()
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des pièces: {e}")
     
     def get_pieces_count_for_appareil(self, appareil_id: int) -> int:
-        """Récupérer le nombre de pièces associées à un appareil"""
+        """Récupérer le nombre de pièces associées à un appareil (nouvelle structure)"""
         try:
             query = """
                 SELECT COUNT(*) 
-                FROM pieces 
+                FROM piece_associations 
                 WHERE appareil_id = ?
             """
             self.cursor.execute(query, (appareil_id,))
@@ -656,37 +745,34 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors du comptage des pièces: {e}")
     
     def add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None) -> int:
-        """Ajouter une pièce à un appareil (avec vérification des doublons)"""
+        """Ajouter une pièce à un appareil (nouvelle structure)"""
         try:
-            # Vérifier si la colonne description existe
-            self.cursor.execute("PRAGMA table_info(pieces)")
-            columns = {row[1] for row in self.cursor.fetchall()}
+            # Étape 1: Vérifier si la pièce existe déjà
+            piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
+            self.cursor.execute(piece_query, (ref_piece,))
+            piece_result = self.cursor.fetchone()
             
-            if 'description' in columns:
-                query = """
-                    INSERT INTO pieces (ref_piece, appareil_id, description)
-                    VALUES (?, ?, ?)
-                """
-                params = (ref_piece, appareil_id, description)
+            if piece_result:
+                piece_id = piece_result[0]
             else:
-                query = """
-                    INSERT INTO pieces (ref_piece, appareil_id)
-                    VALUES (?, ?)
-                """
-                params = (ref_piece, appareil_id)
+                # Créer la nouvelle pièce
+                self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, description))
+                piece_id = self.cursor.lastrowid
             
-            try:
-                self.cursor.execute(query, params)
-                self.conn.commit()
-                return self.cursor.lastrowid
-            except sqlite3.IntegrityError:
-                # Contrainte unique violée - la pièce existe déjà
-                check_query = "SELECT id FROM pieces WHERE appareil_id = ? AND ref_piece = ? LIMIT 1"
-                existing = self.execute_query(check_query, [appareil_id, ref_piece])
-                if existing:
-                    return existing[0][0]
-                else:
-                    raise DatabaseError(f"Violation de contrainte unique inattendue pour {ref_piece} sur appareil {appareil_id}")
+            # Étape 2: Vérifier si l'association existe déjà
+            assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
+            self.cursor.execute(assoc_query, (piece_id, appareil_id))
+            existing_assoc = self.cursor.fetchone()
+            
+            if existing_assoc:
+                return existing_assoc[0]  # Retourner l'ID de l'association existante
+            
+            # Étape 3: Créer l'association
+            self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
+            assoc_id = self.cursor.lastrowid
+            
+            self.conn.commit()
+            return assoc_id
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout de la pièce: {e}")
@@ -694,7 +780,7 @@ class DatabaseManager:
     def add_or_update_piece_with_description(self, ref_piece: str, appareil_id: int, description: str = None, confirm_callback=None) -> int:
         """
         Ajouter une pièce ou mettre à jour sa description si elle existe déjà.
-        LOGIQUE SIMPLIFIÉE: Une référence de pièce = une seule description globale.
+        NOUVELLE STRUCTURE: Une pièce = une référence + une description, associations séparées.
         """
         try:
             # Nettoyer la description d'entrée
@@ -706,101 +792,150 @@ class DatabaseManager:
             
             print(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
             
-            # Vérifier si cette association existe déjà
-            existing_query = "SELECT id, description FROM pieces WHERE ref_piece = ? AND appareil_id = ?"
-            existing_result = self.execute_query(existing_query, [ref_piece, appareil_id])
+            # Étape 1: Vérifier si la pièce existe déjà
+            piece_query = "SELECT id, description FROM pieces WHERE ref_piece = ?"
+            piece_result = self.execute_query(piece_query, [ref_piece])
             
-            if existing_result:
-                # Association existante
-                piece_id = existing_result[0][0]
-                current_desc = existing_result[0][1]
-                print(f"  ✅ Association existante (ID: {piece_id})")
+            if piece_result:
+                # Pièce existante
+                piece_id = piece_result[0][0]
+                current_desc = piece_result[0][1]
+                print(f"  📦 Pièce existante trouvée (ID: {piece_id})")
                 
-                # Mettre à jour la description si nécessaire
-                if clean_description and clean_description != current_desc:
+                # Gérer les conflits de description
+                if clean_description and current_desc and clean_description != current_desc:
+                    if confirm_callback:
+                        final_description = confirm_callback(ref_piece, current_desc, clean_description)
+                        if final_description != current_desc:
+                            self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
+                            self.conn.commit()
+                            print(f"  📝 Description mise à jour: '{final_description}'")
+                    else:
+                        print(f"  ⚠️ Conflit description ignoré: garde '{current_desc}'")
+                elif clean_description and not current_desc:
+                    # Ajouter description à une pièce sans description
                     self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
                     self.conn.commit()
-                    print(f"  📝 Description mise à jour")
-                
-                return piece_id
-            
+                    print(f"  📝 Description ajoutée: '{clean_description}'")
+                    
             else:
-                # Nouvelle association - utiliser add_piece
-                print(f"  ➕ Nouvelle association pour appareil {appareil_id}")
-                return self.add_piece(ref_piece, appareil_id, clean_description)
+                # Nouvelle pièce
+                print(f"  ✨ Nouvelle pièce: {ref_piece}")
+                self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
+                piece_id = self.cursor.lastrowid
+                self.conn.commit()
+                print(f"  📦 Pièce créée (ID: {piece_id})")
+            
+            # Étape 2: Vérifier si l'association existe déjà
+            assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
+            assoc_result = self.execute_query(assoc_query, [piece_id, appareil_id])
+            
+            if assoc_result:
+                # Association existante
+                assoc_id = assoc_result[0][0]
+                print(f"  🔗 Association existante (ID: {assoc_id})")
+                return assoc_id
+            else:
+                # Nouvelle association
+                self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
+                assoc_id = self.cursor.lastrowid
+                self.conn.commit()
+                print(f"  🔗 Association créée (ID: {assoc_id})")
+                return assoc_id
                 
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout/mise à jour de la pièce: {e}")
     
     def update_piece(self, ref_piece: str, description: str) -> bool:
-        """Mettre à jour la description d'une pièce"""
+        """Mettre à jour la description d'une pièce (nouvelle structure)"""
         try:
-            # Vérifier si la colonne description existe
-            self.cursor.execute("PRAGMA table_info(pieces)")
-            columns = {row[1] for row in self.cursor.fetchall()}
-            
-            if 'description' in columns:
-                query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
-                self.cursor.execute(query, (description, ref_piece))
-                self.conn.commit()
-                return self.cursor.rowcount > 0
-            else:
-                # Si la colonne n'existe pas, on ne peut pas mettre à jour
-                return False
+            query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
+            self.cursor.execute(query, (description, ref_piece))
+            self.conn.commit()
+            return self.cursor.rowcount > 0
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la mise à jour de la pièce: {e}")
     
     def get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
-        """Récupérer les informations d'une pièce spécifique"""
+        """Récupérer les informations d'une pièce spécifique (nouvelle structure)"""
         try:
-            # Vérifier si la colonne description existe
-            self.cursor.execute("PRAGMA table_info(pieces)")
-            columns = {row[1] for row in self.cursor.fetchall()}
-            
-            if 'description' in columns:
-                query = """
-                    SELECT ref_piece, description 
-                    FROM pieces 
-                    WHERE ref_piece = ? AND appareil_id = ?
-                """
-                self.cursor.execute(query, (ref_piece, appareil_id))
-                result = self.cursor.fetchone()
-                return result if result else None
-            else:
-                # Si la colonne n'existe pas, retourner seulement la référence
-                query = """
-                    SELECT ref_piece, '' as description 
-                    FROM pieces 
-                    WHERE ref_piece = ? AND appareil_id = ?
-                """
-                self.cursor.execute(query, (ref_piece, appareil_id))
-                result = self.cursor.fetchone()
-                return result if result else None
+            query = """
+                SELECT p.ref_piece, p.description 
+                FROM pieces p
+                JOIN piece_associations pa ON p.id = pa.piece_id
+                WHERE p.ref_piece = ? AND pa.appareil_id = ?
+            """
+            self.cursor.execute(query, (ref_piece, appareil_id))
+            result = self.cursor.fetchone()
+            return result if result else None
                 
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des informations de la pièce: {e}")
     
     def delete_piece(self, ref_piece: str, appareil_id: int) -> bool:
-        """Supprimer une pièce spécifique d'un appareil"""
+        """Supprimer une pièce spécifique d'un appareil (nouvelle structure)"""
         try:
+            # Étape 1: Trouver la pièce et l'association
             query = """
-                DELETE FROM pieces 
-                WHERE ref_piece = ? AND appareil_id = ?
+                SELECT p.id, pa.id 
+                FROM pieces p
+                JOIN piece_associations pa ON p.id = pa.piece_id
+                WHERE p.ref_piece = ? AND pa.appareil_id = ?
             """
             self.cursor.execute(query, (ref_piece, appareil_id))
+            result = self.cursor.fetchone()
+            
+            if not result:
+                return False
+            
+            piece_id, assoc_id = result
+            
+            # Étape 2: Supprimer l'association
+            self.cursor.execute("DELETE FROM piece_associations WHERE id = ?", (assoc_id,))
+            
+            # Étape 3: Vérifier si la pièce a d'autres associations
+            self.cursor.execute("SELECT COUNT(*) FROM piece_associations WHERE piece_id = ?", (piece_id,))
+            remaining_assocs = self.cursor.fetchone()[0]
+            
+            # Si plus d'associations, supprimer la pièce aussi
+            if remaining_assocs == 0:
+                self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
+            
             self.conn.commit()
-            return self.cursor.rowcount > 0
+            return True
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la suppression de la pièce: {e}")
     
     def delete_pieces_by_appareil(self, appareil_id: int) -> int:
-        """Supprimer toutes les pièces d'un appareil"""
+        """Supprimer toutes les pièces d'un appareil (nouvelle structure)"""
         try:
-            query = "DELETE FROM pieces WHERE appareil_id = ?"
+            # Étape 1: Récupérer toutes les pièces associées à cet appareil
+            query = """
+                SELECT p.id, p.ref_piece
+                FROM pieces p
+                JOIN piece_associations pa ON p.id = pa.piece_id
+                WHERE pa.appareil_id = ?
+            """
             self.cursor.execute(query, (appareil_id,))
+            piece_info = self.cursor.fetchall()
+            
+            if not piece_info:
+                return 0
+            
+            # Étape 2: Supprimer toutes les associations pour cet appareil
+            self.cursor.execute("DELETE FROM piece_associations WHERE appareil_id = ?", (appareil_id,))
             deleted_count = self.cursor.rowcount
+            
+            # Étape 3: Supprimer les pièces qui n'ont plus d'associations
+            for piece_id, ref_piece in piece_info:
+                self.cursor.execute("SELECT COUNT(*) FROM piece_associations WHERE piece_id = ?", (piece_id,))
+                remaining_assocs = self.cursor.fetchone()[0]
+                
+                if remaining_assocs == 0:
+                    self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
+            
             self.conn.commit()
             return deleted_count
             
