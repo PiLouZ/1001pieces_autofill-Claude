@@ -82,7 +82,7 @@ class DatabaseManager:
             if not search_term.strip():
                 return None
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
+            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
             return {
                 'condition': f"({' OR '.join(search_conditions)})",
                 'params': [f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1)
@@ -103,7 +103,7 @@ class DatabaseManager:
             
             term = terms[0]
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
+            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
             return {
                 'condition': f"({' OR '.join(search_conditions)})",
                 'params': [f"%{term}%"] * (len(Config.DB_HEADERS) + 1)
@@ -129,7 +129,7 @@ class DatabaseManager:
                     for term in terms:
                         # Chaque terme doit être trouvé dans au moins une colonne
                         term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                        term_conditions.append("a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)")
+                        term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
                         
                         and_conditions.append(f"({' OR '.join(term_conditions)})")
                         all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
@@ -1001,19 +1001,39 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors de la récupération des doublons: {e}")
     
     def transfer_pieces(self, from_device_id: int, to_device_id: int):
-        """Transférer les pièces d'un appareil vers un autre"""
+        """Transférer les pièces d'un appareil vers un autre (nouvelle structure)"""
         try:
-            # Transférer les pièces vers l'appareil de destination (éviter les doublons)
-            transfer_query = """
-                UPDATE pieces SET appareil_id = ? 
-                WHERE appareil_id = ? AND ref_piece NOT IN (
-                    SELECT ref_piece FROM pieces WHERE appareil_id = ?
-                )
+            # Étape 1: Récupérer toutes les pièces de l'appareil source
+            source_query = """
+                SELECT p.id, p.ref_piece
+                FROM pieces p
+                JOIN piece_associations pa ON p.id = pa.piece_id
+                WHERE pa.appareil_id = ?
             """
-            self.cursor.execute(transfer_query, (to_device_id, from_device_id, to_device_id))
+            self.cursor.execute(source_query, (from_device_id,))
+            source_pieces = self.cursor.fetchall()
             
-            # Supprimer les pièces restantes de l'appareil source (doublons)
-            self.cursor.execute("DELETE FROM pieces WHERE appareil_id = ?", (from_device_id,))
+            # Étape 2: Récupérer les pièces déjà associées à l'appareil de destination
+            dest_query = """
+                SELECT p.ref_piece
+                FROM pieces p
+                JOIN piece_associations pa ON p.id = pa.piece_id
+                WHERE pa.appareil_id = ?
+            """
+            self.cursor.execute(dest_query, (to_device_id,))
+            dest_pieces = {row[0] for row in self.cursor.fetchall()}
+            
+            # Étape 3: Transférer les pièces non-doublons
+            transferred = 0
+            for piece_id, ref_piece in source_pieces:
+                if ref_piece not in dest_pieces:
+                    # Transférer l'association
+                    self.cursor.execute("UPDATE piece_associations SET appareil_id = ? WHERE piece_id = ? AND appareil_id = ?", 
+                                      (to_device_id, piece_id, from_device_id))
+                    transferred += 1
+            
+            # Étape 4: Supprimer les associations restantes de l'appareil source
+            self.cursor.execute("DELETE FROM piece_associations WHERE appareil_id = ?", (from_device_id,))
             
             self.conn.commit()
             
@@ -1039,17 +1059,8 @@ class DatabaseManager:
                 ids_to_delete = [x for x in all_ids if x != keep_id]
                 
                 for delete_id in ids_to_delete:
-                    # Transférer les pièces vers l'appareil à conserver
-                    transfer_query = """
-                        UPDATE pieces SET appareil_id = ? 
-                        WHERE appareil_id = ? AND ref_piece NOT IN (
-                            SELECT ref_piece FROM pieces WHERE appareil_id = ?
-                        )
-                    """
-                    self.cursor.execute(transfer_query, (keep_id, delete_id, keep_id))
-                    
-                    # Supprimer les pièces doublons restantes
-                    self.cursor.execute("DELETE FROM pieces WHERE appareil_id = ?", (delete_id,))
+                    # Transférer les pièces vers l'appareil à conserver (nouvelle structure)
+                    self.transfer_pieces(delete_id, keep_id)
                     
                     # Supprimer l'appareil doublon
                     self.cursor.execute("DELETE FROM appareils WHERE id = ?", (delete_id,))
@@ -1063,33 +1074,54 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors de la suppression des doublons: {e}")
     
     def remove_duplicate_pieces(self) -> int:
-        """Supprimer les références de pièces dupliquées"""
+        """Supprimer les références de pièces dupliquées (nouvelle structure)"""
         try:
-            # Récupérer et supprimer les doublons de pièces
-            duplicate_pieces_query = """
-                DELETE FROM pieces 
+            # Avec la nouvelle structure, il ne devrait pas y avoir de doublons
+            # car piece_associations a une contrainte UNIQUE(piece_id, appareil_id)
+            # et pieces a une contrainte UNIQUE(ref_piece)
+            
+            # Mais on peut vérifier s'il y a des doublons d'associations
+            duplicate_assoc_query = """
+                DELETE FROM piece_associations 
                 WHERE id NOT IN (
                     SELECT MIN(id) 
-                    FROM pieces 
-                    GROUP BY appareil_id, ref_piece
+                    FROM piece_associations 
+                    GROUP BY piece_id, appareil_id
                 )
             """
-            self.cursor.execute(duplicate_pieces_query)
+            self.cursor.execute(duplicate_assoc_query)
             deleted_count = self.cursor.rowcount
+            
+            # Supprimer les pièces orphelines (sans associations)
+            orphan_query = """
+                DELETE FROM pieces 
+                WHERE id NOT IN (
+                    SELECT DISTINCT piece_id 
+                    FROM piece_associations
+                )
+            """
+            self.cursor.execute(orphan_query)
+            orphan_count = self.cursor.rowcount
+            
             self.conn.commit()
-            return deleted_count
+            return deleted_count + orphan_count
             
         except sqlite3.Error as e:
             self.conn.rollback()
             raise DatabaseError(f"Erreur lors de la suppression des pièces dupliquées: {e}")
     
     def get_duplicate_pieces_count(self) -> int:
-        """Compter les références de pièces dupliquées"""
+        """Compter les références de pièces dupliquées (nouvelle structure)"""
         try:
+            # Compter les doublons d'associations
             query = """
-                SELECT COUNT(*) - COUNT(DISTINCT appareil_id || '|' || ref_piece)
-                FROM pieces 
-                WHERE ref_piece IS NOT NULL AND ref_piece != ''
+                SELECT COUNT(*) 
+                FROM piece_associations 
+                WHERE id NOT IN (
+                    SELECT MIN(id) 
+                    FROM piece_associations 
+                    GROUP BY piece_id, appareil_id
+                )
             """
             self.cursor.execute(query)
             result = self.cursor.fetchone()
@@ -1099,18 +1131,20 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors du comptage des pièces dupliquées: {e}")
     
     def analyze_piece_duplicates(self) -> List[Tuple]:
-        """Analyser les doublons de pièces en détail"""
+        """Analyser les doublons de pièces en détail (nouvelle structure)"""
         try:
+            # Analyser les doublons d'associations
             query = """
                 SELECT 
-                    ref_piece,
-                    appareil_id,
+                    p.ref_piece,
+                    pa.appareil_id,
                     COUNT(*) as count
-                FROM pieces 
-                WHERE ref_piece IS NOT NULL AND ref_piece != ''
-                GROUP BY appareil_id, ref_piece
+                FROM piece_associations pa
+                JOIN pieces p ON pa.piece_id = p.id
+                WHERE p.ref_piece IS NOT NULL AND p.ref_piece != ''
+                GROUP BY pa.piece_id, pa.appareil_id
                 HAVING COUNT(*) > 1
-                ORDER BY count DESC, ref_piece, appareil_id
+                ORDER BY count DESC, p.ref_piece, pa.appareil_id
             """
             self.cursor.execute(query)
             return self.cursor.fetchall()
@@ -1174,9 +1208,10 @@ class DatabaseManager:
             query = f"""
                 SELECT a.{', '.join(f'[{h}]' for h in Config.DB_HEADERS[:5])}, p.ref_piece
                 FROM appareils a
-                LEFT JOIN pieces p ON a.id = p.appareil_id
+                LEFT JOIN piece_associations pa ON a.id = pa.appareil_id
+                LEFT JOIN pieces p ON pa.piece_id = p.id
                 WHERE {' OR '.join(f'[{h}] LIKE ?' for h in Config.DB_HEADERS)}
-                OR a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)
+                OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)
             """
             params = [f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1)
             
