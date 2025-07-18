@@ -60,4 +60,4 @@ config/user_settings.json
 # Build artifacts
 build/
 dist/
-*.egg-info/
+*.egg-info/data/appareils.db

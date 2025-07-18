@@ -47,7 +47,7 @@ class PiecesManagerWindow(QDialog):
         search_layout.addWidget(QLabel("🔍 Recherche:"))
         
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Rechercher une référence de pièce...")
+        self.search_input.setPlaceholderText("Rechercher une référence ou un libellé de pièce...")
         self.search_input.textChanged.connect(self._filter_pieces)
         search_layout.addWidget(self.search_input)
         
@@ -66,16 +66,17 @@ class PiecesManagerWindow(QDialog):
         
         # Tableau des pièces
         self.pieces_table = QTableWidget()
-        self.pieces_table.setColumnCount(3)
+        self.pieces_table.setColumnCount(4)
         self.pieces_table.setHorizontalHeaderLabels([
-            "Référence Pièce", "Nb Appareils", "Type d'Appareils"
+            "Référence Pièce", "Libellé", "Nb Appareils", "Type d'Appareils"
         ])
         
         # Configuration du tableau
         header = self.pieces_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Référence
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Nb
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Types
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Libellé
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Nb
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Types
         
         self.pieces_table.setAlternatingRowColors(True)
         self.pieces_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -102,6 +103,12 @@ class PiecesManagerWindow(QDialog):
         export_btn.clicked.connect(self._export_pieces)
         buttons_layout.addWidget(export_btn)
         
+        edit_btn = QPushButton("✏️ Modifier pièce")
+        edit_btn.setToolTip("Modifier la référence et le libellé de la pièce sélectionnée")
+        edit_btn.clicked.connect(self._edit_selected_piece)
+        edit_btn.setStyleSheet("QPushButton { background-color: #007bff; color: white; }")
+        buttons_layout.addWidget(edit_btn)
+        
         delete_btn = QPushButton("🗑️ Supprimer pièce(s)")
         delete_btn.setToolTip("Supprimer les références de pièces sélectionnées (Ctrl+Clic pour sélection multiple)")
         delete_btn.clicked.connect(self._delete_selected_pieces)
@@ -119,15 +126,17 @@ class PiecesManagerWindow(QDialog):
     def _load_pieces_data(self):
         """Charger les données des pièces"""
         try:
-            # Requête pour obtenir les statistiques des pièces
+            # Requête pour obtenir les statistiques des pièces (nouvelle structure)
             query = """
             SELECT 
                 p.ref_piece,
-                COUNT(DISTINCT p.appareil_id) as nb_appareils,
+                p.description,
+                COUNT(DISTINCT pa.appareil_id) as nb_appareils,
                 GROUP_CONCAT(DISTINCT a.type) as types_appareils
             FROM pieces p
-            LEFT JOIN appareils a ON p.appareil_id = a.id
-            GROUP BY p.ref_piece
+            LEFT JOIN piece_associations pa ON p.id = pa.piece_id
+            LEFT JOIN appareils a ON pa.appareil_id = a.id
+            GROUP BY p.id, p.ref_piece, p.description
             ORDER BY nb_appareils DESC, p.ref_piece ASC
             """
             
@@ -135,8 +144,8 @@ class PiecesManagerWindow(QDialog):
             
             # Calculer les statistiques
             total_pieces = len(results)
-            orphan_pieces = len([r for r in results if r[1] == 0])
-            total_associations = sum(r[1] for r in results)
+            orphan_pieces = len([r for r in results if r[2] == 0])  # nb_appareils est maintenant à l'index 2
+            total_associations = sum(r[2] for r in results)  # nb_appareils est maintenant à l'index 2
             
             from src.core.config import pluralize
             self.stats_label.setText(
@@ -158,10 +167,15 @@ class PiecesManagerWindow(QDialog):
         
         self.pieces_table.setRowCount(len(filtered_data))
         
-        for row_idx, (ref_piece, nb_appareils, types_appareils) in enumerate(filtered_data):
+        for row_idx, (ref_piece, description, nb_appareils, types_appareils) in enumerate(filtered_data):
             # Référence de pièce
             ref_item = QTableWidgetItem(ref_piece or "")
             self.pieces_table.setItem(row_idx, 0, ref_item)
+            
+            # Libellé de la pièce
+            desc_item = QTableWidgetItem(description or "")
+            desc_item.setToolTip(description or "Pas de libellé")
+            self.pieces_table.setItem(row_idx, 1, desc_item)
             
             # Nombre d'appareils
             nb_item = QTableWidgetItem(str(nb_appareils))
@@ -179,7 +193,7 @@ class PiecesManagerWindow(QDialog):
                 nb_item.setBackground(QColor(200, 255, 200))  # Vert pour multiples
                 nb_item.setToolTip(f"✅ Pièce associée à {pluralize(nb_appareils, 'appareil')}")
                 
-            self.pieces_table.setItem(row_idx, 1, nb_item)
+            self.pieces_table.setItem(row_idx, 2, nb_item)
             
             # Types d'appareils (limité à 50 caractères pour l'affichage)
             types_display = types_appareils or "N/A"
@@ -187,7 +201,7 @@ class PiecesManagerWindow(QDialog):
                 types_display = types_display[:47] + "..."
             types_item = QTableWidgetItem(types_display)
             types_item.setToolTip(types_appareils or "Aucun type")
-            self.pieces_table.setItem(row_idx, 2, types_item)
+            self.pieces_table.setItem(row_idx, 3, types_item)
             
     def _get_filtered_data(self):
         """Obtenir les données filtrées selon les critères"""
@@ -196,17 +210,17 @@ class PiecesManagerWindow(QDialog):
             
         filtered = self.all_pieces_data
         
-        # Filtre par recherche
+        # Filtre par recherche (référence ET libellé)
         search_text = self.search_input.text().lower().strip()
         if search_text:
             filtered = [
                 row for row in filtered 
-                if search_text in (row[0] or "").lower()
+                if search_text in (row[0] or "").lower() or search_text in (row[1] or "").lower()
             ]
         
-        # Filtre orphelines
+        # Filtre orphelines (nb_appareils est maintenant à l'index 2)
         if self.orphan_checkbox.isChecked():
-            filtered = [row for row in filtered if row[1] == 0]
+            filtered = [row for row in filtered if row[2] == 0]
             
         return filtered
         
@@ -241,7 +255,8 @@ class PiecesManagerWindow(QDialog):
                 a.commercial_ref,
                 a.other_ref
             FROM pieces p
-            JOIN appareils a ON p.appareil_id = a.id
+            JOIN piece_associations pa ON p.id = pa.piece_id
+            JOIN appareils a ON pa.appareil_id = a.id
             WHERE p.ref_piece = ?
             ORDER BY a.type, a.manufacturer, a.ref_modele
             """
@@ -394,3 +409,113 @@ class PiecesManagerWindow(QDialog):
                 self.parent()._add_to_history(summary)
         except Exception as e:
             print(f"Erreur lors de l'ajout à l'historique: {e}")
+    
+    def _edit_selected_piece(self):
+        """Modifier la pièce sélectionnée"""
+        current_row = self.pieces_table.currentRow()
+        if current_row < 0:
+            QMessageBox.warning(self, "Aucune sélection", "Veuillez sélectionner une pièce à modifier.")
+            return
+            
+        # Obtenir les données actuelles de la pièce
+        ref_item = self.pieces_table.item(current_row, 0)
+        desc_item = self.pieces_table.item(current_row, 1)
+        
+        if not ref_item:
+            return
+            
+        current_ref = ref_item.text()
+        current_desc = desc_item.text() if desc_item else ""
+        
+        # Créer une boîte de dialogue d'édition
+        dialog = PieceEditDialog(self, current_ref, current_desc)
+        if dialog.exec_() == QDialog.Accepted:
+            new_ref, new_desc = dialog.get_values()
+            
+            # Mettre à jour dans la base de données
+            try:
+                # Vérifier si la nouvelle référence existe déjà (si elle a changé)
+                if new_ref != current_ref:
+                    existing_query = "SELECT id FROM pieces WHERE ref_piece = ?"
+                    existing_result = self.db_manager.execute_query(existing_query, [new_ref])
+                    if existing_result:
+                        QMessageBox.warning(self, "Référence existante", 
+                                          f"La référence '{new_ref}' existe déjà. Veuillez choisir une référence différente.")
+                        return
+                
+                # Mettre à jour la pièce
+                update_query = "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?"
+                self.db_manager.cursor.execute(update_query, (new_ref, new_desc, current_ref))
+                self.db_manager.conn.commit()
+                
+                # Recharger les données
+                self._load_pieces_data()
+                
+                # Ajouter à l'historique de la fenêtre principale
+                if hasattr(self.parent(), '_add_to_history'):
+                    changes = []
+                    if new_ref != current_ref:
+                        changes.append(f"référence: '{current_ref}' → '{new_ref}'")
+                    if new_desc != current_desc:
+                        changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
+                    
+                    if changes:
+                        summary = f"✏️ Modification de la pièce: {', '.join(changes)}"
+                        self.parent()._add_to_history(summary)
+                
+                QMessageBox.information(self, "Succès", "La pièce a été modifiée avec succès.")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Erreur lors de la modification: {e}")
+
+
+class PieceEditDialog(QDialog):
+    """Dialogue d'édition d'une pièce"""
+    
+    def __init__(self, parent, current_ref, current_desc):
+        super().__init__(parent)
+        self.setWindowTitle("Modifier la pièce")
+        self.setModal(True)
+        self.resize(400, 150)
+        
+        layout = QVBoxLayout()
+        
+        # Champ référence
+        ref_layout = QHBoxLayout()
+        ref_layout.addWidget(QLabel("Référence:"))
+        self.ref_input = QLineEdit(current_ref)
+        self.ref_input.setPlaceholderText("Référence de la pièce")
+        ref_layout.addWidget(self.ref_input)
+        layout.addLayout(ref_layout)
+        
+        # Champ libellé
+        desc_layout = QHBoxLayout()
+        desc_layout.addWidget(QLabel("Libellé:"))
+        self.desc_input = QLineEdit(current_desc)
+        self.desc_input.setPlaceholderText("Libellé de la pièce (optionnel)")
+        desc_layout.addWidget(self.desc_input)
+        layout.addLayout(desc_layout)
+        
+        # Boutons
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        cancel_btn = QPushButton("Annuler")
+        cancel_btn.clicked.connect(self.reject)
+        buttons_layout.addWidget(cancel_btn)
+        
+        save_btn = QPushButton("Sauvegarder")
+        save_btn.clicked.connect(self.accept)
+        save_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; }")
+        buttons_layout.addWidget(save_btn)
+        
+        layout.addLayout(buttons_layout)
+        self.setLayout(layout)
+        
+        # Focus sur le champ référence
+        self.ref_input.selectAll()
+        self.ref_input.setFocus()
+        
+    def get_values(self):
+        """Retourner les valeurs saisies"""
+        return self.ref_input.text().strip(), self.desc_input.text().strip()

@@ -59,23 +59,21 @@ python3 -m src.ui.main_refactored
 
 ## ✨ Nouvelles Fonctionnalités Majeures
 
-### 🎨 **Interface Réorganisée et Moderne (v2.1.0)**
-- **Menus structurés** - "Gestion" (Catégories, Pièces, Incohérences) et "Action" (Autocomplétion, Nettoyage)
-- **Bouton Rafraîchir** déplacé dans la toolbar avec raccourci F5
-- **Pagination optimisée** sur 2 lignes avec bouton "Lignes à traiter" intégré
-- **Interface épurée** - Suppression des boutons redondants
+### 🛠️ **Gestion Avancée des Pièces (v2.4.0)**
+- **Libellés de pièces** - Nouveau champ dans tous les imports (CSV, PDF, Collage)
+- **Gestionnaire de pièces** - Fenêtre dédiée avec édition temps réel
+- **Modification références** - Changement des références ET libellés
+- **Validation automatique** - Vérification des doublons et conflits
+- **Recherche avancée** - Dans les références ET libellés simultanément
+- **Synthèses simplifiées** - Format unifié "Élément : nombre"
+- **Import 1 colonne** - Support des références seules (ex: Q1457ATGW)
 
-### 📊 **Import CSV Configurable**
-- **Option d'en-têtes configurable** - Cochez si votre fichier a une ligne d'en-têtes
-- **Comptage précis** - Résolution des discordances de lignes importées
-- **Compatibilité étendue** - Support de tous types de fichiers CSV
-- **Détection automatique** du nombre de colonnes
-
-### 🔍 **Validation et Incohérences Interactive**
-- **Fenêtre dédiée** avec onglets Vue d'ensemble et Détails
-- **Filtrage avancé** par type d'erreur (validation, incohérences, orphelins...)
-- **Cartes visuelles** avec statistiques colorées
-- **Actions rapides** pour traiter les problèmes détectés
+### 🎯 **Import PDF Révolutionnaire (v2.3.0)**
+- **Camelot-Py** - Extraction 100% précise des tableaux PDF
+- **Multi-fichiers** - Drag & drop de plusieurs PDFs simultanément
+- **Auto-complétion** - Popup filtrable pour Type et Fabricant (Cmd+D)
+- **Navigation clavier** - Flèches + Enter pour sélection rapide
+- **Associations garanties** - Chaque appareil a automatiquement sa pièce
 
 ### 🏗️ **Gestion Hiérarchique des Doublons (v2.2.0)**
 - **Interface QTreeWidget** - Vue hiérarchique intuitive avec appareils parents/enfants
@@ -85,6 +83,12 @@ python3 -m src.ui.main_refactored
 - **Auto-sélection intelligente** - Plus ancien ou plus complet selon préférence
 - **Fusion contrôlée** - Transfert de pièces et consolidation des données
 - **Prévisualisation détaillée** - Aperçu complet avant validation des opérations
+
+### 🔍 **Validation et Incohérences Interactive**
+- **Fenêtre dédiée** avec onglets Vue d'ensemble et Détails
+- **Filtrage avancé** par type d'erreur (validation, incohérences, orphelins...)
+- **Cartes visuelles** avec statistiques colorées
+- **Actions rapides** pour traiter les problèmes détectés
 
 ### ⚙️ **Gestion des Colonnes Personnalisable**
 - **Affichage configurable** - Masquer/afficher les colonnes selon les besoins
@@ -118,11 +122,14 @@ pip3 install PyQt5
 
 ### 📋 **Gestion des Données**
 - ✅ **CRUD complet** - Création, lecture, modification, suppression
-- ✅ **Import/Export** - CSV vers Bureau, JSON, HTML, XML
-- ✅ **Autocomplétion** - Suggestions intelligentes
+- ✅ **Import/Export** - CSV et PDF vers Bureau, JSON, HTML, XML
+- ✅ **Import PDF avancé** - Extraction Camelot-Py multi-fichiers avec associations automatiques
+- ✅ **Auto-complétion intelligente** - Popup filtrable temps réel (Type/Fabricant)
+- ✅ **Effacement rapide** - Delete/Backspace sur cellules sélectionnées
+- ✅ **Copie de pièces** - Menu contextuel avec copie vers presse-papiers
 - ✅ **Duplication intelligente** - Poignée de duplication avancée
 - ✅ **Validation en temps réel** - Contrôles de cohérence automatiques
-- ✅ **Gestion des pièces** - Suppression avec menu contextuel et historique
+- ✅ **Associations fiables** - Chaque appareil importé a sa pièce associée
 
 ### 🔍 **Recherche et Filtrage**
 - ✅ **Recherche globale** - Dans tous les champs et pièces associées
@@ -137,7 +144,8 @@ pip3 install PyQt5
 - ✅ **Cmd+F** - Recherche
 - ✅ **Cmd+C/V** - Copier/Coller
 - ✅ **Cmd+↑/↓** - Navigation cellules vides
-- ✅ **Cmd+D** - Sélection valeurs de colonne
+- ✅ **Cmd+D** - Auto-complétion avancée (Type/Fabricant)
+- ✅ **Delete/Backspace** - Effacement cellules sélectionnées
 - ✅ **Échap** - Réinitialiser recherche et filtres
 - ✅ **F5** - Actualiser
 - ✅ **F12** - Logs
@@ -231,9 +239,24 @@ Cette version représente une refonte complète avec :
 - **💾 Stabilité renforcée** - Gestion d'erreurs et sauvegarde automatique
 - **🎯 Expérience utilisateur** - Intuitive et productive
 
-### 🆕 Dernières Améliorations (v2.2.0)
+### 🆕 Dernières Améliorations (v2.3.0)
 
-#### 🏗️ **Gestion Hiérarchique des Doublons - Révolution UX**
+#### 🚀 **Import PDF Révolutionnaire avec Camelot-Py**
+- **✅ Extraction multi-fichiers** - Drag & drop de plusieurs PDFs simultanément
+- **✅ Précision 100%** - Migration vers Camelot-Py pour extraction parfaite des tableaux
+- **✅ Associations garanties** - Chaque appareil importé a automatiquement sa pièce associée
+- **✅ Gestion d'erreurs** - Logging détaillé et correction automatique des associations manquantes
+- **✅ Interface unifiée** - Même dialogue d'import que les CSV avec suggestion de nom
+
+#### 🎯 **Auto-complétion Avancée et Interactions**
+- **✅ Popup intelligente** - Fenêtre filtrable temps réel pour colonnes Type/Fabricant
+- **✅ Recherche instantanée** - Tapez pour filtrer, premier résultat automatiquement surligné
+- **✅ Navigation clavier** - Flèches ↑↓ + Enter pour sélection rapide
+- **✅ Effacement rapide** - Delete/Backspace sur cellules sélectionnées
+- **✅ Copie de pièces** - Menu contextuel "Copier" vers presse-papiers
+- **✅ Focus intelligent** - Maintien du focus sur le champ de saisie pendant la frappe
+
+#### 🏗️ **Gestion Hiérarchique des Doublons (v2.2.0)**
 - **✅ Interface QTreeWidget** - Vue hiérarchique avec référent principal et doublons indentés
 - **✅ Sélection manuelle sécurisée** - Cases à cocher sans pré-sélection pour éviter les erreurs
 - **✅ Édition temps réel** - Modification directe des données dans l'arbre
@@ -250,4 +273,5 @@ Cette version représente une refonte complète avec :
 - **✅ Gestion des pièces** - Suppression avec menu contextuel
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
-**📅 Version 2025 - Stable et optimisée pour la production**
+**📅 Version 2025 - Stable et optimisée pour la production**  
+**🚀 v2.3.0 - Import PDF révolutionnaire et auto-complétion intelligente**

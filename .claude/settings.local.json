@@ -33,7 +33,16 @@
       "Bash(git push:*)",
       "Bash(git checkout:*)",
       "Bash(git commit:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(git stash:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(for:*)",
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(echo)",
+      "Bash(done)",
+      "Bash(pip install:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
     ],
     "deny": []
   }
