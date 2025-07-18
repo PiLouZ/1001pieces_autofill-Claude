@@ -240,8 +240,19 @@ class DatabaseManager:
     def _add_missing_pieces_columns(self):
         """Ajouter les colonnes manquantes à la table pieces"""
         try:
+            # Vérifier si la table pieces existe
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
+            if not self.cursor.fetchone():
+                print("Table pieces n'existe pas, skip ajout colonnes")
+                return
+                
             self.cursor.execute("PRAGMA table_info(pieces)")
             existing_columns = {row[1] for row in self.cursor.fetchall()}
+            
+            # Si la table n'a pas de colonne 'appareil_id', elle a déjà la nouvelle structure
+            if 'appareil_id' not in existing_columns:
+                print("Table pieces déjà avec nouvelle structure, skip ajout colonnes")
+                return
             
             # Ajouter la colonne description si elle n'existe pas
             if 'description' not in existing_columns:
@@ -268,7 +279,16 @@ class DatabaseManager:
     def _add_unique_constraint_pieces(self):
         """Ajouter la contrainte unique pour prévenir les doublons de pièces"""
         try:
-            # Vérifier si la contrainte unique existe déjà
+            # Vérifier si la table pieces a déjà la nouvelle structure
+            self.cursor.execute("PRAGMA table_info(pieces)")
+            pieces_columns = [row[1] for row in self.cursor.fetchall()]
+            
+            if 'appareil_id' not in pieces_columns:
+                # Nouvelle structure déjà en place, skip
+                print("Table pieces déjà avec nouvelle structure, skip contrainte unique")
+                return
+            
+            # Ancienne structure - vérifier si la contrainte unique existe déjà
             self.cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='pieces'")
             table_sql = self.cursor.fetchone()
             
