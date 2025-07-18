@@ -876,10 +876,11 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout de la pièce: {e}")
     
-    def add_or_update_piece_with_description(self, ref_piece: str, appareil_id: int, description: str = None, confirm_callback=None) -> int:
+    def add_or_update_piece_with_description(self, ref_piece: str, appareil_id: int, description: str = None, confirm_callback=None) -> tuple:
         """
         Ajouter une pièce ou mettre à jour sa description si elle existe déjà.
         NOUVELLE STRUCTURE: Une pièce = une référence + une description, associations séparées.
+        Retourne: (assoc_id, description_updated)
         """
         try:
             # Nettoyer la description d'entrée
@@ -890,6 +891,7 @@ class DatabaseManager:
                     clean_description = cleaned
             
             print(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
+            description_updated = False
             
             # Étape 1: Vérifier si la pièce existe déjà
             piece_query = "SELECT id, description FROM pieces WHERE ref_piece = ?"
@@ -909,6 +911,7 @@ class DatabaseManager:
                             self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
                             self.conn.commit()
                             print(f"  📝 Description mise à jour: '{final_description}'")
+                            description_updated = True
                     else:
                         print(f"  ⚠️ Conflit description ignoré: garde '{current_desc}'")
                 elif clean_description and not current_desc:
@@ -916,6 +919,7 @@ class DatabaseManager:
                     self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
                     self.conn.commit()
                     print(f"  📝 Description ajoutée: '{clean_description}'")
+                    description_updated = True
                     
             else:
                 # Nouvelle pièce
@@ -933,14 +937,14 @@ class DatabaseManager:
                 # Association existante
                 assoc_id = assoc_result[0][0]
                 print(f"  🔗 Association existante (ID: {assoc_id})")
-                return assoc_id
+                return (assoc_id, description_updated)
             else:
                 # Nouvelle association
                 self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
                 assoc_id = self.cursor.lastrowid
                 self.conn.commit()
                 print(f"  🔗 Association créée (ID: {assoc_id})")
-                return assoc_id
+                return (assoc_id, description_updated)
                 
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout/mise à jour de la pièce: {e}")

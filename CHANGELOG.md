@@ -2,6 +2,80 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.4.0] - 2025-07-18 - 🛠️ Gestion Avancée des Pièces et Optimisations
+
+### 🎯 **Révolution de la Gestion des Pièces**
+
+Cette version introduit une gestion complètement repensée des pièces avec libellés, modifications et synthèses améliorées.
+
+#### ✨ **Nouvelles Fonctionnalités Majeures**
+
+##### 🏷️ **Libellés de Pièces Complets**
+- **Nouveau champ "Libellé de pièce"** dans tous les dialogues d'import (CSV, PDF, Collage)
+- **Gestion des conflits de libellés** avec dialogue de confirmation utilisateur
+- **Mise à jour automatique** des libellés lors des imports
+- **Comptage des mises à jour** dans les synthèses d'import
+
+##### 🔧 **Gestionnaire de Pièces Révolutionnaire**
+- **Fenêtre dédiée** avec affichage des libellés et compteurs d'associations
+- **Modification en temps réel** des références ET libellés de pièces
+- **Recherche avancée** dans les références ET libellés simultanément
+- **Validation des doublons** lors des modifications
+- **Historique des modifications** intégré à la fenêtre principale
+
+##### 📊 **Synthèses d'Import Simplifiées**
+- **Format unifié** : "Élément : nombre" (plus de problèmes de pluriels)
+- **Libellé clair** : "Associations déjà existantes" au lieu de "doublon dans l'import"
+- **Nouveau compteur** : "Libellés mis à jour" pour suivre les modifications
+- **Cohérence** entre console et historique
+
+##### 🗂️ **Support Import 1 Colonne**
+- **Import des références seules** : Q1457ATGW maintenant supporté
+- **Mapping automatique** sur le champ ref_modele
+- **Validation élargie** : accepte 1, 2-3 ou 4+ colonnes
+
+#### 🔧 **Améliorations Techniques Majeures**
+
+##### 🏗️ **Refactorisation Base de Données**
+- **Structure normalisée** : Table `pieces` séparée de `piece_associations`
+- **Migration automatique** des données existantes
+- **Intégrité référentielle** avec contraintes FK
+- **Performances optimisées** avec requêtes SQL adaptées
+
+##### 🎨 **Interface Gestionnaire de Pièces**
+- **4 colonnes** : Référence, Libellé, Nb Appareils, Type d'Appareils
+- **Codes couleur** : Rouge (orphelines), Jaune (1 appareil), Vert (multiples)
+- **Dialogue d'édition** avec validation des doublons
+- **Boutons d'action** : Modifier, Supprimer, Exporter
+
+##### 🧹 **Nettoyage et Optimisation**
+- **Suppression des fonctions obsolètes** : gestion des doublons d'import
+- **Code factorié** : méthodes communes extraites
+- **Performance améliorée** : requêtes SQL optimisées
+- **Moins de bruit** : plus d'affichage automatique des fenêtres de synthèse
+
+#### 🛡️ **Robustesse et Sécurité**
+
+##### 🔒 **Validation des Données**
+- **Vérification d'unicité** lors de la modification des références
+- **Gestion des conflits** avec dialogue de confirmation
+- **Sauvegarde automatique** des modifications
+- **Rollback automatique** en cas d'erreur
+
+##### 🎯 **Expérience Utilisateur**
+- **Synthèses claires** avec compteurs précis
+- **Historique enrichi** avec détails des modifications
+- **Pas de popups intrusifs** après import
+- **Recherche instantanée** dans le gestionnaire de pièces
+
+#### 📁 **Fichiers Modifiés**
+- **REFACTORISÉ** : `src/ui/pieces_manager.py` - Gestionnaire complet avec édition
+- **OPTIMISÉ** : `src/ui/main_refactored.py` - Synthèses et gestion des libellés
+- **AMÉLIORÉ** : `src/data/database_manager.py` - Nouvelles méthodes pour libellés
+- **NETTOYÉ** : Suppression des fonctions obsolètes de gestion des doublons
+
+---
+
 ## [2.3.0] - 2025-07-16 - 🚀 Import PDF Révolutionnaire et Auto-complétion Intelligente
 
 ### 🎯 **Import PDF Révolutionnaire avec Camelot-Py**
@@ -301,7 +375,7 @@ Cette version introduit une approche complètement nouvelle pour la gestion des 
 
 ---
 
-**📅 Dernière mise à jour :** 16 juillet 2025  
+**📅 Dernière mise à jour :** 18 juillet 2025  
 **👨‍💻 Développé par :** Claude (Anthropic) en collaboration avec l'utilisateur  
-**🏷️ Version stable :** 2.3.0  
-**🚀 Dernière version :** Import PDF révolutionnaire et auto-complétion intelligente
+**🏷️ Version stable :** 2.4.0  
+**🚀 Dernière version :** Gestion avancée des pièces et optimisations

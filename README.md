@@ -59,23 +59,21 @@ python3 -m src.ui.main_refactored
 
 ## ✨ Nouvelles Fonctionnalités Majeures
 
-### 🎨 **Interface Réorganisée et Moderne (v2.1.0)**
-- **Menus structurés** - "Gestion" (Catégories, Pièces, Incohérences) et "Action" (Autocomplétion, Nettoyage)
-- **Bouton Rafraîchir** déplacé dans la toolbar avec raccourci F5
-- **Pagination optimisée** sur 2 lignes avec bouton "Lignes à traiter" intégré
-- **Interface épurée** - Suppression des boutons redondants
+### 🛠️ **Gestion Avancée des Pièces (v2.4.0)**
+- **Libellés de pièces** - Nouveau champ dans tous les imports (CSV, PDF, Collage)
+- **Gestionnaire de pièces** - Fenêtre dédiée avec édition temps réel
+- **Modification références** - Changement des références ET libellés
+- **Validation automatique** - Vérification des doublons et conflits
+- **Recherche avancée** - Dans les références ET libellés simultanément
+- **Synthèses simplifiées** - Format unifié "Élément : nombre"
+- **Import 1 colonne** - Support des références seules (ex: Q1457ATGW)
 
-### 📊 **Import CSV Configurable**
-- **Option d'en-têtes configurable** - Cochez si votre fichier a une ligne d'en-têtes
-- **Comptage précis** - Résolution des discordances de lignes importées
-- **Compatibilité étendue** - Support de tous types de fichiers CSV
-- **Détection automatique** du nombre de colonnes
-
-### 🔍 **Validation et Incohérences Interactive**
-- **Fenêtre dédiée** avec onglets Vue d'ensemble et Détails
-- **Filtrage avancé** par type d'erreur (validation, incohérences, orphelins...)
-- **Cartes visuelles** avec statistiques colorées
-- **Actions rapides** pour traiter les problèmes détectés
+### 🎯 **Import PDF Révolutionnaire (v2.3.0)**
+- **Camelot-Py** - Extraction 100% précise des tableaux PDF
+- **Multi-fichiers** - Drag & drop de plusieurs PDFs simultanément
+- **Auto-complétion** - Popup filtrable pour Type et Fabricant (Cmd+D)
+- **Navigation clavier** - Flèches + Enter pour sélection rapide
+- **Associations garanties** - Chaque appareil a automatiquement sa pièce
 
 ### 🏗️ **Gestion Hiérarchique des Doublons (v2.2.0)**
 - **Interface QTreeWidget** - Vue hiérarchique intuitive avec appareils parents/enfants
@@ -85,6 +83,12 @@ python3 -m src.ui.main_refactored
 - **Auto-sélection intelligente** - Plus ancien ou plus complet selon préférence
 - **Fusion contrôlée** - Transfert de pièces et consolidation des données
 - **Prévisualisation détaillée** - Aperçu complet avant validation des opérations
+
+### 🔍 **Validation et Incohérences Interactive**
+- **Fenêtre dédiée** avec onglets Vue d'ensemble et Détails
+- **Filtrage avancé** par type d'erreur (validation, incohérences, orphelins...)
+- **Cartes visuelles** avec statistiques colorées
+- **Actions rapides** pour traiter les problèmes détectés
 
 ### ⚙️ **Gestion des Colonnes Personnalisable**
 - **Affichage configurable** - Masquer/afficher les colonnes selon les besoins

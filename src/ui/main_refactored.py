@@ -647,7 +647,6 @@ class MainWindow(QMainWindow):
             self.modified_cells = set()
             self.filter_widgets = {}
             self.log_viewer = None
-            self.import_duplicates_history = []  # Stockage des doublons d'import
             
             # Timers
             self._setup_timers()
@@ -2821,9 +2820,13 @@ class MainWindow(QMainWindow):
                 parts = msg.split('] ', 1)
                 timestamp_part = parts[0] + ']'
                 content_part = parts[1] if len(parts) > 1 else ''
+                # Convertir les retours à la ligne en HTML
+                content_part = content_part.replace('\n', '<br>')
                 html_content += f"<p style='margin: 6px 0; line-height: 1.4; padding: 2px 0;'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
             else:
-                html_content += f"<p style='margin: 6px 0; line-height: 1.4; padding: 2px 0;' class='message'>{msg}</p>\n"
+                # Convertir les retours à la ligne en HTML
+                msg_html = msg.replace('\n', '<br>')
+                html_content += f"<p style='margin: 6px 0; line-height: 1.4; padding: 2px 0;' class='message'>{msg_html}</p>\n"
         
         html_content += """</body>
 </html>"""
@@ -2836,44 +2839,6 @@ class MainWindow(QMainWindow):
         cursor.movePosition(cursor.MoveOperation.Start)
         self.history_list.setTextCursor(cursor)
 
-    def _rebuild_history_display(self):
-        """Reconstruire l'affichage de l'historique sans ajouter de nouveau message"""
-        if not hasattr(self, '_history_messages') or not self._history_messages:
-            return
-            
-        # Reconstruire le HTML
-        html_content = """<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { font-family: monospace; font-size: 12px; margin: 4px; padding: 4px; }
-        p { margin: 2px 0; }
-        .timestamp { color: #666; }
-        .message { color: #333; }
-    </style>
-</head>
-<body>
-"""
-        
-        # Ajouter tous les messages
-        for msg in self._history_messages:
-            if msg.startswith('[') and '] ' in msg:
-                parts = msg.split('] ', 1)
-                timestamp_part = parts[0] + ']'
-                content_part = parts[1] if len(parts) > 1 else ''
-                html_content += f"<p style='margin: 4px 0; line-height: 1.3;'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
-            else:
-                html_content += f"<p style='margin: 4px 0; line-height: 1.3;' class='message'>{msg}</p>\n"
-        
-        html_content += """</body>
-</html>"""
-        
-        self.history_list.setHtml(html_content)
-        
-        # Positionner en haut
-        cursor = self.history_list.textCursor()
-        cursor.movePosition(cursor.MoveOperation.Start)
-        self.history_list.setTextCursor(cursor)
 
     def _handle_history_link(self, url):
         """Gérer les clics sur les liens dans l'historique"""
@@ -2882,43 +2847,10 @@ class MainWindow(QMainWindow):
         url_str = url.toString() if isinstance(url, QUrl) else str(url)
         
         try:
-            if url_str.startswith('duplicates_'):
-                # Extraire l'index de la session de doublons
-                index = int(url_str.split('_')[1])
-                
-                if 0 <= index < len(self.import_duplicates_history):
-                    session = self.import_duplicates_history[index]
-                    self._show_duplicates_list(session['duplicates'])
-                else:
-                    self._show_error("Session de doublons non trouvée")
-            else:
-                self._show_error(f"Lien non reconnu: {url_str}")
-                
+            self._show_error(f"Lien non reconnu: {url_str}")
         except Exception as e:
             self._show_error(f"Erreur lors du traitement du lien: {e}")
 
-    def _handle_import_duplicates(self, results, import_method, ref_piece=None):
-        """Gérer l'affichage et l'historique des doublons pour tous les types d'import"""
-        duplicates_list = results.get('duplicates_list', [])
-        if not duplicates_list:
-            return
-        
-        # Sauvegarder pour consultation ultérieure
-        from datetime import datetime
-        import_session = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'method': import_method,
-            'ref_piece': ref_piece,
-            'duplicates': duplicates_list,
-            'count': len(duplicates_list)
-        }
-        self.import_duplicates_history.append(import_session)
-        
-        # NE PLUS afficher automatiquement la fenêtre des doublons
-        # self._show_duplicates_list(duplicates_list)  # Commenté pour éviter l'affichage automatique
-        
-        # Ajouter seulement un lien dans l'historique
-        self._add_to_history(f"🔍 {len(duplicates_list)} doublons détectés - <a href='duplicates_{len(self.import_duplicates_history)-1}'>Consulter la liste</a>")
     
     def _update_pieces_count_for_rows(self, rows: set):
         """Mettre à jour la colonne Nb Pièces pour les lignes spécifiées"""
@@ -2979,9 +2911,13 @@ class MainWindow(QMainWindow):
                     # Vérifier si la pièce n'est pas déjà associée
                     if not self._piece_already_associated(db_id, ref_piece):
                         # Ajouter la pièce avec libellé optionnel
-                        self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
+                        _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
                         added_count += 1
                     else:
+                        # Pièce déjà associée, mais vérifier le libellé si fourni
+                        if libelle_piece and libelle_piece.strip():
+                            _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
+                            print(f"Libellé vérifié pour pièce {ref_piece} déjà associée ligne {row}")
                         error_count += 1
                         print(f"Pièce {ref_piece} déjà associée à l'appareil ligne {row}")
                     
@@ -3809,13 +3745,10 @@ class MainWindow(QMainWindow):
                     progress_dialog.close()
                 
                 # Afficher la synthèse
-                self._show_import_summary(results, ref_piece, "CSV")
                 
                 # Enregistrer dans l'historique
                 self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
                 
-                # Gérer les doublons s'il y en a
-                self._handle_import_duplicates(results, 'CSV', ref_piece)
                 
                 # Actualiser l'affichage
                 self._force_refresh_display(reset_page=True, clear_filters=True)
@@ -4047,7 +3980,8 @@ class MainWindow(QMainWindow):
             'manual_completion': 0,
             'duplicates_skipped': 0,
             'new_entries': 0,
-            'associations_created': 0
+            'associations_created': 0,
+            'descriptions_updated': 0
         }
         
         # Log de démarrage avec format unifié
@@ -4135,10 +4069,18 @@ class MainWindow(QMainWindow):
                     if ref_piece and ref_piece.strip():
                         try:
                             if not self._piece_already_associated(device_id, ref_piece.strip()):
-                                self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
                                 results['associations_created'] += 1
+                                if desc_updated:
+                                    results['descriptions_updated'] += 1
                                 print(f"  🔗 Pièce {ref_piece.strip()} associée")
                             else:
+                                # Pièce déjà associée, mais vérifier le libellé si fourni
+                                if libelle_piece and libelle_piece.strip():
+                                    _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                                    if desc_updated:
+                                        results['descriptions_updated'] += 1
+                                    print(f"  📝 Libellé vérifié pour pièce {ref_piece.strip()} déjà associée")
                                 results['duplicates_skipped'] += 1
                                 print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
                                 
@@ -4215,10 +4157,18 @@ class MainWindow(QMainWindow):
                                 if ref_piece and ref_piece.strip():
                                     try:
                                         if not self._piece_already_associated(device_id, ref_piece.strip()):
-                                            self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                                            _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
                                             results['associations_created'] += 1
+                                            if desc_updated:
+                                                results['descriptions_updated'] += 1
                                             print(f"  🔗 Pièce {ref_piece.strip()} associée")
                                         else:
+                                            # Pièce déjà associée, mais vérifier le libellé si fourni
+                                            if libelle_piece and libelle_piece.strip():
+                                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                                                if desc_updated:
+                                                    results['descriptions_updated'] += 1
+                                                print(f"  📝 Libellé vérifié pour pièce {ref_piece.strip()} déjà associée")
                                             results['duplicates_skipped'] += 1
                                             print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
                                             
@@ -4263,14 +4213,28 @@ class MainWindow(QMainWindow):
                 continue
         
         # Résumé final unifié
-        from src.core.config import pluralize
         print(f"\n📊 Résumé du traitement:")
-        print(f"  Total {pluralize(results['total_imported'], 'ligne traitée')}")
-        print(f"  {pluralize(results['new_entries'], 'appareil nouveau', 'appareils nouveaux')}")
-        print(f"  {pluralize(results['matches_found'], 'appareil mis à jour')}")
-        print(f"  {pluralize(results['associations_created'], 'association créée')}")
-        msg = "ligne ignorée (doublon dans l'import)"
-        print(f"  {pluralize(results['duplicates_skipped'], msg)}")
+        print(f"  Lignes traitées : {results['total_imported']}")
+        print(f"  Appareils créés : {results['new_entries']}")
+        print(f"  Appareils mis à jour : {results['matches_found']}")
+        print(f"  Associations créées : {results['associations_created']}")
+        
+        duplicates_skipped = results.get('duplicates_skipped', 0)
+        if duplicates_skipped > 0:
+            print(f"  Associations déjà existantes : {duplicates_skipped}")
+        
+        # Informations liées aux pièces
+        manual_completion = results.get('manual_completion', 0)
+        if manual_completion > 0:
+            print(f"  Appareils à compléter : {manual_completion}")
+            
+        descriptions_updated = results.get('descriptions_updated', 0)
+        if descriptions_updated > 0:
+            print(f"  Libellés mis à jour : {descriptions_updated}")
+            
+        no_piece_ref = results.get('no_piece_ref', 0)
+        if no_piece_ref > 0:
+            print(f"  Lignes sans référence pièce : {no_piece_ref}")
         
         # Ajouter les doublons collectés aux résultats
         if hasattr(self, '_current_import_duplicates'):
@@ -4428,64 +4392,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Erreur mise à jour appareil: {e}")
     
-    def _show_duplicates_list(self, duplicates_list):
-        """Afficher la liste des lignes ignorées (doublons dans l'import) pour intervention manuelle"""
-        if not duplicates_list:
-            return
-        
-        # Sauvegarder l'historique pour éviter qu'il se vide à la fermeture
-        history_backup = getattr(self, '_history_messages', []).copy()
-            
-        # Créer le contenu de la fenêtre
-        content = f"🔍 Liste des {len(duplicates_list)} lignes ignorées (doublons dans l'import) :\n\n"
-        
-        for i, duplicate in enumerate(duplicates_list, 1):
-            content += f"{i}. Ligne {duplicate['ligne']} :\n"
-            content += f"   • Pièce : {duplicate['ref_piece']}\n"
-            content += f"   • Appareil (ID: {duplicate['appareil_id']}) :\n"
-            
-            appareil_data = duplicate['appareil_data']
-            content += f"     - Réf. Modèle : {appareil_data['ref_modele']}\n"
-            content += f"     - Réf. Commerciale : {appareil_data['commercial_ref']}\n"
-            content += f"     - Type : {appareil_data['type']}\n"
-            content += f"     - Fabricant : {appareil_data['manufacturer']}\n"
-            content += "\n"
-        
-        content += "\n💡 Ces associations de pièces existent déjà dans la base de données.\n"
-        content += "Vérifiez si ces doublons sont légitimes ou nécessitent une intervention manuelle."
-        
-        # Afficher dans une fenêtre de dialogue scrollable
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Doublons Ignorés - Intervention Manuelle")
-        dialog.setMinimumSize(600, 400)
-        
-        layout = QVBoxLayout()
-        
-        # Zone de texte scrollable
-        text_area = QTextEdit()
-        text_area.setPlainText(content)
-        text_area.setReadOnly(True)
-        text_area.setFont(QFont("Courier", 10))
-        layout.addWidget(text_area)
-        
-        # Boutons
-        button_layout = QHBoxLayout()
-        
-        
-        close_button = QPushButton("Fermer")
-        close_button.clicked.connect(dialog.accept)
-        button_layout.addWidget(close_button)
-        
-        layout.addLayout(button_layout)
-        dialog.setLayout(layout)
-        
-        # Exécuter le dialogue
-        result = dialog.exec()
-        
-        # Restaurer l'historique après fermeture de la fenêtre
-        if history_backup:
-            self._history_messages = history_backup
-            self._rebuild_history_display()
 
 
     def _detect_paste_columns(self, clipboard_text):
@@ -4669,7 +4575,7 @@ class MainWindow(QMainWindow):
         # Doublons ignorés
         duplicates_skipped = results.get('duplicates_skipped', 0)
         if duplicates_skipped > 0:
-            summary += f"  {duplicates_skipped} ligne ignorée (doublon dans l'import)\n"
+            summary += f"  Associations déjà existantes : {duplicates_skipped}\n"
         
         # Lignes rejetées
         rejected_lines = results.get('rejected_lines', 0)
@@ -4685,55 +4591,44 @@ class MainWindow(QMainWindow):
         
         self._show_info(summary)
     
-    def _log_import_to_history(self, results, ref_piece, source):
-        """Enregistrer l'import dans l'historique avec format détaillé (CSV ou Collage)"""
-        from datetime import datetime
-        from src.core.config import pluralize
-        
-        # Créer un résumé détaillé comme pour le collage
-        detailed_summary = f"📊 Résumé de l'import {source}"
+    def _generate_console_summary(self, results, ref_piece, source):
+        """Générer la synthèse dans le même format que la console"""
+        summary = f"📊 Import {source}"
         if ref_piece:
-            detailed_summary += f" - Référence pièce: {ref_piece}"
-        detailed_summary += ":\n"
+            summary += f" (pièce: {ref_piece})"
+        summary += ":\n"
         
-        # Calculer le total traité
-        total_processed = results.get('total_imported', 0) + results.get('duplicates_skipped', 0)
+        # Utiliser le même format simplifié que la console
+        summary += f"  Lignes traitées : {results.get('total_imported', 0)}\n"
+        summary += f"  Appareils créés : {results.get('new_entries', 0)}\n"
+        summary += f"  Appareils mis à jour : {results.get('matches_found', 0)}\n"
+        summary += f"  Associations créées : {results.get('associations_created', 0)}"
         
-        detailed_summary += f"  Total {pluralize(total_processed, 'ligne traitée')}\n"
-        
-        # Nouveaux appareils créés
-        new_entries = results.get('new_entries', 0)
-        if new_entries > 0:
-            detailed_summary += f"  {pluralize(new_entries, 'appareil nouveau', 'appareils nouveaux')}\n"
-        
-        # Appareils mis à jour (correspondances trouvées)
-        matches_found = results.get('matches_found', 0)
-        if matches_found > 0:
-            detailed_summary += f"  {pluralize(matches_found, 'appareil mis à jour')}\n"
-        
-        # Associations créées
-        associations_created = results.get('associations_created', 0)
-        if associations_created > 0:
-            detailed_summary += f"  {pluralize(associations_created, 'association créée')}\n"
-        
-        # Doublons ignorés
         duplicates_skipped = results.get('duplicates_skipped', 0)
         if duplicates_skipped > 0:
-            msg = "ligne ignorée (doublon dans l'import)"
-            detailed_summary += f"  {pluralize(duplicates_skipped, msg)}\n"
+            summary += f"\n  Associations déjà existantes : {duplicates_skipped}"
         
-        # Appareils nécessitant complétion manuelle
+        # Informations liées aux pièces
         manual_completion = results.get('manual_completion', 0)
         if manual_completion > 0:
-            detailed_summary += f"  {pluralize(manual_completion, 'appareil à compléter manuellement')}\n"
-        
-        # Lignes sans référence de pièce
+            summary += f"\n  Appareils à compléter : {manual_completion}"
+            
+        descriptions_updated = results.get('descriptions_updated', 0)
+        if descriptions_updated > 0:
+            summary += f"\n  Libellés mis à jour : {descriptions_updated}"
+            
         no_piece_ref = results.get('no_piece_ref', 0)
         if no_piece_ref > 0:
-            detailed_summary += f"  {pluralize(no_piece_ref, 'ligne sans référence de pièce')}\n"
+            summary += f"\n  Lignes sans référence pièce : {no_piece_ref}"
         
-        # Supprimer le dernier \n
-        detailed_summary = detailed_summary.rstrip('\n')
+        return summary
+
+    def _log_import_to_history(self, results, ref_piece, source):
+        """Enregistrer l'import dans l'historique avec format console"""
+        from datetime import datetime
+        
+        # Générer la synthèse dans le format console
+        console_summary = self._generate_console_summary(results, ref_piece, source)
         
         # Déterminer le type d'opération
         operation_type = "import_csv" if source != "Collage" else "import_paste"
@@ -4746,21 +4641,21 @@ class MainWindow(QMainWindow):
                     'source': source,
                     'ref_piece': ref_piece,
                     'results': results,
-                    'summary': detailed_summary
+                    'summary': console_summary
                 }
             )
         
         # Ajouter à l'historique des actions
         self.undo_manager.add_action({
             'type': operation_type,
-            'description': f"Import {source}: {detailed_summary.split(':')[0]}",
+            'description': f"Import {source}: {console_summary.split(':')[0]}",
             'before_data': None,
             'after_data': results,
             'source': source
         })
         
-        # Ajouter à l'historique visible avec le format détaillé
-        self._add_to_history(detailed_summary)
+        # Ajouter à l'historique visible avec le format console
+        self._add_to_history(console_summary)
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
@@ -5205,7 +5100,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, None, libelle_piece)
             
             # Affichage du résumé et ajout à l'historique
-            self._show_import_summary(results, ref_piece, "CSV")
             self._log_import_to_history(results, ref_piece, f"CSV (Glisser/Déposer - {os.path.basename(file_path)})")
             
         except Exception as e:
@@ -5328,7 +5222,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 lines_progress.close()
             
             # Afficher la synthèse
-            self._show_import_summary(results, ref_piece, "PDF")
             
             # Enregistrer dans l'historique
             if len(processed_files) == 1:
@@ -5339,7 +5232,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self._log_import_to_history(results, ref_piece, source_info)
             
             # Gérer les doublons s'il y en a
-            self._handle_import_duplicates(results, 'PDF', ref_piece)
             
             # Actualiser l'affichage
             self._force_refresh_display(reset_page=True, clear_filters=True)
@@ -5702,6 +5594,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             duplicates_skipped = 0   # Compter les associations déjà existantes
             manual_completion_count = 0  # Compter les appareils nécessitant complétion manuelle
             no_piece_ref_count = 0  # Compter les lignes sans référence de pièce
+            descriptions_updated = 0  # Compter les mises à jour de libellés
             total_rows = len(rows)
             duplicates_list = []  # Liste des doublons pour intervention manuelle
             
@@ -5756,6 +5649,17 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                         else:
                             appareil_data[header] = ''
                             
+                elif num_cols == 1:
+                    # 1 colonne : mapper sur ref_modele uniquement
+                    # Laisser tous les autres champs vides pour auto-completion
+                    appareil_data['type'] = ''
+                    appareil_data['manufacturer'] = ''
+                    appareil_data['ref_modele'] = clean_row[0]
+                    appareil_data['commercial_ref'] = ''
+                    appareil_data['other_ref'] = ''
+                    appareil_data['category'] = ''
+                    appareil_data['notes'] = ''
+                    
                 elif num_cols == 2 or num_cols == 3:
                     # 2-3 colonnes : insérer à partir de la colonne C (Ref_Modele, Commercial_Ref, Other_Ref/Notes)
                     # Laisser Type et Fabricant vides pour auto-completion
@@ -5783,7 +5687,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             
                 else:
                     # Nombre de colonnes non supporté
-                    print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: {num_cols} colonne(s) non supportée(s) (attendu: 2-3 ou 4+)")
+                    print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: {num_cols} colonne(s) non supportée(s) (attendu: 1, 2-3 ou 4+)")
                     print(f"    Données: {clean_row}")
                     ignored_count += 1
                     continue
@@ -5827,10 +5731,18 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     # Ajouter la pièce si spécifiée
                     if ref_piece and ref_piece.strip():
                         if not self._piece_already_associated(appareil_id, ref_piece.strip()):
-                            self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
+                            _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
                             associations_created += 1
+                            if desc_updated:
+                                descriptions_updated += 1
                             print(f"  🔗 Pièce {ref_piece.strip()} associée")
                         else:
+                            # Pièce déjà associée, mais vérifier le libellé si fourni
+                            if libelle_piece and libelle_piece.strip():
+                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
+                                if desc_updated:
+                                    descriptions_updated += 1
+                                print(f"  📝 Libellé vérifié pour pièce {ref_piece.strip()} déjà associée")
                             duplicates_skipped += 1
                             # Enregistrer les détails du doublon
                             duplicates_list.append({
@@ -5895,8 +5807,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             
                             # Ajouter la pièce si spécifiée
                             if ref_piece and ref_piece.strip():
-                                self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
+                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
                                 associations_created += 1
+                                if desc_updated:
+                                    descriptions_updated += 1
                                 print(f"  🔗 Pièce {ref_piece.strip()} associée")
                             else:
                                 # Nouvel appareil sans référence de pièce - compter dans les associations manquantes
@@ -5928,8 +5842,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             detailed_summary += f"  {pluralize(inserted_count, 'appareil nouveau', 'appareils nouveaux')}\n"
             detailed_summary += f"  {pluralize(updated_count, 'appareil mis à jour')}\n"
             detailed_summary += f"  {pluralize(associations_created, 'association créée')}\n"
-            msg = "ligne ignorée (doublon dans l'import)"
-            detailed_summary += f"  {pluralize(duplicates_skipped, msg)}\n"
+            detailed_summary += f"  Associations déjà existantes : {duplicates_skipped}\n"
             detailed_summary += f"  {pluralize(no_piece_ref_count, 'ligne sans référence de pièce')}"
             
             print(f"\n{detailed_summary}")
@@ -5944,11 +5857,11 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 'new_entries': inserted_count,
                 'associations_created': associations_created,
                 'rejected_lines': ignored_count,
-                'no_piece_ref': no_piece_ref_count
+                'no_piece_ref': no_piece_ref_count,
+                'descriptions_updated': descriptions_updated
             }
             
             # Utiliser la même méthode d'affichage que l'import CSV
-            self._show_import_summary(results, ref_piece.strip() if ref_piece else None, "COLLAGE")
             
             # Ajouter à l'historique avec le bon format
             self._log_import_to_history(results, ref_piece.strip() if ref_piece else None, "par collage")
@@ -5957,7 +5870,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if duplicates_list:
                 # Ajouter aux résultats pour traitement unifié
                 results['duplicates_list'] = duplicates_list
-                self._handle_import_duplicates(results, 'COLLAGE', ref_piece.strip() if ref_piece else None)
             
         except DatabaseError as e:
             self._show_error(f"Erreur lors du collage: {e}")
