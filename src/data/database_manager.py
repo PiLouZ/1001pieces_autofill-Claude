@@ -362,24 +362,76 @@ class DatabaseManager:
             print("🔄 Début de la migration des pièces vers la nouvelle structure...")
             
             # Étape 1: Sauvegarder les anciennes données
-            self.cursor.execute("INSERT INTO pieces_old SELECT * FROM pieces")
+            # Vérifier la structure de la table pieces actuelle
+            self.cursor.execute("PRAGMA table_info(pieces)")
+            pieces_columns = [row[1] for row in self.cursor.fetchall()]
+            print(f"Colonnes de pieces: {pieces_columns}")
+            
+            # Adapter la requête selon les colonnes disponibles
+            if 'description' in pieces_columns:
+                if 'created_at' in pieces_columns:
+                    # Table complète avec description et created_at
+                    self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id, description, created_at) SELECT id, ref_piece, appareil_id, description, created_at FROM pieces")
+                else:
+                    # Table avec description mais sans created_at
+                    self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id, description) SELECT id, ref_piece, appareil_id, description FROM pieces")
+            else:
+                # Table simple sans description
+                self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id) SELECT id, ref_piece, appareil_id FROM pieces")
             
             # Étape 2: Migrer les pièces uniques vers pieces_new
-            self.cursor.execute("""
-                INSERT INTO pieces_new (ref_piece, description, created_at)
-                SELECT 
-                    ref_piece,
-                    -- Prendre la première description non vide trouvée
-                    (SELECT description FROM pieces p2 
-                     WHERE p2.ref_piece = p1.ref_piece 
-                     AND p2.description IS NOT NULL 
-                     AND TRIM(p2.description) != '' 
-                     LIMIT 1) as description,
-                    MIN(created_at) as created_at
-                FROM pieces p1
-                GROUP BY ref_piece
-                ORDER BY ref_piece
-            """)
+            if 'description' in pieces_columns and 'created_at' in pieces_columns:
+                # Migrer avec descriptions et created_at
+                self.cursor.execute("""
+                    INSERT INTO pieces_new (ref_piece, description, created_at)
+                    SELECT 
+                        ref_piece,
+                        -- Prendre la première description non vide trouvée
+                        (SELECT description FROM pieces p2 
+                         WHERE p2.ref_piece = p1.ref_piece 
+                         AND p2.description IS NOT NULL 
+                         AND TRIM(p2.description) != '' 
+                         LIMIT 1) as description,
+                        MIN(created_at) as created_at
+                    FROM pieces p1
+                    GROUP BY ref_piece
+                    ORDER BY ref_piece
+                """)
+            elif 'description' in pieces_columns:
+                # Migrer avec descriptions mais sans created_at
+                self.cursor.execute("""
+                    INSERT INTO pieces_new (ref_piece, description)
+                    SELECT 
+                        ref_piece,
+                        -- Prendre la première description non vide trouvée
+                        (SELECT description FROM pieces p2 
+                         WHERE p2.ref_piece = p1.ref_piece 
+                         AND p2.description IS NOT NULL 
+                         AND TRIM(p2.description) != '' 
+                         LIMIT 1) as description
+                    FROM pieces p1
+                    GROUP BY ref_piece
+                    ORDER BY ref_piece
+                """)
+            elif 'created_at' in pieces_columns:
+                # Migrer avec created_at mais sans description
+                self.cursor.execute("""
+                    INSERT INTO pieces_new (ref_piece, created_at)
+                    SELECT 
+                        ref_piece,
+                        MIN(created_at) as created_at
+                    FROM pieces p1
+                    GROUP BY ref_piece
+                    ORDER BY ref_piece
+                """)
+            else:
+                # Migrer seulement ref_piece
+                self.cursor.execute("""
+                    INSERT INTO pieces_new (ref_piece)
+                    SELECT DISTINCT ref_piece
+                    FROM pieces p1
+                    ORDER BY ref_piece
+                """)
             
             pieces_migrated = self.cursor.rowcount
             print(f"📦 {pieces_migrated} pièces uniques migrées")
