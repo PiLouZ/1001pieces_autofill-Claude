@@ -1069,6 +1069,9 @@ class MainWindow(QMainWindow):
         pagination_layout_2.addWidget(incomplete_btn)
         self.incomplete_filter_btn = incomplete_btn
         
+        # Vérifier et masquer le bouton si aucun appareil incomplet
+        self._update_incomplete_button_visibility()
+        
         # Espace pour centrer le bouton et pousser les infos à droite
         pagination_layout_2.addStretch()
         
@@ -3691,75 +3694,74 @@ class MainWindow(QMainWindow):
                     detected_columns = self._detect_csv_columns(filename)
                     if detected_columns is None:
                         return
-                
-                # Extraire le nom du fichier sans extension pour la référence de pièce
-                filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
-                
-                # Dialogue pour choisir le type d'import (avec référence pré-remplie)
-                import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV")
-                if import_type is None:
-                    return
-                
-                # Lire le fichier CSV avec détection automatique du séparateur et de l'encodage
-                encoding = self._detect_file_encoding(filename)
-                imported_data = []
-                with open(filename, 'r', encoding=encoding) as file:
-                    # Lire un échantillon pour détecter le séparateur
-                    sample = file.read(1024)
-                    file.seek(0)
                     
-                    # Détecter le séparateur le plus probable
-                    sniffer = csv.Sniffer()
-                    try:
-                        dialect = sniffer.sniff(sample, delimiters=',;\t')
-                        reader = csv.reader(file, dialect)
-                    except csv.Error:
-                        # Fallback: essayer les séparateurs dans l'ordre de préférence
-                        if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
-                            reader = csv.reader(file, delimiter=';')
-                        elif sample.count('\t') > sample.count(','):
-                            reader = csv.reader(file, delimiter='\t')
-                        else:
-                            reader = csv.reader(file, delimiter=',')
+                    # Extraire le nom du fichier sans extension pour la référence de pièce
+                    filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
                     
-                    for row_index, row in enumerate(reader):
-                        if row_index == 0 and has_headers:  # Ignorer la ligne d'en-tête seulement si spécifié
-                            continue
-                        if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
-                            imported_data.append(row)
+                    # Dialogue pour choisir le type d'import (avec référence pré-remplie)
+                    import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV")
+                    if import_type is None:
+                        return
+                    
+                    # Lire le fichier CSV avec détection automatique du séparateur et de l'encodage
+                    encoding = self._detect_file_encoding(filename)
+                    imported_data = []
+                    with open(filename, 'r', encoding=encoding) as file:
+                        # Lire un échantillon pour détecter le séparateur
+                        sample = file.read(1024)
+                        file.seek(0)
+                        
+                        # Détecter le séparateur le plus probable
+                        sniffer = csv.Sniffer()
+                        try:
+                            dialect = sniffer.sniff(sample, delimiters=',;\t')
+                            reader = csv.reader(file, dialect)
+                        except csv.Error:
+                            # Fallback: essayer les séparateurs dans l'ordre de préférence
+                            if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
+                                reader = csv.reader(file, delimiter=';')
+                            elif sample.count('\t') > sample.count(','):
+                                reader = csv.reader(file, delimiter='\t')
+                            else:
+                                reader = csv.reader(file, delimiter=',')
+                        
+                        for row_index, row in enumerate(reader):
+                            if row_index == 0 and has_headers:  # Ignorer la ligne d'en-tête seulement si spécifié
+                                continue
+                            if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
+                                imported_data.append(row)
                 
-                if not imported_data:
-                    self._show_error("Aucune donnée valide trouvée dans le fichier CSV")
-                    return
+                    if not imported_data:
+                        self._show_error("Aucune donnée valide trouvée dans le fichier CSV")
+                        return
                 
-                # Créer une barre de progression pour les gros imports
-                progress_dialog = None
-                if len(imported_data) >= 1000:
-                    progress_dialog = QProgressDialog(
-                        f"Traitement des lignes... 0 / {len(imported_data)}",
-                        "Annuler",
-                        0, len(imported_data),
-                        self
-                    )
-                    progress_dialog.setWindowTitle("Import CSV")
-                    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-                    progress_dialog.show()
-                    QApplication.processEvents()
-                
-                # Traiter l'import
-                results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog, libelle_piece)
-                
-                # Fermer la barre de progression
-                if progress_dialog:
-                    progress_dialog.setValue(len(imported_data))
-                    progress_dialog.close()
-                
-                # Afficher la synthèse
-                
-                # Enregistrer dans l'historique
-                self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
-                
-                
+                    # Créer une barre de progression pour les gros imports
+                    progress_dialog = None
+                    if len(imported_data) >= 1000:
+                        progress_dialog = QProgressDialog(
+                            f"Traitement des lignes... 0 / {len(imported_data)}",
+                            "Annuler",
+                            0, len(imported_data),
+                            self
+                        )
+                        progress_dialog.setWindowTitle("Import CSV")
+                        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+                        progress_dialog.show()
+                        QApplication.processEvents()
+                    
+                    # Traiter l'import
+                    results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog, libelle_piece)
+                    
+                    # Fermer la barre de progression
+                    if progress_dialog:
+                        progress_dialog.setValue(len(imported_data))
+                        progress_dialog.close()
+                    
+                    # Afficher la synthèse
+                    
+                    # Enregistrer dans l'historique
+                    self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
+                    
                     # Actualiser l'affichage
                     self._force_refresh_display(reset_page=True, clear_filters=True)
                     
@@ -3985,8 +3987,96 @@ class MainWindow(QMainWindow):
         except Exception as e:
             return ','  # Default fallback
     
+    def _detect_column_mapping(self, sample_data):
+        """Détecter automatiquement l'ordre des colonnes en analysant le contenu"""
+        if not sample_data or len(sample_data) == 0:
+            return None
+            
+        mapping = {}
+        
+        # Analyser chaque colonne pour détecter son type
+        num_cols = max(len(row) for row in sample_data if row)
+        
+        for col_idx in range(num_cols):
+            # Extraire les valeurs de cette colonne (non vides)
+            col_values = []
+            for row in sample_data:
+                if len(row) > col_idx and row[col_idx] is not None:
+                    val = str(row[col_idx]).strip()
+                    if val:
+                        col_values.append(val)
+            
+            if not col_values:
+                continue
+                
+            # Analyser les patterns de cette colonne
+            col_type = self._analyze_column_content(col_values)
+            
+            # Assigner le type détecté à cette colonne
+            if col_type == 'ref_modele' and 'ref_modele' not in mapping:
+                mapping['ref_modele'] = col_idx
+            elif col_type == 'commercial_ref' and 'commercial_ref' not in mapping:
+                mapping['commercial_ref'] = col_idx  
+            elif col_type == 'type' and 'type' not in mapping:
+                mapping['type'] = col_idx
+            elif col_type == 'manufacturer' and 'manufacturer' not in mapping:
+                mapping['manufacturer'] = col_idx
+            else:
+                # Colonne non identifiée
+                if 'other' not in mapping:
+                    mapping['other'] = col_idx
+        
+        return mapping if mapping else None
+    
+    def _analyze_column_content(self, values):
+        """Analyser le contenu d'une colonne pour déterminer son type"""
+        if not values:
+            return 'unknown'
+            
+        # Compter les patterns
+        patterns = {
+            'ref_modele': 0,      # GK 200, GK 215, etc.
+            'commercial_ref': 0,  # 090990201, 090267006, etc. (chiffres)
+            'type': 0,           # RÉFRIGÉRATEUR, MODÈLE, TABLE-TOP, etc. (mots longs)
+            'manufacturer': 0     # Noms de marque
+        }
+        
+        for value in values[:5]:  # Analyser seulement les 5 premiers
+            value = value.upper().strip()
+            
+            # Pattern ref_modele: lettres + chiffres, court (ex: GK 200, GK215)
+            if len(value) <= 10 and any(c.isalpha() for c in value) and any(c.isdigit() for c in value):
+                patterns['ref_modele'] += 2
+                
+            # Pattern commercial_ref: principalement chiffres, long (ex: 090990201)
+            elif len(value) >= 6 and value.replace(' ', '').isdigit():
+                patterns['commercial_ref'] += 2
+                
+            # Pattern type: mots longs avec tirets/espaces (ex: RÉFRIGÉRATEUR-MODÈLE TABLE-TOP)
+            elif len(value) > 15 and ('-' in value or len(value.split()) > 2):
+                patterns['type'] += 2
+                
+            # Pattern manufacturer: mots courts, noms propres
+            elif len(value) <= 15 and value.isalpha():
+                patterns['manufacturer'] += 1
+                
+            # Fallback: longueur comme indicateur
+            if len(value) <= 8:
+                patterns['ref_modele'] += 0.5
+            elif 8 < len(value) <= 15:
+                patterns['commercial_ref'] += 0.5
+            else:
+                patterns['type'] += 0.5
+        
+        # Retourner le type avec le score le plus élevé
+        best_type = max(patterns, key=patterns.get)
+        return best_type if patterns[best_type] > 0 else 'other'
+    
     def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore", progress_dialog=None, libelle_piece=None):
-        """Traiter les données d'import"""
+        """Traiter les données d'import avec détection intelligente des colonnes"""
+        # Stocker la référence de pièce pour vérification post-import
+        self.last_imported_piece_ref = ref_piece
+        
         # Vider le cache des décisions de description au début de chaque import
         self._piece_description_decisions.clear()
         
@@ -3999,6 +4089,13 @@ class MainWindow(QMainWindow):
             'associations_created': 0,
             'descriptions_updated': 0
         }
+        
+        # Analyser automatiquement l'ordre des colonnes si nécessaire
+        column_mapping = None
+        if import_type == 3 and len(imported_data) > 0:
+            column_mapping = self._detect_column_mapping(imported_data[:10])  # Analyser 10 premières lignes
+            print(f"🔍 Détection des colonnes pour {len(imported_data)} lignes:")
+            print(f"   Mapping détecté: {column_mapping}")
         
         # Log de démarrage avec format unifié
         print(f"\n🔍 Début du traitement de {len(imported_data)} lignes d'import")
@@ -4034,15 +4131,31 @@ class MainWindow(QMainWindow):
                     ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
                     commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
                 elif import_type == 3:
-                    # 3 colonnes: ref_modele, commercial_ref, 3ème colonne selon choix
-                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
-                    commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                    third_value = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
-                    
-                    # Gérer la 3ème colonne selon le choix utilisateur
-                    other_ref = third_value if third_column_choice == "other_ref" else ""
-                    notes = third_value if third_column_choice == "notes" else ""
-                    # Si "ignore", les deux restent vides
+                    # 3 colonnes: utiliser le mapping détecté ou la logique par défaut
+                    if column_mapping:
+                        # Utiliser le mapping intelligent détecté
+                        ref_modele = str(row[column_mapping.get('ref_modele', 0)]).strip() if len(row) > column_mapping.get('ref_modele', 0) and row[column_mapping.get('ref_modele', 0)] is not None else ""
+                        commercial_ref = str(row[column_mapping.get('commercial_ref', 1)]).strip() if len(row) > column_mapping.get('commercial_ref', 1) and row[column_mapping.get('commercial_ref', 1)] is not None else ""
+                        
+                        # Gérer type et manufacturer si détectés
+                        type_val = str(row[column_mapping.get('type', -1)]).strip() if column_mapping.get('type', -1) >= 0 and len(row) > column_mapping.get('type', -1) and row[column_mapping.get('type', -1)] is not None else ""
+                        manufacturer = str(row[column_mapping.get('manufacturer', -1)]).strip() if column_mapping.get('manufacturer', -1) >= 0 and len(row) > column_mapping.get('manufacturer', -1) and row[column_mapping.get('manufacturer', -1)] is not None else ""
+                        
+                        # Gérer la 3ème colonne selon le choix utilisateur
+                        third_col_idx = column_mapping.get('other', 2)
+                        third_value = str(row[third_col_idx]).strip() if len(row) > third_col_idx and row[third_col_idx] is not None else ""
+                        other_ref = third_value if third_column_choice == "other_ref" else ""
+                        notes = third_value if third_column_choice == "notes" else ""
+                    else:
+                        # Logique par défaut: ref_modele, commercial_ref, 3ème colonne selon choix
+                        ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
+                        commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+                        third_value = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
+                        
+                        # Gérer la 3ème colonne selon le choix utilisateur
+                        other_ref = third_value if third_column_choice == "other_ref" else ""
+                        notes = third_value if third_column_choice == "notes" else ""
+                        # Si "ignore", les deux restent vides
                 elif import_type >= 4:
                     # 4+ colonnes: type, manufacturer, ref_modele, commercial_ref, other_ref, ...
                     type_val = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
@@ -4088,12 +4201,18 @@ class MainWindow(QMainWindow):
                     if ref_piece and str(ref_piece).strip():
                         try:
                             ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
-                            if ref_piece_safe and not self._piece_already_associated(device_id, ref_piece_safe):
+                            already_associated = self._piece_already_associated(device_id, ref_piece_safe)
+                            if ref_piece_safe and not already_associated:
                                 _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                 results['associations_created'] += 1
                                 if desc_updated:
                                     results['descriptions_updated'] += 1
                                 print(f"  🔗 Pièce {ref_piece_safe} associée")
+                                
+                                # Vérifier immédiatement après création que l'association existe
+                                if not self._piece_already_associated(device_id, ref_piece_safe):
+                                    print(f"  ❌ ERREUR: Association {ref_piece_safe} -> {device_id} créée mais non trouvée!")
+                                    
                             else:
                                 # Pièce déjà associée, mais vérifier le libellé si fourni
                                 if libelle_piece and str(libelle_piece).strip():
@@ -4102,7 +4221,7 @@ class MainWindow(QMainWindow):
                                         results['descriptions_updated'] += 1
                                     print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
                                 results['duplicates_skipped'] += 1
-                                print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée")
+                                print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée (appareil {device_id})")
                                 
                                 # Collecter les détails du doublon pour CSV/PDF
                                 if not hasattr(self, '_current_import_duplicates'):
@@ -4154,10 +4273,7 @@ class MainWindow(QMainWindow):
                             'notes': str(notes).strip() if notes else ''
                         }
                         
-                        # Vérifier si l'appareil nécessite une complétion manuelle AVANT auto-complétion
-                        needs_completion = self._needs_manual_completion(appareil_data)
-                        
-                        # Essayer l'auto-complétion
+                        # Essayer l'auto-complétion AVANT de vérifier si complétion manuelle nécessaire
                         if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
                             self._try_auto_complete(appareil_data)
                         
@@ -4178,15 +4294,26 @@ class MainWindow(QMainWindow):
                             if device_id:
                                 results['new_entries'] += 1
                                 print(f"  ✅ Nouvel appareil créé (ID: {device_id})")
+                                
+                                # Vérifier si l'appareil nécessite une complétion manuelle APRÈS création
+                                # (utiliser les données filtrées qui incluent l'auto-complétion)
+                                if self._needs_manual_completion(filtered_data):
+                                    results['manual_completion'] += 1
                                 if ref_piece and str(ref_piece).strip():
                                     try:
                                         ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
-                                        if ref_piece_safe and not self._piece_already_associated(device_id, ref_piece_safe):
+                                        already_associated = self._piece_already_associated(device_id, ref_piece_safe)
+                                        if ref_piece_safe and not already_associated:
                                             _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                             results['associations_created'] += 1
                                             if desc_updated:
                                                 results['descriptions_updated'] += 1
                                             print(f"  🔗 Pièce {ref_piece_safe} associée")
+                                            
+                                            # Vérifier immédiatement après création que l'association existe
+                                            if not self._piece_already_associated(device_id, ref_piece_safe):
+                                                print(f"  ❌ ERREUR: Association {ref_piece_safe} -> {device_id} créée mais non trouvée!")
+                                                
                                         else:
                                             # Pièce déjà associée, mais vérifier le libellé si fourni
                                             if libelle_piece and libelle_piece.strip():
@@ -4195,7 +4322,7 @@ class MainWindow(QMainWindow):
                                                     results['descriptions_updated'] += 1
                                                 print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
                                             results['duplicates_skipped'] += 1
-                                            print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée")
+                                            print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée (appareil {device_id})")
                                             
                                             # IMPORTANT: Vérifier si l'appareil associé à cette pièce nécessite complétion
                                             # Ceci peut arriver quand l'appareil existe mais n'est pas trouvé par notre recherche
@@ -4376,7 +4503,15 @@ class MainWindow(QMainWindow):
                 LIMIT 1
             """
             result = self.db_manager.execute_query(query, [device_id, ref_piece])
-            return len(result) > 0
+            is_associated = len(result) > 0
+            
+            # Debug: Log pour traquer les fausses détections
+            if is_associated:
+                print(f"  🔍 DEBUG: Appareil {device_id} déjà associé à pièce {ref_piece} (association ID: {result[0][0]})")
+            else:
+                print(f"  🔍 DEBUG: Appareil {device_id} PAS associé à pièce {ref_piece}")
+                
+            return is_associated
         except Exception as e:
             print(f"Erreur lors de la vérification de l'association: {e}")
             return False
@@ -4638,6 +4773,31 @@ class MainWindow(QMainWindow):
         duplicates_skipped = results.get('duplicates_skipped', 0)
         summary += f"Associations déjà existantes : {duplicates_skipped}"
         
+        # Ajouter un résumé de vérification
+        associations_created = results.get('associations_created', 0)
+        total_processed = results.get('new_entries', 0) + results.get('matches_found', 0)
+        if duplicates_skipped > 0:
+            summary += f"\n{associations_created} + {duplicates_skipped} = {associations_created + duplicates_skipped}"
+        
+        # Vérification post-import du nombre réel d'associations
+        if hasattr(self, 'last_imported_piece_ref'):
+            try:
+                actual_count_query = """
+                SELECT COUNT(*) FROM piece_associations pa
+                JOIN pieces p ON pa.piece_id = p.id 
+                WHERE p.ref_piece = ?
+                """
+                actual_result = self.db_manager.execute_query(actual_count_query, [self.last_imported_piece_ref])
+                actual_associations = actual_result[0][0] if actual_result else 0
+                summary += f"\n🔍 Vérification: {actual_associations} associations réelles en base"
+                
+                expected_total = associations_created + duplicates_skipped
+                if actual_associations != expected_total:
+                    summary += f"\n⚠️ DISCORDANCE: {expected_total} attendues vs {actual_associations} réelles!"
+                    
+            except Exception as e:
+                summary += f"\n❌ Erreur vérification: {e}"
+        
         return summary
 
     def _log_import_to_history(self, results, ref_piece, source):
@@ -4708,6 +4868,26 @@ class MainWindow(QMainWindow):
             filter_widget.clear()
             filter_widget.blockSignals(False)
     
+    def _update_incomplete_button_visibility(self):
+        """Mettre à jour la visibilité du bouton incomplètes selon les données"""
+        try:
+            incomplete_count = self.db_manager.count_incomplete_devices()
+            if hasattr(self, 'incomplete_filter_btn'):
+                if incomplete_count > 0:
+                    self.incomplete_filter_btn.show()
+                    if not self.show_incomplete_only:
+                        from src.core.config import pluralize
+                        self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
+                        self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+                else:
+                    self.incomplete_filter_btn.hide()
+                    # Désactiver le filtre si il n'y a plus d'appareils incomplets
+                    if self.show_incomplete_only:
+                        self.show_incomplete_only = False
+                        self.load_data()
+        except Exception as e:
+            print(f"Erreur lors de la mise à jour du bouton incomplètes: {e}")
+
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
         self.show_incomplete_only = checked
@@ -4719,8 +4899,10 @@ class MainWindow(QMainWindow):
             self.incomplete_filter_btn.setText("📋 Actives")
             # Le style est géré par le CSS moderne via :checked
         else:
-            # Désactiver le filtre
-            self.incomplete_filter_btn.setText("📋 Incomplètes")
+            # Désactiver le filtre et mettre à jour le texte avec le nombre
+            incomplete_count = self.db_manager.count_incomplete_devices()
+            from src.core.config import pluralize
+            self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
             # Le style est géré par le CSS moderne
         
         # Recharger les données avec ou sans filtre
@@ -4760,6 +4942,9 @@ class MainWindow(QMainWindow):
             
             # Mettre à jour le compteur
             self._update_counter()
+            
+            # Mettre à jour la visibilité du bouton incomplètes après rafraîchissement
+            self._update_incomplete_button_visibility()
             
             # Repositionner la poignée de drag
             self._position_drag_handle()
@@ -5825,7 +6010,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             
                             # Vérifier si l'appareil nécessite une complétion manuelle
                             # après auto-complétion (seuls ceux sans type ET fabricant)
-                            if self._needs_manual_completion(appareil_data):
+                            if self._needs_manual_completion(filtered_data):
                                 manual_completion_count += 1
                             
                             # Ajouter la pièce si spécifiée
