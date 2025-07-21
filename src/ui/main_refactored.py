@@ -1184,7 +1184,7 @@ class MainWindow(QMainWindow):
         action_menu = QMenu()
         
         import_action = QAction("📈 Import", self)
-        import_action.triggered.connect(self._import_csv)
+        import_action.triggered.connect(self._import_file)
         action_menu.addAction(import_action)
         
         action_menu.addSeparator()
@@ -3665,22 +3665,32 @@ class MainWindow(QMainWindow):
         except DatabaseError as e:
             self._show_error(f"Erreur lors de l'édition des notes: {e}")
 
-    def _import_csv(self):
-        """Importer un fichier CSV"""
+    def _import_file(self):
+        """Importer un fichier CSV ou PDF"""
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Importer CSV", "", "Fichiers CSV (*.csv)"
+            self, "Importer fichier", "", 
+            "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
         )
         
         if filename:
-            try:
-                import csv
-                import os
-                from datetime import datetime
-                
-                # D'abord, analyser le fichier pour détecter le nombre de colonnes
-                detected_columns = self._detect_csv_columns(filename)
-                if detected_columns is None:
-                    return
+            # Détecter le type de fichier selon l'extension
+            import os
+            file_extension = os.path.splitext(filename)[1].lower()
+            
+            if file_extension == '.pdf':
+                # Déléguer vers la fonction PDF existante
+                self._import_pdf_from_path([filename])
+                return
+            elif file_extension == '.csv':
+                # Continuer avec la logique CSV existante
+                try:
+                    import csv
+                    from datetime import datetime
+                    
+                    # D'abord, analyser le fichier pour détecter le nombre de colonnes
+                    detected_columns = self._detect_csv_columns(filename)
+                    if detected_columns is None:
+                        return
                 
                 # Extraire le nom du fichier sans extension pour la référence de pièce
                 filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
@@ -3750,11 +3760,17 @@ class MainWindow(QMainWindow):
                 self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
                 
                 
-                # Actualiser l'affichage
-                self._force_refresh_display(reset_page=True, clear_filters=True)
-                
-            except Exception as e:
-                self._show_error(f"Erreur lors de l'import: {e}")
+                    # Actualiser l'affichage
+                    self._force_refresh_display(reset_page=True, clear_filters=True)
+                    
+                except Exception as e:
+                    self._show_error(f"Erreur lors de l'import CSV: {e}")
+            else:
+                # Type de fichier non supporté
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Type de fichier non supporté", 
+                                  f"Le type de fichier {file_extension} n'est pas supporté.\n"
+                                  f"Formats acceptés: .csv, .pdf")
     
     def _get_import_options(self, detected_columns=None, default_ref_piece=None):
         """Dialogue pour choisir les options d'import"""
@@ -4818,7 +4834,7 @@ class MainWindow(QMainWindow):
 ## 🚀 Démarrage rapide
 
 ### Import de données
-1. **Import CSV** : Utilisez le bouton "📈 Import" ou glissez/déposez un fichier CSV sur le tableau
+1. **Import de fichiers** : Utilisez le bouton "📈 Import" ou glissez/déposez un fichier CSV ou PDF sur le tableau
 2. **Collage** : Copiez des données depuis Excel/Calc et collez avec Ctrl+V
 3. **Référence de pièce** : Lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier
 
