@@ -3988,6 +3988,9 @@ class MainWindow(QMainWindow):
         print(f"\n🔍 Début du traitement de {len(imported_data)} lignes d'import")
         
         for row_idx, row in enumerate(imported_data):
+            # Compter TOUTES les lignes traitées (même en cas d'erreur)
+            results['total_imported'] += 1
+            
             # Mettre à jour la barre de progression
             if progress_dialog:
                 if progress_dialog.wasCanceled():
@@ -4008,17 +4011,17 @@ class MainWindow(QMainWindow):
                 
                 if import_type == 1:
                     # 1 colonne: importer dans ref_modele uniquement
-                    ref_modele = row[0].strip() if len(row) > 0 else ""
+                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
                     commercial_ref = ""
                 elif import_type == 2:
                     # 2 colonnes: ref_modele, commercial_ref (colonnes C et D)
-                    ref_modele = row[0].strip() if len(row) > 0 else ""
-                    commercial_ref = row[1].strip() if len(row) > 1 else ""
+                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
+                    commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
                 elif import_type == 3:
                     # 3 colonnes: ref_modele, commercial_ref, 3ème colonne selon choix
-                    ref_modele = row[0].strip() if len(row) > 0 else ""
-                    commercial_ref = row[1].strip() if len(row) > 1 else ""
-                    third_value = row[2].strip() if len(row) > 2 else ""
+                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
+                    commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+                    third_value = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
                     
                     # Gérer la 3ème colonne selon le choix utilisateur
                     other_ref = third_value if third_column_choice == "other_ref" else ""
@@ -4026,11 +4029,11 @@ class MainWindow(QMainWindow):
                     # Si "ignore", les deux restent vides
                 elif import_type >= 4:
                     # 4+ colonnes: type, manufacturer, ref_modele, commercial_ref, other_ref, ...
-                    type_val = row[0].strip() if len(row) > 0 else ""
-                    manufacturer = row[1].strip() if len(row) > 1 else ""
-                    ref_modele = row[2].strip() if len(row) > 2 else ""
-                    commercial_ref = row[3].strip() if len(row) > 3 else ""
-                    other_ref = row[4].strip() if len(row) > 4 else ""
+                    type_val = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
+                    manufacturer = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+                    ref_modele = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
+                    commercial_ref = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ""
+                    other_ref = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
                     # notes peuvent être en colonne 5 si présentes
                 
                 # Log de la ligne en cours
@@ -4066,23 +4069,24 @@ class MainWindow(QMainWindow):
                         print(f"  ⚙️ Mis à jour: {list(updates.keys())}")
                     
                     # Créer association si référence de pièce fournie
-                    if ref_piece and ref_piece.strip():
+                    if ref_piece and str(ref_piece).strip():
                         try:
-                            if not self._piece_already_associated(device_id, ref_piece.strip()):
-                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                            ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
+                            if ref_piece_safe and not self._piece_already_associated(device_id, ref_piece_safe):
+                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                 results['associations_created'] += 1
                                 if desc_updated:
                                     results['descriptions_updated'] += 1
-                                print(f"  🔗 Pièce {ref_piece.strip()} associée")
+                                print(f"  🔗 Pièce {ref_piece_safe} associée")
                             else:
                                 # Pièce déjà associée, mais vérifier le libellé si fourni
-                                if libelle_piece and libelle_piece.strip():
-                                    _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                                if libelle_piece and str(libelle_piece).strip():
+                                    _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                     if desc_updated:
                                         results['descriptions_updated'] += 1
-                                    print(f"  📝 Libellé vérifié pour pièce {ref_piece.strip()} déjà associée")
+                                    print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
                                 results['duplicates_skipped'] += 1
-                                print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
+                                print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée")
                                 
                                 # Collecter les détails du doublon pour CSV/PDF
                                 if not hasattr(self, '_current_import_duplicates'):
@@ -4090,26 +4094,22 @@ class MainWindow(QMainWindow):
                                 self._current_import_duplicates.append({
                                     'ligne': row_idx + 1,
                                     'appareil_id': device_id,
-                                    'ref_piece': ref_piece.strip(),
+                                    'ref_piece': str(ref_piece).strip() if ref_piece else '',
                                     'appareil_data': {
-                                        'ref_modele': existing_device.get('ref_modele', ''),
-                                        'commercial_ref': existing_device.get('commercial_ref', ''),
-                                        'type': existing_device.get('type', ''),
-                                        'manufacturer': existing_device.get('manufacturer', '')
+                                        'ref_modele': existing_device.get('ref_modele', '') or '',
+                                        'commercial_ref': existing_device.get('commercial_ref', '') or '',
+                                        'type': existing_device.get('type', '') or '',
+                                        'manufacturer': existing_device.get('manufacturer', '') or ''
                                     }
                                 })
                         except Exception as piece_error:
-                            print(f"❌ Échec association pièce {ref_piece.strip()} avec appareil {device_id}: {piece_error}")
-                            app_logger.error(f"Échec association pièce {ref_piece.strip()} avec appareil {device_id}: {piece_error}")
+                            ref_piece_safe = str(ref_piece).strip() if ref_piece else 'N/A'
+                            print(f"❌ Échec association pièce {ref_piece_safe} avec appareil {device_id}: {piece_error}")
+                            app_logger.error(f"Échec association pièce {ref_piece_safe} avec appareil {device_id}: {piece_error}")
                     else:
                         # Ligne sans référence de pièce - compter dans les associations manquantes
                         results['no_piece_ref'] = results.get('no_piece_ref', 0) + 1
                         print(f"  ⚠️ Ligne {row_idx + 1}: Appareil traité mais pas de référence de pièce")
-                    
-                    # Vérifier si l'appareil nécessite encore une complétion manuelle
-                    # (basé sur l'état d'origine avant mise à jour)
-                    if self._needs_manual_completion(existing_device):
-                        results['manual_completion'] += 1
                     
                     # Vérifier si l'appareil nécessite encore une complétion manuelle
                     # après mise à jour (seuls ceux sans type ET fabricant)
@@ -4119,21 +4119,20 @@ class MainWindow(QMainWindow):
                         results['manual_completion'] += 1
                     
                     results['matches_found'] += 1
-                    results['total_imported'] += 1  # Compter après succès
                     # NE PAS créer de nouvelle ligne dans le tableau
                 else:
                     # Nouvel appareil - utiliser la même logique harmonisée que le collage
-                    if ref_modele.strip() or commercial_ref.strip():
+                    if (ref_modele and str(ref_modele).strip()) or (commercial_ref and str(commercial_ref).strip()):
                         print(f"✨ Ligne {row_idx + 1}: Création d'un nouvel appareil")
                         # Préparer les données d'appareil comme dans _handle_paste
                         appareil_data = {
-                            'type': type_val.strip(),
-                            'manufacturer': manufacturer.strip(),
-                            'ref_modele': ref_modele.strip(),
-                            'commercial_ref': commercial_ref.strip(),
-                            'other_ref': other_ref.strip(),
+                            'type': str(type_val).strip() if type_val else '',
+                            'manufacturer': str(manufacturer).strip() if manufacturer else '',
+                            'ref_modele': str(ref_modele).strip() if ref_modele else '',
+                            'commercial_ref': str(commercial_ref).strip() if commercial_ref else '',
+                            'other_ref': str(other_ref).strip() if other_ref else '',
                             'category': '',
-                            'notes': notes.strip()
+                            'notes': str(notes).strip() if notes else ''
                         }
                         
                         # Vérifier si l'appareil nécessite une complétion manuelle AVANT auto-complétion
@@ -4159,25 +4158,51 @@ class MainWindow(QMainWindow):
                             device_id = self.db_manager.insert_appareil(filtered_data)
                             if device_id:
                                 results['new_entries'] += 1
-                                results['total_imported'] += 1  # Compter après succès
                                 print(f"  ✅ Nouvel appareil créé (ID: {device_id})")
-                                if ref_piece and ref_piece.strip():
+                                if ref_piece and str(ref_piece).strip():
                                     try:
-                                        if not self._piece_already_associated(device_id, ref_piece.strip()):
-                                            _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                                        ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
+                                        if ref_piece_safe and not self._piece_already_associated(device_id, ref_piece_safe):
+                                            _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                             results['associations_created'] += 1
                                             if desc_updated:
                                                 results['descriptions_updated'] += 1
-                                            print(f"  🔗 Pièce {ref_piece.strip()} associée")
+                                            print(f"  🔗 Pièce {ref_piece_safe} associée")
                                         else:
                                             # Pièce déjà associée, mais vérifier le libellé si fourni
                                             if libelle_piece and libelle_piece.strip():
-                                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), device_id, libelle_piece, self._confirm_piece_description_update)
+                                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                                 if desc_updated:
                                                     results['descriptions_updated'] += 1
-                                                print(f"  📝 Libellé vérifié pour pièce {ref_piece.strip()} déjà associée")
+                                                print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
                                             results['duplicates_skipped'] += 1
-                                            print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
+                                            print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée")
+                                            
+                                            # IMPORTANT: Vérifier si l'appareil associé à cette pièce nécessite complétion
+                                            # Ceci peut arriver quand l'appareil existe mais n'est pas trouvé par notre recherche
+                                            try:
+                                                query = """SELECT a.id, a.type, a.manufacturer, a.ref_modele, a.commercial_ref, a.other_ref, a.category, a.notes 
+                                                          FROM appareils a 
+                                                          JOIN piece_associations pa ON a.id = pa.appareil_id 
+                                                          JOIN pieces p ON pa.piece_id = p.id 
+                                                          WHERE p.ref_piece = ? LIMIT 1"""
+                                                existing_result = self.db_manager.execute_query(query, [ref_piece_safe])
+                                                if existing_result:
+                                                    existing_appareil = {
+                                                        'id': existing_result[0][0],
+                                                        'type': existing_result[0][1],
+                                                        'manufacturer': existing_result[0][2],
+                                                        'ref_modele': existing_result[0][3],
+                                                        'commercial_ref': existing_result[0][4],
+                                                        'other_ref': existing_result[0][5],
+                                                        'category': existing_result[0][6],
+                                                        'notes': existing_result[0][7]
+                                                    }
+                                                    if self._needs_manual_completion(existing_appareil):
+                                                        results['manual_completion'] += 1
+                                                        print(f"  📝 Appareil associé nécessite complétion manuelle")
+                                            except Exception as e:
+                                                print(f"❌ Erreur vérification appareil associé: {e}")
                                             
                                             # Collecter les détails du doublon pour CSV/PDF
                                             if not hasattr(self, '_current_import_duplicates'):
@@ -4185,17 +4210,18 @@ class MainWindow(QMainWindow):
                                             self._current_import_duplicates.append({
                                                 'ligne': row_idx + 1,
                                                 'appareil_id': device_id,
-                                                'ref_piece': ref_piece.strip(),
+                                                'ref_piece': ref_piece_safe,
                                                 'appareil_data': {
-                                                    'ref_modele': ref_modele.strip(),
-                                                    'commercial_ref': commercial_ref.strip(),
-                                                    'type': type_val.strip(),
-                                                    'manufacturer': manufacturer.strip()
+                                                    'ref_modele': str(ref_modele).strip() if ref_modele else '',
+                                                    'commercial_ref': str(commercial_ref).strip() if commercial_ref else '',
+                                                    'type': str(type_val).strip() if type_val else '',
+                                                    'manufacturer': str(manufacturer).strip() if manufacturer else ''
                                                 }
                                             })
                                     except Exception as piece_error:
-                                        print(f"❌ Échec association pièce {ref_piece.strip()} avec nouvel appareil {device_id}: {piece_error}")
-                                        app_logger.error(f"Échec association pièce {ref_piece.strip()} avec nouvel appareil {device_id}: {piece_error}")
+                                        ref_piece_safe_err = str(ref_piece).strip() if ref_piece else 'N/A'
+                                        print(f"❌ Échec association pièce {ref_piece_safe_err} avec nouvel appareil {device_id}: {piece_error}")
+                                        app_logger.error(f"Échec association pièce {ref_piece_safe_err} avec nouvel appareil {device_id}: {piece_error}")
                                 else:
                                     # Nouvel appareil sans référence de pièce - compter dans les associations manquantes
                                     results['no_piece_ref'] = results.get('no_piece_ref', 0) + 1
@@ -4265,12 +4291,15 @@ class MainWindow(QMainWindow):
         return normalized
 
     def _find_existing_device_by_refs(self, ref_modele, commercial_ref):
-        """Chercher un appareil existant par ses références (colonnes C et D) avec détection de références partielles"""
+        """
+        Chercher un appareil existant selon la logique hiérarchique:
+        1. Si ref_modele ET commercial_ref identiques → compléter colonnes A et B
+        2. Si ref_modele identique (même si commercial_ref différente) → compléter colonnes A et B  
+        3. Si commercial_ref identique mais ref_modele différente → créer nouvel appareil
+        La ref_modele est la référence PRINCIPALE, commercial_ref est secondaire
+        """
         try:
-            # NOUVELLE LOGIQUE: Recherche exacte puis fuzzy par ref_modele ET commercial_ref
-            # Pour éviter les faux doublons avec références commerciales partagées
-            
-            # 1. Si on a les deux références, chercher la combinaison exacte
+            # 1. Priorité absolue: combinaison exacte ref_modele + commercial_ref
             if ref_modele and ref_modele.strip() and commercial_ref and commercial_ref.strip():
                 query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
                           FROM appareils 
@@ -4290,17 +4319,13 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
             
-            # 2. Recherche par ref_modele avec fuzzy matching (références partielles)
+            # 2. RÉFÉRENCE PRINCIPALE: recherche par ref_modele (même si commercial_ref différente)
             if ref_modele and ref_modele.strip():
-                # Normaliser la référence recherchée
-                normalized_ref = self._normalize_reference(ref_modele)
-                
-                # Recherche exacte d'abord
                 query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE ref_modele = ?"
                 params = [ref_modele.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
-                    print(f"  ✅ Appareil existant trouvé par ref_modele exact: {ref_modele}")
+                    print(f"  ✅ Appareil existant trouvé par ref_modele (référence principale): {ref_modele}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -4311,40 +4336,12 @@ class MainWindow(QMainWindow):
                         'category': result[0][6],
                         'notes': result[0][7]
                     }
-                
-                # Recherche fuzzy DÉSACTIVÉE pour éviter les faux positifs
-                # Exemple: Q1457ATGW ne doit PAS matcher Q1457ATGW/XEN
-                print(f"  ❌ Aucun appareil trouvé pour ref_modele exact: {ref_modele}")
-                # Pas de recherche fuzzy pour éviter les matches incorrects
             
-            # 3. Recherche par commercial_ref avec fuzzy matching
-            if commercial_ref and commercial_ref.strip():
-                # Normaliser la référence recherchée
-                normalized_ref = self._normalize_reference(commercial_ref)
-                
-                # Recherche exacte d'abord
-                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE commercial_ref = ?"
-                params = [commercial_ref.strip()]
-                result = self.db_manager.execute_query(query, params)
-                if result:
-                    print(f"  ✅ Appareil existant trouvé par commercial_ref exact: {commercial_ref}")
-                    return {
-                        'id': result[0][0], 
-                        'type': result[0][1], 
-                        'manufacturer': result[0][2],
-                        'ref_modele': result[0][3],
-                        'commercial_ref': result[0][4],
-                        'other_ref': result[0][5],
-                        'category': result[0][6],
-                        'notes': result[0][7]
-                    }
-                
-                # Recherche fuzzy DÉSACTIVÉE pour éviter les faux positifs
-                print(f"  ❌ Aucun appareil trouvé pour commercial_ref exact: {commercial_ref}")
-                # Pas de recherche fuzzy pour éviter les matches incorrects
+            # 3. PAS de recherche par commercial_ref seule car cela créerait de faux doublons
+            # Si commercial_ref identique mais ref_modele différente → créer nouvel appareil
             
             # Aucun appareil existant trouvé
-            print(f"  🆕 Aucun appareil existant pour: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
+            print(f"  🆕 Création nouvel appareil pour: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
             return None
         except Exception as e:
             print(f"Erreur recherche appareil: {e}")
@@ -4599,34 +4596,29 @@ class MainWindow(QMainWindow):
         self._show_info(summary)
     
     def _generate_console_summary(self, results, ref_piece, source):
-        """Générer la synthèse dans le même format que la console"""
+        """Générer la synthèse dans le format console standardisé"""
         summary = f"📊 Import {source}"
         if ref_piece:
             summary += f" (pièce: {ref_piece})"
         summary += ":\n"
         
-        # Utiliser le même format simplifié que la console
-        summary += f"  Lignes traitées : {results.get('total_imported', 0)}\n"
-        summary += f"  Appareils créés : {results.get('new_entries', 0)}\n"
-        summary += f"  Appareils mis à jour : {results.get('matches_found', 0)}\n"
-        summary += f"  Associations créées : {results.get('associations_created', 0)}"
+        # Format standardisé selon le modèle demandé
+        summary += f"Lignes traitées : {results.get('total_imported', 0)}\n"
+        summary += f"Appareils créés : {results.get('new_entries', 0)}\n"
         
-        duplicates_skipped = results.get('duplicates_skipped', 0)
-        if duplicates_skipped > 0:
-            summary += f"\n  Associations déjà existantes : {duplicates_skipped}"
+        # Sous-détails des appareils (TOUJOURS afficher même si 0)
+        matches_found = results.get('matches_found', 0)
+        summary += f"  ==> Mis à jour : {matches_found}\n"
         
-        # Informations liées aux pièces
         manual_completion = results.get('manual_completion', 0)
-        if manual_completion > 0:
-            summary += f"\n  Appareils à compléter : {manual_completion}"
-            
-        descriptions_updated = results.get('descriptions_updated', 0)
-        if descriptions_updated > 0:
-            summary += f"\n  Libellés mis à jour : {descriptions_updated}"
-            
-        no_piece_ref = results.get('no_piece_ref', 0)
-        if no_piece_ref > 0:
-            summary += f"\n  Lignes sans référence pièce : {no_piece_ref}"
+        summary += f"  ==> À compléter : {manual_completion}\n"
+        
+        # Associations
+        summary += f"Associations créées : {results.get('associations_created', 0)}\n"
+        
+        # Associations existantes (TOUJOURS afficher même si 0)
+        duplicates_skipped = results.get('duplicates_skipped', 0)
+        summary += f"Associations déjà existantes : {duplicates_skipped}"
         
         return summary
 
@@ -5770,11 +5762,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                         print(f"  ⚠️ Ligne {row_idx + 1}: Appareil traité mais pas de référence de pièce")
                     
                     # Vérifier si l'appareil nécessite encore une complétion manuelle
-                    # (basé sur l'état d'origine avant mise à jour)
-                    if self._needs_manual_completion(existing_device):
-                        manual_completion_count += 1
-                    
-                    # Vérifier si l'appareil nécessite encore une complétion manuelle
                     # après mise à jour (seuls ceux sans type ET fabricant)
                     final_device_data = dict(existing_device)
                     final_device_data.update(updates)
@@ -5849,16 +5836,20 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Forcer le rafraîchissement et afficher le résultat
             self._force_refresh_display(reset_page=True, clear_filters=True)
             
-            # Résumé détaillé pour debugging uniquement
+            # Résumé selon le format standardisé
             from src.core.config import pluralize
-            detailed_summary = f"📊 Résumé de l'import par collage:\n"
-            detailed_summary += f"  Total {pluralize(total_rows, 'ligne traitée')}\n"
-            detailed_summary += f"  {pluralize(ignored_count, 'ligne rejetée')}\n"
-            detailed_summary += f"  {pluralize(inserted_count, 'appareil nouveau', 'appareils nouveaux')}\n"
-            detailed_summary += f"  {pluralize(updated_count, 'appareil mis à jour')}\n"
-            detailed_summary += f"  {pluralize(associations_created, 'association créée')}\n"
-            detailed_summary += f"  Associations déjà existantes : {duplicates_skipped}\n"
-            detailed_summary += f"  {pluralize(no_piece_ref_count, 'ligne sans référence de pièce')}"
+            detailed_summary = f"📊 Import Collage"
+            if ref_piece and ref_piece.strip():
+                detailed_summary += f" (pièce: {ref_piece})"
+            detailed_summary += ":\n"
+            detailed_summary += f"Lignes traitées : {total_rows - ignored_count}\n"
+            detailed_summary += f"Appareils créés : {inserted_count}\n"
+            # TOUJOURS afficher les sous-détails même si 0
+            detailed_summary += f"  ==> Mis à jour : {updated_count}\n"
+            detailed_summary += f"  ==> À compléter : {manual_completion_count}\n"
+            detailed_summary += f"Associations créées : {associations_created}\n"
+            # TOUJOURS afficher même si 0
+            detailed_summary += f"Associations déjà existantes : {duplicates_skipped}"
             
             print(f"\n{detailed_summary}")
             
@@ -5920,8 +5911,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _needs_manual_completion(self, appareil_data: dict) -> bool:
         """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""
-        type_empty = not appareil_data.get('type', '').strip()
-        manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
+        type_val = appareil_data.get('type') or ''
+        manufacturer_val = appareil_data.get('manufacturer') or ''
+        type_empty = not str(type_val).strip()
+        manufacturer_empty = not str(manufacturer_val).strip()
         return type_empty and manufacturer_empty
 
     def _try_auto_complete(self, appareil_data: dict):
