@@ -4118,7 +4118,10 @@ class MainWindow(QMainWindow):
                     if self._needs_manual_completion(final_device_data):
                         results['manual_completion'] += 1
                     
-                    results['matches_found'] += 1
+                    # Compter comme "mis à jour" seulement si les colonnes importantes (A et B) ont été modifiées
+                    important_updates = [k for k in updates.keys() if k in ['type', 'manufacturer']]
+                    if important_updates:
+                        results['matches_found'] += 1
                     # NE PAS créer de nouvelle ligne dans le tableau
                 else:
                     # Nouvel appareil - utiliser la même logique harmonisée que le collage
@@ -4307,7 +4310,6 @@ class MainWindow(QMainWindow):
                 params = [ref_modele.strip(), commercial_ref.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
-                    print(f"  ✅ Appareil existant trouvé par combinaison exacte: {ref_modele} + {commercial_ref}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -5768,7 +5770,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     if self._needs_manual_completion(final_device_data):
                         manual_completion_count += 1
                     
-                    updated_count += 1
+                    # Compter comme "mis à jour" seulement si les colonnes importantes (A et B) ont été modifiées
+                    important_updates = [k for k in updates.keys() if k in ['type', 'manufacturer']]
+                    if important_updates:
+                        updated_count += 1
                     
                 else:
                     # Nouvel appareil - utiliser la même logique que l'import CSV

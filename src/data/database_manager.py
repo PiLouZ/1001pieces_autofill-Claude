@@ -243,7 +243,7 @@ class DatabaseManager:
             # Vérifier si la table pieces existe
             self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
             if not self.cursor.fetchone():
-                print("Table pieces n'existe pas, skip ajout colonnes")
+                # print("Table pieces n'existe pas, skip ajout colonnes")
                 return
                 
             self.cursor.execute("PRAGMA table_info(pieces)")
@@ -251,7 +251,7 @@ class DatabaseManager:
             
             # Si la table n'a pas de colonne 'appareil_id', elle a déjà la nouvelle structure
             if 'appareil_id' not in existing_columns:
-                print("Table pieces déjà avec nouvelle structure, skip ajout colonnes")
+                # print("Table pieces déjà avec nouvelle structure, skip ajout colonnes")
                 return
             
             # Ajouter la colonne description si elle n'existe pas
@@ -285,7 +285,7 @@ class DatabaseManager:
             
             if 'appareil_id' not in pieces_columns:
                 # Nouvelle structure déjà en place, skip
-                print("Table pieces déjà avec nouvelle structure, skip contrainte unique")
+                # print("Table pieces déjà avec nouvelle structure, skip contrainte unique")
                 return
             
             # Ancienne structure - vérifier si la contrainte unique existe déjà
