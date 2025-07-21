@@ -4438,14 +4438,13 @@ class MainWindow(QMainWindow):
 
     def _find_existing_device_by_refs(self, ref_modele, commercial_ref):
         """
-        Chercher un appareil existant selon la logique hiérarchique:
-        1. Si ref_modele ET commercial_ref identiques → compléter colonnes A et B
-        2. Si ref_modele identique (même si commercial_ref différente) → compléter colonnes A et B  
-        3. Si commercial_ref identique mais ref_modele différente → créer nouvel appareil
-        La ref_modele est la référence PRINCIPALE, commercial_ref est secondaire
+        Chercher un appareil existant selon la nouvelle logique stricte:
+        - Chaque combinaison ref_modele + commercial_ref = appareil unique
+        - Seulement si EXACTEMENT les deux références correspondent → réutiliser appareil existant
+        - Sinon → créer nouvel appareil
         """
         try:
-            # 1. Priorité absolue: combinaison exacte ref_modele + commercial_ref
+            # Logique stricte: combinaison exacte ref_modele + commercial_ref OBLIGATOIRE
             if ref_modele and ref_modele.strip() and commercial_ref and commercial_ref.strip():
                 query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
                           FROM appareils 
@@ -4453,6 +4452,7 @@ class MainWindow(QMainWindow):
                 params = [ref_modele.strip(), commercial_ref.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
+                    print(f"  ✅ Appareil existant trouvé par combinaison exacte: {ref_modele} + {commercial_ref}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -4464,13 +4464,14 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
             
-            # 2. RÉFÉRENCE PRINCIPALE: recherche par ref_modele (même si commercial_ref différente)
-            if ref_modele and ref_modele.strip():
-                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE ref_modele = ?"
+            # Si seulement une des deux références, rechercher par cette référence unique
+            elif ref_modele and ref_modele.strip() and not (commercial_ref and commercial_ref.strip()):
+                # Seulement ref_modele fourni
+                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE ref_modele = ? AND (commercial_ref IS NULL OR commercial_ref = '')"
                 params = [ref_modele.strip()]
                 result = self.db_manager.execute_query(query, params)
                 if result:
-                    print(f"  ✅ Appareil existant trouvé par ref_modele (référence principale): {ref_modele}")
+                    print(f"  ✅ Appareil existant trouvé par ref_modele seule: {ref_modele}")
                     return {
                         'id': result[0][0], 
                         'type': result[0][1], 
@@ -4482,10 +4483,25 @@ class MainWindow(QMainWindow):
                         'notes': result[0][7]
                     }
             
-            # 3. PAS de recherche par commercial_ref seule car cela créerait de faux doublons
-            # Si commercial_ref identique mais ref_modele différente → créer nouvel appareil
+            elif commercial_ref and commercial_ref.strip() and not (ref_modele and ref_modele.strip()):
+                # Seulement commercial_ref fourni
+                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE commercial_ref = ? AND (ref_modele IS NULL OR ref_modele = '')"
+                params = [commercial_ref.strip()]
+                result = self.db_manager.execute_query(query, params)
+                if result:
+                    print(f"  ✅ Appareil existant trouvé par commercial_ref seule: {commercial_ref}")
+                    return {
+                        'id': result[0][0], 
+                        'type': result[0][1], 
+                        'manufacturer': result[0][2],
+                        'ref_modele': result[0][3],
+                        'commercial_ref': result[0][4],
+                        'other_ref': result[0][5],
+                        'category': result[0][6],
+                        'notes': result[0][7]
+                    }
             
-            # Aucun appareil existant trouvé
+            # Aucun appareil existant trouvé avec cette combinaison exacte
             print(f"  🆕 Création nouvel appareil pour: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
             return None
         except Exception as e:
