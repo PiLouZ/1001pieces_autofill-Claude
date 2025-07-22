@@ -4090,12 +4090,9 @@ class MainWindow(QMainWindow):
             'descriptions_updated': 0
         }
         
-        # Analyser automatiquement l'ordre des colonnes si nécessaire
+        # Note: La détection automatique des colonnes est désactivée pour les PDF
+        # Les PDF suivent toujours la logique fixe: col0->ref_modele, col1->commercial_ref, col2->choix utilisateur
         column_mapping = None
-        if import_type == 3 and len(imported_data) > 0:
-            column_mapping = self._detect_column_mapping(imported_data[:10])  # Analyser 10 premières lignes
-            print(f"🔍 Détection des colonnes pour {len(imported_data)} lignes:")
-            print(f"   Mapping détecté: {column_mapping}")
         
         # Log de démarrage avec format unifié
         print(f"\n🔍 Début du traitement de {len(imported_data)} lignes d'import")
@@ -4131,31 +4128,28 @@ class MainWindow(QMainWindow):
                     ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
                     commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
                 elif import_type == 3:
-                    # 3 colonnes: utiliser le mapping détecté ou la logique par défaut
-                    if column_mapping:
-                        # Utiliser le mapping intelligent détecté
-                        ref_modele = str(row[column_mapping.get('ref_modele', 0)]).strip() if len(row) > column_mapping.get('ref_modele', 0) and row[column_mapping.get('ref_modele', 0)] is not None else ""
-                        commercial_ref = str(row[column_mapping.get('commercial_ref', 1)]).strip() if len(row) > column_mapping.get('commercial_ref', 1) and row[column_mapping.get('commercial_ref', 1)] is not None else ""
-                        
-                        # Gérer type et manufacturer si détectés
-                        type_val = str(row[column_mapping.get('type', -1)]).strip() if column_mapping.get('type', -1) >= 0 and len(row) > column_mapping.get('type', -1) and row[column_mapping.get('type', -1)] is not None else ""
-                        manufacturer = str(row[column_mapping.get('manufacturer', -1)]).strip() if column_mapping.get('manufacturer', -1) >= 0 and len(row) > column_mapping.get('manufacturer', -1) and row[column_mapping.get('manufacturer', -1)] is not None else ""
-                        
-                        # Gérer la 3ème colonne selon le choix utilisateur
-                        third_col_idx = column_mapping.get('other', 2)
-                        third_value = str(row[third_col_idx]).strip() if len(row) > third_col_idx and row[third_col_idx] is not None else ""
-                        other_ref = third_value if third_column_choice == "other_ref" else ""
-                        notes = third_value if third_column_choice == "notes" else ""
+                    # 3 colonnes PDF: logique fixe
+                    # col0 → ref_modele (colonne C), col1 → commercial_ref (colonne D), col2 → selon choix
+                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
+                    commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+                    third_value = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
+                    
+                    # Les colonnes A (type) et B (manufacturer) restent vides pour les PDF
+                    # sauf si la 3ème colonne contient des informations pertinentes
+                    type_val = ""
+                    manufacturer = ""
+                    
+                    # Gérer la 3ème colonne selon le choix utilisateur
+                    if third_column_choice == "other_ref":
+                        other_ref = third_value
+                        notes = ""
+                    elif third_column_choice == "notes":
+                        other_ref = ""
+                        notes = third_value
                     else:
-                        # Logique par défaut: ref_modele, commercial_ref, 3ème colonne selon choix
-                        ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
-                        commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                        third_value = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
-                        
-                        # Gérer la 3ème colonne selon le choix utilisateur
-                        other_ref = third_value if third_column_choice == "other_ref" else ""
-                        notes = third_value if third_column_choice == "notes" else ""
                         # Si "ignore", les deux restent vides
+                        other_ref = ""
+                        notes = ""
                 elif import_type >= 4:
                     # 4+ colonnes: type, manufacturer, ref_modele, commercial_ref, other_ref, ...
                     type_val = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
