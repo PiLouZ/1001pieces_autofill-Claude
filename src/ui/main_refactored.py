@@ -285,7 +285,7 @@ class DragHandle(QWidget):
         self.main_window = main_window
         self.setFixedSize(Config.DRAG_HANDLE_SIZE, Config.DRAG_HANDLE_SIZE)
         self.setCursor(Qt.CrossCursor)
-        self.setToolTip("Tirer pour recopier la valeur de la cellule")
+        self.setToolTip("Tirer pour recopier | Double-clic pour remplir automatiquement vers le bas")
         self.dragging = False
         self.start_pos = None
         self.orig_selection = None
@@ -468,6 +468,103 @@ class DragHandle(QWidget):
         
         # Arrêter le défilement automatique
         self._stop_auto_scroll()
+    
+    def mouseDoubleClickEvent(self, event):
+        """Gérer le double-clic sur la poignée pour duplication automatique vers le bas"""
+        if event.button() != Qt.LeftButton:
+            return
+            
+        # Vérifier qu'on a une sélection valide
+        if not self.table.selectedRanges():
+            return
+            
+        selection = self.table.selectedRanges()[0]
+        
+        # Vérifier si la sélection contient des colonnes interdites (C=2, D=3, E=4)
+        forbidden_cols = {2, 3, 4}  # Colonnes C, D et E (références importantes)
+        selected_cols = set(range(selection.leftColumn(), selection.rightColumn() + 1))
+        
+        if forbidden_cols.intersection(selected_cols):
+            # Ne pas permettre la duplication automatique sur les colonnes interdites
+            return
+        
+        # Effectuer la duplication automatique vers le bas
+        self._auto_fill_down()
+    
+    def _auto_fill_down(self):
+        """Dupliquer automatiquement vers le bas jusqu'aux cellules vides"""
+        if not self.table.selectedRanges():
+            return
+            
+        selection = self.table.selectedRanges()[0]
+        
+        # Collecter les données source
+        source_data = []
+        for row in range(selection.topRow(), selection.bottomRow() + 1):
+            row_data = []
+            for col in range(selection.leftColumn(), selection.rightColumn() + 1):
+                item = self.table.item(row, col)
+                row_data.append((col, item.text() if item else ""))
+            source_data.append(row_data)
+        
+        if not source_data:
+            return
+        
+        # Chercher jusqu'où dupliquer (s'arrêter aux cellules vides)
+        start_row = selection.bottomRow() + 1
+        end_row = self._find_fill_end_row(selection, start_row)
+        
+        if start_row > end_row:
+            return  # Aucune ligne à remplir
+        
+        # Calculer le nombre de lignes à dupliquer
+        num_rows = end_row - start_row + 1
+        source_row_count = len(source_data)
+        
+        # Effectuer la duplication
+        duplicated_cells = 0
+        for i in range(num_rows):
+            dest_row = start_row + i
+            source_row_idx = i % source_row_count  # Répéter le pattern source
+            
+            for col_idx, source_value in source_data[source_row_idx]:
+                if dest_row < self.table.rowCount():
+                    new_item = QTableWidgetItem(source_value)
+                    self.table.setItem(dest_row, col_idx, new_item)
+                    duplicated_cells += 1
+        
+        # Marquer la modification pour l'historique
+        if duplicated_cells > 0:
+            # Sélectionner la nouvelle plage
+            new_selection = QTableWidgetSelectionRange(
+                selection.topRow(), selection.leftColumn(),
+                end_row, selection.rightColumn()
+            )
+            self.table.setRangeSelected(new_selection, True)
+            
+            # Ajouter à l'historique
+            if self.main_window:
+                self.main_window._add_to_history(f"Duplication automatique ({duplicated_cells} cellules)")
+                self.main_window._save_drag_changes()
+    
+    def _find_fill_end_row(self, selection, start_row):
+        """Trouver la dernière ligne à remplir (s'arrêter aux cellules vides)"""
+        # Regarder dans toutes les colonnes de la sélection
+        for row in range(start_row, self.table.rowCount()):
+            # Vérifier si toutes les cellules de cette ligne sont vides
+            all_empty = True
+            for col in range(selection.leftColumn(), selection.rightColumn() + 1):
+                item = self.table.item(row, col)
+                if item and item.text().strip():
+                    all_empty = False
+                    break
+            
+            # Si on trouve une ligne complètement vide, s'arrêter avant
+            if all_empty:
+                return row - 1
+        
+        # Si aucune ligne vide trouvée, aller jusqu'à la fin du tableau
+        return self.table.rowCount() - 1
     
     def _check_auto_scroll(self, event):
         """Vérifier si le défilement automatique est nécessaire"""
