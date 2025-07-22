@@ -63,6 +63,12 @@ class SEOGenerator:
             # Construire le titre de base
             base_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_str}"
             
+            # Si le titre est trop long, essayer sans " - " pour gagner 3 caractères
+            if len(base_title) > max_length:
+                compact_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricants_str}"
+                if len(compact_title) <= max_length:
+                    base_title = compact_title
+            
             # Appliquer la troncature intelligente si nécessaire
             final_title = self._smart_truncate_title(base_title, max_length)
             
@@ -178,7 +184,7 @@ class SEOGenerator:
             if i == 0:
                 needed_length = len(fabricant_clean)
             else:
-                needed_length = len(", " + fabricant_clean)
+                needed_length = len(" " + fabricant_clean)  # Espace au lieu de virgule-espace
             
             if current_length + needed_length <= available_space:
                 result_fabricants.append(fabricant_clean)
@@ -191,8 +197,8 @@ class SEOGenerator:
             first_fabricant = unique_fabricants[0][:available_space-3] + "..."
             return first_fabricant if len(first_fabricant) > 3 else ""
         
-        # Ajouter "..." si on n'a pas pu tous les inclure
-        result_str = ", ".join(result_fabricants)
+        # Ajouter "..." si on n'a pas pu tous les inclure  
+        result_str = " ".join(result_fabricants)  # Espaces au lieu de virgules
         if len(result_fabricants) < len(unique_fabricants) and current_length + 3 <= available_space:
             result_str += "..."
         
@@ -224,7 +230,7 @@ class SEOGenerator:
         
         for i, fabricant in enumerate(unique_fabricants):
             fabricant_clean = fabricant.strip()
-            needed_length = len(fabricant_clean) if i == 0 else len(", " + fabricant_clean)
+            needed_length = len(fabricant_clean) if i == 0 else len(" " + fabricant_clean)  # Espace au lieu de virgule-espace
             
             if current_length + needed_length <= available_space:
                 result_fabricants.append(fabricant_clean)
@@ -236,7 +242,7 @@ class SEOGenerator:
             first_fabricant = unique_fabricants[0][:available_space-3] + "..."
             return first_fabricant if len(first_fabricant) > 3 else ""
         
-        result_str = ", ".join(result_fabricants)
+        result_str = " ".join(result_fabricants)  # Espaces au lieu de virgules
         if len(result_fabricants) < len(unique_fabricants) and current_length + 3 <= available_space:
             result_str += "..."
             

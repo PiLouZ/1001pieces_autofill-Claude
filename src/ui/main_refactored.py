@@ -1079,23 +1079,24 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(export_layout)
         
-        # Ligne 2: Boutons SEO métadonnées
+        # Ligne 2: Boutons SEO métadonnées (alignés sous les boutons HTML)
         seo_layout = QHBoxLayout()
         
         self.meta_title_btn = QPushButton("📝 Méta Title")
         self.meta_title_btn.clicked.connect(self._generate_meta_title)
         self.meta_title_btn.setEnabled(False)
         self.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (60 caractères max)")
+        self.meta_title_btn.setStyleSheet("background-color: #6c5ce7; color: white; font-weight: bold; border: none; padding: 8px 12px; border-radius: 4px;")
         seo_layout.addWidget(self.meta_title_btn)
         
         self.meta_desc_btn = QPushButton("📋 Méta Desc")
         self.meta_desc_btn.clicked.connect(self._generate_meta_description)
         self.meta_desc_btn.setEnabled(False)
         self.meta_desc_btn.setToolTip("Générer une méta description SEO aléatoire (150 caractères max)")
+        self.meta_desc_btn.setStyleSheet("background-color: #74b9ff; color: white; font-weight: bold; border: none; padding: 8px 12px; border-radius: 4px;")
         seo_layout.addWidget(self.meta_desc_btn)
         
-        # Espacer les boutons SEO à droite
-        seo_layout.addStretch()
+        # Laisser les boutons alignés à gauche naturellement (sous les boutons HTML)
         
         layout.addLayout(seo_layout)
 
