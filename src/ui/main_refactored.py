@@ -1094,13 +1094,6 @@ class MainWindow(QMainWindow):
         self.meta_desc_btn.setToolTip("Générer une méta description SEO aléatoire (150 caractères max)")
         seo_layout.addWidget(self.meta_desc_btn)
         
-        self.regenerate_meta_btn = QPushButton("🔄")
-        self.regenerate_meta_btn.clicked.connect(self._regenerate_meta_description)
-        self.regenerate_meta_btn.setEnabled(False)
-        self.regenerate_meta_btn.setToolTip("Générer une nouvelle variante de méta description")
-        self.regenerate_meta_btn.setMaximumWidth(40)
-        seo_layout.addWidget(self.regenerate_meta_btn)
-        
         # Espacer les boutons SEO à droite
         seo_layout.addStretch()
         
@@ -2643,10 +2636,10 @@ class MainWindow(QMainWindow):
         self.export_html_brands_btn.setEnabled(has_search)
         self.export_html_details_btn.setEnabled(has_search)
         
-        # Activer/désactiver les boutons SEO
-        self.meta_title_btn.setEnabled(has_search)
-        self.meta_desc_btn.setEnabled(has_search)
-        self.regenerate_meta_btn.setEnabled(has_search)
+        # Activer/désactiver les boutons SEO uniquement pour les références de pièce
+        is_piece_search = has_search and self._is_piece_reference_search()
+        self.meta_title_btn.setEnabled(is_piece_search)
+        self.meta_desc_btn.setEnabled(is_piece_search)
     
     def _perform_delayed_search(self):
         """Effectuer la recherche après le délai de débounce"""
@@ -6430,34 +6423,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self.statusbar.showMessage(f"Erreur génération méta description: {e}", 3000)
             app_logger.error(f"Erreur génération méta description: {e}")
     
-    def _regenerate_meta_description(self):
-        """Générer une nouvelle variante de méta description"""
-        try:
-            # Récupérer les données de recherche actuelles
-            search_data = self._get_current_search_data()
-            if not search_data:
-                self.statusbar.showMessage("Aucune recherche active pour régénérer la méta description", 3000)
-                return
-            
-            # Générer une nouvelle variante
-            result = self.seo_generator.get_random_description_variant(
-                reference=search_data['reference'],
-                description=search_data['description'],
-                type_appareil=search_data['type_appareil'],
-                fabricants=search_data['fabricants']
-            )
-            
-            # Copier dans le presse-papiers
-            QApplication.clipboard().setText(result['description'])
-            
-            # Message de statut
-            length = result['length']
-            self.statusbar.showMessage(f"Nouvelle variante copiée ({length}/150 caractères)", 5000)
-            
-        except Exception as e:
-            self.statusbar.showMessage(f"Erreur régénération méta description: {e}", 3000)
-            app_logger.error(f"Erreur régénération méta description: {e}")
-    
     def _get_current_search_data(self) -> Optional[Dict[str, any]]:
         """Extraire les données de la recherche actuelle pour la génération SEO"""
         try:
@@ -6466,14 +6431,18 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if not search_term:
                 return None
             
-            # Analyser les données du tableau pour extraire les informations
+            # Vérifier si c'est une référence de pièce (recherche dans la table pieces)
+            piece_description = self._get_piece_description_from_reference(search_term)
+            if not piece_description:
+                return None  # Ne pas activer les boutons SEO si ce n'est pas une référence de pièce
+            
+            # Analyser les données du tableau pour extraire les informations des appareils
             if self.table.rowCount() == 0:
                 return None
             
             # Extraire les données des résultats de recherche
             types_appareil = set()
             fabricants = set()
-            descriptions = set()
             
             # Parcourir les résultats visibles pour extraire les informations
             for row in range(min(self.table.rowCount(), 20)):  # Limiter à 20 lignes pour perf
@@ -6488,14 +6457,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     if fabricant_item and fabricant_item.text().strip():
                         fabricants.add(fabricant_item.text().strip())
             
-            # Utiliser le terme de recherche comme référence et description de base
+            # Utiliser la référence de recherche et la vraie description de la pièce
             reference = search_term
-            
-            # Essayer de détecter si c'est une description ou une référence
-            if len(search_term) > 20 or ' ' in search_term:
-                description = search_term  # Probablement une description
-            else:
-                description = "pièce détachée"  # Référence courte, utiliser description générique
+            description = piece_description
             
             # Prendre le type le plus fréquent ou le premier
             type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
@@ -6513,6 +6477,47 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         except Exception as e:
             app_logger.error(f"Erreur extraction données recherche: {e}")
             return None
+    
+    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
+        """Récupérer la description d'une pièce depuis sa référence"""
+        try:
+            # Rechercher la pièce par référence exacte
+            query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
+            result = self.db_manager.execute_custom_query(query, [reference])
+            
+            if result:
+                description = result[0][0]
+                # Vérifier que la description n'est pas None ou vide
+                if description and description.strip():
+                    return description.strip()
+                else:
+                    # Si la description est vide, utiliser une description générique
+                    return "pièce détachée"
+            
+            # Essayer une recherche partielle si la recherche exacte échoue
+            query_partial = "SELECT description FROM pieces WHERE ref_piece LIKE ? LIMIT 1"
+            result_partial = self.db_manager.execute_custom_query(query_partial, [f"%{reference}%"])
+            
+            if result_partial:
+                description = result_partial[0][0]
+                if description and description.strip():
+                    return description.strip()
+                else:
+                    return "pièce détachée"
+            
+            return None  # Aucune pièce trouvée
+            
+        except Exception as e:
+            app_logger.error(f"Erreur récupération description pièce: {e}")
+            return None
+    
+    def _is_piece_reference_search(self) -> bool:
+        """Vérifier si la recherche actuelle correspond à une référence de pièce"""
+        search_term = self.search_input.text().strip()
+        if not search_term:
+            return False
+        
+        return self._get_piece_description_from_reference(search_term) is not None
 
 
 def main():

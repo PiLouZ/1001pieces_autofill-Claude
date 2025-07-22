@@ -103,6 +103,10 @@ class SEOGenerator:
             description_clean = description.strip().lower()
             type_clean = type_appareil.strip().lower()
             
+            # Ajouter l'article approprié (votre/vos) devant la description
+            article = self._get_article(description_clean)
+            description_with_article = f"{article} {description_clean}"
+            
             # Sélectionner un template aléatoire
             template = random.choice(self.META_DESCRIPTION_TEMPLATES)
             
@@ -113,7 +117,7 @@ class SEOGenerator:
             
             # Construire la description
             description_text = template.format(
-                description=description_clean,
+                description=description_with_article,
                 reference=reference_clean,
                 type_appareil=type_clean,
                 fabricants=fabricants_str
@@ -285,6 +289,27 @@ class SEOGenerator:
                                      max_length: int = 150) -> Dict[str, any]:
         """Générer une nouvelle variante aléatoire de description"""
         return self.generate_meta_description(reference, description, type_appareil, fabricants, max_length)
+    
+    def _get_article(self, description: str) -> str:
+        """
+        Détermine l'article approprié (votre/vos) selon la description
+        Inspiré de la fonction getArticle() du script.js
+        """
+        # Diviser la description en mots
+        first_word = description.split(' ')[0] if description else ""
+        
+        # Vérifier si c'est probablement au pluriel
+        is_plural = (
+            first_word.endswith('s') or 
+            first_word.endswith('x') or
+            first_word.startswith('des ') or
+            'pompes' in description.lower() or
+            'joints' in description.lower() or
+            'filtres' in description.lower() or
+            'pièces' in description.lower()
+        )
+        
+        return 'vos' if is_plural else 'votre'
     
     def get_last_generation_info(self) -> Dict[str, any]:
         """Récupérer les informations de la dernière génération"""
