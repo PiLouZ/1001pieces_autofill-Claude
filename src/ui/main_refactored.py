@@ -4604,7 +4604,7 @@ class MainWindow(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Options d'import {import_method}")
         dialog.setModal(True)
-        dialog.setMinimumWidth(400)
+        dialog.setMinimumWidth(600)  # Fenêtre plus large pour l'aperçu
         
         layout = QVBoxLayout()
         
@@ -4671,7 +4671,7 @@ class MainWindow(QMainWindow):
                 for j in range(min(detected_columns or len(row), len(row))):
                     cell_value = str(row[j])[:12] + "..." if len(str(row[j])) > 12 else str(row[j])
                     line += f"{cell_value:<15} "
-                preview_content += f"Ligne {i+1}: {line}\n"
+                preview_content += f"{line}\n"
                 
             if len(sample_data) > 3:
                 preview_content += f"\n... et {len(sample_data) - 3} autres lignes"
@@ -5371,7 +5371,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 try:
                     from src.data.pdf_extractor_camelot import CamelotPDFExtractor
                     temp_extractor = CamelotPDFExtractor()
-                    temp_result = temp_extractor.extract_table(file_paths[0])
+                    temp_result = temp_extractor.extract_data(file_paths[0])
                     if temp_result:
                         sample_data = temp_result[:3]  # Maximum 3 lignes pour l'aperçu
                 except Exception as e:
