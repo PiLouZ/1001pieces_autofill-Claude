@@ -6462,7 +6462,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """Extraire les données de la recherche actuelle pour la génération SEO"""
         try:
             # Récupérer le terme de recherche actuel
-            search_term = self.search_box.text().strip()
+            search_term = self.search_input.text().strip()
             if not search_term:
                 return None
             
