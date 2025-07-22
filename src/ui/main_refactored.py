@@ -3695,11 +3695,27 @@ class MainWindow(QMainWindow):
                     if detected_columns is None:
                         return
                     
+                    # Lire quelques lignes d'exemple pour l'aperçu
+                    sample_data = []
+                    try:
+                        encoding = self._detect_file_encoding(filename)
+                        with open(filename, 'r', encoding=encoding) as file:
+                            separator = self._detect_separator(filename)
+                            reader = csv.reader(file, delimiter=separator)
+                            for i, row in enumerate(reader):
+                                if i < 3 and row:  # Maximum 3 lignes pour l'aperçu
+                                    sample_data.append(row)
+                                elif i >= 3:
+                                    break
+                    except Exception as e:
+                        print(f"Erreur lecture aperçu CSV: {e}")
+                        sample_data = []
+                    
                     # Extraire le nom du fichier sans extension pour la référence de pièce
                     filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
                     
-                    # Dialogue pour choisir le type d'import (avec référence pré-remplie)
-                    import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV")
+                    # Dialogue pour choisir le type d'import (avec référence pré-remplie et aperçu)
+                    import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV", sample_data)
                     if import_type is None:
                         return
                     
@@ -4581,9 +4597,9 @@ class MainWindow(QMainWindow):
         most_common_count = max(set(column_counts), key=column_counts.count)
         return most_common_count
 
-    def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV"):
-        """Dialogue unifié pour choisir les options d'import (CSV, PDF, COLLAGE)"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox
+    def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
+        """Dialogue unifié pour choisir les options d'import (CSV, PDF, COLLAGE) avec aperçu des données"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit
         
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Options d'import {import_method}")
@@ -4624,6 +4640,44 @@ class MainWindow(QMainWindow):
         
         format_desc.setStyleSheet("color: #6c757d; margin-left: 20px;")
         layout.addWidget(format_desc)
+        
+        # Aperçu des données (si disponible)
+        if sample_data and len(sample_data) > 0:
+            preview_label = QLabel("Aperçu des données:")
+            preview_label.setStyleSheet("font-weight: bold; margin-top: 15px;")
+            layout.addWidget(preview_label)
+            
+            # Créer un aperçu formaté des 3 premières lignes
+            preview_text = QTextEdit()
+            preview_text.setMaximumHeight(120)
+            preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Courier New', monospace; font-size: 11px;")
+            preview_text.setReadOnly(True)
+            
+            # Formatage de l'aperçu
+            preview_content = ""
+            max_lines_to_show = min(3, len(sample_data))
+            
+            # En-têtes de colonnes
+            if detected_columns:
+                header_line = ""
+                for i in range(detected_columns):
+                    header_line += f"Col{i+1:<15} "
+                preview_content += f"{'='*60}\n{header_line}\n{'='*60}\n"
+            
+            # Données d'exemple
+            for i in range(max_lines_to_show):
+                row = sample_data[i]
+                line = ""
+                for j in range(min(detected_columns or len(row), len(row))):
+                    cell_value = str(row[j])[:12] + "..." if len(str(row[j])) > 12 else str(row[j])
+                    line += f"{cell_value:<15} "
+                preview_content += f"Ligne {i+1}: {line}\n"
+                
+            if len(sample_data) > 3:
+                preview_content += f"\n... et {len(sample_data) - 3} autres lignes"
+                
+            preview_text.setPlainText(preview_content)
+            layout.addWidget(preview_text)
         
         # Référence de pièce (optionnelle)
         ref_layout = QHBoxLayout()
@@ -5311,8 +5365,21 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if len(file_paths) == 1:
                 suggested_ref_piece = os.path.splitext(os.path.basename(file_paths[0]))[0]
             
-            # Afficher la boîte de dialogue d'options d'import
-            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(3, suggested_ref_piece, "PDF")
+            # Extraire quelques lignes d'exemple du premier PDF pour l'aperçu
+            sample_data = []
+            if len(file_paths) > 0:
+                try:
+                    from src.data.pdf_extractor_camelot import CamelotPDFExtractor
+                    temp_extractor = CamelotPDFExtractor()
+                    temp_result = temp_extractor.extract_table(file_paths[0])
+                    if temp_result:
+                        sample_data = temp_result[:3]  # Maximum 3 lignes pour l'aperçu
+                except Exception as e:
+                    print(f"Erreur lecture aperçu PDF: {e}")
+                    sample_data = []
+            
+            # Afficher la boîte de dialogue d'options d'import avec aperçu
+            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(3, suggested_ref_piece, "PDF", sample_data)
             if import_type is None:
                 return
             
@@ -5769,8 +5836,20 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 )
                 return
             
-            # Demander les options d'import avec la fenêtre unifiée
-            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, None, "COLLAGE")
+            # Préparer les données d'exemple pour l'aperçu
+            sample_data = []
+            try:
+                rows = clipboard_text.strip().split('\n')
+                for i, row in enumerate(rows[:3]):  # Maximum 3 lignes pour l'aperçu
+                    if row.strip():
+                        columns = row.split('\t')
+                        sample_data.append(columns)
+            except Exception as e:
+                print(f"Erreur préparation aperçu COLLAGE: {e}")
+                sample_data = []
+            
+            # Demander les options d'import avec la fenêtre unifiée et aperçu
+            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, None, "COLLAGE", sample_data)
             if import_type is None:
                 return
                 
