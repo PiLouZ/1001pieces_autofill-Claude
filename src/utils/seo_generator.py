@@ -154,7 +154,7 @@ class SEOGenerator:
     
     def _select_fabricants_for_title(self, fabricants: List[str], reference: str, 
                                    description: str, type_appareil: str, max_length: int) -> str:
-        """Sélectionner les fabricants principaux pour le titre selon l'espace disponible"""
+        """Sélectionner le maximum de fabricants possibles dans un ordre aléatoire pour le titre"""
         if not fabricants:
             return ""
         
@@ -165,14 +165,15 @@ class SEOGenerator:
         if available_space <= 0:
             return ""
         
-        # Trier les fabricants par fréquence/importance (pour l'instant alphabétique)
-        sorted_fabricants = sorted(set(fabricants))
+        # Mélanger les fabricants de façon aléatoire et supprimer les doublons
+        unique_fabricants = list(set(fabricants))
+        random.shuffle(unique_fabricants)
         
-        # Construire la liste des fabricants selon l'espace
+        # Construire la liste des fabricants selon l'espace disponible
         result_fabricants = []
         current_length = 0
         
-        for i, fabricant in enumerate(sorted_fabricants):
+        for i, fabricant in enumerate(unique_fabricants):
             fabricant_clean = fabricant.strip()
             if i == 0:
                 needed_length = len(fabricant_clean)
@@ -180,23 +181,19 @@ class SEOGenerator:
                 needed_length = len(", " + fabricant_clean)
             
             if current_length + needed_length <= available_space:
-                if i == 0:
-                    result_fabricants.append(fabricant_clean)
-                    current_length += needed_length
-                else:
-                    result_fabricants.append(fabricant_clean)
-                    current_length += needed_length
+                result_fabricants.append(fabricant_clean)
+                current_length += needed_length
             else:
                 break
         
         if not result_fabricants:
             # Au moins essayer de mettre le premier fabricant même tronqué
-            first_fabricant = sorted_fabricants[0][:available_space-3] + "..."
+            first_fabricant = unique_fabricants[0][:available_space-3] + "..."
             return first_fabricant if len(first_fabricant) > 3 else ""
         
         # Ajouter "..." si on n'a pas pu tous les inclure
         result_str = ", ".join(result_fabricants)
-        if len(result_fabricants) < len(sorted_fabricants) and current_length + 3 <= available_space:
+        if len(result_fabricants) < len(unique_fabricants) and current_length + 3 <= available_space:
             result_str += "..."
         
         return result_str
@@ -204,7 +201,7 @@ class SEOGenerator:
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description: str, type_appareil: str, 
                                          max_length: int) -> str:
-        """Sélectionner les fabricants pour la description selon l'espace disponible"""
+        """Sélectionner le maximum de fabricants possibles dans un ordre aléatoire pour la description"""
         if not fabricants:
             return ""
         
@@ -217,12 +214,15 @@ class SEOGenerator:
         if available_space <= 0:
             return ""
         
-        # Même logique que pour le titre
-        sorted_fabricants = sorted(set(fabricants))
+        # Mélanger les fabricants de façon aléatoire et supprimer les doublons
+        unique_fabricants = list(set(fabricants))
+        random.shuffle(unique_fabricants)
+        
+        # Construire la liste des fabricants selon l'espace disponible
         result_fabricants = []
         current_length = 0
         
-        for i, fabricant in enumerate(sorted_fabricants):
+        for i, fabricant in enumerate(unique_fabricants):
             fabricant_clean = fabricant.strip()
             needed_length = len(fabricant_clean) if i == 0 else len(", " + fabricant_clean)
             
@@ -233,11 +233,11 @@ class SEOGenerator:
                 break
         
         if not result_fabricants:
-            first_fabricant = sorted_fabricants[0][:available_space-3] + "..."
+            first_fabricant = unique_fabricants[0][:available_space-3] + "..."
             return first_fabricant if len(first_fabricant) > 3 else ""
         
         result_str = ", ".join(result_fabricants)
-        if len(result_fabricants) < len(sorted_fabricants) and current_length + 3 <= available_space:
+        if len(result_fabricants) < len(unique_fabricants) and current_length + 3 <= available_space:
             result_str += "..."
             
         return result_str
