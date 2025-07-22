@@ -205,6 +205,16 @@ class DatabaseManager:
                 )
             """)
             
+            # Table des décisions sur les doublons de références
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reference_decisions (
+                    ref_modele TEXT PRIMARY KEY,
+                    decision TEXT CHECK(decision IN ('DISTINCT', 'MERGE')) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    notes TEXT
+                )
+            """)
+            
             # Ajouter les colonnes manquantes pour la table pieces
             self._add_missing_pieces_columns()
             
@@ -1377,6 +1387,101 @@ class DatabaseManager:
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'exécution de la requête SELECT: {e}")
+    
+    # Méthodes pour gérer les décisions sur les doublons de références
+    def save_reference_decision(self, ref_modele: str, decision: str, notes: str = None) -> bool:
+        """Sauvegarder une décision sur un doublon de référence"""
+        try:
+            if decision not in ('DISTINCT', 'MERGE'):
+                raise ValueError(f"Décision invalide: {decision}")
+            
+            query = """
+                INSERT OR REPLACE INTO reference_decisions 
+                (ref_modele, decision, notes, created_at) 
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """
+            
+            self.cursor.execute(query, (ref_modele, decision, notes))
+            self.conn.commit()
+            return True
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors de la sauvegarde de la décision: {e}")
+    
+    def get_reference_decision(self, ref_modele: str) -> Optional[Dict[str, Any]]:
+        """Récupérer la décision pour une référence"""
+        try:
+            query = """
+                SELECT decision, notes, created_at 
+                FROM reference_decisions 
+                WHERE ref_modele = ?
+            """
+            
+            self.cursor.execute(query, (ref_modele,))
+            result = self.cursor.fetchone()
+            
+            if result:
+                return {
+                    'ref_modele': ref_modele,
+                    'decision': result[0],
+                    'notes': result[1],
+                    'created_at': result[2]
+                }
+            return None
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la récupération de la décision: {e}")
+    
+    def get_references_by_decision(self, decision: str = None) -> List[Dict[str, Any]]:
+        """Récupérer toutes les références filtrées par décision (optionnel)"""
+        try:
+            if decision and decision not in ('DISTINCT', 'MERGE'):
+                raise ValueError(f"Décision invalide: {decision}")
+            
+            if decision:
+                query = """
+                    SELECT ref_modele, decision, notes, created_at 
+                    FROM reference_decisions 
+                    WHERE decision = ?
+                    ORDER BY created_at DESC
+                """
+                self.cursor.execute(query, (decision,))
+            else:
+                query = """
+                    SELECT ref_modele, decision, notes, created_at 
+                    FROM reference_decisions 
+                    ORDER BY created_at DESC
+                """
+                self.cursor.execute(query)
+            
+            results = []
+            for row in self.cursor.fetchall():
+                results.append({
+                    'ref_modele': row[0],
+                    'decision': row[1],
+                    'notes': row[2],
+                    'created_at': row[3]
+                })
+            
+            return results
+            
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Erreur lors de la récupération des décisions: {e}")
+    
+    def delete_reference_decision(self, ref_modele: str) -> bool:
+        """Supprimer une décision (réinitialiser à l'état nouveau)"""
+        try:
+            query = "DELETE FROM reference_decisions WHERE ref_modele = ?"
+            
+            self.cursor.execute(query, (ref_modele,))
+            self.conn.commit()
+            
+            return self.cursor.rowcount > 0
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors de la suppression de la décision: {e}")
     
     def close(self):
         """Fermer la connexion à la base de données"""

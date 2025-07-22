@@ -94,9 +94,9 @@ class CleanupPreviewDialog(QDialog):
         self.pieces_tab = self._create_pieces_tab()
         self.tab_widget.addTab(self.pieces_tab, "🔧 Pièces dupliquées")
         
-        # Onglet Doublons de références
+        # Onglet Doublons potentiels
         self.inconsistencies_tab = self._create_inconsistencies_tab()
-        self.tab_widget.addTab(self.inconsistencies_tab, "📋 Doublons références")
+        self.tab_widget.addTab(self.inconsistencies_tab, "📋 Doublons potentiels")
         
         main_layout.addWidget(self.tab_widget)
         
@@ -114,7 +114,7 @@ class CleanupPreviewDialog(QDialog):
         self.clean_pieces_cb.setChecked(True)
         self.buttons_layout.addWidget(self.clean_pieces_cb)
         
-        self.clean_inconsistencies_cb = QCheckBox("Fusionner les doublons de références")
+        self.clean_inconsistencies_cb = QCheckBox("Fusionner les doublons potentiels")
         self.clean_inconsistencies_cb.setChecked(False)  # Se cochera automatiquement lors d'une sélection
         self.buttons_layout.addWidget(self.clean_inconsistencies_cb)
         
@@ -150,7 +150,7 @@ class CleanupPreviewDialog(QDialog):
         self.groups_stat.setStyleSheet("font-size: 14px; font-weight: bold; color: #007bff;")
         layout.addWidget(self.groups_stat)
         
-        self.inconsistencies_stat = QLabel("0 doublons de références")
+        self.inconsistencies_stat = QLabel("0 doublons potentiels")
         self.inconsistencies_stat.setStyleSheet("font-size: 14px; font-weight: bold; color: #ff8c00;")
         layout.addWidget(self.inconsistencies_stat)
         
@@ -224,14 +224,45 @@ class CleanupPreviewDialog(QDialog):
         return widget
     
     def _create_inconsistencies_tab(self):
-        """Créer l'onglet des doublons de références"""
+        """Créer l'onglet des doublons potentiels"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
         # Description
-        desc_label = QLabel("Références modèles identiques (colonne C). L'appareil le plus ancien fait office de référence principale. Cochez l'appareil à utiliser comme base de fusion et modifiez les données si nécessaire.")
+        desc_label = QLabel("Appareils avec la même référence modèle (colonne C). Marquez chaque groupe comme 'Distincts' (variantes légitimes) ou 'À fusionner' (vrais doublons).")
         desc_label.setStyleSheet("color: #6c757d; font-style: italic; padding: 5px;")
         layout.addWidget(desc_label)
+        
+        # Filtres et statistiques
+        filters_layout = QHBoxLayout()
+        
+        # Statistiques
+        self.potential_stats_label = QLabel("0 groupes à traiter")
+        self.potential_stats_label.setStyleSheet("font-weight: bold; color: #007bff;")
+        filters_layout.addWidget(self.potential_stats_label)
+        
+        filters_layout.addStretch()
+        
+        # Filtres d'affichage
+        filters_label = QLabel("Afficher:")
+        filters_layout.addWidget(filters_label)
+        
+        self.filter_new_cb = QCheckBox("📋 Non traités")
+        self.filter_new_cb.setChecked(True)
+        self.filter_new_cb.stateChanged.connect(self._on_filter_changed)
+        filters_layout.addWidget(self.filter_new_cb)
+        
+        self.filter_distinct_cb = QCheckBox("✅ Distincts")
+        self.filter_distinct_cb.setChecked(False)
+        self.filter_distinct_cb.stateChanged.connect(self._on_filter_changed)
+        filters_layout.addWidget(self.filter_distinct_cb)
+        
+        self.filter_merge_cb = QCheckBox("🔀 À fusionner")
+        self.filter_merge_cb.setChecked(False)
+        self.filter_merge_cb.stateChanged.connect(self._on_filter_changed)
+        filters_layout.addWidget(self.filter_merge_cb)
+        
+        layout.addLayout(filters_layout)
         
         # Arbre hiérarchique des doublons de références
         self.inconsistencies_tree = QTreeWidget()
@@ -263,30 +294,56 @@ class CleanupPreviewDialog(QDialog):
         
         layout.addWidget(self.inconsistencies_tree)
         
-        # Boutons d'action pour les doublons
-        inconsistencies_actions = QHBoxLayout()
+        # Boutons d'action pour les doublons potentiels
+        # Ligne 1: Actions de décision
+        decision_actions = QHBoxLayout()
+        
+        self.mark_distinct_btn = QPushButton("✅ Marquer comme distincts")
+        self.mark_distinct_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        self.mark_distinct_btn.clicked.connect(self._mark_selected_as_distinct)
+        self.mark_distinct_btn.setEnabled(False)
+        decision_actions.addWidget(self.mark_distinct_btn)
+        
+        self.mark_merge_btn = QPushButton("🔀 Marquer pour fusion")
+        self.mark_merge_btn.setStyleSheet("background-color: #ffc107; color: black; font-weight: bold;")
+        self.mark_merge_btn.clicked.connect(self._mark_selected_as_merge)
+        self.mark_merge_btn.setEnabled(False)
+        decision_actions.addWidget(self.mark_merge_btn)
+        
+        self.reset_decision_btn = QPushButton("🔄 Réinitialiser")
+        self.reset_decision_btn.clicked.connect(self._reset_selected_decision)
+        self.reset_decision_btn.setEnabled(False)
+        decision_actions.addWidget(self.reset_decision_btn)
+        
+        decision_actions.addStretch()
+        layout.addLayout(decision_actions)
+        
+        # Ligne 2: Actions d'interface
+        interface_actions = QHBoxLayout()
         
         self.expand_all_btn = QPushButton("📂 Tout développer")
         self.expand_all_btn.clicked.connect(self.inconsistencies_tree.expandAll)
-        inconsistencies_actions.addWidget(self.expand_all_btn)
+        interface_actions.addWidget(self.expand_all_btn)
         
         self.collapse_all_btn = QPushButton("📁 Tout réduire")
         self.collapse_all_btn.clicked.connect(self.inconsistencies_tree.collapseAll)
-        inconsistencies_actions.addWidget(self.collapse_all_btn)
+        interface_actions.addWidget(self.collapse_all_btn)
         
+        # Garder les anciens boutons pour la compatibilité avec la fusion
         self.auto_select_oldest_btn = QPushButton("⏰ Auto: sélectionner les plus anciens")
         self.auto_select_oldest_btn.clicked.connect(self._auto_select_oldest_masters)
-        inconsistencies_actions.addWidget(self.auto_select_oldest_btn)
+        interface_actions.addWidget(self.auto_select_oldest_btn)
         
         self.auto_select_complete_btn = QPushButton("✅ Auto: sélectionner les plus complets")
         self.auto_select_complete_btn.clicked.connect(self._auto_select_complete_masters)
-        inconsistencies_actions.addWidget(self.auto_select_complete_btn)
+        interface_actions.addWidget(self.auto_select_complete_btn)
         
-        inconsistencies_actions.addStretch()
-        layout.addLayout(inconsistencies_actions)
+        interface_actions.addStretch()
+        layout.addLayout(interface_actions)
         
         # Connecter les événements
         self.inconsistencies_tree.itemChanged.connect(self._on_tree_item_changed)
+        self.inconsistencies_tree.itemSelectionChanged.connect(self._update_decision_buttons_state)
         
         return widget
     
@@ -316,7 +373,7 @@ class CleanupPreviewDialog(QDialog):
             self.progress_label.setText("📱 Recherche des appareils en doublon (exact)...")
             self._force_update()
             
-            # D'abord les appareils strictement identiques (colonnes A, B, C, D)
+            # Seulement les appareils strictement identiques (colonnes A, B, C, D)
             duplicates_query = """
                 SELECT type, manufacturer, ref_modele, commercial_ref, other_ref,
                        GROUP_CONCAT(id || '|' || COALESCE(notes, '')) as devices_info, 
@@ -332,58 +389,8 @@ class CleanupPreviewDialog(QDialog):
             """
             exact_duplicates = self.parent_window.db_manager.execute_custom_query(duplicates_query)
             
-            self.progress_bar.setValue(20)
-            self.progress_label.setText("🔍 Recherche des doublons de références (fuzzy)...")
-            self._force_update()
-            
-            # Ensuite les doublons fuzzy (nouvelles références similaires)
-            fuzzy_ref_duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
-            
-            # Combiner les résultats
-            device_duplicates = list(exact_duplicates)  # Commencer avec les doublons exacts
-            
-            self.progress_bar.setValue(30)
-            self.progress_label.setText("⚡ Fusion des résultats doublons exact + fuzzy...")
-            self._force_update()
-            
-            # Ajouter les groupes fuzzy qui ne sont pas déjà dans les doublons exacts
-            for ref_modele, count in fuzzy_ref_duplicates:
-                if count > 1:  # Seulement les vrais doublons
-                    # Récupérer tous les appareils de ce groupe fuzzy
-                    devices_in_group = self.parent_window.db_manager.get_devices_by_ref_modele(ref_modele)
-                    
-                    if len(devices_in_group) > 1:
-                        # Vérifier si ce groupe n'est pas déjà dans les doublons exacts
-                        is_already_exact = False
-                        for exact_row in exact_duplicates:
-                            exact_ref = exact_row[2]  # ref_modele est à l'index 2
-                            if exact_ref == ref_modele:
-                                is_already_exact = True
-                                break
-                        
-                        if not is_already_exact:
-                            # Créer une entrée pour ce groupe fuzzy
-                            keep_device = devices_in_group[0]  # Garder le premier
-                            devices_info_list = []
-                            
-                            for device in devices_in_group:
-                                device_id, dev_type, manufacturer, dev_ref_modele, commercial_ref, other_ref, category, notes = device
-                                devices_info_list.append(f"{device_id}|{notes or ''}")
-                            
-                            devices_info = ','.join(devices_info_list)
-                            
-                            # Ajouter aux doublons (utiliser les infos du premier appareil)
-                            fuzzy_row = (
-                                keep_device[1],  # type
-                                keep_device[2],  # manufacturer  
-                                f"[FUZZY] {ref_modele}",  # ref_modele avec marqueur
-                                keep_device[4],  # commercial_ref
-                                keep_device[5],  # other_ref
-                                devices_info,    # devices_info
-                                keep_device[0],  # keep_id
-                                len(devices_in_group)  # count
-                            )
-                            device_duplicates.append(fuzzy_row)
+            # Utiliser seulement les doublons exacts (pas de fuzzy pour les appareils)
+            device_duplicates = list(exact_duplicates)
             
             self.progress_bar.setValue(40)
             self.progress_label.setText("📊 Calcul des statistiques appareils...")
@@ -740,6 +747,9 @@ class CleanupPreviewDialog(QDialog):
         
         # Récupérer les données complètes (catégorie, notes) pour tous les appareils
         self._load_complete_device_data()
+        
+        # Appliquer les filtres et mettre à jour les statistiques
+        self._apply_filters()
     
     def _load_complete_device_data(self):
         """Charger les données complètes (catégorie, notes) pour tous les appareils"""
@@ -1122,3 +1132,157 @@ class CleanupPreviewDialog(QDialog):
                 master_selections[ref_modele] = master_id
         
         return master_selections
+    
+    # Nouvelles méthodes pour gérer les décisions sur les doublons potentiels
+    def _on_filter_changed(self):
+        """Callback quand les filtres d'affichage changent"""
+        self._apply_filters()
+    
+    def _apply_filters(self):
+        """Appliquer les filtres d'affichage à l'arbre"""
+        show_new = self.filter_new_cb.isChecked()
+        show_distinct = self.filter_distinct_cb.isChecked()
+        show_merge = self.filter_merge_cb.isChecked()
+        
+        # Parcourir tous les éléments de niveau supérieur
+        for i in range(self.inconsistencies_tree.topLevelItemCount()):
+            parent_item = self.inconsistencies_tree.topLevelItem(i)
+            
+            # Récupérer la décision pour cette référence
+            ref_modele = parent_item.text(4)  # colonne ref_modele
+            decision_data = self.parent_window.db_manager.get_reference_decision(ref_modele)
+            
+            # Déterminer l'état du groupe
+            if decision_data:
+                decision = decision_data['decision']
+                should_show = (decision == 'DISTINCT' and show_distinct) or (decision == 'MERGE' and show_merge)
+            else:
+                # Pas de décision = nouveau
+                should_show = show_new
+            
+            # Afficher/masquer l'élément
+            parent_item.setHidden(not should_show)
+        
+        # Mettre à jour les statistiques
+        self._update_potential_stats()
+    
+    def _update_potential_stats(self):
+        """Mettre à jour les statistiques de l'onglet doublons potentiels"""
+        new_count = 0
+        distinct_count = 0 
+        merge_count = 0
+        
+        # Compter les groupes visibles par état
+        for i in range(self.inconsistencies_tree.topLevelItemCount()):
+            parent_item = self.inconsistencies_tree.topLevelItem(i)
+            ref_modele = parent_item.text(4)
+            decision_data = self.parent_window.db_manager.get_reference_decision(ref_modele)
+            
+            if decision_data:
+                if decision_data['decision'] == 'DISTINCT':
+                    distinct_count += 1
+                elif decision_data['decision'] == 'MERGE':
+                    merge_count += 1
+            else:
+                new_count += 1
+        
+        # Mettre à jour le label
+        stats_text = f"{new_count} à traiter • {distinct_count} distincts • {merge_count} à fusionner"
+        self.potential_stats_label.setText(stats_text)
+    
+    def _get_selected_ref_modele(self):
+        """Récupérer la ref_modele du groupe sélectionné"""
+        current_item = self.inconsistencies_tree.currentItem()
+        if not current_item:
+            return None
+        
+        # Si c'est un enfant, prendre le parent
+        if current_item.parent():
+            current_item = current_item.parent()
+        
+        return current_item.text(4)  # colonne ref_modele
+    
+    def _mark_selected_as_distinct(self):
+        """Marquer le groupe sélectionné comme distinct"""
+        ref_modele = self._get_selected_ref_modele()
+        if not ref_modele:
+            return
+        
+        try:
+            # Sauvegarder la décision
+            success = self.parent_window.db_manager.save_reference_decision(
+                ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
+            )
+            
+            if success:
+                # Actualiser l'affichage
+                self._refresh_inconsistencies_display()
+        except Exception as e:
+            print(f"Erreur lors du marquage: {e}")
+    
+    def _mark_selected_as_merge(self):
+        """Marquer le groupe sélectionné pour fusion"""
+        ref_modele = self._get_selected_ref_modele()
+        if not ref_modele:
+            return
+        
+        try:
+            # Sauvegarder la décision
+            success = self.parent_window.db_manager.save_reference_decision(
+                ref_modele, 'MERGE', 'Marqué pour fusion par l\'utilisateur'
+            )
+            
+            if success:
+                # Actualiser l'affichage
+                self._refresh_inconsistencies_display()
+        except Exception as e:
+            print(f"Erreur lors du marquage: {e}")
+    
+    def _reset_selected_decision(self):
+        """Réinitialiser la décision du groupe sélectionné"""
+        ref_modele = self._get_selected_ref_modele()
+        if not ref_modele:
+            return
+        
+        try:
+            # Supprimer la décision
+            success = self.parent_window.db_manager.delete_reference_decision(ref_modele)
+            
+            if success:
+                # Actualiser l'affichage
+                self._refresh_inconsistencies_display()
+        except Exception as e:
+            print(f"Erreur lors de la réinitialisation: {e}")
+    
+    def _refresh_inconsistencies_display(self):
+        """Actualiser l'affichage de l'onglet doublons potentiels"""
+        # Appliquer les filtres pour actualiser la visibilité
+        self._apply_filters()
+        
+        # Mettre à jour l'état des boutons
+        self._update_decision_buttons_state()
+    
+    def _update_decision_buttons_state(self):
+        """Mettre à jour l'état des boutons de décision selon la sélection"""
+        ref_modele = self._get_selected_ref_modele()
+        has_selection = ref_modele is not None
+        
+        self.mark_distinct_btn.setEnabled(has_selection)
+        self.mark_merge_btn.setEnabled(has_selection)
+        self.reset_decision_btn.setEnabled(has_selection)
+        
+        if has_selection:
+            # Vérifier si une décision existe déjà
+            decision_data = self.parent_window.db_manager.get_reference_decision(ref_modele)
+            if decision_data:
+                self.reset_decision_btn.setEnabled(True)
+                if decision_data['decision'] == 'DISTINCT':
+                    self.mark_distinct_btn.setText("✅ Déjà marqué distinct")
+                    self.mark_merge_btn.setText("🔀 Marquer pour fusion")
+                elif decision_data['decision'] == 'MERGE':
+                    self.mark_distinct_btn.setText("✅ Marquer comme distincts")
+                    self.mark_merge_btn.setText("🔀 Déjà marqué fusion")
+            else:
+                self.mark_distinct_btn.setText("✅ Marquer comme distincts")
+                self.mark_merge_btn.setText("🔀 Marquer pour fusion")
+                self.reset_decision_btn.setEnabled(False)
