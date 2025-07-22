@@ -28,6 +28,7 @@ from src.core.logger import app_logger
 from src.data.database_manager import DatabaseManager, DatabaseError
 from src.data.data_validator import DataValidator, ValidationResult
 from src.data.data_exporter import DataExporter, ExportFormat, ExportError
+from src.utils.seo_generator import SEOGenerator
 from src.ui.log_viewer import LogViewer
 from src.ui.validation_window import ValidationWindow
 
@@ -735,6 +736,7 @@ class MainWindow(QMainWindow):
             self.db_manager = DatabaseManager()
             self.validator = DataValidator()
             self.exporter = DataExporter(self.db_manager)
+            self.seo_generator = SEOGenerator()
             
             # Gestionnaires UI
             self.undo_manager = UndoRedoManager()
@@ -1057,6 +1059,7 @@ class MainWindow(QMainWindow):
 
     def _add_export_buttons(self, layout: QVBoxLayout):
         """Ajouter les boutons d'export"""
+        # Ligne 1: Boutons d'export traditionnels
         export_layout = QHBoxLayout()
         
         self.export_csv_btn = QPushButton("Exporter CSV")
@@ -1075,6 +1078,27 @@ class MainWindow(QMainWindow):
         export_layout.addWidget(self.export_html_details_btn)
         
         layout.addLayout(export_layout)
+        
+        # Ligne 2: Boutons SEO métadonnées (alignés sous les boutons HTML)
+        seo_layout = QHBoxLayout()
+        
+        self.meta_title_btn = QPushButton("📝 Méta Title")
+        self.meta_title_btn.clicked.connect(self._generate_meta_title)
+        self.meta_title_btn.setEnabled(False)
+        self.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (60 caractères max)")
+        self.meta_title_btn.setStyleSheet("background-color: #6c5ce7; color: white; font-weight: bold; border: none; padding: 8px 12px; border-radius: 4px;")
+        seo_layout.addWidget(self.meta_title_btn)
+        
+        self.meta_desc_btn = QPushButton("📋 Méta Desc")
+        self.meta_desc_btn.clicked.connect(self._generate_meta_description)
+        self.meta_desc_btn.setEnabled(False)
+        self.meta_desc_btn.setToolTip("Générer une méta description SEO aléatoire (150 caractères max)")
+        self.meta_desc_btn.setStyleSheet("background-color: #74b9ff; color: white; font-weight: bold; border: none; padding: 8px 12px; border-radius: 4px;")
+        seo_layout.addWidget(self.meta_desc_btn)
+        
+        # Laisser les boutons alignés à gauche naturellement (sous les boutons HTML)
+        
+        layout.addLayout(seo_layout)
 
     def _add_action_buttons(self, layout: QVBoxLayout):
         """Ajouter les boutons d'action"""
@@ -2612,6 +2636,11 @@ class MainWindow(QMainWindow):
         self.export_csv_btn.setEnabled(has_search)
         self.export_html_brands_btn.setEnabled(has_search)
         self.export_html_details_btn.setEnabled(has_search)
+        
+        # Activer/désactiver les boutons SEO uniquement pour les références de pièce
+        is_piece_search = has_search and self._is_piece_reference_search()
+        self.meta_title_btn.setEnabled(is_piece_search)
+        self.meta_desc_btn.setEnabled(is_piece_search)
     
     def _perform_delayed_search(self):
         """Effectuer la recherche après le délai de débounce"""
@@ -6326,6 +6355,185 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self.db_manager.close()
         
         event.accept()
+
+    # Méthodes pour les fonctionnalités SEO
+    def _generate_meta_title(self):
+        """Générer et copier un méta titre SEO optimisé"""
+        try:
+            # Récupérer les données de recherche actuelles
+            search_data = self._get_current_search_data()
+            if not search_data:
+                self.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
+                return
+            
+            # Générer le méta titre
+            result = self.seo_generator.generate_meta_title(
+                reference=search_data['reference'],
+                description=search_data['description'], 
+                type_appareil=search_data['type_appareil'],
+                fabricants=search_data['fabricants']
+            )
+            
+            # Copier dans le presse-papiers
+            QApplication.clipboard().setText(result['title'])
+            
+            # Message de statut avec informations détaillées
+            length = result['length']
+            color = "green" if length <= 60 else "red"
+            fabricants_info = f"({result['info']['fabricants_count']} fabricants)" if result['info']['fabricants_count'] > 0 else ""
+            
+            status_msg = f"Méta titre copié ({length}/60 caractères) {fabricants_info}"
+            if result['info']['truncated']:
+                status_msg += " [Tronqué]"
+            
+            self.statusbar.showMessage(status_msg, 5000)
+            
+        except Exception as e:
+            self.statusbar.showMessage(f"Erreur génération méta titre: {e}", 3000)
+            app_logger.error(f"Erreur génération méta titre: {e}")
+    
+    def _generate_meta_description(self):
+        """Générer et copier une méta description SEO aléatoire"""
+        try:
+            # Récupérer les données de recherche actuelles
+            search_data = self._get_current_search_data()
+            if not search_data:
+                self.statusbar.showMessage("Aucune recherche active pour générer la méta description", 3000)
+                return
+            
+            # Générer la méta description
+            result = self.seo_generator.generate_meta_description(
+                reference=search_data['reference'],
+                description=search_data['description'],
+                type_appareil=search_data['type_appareil'],
+                fabricants=search_data['fabricants']
+            )
+            
+            # Copier dans le presse-papiers
+            QApplication.clipboard().setText(result['description'])
+            
+            # Message de statut avec informations détaillées
+            length = result['length']
+            status_msg = f"Méta description copiée ({length}/150 caractères)"
+            if result['info']['truncated']:
+                status_msg += " [Tronquée]"
+            
+            self.statusbar.showMessage(status_msg, 5000)
+            
+        except Exception as e:
+            self.statusbar.showMessage(f"Erreur génération méta description: {e}", 3000)
+            app_logger.error(f"Erreur génération méta description: {e}")
+    
+    def _get_current_search_data(self) -> Optional[Dict[str, any]]:
+        """Extraire les données de la recherche actuelle pour la génération SEO"""
+        try:
+            # Récupérer le terme de recherche actuel
+            search_term = self.search_input.text().strip()
+            if not search_term:
+                return None
+            
+            # Vérifier si c'est une référence de pièce (recherche dans la table pieces)
+            piece_description = self._get_piece_description_from_reference(search_term)
+            if not piece_description:
+                return None  # Ne pas activer les boutons SEO si ce n'est pas une référence de pièce
+            
+            # Analyser les données du tableau pour extraire les informations des appareils
+            if self.table.rowCount() == 0:
+                return None
+            
+            # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
+            # (Pas seulement ceux visibles dans le tableau)
+            types_appareil = set()
+            fabricants = set()
+            
+            # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
+            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
+            
+            try:
+                all_data = self.db_manager.execute_custom_query(fabricants_query, [search_term])
+                for type_val, manufacturer in all_data:
+                    if type_val and type_val.strip():
+                        types_appareil.add(type_val.strip())
+                    if manufacturer and manufacturer.strip():
+                        fabricants.add(manufacturer.strip())
+                        
+            except Exception as e:
+                app_logger.error(f"Erreur récupération fabricants pour {search_term}: {e}")
+                
+                # Fallback: utiliser les données visibles du tableau si la requête échoue
+                for row in range(min(self.table.rowCount(), 20)):
+                    if not self.table.isRowHidden(row):
+                        # Type appareil (colonne 0)
+                        type_item = self.table.item(row, 0)
+                        if type_item and type_item.text().strip():
+                            types_appareil.add(type_item.text().strip())
+                        
+                        # Fabricant (colonne 1)
+                        fabricant_item = self.table.item(row, 1)
+                        if fabricant_item and fabricant_item.text().strip():
+                            fabricants.add(fabricant_item.text().strip())
+            
+            # Utiliser la référence de recherche et la vraie description de la pièce
+            reference = search_term
+            description = piece_description
+            
+            # Prendre le type le plus fréquent ou le premier
+            type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
+            
+            # Convertir les sets en listes
+            fabricants_list = sorted(list(fabricants)) if fabricants else ["multi-marques"]
+            
+            return {
+                'reference': reference,
+                'description': description,
+                'type_appareil': type_appareil,
+                'fabricants': fabricants_list
+            }
+            
+        except Exception as e:
+            app_logger.error(f"Erreur extraction données recherche: {e}")
+            return None
+    
+    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
+        """Récupérer la description d'une pièce depuis sa référence"""
+        try:
+            # Rechercher la pièce par référence exacte
+            query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
+            result = self.db_manager.execute_custom_query(query, [reference])
+            
+            if result:
+                description = result[0][0]
+                # Vérifier que la description n'est pas None ou vide
+                if description and description.strip():
+                    return description.strip()
+                else:
+                    # Si la description est vide, utiliser une description générique
+                    return "pièce détachée"
+            
+            # Essayer une recherche partielle si la recherche exacte échoue
+            query_partial = "SELECT description FROM pieces WHERE ref_piece LIKE ? LIMIT 1"
+            result_partial = self.db_manager.execute_custom_query(query_partial, [f"%{reference}%"])
+            
+            if result_partial:
+                description = result_partial[0][0]
+                if description and description.strip():
+                    return description.strip()
+                else:
+                    return "pièce détachée"
+            
+            return None  # Aucune pièce trouvée
+            
+        except Exception as e:
+            app_logger.error(f"Erreur récupération description pièce: {e}")
+            return None
+    
+    def _is_piece_reference_search(self) -> bool:
+        """Vérifier si la recherche actuelle correspond à une référence de pièce"""
+        search_term = self.search_input.text().strip()
+        if not search_term:
+            return False
+        
+        return self._get_piece_description_from_reference(search_term) is not None
 
 
 def main():
