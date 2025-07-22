@@ -3700,17 +3700,14 @@ class MainWindow(QMainWindow):
                     try:
                         encoding = self._detect_file_encoding(filename)
                         separator = self._detect_separator(filename)
-                        print(f"🔍 DEBUG CSV aperçu: encoding={encoding}, separator='{separator}'")
                         
                         with open(filename, 'r', encoding=encoding) as file:
                             reader = csv.reader(file, delimiter=separator)
                             for i, row in enumerate(reader):
                                 if i < 3 and row:  # Maximum 3 lignes pour l'aperçu
-                                    print(f"🔍 DEBUG CSV ligne {i}: {row}")
                                     sample_data.append(row)
                                 elif i >= 3:
                                     break
-                        print(f"🔍 DEBUG CSV sample_data final: {len(sample_data)} lignes - {sample_data}")
                     except Exception as e:
                         print(f"Erreur lecture aperçu CSV: {e}")
                         sample_data = []
@@ -5316,12 +5313,29 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if detected_columns is None:
                 return
             
+            # Lire quelques lignes d'exemple pour l'aperçu
+            sample_data = []
+            try:
+                encoding = self._detect_file_encoding(file_path)
+                separator = self._detect_separator(file_path)
+                
+                with open(file_path, 'r', encoding=encoding) as file:
+                    reader = csv.reader(file, delimiter=separator)
+                    for i, row in enumerate(reader):
+                        if i < 3 and row:  # Maximum 3 lignes pour l'aperçu
+                            sample_data.append(row)
+                        elif i >= 3:
+                            break
+            except Exception as e:
+                print(f"Erreur lecture aperçu CSV (glisser/déposer): {e}")
+                sample_data = []
+            
             # Extraire le nom du fichier sans extension pour la référence de pièce
             import os
             filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
             
-            # Dialogue pour choisir le type d'import (avec référence pré-remplie)
-            import_type, ref_piece, third_column_choice, has_headers = self._get_import_options(detected_columns, filename_without_ext)
+            # Dialogue unifié pour choisir le type d'import (avec référence pré-remplie et aperçu)
+            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV", sample_data)
             if import_type is None:
                 return
             
