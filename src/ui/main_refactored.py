@@ -3695,22 +3695,8 @@ class MainWindow(QMainWindow):
                     if detected_columns is None:
                         return
                     
-                    # Lire quelques lignes d'exemple pour l'aperçu
-                    sample_data = []
-                    try:
-                        encoding = self._detect_file_encoding(filename)
-                        separator = self._detect_separator(filename)
-                        
-                        with open(filename, 'r', encoding=encoding) as file:
-                            reader = csv.reader(file, delimiter=separator)
-                            for i, row in enumerate(reader):
-                                if i < 3 and row:  # Maximum 3 lignes pour l'aperçu
-                                    sample_data.append(row)
-                                elif i >= 3:
-                                    break
-                    except Exception as e:
-                        print(f"Erreur lecture aperçu CSV: {e}")
-                        sample_data = []
+                    # Préparer l'aperçu des données
+                    sample_data = self._prepare_csv_sample_data(filename)
                     
                     # Extraire le nom du fichier sans extension pour la référence de pièce
                     filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
@@ -3755,16 +3741,7 @@ class MainWindow(QMainWindow):
                     # Créer une barre de progression pour les gros imports
                     progress_dialog = None
                     if len(imported_data) >= 1000:
-                        progress_dialog = QProgressDialog(
-                            f"Traitement des lignes... 0 / {len(imported_data)}",
-                            "Annuler",
-                            0, len(imported_data),
-                            self
-                        )
-                        progress_dialog.setWindowTitle("Import CSV")
-                        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-                        progress_dialog.show()
-                        QApplication.processEvents()
+                        progress_dialog = self._create_progress_dialog("Import CSV", len(imported_data), "Traitement des lignes... {} / {} lignes")
                     
                     # Traiter l'import
                     results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog, libelle_piece)
@@ -4003,6 +3980,41 @@ class MainWindow(QMainWindow):
                         
         except Exception as e:
             return ','  # Default fallback
+    
+    def _create_progress_dialog(self, title, total_items, label_template="Traitement... {} / {} éléments"):
+        """Factory method pour créer des dialogues de progression cohérents"""
+        from PyQt5.QtWidgets import QProgressDialog
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtWidgets import QApplication
+        
+        progress_dialog = QProgressDialog(
+            label_template.format(0, total_items),
+            "Annuler", 0, total_items, self
+        )
+        progress_dialog.setWindowTitle(title)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        progress_dialog.show()
+        QApplication.processEvents()
+        return progress_dialog
+    
+    def _prepare_csv_sample_data(self, file_path, max_lines=3):
+        """Préparer les données d'exemple pour l'aperçu CSV"""
+        sample_data = []
+        try:
+            import csv
+            encoding = self._detect_file_encoding(file_path)
+            separator = self._detect_separator(file_path)
+            
+            with open(file_path, 'r', encoding=encoding) as file:
+                reader = csv.reader(file, delimiter=separator)
+                for i, row in enumerate(reader):
+                    if i < max_lines and row:
+                        sample_data.append(row)
+                    elif i >= max_lines:
+                        break
+        except Exception as e:
+            print(f"Erreur lecture aperçu CSV: {e}")
+        return sample_data
     
     def _detect_column_mapping(self, sample_data):
         """Détecter automatiquement l'ordre des colonnes en analysant le contenu"""
@@ -5313,22 +5325,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if detected_columns is None:
                 return
             
-            # Lire quelques lignes d'exemple pour l'aperçu
-            sample_data = []
-            try:
-                encoding = self._detect_file_encoding(file_path)
-                separator = self._detect_separator(file_path)
-                
-                with open(file_path, 'r', encoding=encoding) as file:
-                    reader = csv.reader(file, delimiter=separator)
-                    for i, row in enumerate(reader):
-                        if i < 3 and row:  # Maximum 3 lignes pour l'aperçu
-                            sample_data.append(row)
-                        elif i >= 3:
-                            break
-            except Exception as e:
-                print(f"Erreur lecture aperçu CSV (glisser/déposer): {e}")
-                sample_data = []
+            # Préparer l'aperçu des données
+            sample_data = self._prepare_csv_sample_data(file_path)
             
             # Extraire le nom du fichier sans extension pour la référence de pièce
             import os
@@ -5410,14 +5408,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Créer une barre de progression pour l'import PDF
             total_files = len(file_paths)
-            progress_dialog = QProgressDialog(
-                f"Import PDF en cours... 0 / {total_files} fichier(s)",
-                "Annuler",
-                0, total_files,
-                self
-            )
-            progress_dialog.setWindowTitle("Import PDF")
-            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            progress_dialog = self._create_progress_dialog("Import PDF", total_files, "Import PDF en cours... {} / {} fichier(s)")
             progress_dialog.show()
             QApplication.processEvents()  # Forcer l'affichage
             
