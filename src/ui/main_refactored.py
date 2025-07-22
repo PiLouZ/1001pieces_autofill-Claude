@@ -6440,22 +6440,37 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if self.table.rowCount() == 0:
                 return None
             
-            # Extraire les données des résultats de recherche
+            # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
+            # (Pas seulement ceux visibles dans le tableau)
             types_appareil = set()
             fabricants = set()
             
-            # Parcourir les résultats visibles pour extraire les informations
-            for row in range(min(self.table.rowCount(), 20)):  # Limiter à 20 lignes pour perf
-                if not self.table.isRowHidden(row):
-                    # Type appareil (colonne 0)
-                    type_item = self.table.item(row, 0)
-                    if type_item and type_item.text().strip():
-                        types_appareil.add(type_item.text().strip())
-                    
-                    # Fabricant (colonne 1)
-                    fabricant_item = self.table.item(row, 1)
-                    if fabricant_item and fabricant_item.text().strip():
-                        fabricants.add(fabricant_item.text().strip())
+            # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
+            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
+            
+            try:
+                all_data = self.db_manager.execute_custom_query(fabricants_query, [search_term])
+                for type_val, manufacturer in all_data:
+                    if type_val and type_val.strip():
+                        types_appareil.add(type_val.strip())
+                    if manufacturer and manufacturer.strip():
+                        fabricants.add(manufacturer.strip())
+                        
+            except Exception as e:
+                app_logger.error(f"Erreur récupération fabricants pour {search_term}: {e}")
+                
+                # Fallback: utiliser les données visibles du tableau si la requête échoue
+                for row in range(min(self.table.rowCount(), 20)):
+                    if not self.table.isRowHidden(row):
+                        # Type appareil (colonne 0)
+                        type_item = self.table.item(row, 0)
+                        if type_item and type_item.text().strip():
+                            types_appareil.add(type_item.text().strip())
+                        
+                        # Fabricant (colonne 1)
+                        fabricant_item = self.table.item(row, 1)
+                        if fabricant_item and fabricant_item.text().strip():
+                            fabricants.add(fabricant_item.text().strip())
             
             # Utiliser la référence de recherche et la vraie description de la pièce
             reference = search_term
