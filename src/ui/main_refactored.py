@@ -548,22 +548,22 @@ class DragHandle(QWidget):
                 self.main_window._save_drag_changes()
     
     def _find_fill_end_row(self, selection, start_row):
-        """Trouver la dernière ligne à remplir (s'arrêter aux cellules vides)"""
+        """Trouver la dernière ligne à remplir (tant que les cellules sont vides dans la sélection)"""
         # Regarder dans toutes les colonnes de la sélection
         for row in range(start_row, self.table.rowCount()):
-            # Vérifier si toutes les cellules de cette ligne sont vides
-            all_empty = True
+            # Vérifier si TOUTES les cellules de cette ligne dans la sélection sont vides
+            has_non_empty = False
             for col in range(selection.leftColumn(), selection.rightColumn() + 1):
                 item = self.table.item(row, col)
                 if item and item.text().strip():
-                    all_empty = False
+                    has_non_empty = True
                     break
             
-            # Si on trouve une ligne complètement vide, s'arrêter avant
-            if all_empty:
+            # Si on trouve une cellule non-vide, s'arrêter avant cette ligne
+            if has_non_empty:
                 return row - 1
         
-        # Si aucune ligne vide trouvée, aller jusqu'à la fin du tableau
+        # Si toutes les lignes jusqu'à la fin sont vides, aller jusqu'à la fin du tableau
         return self.table.rowCount() - 1
     
     def _check_auto_scroll(self, event):
