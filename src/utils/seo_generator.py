@@ -193,14 +193,12 @@ class SEOGenerator:
                 break
         
         if not result_fabricants:
-            # Au moins essayer de mettre le premier fabricant même tronqué
-            first_fabricant = unique_fabricants[0][:available_space-3] + "..."
-            return first_fabricant if len(first_fabricant) > 3 else ""
+            # Au moins essayer de mettre le premier fabricant même tronqué (sans ...)
+            first_fabricant = unique_fabricants[0][:available_space]
+            return first_fabricant if len(first_fabricant) > 0 else ""
         
-        # Ajouter "..." si on n'a pas pu tous les inclure  
+        # Pas de "..." - juste utiliser l'espace au maximum
         result_str = " ".join(result_fabricants)  # Espaces au lieu de virgules
-        if len(result_fabricants) < len(unique_fabricants) and current_length + 3 <= available_space:
-            result_str += "..."
         
         return result_str
     
@@ -239,12 +237,10 @@ class SEOGenerator:
                 break
         
         if not result_fabricants:
-            first_fabricant = unique_fabricants[0][:available_space-3] + "..."
-            return first_fabricant if len(first_fabricant) > 3 else ""
+            first_fabricant = unique_fabricants[0][:available_space]
+            return first_fabricant if len(first_fabricant) > 0 else ""
         
-        result_str = " ".join(result_fabricants)  # Espaces au lieu de virgules
-        if len(result_fabricants) < len(unique_fabricants) and current_length + 3 <= available_space:
-            result_str += "..."
+        result_str = " ".join(result_fabricants)  # Espaces au lieu de virgules, sans ...
             
         return result_str
     
@@ -270,25 +266,25 @@ class SEOGenerator:
                 current_title = current_title.replace(original, replacement)
                 current_title = current_title.replace(original.capitalize(), replacement)
         
-        # Si toujours trop long, tronquer avec ellipse
+        # Si toujours trop long, tronquer sans ellipse (gagner 3 chars)
         if len(current_title) > max_length:
-            current_title = current_title[:max_length-3] + "..."
+            current_title = current_title[:max_length]
         
         return current_title
     
     def _smart_truncate_description(self, description: str, max_length: int) -> str:
-        """Troncature intelligente pour la description"""
+        """Troncature intelligente pour la description (sans ellipse)"""
         if len(description) <= max_length:
             return description
         
         # Tronquer au dernier mot complet avant la limite
-        truncated = description[:max_length-3]
+        truncated = description[:max_length]
         last_space = truncated.rfind(' ')
         
         if last_space > 0:
             truncated = truncated[:last_space]
         
-        return truncated + "..."
+        return truncated  # Sans "..." pour gagner 3 caractères
     
     def get_random_description_variant(self, reference: str, description: str, 
                                      type_appareil: str, fabricants: List[str], 
