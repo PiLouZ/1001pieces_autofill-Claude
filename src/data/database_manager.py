@@ -606,6 +606,22 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors du comptage: {e}")
     
+    def count_incomplete_devices(self) -> int:
+        """Compter le nombre d'appareils nécessitant une complétion manuelle"""
+        try:
+            query = """
+            SELECT COUNT(*) FROM appareils a 
+            WHERE (a.type IS NULL OR a.type = '') AND (a.manufacturer IS NULL OR a.manufacturer = '')
+            """
+            self.cursor.execute(query)
+            return self.cursor.fetchone()[0]
+        except sqlite3.Error as e:
+            print(f"Erreur lors du comptage des appareils incomplets: {e}")
+            raise DatabaseError(f"Erreur lors du comptage: {e}")
+        except Exception as e:
+            print(f"Erreur lors du comptage des appareils incomplets: {e}")
+            return 0
+    
     def update_cell(self, db_id: int, column: str, value: str) -> bool:
         """Mettre à jour une cellule spécifique"""
         try:

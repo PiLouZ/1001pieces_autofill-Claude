@@ -102,9 +102,9 @@ class Config:
     # Requêtes SQL fréquentes
     QUERIES = {
         'select_all': "SELECT id, {headers} FROM appareils",
-        'search_condition': "({search_fields}) OR a.id IN (SELECT appareil_id FROM pieces WHERE ref_piece LIKE ?)",
+        'search_condition': "({search_fields}) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)",
         'duplicate_check': "SELECT COUNT(*) FROM appareils WHERE ref_modele = ? OR commercial_ref = ? OR other_ref = ?",
-        'orphaned_pieces': "SELECT COUNT(*) FROM pieces WHERE appareil_id NOT IN (SELECT id FROM appareils)",
+        'orphaned_pieces': "SELECT COUNT(*) FROM pieces WHERE id NOT IN (SELECT DISTINCT piece_id FROM piece_associations)",
         'duplicate_refs': """SELECT ref_modele, COUNT(*) as count FROM appareils 
                            WHERE ref_modele IS NOT NULL AND ref_modele != '' 
                            GROUP BY ref_modele HAVING COUNT(*) > 1""",

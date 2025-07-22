@@ -414,7 +414,7 @@ class CleanupPreviewDialog(QDialog):
                 pieces_to_transfer = 0
                 for device in devices_list:
                     if not device['will_keep']:
-                        pieces_query = "SELECT COUNT(*) FROM pieces WHERE appareil_id = ?"
+                        pieces_query = "SELECT COUNT(*) FROM piece_associations WHERE appareil_id = ?"
                         result = self.parent_window.db_manager.execute_custom_query(pieces_query, [device['id']])
                         if result:
                             pieces_to_transfer += result[0][0]
@@ -496,9 +496,10 @@ class CleanupPreviewDialog(QDialog):
             
             # 3. Analyser les doublons de pièces
             piece_duplicates_query = """
-                SELECT appareil_id, ref_piece, COUNT(*) as count, GROUP_CONCAT(id) as piece_ids
-                FROM pieces 
-                GROUP BY appareil_id, ref_piece 
+                SELECT pa.appareil_id, p.ref_piece, COUNT(*) as count, GROUP_CONCAT(pa.id) as association_ids
+                FROM piece_associations pa
+                JOIN pieces p ON pa.piece_id = p.id
+                GROUP BY pa.appareil_id, p.ref_piece 
                 HAVING COUNT(*) > 1
                 ORDER BY count DESC
             """
@@ -514,7 +515,7 @@ class CleanupPreviewDialog(QDialog):
                     self.progress_bar.setValue(progress)
                     self.progress_label.setText(f"🔧 Traitement pièce {idx+1}/{total_piece_groups}...")
                     self._force_update()
-                appareil_id, ref_piece, count, piece_ids = row
+                appareil_id, ref_piece, count, association_ids = row
                 
                 # Récupérer les infos de l'appareil
                 device_query = "SELECT type, manufacturer, ref_modele FROM appareils WHERE id = ?"

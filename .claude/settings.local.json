@@ -42,7 +42,10 @@
       "Bash(done)",
       "Bash(pip install:*)",
       "Bash(git log:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(git merge:*)",
+      "Bash(git config:*)",
+      "Bash(cut:*)"
     ],
     "deny": []
   }

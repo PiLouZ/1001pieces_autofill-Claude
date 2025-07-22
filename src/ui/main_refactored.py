@@ -4779,8 +4779,11 @@ class MainWindow(QMainWindow):
         matches_found = results.get('matches_found', 0)
         summary += f"  ==> Mis à jour : {matches_found}\n"
         
-        manual_completion = results.get('manual_completion', 0)
-        summary += f"  ==> À compléter : {manual_completion}\n"
+        # Compter seulement les appareils nouvellement créés qui nécessitent une complétion
+        new_entries = results.get('new_entries', 0)  
+        # On estime que les appareils créés sans type/manufacturer nécessitent une complétion
+        newly_incomplete = results.get('newly_incomplete', 0) if results.get('newly_incomplete', 0) > 0 else new_entries
+        summary += f"  ==> À compléter : {newly_incomplete}\n"
         
         # Associations
         summary += f"Associations créées : {results.get('associations_created', 0)}\n"
@@ -4789,30 +4792,6 @@ class MainWindow(QMainWindow):
         duplicates_skipped = results.get('duplicates_skipped', 0)
         summary += f"Associations déjà existantes : {duplicates_skipped}"
         
-        # Ajouter un résumé de vérification
-        associations_created = results.get('associations_created', 0)
-        total_processed = results.get('new_entries', 0) + results.get('matches_found', 0)
-        if duplicates_skipped > 0:
-            summary += f"\n{associations_created} + {duplicates_skipped} = {associations_created + duplicates_skipped}"
-        
-        # Vérification post-import du nombre réel d'associations
-        if hasattr(self, 'last_imported_piece_ref'):
-            try:
-                actual_count_query = """
-                SELECT COUNT(*) FROM piece_associations pa
-                JOIN pieces p ON pa.piece_id = p.id 
-                WHERE p.ref_piece = ?
-                """
-                actual_result = self.db_manager.execute_query(actual_count_query, [self.last_imported_piece_ref])
-                actual_associations = actual_result[0][0] if actual_result else 0
-                summary += f"\n🔍 Vérification: {actual_associations} associations réelles en base"
-                
-                expected_total = associations_created + duplicates_skipped
-                if actual_associations != expected_total:
-                    summary += f"\n⚠️ DISCORDANCE: {expected_total} attendues vs {actual_associations} réelles!"
-                    
-            except Exception as e:
-                summary += f"\n❌ Erreur vérification: {e}"
         
         return summary
 
