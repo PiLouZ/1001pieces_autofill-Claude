@@ -316,13 +316,15 @@ class CleanupPreviewDialog(QDialog):
             self.progress_label.setText("📱 Recherche des appareils en doublon (exact)...")
             self._force_update()
             
-            # D'abord les doublons exacts (ancienne logique)
+            # D'abord les vrais doublons (colonnes C et D identiques)
             duplicates_query = """
-                SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, 
-                       GROUP_CONCAT(id || '|' || COALESCE(notes, '')) as devices_info, 
+                SELECT ref_modele, commercial_ref,
+                       GROUP_CONCAT(id || '|' || COALESCE(type, '') || '|' || COALESCE(manufacturer, '') || '|' || COALESCE(other_ref, '') || '|' || COALESCE(notes, '')) as devices_info, 
                        MIN(id) as keep_id, COUNT(*) as count
                 FROM appareils 
-                GROUP BY type, manufacturer, ref_modele, commercial_ref, other_ref 
+                WHERE ref_modele IS NOT NULL AND ref_modele != '' 
+                  AND commercial_ref IS NOT NULL AND commercial_ref != ''
+                GROUP BY ref_modele, commercial_ref 
                 HAVING COUNT(*) > 1
                 ORDER BY count DESC
             """
@@ -396,19 +398,35 @@ class CleanupPreviewDialog(QDialog):
                     self.progress_bar.setValue(progress)
                     self.progress_label.setText(f"📊 Traitement groupe {idx+1}/{total_groups}...")
                     self._force_update()
-                type_val, manufacturer, ref_modele, commercial_ref, other_ref, devices_info, keep_id, count = row
+                ref_modele, commercial_ref, devices_info, keep_id, count = row
                 
-                # Parser les informations des appareils
+                # Parser les informations des appareils (format: id|type|manufacturer|other_ref|notes)
                 devices_list = []
                 if devices_info:
                     for device_str in devices_info.split(','):
                         if '|' in device_str:
-                            device_id, notes = device_str.split('|', 1)
-                            devices_list.append({
-                                'id': int(device_id),
-                                'notes': notes or '',
-                                'will_keep': int(device_id) == keep_id
-                            })
+                            parts = device_str.split('|')
+                            if len(parts) >= 5:
+                                device_id, type_val, manufacturer, other_ref, notes = parts[:5]
+                                devices_list.append({
+                                    'id': int(device_id),
+                                    'type': type_val or '',
+                                    'manufacturer': manufacturer or '',
+                                    'other_ref': other_ref or '',
+                                    'notes': notes or '',
+                                    'will_keep': int(device_id) == keep_id
+                                })
+                
+                # Trouver l'appareil qu'on garde pour utiliser ses infos
+                kept_device = None
+                for device in devices_list:
+                    if device['will_keep']:
+                        kept_device = device
+                        break
+                
+                # Si pas trouvé, prendre le premier
+                if not kept_device and devices_list:
+                    kept_device = devices_list[0]
                 
                 # Compter les pièces à transférer pour ce groupe
                 pieces_to_transfer = 0
@@ -420,11 +438,11 @@ class CleanupPreviewDialog(QDialog):
                             pieces_to_transfer += result[0][0]
                 
                 group_info = {
-                    'type': clean_display_text(type_val),
-                    'manufacturer': clean_display_text(manufacturer),
+                    'type': clean_display_text(kept_device['type'] if kept_device else ''),
+                    'manufacturer': clean_display_text(kept_device['manufacturer'] if kept_device else ''),
                     'ref_modele': clean_display_text(ref_modele),
                     'commercial_ref': clean_display_text(commercial_ref),
-                    'other_ref': clean_display_text(other_ref),
+                    'other_ref': clean_display_text(kept_device['other_ref'] if kept_device else ''),
                     'devices': devices_list,
                     'keep_id': keep_id,
                     'pieces_to_transfer': pieces_to_transfer
