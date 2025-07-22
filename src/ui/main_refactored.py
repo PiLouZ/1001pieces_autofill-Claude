@@ -3699,14 +3699,18 @@ class MainWindow(QMainWindow):
                     sample_data = []
                     try:
                         encoding = self._detect_file_encoding(filename)
+                        separator = self._detect_separator(filename)
+                        print(f"🔍 DEBUG CSV aperçu: encoding={encoding}, separator='{separator}'")
+                        
                         with open(filename, 'r', encoding=encoding) as file:
-                            separator = self._detect_separator(filename)
                             reader = csv.reader(file, delimiter=separator)
                             for i, row in enumerate(reader):
                                 if i < 3 and row:  # Maximum 3 lignes pour l'aperçu
+                                    print(f"🔍 DEBUG CSV ligne {i}: {row}")
                                     sample_data.append(row)
                                 elif i >= 3:
                                     break
+                        print(f"🔍 DEBUG CSV sample_data final: {len(sample_data)} lignes - {sample_data}")
                     except Exception as e:
                         print(f"Erreur lecture aperçu CSV: {e}")
                         sample_data = []
