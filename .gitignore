@@ -61,3 +61,4 @@ config/user_settings.json
 build/
 dist/
 *.egg-info/data/appareils.db
+data/appareils.db

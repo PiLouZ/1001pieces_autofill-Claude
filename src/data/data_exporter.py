@@ -44,7 +44,9 @@ class DataExporter:
         }
     
     def export_search_results(self, search_term: str, export_format: ExportFormat, 
-                            filename: Optional[str] = None) -> str:
+                            filename: Optional[str] = None, 
+                            column_filters: Optional[Dict[int, str]] = None,
+                            incomplete_filter: bool = False) -> str:
         """Exporter les résultats de recherche dans le format spécifié"""
         if not self.db_manager:
             raise ExportError("Gestionnaire de base de données non initialisé")
@@ -53,8 +55,8 @@ class DataExporter:
             raise ExportError("Terme de recherche requis pour l'export")
         
         try:
-            # Récupérer les données
-            data = self.db_manager.get_export_data(search_term)
+            # Récupérer les données avec les mêmes filtres que l'affichage
+            data = self.db_manager.get_export_data(search_term, column_filters, incomplete_filter)
             
             if not data:
                 raise ExportError(f"Aucune donnée trouvée pour le terme: {search_term}")

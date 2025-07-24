@@ -617,11 +617,11 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors du comptage: {e}")
     
     def count_incomplete_devices(self) -> int:
-        """Compter le nombre d'appareils nécessitant une complétion manuelle"""
+        """Compter le nombre d'appareils où colonne A et/ou B est vide"""
         try:
             query = """
             SELECT COUNT(*) FROM appareils a 
-            WHERE (a.type IS NULL OR a.type = '') AND (a.manufacturer IS NULL OR a.manufacturer = '')
+            WHERE (a.type IS NULL OR a.type = '') OR (a.manufacturer IS NULL OR a.manufacturer = '')
             """
             self.cursor.execute(query)
             return self.cursor.fetchone()[0]
@@ -646,6 +646,38 @@ class DatabaseManager:
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la mise à jour: {e}")
+    
+    def update_multiple_cells_batch(self, updates_by_db_id: Dict[int, Dict[str, str]]) -> bool:
+        """Mettre à jour plusieurs cellules en une seule transaction optimisée"""
+        try:
+            # Commencer une transaction unique
+            self.cursor.execute("BEGIN TRANSACTION")
+            
+            for db_id, column_updates in updates_by_db_id.items():
+                if column_updates:  # Vérifier qu'il y a des mises à jour
+                    # Construire la requête UPDATE avec toutes les colonnes pour cette ligne
+                    set_clauses = []
+                    values = []
+                    
+                    for column, value in column_updates.items():
+                        set_clauses.append(f"[{column}] = ?")
+                        values.append(value)
+                    
+                    # Ajouter la mise à jour du timestamp
+                    set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+                    values.append(db_id)  # Pour la clause WHERE
+                    
+                    query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
+                    self.cursor.execute(query, values)
+            
+            # Valider la transaction
+            self.conn.commit()
+            return True
+            
+        except sqlite3.Error as e:
+            # Annuler la transaction en cas d'erreur
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors de la mise à jour par lots: {e}")
     
     def insert_appareil(self, data: Dict[str, Any]) -> int:
         """Insérer un nouvel appareil"""
@@ -1331,18 +1363,44 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la validation: {e}")
     
-    def get_export_data(self, search_term: str) -> List[Tuple]:
-        """Récupérer les données pour l'export"""
+    def get_export_data(self, search_term: str, 
+                       column_filters: Optional[Dict[int, str]] = None,
+                       incomplete_filter: bool = False) -> List[Tuple]:
+        """Récupérer les données pour l'export - utilise exactement la même logique que load_data()"""
         try:
+            # Pour l'export, on veut seulement la pièce recherchée (pas toutes les pièces associées)
             query = f"""
-                SELECT a.{', '.join(f'[{h}]' for h in Config.DB_HEADERS[:5])}, p.ref_piece
+                SELECT a.{', '.join(f'[{h}]' for h in Config.DB_HEADERS[:5])}, ? as ref_piece
                 FROM appareils a
                 LEFT JOIN piece_associations pa ON a.id = pa.appareil_id
                 LEFT JOIN pieces p ON pa.piece_id = p.id
-                WHERE {' OR '.join(f'[{h}] LIKE ?' for h in Config.DB_HEADERS)}
-                OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)
             """
-            params = [f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1)
+            # Paramètres : d'abord la référence de pièce fixe, puis les conditions de recherche
+            params = [search_term]
+            conditions = []
+            
+            # Pour l'export, on ne veut que les appareils associés à la pièce recherchée
+            if search_term:
+                # Condition pour filtrer les appareils associés à cette pièce spécifique
+                piece_condition = "p.ref_piece = ?"
+                conditions.append(piece_condition)
+                params.append(search_term)
+            
+            # Filtres par colonne (comme dans load_data)
+            if column_filters:
+                for col_idx, filter_text in column_filters.items():
+                    if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
+                        conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
+                        params.append(f"%{filter_text}%")
+            
+            # Filtre pour les lignes incomplètes (comme dans load_data)
+            if incomplete_filter:
+                incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
+                conditions.append(incomplete_condition)
+            
+            # Ajouter les conditions WHERE si nécessaire
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
             
             self.cursor.execute(query, params)
             return self.cursor.fetchall()

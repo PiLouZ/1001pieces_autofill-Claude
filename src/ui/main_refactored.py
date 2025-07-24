@@ -57,13 +57,21 @@ class CustomTableWidget(QTableWidget):
         
         # Popup avec liste complète via Cmd+D (ou Ctrl+D sur Windows/Linux)
         if event.key() == Qt.Key_D and (event.modifiers() & Qt.MetaModifier or event.modifiers() & Qt.ControlModifier):
-            self._show_completion_popup()
+            # Récupérer le texte en cours d'édition si possible
+            current_editor_text = None
+            if self.state() == QTableWidget.EditingState:
+                # La table est en mode édition, récupérer le texte de l'éditeur actuel
+                focus_widget = QApplication.focusWidget()
+                if focus_widget and hasattr(focus_widget, 'text'):
+                    current_editor_text = focus_widget.text()
+            
+            self._show_completion_popup(current_editor_text)
             return
         
         # Appeler la méthode parent pour les autres touches
         super().keyPressEvent(event)
     
-    def _show_completion_popup(self):
+    def _show_completion_popup(self, editor_text=None):
         """Afficher popup avec auto-complétion avancée via Cmd+D"""
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem
         
@@ -97,7 +105,14 @@ class CustomTableWidget(QTableWidget):
         # Champ de recherche
         search_input = QLineEdit()
         search_input.setPlaceholderText(f"Tapez pour filtrer les {column_name.lower()}s...")
-        search_input.setText(current_item.text())  # Préremplir avec la valeur actuelle
+        
+        # Utiliser le texte de l'éditeur s'il est fourni, sinon le texte sauvegardé
+        if editor_text is not None:
+            current_text = editor_text
+        else:
+            current_text = current_item.text()
+        
+        search_input.setText(current_text)
         layout.addWidget(search_input)
         
         # Liste des suggestions
@@ -297,6 +312,10 @@ class DragHandle(QWidget):
         self.auto_scroll_timer = None
         self.auto_scroll_direction = None
         self.auto_scroll_zone = 50  # pixels depuis le bord pour déclencher le défilement
+        
+        # Variables pour optimiser les performances
+        self.last_update_time = 0
+        self.update_throttle_ms = 50  # Limite les mises à jour à 20 FPS
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -326,6 +345,13 @@ class DragHandle(QWidget):
     def mouseMoveEvent(self, event):
         if not self.dragging or not self.orig_selection or self.table.rowCount() == 0:
             return
+
+        # Throttle des mises à jour pour éviter les gels
+        import time
+        current_time = time.time() * 1000
+        if current_time - self.last_update_time < self.update_throttle_ms:
+            return
+        self.last_update_time = current_time
 
         # Stocker la position actuelle pour la duplication continue
         self.last_mouse_pos = event.globalPos()
@@ -860,6 +886,9 @@ class MainWindow(QMainWindow):
         # Nous implémenterons notre propre tri via la base de données
         self.table.setSortingEnabled(False)
         
+        # Activer les indicateurs de tri dans les en-têtes
+        self.table.horizontalHeader().setSortIndicatorShown(True)
+        
         # Variables pour le tri manuel
         self.current_sort_column = -1
         self.current_sort_order = Qt.SortOrder.DescendingOrder  # Par défaut: ID DESC
@@ -1167,7 +1196,7 @@ class MainWindow(QMainWindow):
         pagination_layout.addWidget(size_label)
         
         self.page_size_combo = QComboBox()
-        self.page_size_combo.addItems(["500", "1000", "2000", "5000", "Tout"])
+        self.page_size_combo.addItems(["500", "1000", "2000", "5000", "10000", "Tout"])
         self.page_size_combo.setCurrentText(str(Config.DEFAULT_PAGE_SIZE))
         self.page_size_combo.currentTextChanged.connect(self._change_page_size)
         pagination_layout.addWidget(self.page_size_combo)
@@ -1621,11 +1650,8 @@ class MainWindow(QMainWindow):
     def _apply_database_sort(self):
         """Appliquer le tri via une nouvelle requête SQL"""
         try:
-            # Mettre à jour l'indicateur visuel de tri
-            self.table.horizontalHeader().setSortIndicator(
-                self.current_sort_column, 
-                self.current_sort_order
-            )
+            # Mettre à jour les indicateurs visuels de tri avec des flèches Unicode
+            self._update_sort_indicators()
             
             # Recharger les données avec le nouveau tri
             # Utiliser la recherche parsée actuelle
@@ -1634,6 +1660,28 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             app_logger.error(f"Erreur lors de l'application du tri: {e}")
+    
+    def _update_sort_indicators(self):
+        """Mettre à jour les indicateurs de tri dans les en-têtes avec des flèches Unicode"""
+        try:
+            # Récupérer les en-têtes originaux sans flèches
+            original_headers = Config.DB_HEADERS + ["Nb Pièces"]
+            
+            # Mettre à jour tous les en-têtes
+            for col_idx, header_text in enumerate(original_headers):
+                if col_idx == self.current_sort_column:
+                    # Ajouter la flèche appropriée
+                    if self.current_sort_order == Qt.SortOrder.AscendingOrder:
+                        header_with_arrow = f"{header_text} ↑"
+                    else:
+                        header_with_arrow = f"{header_text} ↓"
+                    self.table.horizontalHeaderItem(col_idx).setText(header_with_arrow)
+                else:
+                    # Enlever toute flèche existante
+                    self.table.horizontalHeaderItem(col_idx).setText(header_text)
+                    
+        except Exception as e:
+            app_logger.error(f"Erreur mise à jour indicateurs tri: {e}")
     
     def _get_modern_style(self) -> str:
         """Retourne le CSS moderne dans l'esprit Bootstrap"""
@@ -1664,6 +1712,17 @@ class MainWindow(QMainWindow):
         
         QHeaderView::section:hover {
             background-color: #dee2e6;
+        }
+        
+        /* Indicateurs de tri dans les en-têtes - Utilisera des caractères Unicode */
+        QHeaderView::up-arrow {
+            width: 0px;
+            height: 0px;
+        }
+        
+        QHeaderView::down-arrow {
+            width: 0px;
+            height: 0px;
         }
         
         /* Boutons modernes */
@@ -2131,7 +2190,9 @@ class MainWindow(QMainWindow):
             app_logger.error(f"Erreur basculement affichage: {e}")
     
     def _navigate_to_empty_cell(self, direction='down'):
-        """Naviguer vers la prochaine cellule vide dans la colonne actuelle"""
+        """Navigation intelligente : 
+        - Si sur case vide → aller à la case pleine la plus proche
+        - Si sur case pleine → aller à la case vide la plus proche"""
         try:
             current_item = self.table.currentItem()
             if not current_item:
@@ -2140,17 +2201,27 @@ class MainWindow(QMainWindow):
             current_row = self.table.currentRow()
             current_col = self.table.currentColumn()
             
+            # Déterminer si la cellule actuelle est vide ou pleine
+            current_text = current_item.text().strip()
+            is_current_empty = not current_text
+            
             # Rechercher dans la direction spécifiée
             if direction == 'down':
                 # Chercher vers le bas
                 for row in range(current_row + 1, self.table.rowCount()):
                     item = self.table.item(row, current_col)
-                    if not item or not item.text().strip():
+                    item_text = item.text().strip() if item else ""
+                    is_target_empty = not item_text
+                    
+                    # Si on est sur une case vide, chercher une case pleine
+                    # Si on est sur une case pleine, chercher une case vide
+                    if (is_current_empty and not is_target_empty) or (not is_current_empty and is_target_empty):
                         self.table.setCurrentCell(row, current_col)
-                        self.table.editItem(self.table.item(row, current_col) or QTableWidgetItem(""))
+                        if is_target_empty:  # Si on navigue vers une case vide, l'éditer
+                            self.table.editItem(self.table.item(row, current_col) or QTableWidgetItem(""))
                         return
                         
-                # Si aucune cellule vide trouvée, aller à la fin
+                # Si aucune cellule appropriée trouvée, aller à la fin
                 last_row = self.table.rowCount() - 1
                 if last_row >= 0:
                     self.table.setCurrentCell(last_row, current_col)
@@ -2159,16 +2230,23 @@ class MainWindow(QMainWindow):
                 # Chercher vers le haut
                 for row in range(current_row - 1, -1, -1):
                     item = self.table.item(row, current_col)
-                    if not item or not item.text().strip():
+                    item_text = item.text().strip() if item else ""
+                    is_target_empty = not item_text
+                    
+                    # Si on est sur une case vide, chercher une case pleine
+                    # Si on est sur une case pleine, chercher une case vide
+                    if (is_current_empty and not is_target_empty) or (not is_current_empty and is_target_empty):
                         self.table.setCurrentCell(row, current_col)
-                        self.table.editItem(self.table.item(row, current_col) or QTableWidgetItem(""))
+                        if is_target_empty:  # Si on navigue vers une case vide, l'éditer
+                            self.table.editItem(self.table.item(row, current_col) or QTableWidgetItem(""))
                         return
                         
-                # Si aucune cellule vide trouvée, aller au début
-                self.table.setCurrentCell(0, current_col)
+                # Si aucune cellule appropriée trouvée, aller au début
+                if self.table.rowCount() > 0:
+                    self.table.setCurrentCell(0, current_col)
                 
         except Exception as e:
-            app_logger.error(f"Erreur navigation cellule vide: {e}")
+            app_logger.error(f"Erreur navigation cellule: {e}")
     
     def _show_column_values_list(self):
         """Afficher une liste des valeurs existantes dans la colonne courante (Cmd+D)"""
@@ -2400,7 +2478,19 @@ class MainWindow(QMainWindow):
             return
         
         try:
-            result = self.exporter.export_search_results(search_term, export_format)
+            # Récupérer les filtres de colonnes actifs
+            column_filters = {}
+            for col_idx, filter_widget in self.filter_widgets.items():
+                filter_text = filter_widget.text().strip()
+                if filter_text:
+                    column_filters[col_idx] = filter_text
+            
+            # Récupérer le filtre des lignes incomplètes si activé
+            incomplete_filter = getattr(self, 'show_incomplete_only', False)
+            
+            result = self.exporter.export_search_results(search_term, export_format, 
+                                                       column_filters=column_filters, 
+                                                       incomplete_filter=incomplete_filter)
             
             if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
                 # Copier dans le presse-papiers
@@ -2631,14 +2721,16 @@ class MainWindow(QMainWindow):
         self.search_timer.stop()
         self.search_timer.start(300)  # Attendre 300ms avant de lancer la recherche
         
-        # Activer/désactiver les boutons d'export immédiatement
+        # Activer/désactiver les boutons d'export et SEO uniquement pour les références de pièce
         has_search = bool(search_term)
-        self.export_csv_btn.setEnabled(has_search)
-        self.export_html_brands_btn.setEnabled(has_search)
-        self.export_html_details_btn.setEnabled(has_search)
-        
-        # Activer/désactiver les boutons SEO uniquement pour les références de pièce
         is_piece_search = has_search and self._is_piece_reference_search()
+        
+        # Tous les boutons d'export nécessitent une référence de pièce
+        self.export_csv_btn.setEnabled(is_piece_search)
+        self.export_html_brands_btn.setEnabled(is_piece_search)
+        self.export_html_details_btn.setEnabled(is_piece_search)
+        
+        # Boutons SEO également limités aux références de pièce
         self.meta_title_btn.setEnabled(is_piece_search)
         self.meta_desc_btn.setEnabled(is_piece_search)
     
@@ -2648,15 +2740,49 @@ class MainWindow(QMainWindow):
             self.load_data(self.pending_search_term, is_search=True)
 
     def _auto_save(self):
-        """Sauvegarde automatique"""
+        """Sauvegarde automatique optimisée par lots"""
         if not self.modified_cells:
             return
         
         try:
+            # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
+            updates_by_db_id = {}
+            
             for row, col in list(self.modified_cells):
                 item = self.table.item(row, col)
                 if item:
-                    self._update_cell_in_db(item)
+                    db_id = item.data(Qt.ItemDataRole.UserRole)
+                    if db_id is None:
+                        db_id = self._get_db_id_from_row(row)
+                    else:
+                        db_id = int(db_id)
+                    
+                    if db_id not in updates_by_db_id:
+                        updates_by_db_id[db_id] = {}
+                    
+                    column_name = self._get_db_field_name(col)
+                    if column_name:
+                        updates_by_db_id[db_id][column_name] = item.text()
+            
+            # Exécuter les mises à jour par lots
+            if updates_by_db_id:
+                self.db_manager.update_multiple_cells_batch(updates_by_db_id)
+                
+            # Mettre à jour les valeurs précédentes et nettoyer modified_cells
+            for row, col in list(self.modified_cells):
+                item = self.table.item(row, col)
+                if item:
+                    self.previous_values[(row, col)] = item.text()
+            
+            self.modified_cells.clear()
+            
+            # Mettre à jour l'indicateur
+            self.save_indicator.setText(Config.get_message('auto_save_done'))
+            self.save_indicator.setStyleSheet("color: green;")
+            
+            # Mettre à jour le bouton incomplète si nécessaire
+            self._update_incomplete_button_visibility()
+            
         except Exception as e:
             self._show_error(f"Erreur lors de la sauvegarde automatique: {e}")
 
@@ -3835,7 +3961,7 @@ class MainWindow(QMainWindow):
                     # Lire le fichier CSV avec détection automatique du séparateur et de l'encodage
                     encoding = self._detect_file_encoding(filename)
                     imported_data = []
-                    with open(filename, 'r', encoding=encoding) as file:
+                    with open(filename, 'r', encoding=encoding, errors='replace') as file:
                         # Lire un échantillon pour détecter le séparateur
                         sample = file.read(1024)
                         file.seek(0)
@@ -3903,7 +4029,7 @@ class MainWindow(QMainWindow):
             # Détecter l'encodage automatiquement
             encoding = self._detect_file_encoding(filename)
             
-            with open(filename, 'r', encoding=encoding) as file:
+            with open(filename, 'r', encoding=encoding, errors='replace') as file:
                 # Lire un échantillon pour détecter le séparateur
                 sample = file.read(1024)
                 file.seek(0)
@@ -3944,25 +4070,37 @@ class MainWindow(QMainWindow):
     
     def _detect_file_encoding(self, filename):
         """Détecter automatiquement l'encodage d'un fichier"""
-        # Encodages courants à tester
-        encodings_to_try = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1', 'utf-16']
+        # Encodages courants à tester dans l'ordre de priorité
+        encodings_to_try = ['utf-8', 'utf-8-sig', 'cp1252', 'latin-1', 'iso-8859-1', 'iso-8859-15', 'windows-1252', 'utf-16']
         
         # D'abord essayer avec chardet si disponible
         try:
             import chardet
             with open(filename, 'rb') as file:
-                raw_data = file.read(10000)  # Lire les premiers 10KB
+                raw_data = file.read(50000)  # Lire plus de données pour une meilleure détection
                 detected = chardet.detect(raw_data)
-                if detected and detected['encoding'] and detected['confidence'] > 0.7:
-                    return detected['encoding']
-        except (ImportError, Exception):
-            pass
+                if detected and detected['encoding'] and detected['confidence'] > 0.5:  # Seuil réduit
+                    encoding = detected['encoding'].lower()
+                    # Mapper certains encodages vers des versions plus compatibles
+                    if encoding in ['windows-1252', 'cp1252']:
+                        return 'cp1252'
+                    elif encoding in ['iso-8859-1', 'latin-1']:
+                        return 'latin-1' 
+                    elif encoding.startswith('utf-8'):
+                        return 'utf-8'
+                    elif encoding.startswith('utf-16'):
+                        return 'utf-16'
+                    else:
+                        return detected['encoding']
+        except (ImportError, Exception) as e:
+            app_logger.debug(f"Chardet non disponible ou erreur: {e}")
         
-        # Sinon, tester manuellement les encodages courants
+        # Sinon, tester manuellement les encodages courants en lisant tout le fichier
         for encoding in encodings_to_try:
             try:
-                with open(filename, 'r', encoding=encoding) as file:
-                    file.read(1000)  # Essayer de lire le début du fichier
+                with open(filename, 'r', encoding=encoding, errors='replace') as file:
+                    file.read()  # Lire tout le fichier pour s'assurer que l'encodage fonctionne
+                    app_logger.debug(f"Encodage détecté avec succès: {encoding}")
                     return encoding
             except UnicodeDecodeError:
                 continue
@@ -3970,6 +4108,7 @@ class MainWindow(QMainWindow):
                 continue
         
         # Par défaut, retourner latin-1 qui peut lire tous les bytes
+        app_logger.warning(f"Aucun encodage détecté pour {filename}, utilisation de latin-1")
         return 'latin-1'
     
     def _detect_separator(self, filename):
@@ -3980,7 +4119,7 @@ class MainWindow(QMainWindow):
             # Détecter l'encodage d'abord
             encoding = self._detect_file_encoding(filename)
             
-            with open(filename, 'r', encoding=encoding) as file:
+            with open(filename, 'r', encoding=encoding, errors='replace') as file:
                 sample = file.read(1024)
                 
                 sniffer = csv.Sniffer()
@@ -4022,7 +4161,7 @@ class MainWindow(QMainWindow):
             encoding = self._detect_file_encoding(file_path)
             separator = self._detect_separator(file_path)
             
-            with open(file_path, 'r', encoding=encoding) as file:
+            with open(file_path, 'r', encoding=encoding, errors='replace') as file:
                 reader = csv.reader(file, delimiter=separator)
                 for i, row in enumerate(reader):
                     if i < max_lines and row:
@@ -4133,8 +4272,14 @@ class MainWindow(QMainWindow):
             'duplicates_skipped': 0,
             'new_entries': 0,
             'associations_created': 0,
-            'descriptions_updated': 0
+            'descriptions_updated': 0,
+            'duplicates_in_file': 0,
+            'auto_completed': 0,
+            'original_line_count': len(imported_data)  # Nombre réel de lignes dans le fichier
         }
+        
+        # Set pour tracker les doublons dans le fichier
+        seen_device_refs = set()
         
         # Note: La détection automatique des colonnes est désactivée pour les PDF
         # Les PDF suivent toujours la logique fixe: col0->ref_modele, col1->commercial_ref, col2->choix utilisateur
@@ -4208,8 +4353,18 @@ class MainWindow(QMainWindow):
                 # Log de la ligne en cours
                 print(f"\n🔵 Ligne {row_idx + 1}: {len(row)} colonnes - {row[:4]}{'...' if len(row) > 4 else ''}")
                 
-                # Chercher l'appareil existant par ses références (colonnes C et D)
-                existing_device = self._find_existing_device_by_refs(ref_modele, commercial_ref)
+                # Vérifier si c'est un doublon dans le fichier
+                # Créer une clé unique basée sur les références principales
+                device_key = f"{ref_modele.strip().lower()}|{commercial_ref.strip().lower()}"
+                if device_key in seen_device_refs and (ref_modele.strip() or commercial_ref.strip()):
+                    results['duplicates_in_file'] += 1
+                    print(f"  🔄 Doublon dans le fichier ignoré - Ligne {row_idx + 1}: {ref_modele} | {commercial_ref}")
+                    continue
+                elif ref_modele.strip() or commercial_ref.strip():
+                    seen_device_refs.add(device_key)
+                
+                # Chercher l'appareil existant par ses références avec logique intelligente
+                existing_device = self._find_existing_device_by_refs(ref_modele, commercial_ref, type_val, manufacturer)
                 
                 if existing_device:
                     # Appareil existant trouvé - compléter avec les infos importées
@@ -4217,19 +4372,20 @@ class MainWindow(QMainWindow):
                     print(f"  ✅ Appareil existant trouvé par combinaison exacte: {ref_modele} + {commercial_ref}")
                     print(f"🔄 Ligne {row_idx + 1}: Appareil existant trouvé (ID: {device_id})")
                     
-                    # Mettre à jour les champs si nécessaire
+                    # Mettre à jour les champs avec les nouvelles valeurs (logique import)
                     updates = {}
-                    if type_val and not existing_device.get('type'):
+                    # Pour les imports, on met à jour si une nouvelle valeur est fournie
+                    if type_val:
                         updates['type'] = type_val
-                    if manufacturer and not existing_device.get('manufacturer'):
+                    if manufacturer:
                         updates['manufacturer'] = manufacturer
-                    if ref_modele and not existing_device.get('ref_modele'):
+                    if ref_modele:
                         updates['ref_modele'] = ref_modele
                     if commercial_ref:
                         updates['commercial_ref'] = commercial_ref
-                    if other_ref and not existing_device.get('other_ref'):
+                    if other_ref:
                         updates['other_ref'] = other_ref
-                    if notes and not existing_device.get('notes'):
+                    if notes:
                         updates['notes'] = notes
                     
                     # Appliquer les mises à jour
@@ -4314,8 +4470,9 @@ class MainWindow(QMainWindow):
                         }
                         
                         # Essayer l'auto-complétion AVANT de vérifier si complétion manuelle nécessaire
+                        auto_completion_success = False
                         if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
-                            self._try_auto_complete(appareil_data)
+                            auto_completion_success = self._try_auto_complete(appareil_data)
                         
                         # Filtrer les données vides comme dans _handle_paste
                         filtered_data = {}
@@ -4334,6 +4491,10 @@ class MainWindow(QMainWindow):
                             if device_id:
                                 results['new_entries'] += 1
                                 print(f"  ✅ Nouvel appareil créé (ID: {device_id})")
+                                
+                                # Incrémenter auto_completed si l'auto-complétion a réussi
+                                if auto_completion_success:
+                                    results['auto_completed'] += 1
                                 
                                 # Vérifier si l'appareil nécessite une complétion manuelle APRÈS création
                                 # (utiliser les données filtrées qui incluent l'auto-complétion)
@@ -4431,22 +4592,12 @@ class MainWindow(QMainWindow):
                 # Ne pas compter cette ligne comme traitée si elle échoue
                 continue
         
-        # Résumé final unifié
-        print(f"\n📊 Résumé du traitement:")
-        print(f"  Lignes traitées : {results['total_imported']}")
-        print(f"  Appareils créés : {results['new_entries']}")
-        print(f"  Appareils mis à jour : {results['matches_found']}")
-        print(f"  Associations créées : {results['associations_created']}")
+        # Utiliser le nouveau format de résumé unifié
+        source = "CSV" if import_type == "csv" else "Collage"
+        console_summary = self._generate_console_summary(results, ref_piece, source)
+        print(f"\n{console_summary}")
         
-        duplicates_skipped = results.get('duplicates_skipped', 0)
-        if duplicates_skipped > 0:
-            print(f"  Associations déjà existantes : {duplicates_skipped}")
-        
-        # Informations liées aux pièces
-        manual_completion = results.get('manual_completion', 0)
-        if manual_completion > 0:
-            print(f"  Appareils à compléter : {manual_completion}")
-            
+        # Informations complémentaires spécifiques
         descriptions_updated = results.get('descriptions_updated', 0)
         if descriptions_updated > 0:
             print(f"  Libellés mis à jour : {descriptions_updated}")
@@ -4476,73 +4627,67 @@ class MainWindow(QMainWindow):
         
         return normalized
 
-    def _find_existing_device_by_refs(self, ref_modele, commercial_ref):
+    def _find_existing_device_by_refs(self, ref_modele, commercial_ref, type_val="", manufacturer=""):
         """
-        Chercher un appareil existant selon la nouvelle logique stricte:
-        - Chaque combinaison ref_modele + commercial_ref = appareil unique
-        - Seulement si EXACTEMENT les deux références correspondent → réutiliser appareil existant
-        - Sinon → créer nouvel appareil
+        Chercher un appareil existant selon la logique corrigée:
+        1. Chercher par ref_modele + commercial_ref (colonnes C et D)
+        2. Si trouvé ET que A et B sont fournies dans l'import:
+           - A et B vides dans la base → compléter
+           - A et B identiques → mettre à jour  
+           - A et B différentes → créer nouveau
+        3. Si trouvé MAIS A et B ne sont PAS fournies dans l'import:
+           - Utiliser l'appareil existant (association simple)
         """
         try:
-            # Logique stricte: combinaison exacte ref_modele + commercial_ref OBLIGATOIRE
+            # Chercher d'abord par les références (colonnes C et D)
             if ref_modele and ref_modele.strip() and commercial_ref and commercial_ref.strip():
                 query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
                           FROM appareils 
                           WHERE ref_modele = ? AND commercial_ref = ?"""
                 params = [ref_modele.strip(), commercial_ref.strip()]
                 result = self.db_manager.execute_query(query, params)
+                
                 if result:
-                    print(f"  ✅ Appareil existant trouvé par combinaison exacte: {ref_modele} + {commercial_ref}")
-                    return {
+                    existing = {
                         'id': result[0][0], 
-                        'type': result[0][1], 
-                        'manufacturer': result[0][2],
+                        'type': result[0][1] or '', 
+                        'manufacturer': result[0][2] or '',
                         'ref_modele': result[0][3],
                         'commercial_ref': result[0][4],
                         'other_ref': result[0][5],
                         'category': result[0][6],
                         'notes': result[0][7]
                     }
-            
-            # Si seulement une des deux références, rechercher par cette référence unique
-            elif ref_modele and ref_modele.strip() and not (commercial_ref and commercial_ref.strip()):
-                # Seulement ref_modele fourni
-                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE ref_modele = ? AND (commercial_ref IS NULL OR commercial_ref = '')"
-                params = [ref_modele.strip()]
-                result = self.db_manager.execute_query(query, params)
-                if result:
-                    print(f"  ✅ Appareil existant trouvé par ref_modele seule: {ref_modele}")
-                    return {
-                        'id': result[0][0], 
-                        'type': result[0][1], 
-                        'manufacturer': result[0][2],
-                        'ref_modele': result[0][3],
-                        'commercial_ref': result[0][4],
-                        'other_ref': result[0][5],
-                        'category': result[0][6],
-                        'notes': result[0][7]
-                    }
-            
-            elif commercial_ref and commercial_ref.strip() and not (ref_modele and ref_modele.strip()):
-                # Seulement commercial_ref fourni
-                query = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes FROM appareils WHERE commercial_ref = ? AND (ref_modele IS NULL OR ref_modele = '')"
-                params = [commercial_ref.strip()]
-                result = self.db_manager.execute_query(query, params)
-                if result:
-                    print(f"  ✅ Appareil existant trouvé par commercial_ref seule: {commercial_ref}")
-                    return {
-                        'id': result[0][0], 
-                        'type': result[0][1], 
-                        'manufacturer': result[0][2],
-                        'ref_modele': result[0][3],
-                        'commercial_ref': result[0][4],
-                        'other_ref': result[0][5],
-                        'category': result[0][6],
-                        'notes': result[0][7]
-                    }
-            
-            # Aucun appareil existant trouvé avec cette combinaison exacte
-            print(f"  🆕 Création nouvel appareil pour: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
+                    
+                    # Vérifier si A et B sont fournies dans l'import
+                    import_has_type_manufacturer = bool(type_val and type_val.strip()) or bool(manufacturer and manufacturer.strip())
+                    
+                    if not import_has_type_manufacturer:
+                        # Import sans A et B (CSV 2 colonnes, PDF 3 colonnes) → Association simple
+                        print(f"  ✅ Appareil trouvé par C+D, import sans A+B → association directe")
+                        return existing
+                    
+                    # Import avec A et B → Appliquer la logique de comparaison
+                    existing_type = existing['type'].strip()
+                    existing_manufacturer = existing['manufacturer'].strip()
+                    import_type = type_val.strip() if type_val else ""
+                    import_manufacturer = manufacturer.strip() if manufacturer else ""
+                    
+                    # Cas 1: A et B vides dans la base → compléter
+                    if not existing_type and not existing_manufacturer:
+                        print(f"  ✅ Appareil trouvé avec A et B vides → complétion possible")
+                        return existing
+                    
+                    # Cas 2: A et B identiques → mise à jour
+                    elif (existing_type == import_type and existing_manufacturer == import_manufacturer):
+                        print(f"  ✅ Appareil trouvé avec A et B identiques → mise à jour")
+                        return existing
+                    
+                    # Cas 3: A et B différentes → ne pas utiliser l'existant (créer nouveau)
+                    else:
+                        print(f"  ⚠️ Appareil trouvé mais A et B différentes ({existing_type}/{existing_manufacturer} vs {import_type}/{import_manufacturer}) → créer nouveau")
+                        return None
+                    
             return None
         except Exception as e:
             print(f"Erreur recherche appareil: {e}")
@@ -4849,27 +4994,46 @@ class MainWindow(QMainWindow):
             summary += f" (pièce: {ref_piece})"
         summary += ":\n"
         
-        # Format standardisé selon le modèle demandé
-        summary += f"Lignes traitées : {results.get('total_imported', 0)}\n"
-        summary += f"Appareils créés : {results.get('new_entries', 0)}\n"
+        # Ligne principale - total des lignes du fichier original
+        # Le vrai total = lignes traitées + doublons ignorés dans le fichier
+        total_processed = results.get('total_imported', 0)
+        duplicates_ignored = results.get('duplicates_in_file', 0)
+        # Utiliser le nombre de lignes originales si disponible, sinon calculer
+        original_line_count = results.get('original_line_count', total_processed + duplicates_ignored)
+        summary += f"Lignes traitées : {original_line_count}\n"
         
-        # Sous-détails des appareils (TOUJOURS afficher même si 0)
+        # Section Appareils avec sous-détails
+        summary += "Appareils :\n"
+        
+        # Créés
+        new_entries = results.get('new_entries', 0)
+        summary += f"==> Créés : {new_entries}\n"
+        
+        # Complétion automatique (nouveaux appareils dont type et fabricant ont été auto-complétés)
+        auto_completed = results.get('auto_completed', 0)
+        # Pour les appareils existants mis à jour
         matches_found = results.get('matches_found', 0)
-        summary += f"  ==> Mis à jour : {matches_found}\n"
+        total_auto_completed = auto_completed + matches_found
+        summary += f"==> Complétion automatique : {total_auto_completed}\n"
         
-        # Compter seulement les appareils nouvellement créés qui nécessitent une complétion
-        new_entries = results.get('new_entries', 0)  
-        # On estime que les appareils créés sans type/manufacturer nécessitent une complétion
-        newly_incomplete = results.get('newly_incomplete', 0) if results.get('newly_incomplete', 0) > 0 else new_entries
-        summary += f"  ==> À compléter : {newly_incomplete}\n"
+        # À compléter (nouveaux appareils qui manquent encore de type/fabricant)
+        manual_completion = results.get('manual_completion', 0)
+        summary += f"==> À compléter : {manual_completion}\n"
         
-        # Associations
-        summary += f"Associations créées : {results.get('associations_created', 0)}\n"
+        # Doublons ignorés dans le fichier
+        if duplicates_ignored > 0:
+            summary += f"==> Doublon ignoré : {duplicates_ignored}\n"
         
-        # Associations existantes (TOUJOURS afficher même si 0)
+        # Section Associations de pièce
+        summary += "Associations de pièce :\n"
+        
+        # Nouvelles associations
+        associations_created = results.get('associations_created', 0)
+        summary += f"==> Nouvelles : {associations_created}\n"
+        
+        # Associations déjà présentes (vraies associations existantes en BDD)
         duplicates_skipped = results.get('duplicates_skipped', 0)
-        summary += f"Associations déjà existantes : {duplicates_skipped}"
-        
+        summary += f"==> Déjà associés : {duplicates_skipped}"
         
         return summary
 
@@ -4948,8 +5112,13 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'incomplete_filter_btn'):
                 if incomplete_count > 0:
                     self.incomplete_filter_btn.show()
-                    if not self.show_incomplete_only:
-                        from src.core.config import pluralize
+                    from src.core.config import pluralize
+                    if self.show_incomplete_only:
+                        # Si le filtre est actif, mettre à jour avec le nombre restant
+                        self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
+                        self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+                    else:
+                        # Si le filtre n'est pas actif, afficher le nombre total
                         self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
                         self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
                 else:
@@ -4969,7 +5138,11 @@ class MainWindow(QMainWindow):
             # Activer le filtre - nettoyer les autres filtres d'abord
             self._clear_column_filters()
             self.search_input.clear()
-            self.incomplete_filter_btn.setText("📋 Actives")
+            
+            # Compter et afficher le nombre de lignes filtrées
+            incomplete_count = self.db_manager.count_incomplete_devices()
+            from src.core.config import pluralize
+            self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
             # Le style est géré par le CSS moderne via :checked
         else:
             # Désactiver le filtre et mettre à jour le texte avec le nombre
@@ -5360,7 +5533,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Utiliser la même logique que l'import CSV classique : passer des listes brutes
             imported_data = []
-            with open(file_path, 'r', encoding=encoding) as file:
+            with open(file_path, 'r', encoding=encoding, errors='replace') as file:
                 csv_reader = csv.reader(file, delimiter=separator)
                 
                 for row_index, row in enumerate(csv_reader):
@@ -5374,8 +5547,27 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 QMessageBox.warning(self, "Import CSV", "Aucune donnée valide trouvée dans le fichier.")
                 return
             
+            # Créer une barre de progression pour les gros imports
+            progress_dialog = None
+            if len(imported_data) >= 1000:
+                progress_dialog = QProgressDialog(
+                    f"Import CSV en cours... 0 / {len(imported_data)} lignes",
+                    "Annuler",
+                    0, len(imported_data),
+                    self
+                )
+                progress_dialog.setWindowTitle("Import CSV - Glisser/Déposer")
+                progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+                progress_dialog.show()
+                QApplication.processEvents()
+            
             # Traitement de l'import (utiliser import_type)
-            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, None, libelle_piece)
+            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog, libelle_piece)
+            
+            # Fermer la barre de progression
+            if progress_dialog:
+                progress_dialog.setValue(len(imported_data))
+                progress_dialog.close()
             
             # Affichage du résumé et ajout à l'historique
             self._log_import_to_history(results, ref_piece, f"CSV (Glisser/Déposer - {os.path.basename(file_path)})")
@@ -5454,16 +5646,16 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     # Debug : afficher le nombre de lignes extraites
                     print(f"📄 Fichier PDF {os.path.basename(file_path)}: {len(extracted_data)} lignes extraites")
                     
-                    # Convertir les données extraites en format compatible avec _process_import
+                    # Convertir les données extraites en format 3 colonnes pour import_type = 3
                     for row in extracted_data:
-                        # Les données PDF sont déjà en format [ref_technique, ref_commerciale, description]
-                        # On les convertit selon le choix de l'utilisateur
+                        # Les données PDF sont en format [ref_technique, ref_commerciale, description]
+                        # On les garde en 3 colonnes selon le choix de l'utilisateur
                         if third_column_choice == "notes":
-                            all_converted_data.append([row[0], row[1], "", row[2]])  # [ref_modele, commercial_ref, other_ref, notes]
+                            all_converted_data.append([row[0], row[1], row[2]])  # [ref_modele, commercial_ref, notes]
                         elif third_column_choice == "other_ref":
-                            all_converted_data.append([row[0], row[1], row[2], ""])  # [ref_modele, commercial_ref, other_ref, notes]
+                            all_converted_data.append([row[0], row[1], row[2]])  # [ref_modele, commercial_ref, other_ref]
                         else:  # ignore
-                            all_converted_data.append([row[0], row[1], "", ""])  # [ref_modele, commercial_ref, other_ref, notes]
+                            all_converted_data.append([row[0], row[1], ""])  # [ref_modele, commercial_ref, ignored]
                     
                     processed_files.append(os.path.basename(file_path))
                     
@@ -5838,8 +6030,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             return
         
         try:
-            # Séparer les lignes et colonnes
-            rows = [row.split('\t') for row in clipboard_text.strip().split('\n')]
+            # Séparer les lignes et colonnes proprement
+            lines = clipboard_text.strip().split('\n')
+            rows = [line.split('\t') for line in lines]
+            
             if not rows:
                 return
 
@@ -5862,14 +6056,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 )
                 return
             
-            # Préparer les données d'exemple pour l'aperçu
+            # Préparer les données d'exemple pour l'aperçu 
             sample_data = []
             try:
-                rows = clipboard_text.strip().split('\n')
-                for i, row in enumerate(rows[:3]):  # Maximum 3 lignes pour l'aperçu
-                    if row.strip():
-                        columns = row.split('\t')
-                        sample_data.append(columns)
+                for i in range(min(3, len(rows))):  # Maximum 3 lignes pour l'aperçu
+                    if rows[i] and any(cell.strip() for cell in rows[i]):
+                        sample_data.append(rows[i])
             except Exception as e:
                 print(f"Erreur préparation aperçu COLLAGE: {e}")
                 sample_data = []
@@ -6004,7 +6196,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 # Chercher d'abord si l'appareil existe déjà
                 existing_device = self._find_existing_device_by_refs(
                     appareil_data.get('ref_modele', ''), 
-                    appareil_data.get('commercial_ref', '')
+                    appareil_data.get('commercial_ref', ''),
+                    appareil_data.get('type', ''),
+                    appareil_data.get('manufacturer', '')
                 )
                 
                 if existing_device:
@@ -6218,7 +6412,11 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         return type_empty and manufacturer_empty
 
     def _try_auto_complete(self, appareil_data: dict):
-        """Essayer de compléter automatiquement Type et Fabricant à partir des références"""
+        """Essayer de compléter automatiquement Type et Fabricant à partir des références
+        
+        Returns:
+            bool: True si l'auto-complétion a réussi, False sinon
+        """
         original_data = appareil_data.copy()
         
         try:
@@ -6232,7 +6430,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Si les deux champs sont remplis, pas besoin d'auto-complétion
             if not type_empty and not manufacturer_empty:
                 app_logger.debug("Auto-complétion ignorée: type et manufacturer déjà remplis")
-                return
+                return False
             
             # Ordre de priorité des références à vérifier (colonne C puis D)
             refs_to_check = []
@@ -6249,7 +6447,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             if not refs_to_check:
                 app_logger.warning("Auto-complétion: aucune référence disponible pour la recherche")
-                return  # Aucune référence pour faire la recherche
+                return False  # Aucune référence pour faire la recherche
             
             app_logger.debug(f"Références à vérifier: {refs_to_check}")
             
@@ -6299,6 +6497,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 matches_found=total_matches,
                 success=True
             )
+            
+            # Retourner True si au moins un champ a été complété avec succès
+            return total_matches > 0
                         
         except Exception as e:
             # En cas d'erreur, continuer sans auto-completion
@@ -6312,6 +6513,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 success=False,
                 error_msg=str(e)
             )
+            return False
 
     def _refresh_application(self):
         """Rafraîchir l'application"""
