@@ -345,6 +345,9 @@ class CleanupPreviewDialog(QDialog):
         self.inconsistencies_tree.itemChanged.connect(self._on_tree_item_changed)
         self.inconsistencies_tree.itemSelectionChanged.connect(self._update_decision_buttons_state)
         
+        # Gérer les raccourcis clavier
+        self.inconsistencies_tree.keyPressEvent = self._handle_tree_key_press
+        
         return widget
     
     def _start_analysis(self):
@@ -1286,3 +1289,20 @@ class CleanupPreviewDialog(QDialog):
                 self.mark_distinct_btn.setText("✅ Marquer comme distincts")
                 self.mark_merge_btn.setText("🔀 Marquer pour fusion")
                 self.reset_decision_btn.setEnabled(False)
+    
+    def _handle_tree_key_press(self, event):
+        """Gérer les événements clavier sur l'arbre des doublons potentiels"""
+        # Vérifier si c'est la barre espace
+        if event.key() == Qt.Key_Space:
+            current_item = self.inconsistencies_tree.currentItem()
+            if current_item:
+                # Inverser l'état de la checkbox
+                current_state = current_item.checkState(0)
+                new_state = Qt.Unchecked if current_state == Qt.Checked else Qt.Checked
+                current_item.setCheckState(0, new_state)
+                # Éviter la propagation de l'événement pour qu'il ne soit pas traité deux fois
+                event.accept()
+                return
+        
+        # Pour tous les autres événements, utiliser le comportement par défaut
+        QTreeWidget.keyPressEvent(self.inconsistencies_tree, event)
