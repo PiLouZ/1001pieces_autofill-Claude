@@ -65,11 +65,16 @@ class CamelotPDFExtractor:
         }
         
         try:
-            # Essayer d'abord avec la méthode 'stream' (basée sur les espaces)
-            tables = camelot.read_pdf(str(pdf_path), flavor='stream', pages='all')
+            # Essayer d'abord avec la méthode 'stream' optimisée (basée sur les espaces)
+            # edge_tol=500 permet de capturer les lignes avec caractères spéciaux
+            tables = camelot.read_pdf(str(pdf_path), flavor='stream', pages='all', edge_tol=500)
             
             if len(tables) == 0:
-                # Fallback vers 'lattice' si stream ne trouve rien
+                # Fallback vers stream standard
+                tables = camelot.read_pdf(str(pdf_path), flavor='stream', pages='all')
+            
+            if len(tables) == 0:
+                # Fallback final vers 'lattice' si stream ne trouve rien
                 tables = camelot.read_pdf(str(pdf_path), flavor='lattice', pages='all')
             
             if len(tables) == 0:
