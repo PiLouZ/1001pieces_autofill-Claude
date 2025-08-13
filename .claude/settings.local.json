@@ -45,7 +45,11 @@
       "Bash(git show:*)",
       "Bash(git merge:*)",
       "Bash(git config:*)",
-      "Bash(cut:*)"
+      "Bash(cut:*)",
+      "Bash(git reset:*)",
+      "Bash(git describe:*)",
+      "Bash(git rev-list:*)",
+      "Bash(cd:*)"
     ],
     "deny": []
   }
