@@ -7,6 +7,7 @@ Remplace les anciennes méthodes pdfplumber
 import camelot
 import pandas as pd
 import os
+import re
 from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
 
@@ -165,51 +166,40 @@ class CamelotPDFExtractor:
                     cleaned_cell = cleaned_cell[1:].strip()
                 cleaned_row.append(cleaned_cell)
             
-            # Garder seulement les lignes avec au moins une référence technique
-            if cleaned_row[0] and cleaned_row[0].strip():
+            # Garder les lignes qui ont du contenu utile (au moins une cellule non vide)
+            # Plus permissif comme l'import manuel
+            if any(cell.strip() for cell in cleaned_row):
                 cleaned_data.append(cleaned_row)
         
         return cleaned_data
     
     def _is_header_row(self, row: List[str]) -> bool:
         """
-        Vérifier si une ligne est un en-tête
+        Vérifier si une ligne est un en-tête en utilisant une regex précise
+        Basé sur la regex utilisateur : ^(Réf.*|Page.*)\n?
         """
-        row_text = ' '.join(row).lower()
+        # Joindre la ligne et nettoyer
+        row_text = ' '.join(row).strip()
         
-        # Détecter les en-têtes typiques
-        header_patterns = [
-            'réf. technique',
-            'réf technique',
-            'ref technique',
-            'référence technique',
-            'technique',
-            'commerciale',
-            'description'
-        ]
+        # Regex précise pour détecter les vrais en-têtes
+        # Ne supprime que les lignes commençant par "Réf" ou "Page"
+        header_pattern = r'^(Réf.*|Page.*)'
         
-        # Si au moins 2 mots-clés d'en-tête sont présents
-        found_keywords = sum(1 for pattern in header_patterns if pattern in row_text)
-        return found_keywords >= 2
+        return bool(re.match(header_pattern, row_text, re.IGNORECASE))
     
     def _is_pagination_row(self, row: List[str]) -> bool:
         """
-        Vérifier si une ligne est une pagination
+        Vérifier si une ligne est une pagination en utilisant une regex précise
+        Basé sur la regex utilisateur : ^(Réf.*|Page.*)\n?
         """
-        row_text = ' '.join(row).lower()
+        # Joindre la ligne et nettoyer
+        row_text = ' '.join(row).strip()
         
-        # Détecter les lignes de pagination
-        pagination_patterns = [
-            'page',
-            'page |',
-            '| page',
-            'page 1',
-            'page 2',
-            'page 3',
-            'page 4'
-        ]
+        # Regex précise pour détecter les vraies lignes de pagination
+        # Ne supprime que les lignes commençant par "Page"
+        pagination_pattern = r'^Page.*'
         
-        return any(pattern in row_text for pattern in pagination_patterns)
+        return bool(re.match(pagination_pattern, row_text, re.IGNORECASE))
     
     def get_last_extraction_info(self) -> Dict[str, Any]:
         """Récupérer les informations de la dernière extraction"""
