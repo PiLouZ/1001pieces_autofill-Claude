@@ -2,6 +2,42 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.5.0] - 2025-08-20 - 🚀 Exports Multi-Références et Améliorations SEO
+
+### ✨ **Nouvelles Fonctionnalités Majeures**
+
+#### 🔍 **Exports Multi-Références**
+- **Support des recherches multi-termes** avec opérateur `||` pour les boutons d'export
+- **Validation automatique** : tous les termes doivent être des références de pièces valides
+- **Fenêtre de confirmation** pour choisir la référence principale (CSV/Méta)
+- **Rétrocompatibilité** : fonctionnement actuel préservé à 100%
+
+#### 📝 **Amélioration Méta Title SEO**
+- **Garantie de marque** : au moins 1 marque dans chaque titre généré
+- **Optimisations intelligentes** : suppression mots de liaison, raccourcis automatiques
+- **Respect limite 60 caractères** avec troncature intelligente préservant marque + référence
+- **Sélection aléatoire** des marques pour varier le contenu
+
+#### 🎨 **Améliorations Interface**
+- **Nouvelles couleurs boutons** avec effets de survol (5% plus foncé)
+  - Exporter CSV: #134c4d → #11403f
+  - Méta Title: #fd7e14 → #e5711f  
+  - Méta Desc: #ffc107 → #e6ad06
+- **États disabled** cohérents avec design moderne
+
+#### 📊 **Optimisation Extraction PDF**
+- **Paramètre edge_tol=500** pour améliorer la détection Camelot
+- **Résolution problème** des caractères spéciaux (/, parenthèses) dans les références
+- **Amélioration précision** : de 1474 à 1477 lignes extraites pour PDFs complexes
+- **Stratégie fallback** optimisée : stream optimisé → stream standard → lattice
+
+### 🔧 **Améliorations Techniques**
+
+- **Logique de détection** des références multiples avec validation stricte
+- **Fenêtres de confirmation** réutilisables avec champs éditables
+- **Préservation** du comportement existant (recherches simples)
+- **Architecture modulaire** pour extensions futures
+
 ## [2.4.0] - 2025-07-18 - 🛠️ Gestion Avancée des Pièces et Optimisations
 
 ### 🎯 **Révolution de la Gestion des Pièces**

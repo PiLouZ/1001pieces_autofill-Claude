@@ -2526,6 +2526,30 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Information", "Veuillez entrer un terme de recherche")
             return
         
+        # Gérer les recherches multi-références pour CSV uniquement
+        if export_format == ExportFormat.CSV:
+            multi_terms = self._get_multi_reference_terms()
+            if multi_terms:
+                # Demander à l'utilisateur de confirmer/choisir la référence pour CSV
+                selected_reference = self._show_reference_selection_dialog(
+                    "Référence pour l'export CSV",
+                    f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
+                    f"Choisissez la référence à utiliser pour la première colonne :",
+                    multi_terms[0]  # Premier terme par défaut
+                )
+                
+                if not selected_reference:
+                    return  # Annulé par l'utilisateur
+                
+                # Vérifier que la référence choisie est valide
+                if self._get_piece_description_from_reference(selected_reference) is None:
+                    QMessageBox.warning(self, "Référence invalide", 
+                                      f"La référence '{selected_reference}' n'est pas valide.")
+                    return
+                
+                # Remplacer le search_term par la référence sélectionnée pour l'export CSV
+                search_term = selected_reference
+        
         try:
             # Récupérer les filtres de colonnes actifs
             column_filters = {}
@@ -6611,8 +6635,31 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _generate_meta_title(self):
         """Générer et copier un méta titre SEO optimisé"""
         try:
-            # Récupérer les données de recherche actuelles
-            search_data = self._get_current_search_data()
+            # Gérer les recherches multi-références
+            multi_terms = self._get_multi_reference_terms()
+            if multi_terms:
+                # Demander à l'utilisateur de choisir la référence pour la génération SEO
+                selected_reference = self._show_reference_selection_dialog(
+                    "Référence pour Méta Title",
+                    f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
+                    f"Choisissez la référence à utiliser pour la génération SEO :",
+                    multi_terms[0]  # Premier terme par défaut
+                )
+                
+                if not selected_reference:
+                    return  # Annulé par l'utilisateur
+                
+                # Vérifier que la référence choisie est valide
+                if self._get_piece_description_from_reference(selected_reference) is None:
+                    self.statusbar.showMessage(f"La référence '{selected_reference}' n'est pas valide.", 3000)
+                    return
+                
+                # Récupérer les données pour la référence sélectionnée
+                search_data = self._get_current_search_data_for_reference(selected_reference)
+            else:
+                # Récupérer les données de recherche actuelles (comportement normal)
+                search_data = self._get_current_search_data()
+            
             if not search_data:
                 self.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
                 return
@@ -6646,8 +6693,31 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _generate_meta_description(self):
         """Générer et copier une méta description SEO aléatoire"""
         try:
-            # Récupérer les données de recherche actuelles
-            search_data = self._get_current_search_data()
+            # Gérer les recherches multi-références
+            multi_terms = self._get_multi_reference_terms()
+            if multi_terms:
+                # Demander à l'utilisateur de choisir la référence pour la génération SEO
+                selected_reference = self._show_reference_selection_dialog(
+                    "Référence pour Méta Description",
+                    f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
+                    f"Choisissez la référence à utiliser pour la génération SEO :",
+                    multi_terms[0]  # Premier terme par défaut
+                )
+                
+                if not selected_reference:
+                    return  # Annulé par l'utilisateur
+                
+                # Vérifier que la référence choisie est valide
+                if self._get_piece_description_from_reference(selected_reference) is None:
+                    self.statusbar.showMessage(f"La référence '{selected_reference}' n'est pas valide.", 3000)
+                    return
+                
+                # Récupérer les données pour la référence sélectionnée
+                search_data = self._get_current_search_data_for_reference(selected_reference)
+            else:
+                # Récupérer les données de recherche actuelles (comportement normal)
+                search_data = self._get_current_search_data()
+            
             if not search_data:
                 self.statusbar.showMessage("Aucune recherche active pour générer la méta description", 3000)
                 return
@@ -6682,6 +6752,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             search_term = self.search_input.text().strip()
             if not search_term:
                 return None
+            
+            # Pour les recherches multi-références, utiliser le premier terme
+            if '||' in search_term:
+                terms = [term.strip() for term in search_term.split('||')]
+                if terms:
+                    search_term = terms[0]
             
             # Vérifier si c'est une référence de pièce (recherche dans la table pieces)
             piece_description = self._get_piece_description_from_reference(search_term)
@@ -6745,6 +6821,68 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             app_logger.error(f"Erreur extraction données recherche: {e}")
             return None
     
+    def _get_current_search_data_for_reference(self, specific_reference: str) -> Optional[Dict[str, any]]:
+        """
+        Extraire les données pour une référence spécifique (utilisé pour les multi-références)
+        """
+        try:
+            # Vérifier si c'est une référence de pièce valide
+            piece_description = self._get_piece_description_from_reference(specific_reference)
+            if not piece_description:
+                return None
+            
+            # Analyser les données du tableau pour extraire les informations des appareils
+            if self.table.rowCount() == 0:
+                return None
+            
+            # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
+            types_appareil = set()
+            fabricants = set()
+            
+            # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
+            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
+            
+            try:
+                all_data = self.db_manager.execute_custom_query(fabricants_query, [specific_reference])
+                for type_val, manufacturer in all_data:
+                    if type_val and type_val.strip():
+                        types_appareil.add(type_val.strip())
+                    if manufacturer and manufacturer.strip():
+                        fabricants.add(manufacturer.strip())
+                        
+            except Exception as e:
+                app_logger.error(f"Erreur récupération fabricants pour {specific_reference}: {e}")
+                
+                # Fallback: utiliser les données visibles du tableau si la requête échoue
+                for row in range(min(self.table.rowCount(), 20)):
+                    if not self.table.isRowHidden(row):
+                        # Type appareil (colonne 0)
+                        type_item = self.table.item(row, 0)
+                        if type_item and type_item.text().strip():
+                            types_appareil.add(type_item.text().strip())
+                        
+                        # Fabricant (colonne 1)
+                        fabricant_item = self.table.item(row, 1)
+                        if fabricant_item and fabricant_item.text().strip():
+                            fabricants.add(fabricant_item.text().strip())
+            
+            # Prendre le type le plus fréquent ou le premier
+            type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
+            
+            # Convertir les sets en listes
+            fabricants_list = sorted(list(fabricants)) if fabricants else ["multi-marques"]
+            
+            return {
+                'reference': specific_reference,
+                'description': piece_description,
+                'type_appareil': type_appareil,
+                'fabricants': fabricants_list
+            }
+            
+        except Exception as e:
+            app_logger.error(f"Erreur récupération données référence spécifique: {e}")
+            return None
+    
     def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
         """Récupérer la description d'une pièce depuis sa référence"""
         try:
@@ -6779,12 +6917,124 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             return None
     
     def _is_piece_reference_search(self) -> bool:
-        """Vérifier si la recherche actuelle correspond à une référence de pièce"""
+        """
+        Vérifier si la recherche actuelle correspond à une référence de pièce
+        Supporte maintenant les recherches multi-références avec ||
+        """
         search_term = self.search_input.text().strip()
         if not search_term:
             return False
         
+        # Détecter les recherches multi-références avec ||
+        if '||' in search_term:
+            return self._are_all_terms_piece_references(search_term)
+        
+        # Recherche simple (comportement existant)
         return self._get_piece_description_from_reference(search_term) is not None
+    
+    def _are_all_terms_piece_references(self, search_term: str) -> bool:
+        """
+        Vérifier que tous les termes d'une recherche multi-références sont valides
+        Format attendu: "REF001 || REF002 || REF003"
+        """
+        # Diviser par || et nettoyer les espaces
+        terms = [term.strip() for term in search_term.split('||')]
+        
+        # Vérifier que tous les termes sont des références valides
+        for term in terms:
+            if not term:  # Terme vide
+                return False
+            if self._get_piece_description_from_reference(term) is None:
+                return False
+        
+        return len(terms) > 1  # Au moins 2 références pour être considéré comme multi-référence
+    
+    def _get_multi_reference_terms(self) -> Optional[List[str]]:
+        """
+        Extraire les termes d'une recherche multi-références
+        Retourne None si ce n'est pas une recherche multi-références valide
+        """
+        search_term = self.search_input.text().strip()
+        if not search_term or '||' not in search_term:
+            return None
+            
+        if not self._are_all_terms_piece_references(search_term):
+            return None
+            
+        return [term.strip() for term in search_term.split('||')]
+    
+    def _show_reference_selection_dialog(self, title: str, message: str, default_reference: str) -> Optional[str]:
+        """
+        Afficher une fenêtre de sélection de référence pour les exports multi-références
+        """
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setModal(True)
+        dialog.resize(400, 150)
+        
+        layout = QVBoxLayout()
+        
+        # Message d'explication
+        label = QLabel(message)
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        
+        # Champ de saisie avec la référence par défaut
+        self.reference_input = QLineEdit(default_reference)
+        self.reference_input.selectAll()  # Sélectionner tout le texte
+        layout.addWidget(self.reference_input)
+        
+        # Boutons
+        button_layout = QHBoxLayout()
+        
+        confirm_btn = QPushButton("Confirmer")
+        confirm_btn.clicked.connect(dialog.accept)
+        confirm_btn.setDefault(True)
+        confirm_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #28a745; 
+                color: white; 
+                font-weight: bold; 
+                padding: 8px 16px; 
+                border: none; 
+                border-radius: 4px; 
+            }
+            QPushButton:hover { 
+                background-color: #218838; 
+            }
+        """)
+        
+        cancel_btn = QPushButton("Annuler")
+        cancel_btn.clicked.connect(dialog.reject)
+        cancel_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #6c757d; 
+                color: white; 
+                font-weight: bold; 
+                padding: 8px 16px; 
+                border: none; 
+                border-radius: 4px; 
+            }
+            QPushButton:hover { 
+                background-color: #5a6268; 
+            }
+        """)
+        
+        button_layout.addWidget(confirm_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        
+        # Afficher et récupérer le résultat
+        if dialog.exec_() == QDialog.Accepted:
+            selected_reference = self.reference_input.text().strip()
+            if selected_reference:
+                return selected_reference
+        
+        return None
 
 
 def main():
