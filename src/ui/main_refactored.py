@@ -2541,11 +2541,7 @@ class MainWindow(QMainWindow):
                 if not selected_reference:
                     return  # Annulé par l'utilisateur
                 
-                # Vérifier que la référence choisie est valide
-                if self._get_piece_description_from_reference(selected_reference) is None:
-                    QMessageBox.warning(self, "Référence invalide", 
-                                      f"La référence '{selected_reference}' n'est pas valide.")
-                    return
+                # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
                 
                 # Remplacer le search_term par la référence sélectionnée pour l'export CSV
                 search_term = selected_reference
@@ -6649,10 +6645,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 if not selected_reference:
                     return  # Annulé par l'utilisateur
                 
-                # Vérifier que la référence choisie est valide
-                if self._get_piece_description_from_reference(selected_reference) is None:
-                    self.statusbar.showMessage(f"La référence '{selected_reference}' n'est pas valide.", 3000)
-                    return
+                # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
                 
                 # Récupérer les données pour la référence sélectionnée
                 search_data = self._get_current_search_data_for_reference(selected_reference)
@@ -6707,10 +6700,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 if not selected_reference:
                     return  # Annulé par l'utilisateur
                 
-                # Vérifier que la référence choisie est valide
-                if self._get_piece_description_from_reference(selected_reference) is None:
-                    self.statusbar.showMessage(f"La référence '{selected_reference}' n'est pas valide.", 3000)
-                    return
+                # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
                 
                 # Récupérer les données pour la référence sélectionnée
                 search_data = self._get_current_search_data_for_reference(selected_reference)
@@ -6972,7 +6962,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
         dialog.setModal(True)
-        dialog.resize(400, 150)
+        dialog.resize(450, 200)  # Augmenter la hauteur pour améliorer la lisibilité
         
         layout = QVBoxLayout()
         
