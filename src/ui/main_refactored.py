@@ -2557,9 +2557,14 @@ class MainWindow(QMainWindow):
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
             
-            result = self.exporter.export_search_results(search_term, export_format, 
-                                                       column_filters=column_filters, 
-                                                       incomplete_filter=incomplete_filter)
+            # Vérifier si c'est une référence personnalisée (pas dans la BDD)
+            if export_format == ExportFormat.CSV and self._get_piece_description_from_reference(search_term) is None:
+                # Référence personnalisée - créer un export CSV minimal
+                result = self._export_custom_reference_csv(search_term)
+            else:
+                result = self.exporter.export_search_results(search_term, export_format, 
+                                                           column_filters=column_filters, 
+                                                           incomplete_filter=incomplete_filter)
             
             if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
                 # Copier dans le presse-papiers
@@ -6818,8 +6823,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         try:
             # Vérifier si c'est une référence de pièce valide
             piece_description = self._get_piece_description_from_reference(specific_reference)
+            
+            # Si la référence n'existe pas en BDD, créer des données par défaut
             if not piece_description:
-                return None
+                return {
+                    'reference': specific_reference,
+                    'description': f"Pièce détachée {specific_reference}",
+                    'type_appareil': "appareil électroménager", 
+                    'fabricants': ["multi-marques"]
+                }
             
             # Analyser les données du tableau pour extraire les informations des appareils
             if self.table.rowCount() == 0:
@@ -6872,6 +6884,48 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         except Exception as e:
             app_logger.error(f"Erreur récupération données référence spécifique: {e}")
             return None
+    
+    def _export_custom_reference_csv(self, reference: str) -> str:
+        """Créer un export CSV pour une référence personnalisée"""
+        try:
+            import csv
+            import os
+            from datetime import datetime
+            
+            # Générer un nom de fichier
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"export_{reference}_{timestamp}.csv"
+            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
+            
+            # Créer le fichier CSV avec une ligne de données génériques
+            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile, delimiter=';')
+                
+                # En-têtes
+                headers = [
+                    'product',
+                    'type', 
+                    'manufacturer',
+                    'modele_name',
+                    'reference_modele',
+                    'commercial_reference'
+                ]
+                writer.writerow(headers)
+                
+                # Ligne avec la référence personnalisée
+                writer.writerow([
+                    reference,  # product
+                    'appareil électroménager',  # type
+                    'multi-marques',  # manufacturer
+                    f'Modèle compatible {reference}',  # modele_name
+                    reference,  # reference_modele
+                    reference   # commercial_reference
+                ])
+            
+            return f"Fichier CSV créé: {filepath}"
+            
+        except Exception as e:
+            raise Exception(f"Erreur lors de l'export CSV personnalisé: {e}")
     
     def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
         """Récupérer la description d'une pièce depuis sa référence"""
