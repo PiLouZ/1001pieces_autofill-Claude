@@ -2559,8 +2559,8 @@ class MainWindow(QMainWindow):
             
             # Vérifier si c'est une référence personnalisée (pas dans la BDD)
             if export_format == ExportFormat.CSV and self._get_piece_description_from_reference(search_term) is None:
-                # Référence personnalisée - créer un export CSV minimal
-                result = self._export_custom_reference_csv(search_term)
+                # Référence personnalisée - utiliser les données de recherche actuelles avec référence custom
+                result = self._export_custom_reference_csv_with_current_data(search_term)
             else:
                 result = self.exporter.export_search_results(search_term, export_format, 
                                                            column_filters=column_filters, 
@@ -6885,8 +6885,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             app_logger.error(f"Erreur récupération données référence spécifique: {e}")
             return None
     
-    def _export_custom_reference_csv(self, reference: str) -> str:
-        """Créer un export CSV pour une référence personnalisée"""
+    def _export_custom_reference_csv_with_current_data(self, custom_reference: str) -> str:
+        """Créer un export CSV avec les données actuelles du tableau mais avec une référence personnalisée"""
         try:
             import csv
             import os
@@ -6894,10 +6894,23 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Générer un nom de fichier
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"export_{reference}_{timestamp}.csv"
+            filename = f"export_{custom_reference}_{timestamp}.csv"
             filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
             
-            # Créer le fichier CSV avec une ligne de données génériques
+            # Récupérer les données du tableau actuel
+            table_data = []
+            for row in range(self.table.rowCount()):
+                if not self.table.isRowHidden(row):
+                    row_data = []
+                    for col in range(self.table.columnCount()):
+                        item = self.table.item(row, col)
+                        row_data.append(item.text() if item else "")
+                    table_data.append(row_data)
+            
+            if not table_data:
+                raise Exception("Aucune donnée visible dans le tableau pour l'export")
+            
+            # Créer le fichier CSV
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile, delimiter=';')
                 
@@ -6912,15 +6925,24 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 ]
                 writer.writerow(headers)
                 
-                # Ligne avec la référence personnalisée
-                writer.writerow([
-                    reference,  # product
-                    'appareil électroménager',  # type
-                    'multi-marques',  # manufacturer
-                    f'Modèle compatible {reference}',  # modele_name
-                    reference,  # reference_modele
-                    reference   # commercial_reference
-                ])
+                # Écrire les données en remplaçant la première colonne par la référence personnalisée
+                for row_data in table_data:
+                    type_app = row_data[0] if len(row_data) > 0 else ""
+                    manufacturer = row_data[1] if len(row_data) > 1 else ""
+                    ref_modele = row_data[2] if len(row_data) > 2 else ""
+                    commercial_ref = row_data[3] if len(row_data) > 3 else ""
+                    
+                    # Construire le modele_name
+                    modele_complet = f"{ref_modele} - {commercial_ref}".strip(' -') if ref_modele or commercial_ref else ""
+                    
+                    writer.writerow([
+                        custom_reference,  # product (référence personnalisée)
+                        type_app,
+                        manufacturer,
+                        modele_complet,
+                        ref_modele,
+                        commercial_ref
+                    ])
             
             return f"Fichier CSV créé: {filepath}"
             
