@@ -2526,10 +2526,15 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Information", "Veuillez entrer un terme de recherche")
             return
         
+        # Sauvegarder le terme de recherche original avant modification
+        original_search_term = search_term
+        is_multi_reference_export = False
+        
         # Gérer les recherches multi-références pour CSV uniquement
         if export_format == ExportFormat.CSV:
             multi_terms = self._get_multi_reference_terms()
             if multi_terms:
+                is_multi_reference_export = True
                 # Demander à l'utilisateur de confirmer/choisir la référence pour CSV
                 selected_reference = self._show_reference_selection_dialog(
                     "Référence pour l'export CSV",
@@ -2557,11 +2562,15 @@ class MainWindow(QMainWindow):
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
             
-            # Vérifier si c'est une référence personnalisée (pas dans la BDD)
-            if export_format == ExportFormat.CSV and self._get_piece_description_from_reference(search_term) is None:
+            # Vérifier si c'est un export multi-références ou une référence personnalisée
+            use_custom_export = (export_format == ExportFormat.CSV and 
+                               (is_multi_reference_export or 
+                                self._get_piece_description_from_reference(search_term) is None))
+            
+            if use_custom_export:
                 try:
-                    # Référence personnalisée - utiliser les données de recherche actuelles avec référence custom
-                    result = self._export_custom_reference_csv_with_current_data(search_term)
+                    # Export personnalisé - utiliser les données de recherche avec référence custom
+                    result = self._export_custom_reference_csv_with_current_data(search_term, original_search_term)
                 except Exception as e:
                     app_logger.error(f"Erreur export référence personnalisée: {e}")
                     # Fallback simple: créer un CSV minimal avec juste la référence personnalisée
@@ -6837,7 +6846,31 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         Extraire les données pour une référence spécifique (utilisé pour les multi-références)
         """
         try:
-            # Vérifier si c'est une référence de pièce valide
+            # Récupérer le terme de recherche original
+            original_search_term = self.search_input.text().strip()
+            
+            # Si c'est une recherche multi-références, utiliser les données d'une référence existante
+            if '||' in original_search_term:
+                references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
+                app_logger.info(f"Génération méta pour multi-références: {references}")
+                
+                # Essayer de trouver une référence qui existe en BDD pour récupérer les vraies données
+                real_reference_data = None
+                for ref in references:
+                    piece_description = self._get_piece_description_from_reference(ref)
+                    if piece_description:
+                        app_logger.info(f"Utilisation des données de la référence existante: {ref}")
+                        real_reference_data = self._get_search_data_for_existing_reference(ref, piece_description)
+                        break
+                
+                if real_reference_data:
+                    # Utiliser les vraies données mais avec la référence personnalisée
+                    real_reference_data['reference'] = specific_reference
+                    return real_reference_data
+                else:
+                    app_logger.warning("Aucune référence valide trouvée dans la recherche multi-références")
+            
+            # Vérifier si c'est une référence de pièce valide (cas normal)
             piece_description = self._get_piece_description_from_reference(specific_reference)
             
             # Si la référence n'existe pas en BDD, créer des données par défaut
@@ -6901,7 +6934,55 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             app_logger.error(f"Erreur récupération données référence spécifique: {e}")
             return None
     
-    def _export_custom_reference_csv_with_current_data(self, custom_reference: str) -> str:
+    def _get_search_data_for_existing_reference(self, reference: str, piece_description: str) -> Dict[str, any]:
+        """
+        Récupérer les vraies données SEO pour une référence existante en BDD
+        """
+        try:
+            # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
+            types_appareil = set()
+            fabricants = set()
+            
+            # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
+            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
+            
+            try:
+                all_data = self.db_manager.execute_custom_query(fabricants_query, [reference])
+                for type_val, manufacturer in all_data:
+                    if type_val and type_val.strip():
+                        types_appareil.add(type_val.strip())
+                    if manufacturer and manufacturer.strip():
+                        fabricants.add(manufacturer.strip())
+                        
+            except Exception as e:
+                app_logger.error(f"Erreur récupération fabricants pour {reference}: {e}")
+                # Fallback minimal
+                types_appareil.add("appareil électroménager")
+                fabricants.add("multi-marques")
+            
+            # Prendre le type le plus fréquent ou le premier
+            type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
+            
+            # Convertir les sets en listes
+            fabricants_list = sorted(list(fabricants)) if fabricants else ["multi-marques"]
+            
+            return {
+                'reference': reference,  # Sera remplacé par la référence personnalisée plus tard
+                'description': piece_description,
+                'type_appareil': type_appareil,
+                'fabricants': fabricants_list
+            }
+            
+        except Exception as e:
+            app_logger.error(f"Erreur récupération données SEO pour {reference}: {e}")
+            return {
+                'reference': reference,
+                'description': f"Pièce détachée {reference}",
+                'type_appareil': "appareil électroménager", 
+                'fabricants': ["multi-marques"]
+            }
+    
+    def _export_custom_reference_csv_with_current_data(self, custom_reference: str, original_search_term: str = None) -> str:
         """Créer un export CSV avec toutes les données de la recherche mais avec une référence personnalisée"""
         try:
             import csv
@@ -6917,8 +6998,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             app_logger.info(f"Fichier de sortie: {filepath}")
             
-            # Récupérer le terme de recherche actuel (pour obtenir toutes les données de la BDD)
-            original_search_term = self.search_input.text().strip()
+            # Utiliser le terme de recherche original s'il est fourni, sinon récupérer depuis l'interface
+            if not original_search_term:
+                original_search_term = self.search_input.text().strip()
+            
             if not original_search_term:
                 app_logger.error("Aucun terme de recherche actif")
                 raise Exception("Aucun terme de recherche actif pour récupérer les données")
@@ -6946,7 +7029,27 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Récupérer TOUTES les données depuis la base pour la recherche originale
             app_logger.info("Récupération données depuis la BDD...")
-            data = self.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
+            
+            # Vérifier si c'est une recherche multi-références
+            if '||' in original_search_term:
+                app_logger.info("Détection recherche multi-références")
+                # Diviser les références et récupérer les données pour chacune
+                references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
+                app_logger.info(f"Références détectées: {references}")
+                
+                all_data = []
+                for ref in references:
+                    ref_data = self.db_manager.get_export_data(ref, column_filters, incomplete_filter)
+                    if ref_data:
+                        all_data.extend(ref_data)
+                        app_logger.info(f"Données trouvées pour {ref}: {len(ref_data)} lignes")
+                    else:
+                        app_logger.warning(f"Aucune donnée pour la référence: {ref}")
+                
+                data = all_data
+            else:
+                # Recherche simple
+                data = self.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
             
             if not data:
                 app_logger.warning(f"Aucune donnée trouvée pour: {original_search_term}")
