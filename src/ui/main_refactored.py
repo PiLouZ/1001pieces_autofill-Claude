@@ -1094,6 +1094,23 @@ class MainWindow(QMainWindow):
         self.export_csv_btn = QPushButton("Exporter CSV")
         self.export_csv_btn.clicked.connect(lambda: self._export_data(ExportFormat.CSV))
         self.export_csv_btn.setEnabled(False)
+        self.export_csv_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #134c4d; 
+                color: white; 
+                font-weight: bold; 
+                border: none; 
+                padding: 8px 12px; 
+                border-radius: 4px; 
+            }
+            QPushButton:hover { 
+                background-color: #11403f; 
+            }
+            QPushButton:disabled { 
+                background-color: #cccccc; 
+                color: #666666; 
+            }
+        """)
         export_layout.addWidget(self.export_csv_btn)
         
         self.export_html_brands_btn = QPushButton("HTML Marques")
@@ -1115,14 +1132,46 @@ class MainWindow(QMainWindow):
         self.meta_title_btn.clicked.connect(self._generate_meta_title)
         self.meta_title_btn.setEnabled(False)
         self.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (60 caractères max)")
-        self.meta_title_btn.setStyleSheet("background-color: #6c5ce7; color: white; font-weight: bold; border: none; padding: 8px 12px; border-radius: 4px;")
+        self.meta_title_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #fd7e14; 
+                color: white; 
+                font-weight: bold; 
+                border: none; 
+                padding: 8px 12px; 
+                border-radius: 4px; 
+            }
+            QPushButton:hover { 
+                background-color: #e5711f; 
+            }
+            QPushButton:disabled { 
+                background-color: #cccccc; 
+                color: #666666; 
+            }
+        """)
         seo_layout.addWidget(self.meta_title_btn)
         
         self.meta_desc_btn = QPushButton("📋 Méta Desc")
         self.meta_desc_btn.clicked.connect(self._generate_meta_description)
         self.meta_desc_btn.setEnabled(False)
         self.meta_desc_btn.setToolTip("Générer une méta description SEO aléatoire (150 caractères max)")
-        self.meta_desc_btn.setStyleSheet("background-color: #74b9ff; color: white; font-weight: bold; border: none; padding: 8px 12px; border-radius: 4px;")
+        self.meta_desc_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #ffc107; 
+                color: white; 
+                font-weight: bold; 
+                border: none; 
+                padding: 8px 12px; 
+                border-radius: 4px; 
+            }
+            QPushButton:hover { 
+                background-color: #e6ad06; 
+            }
+            QPushButton:disabled { 
+                background-color: #cccccc; 
+                color: #666666; 
+            }
+        """)
         seo_layout.addWidget(self.meta_desc_btn)
         
         # Laisser les boutons alignés à gauche naturellement (sous les boutons HTML)
