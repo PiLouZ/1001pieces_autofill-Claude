@@ -6886,7 +6886,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             return None
     
     def _export_custom_reference_csv_with_current_data(self, custom_reference: str) -> str:
-        """Créer un export CSV avec les données actuelles du tableau mais avec une référence personnalisée"""
+        """Créer un export CSV avec toutes les données de la recherche mais avec une référence personnalisée"""
         try:
             import csv
             import os
@@ -6897,18 +6897,26 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             filename = f"export_{custom_reference}_{timestamp}.csv"
             filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
             
-            # Récupérer les données du tableau actuel
-            table_data = []
-            for row in range(self.table.rowCount()):
-                if not self.table.isRowHidden(row):
-                    row_data = []
-                    for col in range(self.table.columnCount()):
-                        item = self.table.item(row, col)
-                        row_data.append(item.text() if item else "")
-                    table_data.append(row_data)
+            # Récupérer le terme de recherche actuel (pour obtenir toutes les données de la BDD)
+            original_search_term = self.search_input.text().strip()
+            if not original_search_term:
+                raise Exception("Aucun terme de recherche actif pour récupérer les données")
             
-            if not table_data:
-                raise Exception("Aucune donnée visible dans le tableau pour l'export")
+            # Récupérer les filtres actifs
+            column_filters = {}
+            for col_idx, filter_widget in self.filter_widgets.items():
+                filter_text = filter_widget.text().strip()
+                if filter_text:
+                    column_filters[col_idx] = filter_text
+            
+            # Récupérer le filtre des lignes incomplètes si activé
+            incomplete_filter = getattr(self, 'show_incomplete_only', False)
+            
+            # Récupérer TOUTES les données depuis la base pour la recherche originale
+            data = self.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
+            
+            if not data:
+                raise Exception(f"Aucune donnée trouvée pour la recherche: {original_search_term}")
             
             # Créer le fichier CSV
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
@@ -6925,23 +6933,18 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 ]
                 writer.writerow(headers)
                 
-                # Écrire les données en remplaçant la première colonne par la référence personnalisée
-                for row_data in table_data:
-                    type_app = row_data[0] if len(row_data) > 0 else ""
-                    manufacturer = row_data[1] if len(row_data) > 1 else ""
-                    ref_modele = row_data[2] if len(row_data) > 2 else ""
-                    commercial_ref = row_data[3] if len(row_data) > 3 else ""
-                    
-                    # Construire le modele_name
-                    modele_complet = f"{ref_modele} - {commercial_ref}".strip(' -') if ref_modele or commercial_ref else ""
+                # Écrire les données en remplaçant la référence par la référence personnalisée
+                for record in data:
+                    type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
+                    modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
                     
                     writer.writerow([
-                        custom_reference,  # product (référence personnalisée)
-                        type_app,
-                        manufacturer,
+                        custom_reference,  # product (référence personnalisée au lieu de ref_piece)
+                        type_app or '',
+                        manufacturer or '',
                         modele_complet,
-                        ref_modele,
-                        commercial_ref
+                        ref_modele or '',
+                        commercial_ref or ''
                     ])
             
             return f"Fichier CSV créé: {filepath}"
