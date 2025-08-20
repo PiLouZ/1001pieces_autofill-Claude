@@ -2559,8 +2559,24 @@ class MainWindow(QMainWindow):
             
             # Vérifier si c'est une référence personnalisée (pas dans la BDD)
             if export_format == ExportFormat.CSV and self._get_piece_description_from_reference(search_term) is None:
-                # Référence personnalisée - utiliser les données de recherche actuelles avec référence custom
-                result = self._export_custom_reference_csv_with_current_data(search_term)
+                try:
+                    # Référence personnalisée - utiliser les données de recherche actuelles avec référence custom
+                    result = self._export_custom_reference_csv_with_current_data(search_term)
+                except Exception as e:
+                    app_logger.error(f"Erreur export référence personnalisée: {e}")
+                    # Fallback simple: créer un CSV minimal avec juste la référence personnalisée
+                    try:
+                        result = self._create_minimal_csv_fallback(search_term)
+                        QMessageBox.information(self, "Export de secours", 
+                                              f"L'export personnalisé a échoué.\n"
+                                              f"Un fichier CSV minimal a été créé avec votre référence.")
+                    except Exception as e2:
+                        app_logger.error(f"Erreur fallback export: {e2}")
+                        QMessageBox.warning(self, "Erreur d'export", 
+                                          f"Impossible d'exporter les données.\n"
+                                          f"Erreur: {e}\n"
+                                          f"Erreur fallback: {e2}")
+                        return
             else:
                 result = self.exporter.export_search_results(search_term, export_format, 
                                                            column_filters=column_filters, 
@@ -6892,31 +6908,51 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             import os
             from datetime import datetime
             
+            app_logger.info(f"Début export CSV personnalisé pour référence: {custom_reference}")
+            
             # Générer un nom de fichier
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"export_{custom_reference}_{timestamp}.csv"
             filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
             
+            app_logger.info(f"Fichier de sortie: {filepath}")
+            
             # Récupérer le terme de recherche actuel (pour obtenir toutes les données de la BDD)
             original_search_term = self.search_input.text().strip()
             if not original_search_term:
+                app_logger.error("Aucun terme de recherche actif")
                 raise Exception("Aucun terme de recherche actif pour récupérer les données")
+            
+            app_logger.info(f"Terme de recherche original: {original_search_term}")
             
             # Récupérer les filtres actifs
             column_filters = {}
-            for col_idx, filter_widget in self.filter_widgets.items():
-                filter_text = filter_widget.text().strip()
-                if filter_text:
-                    column_filters[col_idx] = filter_text
+            if hasattr(self, 'filter_widgets'):
+                for col_idx, filter_widget in self.filter_widgets.items():
+                    filter_text = filter_widget.text().strip()
+                    if filter_text:
+                        column_filters[col_idx] = filter_text
+            
+            app_logger.info(f"Filtres colonnes: {column_filters}")
             
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
+            app_logger.info(f"Filtre lignes incomplètes: {incomplete_filter}")
+            
+            # Vérifier que le db_manager existe
+            if not hasattr(self, 'db_manager') or self.db_manager is None:
+                app_logger.error("Database manager non disponible")
+                raise Exception("Database manager non disponible")
             
             # Récupérer TOUTES les données depuis la base pour la recherche originale
+            app_logger.info("Récupération données depuis la BDD...")
             data = self.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
             
             if not data:
+                app_logger.warning(f"Aucune donnée trouvée pour: {original_search_term}")
                 raise Exception(f"Aucune donnée trouvée pour la recherche: {original_search_term}")
+            
+            app_logger.info(f"Nombre de lignes récupérées: {len(data)}")
             
             # Créer le fichier CSV
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
@@ -6934,23 +6970,61 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 writer.writerow(headers)
                 
                 # Écrire les données en remplaçant la référence par la référence personnalisée
-                for record in data:
-                    type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-                    modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
-                    
-                    writer.writerow([
-                        custom_reference,  # product (référence personnalisée au lieu de ref_piece)
-                        type_app or '',
-                        manufacturer or '',
-                        modele_complet,
-                        ref_modele or '',
-                        commercial_ref or ''
-                    ])
+                for i, record in enumerate(data):
+                    try:
+                        type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
+                        modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
+                        
+                        writer.writerow([
+                            custom_reference,  # product (référence personnalisée au lieu de ref_piece)
+                            type_app or '',
+                            manufacturer or '',
+                            modele_complet,
+                            ref_modele or '',
+                            commercial_ref or ''
+                        ])
+                    except Exception as e:
+                        app_logger.error(f"Erreur ligne {i}: {e} - données: {record}")
+                        # Continuer avec les autres lignes
             
+            app_logger.info(f"Export CSV personnalisé terminé: {filepath}")
             return f"Fichier CSV créé: {filepath}"
             
         except Exception as e:
+            app_logger.error(f"Erreur dans _export_custom_reference_csv_with_current_data: {e}")
             raise Exception(f"Erreur lors de l'export CSV personnalisé: {e}")
+    
+    def _create_minimal_csv_fallback(self, custom_reference: str) -> str:
+        """Créer un CSV minimal en cas d'erreur avec l'export personnalisé"""
+        try:
+            import csv
+            import os
+            from datetime import datetime
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"export_fallback_{custom_reference}_{timestamp}.csv"
+            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
+            
+            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile, delimiter=';')
+                
+                headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
+                writer.writerow(headers)
+                
+                # Une seule ligne avec la référence personnalisée
+                writer.writerow([
+                    custom_reference,
+                    'appareil électroménager',
+                    'multi-marques',
+                    f'Modèle compatible {custom_reference}',
+                    custom_reference,
+                    custom_reference
+                ])
+            
+            return f"Fichier CSV de secours créé: {filepath}"
+            
+        except Exception as e:
+            raise Exception(f"Erreur création CSV fallback: {e}")
     
     def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
         """Récupérer la description d'une pièce depuis sa référence"""
