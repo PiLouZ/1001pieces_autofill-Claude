@@ -5750,8 +5750,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                         self._show_error(f"Aucune donnée extraite du fichier PDF: {os.path.basename(file_path)}")
                         continue
                     
-                    # Debug : afficher le nombre de lignes extraites
-                    print(f"📄 Fichier PDF {os.path.basename(file_path)}: {len(extracted_data)} lignes extraites")
+                    # Afficher le nombre de lignes extraites dans l'historique
+                    app_logger.info(f"📄 Fichier PDF {os.path.basename(file_path)}: {len(extracted_data)} lignes extraites")
                     
                     # Convertir les données extraites en format 3 colonnes pour import_type = 3
                     for row in extracted_data:
@@ -7002,24 +7002,16 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             import os
             from datetime import datetime
             
-            app_logger.info(f"Début export CSV personnalisé pour référence: {custom_reference}")
-            
-            # Générer un nom de fichier
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"export_{custom_reference}_{timestamp}.csv"
+            # Générer un nom de fichier simplifié
+            filename = f"{custom_reference}_everyParts.csv"
             filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
-            
-            app_logger.info(f"Fichier de sortie: {filepath}")
             
             # Utiliser le terme de recherche original s'il est fourni, sinon récupérer depuis l'interface
             if not original_search_term:
                 original_search_term = self.search_input.text().strip()
             
             if not original_search_term:
-                app_logger.error("Aucun terme de recherche actif")
                 raise Exception("Aucun terme de recherche actif pour récupérer les données")
-            
-            app_logger.info(f"Terme de recherche original: {original_search_term}")
             
             # Récupérer les filtres actifs
             column_filters = {}
@@ -7029,50 +7021,59 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     if filter_text:
                         column_filters[col_idx] = filter_text
             
-            app_logger.info(f"Filtres colonnes: {column_filters}")
-            
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
-            app_logger.info(f"Filtre lignes incomplètes: {incomplete_filter}")
             
             # Vérifier que le db_manager existe
             if not hasattr(self, 'db_manager') or self.db_manager is None:
-                app_logger.error("Database manager non disponible")
                 raise Exception("Database manager non disponible")
-            
-            # Récupérer TOUTES les données depuis la base pour la recherche originale
-            app_logger.info("Récupération données depuis la BDD...")
             
             # Vérifier si c'est une recherche multi-références
             if '||' in original_search_term or '&&' in original_search_term:
-                app_logger.info("Détection recherche multi-références")
                 # Diviser les références selon l'opérateur utilisé
                 if '||' in original_search_term:
                     references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
+                    # Opérateur OR: union de tous les résultats
+                    all_data = []
+                    for ref in references:
+                        ref_data = self.db_manager.get_export_data(ref, column_filters, incomplete_filter)
+                        if ref_data:
+                            all_data.extend(ref_data)
+                    data = all_data
                 else:  # && présent
                     references = [ref.strip() for ref in original_search_term.split('&&') if ref.strip()]
-                    
-                app_logger.info(f"Références détectées: {references}")
-                
-                all_data = []
-                for ref in references:
-                    ref_data = self.db_manager.get_export_data(ref, column_filters, incomplete_filter)
-                    if ref_data:
-                        all_data.extend(ref_data)
-                        app_logger.info(f"Données trouvées pour {ref}: {len(ref_data)} lignes")
+                    # Opérateur AND: intersection - appareils qui contiennent TOUTES les pièces
+                    if references:
+                        # Commencer avec les données de la première référence
+                        first_ref = references[0]
+                        data = self.db_manager.get_export_data(first_ref, column_filters, incomplete_filter)
+                        
+                        # Pour chaque référence suivante, garder seulement les appareils qui la contiennent aussi
+                        for ref in references[1:]:
+                            ref_data = self.db_manager.get_export_data(ref, column_filters, incomplete_filter)
+                            if ref_data:
+                                # Créer un set des IDs d'appareils de cette référence
+                                ref_appareil_ids = set()
+                                for record in ref_data:
+                                    # Construire un identifiant unique pour chaque appareil
+                                    appareil_id = (record[0], record[1], record[2], record[3])  # type, manufacturer, ref_modele, commercial_ref
+                                    ref_appareil_ids.add(appareil_id)
+                                
+                                # Filtrer data pour garder seulement les appareils présents dans ref_data
+                                data = [record for record in data 
+                                       if (record[0], record[1], record[2], record[3]) in ref_appareil_ids]
+                            else:
+                                # Si une référence n'a pas de données, l'intersection est vide
+                                data = []
+                                break
                     else:
-                        app_logger.warning(f"Aucune donnée pour la référence: {ref}")
-                
-                data = all_data
+                        data = []
             else:
                 # Recherche simple
                 data = self.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
             
             if not data:
-                app_logger.warning(f"Aucune donnée trouvée pour: {original_search_term}")
                 raise Exception(f"Aucune donnée trouvée pour la recherche: {original_search_term}")
-            
-            app_logger.info(f"Nombre de lignes récupérées: {len(data)}")
             
             # Créer le fichier CSV
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
@@ -7090,28 +7091,23 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 writer.writerow(headers)
                 
                 # Écrire les données en remplaçant la référence par la référence personnalisée
-                for i, record in enumerate(data):
-                    try:
-                        type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-                        modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
-                        
-                        writer.writerow([
-                            custom_reference,  # product (référence personnalisée au lieu de ref_piece)
-                            type_app or '',
-                            manufacturer or '',
-                            modele_complet,
-                            ref_modele or '',
-                            commercial_ref or ''
-                        ])
-                    except Exception as e:
-                        app_logger.error(f"Erreur ligne {i}: {e} - données: {record}")
-                        # Continuer avec les autres lignes
+                for record in data:
+                    type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
+                    modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
+                    
+                    writer.writerow([
+                        custom_reference,  # product (référence personnalisée au lieu de ref_piece)
+                        type_app or '',
+                        manufacturer or '',
+                        modele_complet,
+                        ref_modele or '',
+                        commercial_ref or ''
+                    ])
             
-            app_logger.info(f"Export CSV personnalisé terminé: {filepath}")
             return f"Fichier CSV créé: {filepath}"
             
         except Exception as e:
-            app_logger.error(f"Erreur dans _export_custom_reference_csv_with_current_data: {e}")
+            app_logger.error(f"Erreur export CSV personnalisé: {e}")
             raise Exception(f"Erreur lors de l'export CSV personnalisé: {e}")
     
     def _create_minimal_csv_fallback(self, custom_reference: str) -> str:

@@ -383,11 +383,9 @@ class DatabaseManager:
             # Vérifier la structure de la table pieces actuelle
             self.cursor.execute("PRAGMA table_info(pieces)")
             pieces_columns = [row[1] for row in self.cursor.fetchall()]
-            print(f"Colonnes de pieces: {pieces_columns}")
             
             # Si la table pieces n'a pas de colonne 'appareil_id', la migration a déjà été effectuée
             if 'appareil_id' not in pieces_columns:
-                print("Migration déjà effectuée (pas de colonne appareil_id), skip")
                 return
                 
             # Vérifier si les nouvelles tables sont vides
@@ -402,7 +400,6 @@ class DatabaseManager:
                 return
                 
             if assoc_count > 0:
-                print("Migration déjà effectuée (associations existantes), skip")
                 return
             
             print("🔄 Début de la migration des pièces vers la nouvelle structure...")

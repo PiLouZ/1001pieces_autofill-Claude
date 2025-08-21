@@ -61,9 +61,7 @@ def migrate_old_database():
         print(f"📦 Base de données déplacée vers: {new_db}")
 
 def launch_application():
-    """Lancer l'application principale"""
-    print("🚀 Lancement de l'application...")
-    
+    """Lancer l'application principale"""    
     try:
         # Importer et lancer l'application
         from src.ui.main_refactored import main
