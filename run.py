@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🚀 Lanceur principal - Gestionnaire d'Appareils
+🚀 Lanceur principal - Gestionnaire de pièces & d'appareils - 1001pieces.com
 Point d'entrée unique pour l'application reorganisée
 """
 
@@ -79,7 +79,7 @@ def launch_application():
 
 def main():
     """Point d'entrée principal"""
-    print("🔧 Gestionnaire d'Appareils - Version Organisée")
+    print("🔧 Gestionnaire de pièces & d'appareils - 1001pieces.com")
     print("=" * 50)
     
     # Vérifications préliminaires

@@ -5454,7 +5454,7 @@ class MainWindow(QMainWindow):
             from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
             
             dialog = QDialog(self)
-            dialog.setWindowTitle("📖 Guide d'utilisation - 1001 Pièces")
+            dialog.setWindowTitle("📖 Guide d'utilisation - 1001pieces.com")
             dialog.resize(800, 600)
             
             layout = QVBoxLayout()
@@ -5463,7 +5463,7 @@ class MainWindow(QMainWindow):
             guide_text = QTextEdit()
             guide_text.setReadOnly(True)
             guide_content = """
-# Guide d'utilisation - 1001 Pièces
+# Guide d'utilisation - 1001pieces.com
 
 ## 🚀 Démarrage rapide
 

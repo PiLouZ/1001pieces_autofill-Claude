@@ -35,7 +35,7 @@ class Config:
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
     
     # Interface utilisateur
-    WINDOW_TITLE = "Gestionnaire d'Appareils - Version Optimisée"
+    WINDOW_TITLE = "Gestionnaire de pièces & d'appareils - 1001pieces.com"
     WINDOW_WIDTH = 1200
     WINDOW_HEIGHT = 800
     

@@ -18,7 +18,7 @@ class PiecesManagerWindow(QDialog):
     def __init__(self, parent, db_manager):
         super().__init__(parent)
         self.db_manager = db_manager
-        self.setWindowTitle("🔧 Gestionnaire des Pièces")
+        self.setWindowTitle("🔧 Gestionnaire des Pièces - 1001pieces.com")
         self.setModal(False)
         self.resize(1000, 700)
         

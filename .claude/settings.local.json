@@ -50,7 +50,8 @@
       "Bash(git describe:*)",
       "Bash(git rev-list:*)",
       "Bash(cd:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(cd:*)"
     ],
     "deny": []
   }

@@ -22,7 +22,7 @@ class LogViewer(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Visualiseur de Logs - 1001pieces")
+        self.setWindowTitle("Visualiseur de Logs - 1001pieces.com")
         self.setModal(False)
         self.resize(1000, 700)
         
