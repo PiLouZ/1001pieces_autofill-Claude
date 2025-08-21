@@ -2530,26 +2530,34 @@ class MainWindow(QMainWindow):
         original_search_term = search_term
         is_multi_reference_export = False
         
-        # Gérer les recherches multi-références pour CSV uniquement
+        # Afficher dialogue de sélection de référence pour TOUS les exports CSV
         if export_format == ExportFormat.CSV:
             multi_terms = self._get_multi_reference_terms()
             if multi_terms:
                 is_multi_reference_export = True
-                # Demander à l'utilisateur de confirmer/choisir la référence pour CSV
+                # Demander à l'utilisateur de confirmer/choisir la référence pour CSV multi-références
                 selected_reference = self._show_reference_selection_dialog(
                     "Référence pour l'export CSV",
                     f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
                     f"Choisissez la référence à utiliser pour la première colonne :",
                     multi_terms[0]  # Premier terme par défaut
                 )
+            else:
+                # Recherche simple - afficher aussi le dialogue pour permettre de modifier la référence
+                selected_reference = self._show_reference_selection_dialog(
+                    "Référence pour l'export CSV",
+                    f"Référence détectée : {search_term}\n"
+                    f"Confirmez ou modifiez la référence à utiliser pour la première colonne :",
+                    search_term  # Terme de recherche actuel par défaut
+                )
                 
-                if not selected_reference:
-                    return  # Annulé par l'utilisateur
-                
-                # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
-                
-                # Remplacer le search_term par la référence sélectionnée pour l'export CSV
-                search_term = selected_reference
+            if not selected_reference:
+                return  # Annulé par l'utilisateur
+            
+            # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
+            
+            # Remplacer le search_term par la référence sélectionnée pour l'export CSV
+            search_term = selected_reference
         
         try:
             # Récupérer les filtres de colonnes actifs
@@ -6850,8 +6858,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             original_search_term = self.search_input.text().strip()
             
             # Si c'est une recherche multi-références, utiliser les données d'une référence existante
-            if '||' in original_search_term:
-                references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
+            if '||' in original_search_term or '&&' in original_search_term:
+                # Diviser selon l'opérateur utilisé
+                if '||' in original_search_term:
+                    references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
+                else:  # && présent
+                    references = [ref.strip() for ref in original_search_term.split('&&') if ref.strip()]
+                    
                 app_logger.info(f"Génération méta pour multi-références: {references}")
                 
                 # Essayer de trouver une référence qui existe en BDD pour récupérer les vraies données
@@ -7031,10 +7044,14 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             app_logger.info("Récupération données depuis la BDD...")
             
             # Vérifier si c'est une recherche multi-références
-            if '||' in original_search_term:
+            if '||' in original_search_term or '&&' in original_search_term:
                 app_logger.info("Détection recherche multi-références")
-                # Diviser les références et récupérer les données pour chacune
-                references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
+                # Diviser les références selon l'opérateur utilisé
+                if '||' in original_search_term:
+                    references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
+                else:  # && présent
+                    references = [ref.strip() for ref in original_search_term.split('&&') if ref.strip()]
+                    
                 app_logger.info(f"Références détectées: {references}")
                 
                 all_data = []
@@ -7165,14 +7182,14 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _is_piece_reference_search(self) -> bool:
         """
         Vérifier si la recherche actuelle correspond à une référence de pièce
-        Supporte maintenant les recherches multi-références avec ||
+        Supporte maintenant les recherches multi-références avec || et &&
         """
         search_term = self.search_input.text().strip()
         if not search_term:
             return False
         
-        # Détecter les recherches multi-références avec ||
-        if '||' in search_term:
+        # Détecter les recherches multi-références avec || ou &&
+        if '||' in search_term or '&&' in search_term:
             return self._are_all_terms_piece_references(search_term)
         
         # Recherche simple (comportement existant)
@@ -7181,10 +7198,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _are_all_terms_piece_references(self, search_term: str) -> bool:
         """
         Vérifier que tous les termes d'une recherche multi-références sont valides
-        Format attendu: "REF001 || REF002 || REF003"
+        Format attendu: "REF001 || REF002 || REF003" ou "REF001 && REF002 && REF003"
         """
-        # Diviser par || et nettoyer les espaces
-        terms = [term.strip() for term in search_term.split('||')]
+        # Diviser par || ou && et nettoyer les espaces
+        if '||' in search_term:
+            terms = [term.strip() for term in search_term.split('||')]
+        elif '&&' in search_term:
+            terms = [term.strip() for term in search_term.split('&&')]
+        else:
+            return False  # Pas d'opérateur multi-références
         
         # Vérifier que tous les termes sont des références valides
         for term in terms:
@@ -7199,15 +7221,24 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """
         Extraire les termes d'une recherche multi-références
         Retourne None si ce n'est pas une recherche multi-références valide
+        Support des opérateurs || et &&
         """
         search_term = self.search_input.text().strip()
-        if not search_term or '||' not in search_term:
+        if not search_term:
+            return None
+        
+        # Vérifier la présence des opérateurs || ou &&
+        if '||' not in search_term and '&&' not in search_term:
             return None
             
         if not self._are_all_terms_piece_references(search_term):
             return None
-            
-        return [term.strip() for term in search_term.split('||')]
+        
+        # Diviser selon l'opérateur présent
+        if '||' in search_term:
+            return [term.strip() for term in search_term.split('||')]
+        else:  # && est présent
+            return [term.strip() for term in search_term.split('&&')]
     
     def _show_reference_selection_dialog(self, title: str, message: str, default_reference: str) -> Optional[str]:
         """
