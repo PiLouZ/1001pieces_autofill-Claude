@@ -1065,7 +1065,7 @@ class MainWindow(QMainWindow):
                 border: 1px solid #dee2e6;
                 border-radius: 4px;
                 padding: 4px;
-                font-family: monospace;
+                font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
                 font-size: 12px;
             }
         """)
@@ -3166,7 +3166,7 @@ class MainWindow(QMainWindow):
 <html>
 <head>
     <style>
-        body { font-family: monospace; font-size: 12px; margin: 4px; padding: 4px; }
+        body { font-family: 'SF Mono', 'Monaco', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }
         p { margin: 2px 0; }
         .timestamp { color: #666; }
         .message { color: #333; }
@@ -4932,7 +4932,7 @@ class MainWindow(QMainWindow):
             # Créer un aperçu formaté des 3 premières lignes
             preview_text = QTextEdit()
             preview_text.setMaximumHeight(120)
-            preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Courier New', monospace; font-size: 11px;")
+            preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace; font-size: 11px;")
             preview_text.setReadOnly(True)
             
             # Formatage de l'aperçu
