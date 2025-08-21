@@ -1065,7 +1065,7 @@ class MainWindow(QMainWindow):
                 border: 1px solid #dee2e6;
                 border-radius: 4px;
                 padding: 4px;
-                font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+                font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
                 font-size: 12px;
             }
         """)
@@ -3166,7 +3166,7 @@ class MainWindow(QMainWindow):
 <html>
 <head>
     <style>
-        body { font-family: 'SF Mono', 'Monaco', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }
+        body { font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }
         p { margin: 2px 0; }
         .timestamp { color: #666; }
         .message { color: #333; }
@@ -4932,7 +4932,7 @@ class MainWindow(QMainWindow):
             # Créer un aperçu formaté des 3 premières lignes
             preview_text = QTextEdit()
             preview_text.setMaximumHeight(120)
-            preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace; font-size: 11px;")
+            preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 11px;")
             preview_text.setReadOnly(True)
             
             # Formatage de l'aperçu
@@ -7033,12 +7033,20 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 # Diviser les références selon l'opérateur utilisé
                 if '||' in original_search_term:
                     references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
-                    # Opérateur OR: union de tous les résultats
+                    # Opérateur OR: union de tous les résultats (sans doublons)
                     all_data = []
+                    seen_records = set()
+                    
                     for ref in references:
                         ref_data = self.db_manager.get_export_data(ref, column_filters, incomplete_filter)
                         if ref_data:
-                            all_data.extend(ref_data)
+                            for record in ref_data:
+                                # Créer une clé unique pour chaque appareil (sans la référence de pièce)
+                                record_key = (record[0], record[1], record[2], record[3], record[4])  # type, manufacturer, ref_modele, commercial_ref, other_ref
+                                if record_key not in seen_records:
+                                    seen_records.add(record_key)
+                                    all_data.append(record)
+                    
                     data = all_data
                 else:  # && présent
                     references = [ref.strip() for ref in original_search_term.split('&&') if ref.strip()]
@@ -7313,6 +7321,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 def main():
     """Point d'entrée de l'application"""
     app = QApplication(sys.argv)
+    
+    # Supprimer les warnings macOS inutiles
+    app.setAttribute(Qt.AA_DontShowIconsInMenus, False)
+    app.setQuitOnLastWindowClosed(True)
     
     try:
         window = MainWindow()
