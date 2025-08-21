@@ -3154,8 +3154,11 @@ class MainWindow(QMainWindow):
         if not hasattr(self, '_history_messages'):
             self._history_messages = []
         
+        # Appliquer le formatage spécialisé pour les messages d'import
+        formatted_message = self._format_message_for_history(message, timestamp)
+        
         # Ajouter le nouveau message au début de la liste
-        self._history_messages.insert(0, f"[{timestamp}] {message}")
+        self._history_messages.insert(0, formatted_message)
         
         # Limiter à 50 entrées
         if len(self._history_messages) > 50:
@@ -3167,28 +3170,40 @@ class MainWindow(QMainWindow):
 <head>
     <style>
         body { font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }
-        p { margin: 2px 0; }
+        p { margin: 1px 0; line-height: 1.0; }
+        p.message-block { margin: 1px 0; line-height: 1.0; }
+        p.separator { margin: 4px 0; }
         .timestamp { color: #666; }
         .message { color: #333; }
+        .indented { margin-left: 20px; }
+        .import-header { font-weight: bold; color: #2c5282; }
+        .import-section { margin-left: 20px; color: #555; }
+        .import-summary { margin-left: 20px; color: #2d5a87; font-weight: 500; }
+        .entry-separator { height: 8px; margin: 4px 0; }
     </style>
 </head>
 <body>
 """
         
         # Ajouter tous les messages
-        for msg in self._history_messages:
+        for i, msg in enumerate(self._history_messages):
             # Séparer timestamp et contenu pour styling
             if msg.startswith('[') and '] ' in msg:
                 parts = msg.split('] ', 1)
                 timestamp_part = parts[0] + ']'
                 content_part = parts[1] if len(parts) > 1 else ''
-                # Convertir les retours à la ligne en HTML
-                content_part = content_part.replace('\n', '<br>')
-                html_content += f"<p style='margin: 6px 0; line-height: 1.4; padding: 2px 0;'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
+                # Convertir les retours à la ligne en HTML et appliquer l'indentation CSS
+                content_part = self._apply_css_indentation(content_part)
+                # Cadre rouge (timestamp) : bien séparé du contenu suivant  
+                html_content += f"<p class='separator'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
             else:
-                # Convertir les retours à la ligne en HTML
-                msg_html = msg.replace('\n', '<br>')
-                html_content += f"<p style='margin: 6px 0; line-height: 1.4; padding: 2px 0;' class='message'>{msg_html}</p>\n"
+                # Convertir les retours à la ligne en HTML avec interligne minimal et indentation CSS
+                msg_html = self._apply_css_indentation(msg)
+                html_content += f"<p class='message-block'>{msg_html}</p>\n"
+            
+            # Ajouter une ligne vide sous chaque entrée d'historique (sauf la dernière)
+            if i < len(self._history_messages) - 1:
+                html_content += "<br><br>\n"
         
         html_content += """</body>
 </html>"""
@@ -3200,6 +3215,82 @@ class MainWindow(QMainWindow):
         cursor = self.history_list.textCursor()
         cursor.movePosition(cursor.MoveOperation.Start)
         self.history_list.setTextCursor(cursor)
+    
+    def _apply_css_indentation(self, content: str) -> str:
+        """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""
+        lines = content.split('\n')
+        processed_lines = []
+        
+        for line in lines:
+            stripped_line = line.strip()
+            
+            if (stripped_line.startswith('==> ') or 
+                stripped_line.startswith('Créés :') or 
+                stripped_line.startswith('Complétion automatique :') or 
+                stripped_line.startswith('À compléter :') or 
+                stripped_line.startswith('Doublon ignoré :') or 
+                stripped_line.startswith('Nouvelles :') or 
+                stripped_line.startswith('Déjà associés :')):
+                # Utiliser des espaces non-sécables pour l'indentation
+                processed_lines.append(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line.strip()}')
+            else:
+                processed_lines.append(line)
+        
+        # Convertir les retours à la ligne en HTML
+        return '<br>'.join(processed_lines)
+    
+    def _format_message_for_history(self, message: str, timestamp: str) -> str:
+        """Formater les messages pour un affichage optimisé dans l'historique"""
+        
+        # Si c'est un message d'import PDF, appliquer le formatage spécialisé
+        if "📊 Import" in message:
+            lines = message.strip().split('\n')
+            formatted_lines = []
+            
+            for i, line in enumerate(lines):
+                if not line.strip():
+                    continue
+                
+                # En-tête d'import : garder tel quel mais sans timestamp redondant
+                if line.startswith("📊 Import"):
+                    formatted_lines.append(line)
+                    continue
+                
+                # Messages PDF : enlever les préfixes de fichier et nettoyer
+                if "📄 Fichier PDF" in line and "lignes extraites" in line:
+                    # Format: "📄 Fichier PDF filename.pdf: N lignes extraites"
+                    # On veut garder juste cette information
+                    formatted_lines.append(line)
+                    continue
+                
+                # Lignes traitées : ajouter le préfixe ==>
+                if line.startswith("Lignes traitées"):
+                    formatted_lines.append(f"==> {line}")
+                    continue
+                
+                # Titres de sections : ajouter interligne seulement avant "Appareils :"
+                if line.endswith("Appareils :"):
+                    formatted_lines.append("")  # Interligne avant première section
+                    formatted_lines.append(line)
+                    continue
+                elif line.endswith("Associations de pièce :"):
+                    formatted_lines.append(line)  # Pas d'interligne supplémentaire
+                    continue
+                
+                # Éléments de synthèse : garder tels quels (l'indentation sera gérée par CSS)
+                if line.strip().startswith("==> ") or line.strip().startswith("Créés :") or line.strip().startswith("Complétion automatique :"):
+                    formatted_lines.append(line.strip())
+                    continue
+                
+                # Autres lignes : garder telles quelles
+                formatted_lines.append(line)
+            
+            # Reconstruire le message avec le formatage appliqué
+            formatted_content = '\n'.join(formatted_lines)
+            return f"[{timestamp}] {formatted_content}"
+        
+        # Pour les autres messages, format standard
+        return f"[{timestamp}] {message}"
 
 
     def _handle_history_link(self, url):
@@ -5094,12 +5185,17 @@ class MainWindow(QMainWindow):
         
         self._show_info(summary)
     
-    def _generate_console_summary(self, results, ref_piece, source):
+    def _generate_console_summary(self, results, ref_piece, source, pdf_files_info=None):
         """Générer la synthèse dans le format console standardisé"""
         summary = f"📊 Import {source}"
         if ref_piece:
             summary += f" (pièce: {ref_piece})"
         summary += ":\n"
+        
+        # Si c'est un import PDF et qu'on a des informations sur les fichiers, les ajouter
+        if pdf_files_info:
+            for file_info in pdf_files_info:
+                summary += f"📄 Fichier PDF {file_info['filename']}: {file_info['lines_extracted']} lignes extraites\n"
         
         # Ligne principale - total des lignes du fichier original
         # Le vrai total = lignes traitées + doublons ignorés dans le fichier
@@ -5144,12 +5240,12 @@ class MainWindow(QMainWindow):
         
         return summary
 
-    def _log_import_to_history(self, results, ref_piece, source):
+    def _log_import_to_history(self, results, ref_piece, source, pdf_files_info=None):
         """Enregistrer l'import dans l'historique avec format console"""
         from datetime import datetime
         
         # Générer la synthèse dans le format console
-        console_summary = self._generate_console_summary(results, ref_piece, source)
+        console_summary = self._generate_console_summary(results, ref_piece, source, pdf_files_info)
         
         # Déterminer le type d'opération
         operation_type = "import_csv" if source != "Collage" else "import_paste"
@@ -5721,6 +5817,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Traiter tous les fichiers
             all_converted_data = []
             processed_files = []
+            pdf_files_info = []  # Pour collecter les informations des fichiers PDF
             
             # Créer une barre de progression pour l'import PDF
             total_files = len(file_paths)
@@ -5750,8 +5847,11 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                         self._show_error(f"Aucune donnée extraite du fichier PDF: {os.path.basename(file_path)}")
                         continue
                     
-                    # Afficher le nombre de lignes extraites dans l'historique
-                    app_logger.info(f"📄 Fichier PDF {os.path.basename(file_path)}: {len(extracted_data)} lignes extraites")
+                    # Collecter les informations du fichier PDF pour l'historique
+                    pdf_files_info.append({
+                        'filename': os.path.basename(file_path),
+                        'lines_extracted': len(extracted_data)
+                    })
                     
                     # Convertir les données extraites en format 3 colonnes pour import_type = 3
                     for row in extracted_data:
@@ -5812,7 +5912,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             else:
                 source_info = f"PDF ({len(processed_files)} fichiers)"
             
-            self._log_import_to_history(results, ref_piece, source_info)
+            self._log_import_to_history(results, ref_piece, source_info, pdf_files_info)
             
             # Gérer les doublons s'il y en a
             

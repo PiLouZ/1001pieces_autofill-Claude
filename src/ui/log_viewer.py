@@ -177,44 +177,64 @@ class LogViewer(QDialog):
             
         lines = raw_logs.strip().split('\n')
         formatted_lines = []
+        in_import_section = False
         
-        for line in lines:
+        for i, line in enumerate(lines):
             if not line.strip():
                 continue
+            
+            # Détecter le début d'une section d'import
+            if "📊 Import" in line and " | INFO     | " in line:
+                in_import_section = True
+                timestamp_part = line.split(" | INFO     | ")[0]
+                message_part = line.split(" | INFO     | ")[1]
+                time_part = timestamp_part.split(",")[0].split(" ")[-1]  # HH:MM:SS
                 
-            # Messages PDF avec emoji : supprimer timestamp et garder seulement le message
-            if "📄 Fichier PDF" in line and "lignes extraites" in line:
-                # Extraire seulement la partie après " | INFO     | "
+                # Ajouter interligne avant nouvelle action et ligne d'en-tête
+                formatted_lines.append("")
+                formatted_lines.append(f"[{time_part}] {message_part}")
+                continue
+            
+            # Messages PDF dans le contexte d'import
+            if in_import_section and "📄 Fichier PDF" in line and "lignes extraites" in line:
                 parts = line.split(" | INFO     | ")
                 if len(parts) >= 2:
                     formatted_lines.append(parts[1])
                     continue
             
-            # Synthèses d'import : réduire les interlignes  
-            if "📊 Import" in line or \
-               ("Lignes traitées" in line) or \
-               ("Appareils :" in line) or \
-               ("==> " in line) or \
-               ("Associations de pièce" in line):
-                
-                # Extraire le timestamp pour les synthèses
+            # Messages PDF hors contexte d'import (normaux)
+            if not in_import_section and "📄 Fichier PDF" in line and "lignes extraites" in line:
+                parts = line.split(" | INFO     | ")
+                if len(parts) >= 2:
+                    formatted_lines.append(parts[1])
+                    continue
+            
+            # Lignes traitées dans le contexte d'import
+            if in_import_section and "Lignes traitées" in line and " | INFO     | " in line:
+                message_part = line.split(" | INFO     | ")[1]
+                formatted_lines.append(f"    ==> {message_part}")
+                formatted_lines.append("")  # Interligne après lignes traitées
+                continue
+            
+            # Titres de sections dans l'import
+            if in_import_section and (line.endswith("Appareils :") or line.endswith("Associations de pièce :")):
                 if " | INFO     | " in line:
-                    timestamp_part = line.split(" | INFO     | ")[0]
                     message_part = line.split(" | INFO     | ")[1]
-                    # Extraire seulement l'heure du timestamp
-                    time_part = timestamp_part.split(",")[0].split(" ")[-1]  # HH:MM:SS
-                    
-                    if "📊 Import" in message_part:
-                        # Première ligne de synthèse avec timestamp et double interligne avant
-                        formatted_lines.append("")  # Interligne avant nouvelle action
-                        formatted_lines.append(f"[{time_part}] {message_part}")
-                    else:
-                        # Autres lignes de synthèse sans timestamp et interligne réduite
-                        formatted_lines.append(message_part)
+                    formatted_lines.append(message_part)
                 else:
-                    # Ligne de synthèse sans timestamp complet
                     formatted_lines.append(line)
                 continue
+            
+            # Éléments de synthèse avec indentation
+            if in_import_section and "==> " in line and " | INFO     | " in line:
+                message_part = line.split(" | INFO     | ")[1]
+                formatted_lines.append(f"    {message_part}")
+                continue
+                
+            # Détecter la fin de la section d'import
+            if in_import_section and not any(keyword in line for keyword in 
+                                           ["📄 Fichier PDF", "Lignes traitées", "Appareils", "Associations", "==> "]):
+                in_import_section = False
             
             # Autres messages : garder tel quel
             formatted_lines.append(line)
