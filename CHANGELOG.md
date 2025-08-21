@@ -2,6 +2,55 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.6.0] - 2025-08-21 - 🎨 Formatage Optimisé de l'Historique et Nettoyage du Code
+
+### ✨ **Nouvelles Fonctionnalités Majeures**
+
+#### 📋 **Historique Principal Amélioré**
+- **Détails des fichiers PDF** : Affichage du nom et nombre de lignes extraites pour chaque fichier importé
+- **Formatage sophistiqué** : Messages structurés avec interligne minimal (line-height: 1.0) 
+- **Indentation CSS** : Lignes "==>" indentées avec 5 espaces non-sécables pour une lisibilité parfaite
+- **Séparation visuelle** : Lignes vides entre chaque entrée d'historique (timestamps)
+
+#### 🔧 **Support Multi-Références Complet**
+- **Opérateur &&** : Intersection des résultats (ET logique)
+- **Opérateur ||** : Union des résultats avec déduplication (OU logique)
+- **Dialogue universel** : Sélection de référence pour TOUS les exports CSV (pas uniquement multi-références)
+- **Activation boutons** : Support complet des recherches && pour tous les boutons d'export
+
+#### 🧹 **Nettoyage et Optimisations**
+- **Messages startup** : Suppression du verbose "🚀 Lancement de l'application..."
+- **Noms fichiers CSV** : Format simplifié `{Product}_everyParts.csv`
+- **Logs console** : Suppression des messages de debug sur les migrations de base
+- **Avertissements macOS** : Tentatives de suppression des warnings de polices
+
+### 🎨 **Améliorations Interface**
+
+#### 📱 **Historique Principal**
+```
+[10:05:27] 📊 Import PDF (3 fichiers):
+📄 Fichier PDF 481236018558.pdf: 3119 lignes extraites
+📄 Fichier PDF 481236018508.pdf: 1109 lignes extraites  
+📄 Fichier PDF 480140100575.pdf: 205 lignes extraites
+     ==> Lignes traitées : 4433
+
+Appareils :
+     ==> Créés : 0
+     ==> Complétion automatique : 0
+     ==> À compléter : 0
+     ==> Doublon ignoré : 5
+Associations de pièce :
+     ==> Nouvelles : 0
+     ==> Déjà associés : 0
+```
+
+### 🔧 **Améliorations Techniques**
+
+- **Collecte d'informations PDF** : Tracking des fichiers traités pendant l'import
+- **Formatage HTML optimisé** : Utilisation d'espaces non-sécables (&nbsp;) pour l'indentation
+- **Gestion d'état avancée** : Messages structurés avec formatage contextuel
+- **Architecture modulaire** : Séparation claire entre formatage et affichage
+
 ## [2.5.0] - 2025-08-20 - 🚀 Exports Multi-Références et Améliorations SEO
 
 ### ✨ **Nouvelles Fonctionnalités Majeures**
@@ -411,7 +460,7 @@ Cette version introduit une approche complètement nouvelle pour la gestion des 
 
 ---
 
-**📅 Dernière mise à jour :** 18 juillet 2025  
+**📅 Dernière mise à jour :** 21 août 2025  
 **👨‍💻 Développé par :** Claude (Anthropic) en collaboration avec l'utilisateur  
-**🏷️ Version stable :** 2.4.0  
-**🚀 Dernière version :** Gestion avancée des pièces et optimisations
+**🏷️ Version stable :** 2.6.0  
+**🚀 Dernière version :** Formatage optimisé de l'historique et nettoyage du code
