@@ -2595,7 +2595,9 @@ class MainWindow(QMainWindow):
                                           f"Erreur fallback: {e2}")
                         return
             else:
-                result = self.exporter.export_search_results(search_term, export_format, 
+                # Pour les exports HTML, utiliser le terme de recherche original pour préserver les opérateurs || et &&
+                export_search_term = original_search_term if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS] else search_term
+                result = self.exporter.export_search_results(export_search_term, export_format, 
                                                            column_filters=column_filters, 
                                                            incomplete_filter=incomplete_filter)
             
@@ -3203,7 +3205,7 @@ class MainWindow(QMainWindow):
             
             # Ajouter une ligne vide sous chaque entrée d'historique (sauf la dernière)
             if i < len(self._history_messages) - 1:
-                html_content += "<br><br>\n"
+                html_content += "<br>\n"
         
         html_content += """</body>
 </html>"""
@@ -7225,8 +7227,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             import os
             from datetime import datetime
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"export_fallback_{custom_reference}_{timestamp}.csv"
+            filename = f"{custom_reference}_everyParts.csv"
             filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
             
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:

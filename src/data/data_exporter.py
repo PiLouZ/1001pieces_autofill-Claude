@@ -496,8 +496,11 @@ class DataExporter:
         # Ajouter la date
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Construire le nom de fichier
-        filename = f"{clean_term}_{timestamp}.{export_format.value}"
+        # Construire le nom de fichier selon le format standardisé
+        if export_format == ExportFormat.CSV:
+            filename = f"{clean_term}_everyParts.csv"
+        else:
+            filename = f"{clean_term}_{timestamp}.{export_format.value}"
         
         # Obtenir le chemin du Bureau
         import os

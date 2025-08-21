@@ -145,6 +145,45 @@ class DatabaseManager:
         
         return None
     
+    def _parse_search_term_for_export(self, search_term: str):
+        """Parser un terme de recherche pour l'export - reproduit la logique de _parse_advanced_search"""
+        if not search_term.strip():
+            return search_term
+        
+        # Si pas d'opérateurs, retourner tel quel pour traitement simple
+        if '||' not in search_term and '&&' not in search_term:
+            return search_term
+        
+        # Parser les opérateurs logiques
+        # Diviser d'abord par || (OU)
+        or_groups = search_term.split('||')
+        
+        parsed_groups = []
+        for group in or_groups:
+            group = group.strip()
+            if not group:
+                continue
+                
+            # Diviser chaque groupe par && (ET)
+            and_terms = [term.strip() for term in group.split('&&') if term.strip()]
+            if and_terms:
+                parsed_groups.append({
+                    'type': 'and',
+                    'terms': and_terms
+                })
+        
+        if not parsed_groups:
+            # Pas d'opérateurs trouvés, recherche simple
+            return {
+                'type': 'simple',
+                'terms': [search_term.strip()]
+            }
+        
+        return {
+            'type': 'or',
+            'groups': parsed_groups
+        }
+    
     def _setup_database(self):
         """Configuration et création des tables"""
         try:
@@ -1365,23 +1404,27 @@ class DatabaseManager:
                        incomplete_filter: bool = False) -> List[Tuple]:
         """Récupérer les données pour l'export - utilise exactement la même logique que load_data()"""
         try:
-            # Pour l'export, on veut seulement la pièce recherchée (pas toutes les pièces associées)
+            # Construction de la requête similaire à load_data mais adaptée pour l'export
+            headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS[:5])
             query = f"""
-                SELECT a.{', '.join(f'[{h}]' for h in Config.DB_HEADERS[:5])}, ? as ref_piece
+                SELECT DISTINCT {headers_str}, ? as ref_piece
                 FROM appareils a
                 LEFT JOIN piece_associations pa ON a.id = pa.appareil_id
                 LEFT JOIN pieces p ON pa.piece_id = p.id
             """
-            # Paramètres : d'abord la référence de pièce fixe, puis les conditions de recherche
+            
+            # Paramètre fixe pour la référence de pièce dans le résultat
             params = [search_term]
             conditions = []
             
-            # Pour l'export, on ne veut que les appareils associés à la pièce recherchée
+            # Recherche globale utilisant la même logique que load_data
             if search_term:
-                # Condition pour filtrer les appareils associés à cette pièce spécifique
-                piece_condition = "p.ref_piece = ?"
-                conditions.append(piece_condition)
-                params.append(search_term)
+                # Parser le terme de recherche s'il contient des opérateurs || ou &&
+                parsed_search = self._parse_search_term_for_export(search_term)
+                search_condition = self._build_search_condition(parsed_search)
+                if search_condition:
+                    conditions.append(search_condition['condition'])
+                    params.extend(search_condition['params'])
             
             # Filtres par colonne (comme dans load_data)
             if column_filters:

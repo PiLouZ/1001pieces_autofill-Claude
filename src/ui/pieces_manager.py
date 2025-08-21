@@ -290,7 +290,7 @@ class PiecesManagerWindow(QDialog):
             from PyQt5.QtWidgets import QFileDialog
             
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Exporter les pièces", "pieces_export.csv",
+                self, "Exporter les pièces", "pieces_everyParts.csv",
                 "Fichiers CSV (*.csv)"
             )
             
