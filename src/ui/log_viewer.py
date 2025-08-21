@@ -156,7 +156,10 @@ class LogViewer(QDialog):
             
             # Charger les logs bruts
             raw_logs = app_logger.get_recent_logs(log_type, lines)
-            self.raw_logs_text.setPlainText(raw_logs)
+            
+            # Formatter les logs pour l'affichage dans l'historique
+            formatted_logs = self.format_logs_for_display(raw_logs)
+            self.raw_logs_text.setPlainText(formatted_logs)
             
             # Traiter les logs spécialisés
             if log_type == "data_operations":
@@ -166,6 +169,57 @@ class LogViewer(QDialog):
             
         except Exception as e:
             self.status_label.setText(f"Erreur lors du chargement: {e}")
+    
+    def format_logs_for_display(self, raw_logs: str) -> str:
+        """Formater les logs pour un affichage optimisé dans l'historique"""
+        if not raw_logs.strip():
+            return raw_logs
+            
+        lines = raw_logs.strip().split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            if not line.strip():
+                continue
+                
+            # Messages PDF avec emoji : supprimer timestamp et garder seulement le message
+            if "📄 Fichier PDF" in line and "lignes extraites" in line:
+                # Extraire seulement la partie après " | INFO     | "
+                parts = line.split(" | INFO     | ")
+                if len(parts) >= 2:
+                    formatted_lines.append(parts[1])
+                    continue
+            
+            # Synthèses d'import : réduire les interlignes  
+            if "📊 Import" in line or \
+               ("Lignes traitées" in line) or \
+               ("Appareils :" in line) or \
+               ("==> " in line) or \
+               ("Associations de pièce" in line):
+                
+                # Extraire le timestamp pour les synthèses
+                if " | INFO     | " in line:
+                    timestamp_part = line.split(" | INFO     | ")[0]
+                    message_part = line.split(" | INFO     | ")[1]
+                    # Extraire seulement l'heure du timestamp
+                    time_part = timestamp_part.split(",")[0].split(" ")[-1]  # HH:MM:SS
+                    
+                    if "📊 Import" in message_part:
+                        # Première ligne de synthèse avec timestamp et double interligne avant
+                        formatted_lines.append("")  # Interligne avant nouvelle action
+                        formatted_lines.append(f"[{time_part}] {message_part}")
+                    else:
+                        # Autres lignes de synthèse sans timestamp et interligne réduite
+                        formatted_lines.append(message_part)
+                else:
+                    # Ligne de synthèse sans timestamp complet
+                    formatted_lines.append(line)
+                continue
+            
+            # Autres messages : garder tel quel
+            formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
     
     def parse_data_operations_logs(self, raw_logs):
         """Parser les logs d'opérations sur les données"""
