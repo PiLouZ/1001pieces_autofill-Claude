@@ -25,6 +25,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core.config import Config
 from src.core.logger import app_logger
+from src.core.import_manager import ImportManager
 from src.data.database_manager import DatabaseManager, DatabaseError
 from src.data.data_validator import DataValidator, ValidationResult
 from src.data.data_exporter import DataExporter, ExportFormat, ExportError
@@ -763,6 +764,9 @@ class MainWindow(QMainWindow):
             self.validator = DataValidator()
             self.exporter = DataExporter(self.db_manager)
             self.seo_generator = SEOGenerator()
+            
+            # Nouveau gestionnaire d'import unifié
+            self.import_manager = ImportManager(self.db_manager, parent_widget=self)
             
             # Gestionnaires UI
             self.undo_manager = UndoRedoManager()
@@ -4121,7 +4125,22 @@ class MainWindow(QMainWindow):
             self._show_error(f"Erreur lors de l'édition des notes: {e}")
 
     def _import_file(self):
-        """Importer un fichier CSV ou PDF"""
+        """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""
+        filenames, _ = QFileDialog.getOpenFileNames(
+            self, "Importer fichier(s)", "", 
+            "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
+        )
+        
+        if filenames:
+            # Utiliser le nouveau gestionnaire unifié
+            results = self.import_manager.import_files(filenames, show_dialog=True)
+            
+            if results:
+                self._show_import_results_new(results)
+                self.load_data()  # Rafraîchir l'affichage
+        
+    def _import_file_legacy(self):
+        """Ancienne méthode d'import - gardée pour référence/debugging"""
         filename, _ = QFileDialog.getOpenFileName(
             self, "Importer fichier", "", 
             "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
@@ -5275,6 +5294,48 @@ class MainWindow(QMainWindow):
         
         # Ajouter à l'historique visible avec le format console
         self._add_to_history(console_summary)
+    
+    def _show_import_results_new(self, results):
+        """Afficher les résultats d'import du nouveau système ImportManager"""
+        try:
+            # Vérifier les erreurs
+            if results.get('errors'):
+                error_msg = "Erreurs lors de l'import:\n" + "\n".join(results['errors'])
+                QMessageBox.warning(self, "Erreurs d'import", error_msg)
+            
+            # Créer le message de succès
+            files_text = f"{results['successful_files']}/{results['total_files']} fichier(s)"
+            if results['total_files'] > 1:
+                files_text += f" (import multi-fichiers)"
+            
+            success_msg = f"""🎉 Import terminé avec succès !
+
+📊 Résumé:
+• {files_text} traité(s)
+• {results['total_imported']} lignes importées
+• {results['new_entries']} nouveaux appareils créés
+• {results['matches_found']} appareils existants trouvés  
+• {results['associations_created']} associations pièces-appareils créées
+            """
+            
+            # Afficher le message
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Import réussi")
+            msg_box.setText(success_msg)
+            msg_box.setIcon(QMessageBox.Information)
+            
+            # Ajouter les détails si disponibles
+            if results.get('errors'):
+                msg_box.setDetailedText("Erreurs:\n" + "\n".join(results['errors']))
+            
+            msg_box.exec_()
+            
+            # Enregistrer dans l'historique
+            history_msg = f"Import nouveau système: {files_text} - {results['total_imported']} lignes"
+            self._add_to_history(history_msg)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur d'affichage", f"Impossible d'afficher les résultats: {e}")
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
@@ -5683,7 +5744,32 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         event.accept()
 
     def dropEvent(self, event):
-        """Gérer le déposer d'un ou plusieurs fichiers CSV ou PDF"""
+        """Gérer le déposer d'un ou plusieurs fichiers CSV ou PDF - Version améliorée"""
+        self._hide_drag_overlay()
+        
+        if event.mimeData().hasUrls():
+            supported_files = []
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    if file_path.lower().endswith(('.csv', '.pdf')):
+                        supported_files.append(file_path)
+            
+            if supported_files:
+                # Utiliser le nouveau gestionnaire unifié
+                results = self.import_manager.import_files(supported_files, show_dialog=True)
+                
+                if results:
+                    self._show_import_results_new(results)
+                    self.load_data()  # Rafraîchir l'affichage
+                
+                event.acceptProposedAction()
+                return
+        
+        event.ignore()
+        
+    def dropEvent_legacy(self, event):
+        """Ancienne méthode de drag & drop - gardée pour référence"""
         self._hide_drag_overlay()
         
         if event.mimeData().hasUrls():
