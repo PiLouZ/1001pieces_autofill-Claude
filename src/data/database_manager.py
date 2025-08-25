@@ -402,6 +402,12 @@ class DatabaseManager:
         for index_query in indexes:
             try:
                 self.cursor.execute(index_query)
+            except sqlite3.OperationalError as e:
+                # Ignorer les erreurs de table non-existante (base en mémoire ou migration)
+                if "no such table" in str(e):
+                    continue
+                else:
+                    raise DatabaseError(f"Erreur lors de la création des index: {e}")
             except sqlite3.Error as e:
                 raise DatabaseError(f"Erreur lors de la création des index: {e}")
     
