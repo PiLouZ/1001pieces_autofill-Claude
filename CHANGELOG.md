@@ -2,6 +2,146 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.8.2] - 2025-08-26 - 🔍 Correction Métriques Historique Import
+
+### 🐛 **Problème Analysé et Corrigé**
+
+#### **Métriques Historique Non Fonctionnelles**
+- ❌ **"À compléter : 0"** - Hardcodé dans ImportManager, devrait compter appareils créés sans Type ET Fabricant
+- ❌ **"Doublon ignoré : 0"** - Hardcodé dans ImportManager, devrait compter doublons `ref_modele+commercial_ref` dans fichier
+
+### ✅ **Corrections Implémentées**
+
+#### **ImportManager** (src/core/import_manager.py)
+- **`_process_data_import()`** : Ajout métriques `manual_completion` et `duplicates_in_file`
+- **Détection doublons** : `seen_device_refs` avec clé `"ref_modele|commercial_ref"`
+- **`_needs_manual_completion()`** : Compte appareils créés nécessitant Type ET Fabricant vides
+- **Cohérence traitement** : Doublons exclus de `total_imported`, comptés séparément
+
+#### **MainWindow** (src/ui/main_refactored.py)
+- **`_show_import_results_new()`** : Utilise vraies métriques au lieu de valeurs hardcodées
+- **Affichage cohérent** : Format identique au legacy mais avec vraies données
+
+### 📊 **Cohérence Mathématique Validée**
+
+#### **Logique Correcte Implémentée**
+```
+Lignes fichier = Lignes traitées + Doublons ignorés
+Lignes traitées = Créés + Autocompletés  
+À compléter ⊆ Créés (sous-ensemble des appareils créés)
+```
+
+#### **Métriques Fonctionnelles**
+- ✅ **Créés** : Nouveaux appareils insérés en base
+- ✅ **Autocompletés** : Appareils existants trouvés et mis à jour  
+- ✅ **À compléter** : Appareils créés sans Type ET Fabricant
+- ✅ **Doublons ignorés** : Lignes avec mêmes ref_modele+commercial_ref **entre tous les fichiers**
+
+### 🔧 **Correction Critique : Doublons Globaux**
+
+#### **Problème Identifié**
+- ❌ **Détection locale** : Doublons détectés seulement au sein d'un même fichier
+- ❌ **Import 4 PDF** : 3141 lignes → 3082 appareils → 59 doublons NON détectés entre fichiers
+
+#### **Solution Implémentée**
+- ✅ **`global_seen_device_refs`** : Set partagé entre tous les fichiers de l'import
+- ✅ **`_execute_import()`** : Gestion globale des doublons multi-fichiers
+- ✅ **Détection correcte** : REF001 fichier1 + REF001 fichier2 = doublon détecté
+
+### 🔧 **Correction Affichage : "Lignes traitées"**
+
+#### **Problème Identifié**
+- ❌ **"Lignes traitées : 3082"** affichait le nombre d'appareils traités
+- ❌ **Devrait afficher** : Somme des lignes extraites de tous les fichiers (3141)
+
+#### **Solution Implémentée**
+- ✅ **`total_lines_extracted`** : Nouvelle métrique comptant lignes avant traitement doublons
+- ✅ **Calcul correct** : `sum(detail['lines_processed'] for detail in file_details)`
+- ✅ **Affichage cohérent** : `Lignes traitées + Doublons ignorés = Total lignes fichiers`
+
+#### **Résultat Final Corrigé**
+```
+📄 Fichier PDF 00168534.pdf: 1742 lignes extraites
+📄 Fichier PDF 00187386.pdf: 100 lignes extraites  
+📄 Fichier PDF 00168833.pdf: 304 lignes extraites
+📄 Fichier PDF 00069482.pdf: 936 lignes extraites
+     ==> Lignes traitées : 3141    ← Maintenant correct !
+
+Appareils :
+     ==> Créés : 0
+     ==> Complétion automatique : 3082  
+     ==> À compléter : 0
+     ==> Doublon ignoré : 59
+     
+Cohérence : 3082 + 59 = 3141 ✅
+```
+
+---
+
+## [2.8.1] - 2025-08-26 - 🔧 Améliorations Import : Flexibilité et Intelligence
+
+### ✨ **Nouvelles Fonctionnalités**
+
+#### 📁 **Option Références Fichiers Automatiques**
+- **Case à cocher** "Associer automatiquement les noms de fichiers comme références de pièces"
+- **Paramètres intelligents par défaut** :
+  - ✅ **Cochée** pour fichiers PDF seuls (noms pertinents)
+  - ❌ **Décochée** pour fichiers CSV seuls (noms moins pertinents)
+  - ✅ **Cochée** pour mélange PDF+CSV (approche conservatrice)
+- **Contrôle utilisateur** : Activation/désactivation de l'association automatique
+- **Interface claire** avec tooltip explicatif
+
+#### 🔧 **Complétion Intelligente 3ème Colonne PDF**
+- **Mise à jour automatique** des appareils existants avec données 3ème colonne
+- **Support other_ref et notes** : Quand 3ème colonne configurée vers ces champs
+- **Recherche normale préservée** : Lookup par ref_modele/commercial_ref uniquement
+- **Logique simplifiée** : Si appareil existe → mise à jour avec nouvelles données
+
+### 🔧 **Améliorations Techniques**
+
+#### **ImportManager** (src/core/import_manager.py)
+- **ImportDialog.__init__()** : Case à cocher avec logique par défaut intelligente
+- **_validate_and_accept()** : Respect de l'état de la case pour individual_references
+- **_update_existing_device()** : Nouvelle méthode simple pour mise à jour 3ème colonne
+- **_insert_or_find_device()** : Appel _update_existing_device() sur appareils trouvés
+- **_try_auto_complete()** : Simplifié, recherche seulement par références principales
+
+#### **Interface Utilisateur**
+```python
+# Case à cocher avec paramètres intelligents
+has_pdf = any(f.type == FileType.PDF for f in files)
+has_csv = any(f.type == FileType.CSV for f in files)
+auto_references = (has_pdf and not has_csv) or (has_pdf and has_csv)
+```
+
+### 🎯 **Cas d'Usage Améliorés**
+
+#### **Import Manuel PDF**
+- Fichier: `MANUAL_PUMP.pdf` → Référence: `MANUAL_PUMP` (case cochée par défaut)
+- 3ème colonne → other_ref → Appareils existants mis à jour automatiquement
+
+#### **Import Liste CSV**  
+- Fichier: `export_pieces.csv` → Pas de référence (case décochée par défaut)
+- Focus sur les données contenues, pas le nom du fichier
+
+#### **Import Mixte**
+- Fichiers: `manual.pdf` + `pieces.csv` → Références des deux (case cochée par défaut)
+- Approche conservatrice pour éviter perte d'information
+
+### 🚀 **Correction Over-Engineering**
+- **Supprimé** : Recherche complexe par other_ref dans auto-complétion
+- **Supprimé** : Logique de recherche étendue inutile
+- **Conservé** : Recherche normale par ref_modele/commercial_ref
+- **Ajouté** : Mise à jour simple des appareils existants
+
+### ✅ **Tests et Validation**
+- ✅ **test_corrected_third_column.py** : Validation logique simplifiée
+- ✅ **Recherche normale préservée** : Pas de régression
+- ✅ **Mise à jour appareils** : Fonctionnelle avec other_ref/notes
+- ✅ **Interface utilisateur** : Case à cocher avec paramètres intelligents
+
+---
+
 ## [2.8.0] - 2025-08-26 - 🧹 Factorisation Complète et Code 100% Unifié
 
 ### 🎉 **MIGRATION TERMINÉE - Code 100% Factorisé**

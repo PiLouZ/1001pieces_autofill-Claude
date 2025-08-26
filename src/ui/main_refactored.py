@@ -5231,15 +5231,22 @@ class MainWindow(QMainWindow):
                 for detail in file_details:
                     summary += f"📄 Fichier {detail['type']} {detail['filename']}: {detail['lines_processed']} lignes extraites\n"
             
-            total_processed = results.get('total_imported', 0)
-            summary += f"     ==> Lignes traitées : {total_processed}\n\n"
+            # Calculer le total des lignes extraites de tous les fichiers
+            file_details = results.get('file_details', [])
+            total_lines_extracted = sum(detail['lines_processed'] for detail in file_details)
+            
+            # Si pas de détails de fichiers (import simple), utiliser total_imported + duplicates
+            if not file_details:
+                total_lines_extracted = results.get('total_imported', 0) + results.get('duplicates_in_file', 0)
+            
+            summary += f"     ==> Lignes traitées : {total_lines_extracted}\n\n"
             
             # Section Appareils (format exact)
             summary += "Appareils :\n"
             summary += f"     ==> Créés : {results.get('new_entries', 0)}\n"
-            summary += f"     ==> Complétion automatique : 0\n"  # Non disponible dans notre système
-            summary += f"     ==> À compléter : 0\n"  # Non disponible dans notre système  
-            summary += f"     ==> Doublon ignoré : 0\n"  # Pour l'instant 0, à implémenter correctement
+            summary += f"     ==> Complétion automatique : {results.get('matches_found', 0)}\n"
+            summary += f"     ==> À compléter : {results.get('manual_completion', 0)}\n"
+            summary += f"     ==> Doublon ignoré : {results.get('duplicates_in_file', 0)}\n"
             
             # Section Associations de pièce (format exact)
             summary += "Associations de pièce :\n"

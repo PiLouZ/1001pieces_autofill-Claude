@@ -256,11 +256,40 @@ class ImportDialog(QDialog):
         individual_group = QGroupBox("Références individuelles par fichier")
         individual_layout = QVBoxLayout()
         
-        individual_info = QLabel("💡 Chaque fichier génère automatiquement sa propre référence basée sur son nom")
-        individual_info.setStyleSheet("color: #666; font-style: italic; margin-bottom: 15px; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
-        individual_info.setMinimumHeight(45)
+        # Info et option de génération automatique des références
+        info_and_option_layout = QVBoxLayout()
+        info_and_option_layout.setContentsMargins(0, 0, 0, 0)
+        info_and_option_layout.setSpacing(8)
+        
+        individual_info = QLabel("💡 Génération automatique des références de pièces basées sur les noms de fichiers")
+        individual_info.setStyleSheet("color: #666; font-style: italic; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
         individual_info.setWordWrap(True)
-        individual_layout.addWidget(individual_info)
+        info_and_option_layout.addWidget(individual_info)
+        
+        # Case à cocher pour activer/désactiver les références automatiques
+        self.auto_file_references_checkbox = QCheckBox("Associer automatiquement les noms de fichiers comme références de pièces")
+        self.auto_file_references_checkbox.setToolTip("Si coché, chaque fichier génère automatiquement une référence de pièce basée sur son nom.\nSi décoché, seuls les données contenues dans les fichiers sont importées.")
+        self.auto_file_references_checkbox.setStyleSheet("font-weight: bold; color: #333; margin-left: 10px;")
+        
+        # Définir la valeur par défaut selon le type de fichiers
+        has_pdf = any(f.type == FileType.PDF for f in self.import_config.files)
+        has_csv = any(f.type == FileType.CSV for f in self.import_config.files)
+        
+        if has_pdf and not has_csv:
+            # Que des PDF -> coché par défaut
+            self.auto_file_references_checkbox.setChecked(True)
+        elif has_csv and not has_pdf:
+            # Que des CSV -> décoché par défaut  
+            self.auto_file_references_checkbox.setChecked(False)
+        else:
+            # Mélange -> coché par défaut (plus sûr)
+            self.auto_file_references_checkbox.setChecked(True)
+        
+        # Connecter pour mettre à jour l'affichage
+        self.auto_file_references_checkbox.stateChanged.connect(self._on_auto_references_changed)
+        info_and_option_layout.addWidget(self.auto_file_references_checkbox)
+        
+        individual_layout.addLayout(info_and_option_layout)
         
         # Zone scrollable pour les références individuelles - ASCENSEUR FORCÉ
         scroll_area = QScrollArea()
@@ -328,10 +357,11 @@ class ImportDialog(QDialog):
             file_label.setStyleSheet("font-weight: bold;")
             file_layout.addWidget(file_label)
             
-            # Référence (basée sur le nom du fichier, non modifiable)
+            # Référence (basée sur le nom du fichier, affichage conditionnel)
             ref_display = QLabel(f"→ Réf: {file.suggested_reference}")
             ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
             ref_display.setMinimumWidth(150)
+            ref_display.setObjectName(f"ref_display_{file.path}")
             file_layout.addWidget(ref_display)
             
             # Libellé/Description (modifiable)
@@ -354,6 +384,9 @@ class ImportDialog(QDialog):
             # Ajouter directement le layout (retour à la méthode originale)
             self.individual_refs_widget.addLayout(file_layout)
         
+        # Initialiser l'affichage des références selon l'état par défaut de la case à cocher
+        self._update_references_display()
+        
         # Aperçu des données supprimé pour améliorer la lisibilité
     
     def _on_apply_to_individual_changed(self, state):
@@ -374,6 +407,28 @@ class ImportDialog(QDialog):
             for desc_field in self.individual_desc_fields:
                 desc_field.setText(text)
     
+    def _on_auto_references_changed(self, state):
+        """Gère le changement d'état de la case 'Références automatiques'"""
+        # Mettre à jour l'affichage des références selon l'état de la case
+        self._update_references_display()
+    
+    def _update_references_display(self):
+        """Met à jour l'affichage des références selon l'état de la case à cocher"""
+        auto_references_enabled = self.auto_file_references_checkbox.isChecked()
+        
+        for file in self.import_config.files:
+            # Trouver le label de référence pour ce fichier
+            ref_display = self.findChild(QLabel, f"ref_display_{file.path}")
+            if ref_display:
+                if auto_references_enabled:
+                    # Affichage normal avec référence
+                    ref_display.setText(f"→ Réf: {file.suggested_reference}")
+                    ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
+                else:
+                    # Affichage grisé indiquant que la référence ne sera pas créée
+                    ref_display.setText("→ Réf: (aucune référence de pièce)")
+                    ref_display.setStyleSheet("color: #999; background-color: #f5f5f5; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-style: italic;")
+    
     def _validate_and_accept(self):
         """Valider la configuration et accepter"""
         config = ImportConfiguration(
@@ -390,10 +445,16 @@ class ImportDialog(QDialog):
             if hasattr(self, 'common_ref_description'):
                 config.common_label = self.common_ref_description.text().strip()
         
-        # Nouvelle logique: séparation références/libellés
+        # Nouvelle logique: séparation références/libellés avec prise en compte de la case à cocher
+        auto_references_enabled = self.auto_file_references_checkbox.isChecked()
+        
         for file in config.files:
-            # Référence = toujours le nom du fichier (suggested_reference)
-            config.individual_references[file.path] = file.suggested_reference
+            # Référence = seulement si la case à cocher est activée
+            if auto_references_enabled:
+                config.individual_references[file.path] = file.suggested_reference
+            else:
+                # Pas de référence automatique, on laisse vide
+                config.individual_references[file.path] = ""
             
             # Libellé = ce que tape l'utilisateur (peut être vide)
             desc_input = self.findChild(QLineEdit, f"desc_{file.path}")
@@ -810,9 +871,14 @@ class ImportManager:
             'new_entries': 0,
             'associations_created': 0,
             'associations_existing': 0,
+            'manual_completion': 0,
+            'duplicates_in_file': 0,
             'errors': [],
             'file_details': []  # Nouveau: détails par fichier
         }
+        
+        # Suivi global des doublons entre tous les fichiers
+        global_seen_device_refs = set()
         
         # Barre de progression
         progress = QProgressDialog(
@@ -834,19 +900,19 @@ class ImportManager:
             QApplication.processEvents()
             
             try:
-                file_results = self._import_single_file(file, config)
+                file_results = self._import_single_file(file, config, global_seen_device_refs)
                 results['successful_files'] += 1
                 
                 # Ajouter les détails du fichier
                 file_detail = {
                     'filename': file.filename,
-                    'lines_processed': file_results.get('total_imported', 0),
+                    'lines_processed': file_results.get('total_lines_extracted', 0),  # Lignes extraites du fichier
                     'type': 'PDF' if file.type.name == 'PDF' else 'CSV'
                 }
                 results['file_details'].append(file_detail)
                 
-                # Agréger les résultats
-                for key in ['total_imported', 'matches_found', 'new_entries', 'associations_created', 'associations_existing']:
+                # Agréger les résultats (y compris les nouvelles métriques)
+                for key in ['total_imported', 'matches_found', 'new_entries', 'associations_created', 'associations_existing', 'manual_completion', 'duplicates_in_file']:
                     results[key] += file_results.get(key, 0)
                     
             except Exception as e:
@@ -857,7 +923,7 @@ class ImportManager:
         
         return results
     
-    def _import_single_file(self, file: ImportFile, config: ImportConfiguration) -> Dict[str, Any]:
+    def _import_single_file(self, file: ImportFile, config: ImportConfiguration, global_seen_device_refs: set) -> Dict[str, Any]:
         """Importer un fichier unique"""
         # Charger les données du fichier avec les méthodes unifiées
         if file.type == FileType.CSV:
@@ -890,24 +956,46 @@ class ImportManager:
             data, 
             references_and_labels,  # Maintenant liste de tuples (ref, label)
             config,
-            file  # Passer le fichier pour les associations par fichier
+            file,  # Passer le fichier pour les associations par fichier
+            global_seen_device_refs  # Suivi global des doublons
         )
     
     
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
-                           config: ImportConfiguration, file: ImportFile) -> Dict[str, Any]:
+                           config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Traiter l'import des données avec les références et libellés séparés"""
         results = {
             'total_imported': 0,
             'matches_found': 0,
             'new_entries': 0,
             'associations_created': 0,
-            'associations_existing': 0
+            'associations_existing': 0,
+            'manual_completion': 0,  # Appareils créés/mis à jour sans Type ET Fabricant
+            'duplicates_in_file': 0,  # Doublons ref_modele+commercial_ref dans le fichier
+            'total_lines_extracted': 0  # Total lignes du fichier (avant traitement doublons)
         }
+        
+        # Utiliser le set global des références déjà vues pour détecter les doublons entre tous les fichiers
         
         for row in data:
             if not row or not any(cell.strip() for cell in row):
                 continue
+            
+            # Compter chaque ligne non vide comme extraite du fichier
+            results['total_lines_extracted'] += 1
+            
+            # Extraire les références principales pour vérification doublon
+            ref_modele = str(row[0]).strip() if len(row) >= 1 else ""
+            commercial_ref = str(row[1]).strip() if len(row) >= 2 else ""
+            
+            # Vérifier si c'est un doublon dans le fichier
+            device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+            if device_key in seen_device_refs and (ref_modele or commercial_ref):
+                results['duplicates_in_file'] += 1
+                print(f"  🔄 Doublon dans le fichier ignoré: {ref_modele} | {commercial_ref}")
+                continue  # Les doublons ne sont PAS comptés dans total_imported
+            elif ref_modele or commercial_ref:
+                seen_device_refs.add(device_key)
             
             results['total_imported'] += 1
             
@@ -923,6 +1011,9 @@ class ImportManager:
             if device_id:
                 if device_data.get('is_new', False):
                     results['new_entries'] += 1
+                    # Vérifier si l'appareil CRÉÉ nécessite une complétion manuelle
+                    if self._needs_manual_completion(device_data):
+                        results['manual_completion'] += 1
                 else:
                     results['matches_found'] += 1
                 
@@ -1004,6 +1095,39 @@ class ImportManager:
         
         return data
     
+    def _needs_manual_completion(self, device_data: Dict[str, Any]) -> bool:
+        """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""
+        type_val = device_data.get('type') or ''
+        manufacturer_val = device_data.get('manufacturer') or ''
+        type_empty = not str(type_val).strip()
+        manufacturer_empty = not str(manufacturer_val).strip()
+        return type_empty and manufacturer_empty
+    
+    def _update_existing_device(self, device_id: int, device_data: Dict[str, Any]) -> None:
+        """Mettre à jour un appareil existant avec les nouvelles données de la 3ème colonne"""
+        try:
+            # Construire les données de mise à jour pour la 3ème colonne uniquement
+            update_data = {}
+            
+            # Si les données contiennent other_ref ou notes (depuis 3ème colonne), les ajouter
+            if 'other_ref' in device_data and device_data['other_ref'].strip():
+                update_data['other_ref'] = device_data['other_ref'].strip()
+            
+            if 'notes' in device_data and device_data['notes'].strip():
+                update_data['notes'] = device_data['notes'].strip()
+            
+            if update_data:
+                # Construire la requête de mise à jour
+                set_clauses = [f"{field} = ?" for field in update_data.keys()]
+                update_query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
+                params = list(update_data.values()) + [device_id]
+                
+                self.db_manager.execute_query(update_query, params)
+                print(f"🔄 Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
+        
+        except Exception as e:
+            print(f"Erreur mise à jour appareil {device_id}: {e}")
+    
     def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
         """Insérer ou trouver un appareil existant"""
         try:
@@ -1023,7 +1147,10 @@ class ImportManager:
                 results = self.db_manager.execute_query(search_query, [ref_modele, commercial_ref])
                 
                 if results:
-                    return results[0][0]
+                    # Appareil trouvé, on le met à jour avec les nouvelles données si nécessaire
+                    existing_id = results[0][0]
+                    self._update_existing_device(existing_id, device_data)
+                    return existing_id
                 
                 # Si pas de match exact, vérifier si seule ref_modele correspond (cas spécial)
                 if ref_modele and ref_modele.strip():
@@ -1036,6 +1163,7 @@ class ImportManager:
                     results_ref = self.db_manager.execute_query(search_query_ref, [ref_modele])
                     if results_ref:
                         return results_ref[0][0]
+            
             
             # Créer un nouvel appareil
             device_id = self.db_manager.insert_appareil(device_data)
@@ -1062,56 +1190,43 @@ class ImportManager:
             if not type_empty and not manufacturer_empty:
                 return False
             
-            # Ordre de priorité des références à vérifier
-            refs_to_check = []
-            
-            # 1. D'abord la référence modèle
+            # Récupérer les références principales pour la recherche
             ref_modele = appareil_data.get('ref_modele', '').strip()
-            if ref_modele:
-                refs_to_check.append(ref_modele)
-            
-            # 2. Ensuite la référence commerciale
             commercial_ref = appareil_data.get('commercial_ref', '').strip()
-            if commercial_ref:
-                refs_to_check.append(commercial_ref)
             
-            if not refs_to_check:
-                return False  # Aucune référence pour faire la recherche
+            if not ref_modele and not commercial_ref:
+                return False  # Aucune référence principale pour faire la recherche
             
-            # Chercher dans la base des appareils existants avec ces références
-            total_matches = 0
-            for ref in refs_to_check:
-                query = """
-                    SELECT type, manufacturer 
-                    FROM appareils 
-                    WHERE (ref_modele = ? OR commercial_ref = ?)
-                    AND type IS NOT NULL AND type != '' 
-                    AND manufacturer IS NOT NULL AND manufacturer != ''
-                    LIMIT 1
-                """
+            # Chercher dans la base des appareils existants avec les références principales
+            query = """
+                SELECT type, manufacturer 
+                FROM appareils 
+                WHERE (ref_modele = ? OR commercial_ref = ?)
+                AND type IS NOT NULL AND type != '' 
+                AND manufacturer IS NOT NULL AND manufacturer != ''
+                LIMIT 1
+            """
+            
+            results = self.db_manager.execute_query(query, [ref_modele, commercial_ref])
+            
+            if results:
+                found_type, found_manufacturer = results[0]
                 
-                results = self.db_manager.execute_query(query, [ref, ref])
+                print(f"🔍 Autocomplétion trouvée: Type='{found_type}', Fabricant='{found_manufacturer}'")
                 
-                if results:
-                    total_matches += 1
-                    found_type, found_manufacturer = results[0]
-                    
-                    print(f"🔍 Autocomplétion trouvée: Type='{found_type}', Fabricant='{found_manufacturer}'")
-                    
-                    # Compléter seulement les champs vides
-                    if type_empty:
-                        appareil_data['type'] = found_type
-                        print(f"  ✅ Type complété: '' -> '{found_type}'")
-                    
-                    if manufacturer_empty:
-                        appareil_data['manufacturer'] = found_manufacturer
-                        print(f"  ✅ Fabricant complété: '' -> '{found_manufacturer}'")
-                    
-                    # Arrêter après la première correspondance trouvée
-                    break
+                # Compléter seulement les champs vides
+                if type_empty:
+                    appareil_data['type'] = found_type
+                    print(f"  ✅ Type complété: '' -> '{found_type}'")
+                
+                if manufacturer_empty:
+                    appareil_data['manufacturer'] = found_manufacturer
+                    print(f"  ✅ Fabricant complété: '' -> '{found_manufacturer}'")
+                
+                return True
             
-            # Retourner True si au moins un champ a été complété avec succès
-            return total_matches > 0
+            # Aucune correspondance trouvée
+            return False
                         
         except Exception as e:
             print(f"Erreur auto-completion: {e}")
