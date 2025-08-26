@@ -441,9 +441,9 @@ class ImportDialog(QDialog):
             else:
                 # Charger les données si pas encore fait
                 if first_file.type == FileType.CSV:
-                    data = self._load_csv_sample_data(first_file.path)
+                    data = self.load_csv_data(first_file.path, max_rows=5)
                 else:  # PDF
-                    data = self._load_pdf_sample_data(first_file.path)
+                    data = self.load_pdf_data(first_file.path, max_rows=5)
                 
                 if data:
                     sample_data = data[:3]
@@ -526,46 +526,12 @@ class ImportDialog(QDialog):
             self.headers_checkbox.hide()
     
     def _load_csv_sample_data(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données CSV"""
-        import csv
-        try:
-            encodings = ['utf-8', 'latin1', 'cp1252']
-            for encoding in encodings:
-                try:
-                    with open(file_path, 'r', encoding=encoding, errors='replace') as f:
-                        sample = f.read(1024)
-                        f.seek(0)
-                        
-                        sniffer = csv.Sniffer()
-                        try:
-                            delimiter = sniffer.sniff(sample, delimiters=';,\t').delimiter
-                        except csv.Error:
-                            delimiter = ';'
-                        
-                        reader = csv.reader(f, delimiter=delimiter)
-                        rows = []
-                        for i, row in enumerate(reader):
-                            if i >= 5:  # Limiter à 5 lignes pour l'aperçu
-                                break
-                            if any(cell.strip() for cell in row):
-                                rows.append(row)
-                        return rows
-                        
-                except UnicodeDecodeError:
-                    continue
-            return []
-        except Exception:
-            return []
+        """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
+        return self.load_csv_data(file_path, max_rows=5)
     
     def _load_pdf_sample_data(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données PDF"""
-        try:
-            from src.data.pdf_extractor_camelot import CamelotPDFExtractor
-            extractor = CamelotPDFExtractor()
-            data = extractor.extract_data(file_path)
-            return data[:5] if data else []  # Limiter à 5 lignes
-        except Exception:
-            return []
+        """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
+        return self.load_pdf_data(file_path, max_rows=5)
 
 
 class ImportManager:
@@ -574,6 +540,102 @@ class ImportManager:
     def __init__(self, db_manager, parent_widget=None):
         self.db_manager = db_manager
         self.parent_widget = parent_widget
+    
+    def load_csv_data(self, file_path: str, max_rows: Optional[int] = None) -> List[List[str]]:
+        """
+        Méthode unifiée pour le chargement CSV avec limite optionnelle
+        
+        Args:
+            file_path: Chemin vers le fichier CSV
+            max_rows: Nombre maximum de lignes à charger (None = toutes)
+            
+        Returns:
+            Liste des lignes (chaque ligne est une liste de cellules)
+            
+        Raises:
+            ValueError: Si le fichier ne peut pas être lu
+        """
+        import csv
+        
+        # Détection de l'encodage
+        encodings = ['utf-8', 'latin1', 'cp1252']
+        
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+                    # Détection du séparateur
+                    sample = f.read(1024)
+                    f.seek(0)
+                    
+                    sniffer = csv.Sniffer()
+                    try:
+                        delimiter = sniffer.sniff(sample, delimiters=';,\t').delimiter
+                    except csv.Error:
+                        delimiter = ';'
+                    
+                    reader = csv.reader(f, delimiter=delimiter)
+                    rows = []
+                    
+                    for i, row in enumerate(reader):
+                        # Appliquer la limite si spécifiée
+                        if max_rows is not None and i >= max_rows:
+                            break
+                        
+                        # Ignorer les lignes vides
+                        if any(cell.strip() for cell in row):
+                            rows.append(row)
+                    
+                    return rows
+                    
+            except (UnicodeDecodeError, FileNotFoundError, IOError) as e:
+                # FileNotFoundError : fichier n'existe pas
+                # IOError : problème d'accès au fichier  
+                # UnicodeDecodeError : problème d'encodage -> essayer le suivant
+                if isinstance(e, FileNotFoundError):
+                    # Fichier n'existe pas, arrêter immédiatement
+                    break
+                elif isinstance(e, UnicodeDecodeError):
+                    # Problème d'encodage, essayer le suivant
+                    continue
+                else:
+                    # Autre erreur IO, arrêter
+                    break
+        
+        # Si on arrive ici, aucun encodage n'a fonctionné
+        raise ValueError(f"Impossible de lire le fichier CSV: {file_path} (fichier introuvable ou format invalide)")
+    
+    def load_pdf_data(self, file_path: str, max_rows: Optional[int] = None) -> List[List[str]]:
+        """
+        Méthode unifiée pour le chargement PDF avec limite optionnelle
+        
+        Args:
+            file_path: Chemin vers le fichier PDF
+            max_rows: Nombre maximum de lignes à charger (None = toutes)
+            
+        Returns:
+            Liste des lignes extraites du PDF
+            
+        Raises:
+            ValueError: Si le fichier ne peut pas être traité
+        """
+        try:
+            from src.data.pdf_extractor_camelot import CamelotPDFExtractor
+            extractor = CamelotPDFExtractor()
+            data = extractor.extract_data(file_path)
+            
+            if not data:
+                return []
+            
+            # Appliquer la limite si spécifiée
+            if max_rows is not None:
+                return data[:max_rows]
+            else:
+                return data
+                
+        except ImportError as e:
+            raise ValueError(f"Extracteur PDF non disponible: {e}")
+        except Exception as e:
+            raise ValueError(f"Erreur lors de l'extraction PDF: {e}")
     
     def import_files(self, file_paths: List[str], show_dialog: bool = True) -> Optional[Dict[str, Any]]:
         """
@@ -640,55 +702,29 @@ class ImportManager:
         """Récupérer un échantillon de données pour l'aperçu"""
         try:
             if file_type == FileType.CSV:
-                return self._load_csv_sample_data_static(file_path)
+                return self.load_csv_data(file_path, max_rows=5)
             elif file_type == FileType.PDF:
-                return self._load_pdf_sample_data_static(file_path)
+                return self.load_pdf_data(file_path, max_rows=5)
         except Exception as e:
             print(f"Erreur lors du chargement d'échantillon {file_path}: {e}")
         
         return None
     
     def _load_csv_sample_data_static(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données CSV (méthode statique)"""
-        import csv
-        try:
-            encodings = ['utf-8', 'latin1', 'cp1252']
-            for encoding in encodings:
-                try:
-                    with open(file_path, 'r', encoding=encoding, errors='replace') as f:
-                        sample = f.read(1024)
-                        f.seek(0)
-                        
-                        sniffer = csv.Sniffer()
-                        try:
-                            delimiter = sniffer.sniff(sample, delimiters=';,\t').delimiter
-                        except csv.Error:
-                            delimiter = ';'
-                        
-                        reader = csv.reader(f, delimiter=delimiter)
-                        rows = []
-                        for i, row in enumerate(reader):
-                            if i >= 5:  # Limiter à 5 lignes pour l'aperçu
-                                break
-                            if any(cell.strip() for cell in row):
-                                rows.append(row)
-                        return rows
-                        
-                except UnicodeDecodeError:
-                    continue
-            return []
-        except Exception:
-            return []
+        """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
+        return self.load_csv_data(file_path, max_rows=5)
     
     def _load_pdf_sample_data_static(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données PDF (méthode statique)"""
-        try:
-            from src.data.pdf_extractor_camelot import CamelotPDFExtractor
-            extractor = CamelotPDFExtractor()
-            data = extractor.extract_data(file_path)
-            return data[:5] if data else []  # Limiter à 5 lignes
-        except Exception:
-            return []
+        """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
+        return self.load_pdf_data(file_path, max_rows=5)
+    
+    def _load_csv_sample_data(self, file_path: str) -> List[List[str]]:
+        """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
+        return self.load_csv_data(file_path, max_rows=5)
+    
+    def _load_pdf_sample_data(self, file_path: str) -> List[List[str]]:
+        """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
+        return self.load_pdf_data(file_path, max_rows=5)
     
     def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
         """Exécuter l'import avec la configuration donnée"""
@@ -749,11 +785,11 @@ class ImportManager:
     
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration) -> Dict[str, Any]:
         """Importer un fichier unique"""
-        # Charger les données du fichier
+        # Charger les données du fichier avec les méthodes unifiées
         if file.type == FileType.CSV:
-            data = self._load_csv_data(file.path)
+            data = self.load_csv_data(file.path)
         elif file.type == FileType.PDF:
-            data = self._load_pdf_data(file.path)
+            data = self.load_pdf_data(file.path)
         else:
             raise ValueError(f"Type de fichier non supporté: {file.type}")
         
@@ -784,41 +820,12 @@ class ImportManager:
         )
     
     def _load_csv_data(self, file_path: str) -> List[List[str]]:
-        """Charger les données d'un fichier CSV"""
-        import csv
-        
-        # Détection de l'encodage
-        encodings = ['utf-8', 'latin1', 'cp1252']
-        
-        for encoding in encodings:
-            try:
-                with open(file_path, 'r', encoding=encoding, errors='replace') as f:
-                    # Détection du séparateur
-                    sample = f.read(1024)
-                    f.seek(0)
-                    
-                    sniffer = csv.Sniffer()
-                    try:
-                        delimiter = sniffer.sniff(sample, delimiters=';,\t').delimiter
-                    except csv.Error:
-                        delimiter = ';'
-                    
-                    reader = csv.reader(f, delimiter=delimiter)
-                    return [row for row in reader if any(cell.strip() for cell in row)]
-                    
-            except UnicodeDecodeError:
-                continue
-        
-        raise ValueError(f"Impossible de lire le fichier CSV: {file_path}")
+        """Charger les données d'un fichier CSV - DEPRECATED: utiliser load_csv_data()"""
+        return self.load_csv_data(file_path)
     
     def _load_pdf_data(self, file_path: str) -> List[List[str]]:
-        """Charger les données d'un fichier PDF"""
-        try:
-            from src.data.pdf_extractor_camelot import CamelotPDFExtractor
-            extractor = CamelotPDFExtractor()
-            return extractor.extract_data(file_path)
-        except ImportError as e:
-            raise ValueError(f"Extracteur PDF non disponible: {e}")
+        """Charger les données d'un fichier PDF - DEPRECATED: utiliser load_pdf_data()"""
+        return self.load_pdf_data(file_path)
     
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                            config: ImportConfiguration, file: ImportFile) -> Dict[str, Any]:
