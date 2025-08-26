@@ -2,6 +2,116 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.9.0-PLAN] - 🚀 Plan d'Optimisation Performance Globale
+
+### 🔍 **Analyse Architecture Complétée**
+
+#### **🏗️ Points Critiques Identifiés**
+- **Interface** : `main_refactored.py` (7617 lignes) - Chargement données massif
+- **Base données** : `database_manager.py` (1600 lignes) - 99 requêtes SQL
+- **Import** : `import_manager.py` (1250 lignes) - Traitement ligne par ligne
+- **287 boucles** détectées dans l'ensemble du codebase
+
+#### **🗄️ Goulots Base de Données**
+- **Requêtes complexes** : Jointures `piece_associations` dans recherche
+- **Index optimaux** : ✅ Déjà présents sur colonnes critiques
+- **Transactions** : Potentielle optimisation avec batch commits
+- **Recherche** : `LIKE %term%` sur plusieurs colonnes simultanément
+
+#### **📊 Goulots Import Massif**  
+- **Traitement séquentiel** : Ligne par ligne (3141 lignes = 3141 itérations)
+- **4 requêtes SQL par ligne** : Recherche existant + auto-complétion + insertion + associations
+- **Détection doublons** : O(n) pour chaque ligne (set lookup optimisé)
+- **Interface bloquante** : Progress dialog avec `processEvents()`
+
+#### **🎨 Goulots Interface Utilisateur**
+- **QTableWidget.setItem()** : Appel pour chaque cellule (5000+ lignes × 8 colonnes = 40K+ appels)
+- **Progress updates** : Fréquence élevée (toutes les 5000 lignes)
+- **Signals bloqués/débloqués** : `blockSignals()` pendant chargement
+- **Recherche temps réel** : Estimations de lignes à chaque frappe
+
+### 🚀 **Plan d'Optimisation Structuré**
+
+#### **🥇 Priorité 1 : Import Performance (Impact: ⚡⚡⚡)**
+```
+Problème : 3141 lignes = 4× 3141 = 12K+ requêtes SQL
+Solution : Batch Processing + Prepared Statements
+
+1. Pré-charger appareils existants en mémoire (1 requête globale)
+2. Batch insert nouveaux appareils (100-500 par transaction) 
+3. Bulk associations (1 requête preparée pour N associations)
+4. Cache auto-complétion en mémoire
+
+Gain estimé : 80-90% plus rapide pour gros imports
+```
+
+#### **🥈 Priorité 2 : Interface Responsive (Impact: ⚡⚡)**
+```
+Problème : 40K+ appels setItem() bloquent l'interface  
+Solution : Virtualisation + Background Loading
+
+1. QTableView + Model custom (au lieu de QTableWidget)
+2. Pagination intelligente (1000 lignes visibles max)
+3. Lazy loading avec threads background
+4. Cache interface pour navigation rapide
+
+Gain estimé : Interface fluide même avec 50K+ lignes
+```
+
+#### **🥉 Priorité 3 : Base de Données (Impact: ⚡)**
+```
+Problème : Recherche LIKE multiple colonnes
+Solution : Full-Text Search + Query Optimization
+
+1. Table FTS virtuelle pour recherche texte globale
+2. Optimisation requêtes jointures avec CTE
+3. Connection pooling pour multi-threading
+4. VACUUM automatique et PRAGMA optimizations
+
+Gain estimé : 30-50% recherche plus rapide
+```
+
+#### **🔧 Priorité 4 : Architecture (Impact: ⚡)**
+```
+Problème : Code monolithique + pattern synchrone
+Solution : Modularisation + Async Pattern
+
+1. Séparation Data/Logic/UI layers proprement
+2. Worker threads pour opérations lourdes
+3. Event system pour communication async
+4. Memory management optimisé
+
+Gain estimé : Évolutivité et maintenabilité
+```
+
+### 📊 **Métriques de Performance Cibles**
+
+| Opération | Actuel | Cible | Amélioration |
+|-----------|--------|-------|--------------|
+| **Import 3K lignes** | ~30-60s | ~3-6s | **10× plus rapide** |
+| **Affichage 10K lignes** | ~5-10s | ~1-2s | **5× plus rapide** |
+| **Recherche globale** | ~1-3s | ~0.2-0.5s | **5× plus rapide** |
+| **Navigation tableau** | Saccadée | Fluide | **Responsivité 100%** |
+
+### 🛠️ **Stratégie d'Implémentation**
+
+#### **Phase 1 (v2.9.0) : Quick Wins**
+- ✅ Batch processing imports (3-5 jours)
+- ✅ Pagination tableau (2-3 jours)  
+- ✅ Progress indicators optimisés (1 jour)
+
+#### **Phase 2 (v2.10.0) : Architecture**
+- ✅ QTableView + Model pattern (5-7 jours)
+- ✅ Background threads (3-4 jours)
+- ✅ FTS search (2-3 jours)
+
+#### **Phase 3 (v3.0.0) : Refactor Complet**
+- ✅ Séparation layers clean (10+ jours)
+- ✅ Async event system (7+ jours)
+- ✅ Memory optimization (5+ jours)
+
+---
+
 ## [2.8.2] - 2025-08-26 - 🔍 Correction Métriques Historique Import
 
 ### 🐛 **Problème Analysé et Corrigé**
