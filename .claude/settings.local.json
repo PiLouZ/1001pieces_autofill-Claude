@@ -51,8 +51,13 @@
       "Bash(git rev-list:*)",
       "Bash(cd:*)",
       "Bash(git branch:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)"
     ],
-    "deny": []
+    "deny": [],
+    "additionalDirectories": [
+      "/Users/emg1/Desktop"
+    ]
   }
 }
