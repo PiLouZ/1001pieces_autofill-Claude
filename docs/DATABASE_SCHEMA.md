@@ -96,6 +96,6 @@ CREATE INDEX idx_piece_associations_appareil ON piece_associations(appareil_id);
 
 ---
 
-**📅 Dernière mise à jour :** 21 août 2025  
-**🚀 Version :** 2.6.0 - Structure optimisée avec historique amélioré  
+**📅 Dernière mise à jour :** 26 août 2025  
+**🚀 Version :** 2.7.0 - Nouveau système d'importation et corrections finales  
 **💾 Taille BDD :** ~94 MB

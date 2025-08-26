@@ -2,6 +2,108 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.7.0] - 2025-08-26 - 🏗️ Nouveau Système d'Importation et Corrections Finales
+
+### ✨ **Nouveau Système d'Importation Complet**
+
+#### 🚀 **ImportManager Révolutionnaire**
+- **Unification complète** : Système d'import unifié pour CSV, PDF et Collage
+- **Interface cohérente** : Dialogue d'import identique pour tous les types de fichiers
+- **Architecture modulaire** : Séparation claire entre références et libellés de pièces
+- **Gestion avancée des conflits** : Mise à jour automatique des libellés avec callback
+- **Support multi-fichiers** : Import par lot avec configuration individuelle et commune
+
+#### 🎨 **Interface d'Import Optimisée**
+- **Layout adaptatif** : Organisation en colonnes (max 4) pour les imports multi-fichiers
+- **Zone scrollable** : Ascenseur automatique pour les références nombreuses
+- **Interface épurée** : Suppression de l'aperçu de données redondant
+- **Champs séparés** : Distinction claire références vs libellés avec placeholders explicites
+- **Validation temps réel** : Contrôles de cohérence avant validation
+
+#### 🔗 **Logique d'Association Corrigée**
+- **Associations par fichier** : Chaque fichier garde ses propres associations
+- **Références communes** : Support des libellés hiérarchiques pour organisation
+- **Mise à jour intelligente** : Auto-complétion des libellés de pièces existantes
+- **Prévention croisée** : Pas d'association entre fichiers différents
+- **Comptage exact** : Résolution des problèmes de comptage de pièces
+
+#### 📊 **Synthèse d'Import Améliorée**
+- **Format uniforme** : Structure identique à l'ancien système avec timestamp
+- **Historique intégré** : Résultats dans l'historique principal, plus de popup
+- **Détails complets** : Compteurs précis pour appareils et associations
+- **Sections organisées** : Séparation claire Appareils/Associations/Pièces
+
+### 🔧 **Corrections Techniques Majeures**
+
+#### 🗄️ **Corrections Base de Données**
+- **Requête SQL corrigée** : `INNER JOIN pieces` pour comptage exact des pièces
+- **Cohérence garantie** : Toutes les méthodes de comptage alignées
+- **Associations orphelines** : Suppression des associations vers pièces supprimées
+- **Performance optimisée** : Requêtes SQL simplifiées et efficaces
+
+#### 🎯 **Architecture Import Manager**
+```python
+# Nouvelle structure des données
+@dataclass
+class ImportConfiguration:
+    common_reference: str = ""              # Référence commune optionnelle
+    individual_references: Dict[str, str]   # {file_path: reference}
+    common_label: str = ""                  # Libellé référence commune  
+    individual_labels: Dict[str, str]       # {file_path: label}
+    use_common_reference: bool = False
+    label_config: LabelConfiguration = None
+```
+
+#### 🧹 **Nettoyage du Code**
+- **Suppression des prints debug** : Code de production propre
+- **Fichiers de test supprimés** : `test_*.py` et `integration_example.py` nettoyés
+- **Code factorié** : Méthodes communes extraites et optimisées
+- **Documentation intégrée** : Corrections documentées et intégrées au changelog
+
+### 🎨 **Améliorations Interface**
+
+#### 📝 **Dialogues d'Import**
+- **Champs vides par défaut** : Libellés non pré-remplis pour éviter confusion
+- **Placeholders explicites** : Textes d'aide clairs pour chaque champ
+- **Layout responsive** : Organisation intelligente selon le nombre de fichiers
+- **Zone scrollable** : Gestion élégante des listes nombreuses
+- **Suppression checkboxes** : Interface simplifiée basée sur champs vides/remplis
+
+#### 🏷️ **Gestion des Libellés**
+- **Séparation claire** : Références (identifiants) vs Libellés (descriptions)
+- **Hiérarchie supportée** : Libellés communs + individuels pour organisation
+- **Mise à jour automatique** : Callback pour synchronisation des libellés
+- **Validation intelligente** : Gestion des conflits avec dialogue utilisateur
+
+### 🛡️ **Tests et Validation**
+
+#### ✅ **Tests d'Intégration**
+- **Initialisation** : MainWindow s'initialise correctement avec ImportManager
+- **Méthodes disponibles** : Toutes les nouvelles méthodes d'import accessibles
+- **Compatibilité** : Ancien code fonctionne avec les nouvelles méthodes
+- **Régressions** : Aucune régression fonctionnelle détectée
+
+#### 🎯 **Validation Fonctionnelle**
+- **Import simple** : Fichier unique avec référence = nom fichier
+- **Import multi-fichiers** : Références communes + individuelles
+- **Associations correctes** : Chaque fichier associé à ses propres appareils
+- **Libellés préservés** : Descriptions utilisateur maintenues et mises à jour
+
+### 📁 **Fichiers Impactés**
+
+#### **NOUVEAU/REFACTORISÉ**
+- **`src/core/import_manager.py`** - Système d'import unifié complet
+- **CHANGELOG.md** - Documentation intégrée des corrections
+
+#### **OPTIMISÉ**
+- **`src/ui/main_refactored.py`** - Intégration ImportManager et historique
+- **`src/data/database_manager.py`** - Corrections SQL et méthodes de comptage
+
+#### **SUPPRIMÉ**
+- **`test_*.py`** - Fichiers de test temporaires nettoyés
+- **`integration_example.py`** - Exemples de développement supprimés
+- **CORRECTIONS_*.md** - Fichiers intégrés au changelog principal
+
 ## [2.6.0] - 2025-08-21 - 🎨 Formatage Optimisé de l'Historique et Nettoyage du Code
 
 ### ✨ **Nouvelles Fonctionnalités Majeures**
@@ -460,7 +562,7 @@ Cette version introduit une approche complètement nouvelle pour la gestion des 
 
 ---
 
-**📅 Dernière mise à jour :** 21 août 2025  
+**📅 Dernière mise à jour :** 26 août 2025  
 **👨‍💻 Développé par :** Claude (Anthropic) en collaboration avec l'utilisateur  
-**🏷️ Version stable :** 2.6.0  
-**🚀 Dernière version :** Formatage optimisé de l'historique et nettoyage du code
+**🏷️ Version stable :** 2.7.0  
+**🚀 Dernière version :** Nouveau système d'importation et corrections finales

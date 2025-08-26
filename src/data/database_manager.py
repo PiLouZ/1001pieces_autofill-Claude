@@ -548,16 +548,17 @@ class DatabaseManager:
                   incomplete_filter: bool = False) -> List[Tuple]:
         """Charger les données avec filtres optionnels"""
         try:
-            # Construction de la requête avec comptage des pièces
+            # Construction de la requête avec comptage des pièces (seulement celles qui existent)
             headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS)
             query = f"""
                 SELECT a.id, {headers_str}, 
                        COALESCE(p.pieces_count, 0) as pieces_count
                 FROM appareils a
                 LEFT JOIN (
-                    SELECT appareil_id, COUNT(*) as pieces_count
-                    FROM piece_associations
-                    GROUP BY appareil_id
+                    SELECT pa.appareil_id, COUNT(*) as pieces_count
+                    FROM piece_associations pa
+                    INNER JOIN pieces p ON pa.piece_id = p.id
+                    GROUP BY pa.appareil_id
                 ) p ON a.id = p.appareil_id
             """
             params = []
@@ -901,12 +902,13 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors de la récupération des pièces: {e}")
     
     def get_pieces_count_for_appareil(self, appareil_id: int) -> int:
-        """Récupérer le nombre de pièces associées à un appareil (nouvelle structure)"""
+        """Récupérer le nombre de pièces associées à un appareil (seulement celles qui existent)"""
         try:
             query = """
                 SELECT COUNT(*) 
-                FROM piece_associations 
-                WHERE appareil_id = ?
+                FROM piece_associations pa
+                INNER JOIN pieces p ON pa.piece_id = p.id
+                WHERE pa.appareil_id = ?
             """
             self.cursor.execute(query, (appareil_id,))
             result = self.cursor.fetchone()
@@ -980,7 +982,7 @@ class DatabaseManager:
         """
         Ajouter une pièce ou mettre à jour sa description si elle existe déjà.
         NOUVELLE STRUCTURE: Une pièce = une référence + une description, associations séparées.
-        Retourne: (assoc_id, description_updated)
+        Retourne: (assoc_id, description_updated, association_created)
         """
         try:
             # Nettoyer la description d'entrée
@@ -1037,14 +1039,14 @@ class DatabaseManager:
                 # Association existante
                 assoc_id = assoc_result[0][0]
                 print(f"  🔗 Association existante (ID: {assoc_id})")
-                return (assoc_id, description_updated)
+                return (assoc_id, description_updated, False)  # False = pas nouvelle association
             else:
                 # Nouvelle association
                 self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
                 assoc_id = self.cursor.lastrowid
                 self.conn.commit()
                 print(f"  🔗 Association créée (ID: {assoc_id})")
-                return (assoc_id, description_updated)
+                return (assoc_id, description_updated, True)  # True = nouvelle association
                 
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout/mise à jour de la pièce: {e}")

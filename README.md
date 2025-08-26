@@ -274,4 +274,4 @@ Cette version représente une refonte complète avec :
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
 **📅 Version 2025 - Stable et optimisée pour la production**  
-**🚀 v2.6.0 - Formatage optimisé de l'historique et nettoyage du code**
+**🚀 v2.7.0 - Nouveau système d'importation et corrections finales**

@@ -5,7 +5,7 @@ Architecture modulaire avec séparation des responsabilités
 
 import sys
 import platform
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, 
     QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
@@ -2574,10 +2574,21 @@ class MainWindow(QMainWindow):
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
             
-            # Vérifier si c'est un export multi-références ou une référence personnalisée
-            use_custom_export = (export_format == ExportFormat.CSV and 
-                               (is_multi_reference_export or 
-                                self._get_piece_description_from_reference(search_term) is None))
+            # Pour les exports CSV, utiliser une méthode simplifiée qui exporte directement le tableau
+            if export_format == ExportFormat.CSV:
+                try:
+                    result = self._export_displayed_table_as_csv(search_term)
+                    if result:
+                        self._add_to_history(f"Export CSV: {result}")
+                    return  # Sortir ici pour éviter le code complexe
+                except Exception as csv_error:
+                    import traceback
+                    traceback.print_exc()
+                    QMessageBox.critical(self, "Erreur d'export", f"Erreur lors de l'export CSV:\n{csv_error}")
+                    return
+            
+            # Pour les autres formats, utiliser l'ancien système
+            use_custom_export = False
             
             if use_custom_export:
                 try:
@@ -4139,109 +4150,9 @@ class MainWindow(QMainWindow):
                 self._show_import_results_new(results)
                 self.load_data()  # Rafraîchir l'affichage
         
-    def _import_file_legacy(self):
-        """Ancienne méthode d'import - gardée pour référence/debugging"""
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Importer fichier", "", 
-            "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
-        )
-        
-        if filename:
-            # Détecter le type de fichier selon l'extension
-            import os
-            file_extension = os.path.splitext(filename)[1].lower()
-            
-            if file_extension == '.pdf':
-                # Déléguer vers la fonction PDF existante
-                self._import_pdf_from_path([filename])
-                return
-            elif file_extension == '.csv':
-                # Continuer avec la logique CSV existante
-                try:
-                    import csv
-                    from datetime import datetime
-                    
-                    # D'abord, analyser le fichier pour détecter le nombre de colonnes
-                    detected_columns = self._detect_csv_columns(filename)
-                    if detected_columns is None:
-                        return
-                    
-                    # Préparer l'aperçu des données
-                    sample_data = self._prepare_csv_sample_data(filename)
-                    
-                    # Extraire le nom du fichier sans extension pour la référence de pièce
-                    filename_without_ext = os.path.splitext(os.path.basename(filename))[0]
-                    
-                    # Dialogue pour choisir le type d'import (avec référence pré-remplie et aperçu)
-                    import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV", sample_data)
-                    if import_type is None:
-                        return
-                    
-                    # Lire le fichier CSV avec détection automatique du séparateur et de l'encodage
-                    encoding = self._detect_file_encoding(filename)
-                    imported_data = []
-                    with open(filename, 'r', encoding=encoding, errors='replace') as file:
-                        # Lire un échantillon pour détecter le séparateur
-                        sample = file.read(1024)
-                        file.seek(0)
-                        
-                        # Détecter le séparateur le plus probable
-                        sniffer = csv.Sniffer()
-                        try:
-                            dialect = sniffer.sniff(sample, delimiters=',;\t')
-                            reader = csv.reader(file, dialect)
-                        except csv.Error:
-                            # Fallback: essayer les séparateurs dans l'ordre de préférence
-                            if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
-                                reader = csv.reader(file, delimiter=';')
-                            elif sample.count('\t') > sample.count(','):
-                                reader = csv.reader(file, delimiter='\t')
-                            else:
-                                reader = csv.reader(file, delimiter=',')
-                        
-                        for row_index, row in enumerate(reader):
-                            if row_index == 0 and has_headers:  # Ignorer la ligne d'en-tête seulement si spécifié
-                                continue
-                            if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
-                                imported_data.append(row)
-                
-                    if not imported_data:
-                        self._show_error("Aucune donnée valide trouvée dans le fichier CSV")
-                        return
-                
-                    # Créer une barre de progression pour les gros imports
-                    progress_dialog = None
-                    if len(imported_data) >= 1000:
-                        progress_dialog = self._create_progress_dialog("Import CSV", len(imported_data), "Traitement des lignes... {} / {} lignes")
-                    
-                    # Traiter l'import
-                    results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog, libelle_piece)
-                    
-                    # Fermer la barre de progression
-                    if progress_dialog:
-                        progress_dialog.setValue(len(imported_data))
-                        progress_dialog.close()
-                    
-                    # Afficher la synthèse
-                    
-                    # Enregistrer dans l'historique
-                    self._log_import_to_history(results, ref_piece, f"CSV ({filename})")
-                    
-                    # Actualiser l'affichage
-                    self._force_refresh_display(reset_page=True, clear_filters=True)
-                    
-                except Exception as e:
-                    self._show_error(f"Erreur lors de l'import CSV: {e}")
-            else:
-                # Type de fichier non supporté
-                from PyQt5.QtWidgets import QMessageBox
-                QMessageBox.warning(self, "Type de fichier non supporté", 
-                                  f"Le type de fichier {file_extension} n'est pas supporté.\n"
-                                  f"Formats acceptés: .csv, .pdf")
-    
     
     def _detect_csv_columns(self, filename):
-        """Détecter automatiquement le nombre de colonnes du fichier CSV"""
+        """DEPRECATED: Détecter automatiquement le nombre de colonnes du fichier CSV - Utiliser ImportManager"""
         try:
             import csv
             
@@ -4373,7 +4284,7 @@ class MainWindow(QMainWindow):
         return progress_dialog
     
     def _prepare_csv_sample_data(self, file_path, max_lines=3):
-        """Préparer les données d'exemple pour l'aperçu CSV"""
+        """DEPRECATED: Préparer les données d'exemple pour l'aperçu CSV - Utiliser ImportManager"""
         sample_data = []
         try:
             import csv
@@ -4927,9 +4838,9 @@ class MainWindow(QMainWindow):
             
             # Debug: Log pour traquer les fausses détections
             if is_associated:
-                print(f"  🔍 DEBUG: Appareil {device_id} déjà associé à pièce {ref_piece} (association ID: {result[0][0]})")
+                pass  # Appareil déjà associé
             else:
-                print(f"  🔍 DEBUG: Appareil {device_id} PAS associé à pièce {ref_piece}")
+                pass  # Appareil pas associé
                 
             return is_associated
         except Exception as e:
@@ -4992,7 +4903,7 @@ class MainWindow(QMainWindow):
         return most_common_count
 
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
-        """Dialogue unifié pour choisir les options d'import (CSV, PDF, COLLAGE) avec aperçu des données"""
+        """DEPRECATED: Dialogue unifié pour choisir les options d'import - Maintenant intégré dans ImportManager"""
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit
         
         dialog = QDialog(self)
@@ -5253,11 +5164,9 @@ class MainWindow(QMainWindow):
         
         # Nouvelles associations
         associations_created = results.get('associations_created', 0)
+        associations_existing = results.get('associations_existing', 0)
         summary += f"==> Nouvelles : {associations_created}\n"
-        
-        # Associations déjà présentes (vraies associations existantes en BDD)
-        duplicates_skipped = results.get('duplicates_skipped', 0)
-        summary += f"==> Déjà associés : {duplicates_skipped}"
+        summary += f"==> Déjà associés : {associations_existing}"
         
         return summary
 
@@ -5296,46 +5205,57 @@ class MainWindow(QMainWindow):
         self._add_to_history(console_summary)
     
     def _show_import_results_new(self, results):
-        """Afficher les résultats d'import du nouveau système ImportManager"""
+        """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
         try:
-            # Vérifier les erreurs
+            # Vérifier les erreurs - les afficher si critique
             if results.get('errors'):
                 error_msg = "Erreurs lors de l'import:\n" + "\n".join(results['errors'])
                 QMessageBox.warning(self, "Erreurs d'import", error_msg)
             
-            # Créer le message de succès
-            files_text = f"{results['successful_files']}/{results['total_files']} fichier(s)"
-            if results['total_files'] > 1:
-                files_text += f" (import multi-fichiers)"
+            # Créer un résumé détaillé EXACTEMENT comme l'ancien format
+            # Note: _add_to_history ajoute automatiquement le timestamp, pas besoin de le faire ici
             
-            success_msg = f"""🎉 Import terminé avec succès !
-
-📊 Résumé:
-• {files_text} traité(s)
-• {results['total_imported']} lignes importées
-• {results['new_entries']} nouveaux appareils créés
-• {results['matches_found']} appareils existants trouvés  
-• {results['associations_created']} associations pièces-appareils créées
-            """
+            # Déterminer le type d'import
+            if results.get('total_files', 0) > 1:
+                import_type = f"📊 Import Multi-fichiers ({results['total_files']} fichiers)"
+            else:
+                import_type = "📊 Import"
             
-            # Afficher le message
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle("Import réussi")
-            msg_box.setText(success_msg)
-            msg_box.setIcon(QMessageBox.Information)
+            # Commencer le résumé
+            summary = f"{import_type}:\n"
             
-            # Ajouter les détails si disponibles
-            if results.get('errors'):
-                msg_box.setDetailedText("Erreurs:\n" + "\n".join(results['errors']))
+            # Si c'est multi-fichiers, lister les fichiers avec leurs détails
+            if results.get('total_files', 0) > 1:
+                file_details = results.get('file_details', [])
+                for detail in file_details:
+                    summary += f"📄 Fichier {detail['type']} {detail['filename']}: {detail['lines_processed']} lignes extraites\n"
             
-            msg_box.exec_()
+            total_processed = results.get('total_imported', 0)
+            summary += f"     ==> Lignes traitées : {total_processed}\n\n"
             
-            # Enregistrer dans l'historique
-            history_msg = f"Import nouveau système: {files_text} - {results['total_imported']} lignes"
-            self._add_to_history(history_msg)
+            # Section Appareils (format exact)
+            summary += "Appareils :\n"
+            summary += f"     ==> Créés : {results.get('new_entries', 0)}\n"
+            summary += f"     ==> Complétion automatique : 0\n"  # Non disponible dans notre système
+            summary += f"     ==> À compléter : 0\n"  # Non disponible dans notre système  
+            summary += f"     ==> Doublon ignoré : 0\n"  # Pour l'instant 0, à implémenter correctement
+            
+            # Section Associations de pièce (format exact)
+            summary += "Associations de pièce :\n"
+            summary += f"     ==> Nouvelles : {results.get('associations_created', 0)}\n"
+            summary += f"     ==> Déjà associés : {results.get('associations_existing', 0)}"
+            
+            # Ajouter SEULEMENT à l'historique (timestamp ajouté automatiquement)
+            self._add_to_history(summary)
             
         except Exception as e:
-            QMessageBox.critical(self, "Erreur d'affichage", f"Impossible d'afficher les résultats: {e}")
+            QMessageBox.critical(self, "Erreur d'affichage", f"Impossible de traiter les résultats: {e}")
+            # En cas d'erreur, au moins ajouter un message basique à l'historique
+            try:
+                basic_msg = f"📥 Import effectué (erreur d'affichage des détails)"
+                self._add_to_history(basic_msg)
+            except:
+                pass  # Si même l'historique échoue, on ne peut rien faire
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
@@ -7183,6 +7103,140 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 'fabricants': ["multi-marques"]
             }
     
+    def _get_displayed_table_data(self) -> List[Tuple]:
+        """Récupérer les données actuellement affichées dans le tableau"""
+        data = []
+        
+        if not hasattr(self, 'table') or self.table.rowCount() == 0:
+            return data
+        
+        # Parcourir chaque ligne du tableau
+        for row in range(self.table.rowCount()):
+            row_data = []
+            # Récupérer les données de chaque colonne (sauf la dernière "Nb Pièces")
+            for col in range(len(Config.DB_HEADERS)):  # Exclure colonne "Nb Pièces"
+                item = self.table.item(row, col)
+                if item:
+                    row_data.append(item.text())
+                else:
+                    row_data.append("")
+            
+            # Récupérer le db_id depuis UserRole de la première cellule
+            first_item = self.table.item(row, 0)
+            if first_item:
+                db_id = first_item.data(Qt.ItemDataRole.UserRole)
+                if db_id:
+                    # Ajouter l'ID en première position (comme dans les requêtes DB)
+                    row_data.insert(0, db_id)
+                    data.append(tuple(row_data))
+        
+        return data
+
+    def _get_all_search_data(self) -> List[Tuple]:
+        """Récupérer TOUTES les données correspondant à la recherche actuelle (sans pagination)"""
+        try:
+            # Récupérer les paramètres de recherche actuels depuis le champ de saisie
+            current_search = self.search_input.text().strip() if hasattr(self, 'search_input') else ''
+            
+            incomplete_filter = getattr(self, 'show_incomplete_only', False)
+            
+            if not current_search:
+                return []
+            
+            # Parser la recherche comme dans _parse_advanced_search
+            try:
+                parsed_search = self._parse_advanced_search(current_search)
+            except Exception as parse_error:
+                # En cas d'erreur de parsing, utiliser une recherche simple
+                parsed_search = {'SIMPLE': current_search}
+            
+            if not parsed_search:
+                return []
+            
+            # Obtenir les filtres de colonnes (si applicable)
+            column_filters = {}
+            if hasattr(self, 'filter_widgets'):
+                for col_idx, filter_widget in self.filter_widgets.items():
+                    filter_text = filter_widget.text().strip()
+                    if filter_text:
+                        column_filters[col_idx] = filter_text
+            
+            # Utiliser load_data sans limites
+            all_results = self.db_manager.load_data(
+                search_term=parsed_search,
+                column_filters=column_filters,
+                limit=None,  # Aucune limite = récupérer tout
+                offset=None,  # Pas d'offset = depuis le début
+                sort_column=None,  # Pas de tri spécifique
+                sort_order="ASC",  # Ordre croissant par défaut
+                incomplete_filter=incomplete_filter
+            )
+            
+            return all_results if all_results else []
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def _export_displayed_table_as_csv(self, custom_reference: str) -> str:
+        """Exporter TOUTES les données de la recherche vers un fichier CSV (pas seulement celles affichées)"""
+        try:
+            import csv
+            import os
+            from datetime import datetime
+            
+            # Récupérer TOUTES les données de la recherche actuelle, pas seulement celles affichées
+            data = self._get_all_search_data()
+            
+            if not data:
+                raise Exception("Aucune donnée trouvée pour la recherche actuelle")
+            
+            # Générer le nom de fichier
+            filename = f"{custom_reference}_everyParts.csv"
+            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
+            
+            # Créer le fichier CSV
+            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile, delimiter=';')
+                
+                # En-têtes
+                headers = [
+                    'product',
+                    'type', 
+                    'manufacturer',
+                    'modele_name',
+                    'reference_modele',
+                    'commercial_reference'
+                ]
+                writer.writerow(headers)
+                
+                # Écrire les données
+                processed_count = 0
+                for record in data:
+                    try:
+                        if len(record) >= 5:  # Au minimum 5 champs requis
+                            db_id, type_app, manufacturer, ref_modele, commercial_ref = record[:5]
+                            modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
+                            
+                            writer.writerow([
+                                custom_reference,  # product (référence personnalisée)
+                                type_app or '',
+                                manufacturer or '',
+                                modele_complet,
+                                ref_modele or '',
+                                commercial_ref or ''
+                            ])
+                            processed_count += 1
+                    except Exception as record_error:
+                        print(f"📊 ERREUR sur l'enregistrement {processed_count}: {record_error}")
+                        print(f"📊 Record problématique: {record}")
+                        continue
+            return filepath
+            
+        except Exception as e:
+            raise Exception(f"Erreur lors de l'export CSV: {e}")
+
     def _export_custom_reference_csv_with_current_data(self, custom_reference: str, original_search_term: str = None) -> str:
         """Créer un export CSV avec toutes les données de la recherche mais avec une référence personnalisée"""
         try:
@@ -7194,20 +7248,14 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             filename = f"{custom_reference}_everyParts.csv"
             filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
             
-            # Utiliser le terme de recherche original s'il est fourni, sinon récupérer depuis l'interface
-            if not original_search_term:
-                original_search_term = self.search_input.text().strip()
+            # Utiliser les données actuellement affichées dans le tableau
+            # au lieu de refaire une requête en base de données
+            data = self._get_displayed_table_data()
             
-            if not original_search_term:
-                raise Exception("Aucun terme de recherche actif pour récupérer les données")
+            if not data:
+                raise Exception("Aucune donnée affichée dans le tableau à exporter")
             
-            # Récupérer les filtres actifs
-            column_filters = {}
-            if hasattr(self, 'filter_widgets'):
-                for col_idx, filter_widget in self.filter_widgets.items():
-                    filter_text = filter_widget.text().strip()
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
+            # Plus besoin de récupérer les filtres - on utilise directement les données affichées
             
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
