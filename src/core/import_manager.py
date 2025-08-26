@@ -526,25 +526,6 @@ class ImportDialog(QDialog):
         else:
             self.headers_checkbox.hide()
     
-    def _load_csv_sample_data(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
-        warnings.warn(
-            "ImportDialog._load_csv_sample_data() est déprécié. "
-            "Utilisez ImportManager.load_csv_data(file_path, max_rows=5) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_csv_data(file_path, max_rows=5)
-    
-    def _load_pdf_sample_data(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
-        warnings.warn(
-            "ImportDialog._load_pdf_sample_data() est déprécié. "
-            "Utilisez ImportManager.load_pdf_data(file_path, max_rows=5) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_pdf_data(file_path, max_rows=5)
 
 
 class ImportManager:
@@ -698,6 +679,101 @@ class ImportManager:
         # Effectuer l'import
         return self._execute_import(config)
     
+    def import_from_drag_drop(self, file_paths: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        Import spécialisé pour drag&drop avec paramètres par défaut intelligents
+        
+        Args:
+            file_paths: Liste des fichiers à importer
+            
+        Returns:
+            Résultats de l'import ou None si annulé/échoué
+            
+        Notes:
+            - Utilise le nom de fichier comme référence par défaut
+            - Affiche toujours le dialogue d'options (UX cohérente)
+            - Gère les imports multi-fichiers PDF
+            - Format d'historique spécialisé pour drag&drop
+        """
+        try:
+            if not file_paths:
+                return None
+                
+            # Valider et préparer les fichiers
+            import_files = []
+            for file_path in file_paths:
+                if not os.path.exists(file_path):
+                    continue
+                    
+                file_type = self._detect_file_type(file_path)
+                if not file_type:
+                    continue
+                    
+                # Référence par défaut depuis nom fichier
+                default_reference = self._extract_reference_from_filename(file_path)
+                
+                # Données d'aperçu pour le dialogue
+                sample_data = self._get_sample_data(file_path, file_type)
+                
+                import_files.append({
+                    'path': file_path,
+                    'type': file_type,
+                    'default_reference': default_reference,
+                    'sample_data': sample_data
+                })
+            
+            if not import_files:
+                return None
+                
+            # Déterminer le type d'import
+            import_type = ImportType.SINGLE_FILE if len(import_files) == 1 else ImportType.MULTI_FILE
+            
+            # Configuration avec paramètres par défaut pour drag&drop
+            config = ImportConfiguration(
+                files=import_files,
+                import_type=import_type
+            )
+            
+            # Pour drag&drop, on propose toujours le premier nom de fichier comme référence
+            if import_files:
+                config.reference_piece = import_files[0]['default_reference']
+            
+            # Dialogue adapté pour drag&drop
+            from src.ui.import_dialog import ImportDialog
+            dialog = ImportDialog(self.parent_widget, config)
+            
+            # Titre spécialisé pour drag&drop
+            dialog.setWindowTitle("Import par Glisser-Déposer")
+            
+            if dialog.exec_() != QDialog.Accepted:
+                return None
+            
+            config = dialog.get_configuration()
+            if not config:
+                return None
+            
+            # Effectuer l'import avec marquage drag&drop
+            results = self._execute_import(config)
+            
+            # Marquer les résultats comme provenant du drag&drop
+            if results:
+                results['import_source'] = 'drag_drop'
+                results['source_files'] = [f['path'] for f in import_files]
+                
+                # Format d'historique spécialisé
+                if len(import_files) == 1:
+                    file_name = os.path.basename(import_files[0]['path'])
+                    file_ext = import_files[0]['type'].value.upper()
+                    results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
+                else:
+                    results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
+            
+            return results
+            
+        except Exception as e:
+            print(f"Erreur import drag&drop: {e}")
+            return None
+    
     def _detect_file_type(self, file_path: str) -> Optional[FileType]:
         """Détecter le type de fichier"""
         ext = os.path.splitext(file_path)[1].lower()
@@ -723,45 +799,6 @@ class ImportManager:
         
         return None
     
-    def _load_csv_sample_data_static(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
-        warnings.warn(
-            "ImportManager._load_csv_sample_data_static() est déprécié. "
-            "Utilisez load_csv_data(file_path, max_rows=5) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_csv_data(file_path, max_rows=5)
-    
-    def _load_pdf_sample_data_static(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
-        warnings.warn(
-            "ImportManager._load_pdf_sample_data_static() est déprécié. "
-            "Utilisez load_pdf_data(file_path, max_rows=5) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_pdf_data(file_path, max_rows=5)
-    
-    def _load_csv_sample_data(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
-        warnings.warn(
-            "ImportManager._load_csv_sample_data() est déprécié. "
-            "Utilisez load_csv_data(file_path, max_rows=5) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_csv_data(file_path, max_rows=5)
-    
-    def _load_pdf_sample_data(self, file_path: str) -> List[List[str]]:
-        """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
-        warnings.warn(
-            "ImportManager._load_pdf_sample_data() est déprécié. "
-            "Utilisez load_pdf_data(file_path, max_rows=5) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_pdf_data(file_path, max_rows=5)
     
     def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
         """Exécuter l'import avec la configuration donnée"""
@@ -856,25 +893,6 @@ class ImportManager:
             file  # Passer le fichier pour les associations par fichier
         )
     
-    def _load_csv_data(self, file_path: str) -> List[List[str]]:
-        """Charger les données d'un fichier CSV - DEPRECATED: utiliser load_csv_data()"""
-        warnings.warn(
-            "ImportManager._load_csv_data() est déprécié. "
-            "Utilisez load_csv_data(file_path) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_csv_data(file_path)
-    
-    def _load_pdf_data(self, file_path: str) -> List[List[str]]:
-        """Charger les données d'un fichier PDF - DEPRECATED: utiliser load_pdf_data()"""
-        warnings.warn(
-            "ImportManager._load_pdf_data() est déprécié. "
-            "Utilisez load_pdf_data(file_path) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.load_pdf_data(file_path)
     
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                            config: ImportConfiguration, file: ImportFile) -> Dict[str, Any]:
@@ -1110,3 +1128,9 @@ def import_files_with_dialog(file_paths: List[str], db_manager, parent_widget=No
     """Fonction utilitaire pour importer des fichiers avec interface"""
     manager = create_import_manager(db_manager, parent_widget)
     return manager.import_files(file_paths, show_dialog=True)
+
+
+def import_from_drag_drop(file_paths: List[str], db_manager, parent_widget=None) -> Optional[Dict[str, Any]]:
+    """Fonction utilitaire pour import drag&drop"""
+    manager = create_import_manager(db_manager, parent_widget)
+    return manager.import_from_drag_drop(file_paths)

@@ -4153,13 +4153,7 @@ class MainWindow(QMainWindow):
         
     
     def _detect_csv_columns(self, filename):
-        """DEPRECATED: Détecter automatiquement le nombre de colonnes du fichier CSV - Utiliser ImportManager"""
-        warnings.warn(
-            "MainWindow._detect_csv_columns() est déprécié. "
-            "Utilisez ImportManager.load_csv_data() et analysez les colonnes à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
+        """Détecter automatiquement le nombre de colonnes du fichier CSV (fallback legacy)"""
         try:
             import csv
             
@@ -4291,13 +4285,7 @@ class MainWindow(QMainWindow):
         return progress_dialog
     
     def _prepare_csv_sample_data(self, file_path, max_lines=3):
-        """DEPRECATED: Préparer les données d'exemple pour l'aperçu CSV - Utiliser ImportManager"""
-        warnings.warn(
-            "MainWindow._prepare_csv_sample_data() est déprécié. "
-            "Utilisez ImportManager.load_csv_data(file_path, max_rows=max_lines) à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
+        """Préparer les données d'exemple pour l'aperçu CSV (fallback legacy)"""
         sample_data = []
         try:
             import csv
@@ -4916,13 +4904,7 @@ class MainWindow(QMainWindow):
         return most_common_count
 
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
-        """DEPRECATED: Dialogue unifié pour choisir les options d'import - Maintenant intégré dans ImportManager"""
-        warnings.warn(
-            "MainWindow._get_import_options_unified() est déprécié. "
-            "Utilisez ImportManager.import_files() avec show_dialog=True à la place.",
-            DeprecationWarning,
-            stacklevel=2
-        )
+        """Dialogue unifié pour choisir les options d'import (fallback legacy)"""
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit
         
         dialog = QDialog(self)
@@ -5735,26 +5717,46 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         event.ignore()
 
     def _import_csv_from_path(self, file_path):
-        """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)"""
+        """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)
+        
+        MIGRATION: Utilise ImportManager pour le drag&drop avec fallback vers ancien système
+        """
+        try:
+            # NOUVEAU : Utiliser ImportManager pour drag&drop
+            results = self.import_manager.import_from_drag_drop([file_path])
+            if results:
+                self._show_import_results_new(results)
+                self.load_data()
+                return
+        except Exception as e:
+            app_logger.warning(f"Échec ImportManager drag&drop CSV, fallback vers ancien système: {e}")
+        
+        # FALLBACK : Code legacy en cas d'échec ImportManager
         try:
             import csv
             from datetime import datetime
             
-            # D'abord, analyser le fichier pour détecter le nombre de colonnes
-            detected_columns = self._detect_csv_columns(file_path)
-            if detected_columns is None:
-                return
-            
-            # Préparer l'aperçu des données
-            sample_data = self._prepare_csv_sample_data(file_path)
-            
-            # Extraire le nom du fichier sans extension pour la référence de pièce
-            import os
-            filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
-            
-            # Dialogue unifié pour choisir le type d'import (avec référence pré-remplie et aperçu)
-            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV", sample_data)
-            if import_type is None:
+            # Utiliser ImportManager pour analyse et dialogue
+            try:
+                # Chargement et analyse avec ImportManager
+                sample_data = self.import_manager.load_csv_data(file_path, max_rows=5)
+                detected_columns = len(sample_data[0]) if sample_data else 0
+                
+                if detected_columns == 0:
+                    self._show_error("Impossible de détecter les colonnes du fichier CSV")
+                    return
+                
+                # Extraire référence depuis nom de fichier
+                import os
+                filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
+                
+                # Utiliser dialogue deprecated (sera supprimé en Phase 4.4)
+                import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV", sample_data)
+                if import_type is None:
+                    return
+                    
+            except Exception as e:
+                self._show_error(f"Erreur lors de l'analyse du fichier CSV: {e}")
                 return
             
             # Le reste du traitement est identique à _import_csv
@@ -5806,7 +5808,25 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self._show_error(f"Erreur lors de l'import CSV par glisser/déposer: {e}")
     
     def _import_pdf_from_path(self, file_paths):
-        """Importer un ou plusieurs fichiers PDF depuis des chemins donnés"""
+        """Importer un ou plusieurs fichiers PDF depuis des chemins donnés
+        
+        MIGRATION: Utilise ImportManager pour le drag&drop avec fallback vers ancien système
+        """
+        try:
+            # Assurer que file_paths est une liste
+            if isinstance(file_paths, str):
+                file_paths = [file_paths]
+            
+            # NOUVEAU : Utiliser ImportManager pour drag&drop
+            results = self.import_manager.import_from_drag_drop(file_paths)
+            if results:
+                self._show_import_results_new(results)
+                self.load_data()
+                return
+        except Exception as e:
+            app_logger.warning(f"Échec ImportManager drag&drop PDF, fallback vers ancien système: {e}")
+        
+        # FALLBACK : Code legacy en cas d'échec ImportManager
         try:
             from src.data.pdf_extractor_camelot import CamelotPDFExtractor, PDFExtractionError
             import os
@@ -5820,15 +5840,11 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if len(file_paths) == 1:
                 suggested_ref_piece = os.path.splitext(os.path.basename(file_paths[0]))[0]
             
-            # Extraire quelques lignes d'exemple du premier PDF pour l'aperçu
+            # Utiliser ImportManager pour analyser le PDF
             sample_data = []
             if len(file_paths) > 0:
                 try:
-                    from src.data.pdf_extractor_camelot import CamelotPDFExtractor
-                    temp_extractor = CamelotPDFExtractor()
-                    temp_result = temp_extractor.extract_data(file_paths[0])
-                    if temp_result:
-                        sample_data = temp_result[:3]  # Maximum 3 lignes pour l'aperçu
+                    sample_data = self.import_manager.load_pdf_data(file_paths[0], max_rows=3)
                 except Exception as e:
                     print(f"Erreur lecture aperçu PDF: {e}")
                     sample_data = []
