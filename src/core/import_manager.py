@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from enum import Enum
 import os
+import warnings
 from datetime import datetime
 
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
@@ -527,10 +528,22 @@ class ImportDialog(QDialog):
     
     def _load_csv_sample_data(self, file_path: str) -> List[List[str]]:
         """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
+        warnings.warn(
+            "ImportDialog._load_csv_sample_data() est déprécié. "
+            "Utilisez ImportManager.load_csv_data(file_path, max_rows=5) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_csv_data(file_path, max_rows=5)
     
     def _load_pdf_sample_data(self, file_path: str) -> List[List[str]]:
         """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
+        warnings.warn(
+            "ImportDialog._load_pdf_sample_data() est déprécié. "
+            "Utilisez ImportManager.load_pdf_data(file_path, max_rows=5) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_pdf_data(file_path, max_rows=5)
 
 
@@ -712,18 +725,42 @@ class ImportManager:
     
     def _load_csv_sample_data_static(self, file_path: str) -> List[List[str]]:
         """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
+        warnings.warn(
+            "ImportManager._load_csv_sample_data_static() est déprécié. "
+            "Utilisez load_csv_data(file_path, max_rows=5) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_csv_data(file_path, max_rows=5)
     
     def _load_pdf_sample_data_static(self, file_path: str) -> List[List[str]]:
         """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
+        warnings.warn(
+            "ImportManager._load_pdf_sample_data_static() est déprécié. "
+            "Utilisez load_pdf_data(file_path, max_rows=5) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_pdf_data(file_path, max_rows=5)
     
     def _load_csv_sample_data(self, file_path: str) -> List[List[str]]:
         """Charger un échantillon de données CSV - DEPRECATED: utiliser load_csv_data()"""
+        warnings.warn(
+            "ImportManager._load_csv_sample_data() est déprécié. "
+            "Utilisez load_csv_data(file_path, max_rows=5) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_csv_data(file_path, max_rows=5)
     
     def _load_pdf_sample_data(self, file_path: str) -> List[List[str]]:
         """Charger un échantillon de données PDF - DEPRECATED: utiliser load_pdf_data()"""
+        warnings.warn(
+            "ImportManager._load_pdf_sample_data() est déprécié. "
+            "Utilisez load_pdf_data(file_path, max_rows=5) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_pdf_data(file_path, max_rows=5)
     
     def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
@@ -821,10 +858,22 @@ class ImportManager:
     
     def _load_csv_data(self, file_path: str) -> List[List[str]]:
         """Charger les données d'un fichier CSV - DEPRECATED: utiliser load_csv_data()"""
+        warnings.warn(
+            "ImportManager._load_csv_data() est déprécié. "
+            "Utilisez load_csv_data(file_path) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_csv_data(file_path)
     
     def _load_pdf_data(self, file_path: str) -> List[List[str]]:
         """Charger les données d'un fichier PDF - DEPRECATED: utiliser load_pdf_data()"""
+        warnings.warn(
+            "ImportManager._load_pdf_data() est déprécié. "
+            "Utilisez load_pdf_data(file_path) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.load_pdf_data(file_path)
     
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 

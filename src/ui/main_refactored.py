@@ -5,6 +5,7 @@ Architecture modulaire avec séparation des responsabilités
 
 import sys
 import platform
+import warnings
 from typing import Optional, Dict, Any, List, Tuple
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, 
@@ -4153,6 +4154,12 @@ class MainWindow(QMainWindow):
     
     def _detect_csv_columns(self, filename):
         """DEPRECATED: Détecter automatiquement le nombre de colonnes du fichier CSV - Utiliser ImportManager"""
+        warnings.warn(
+            "MainWindow._detect_csv_columns() est déprécié. "
+            "Utilisez ImportManager.load_csv_data() et analysez les colonnes à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         try:
             import csv
             
@@ -4285,6 +4292,12 @@ class MainWindow(QMainWindow):
     
     def _prepare_csv_sample_data(self, file_path, max_lines=3):
         """DEPRECATED: Préparer les données d'exemple pour l'aperçu CSV - Utiliser ImportManager"""
+        warnings.warn(
+            "MainWindow._prepare_csv_sample_data() est déprécié. "
+            "Utilisez ImportManager.load_csv_data(file_path, max_rows=max_lines) à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         sample_data = []
         try:
             import csv
@@ -4904,6 +4917,12 @@ class MainWindow(QMainWindow):
 
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
         """DEPRECATED: Dialogue unifié pour choisir les options d'import - Maintenant intégré dans ImportManager"""
+        warnings.warn(
+            "MainWindow._get_import_options_unified() est déprécié. "
+            "Utilisez ImportManager.import_files() avec show_dialog=True à la place.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit
         
         dialog = QDialog(self)
