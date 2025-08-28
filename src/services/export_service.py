@@ -23,6 +23,8 @@ class ExportFormat:
     CSV = "CSV"
     EXCEL = "EXCEL"
     JSON = "JSON"
+    HTML_BRANDS = "HTML_BRANDS"
+    HTML_DETAILS = "HTML_DETAILS"
 
 
 class ExportService:

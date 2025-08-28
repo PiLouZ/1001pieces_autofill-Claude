@@ -4,8 +4,6 @@ Architecture modulaire avec séparation des responsabilités
 """
 
 import sys
-import platform
-import warnings
 from typing import Optional, Dict, Any, List, Tuple
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, 
@@ -25,19 +23,15 @@ from ..services.event_bus import event_bus
 from ..services.export_service import ExportFormat
 
 # Imports des modules refactorisés
-import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core.config import Config
-from src.core.logger import app_logger
 from src.core.import_manager import ImportManager
 from src.data.database_manager import DatabaseManager, DatabaseError
 from src.data.data_validator import DataValidator, ValidationResult
-from src.data.data_exporter import DataExporter, ExportFormat, ExportError
+from src.data.data_exporter import DataExporter, ExportError
 from src.utils.seo_generator import SEOGenerator
-from src.ui.log_viewer import LogViewer
-from src.ui.validation_window import ValidationWindow
 
 
 class CustomTableWidget(QTableWidget):
@@ -2840,11 +2834,8 @@ class MainWindow(QMainWindow):
                     self._add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
                 return success
             else:
-                # Utiliser l'exportateur standard pour les autres formats
-                success = self.exporter.export_search_results(reference_for_file, export_format)
-                if success:
-                    self._add_to_history(f"Export {export_format.value}: {len(data)} lignes")
-                return success
+                # Autres formats non supportés pour export avec référence personnalisée
+                raise Exception(f"Format d'export {export_format} non supporté avec référence personnalisée")
                 
         except Exception as e:
             raise Exception(f"Erreur lors de l'export personnalisé: {e}")
@@ -2897,11 +2888,45 @@ class MainWindow(QMainWindow):
     def _export_html_with_reference(self, data, reference: str, export_format: ExportFormat) -> bool:
         """Exporter en HTML avec référence personnalisée"""
         try:
-            # Utiliser l'exportateur standard mais avec référence personnalisée
             if export_format == ExportFormat.HTML_BRANDS:
-                result = self.exporter._export_html_brands(data, reference)
+                # Extraire les marques uniques
+                brands = set()
+                for record in data:
+                    manufacturer = record[1]  # Index 1 = manufacturer
+                    if manufacturer and manufacturer.strip():
+                        brands.add(manufacturer.strip())
+                
+                # Générer les liens HTML
+                html_links = []
+                for brand in sorted(brands):
+                    html_links.append(f'<a href="#{brand}">{brand}</a>')
+                
+                result = ' '.join(html_links)
             else:  # HTML_DETAILS
-                result = self.exporter._export_html_details(data, reference)
+                # Version simplifiée des détails HTML
+                brands_data = {}
+                for record in data:
+                    manufacturer = record[1]  # Index 1 = manufacturer
+                    ref_modele = record[2]    # Index 2 = ref_modele
+                    commercial_ref = record[3] # Index 3 = commercial_ref
+                    
+                    if manufacturer and manufacturer.strip():
+                        if manufacturer not in brands_data:
+                            brands_data[manufacturer] = []
+                        brands_data[manufacturer].append({
+                            'ref_modele': ref_modele or '',
+                            'commercial_ref': commercial_ref or ''
+                        })
+                
+                # Générer HTML simplifié
+                html_parts = []
+                for brand in sorted(brands_data.keys()):
+                    html_parts.append(f'<h3>{brand}</h3>')
+                    for item in brands_data[brand]:
+                        ref_text = f"{item['ref_modele']} - {item['commercial_ref']}" if item['ref_modele'] and item['commercial_ref'] else (item['ref_modele'] or item['commercial_ref'])
+                        html_parts.append(f'<p>{ref_text}</p>')
+                
+                result = '\n'.join(html_parts)
             
             # Copier dans le presse-papiers
             from PyQt5.QtWidgets import QApplication
