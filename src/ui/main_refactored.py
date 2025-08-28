@@ -950,11 +950,30 @@ class MainWindow(QMainWindow):
         # Filtres par colonne
         filter_layout = QHBoxLayout()
         for i, header in enumerate(Config.UI_HEADERS):
-            filter_input = QLineEdit()
-            filter_input.setPlaceholderText(f"{header}...")
-            filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
-            self.filter_widgets[i] = filter_input
-            filter_layout.addWidget(filter_input)
+            # Skip filter for "Nb Pièces" column (index 7)
+            if i == 7:  # "Nb Pièces" column
+                # Add spacer to maintain layout alignment
+                spacer = QWidget()
+                spacer.setFixedWidth(150)  # Approximate width of other filters
+                filter_layout.addWidget(spacer)
+                continue
+            
+            # Create dropdown filters for Type (index 0) and Fabricant (index 1)
+            if i == 0 or i == 1:  # Type or Fabricant columns
+                filter_combo = QComboBox()
+                filter_combo.setEditable(True)
+                filter_combo.lineEdit().setPlaceholderText(f"{header}...")
+                filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
+                self.filter_widgets[i] = filter_combo
+                self._populate_dropdown_values(filter_combo, i)
+                filter_layout.addWidget(filter_combo)
+            else:
+                # Regular text input for other columns
+                filter_input = QLineEdit()
+                filter_input.setPlaceholderText(f"{header}...")
+                filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
+                self.filter_widgets[i] = filter_input
+                filter_layout.addWidget(filter_input)
         layout.addLayout(filter_layout)
         
         # Sauvegarder la référence du layout des filtres pour la visibilité
@@ -1575,9 +1594,13 @@ class MainWindow(QMainWindow):
             # Obtenir les filtres de colonnes
             column_filters = {}
             for col_idx, filter_widget in self.filter_widgets.items():
-                filter_text = filter_widget.text().strip()
-                if filter_text:
-                    column_filters[col_idx] = filter_text
+                if filter_widget is not None:  # Skip removed filters
+                    if isinstance(filter_widget, QComboBox):
+                        filter_text = filter_widget.currentText().strip()
+                    else:  # QLineEdit
+                        filter_text = filter_widget.text().strip()
+                    if filter_text:
+                        column_filters[col_idx] = filter_text
             
             # Ajouter le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
@@ -2913,9 +2936,13 @@ class MainWindow(QMainWindow):
             # Récupérer les filtres de colonnes actifs
             column_filters = {}
             for col_idx, filter_widget in self.filter_widgets.items():
-                filter_text = filter_widget.text().strip()
-                if filter_text:
-                    column_filters[col_idx] = filter_text
+                if filter_widget is not None:  # Skip removed filters
+                    if isinstance(filter_widget, QComboBox):
+                        filter_text = filter_widget.currentText().strip()
+                    else:  # QLineEdit
+                        filter_text = filter_widget.text().strip()
+                    if filter_text:
+                        column_filters[col_idx] = filter_text
             
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
@@ -3140,6 +3167,41 @@ class MainWindow(QMainWindow):
             
             # Nettoyer
             self.pending_column_filter = None
+
+    def _populate_dropdown_values(self, combo_widget: QComboBox, column_index: int):
+        """Peupler les valeurs du dropdown avec les données uniques de la BDD"""
+        try:
+            # Déterminer le champ de base de données selon l'index de colonne
+            if column_index == 0:  # Type
+                db_field = "type"
+            elif column_index == 1:  # Fabricant
+                db_field = "manufacturer"
+            else:
+                return  # Ne pas traiter d'autres colonnes
+            
+            # Requête pour obtenir les valeurs distinctes, non vides, triées
+            query = f"""
+                SELECT DISTINCT {db_field} 
+                FROM appareils 
+                WHERE {db_field} IS NOT NULL AND {db_field} != '' 
+                ORDER BY {db_field}
+            """
+            
+            results = self.db_manager.execute_query(query)
+            
+            # Ajouter une option vide en premier
+            combo_widget.addItem("")
+            
+            # Ajouter les valeurs uniques
+            for row in results:
+                value = row[0]
+                if value and value.strip():  # S'assurer que la valeur n'est pas vide
+                    combo_widget.addItem(value.strip())
+                    
+        except Exception as e:
+            print(f"⚠️ Erreur lors du peuplement du dropdown colonne {column_index}: {e}")
+            # En cas d'erreur, transformer le combo en champ texte basique
+            combo_widget.setEditable(True)
 
     def _parse_advanced_search(self, text: str):
         """Parser la recherche avancée avec opérateurs && et ||"""
@@ -5721,9 +5783,13 @@ class MainWindow(QMainWindow):
     def _clear_column_filters(self):
         """Nettoyer tous les filtres de colonnes"""
         for col_idx, filter_widget in self.filter_widgets.items():
-            filter_widget.blockSignals(True)
-            filter_widget.clear()
-            filter_widget.blockSignals(False)
+            if filter_widget is not None:  # Skip removed filters
+                filter_widget.blockSignals(True)
+                if isinstance(filter_widget, QComboBox):
+                    filter_widget.setCurrentText("")
+                else:  # QLineEdit
+                    filter_widget.clear()
+                filter_widget.blockSignals(False)
     
     def _update_incomplete_button_visibility(self):
         """Mettre à jour la visibilité du bouton incomplètes selon les données"""
@@ -7625,9 +7691,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             column_filters = {}
             if hasattr(self, 'filter_widgets'):
                 for col_idx, filter_widget in self.filter_widgets.items():
-                    filter_text = filter_widget.text().strip()
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
+                    if filter_widget is not None:  # Skip removed filters
+                        if isinstance(filter_widget, QComboBox):
+                            filter_text = filter_widget.currentText().strip()
+                        else:  # QLineEdit
+                            filter_text = filter_widget.text().strip()
+                        if filter_text:
+                            column_filters[col_idx] = filter_text
             
             # Utiliser load_data sans limites
             all_results = self.db_manager.load_data(
