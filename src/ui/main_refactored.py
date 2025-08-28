@@ -34,6 +34,7 @@ from src.data.data_validator import DataValidator, ValidationResult
 from src.data.data_exporter import DataExporter, ExportError
 from src.utils.seo_generator import SEOGenerator
 from .style_manager import StyleManager
+from .table_controller import TableController
 
 
 class CustomTableWidget(QTableWidget):
@@ -771,6 +772,9 @@ class MainWindow(QMainWindow):
             self.export_service = ExportService(self.db_manager)
             self.import_service = ImportService(self.db_manager)
             
+            # Phase 2: Controller pour le tableau
+            self.table_controller = TableController(self, self.db_manager)
+            
             # Écouter les événements des services
             self._setup_service_events()
             self.seo_generator = SEOGenerator()
@@ -784,7 +788,6 @@ class MainWindow(QMainWindow):
             
             # État de l'application
             self.modified_cells = set()
-            self.filter_widgets = {}
             self.log_viewer = None
             
             # Timers
@@ -816,11 +819,7 @@ class MainWindow(QMainWindow):
         self.search_timer.timeout.connect(self._perform_delayed_search)
         self.pending_search_term = None
         
-        # Timer pour débounce des filtres de colonnes (400ms)
-        self.column_filter_timer = QTimer()
-        self.column_filter_timer.setSingleShot(True)
-        self.column_filter_timer.timeout.connect(self._perform_delayed_column_filter)
-        self.pending_column_filter = None
+        # Timers de filtres maintenant dans TableController
         
         # Gestion débouncing des barres de progression
         self.last_progress_update = 0
@@ -939,188 +938,12 @@ class MainWindow(QMainWindow):
             self.statusbar.showMessage(f"❌ Erreur import: {data['error']}", 5000)
 
     def _create_table_widget(self) -> QWidget:
-        """Créer le widget du tableau"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+        """Créer le widget du tableau via TableController"""
+        table_widget = self.table_controller.create_table_widget()
         
-        # Filtres par colonne prenant toute la largeur disponible
-        filter_widget = QWidget()
-        filter_layout = QHBoxLayout(filter_widget)
-        filter_layout.setContentsMargins(0, 0, 0, 0)
-        filter_layout.setSpacing(2)  # Petit espacement entre les filtres
-        
-        for i, header in enumerate(Config.UI_HEADERS):
-            # Skip filter for "Nb Pièces" column (index 7) - pas de spacer
-            if i == 7:  # "Nb Pièces" column
-                continue
-            
-            # Create dropdown filters for Type (index 0) and Fabricant (index 1)
-            if i == 0 or i == 1:  # Type or Fabricant columns
-                filter_combo = QComboBox()
-                filter_combo.setEditable(True)
-                filter_combo.lineEdit().setPlaceholderText(f"{header}...")
-                filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
-                self.filter_widgets[i] = filter_combo
-                self._populate_dropdown_values(filter_combo, i)
-                filter_layout.addWidget(filter_combo, 1)  # stretch factor 1
-            else:
-                # Champs texte avec même style que les dropdowns
-                filter_input = QLineEdit()
-                filter_input.setPlaceholderText(f"{header}...")
-                filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
-                # Appliquer le même style visuel que les QComboBox
-                filter_input.setStyleSheet("""
-                    QLineEdit {
-                        padding: 4px 8px;
-                        border: 1px solid #ccc;
-                        border-radius: 3px;
-                        background-color: white;
-                        min-height: 20px;
-                    }
-                    QLineEdit:focus {
-                        border-color: #0078d4;
-                        outline: none;
-                    }
-                """)
-                self.filter_widgets[i] = filter_input
-                filter_layout.addWidget(filter_input, 1)  # stretch factor 1
-        
-        layout.addWidget(filter_widget)
-        
-        # Sauvegarder les références pour la visibilité
-        self.filter_widget = filter_widget
-        self.filter_layout = filter_layout
-        
-        # Tableau principal avec gestion des touches
-        self.table = CustomTableWidget()
-        self.table.setColumnCount(len(Config.UI_HEADERS))
-        self.table.setHorizontalHeaderLabels(Config.UI_HEADERS)
-        self.table.set_db_manager(self.db_manager)  # Configurer l'auto-complétion
-        self.table.setAcceptDrops(True)  # Activer le glisser/déposer pour les fichiers CSV
-        self.table.setDragDropMode(QTableWidget.DragDropMode.DropOnly)  # Seulement accepter les drops
-        
-        # Variables pour l'effet visuel de drag-and-drop
-        self.drag_overlay_active = False
-        
-        # Configurer le menu contextuel
-        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self._show_table_context_menu)
-        
-        # Appliquer la visibilité des colonnes
-        self._apply_column_visibility()
-        
-        # Désactiver le tri automatique de Qt pour éviter les problèmes d'affichage
-        # Nous implémenterons notre propre tri via la base de données
-        self.table.setSortingEnabled(False)
-        
-        # Activer les indicateurs de tri dans les en-têtes
-        self.table.horizontalHeader().setSortIndicatorShown(True)
-        
-        # Variables pour le tri manuel
-        self.current_sort_column = -1
-        self.current_sort_order = Qt.SortOrder.DescendingOrder  # Par défaut: ID DESC
-        
-        # Connecter les signaux pour capturer les modifications
-        self.table.itemChanged.connect(self._on_cell_changed)
-        self.table.itemSelectionChanged.connect(self._on_selection_changed)
-        self.table.currentItemChanged.connect(self._on_current_item_changed)
-        self.table.itemDoubleClicked.connect(self._on_item_double_clicked)
-        
-        # Connecter le signal de clic sur header pour notre tri personnalisé
-        self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
-        layout.addWidget(self.table)
-        
-        # Dictionnaire pour stocker les valeurs précédentes
-        self.previous_values = {}
-        
-        # Variables de pagination
-        self.current_page = 0
-        self.page_size = Config.DEFAULT_PAGE_SIZE
-        self.total_rows = 0
-        self.use_pagination = True
-        
-        # Cache des décisions utilisateur pour les conflits de description
-        self._piece_description_decisions = {}
-        
-        # Section recherche moderne
-        search_section = QWidget()
-        search_section.setObjectName("searchSection")
-        search_section_layout = QHBoxLayout(search_section)
-        search_section_layout.setContentsMargins(12, 8, 12, 8)
-        search_section_layout.setSpacing(8)
-        
-        search_icon = QLabel("🔍")
-        search_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        search_icon.setStyleSheet("padding: 4px;")
-        search_section_layout.addWidget(search_icon)
-        
-        # Conteneur pour la barre de recherche et les options
-        search_container = QVBoxLayout()
-        search_container.setSpacing(4)
-        
-        # Première ligne : barre de recherche
-        search_row = QHBoxLayout()
-        search_row.setSpacing(4)
-        
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Recherche avancée : terme1 && terme2, terme3 || terme4...")
-        self.search_input.textChanged.connect(self._search_table)
-        search_row.addWidget(self.search_input)
-        
-        # Case à cocher pour les expressions régulières
-        self.regex_checkbox = QCheckBox("RegEx")
-        self.regex_checkbox.setToolTip("Activer les expressions régulières")
-        self.regex_checkbox.setStyleSheet("QCheckBox { color: #6c757d; font-size: 11px; }")
-        search_row.addWidget(self.regex_checkbox)
-        
-        search_container.addLayout(search_row)
-        
-        # Deuxième ligne : aide sur la syntaxe
-        help_text = QLabel("💡 Opérateurs : && (ET), || (OU), RegEx activable")
-        help_text.setStyleSheet("QLabel { color: #6c757d; font-size: 10px; font-style: italic; }")
-        help_text.setWordWrap(True)
-        search_container.addWidget(help_text)
-        
-        # Ajouter le conteneur à la section de recherche
-        search_section_layout.addLayout(search_container)
-        
-        # Bouton de réinitialisation de la recherche
-        search_clear_btn = QPushButton("×")
-        search_clear_btn.setFixedSize(24, 24)
-        search_clear_btn.setToolTip("Effacer la recherche (Échap)")
-        search_clear_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                background-color: transparent;
-                color: #6c757d;
-                font-size: 16px;
-                font-weight: bold;
-                text-align: center;
-                padding: 0px;
-                margin: 0px;
-                vertical-align: middle;
-            }
-            QPushButton:hover {
-                background-color: #f8f9fa;
-                color: #dc3545;
-            }
-        """)
-        search_clear_btn.clicked.connect(self._clear_search)
-        search_section_layout.addWidget(search_clear_btn)
-        
-        layout.addWidget(search_section)
-        
-        # Boutons d'export
-        self._add_export_buttons(layout)
-        
-        # Boutons d'action
-        self._add_action_buttons(layout)
-        
-        # Drag handle
-        self._setup_drag_handle()
-        
-        return widget
-
+        # Garder une référence vers le tableau pour la compatibilité
+        self.table = self.table_controller.table
+        return table_widget
     def _create_pieces_widget(self) -> QWidget:
         """Créer le widget des pièces"""
         widget = QWidget()
@@ -1578,168 +1401,12 @@ class MainWindow(QMainWindow):
     # --- Méthodes de gestion des données ---
 
     def load_data(self, search_term: str = None, is_search: bool = False):
-        """Charger les données depuis la base avec pagination"""
-        import time
-        start_time = time.time()
+        """Charger les données via TableController"""
+        # Stocker le terme de recherche courant pour les autres méthodes
+        self.current_search_term = search_term
         
-        # FIXME: Désactiver auto-save pendant chargement pour éviter historique parasites
-        old_auto_save_enabled = getattr(self, 'auto_save_enabled', True)
-        self.auto_save_enabled = False
-        
-        try:
-            # Indicateur de chargement intelligent - seulement pour les opérations non-recherche
-            # ou les recherches avec beaucoup de données
-            show_loading_indicator = not is_search
-            if is_search:
-                # Pour les recherches, estimer si ce sera long
-                estimated_rows = self.db_manager.count_data(search_term) if search_term else self.total_rows if hasattr(self, 'total_rows') else 0
-                show_loading_indicator = estimated_rows > 5000  # Seuil pour afficher l'indicateur lors des recherches
-            
-            if show_loading_indicator:
-                self.perf_label.setText("⏳ Chargement...")
-                self.statusbar.showMessage("⏳ Chargement des données en cours...")
-                QApplication.processEvents()  # Forcer l'affichage
-            
-            self.table.blockSignals(True)
-            self.table.setRowCount(0)
-            
-            # Obtenir les filtres de colonnes
-            column_filters = {}
-            for col_idx, filter_widget in self.filter_widgets.items():
-                if filter_widget is not None:  # Skip removed filters
-                    if isinstance(filter_widget, QComboBox):
-                        filter_text = filter_widget.currentText().strip()
-                    else:  # QLineEdit
-                        filter_text = filter_widget.text().strip()
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
-            
-            # Ajouter le filtre des lignes incomplètes si activé
-            incomplete_filter = getattr(self, 'show_incomplete_only', False)
-            
-            # Préparer les paramètres de tri
-            sort_column = self.current_sort_column if hasattr(self, 'current_sort_column') and self.current_sort_column >= 0 else None
-            sort_order = "ASC" if hasattr(self, 'current_sort_order') and self.current_sort_order == Qt.SortOrder.AscendingOrder else "DESC"
-            
-            # Compter le total de lignes (seulement si pas déjà calculé par SearchService)
-            if not hasattr(self, 'total_rows') or not is_search:
-                self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
-            
-            # Préparer une barre de progression pour les gros volumes
-            progress_dialog = None
-            if self.total_rows > 100000 and not is_search:  # Seuil augmenté pour éviter affichage trop fréquent
-                progress_dialog = QProgressDialog(
-                    f"Chargement de {self.total_rows} lignes...",
-                    "Annuler",
-                    0, 100,
-                    self
-                )
-                progress_dialog.setWindowTitle("Chargement des données")
-                progress_dialog.setWindowModality(Qt.WindowModal)
-                progress_dialog.show()
-                QApplication.processEvents()
-            
-            # Optimisation Phase 2: Pagination intelligente automatique
-            # FIXME: Respecter le choix utilisateur "Tout" 
-            user_wants_all = getattr(self, 'page_size', 0) == -1 or not self.use_pagination
-            should_paginate = (self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS) and not user_wants_all
-            
-            if should_paginate:
-                # Activer automatiquement la pagination si nécessaire
-                if not self.use_pagination and self.total_rows > Config.PAGINATION_THRESHOLD:
-                    print(f"🚀 Pagination automatique activée pour {self.total_rows} lignes (seuil: {Config.PAGINATION_THRESHOLD})")
-                    self.use_pagination = True
-                    self._update_pagination_controls()  # Montrer les contrôles
-                
-                # Calculer offset pour la pagination
-                offset = self.current_page * self.page_size
-                limit = self.page_size
-                
-                self._update_progress_with_debounce(progress_dialog, 50, f"Chargement page {self.current_page + 1}...")
-                
-                # Charger seulement la page courante avec tri
-                records = self.db_manager.load_data(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
-            else:
-                self._update_progress_with_debounce(progress_dialog, 20, f"Chargement de toutes les {self.total_rows} lignes...")
-                
-                # Charger toutes les données (pour les petites bases ou recherches) avec tri
-                records = self.db_manager.load_data(search_term, column_filters, None, None, sort_column, sort_order, incomplete_filter)
-            
-            # Remplir le tableau avec optimisation par chunks
-            self.table.setRowCount(len(records))
-            
-            self._update_progress_with_debounce(progress_dialog, 60, "Remplissage du tableau...")
-            
-            # Optimisation Phase 2: Remplissage par chunks pour améliorer la responsivité
-            if len(records) > Config.CHUNK_SIZE:
-                self._fill_table_chunked(records, progress_dialog, search_term)
-            else:
-                self._fill_table_standard(records, progress_dialog, search_term)
-            
-            # Finalisation
-            self._update_progress_with_debounce(progress_dialog, 95, "Finalisation...")
-            
-            self.table.resizeColumnsToContents()
-            self._update_counter()
-            self._update_pagination_controls()
-            
-            # Initialiser les valeurs précédentes pour le tracking des modifications
-            self._init_previous_values()
-            
-            # Fermer la barre de progression
-            self._update_progress_with_debounce(progress_dialog, 100, "Terminé")
-            if progress_dialog:
-                progress_dialog.close()
-            
-            # Afficher les performances avec plus de détails
-            load_time = time.time() - start_time
-            if hasattr(self, 'perf_label'):
-                # Déterminer la couleur en fonction du temps de chargement
-                if load_time < 0.5:
-                    color = "#28a745"  # Vert - Très rapide
-                    icon = "🚀"
-                elif load_time < 2.0:
-                    color = "#ffc107"  # Jaune - Correct
-                    icon = "⚡"
-                else:
-                    color = "#dc3545"  # Rouge - Lent
-                    icon = "🐌"
-                
-                # Message détaillé
-                perf_text = f"{icon} {load_time:.2f}s"
-                if len(records) < self.total_rows:
-                    perf_text += f" ({len(records)}/{self.total_rows} lignes)"
-                else:
-                    perf_text += f" ({len(records)} lignes)"
-                
-                # Ajouter des détails si c'est lent
-                if load_time > 2.0:
-                    perf_text += " - Chargement lent"
-                
-                self.perf_label.setText(perf_text)
-                self.perf_label.setStyleSheet(f"color: {color}; font-weight: bold;")
-                
-                # Message dans la barre de statut - seulement si l'indicateur était affiché ou si c'est lent
-                if show_loading_indicator or load_time > 1.0:
-                    status_msg = f"✅ Chargement terminé en {load_time:.2f}s"
-                    if len(records) < self.total_rows:
-                        status_msg += f" - Page {self.current_page + 1} ({len(records)} lignes affichées sur {self.total_rows} total)"
-                    else:
-                        status_msg += f" - {len(records)} lignes affichées"
-                    
-                    timeout = 1500 if is_search else 3000  # Timeout plus court pour les recherches
-                    self.statusbar.showMessage(status_msg, timeout)
-            
-        except DatabaseError as e:
-            self._show_error(f"Erreur de base de données: {e}")
-        except Exception as e:
-            self._show_error(f"Erreur inattendue: {e}")
-        finally:
-            self.table.blockSignals(False)
-            self._position_drag_handle()
-            # FIXME: Restaurer l'état d'auto-save
-            self.auto_save_enabled = old_auto_save_enabled
-    
+        # Déléguer au TableController
+        self.table_controller.load_data(search_term, is_search)    
     def _fill_table_chunked(self, records: List, progress_dialog, search_term):
         """Remplissage optimisé par chunks pour améliorer la responsivité"""
         import time
