@@ -947,15 +947,18 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Filtres par colonne
-        filter_layout = QHBoxLayout()
+        # Filtres par colonne avec largeur adaptée aux colonnes du tableau
+        filter_widget = QWidget()
+        filter_layout = QHBoxLayout(filter_widget)
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        filter_layout.setSpacing(0)
+        
         for i, header in enumerate(Config.UI_HEADERS):
             # Skip filter for "Nb Pièces" column (index 7)
             if i == 7:  # "Nb Pièces" column
-                # Add spacer to maintain layout alignment
+                # Add spacer that will resize with the column
                 spacer = QWidget()
-                spacer.setFixedWidth(150)  # Approximate width of other filters
-                filter_layout.addWidget(spacer)
+                filter_layout.addWidget(spacer, 1)  # stretch factor 1
                 continue
             
             # Create dropdown filters for Type (index 0) and Fabricant (index 1)
@@ -966,17 +969,19 @@ class MainWindow(QMainWindow):
                 filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 self.filter_widgets[i] = filter_combo
                 self._populate_dropdown_values(filter_combo, i)
-                filter_layout.addWidget(filter_combo)
+                filter_layout.addWidget(filter_combo, 1)  # stretch factor 1
             else:
                 # Regular text input for other columns
                 filter_input = QLineEdit()
                 filter_input.setPlaceholderText(f"{header}...")
                 filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 self.filter_widgets[i] = filter_input
-                filter_layout.addWidget(filter_input)
-        layout.addLayout(filter_layout)
+                filter_layout.addWidget(filter_input, 1)  # stretch factor 1
         
-        # Sauvegarder la référence du layout des filtres pour la visibilité
+        layout.addWidget(filter_widget)
+        
+        # Sauvegarder les références pour la visibilité
+        self.filter_widget = filter_widget
         self.filter_layout = filter_layout
         
         # Tableau principal avec gestion des touches
