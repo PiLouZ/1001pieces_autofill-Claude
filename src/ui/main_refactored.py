@@ -941,8 +941,9 @@ class MainWindow(QMainWindow):
         """Créer le widget du tableau via TableController"""
         table_widget = self.table_controller.create_table_widget()
         
-        # Garder une référence vers le tableau pour la compatibilité
+        # Garder des références pour la compatibilité
         self.table = self.table_controller.table
+        self.search_input = self.table_controller.search_input
         return table_widget
     def _create_pieces_widget(self) -> QWidget:
         """Créer le widget des pièces"""

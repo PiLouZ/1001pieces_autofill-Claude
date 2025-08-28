@@ -132,7 +132,6 @@ class StyleManager:
         QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
             border-color: #80bdff;
             outline: 0;
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
         }
         
         QLineEdit:hover, QTextEdit:hover, QComboBox:hover {
@@ -459,15 +458,7 @@ class StyleManager:
         }
 
         /* === ANIMATIONS SUBTILES === */
-        QPushButton {
-            transition: all 0.2s ease-in-out;
-        }
+        /* Transitions not supported in PyQt5 */
         
-        QLineEdit, QTextEdit, QComboBox {
-            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-        }
-        
-        QTabBar::tab {
-            transition: background-color 0.15s ease-in-out;
-        }
+        /* Transitions not supported in PyQt5 - removed */
         """

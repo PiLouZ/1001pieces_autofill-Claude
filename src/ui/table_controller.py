@@ -61,9 +61,29 @@ class TableController:
         self.size_label = None
         
     def create_table_widget(self) -> QWidget:
-        """Créer le widget complet du tableau avec filtres et pagination"""
+        """Créer le widget complet du tableau avec barre de recherche, filtres et pagination"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        
+        # Barre de recherche principale
+        search_layout = QHBoxLayout()
+        search_label = QLabel("🔍 Recherche:")
+        search_layout.addWidget(search_label)
+        
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Tapez ici pour rechercher...")
+        self.search_input.textChanged.connect(self._on_search_text_changed)
+        search_layout.addWidget(self.search_input)
+        
+        search_btn = QPushButton("Rechercher")
+        search_btn.clicked.connect(self._perform_search)
+        search_layout.addWidget(search_btn)
+        
+        clear_btn = QPushButton("Effacer")
+        clear_btn.clicked.connect(self._clear_search)
+        search_layout.addWidget(clear_btn)
+        
+        layout.addLayout(search_layout)
         
         # Filtres par colonne prenant toute la largeur disponible
         filter_widget = QWidget()
@@ -130,6 +150,9 @@ class TableController:
         self._apply_column_visibility()
         
         layout.addWidget(self.table)
+        
+        # Boutons d'export
+        self._add_export_buttons(layout)
         
         # Contrôles de pagination
         self._add_pagination_controls(layout)
@@ -512,3 +535,23 @@ class TableController:
             return -1
         except Exception:
             return -1
+    
+    def _on_search_text_changed(self, text: str):
+        """Gestionnaire de changement du texte de recherche"""
+        # Pour l'instant, pas de recherche automatique - seulement sur bouton
+        pass
+    
+    def _perform_search(self):
+        """Effectuer la recherche"""
+        search_term = self.search_input.text().strip()
+        self.load_data(search_term, is_search=True)
+    
+    def _clear_search(self):
+        """Effacer la recherche"""
+        self.search_input.clear()
+        self.load_data(None, is_search=False)
+    
+    def _add_export_buttons(self, layout):
+        """Ajouter les boutons d'export - délégué vers MainWindow"""
+        if hasattr(self.parent_window, '_add_export_buttons'):
+            self.parent_window._add_export_buttons(layout)
