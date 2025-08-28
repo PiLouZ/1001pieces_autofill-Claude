@@ -947,18 +947,15 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Filtres par colonne avec largeur adaptée aux colonnes du tableau
+        # Filtres par colonne prenant toute la largeur disponible
         filter_widget = QWidget()
         filter_layout = QHBoxLayout(filter_widget)
         filter_layout.setContentsMargins(0, 0, 0, 0)
-        filter_layout.setSpacing(0)
+        filter_layout.setSpacing(2)  # Petit espacement entre les filtres
         
         for i, header in enumerate(Config.UI_HEADERS):
-            # Skip filter for "Nb Pièces" column (index 7)
+            # Skip filter for "Nb Pièces" column (index 7) - pas de spacer
             if i == 7:  # "Nb Pièces" column
-                # Add spacer that will resize with the column
-                spacer = QWidget()
-                filter_layout.addWidget(spacer, 1)  # stretch factor 1
                 continue
             
             # Create dropdown filters for Type (index 0) and Fabricant (index 1)
@@ -971,10 +968,24 @@ class MainWindow(QMainWindow):
                 self._populate_dropdown_values(filter_combo, i)
                 filter_layout.addWidget(filter_combo, 1)  # stretch factor 1
             else:
-                # Regular text input for other columns
+                # Champs texte avec même style que les dropdowns
                 filter_input = QLineEdit()
                 filter_input.setPlaceholderText(f"{header}...")
                 filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
+                # Appliquer le même style visuel que les QComboBox
+                filter_input.setStyleSheet("""
+                    QLineEdit {
+                        padding: 4px 8px;
+                        border: 1px solid #ccc;
+                        border-radius: 3px;
+                        background-color: white;
+                        min-height: 20px;
+                    }
+                    QLineEdit:focus {
+                        border-color: #0078d4;
+                        outline: none;
+                    }
+                """)
                 self.filter_widgets[i] = filter_input
                 filter_layout.addWidget(filter_input, 1)  # stretch factor 1
         
