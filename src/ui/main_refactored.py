@@ -27,6 +27,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core.config import Config
+from src.core.logger import app_logger
 from src.core.import_manager import ImportManager
 from src.data.database_manager import DatabaseManager, DatabaseError
 from src.data.data_validator import DataValidator, ValidationResult
