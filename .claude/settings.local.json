@@ -54,7 +54,8 @@
       "Bash(cd:*)",
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(git tag:*)"
     ],
     "deny": [],
     "additionalDirectories": [

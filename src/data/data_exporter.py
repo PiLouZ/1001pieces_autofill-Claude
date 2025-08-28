@@ -51,7 +51,10 @@ class DataExporter:
         if not self.db_manager:
             raise ExportError("Gestionnaire de base de données non initialisé")
         
-        if not search_term.strip():
+        # Vérifier que le terme de recherche n'est pas vide (chaîne ou objet)
+        if isinstance(search_term, str) and not search_term.strip():
+            raise ExportError("Terme de recherche requis pour l'export")
+        elif not search_term:
             raise ExportError("Terme de recherche requis pour l'export")
         
         try:
@@ -487,10 +490,25 @@ class DataExporter:
         
         return report
     
-    def _generate_filename(self, search_term: str, export_format: ExportFormat) -> str:
+    def _generate_filename(self, search_term, export_format: ExportFormat) -> str:
         """Générer un chemin complet vers le Bureau pour l'export"""
+        # Convertir le terme de recherche en chaîne si c'est un objet
+        if isinstance(search_term, dict):
+            # Pour les objets dict, créer un nom basé sur le type de recherche
+            if search_term.get('type') == 'or':
+                terms = []
+                for group in search_term.get('groups', []):
+                    terms.extend(group.get('terms', []))
+                display_term = '_'.join(terms[:3])  # Max 3 termes pour éviter nom trop long
+                if len(terms) > 3:
+                    display_term += f"_and_{len(terms)-3}_more"
+            else:
+                display_term = str(search_term)[:30]  # Limité à 30 chars
+        else:
+            display_term = str(search_term)
+        
         # Nettoyer le terme de recherche
-        clean_term = "".join(c for c in search_term if c.isalnum() or c in (' ', '-', '_')).strip()
+        clean_term = "".join(c for c in display_term if c.isalnum() or c in (' ', '-', '_')).strip()
         clean_term = clean_term.replace(' ', '_')
         
         # Ajouter la date

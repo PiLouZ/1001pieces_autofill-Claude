@@ -95,10 +95,10 @@ class ImportDialog(QDialog):
         self.import_config = import_config or ImportConfiguration(files=[], import_type=ImportType.SINGLE_FILE)
         self.result_config = None
         
-        self.setWindowTitle("Configuration d'importation - SPACING 0PX 🎯")
+        self.setWindowTitle("Configuration d'importation")
         self.setModal(True)
-        self.setMinimumWidth(1000)  # Largeur maintenue à 1000
-        self.setMinimumHeight(950)  # Hauteur augmentée 850 → 950 (+100px)
+        self.setMinimumWidth(1000)
+        self.setMinimumHeight(1000)
         
         self._setup_ui()
         self._populate_data()
@@ -120,7 +120,7 @@ class ImportDialog(QDialog):
             col = i % files_per_row
             
             file_label = QLabel(f"📄 {file.filename}")
-            file_label.setStyleSheet("font-weight: bold; color: #495057; padding: 4px 2px;")
+            file_label.setStyleSheet("color: #495057; padding: 2px 0px;")
             file_label.setAlignment(Qt.AlignCenter)
             files_grid.addWidget(file_label, row, col)
         
@@ -133,7 +133,7 @@ class ImportDialog(QDialog):
         format_layout = QVBoxLayout()
         
         self.format_info_label = QLabel()
-        self.format_info_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        self.format_info_label.setStyleSheet("font-weight: bold;")
         format_layout.addWidget(self.format_info_label)
         
         self.format_desc_label = QLabel()
@@ -142,14 +142,14 @@ class ImportDialog(QDialog):
         
         # Aperçu des données avec hauteur augmentée
         self.preview_text = QTextEdit()
-        self.preview_text.setMinimumHeight(120)  # Augmenté pour au moins 5 lignes
-        self.preview_text.setMaximumHeight(180)  # Hauteur max augmentée aussi
+        self.preview_text.setMinimumHeight(80)
+        self.preview_text.setMaximumHeight(100)
         self.preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 11px;")
         self.preview_text.setReadOnly(True)
         format_layout.addWidget(self.preview_text)
         
         # Espacement visuel augmenté entre l'aperçu et les options
-        format_layout.addSpacing(25)  # Augmenté de 15 à 25 pour éviter le chevauchement
+        format_layout.addSpacing(5)
         
         # Options techniques clairement séparées sous l'aperçu
         options_layout = QVBoxLayout()
@@ -192,8 +192,8 @@ class ImportDialog(QDialog):
             ref_layout = QVBoxLayout()
             
             # Texte d'explication avec hauteur augmentée
-            ref_info = QLabel("💡 La référence commune sera associée à TOUS les appareils importés\n(ex: numéro de lot, commande, projet...)")
-            ref_info.setStyleSheet("color: #666; font-style: italic; margin-bottom: 15px; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
+            ref_info = QLabel("💡 La référence commune sera associée à TOUS les appareils importés")
+            ref_info.setStyleSheet("color: #666; font-style: italic; margin-bottom: 10px; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
             ref_info.setMinimumHeight(50)
             ref_info.setWordWrap(True)
             ref_layout.addWidget(ref_info)
@@ -208,7 +208,7 @@ class ImportDialog(QDialog):
             fields_layout.addWidget(ref_label)
             
             self.common_ref_input = QLineEdit()
-            self.common_ref_input.setPlaceholderText("LOT_2024_001, CMD_12345...")
+            self.common_ref_input.setPlaceholderText("GAUxxxxxx, FARxxxxxxx")
             self.common_ref_input.setMinimumHeight(35)
             fields_layout.addWidget(self.common_ref_input, 1)  # 1 part
             
@@ -291,22 +291,33 @@ class ImportDialog(QDialog):
         
         individual_layout.addLayout(info_and_option_layout)
         
-        # Zone scrollable pour les références individuelles - ASCENSEUR FORCÉ
+        # Zone scrollable pour les références individuelles - ADAPTATIVE
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)  # FORCER l'ascenseur toujours visible
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # Ascenseur selon besoin
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Pas d'ascenseur horizontal
-        scroll_area.setMinimumHeight(200)  # Hauteur très réduite pour garantir le scroll
-        scroll_area.setMaximumHeight(250)  # Hauteur max réduite pour forcer le scroll
+        
+        # Calculer la hauteur adaptative selon le nombre de fichiers
+        num_files = len(self.import_config.files)
+        line_height = 45  # Hauteur fixe par ligne (fichier) sans espacement
+        base_height = 40   # Hauteur de base réduite pour les marges (20px top + 20px bottom)
+        calculated_height = base_height + (num_files * line_height)
+        
+        # Limiter la hauteur pour éviter une fenêtre trop grande
+        min_height = 150
+        max_height = 200
+        adaptive_height = max(min_height, min(calculated_height, max_height))
+        
+        scroll_area.setMinimumHeight(adaptive_height)
+        if calculated_height > max_height:
+            scroll_area.setMaximumHeight(max_height)
         
         scroll_widget = QWidget()
         scroll_widget.setObjectName("scroll_content")
-        # Forcer une taille minimum pour garantir que le contenu dépasse la zone visible
-        scroll_widget.setMinimumHeight(400)  # Plus grand que la zone scroll (250px) pour forcer le scroll
         
         self.individual_refs_widget = QVBoxLayout(scroll_widget)
-        self.individual_refs_widget.setContentsMargins(5, 5, 5, 10)  # Marges réduites
-        self.individual_refs_widget.setSpacing(3)  # Espacement minimal mais visible (retour proche original)
+        self.individual_refs_widget.setContentsMargins(10, 10, 10, 10)  # Marges adaptées
+        self.individual_refs_widget.setSpacing(0)  # Pas d'espacement entre les lignes pour optimiser l'espace
         self.individual_refs_widget.setAlignment(Qt.AlignTop)  # Aligner en haut au lieu du centre
         
         # Liste pour garder les références des champs de description individuels
@@ -345,10 +356,15 @@ class ImportDialog(QDialog):
         # Références individuelles par fichier - FORMAT ORIGINAL : UNE LIGNE PAR PIÈCE
         for i, file in enumerate(self.import_config.files):
             
+            # Créer un widget conteneur pour chaque ligne avec hauteur fixe
+            file_container = QWidget()
+            file_container.setFixedHeight(45)  # Hauteur fixe pour éviter les chevauchements
+            file_container.setContentsMargins(0, 0, 0, 0)
+            
             # UNE SEULE ligne horizontale par fichier (format original simplifié)
-            file_layout = QHBoxLayout()
+            file_layout = QHBoxLayout(file_container)
             file_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)  # Aligner à gauche et en haut
-            file_layout.setContentsMargins(2, 2, 2, 2)  # Marges minimales
+            file_layout.setContentsMargins(5, 5, 5, 5)  # Marges pour l'espacement
             file_layout.setSpacing(8)  # Espacement réduit entre éléments
             
             # Nom du fichier (style original simplifié)
@@ -381,8 +397,8 @@ class ImportDialog(QDialog):
             # Stocker la référence du champ pour la duplication automatique
             self.individual_desc_fields.append(desc_input)
             
-            # Ajouter directement le layout (retour à la méthode originale)
-            self.individual_refs_widget.addLayout(file_layout)
+            # Ajouter le conteneur avec hauteur fixe au lieu du layout directement
+            self.individual_refs_widget.addWidget(file_container)
         
         # Initialiser l'affichage des références selon l'état par défaut de la case à cocher
         self._update_references_display()
@@ -951,14 +967,28 @@ class ImportManager:
         # Garder le libellé vide si l'utilisateur n'a rien saisi
         references_and_labels.append((individual_ref, individual_label))
         
-        # Effectuer l'import des données
-        return self._process_data_import(
-            data, 
-            references_and_labels,  # Maintenant liste de tuples (ref, label)
-            config,
-            file,  # Passer le fichier pour les associations par fichier
-            global_seen_device_refs  # Suivi global des doublons
-        )
+        # Effectuer l'import des données - Mode batch pour gros volumes
+        # Seuil pour activer le mode batch optimisé
+        BATCH_THRESHOLD = 500  # lignes
+        
+        if len(data) >= BATCH_THRESHOLD:
+            print(f"🚀 Mode BATCH activé pour {len(data)} lignes (seuil: {BATCH_THRESHOLD})")
+            return self._process_data_import_batch(
+                data, 
+                references_and_labels,
+                config,
+                file,
+                global_seen_device_refs
+            )
+        else:
+            print(f"📝 Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
+            return self._process_data_import(
+                data, 
+                references_and_labels,  # Maintenant liste de tuples (ref, label)
+                config,
+                file,  # Passer le fichier pour les associations par fichier
+                global_seen_device_refs  # Suivi global des doublons
+            )
     
     
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
@@ -1045,6 +1075,372 @@ class ImportManager:
                         except Exception as e:
                             print(f"Erreur association {reference}: {e}")
         
+        return results
+    
+    def _process_data_import_batch(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
+                                 config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
+        """Version optimisée avec batch processing pour les gros imports"""
+        print(f"🚀 BATCH MODE: Traitement optimisé de {len(data)} lignes")
+        
+        results = {
+            'total_imported': 0,
+            'matches_found': 0,
+            'new_entries': 0,
+            'associations_created': 0,
+            'associations_existing': 0,
+            'manual_completion': 0,
+            'duplicates_in_file': 0,
+            'total_lines_extracted': 0
+        }
+        
+        # Progress indicator spécialisé pour le mode batch
+        from PyQt5.QtWidgets import QProgressDialog, QApplication
+        from PyQt5.QtCore import Qt
+        
+        batch_progress = QProgressDialog(
+            f"Mode Batch - Traitement optimisé de {len(data)} lignes...",
+            "Annuler",
+            0, 4,  # 4 étapes principales
+            self.parent_widget
+        )
+        batch_progress.setWindowModality(Qt.WindowModal)
+        batch_progress.show()
+        
+        # ÉTAPE 1: Pré-charger tous les appareils existants en mémoire (1 seule requête)
+        batch_progress.setValue(0)
+        batch_progress.setLabelText("📊 Pré-chargement des appareils existants...")
+        QApplication.processEvents()
+        
+        existing_devices_cache = self._preload_existing_devices()
+        print(f"📊 BATCH: {len(existing_devices_cache)} appareils en cache")
+        
+        # Cache pour auto-complétion (Type + Fabricant par référence)
+        batch_progress.setLabelText("🧠 Construction cache auto-complétion...")
+        QApplication.processEvents()
+        
+        autocomplete_cache = self._build_autocomplete_cache(existing_devices_cache)
+        print(f"🧠 BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
+        
+        # ÉTAPE 2: Traitement en mémoire de toutes les lignes
+        batch_progress.setValue(1)
+        batch_progress.setLabelText("💾 Analyse des données en mémoire...")
+        QApplication.processEvents()
+        
+        new_devices_batch = []
+        existing_updates = []
+        associations_batch = []
+        
+        for row in data:
+            if not row or not any(cell.strip() for cell in row):
+                continue
+                
+            results['total_lines_extracted'] += 1
+            
+            # Détection doublons (identique)
+            ref_modele = str(row[0]).strip() if len(row) >= 1 else ""
+            commercial_ref = str(row[1]).strip() if len(row) >= 2 else ""
+            
+            device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+            if device_key in seen_device_refs and (ref_modele or commercial_ref):
+                results['duplicates_in_file'] += 1
+                continue
+            elif ref_modele or commercial_ref:
+                seen_device_refs.add(device_key)
+            
+            results['total_imported'] += 1
+            
+            # Parser les données
+            device_data = self._parse_row_data(row, config)
+            if not device_data:
+                continue
+            
+            # Utiliser cache auto-complétion pour améliorer les données (pas de SQL!)
+            self._apply_autocomplete_from_cache(device_data, autocomplete_cache)
+            
+            # Vérifier si existe en cache (pas de requête SQL !)
+            existing_id = self._find_in_cache(device_data, existing_devices_cache)
+            
+            if existing_id:
+                # Appareil existant
+                results['matches_found'] += 1
+                if self._needs_update(device_data):
+                    existing_updates.append((existing_id, device_data))
+            else:
+                # Nouvel appareil à créer
+                results['new_entries'] += 1
+                if self._needs_manual_completion(device_data):
+                    results['manual_completion'] += 1
+                new_devices_batch.append(device_data)
+            
+            # Préparer associations (sera traitée après insertion batch)
+            for reference, label in references_and_labels:
+                if reference:
+                    associations_batch.append((reference, label, device_data, existing_id))
+        
+        # ÉTAPE 3: Batch operations sur la base
+        batch_progress.setValue(2)
+        batch_progress.setLabelText(f"💿 Insertion de {len(new_devices_batch)} nouveaux appareils...")
+        QApplication.processEvents()
+        
+        new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
+        
+        batch_progress.setLabelText(f"🔄 Mise à jour de {len(existing_updates)} appareils existants...")
+        QApplication.processEvents()
+        
+        if existing_updates:
+            self._batch_update_devices(existing_updates)
+            
+        batch_progress.setValue(3)
+        batch_progress.setLabelText(f"🔗 Création de {len(associations_batch)} associations...")
+        QApplication.processEvents()
+        
+        if associations_batch:
+            batch_results = self._batch_create_associations(associations_batch, new_device_ids)
+            results['associations_created'] += batch_results.get('created', 0)
+            results['associations_existing'] += batch_results.get('existing', 0)
+        
+        batch_progress.setValue(4)
+        batch_progress.setLabelText("✅ Import terminé !")
+        QApplication.processEvents()
+        
+        # Fermer le dialogue de progress
+        batch_progress.close()
+        
+        print(f"✅ BATCH: Terminé - {results['total_imported']} lignes traitées")
+        return results
+    
+    def _preload_existing_devices(self) -> Dict[str, Dict]:
+        """Pré-charger tous les appareils existants pour éviter les requêtes répétées"""
+        from .config import Config
+        query = Config.QUERIES['preload_all_devices']
+        rows = self.db_manager.execute_query(query)
+        
+        cache = {}
+        for row in rows:
+            device_id, ref_modele, commercial_ref, device_type, manufacturer, other_ref, notes = row
+            
+            # Indexer par ref_modele + commercial_ref pour recherche rapide
+            if ref_modele and commercial_ref:
+                key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+                cache[key] = {
+                    'id': device_id,
+                    'ref_modele': ref_modele,
+                    'commercial_ref': commercial_ref,
+                    'type': device_type,
+                    'manufacturer': manufacturer,
+                    'other_ref': other_ref,
+                    'notes': notes
+                }
+        
+        return cache
+    
+    def _build_autocomplete_cache(self, existing_devices_cache: Dict[str, Dict]) -> Dict[str, Dict[str, str]]:
+        """Construire un cache pour l'auto-complétion (Type + Fabricant par référence)"""
+        autocomplete_cache = {}
+        
+        for key, device in existing_devices_cache.items():
+            ref_modele = device.get('ref_modele', '').strip()
+            commercial_ref = device.get('commercial_ref', '').strip()
+            device_type = device.get('type', '').strip()
+            manufacturer = device.get('manufacturer', '').strip()
+            
+            # Créer des entrées pour auto-complétion si Type ET/OU Fabricant disponibles
+            if device_type or manufacturer:
+                # Indexer par ref_modele si disponible
+                if ref_modele:
+                    autocomplete_cache[ref_modele.lower()] = {
+                        'type': device_type,
+                        'manufacturer': manufacturer
+                    }
+                
+                # Indexer par commercial_ref si disponible et différent
+                if commercial_ref and commercial_ref.lower() != ref_modele.lower():
+                    autocomplete_cache[commercial_ref.lower()] = {
+                        'type': device_type,
+                        'manufacturer': manufacturer
+                    }
+        
+        return autocomplete_cache
+    
+    def _apply_autocomplete_from_cache(self, device_data: Dict[str, Any], autocomplete_cache: Dict[str, Dict[str, str]]):
+        """Appliquer l'auto-complétion depuis le cache (pas de SQL!)"""
+        # Ne compléter que si Type OU Fabricant manquant
+        if device_data.get('type', '').strip() and device_data.get('manufacturer', '').strip():
+            return  # Déjà complet
+        
+        ref_modele = device_data.get('ref_modele', '').strip()
+        commercial_ref = device_data.get('commercial_ref', '').strip()
+        
+        # Chercher d'abord par ref_modele
+        cache_entry = None
+        if ref_modele:
+            cache_entry = autocomplete_cache.get(ref_modele.lower())
+        
+        # Si pas trouvé, chercher par commercial_ref  
+        if not cache_entry and commercial_ref:
+            cache_entry = autocomplete_cache.get(commercial_ref.lower())
+        
+        # Appliquer les données trouvées si disponibles
+        if cache_entry:
+            if not device_data.get('type', '').strip() and cache_entry.get('type'):
+                device_data['type'] = cache_entry['type']
+            if not device_data.get('manufacturer', '').strip() and cache_entry.get('manufacturer'):
+                device_data['manufacturer'] = cache_entry['manufacturer']
+    
+    def _find_in_cache(self, device_data: Dict[str, Any], cache: Dict[str, Dict]) -> Optional[int]:
+        """Trouver un appareil dans le cache (pas de SQL!)"""
+        ref_modele = device_data.get('ref_modele', '').strip()
+        commercial_ref = device_data.get('commercial_ref', '').strip()
+        
+        if ref_modele and commercial_ref:
+            key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+            if key in cache:
+                return cache[key]['id']
+        
+        return None
+    
+    def _needs_update(self, device_data: Dict[str, Any]) -> bool:
+        """Vérifier si l'appareil a besoin d'une mise à jour (3ème colonne)"""
+        return bool(device_data.get('other_ref') or device_data.get('notes'))
+    
+    def _batch_insert_devices(self, devices_batch: List[Dict[str, Any]]) -> List[int]:
+        """Insertion en lot des nouveaux appareils"""
+        if not devices_batch:
+            return []
+        
+        # Préparer les données pour executemany
+        insert_data = []
+        for device in devices_batch:
+            insert_data.append((
+                device.get('type', ''),
+                device.get('manufacturer', ''),
+                device.get('ref_modele', ''),
+                device.get('commercial_ref', ''),
+                device.get('other_ref', ''),
+                device.get('notes', ''),
+                device.get('category', '')
+            ))
+        
+        # Batch insert avec executemany (requête optimisée)
+        from .config import Config
+        query = Config.QUERIES['insert_device_batch']
+        
+        # Utiliser une transaction pour l'efficacité
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.executemany(query, insert_data)
+            
+            # Récupérer les IDs des appareils insérés (correction pour executemany)
+            if cursor.lastrowid is not None:
+                # SQLite avec executemany: lastrowid pointe vers le dernier ID inséré
+                last_id = cursor.lastrowid
+                first_id = last_id - len(insert_data) + 1
+                new_ids = list(range(first_id, last_id + 1))
+            else:
+                # Fallback: récupérer les IDs manuellement
+                print("⚠️ BATCH: lastrowid=None, récupération manuelle des IDs...")
+                cursor.execute("SELECT last_insert_rowid()")
+                last_id = cursor.fetchone()[0]
+                if last_id:
+                    first_id = last_id - len(insert_data) + 1
+                    new_ids = list(range(first_id, last_id + 1))
+                else:
+                    print("❌ BATCH: Impossible de récupérer les IDs")
+                    new_ids = []
+            
+            conn.commit()
+            print(f"✅ BATCH: {len(new_ids)} appareils insérés (IDs: {new_ids[0] if new_ids else 'N/A'}...{new_ids[-1] if new_ids else 'N/A'})")
+            return new_ids
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ BATCH: Erreur insertion: {e}")
+            return []
+    
+    def _batch_update_devices(self, updates_batch: List[Tuple[int, Dict[str, Any]]]):
+        """Mise à jour en lot des appareils existants"""
+        if not updates_batch:
+            return
+        
+        # Groupe par type de mise à jour
+        other_ref_updates = []
+        notes_updates = []
+        
+        for device_id, device_data in updates_batch:
+            if device_data.get('other_ref'):
+                other_ref_updates.append((device_data['other_ref'], device_id))
+            if device_data.get('notes'):
+                notes_updates.append((device_data['notes'], device_id))
+        
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            if other_ref_updates:
+                from .config import Config
+                cursor.executemany(Config.QUERIES['update_device_other_ref'], other_ref_updates)
+            if notes_updates:
+                from .config import Config
+                cursor.executemany(Config.QUERIES['update_device_notes'], notes_updates)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ BATCH: Erreur mise à jour: {e}")
+    
+    def _batch_create_associations(self, associations_batch: List[Tuple], new_device_ids: List[int]) -> Dict[str, int]:
+        """Création en lot des associations pièces-appareils"""
+        if not associations_batch:
+            return {'created': 0, 'existing': 0}
+        
+        results = {'created': 0, 'existing': 0}
+        
+        # Mapper les device_data vers les IDs réels (nouveaux + existants)
+        device_id_mapping = {}
+        new_device_index = 0
+        
+        # Traiter chaque association: (reference, label, device_data, existing_id)
+        for reference, label, device_data, existing_id in associations_batch:
+            if existing_id:
+                # Appareil existant
+                device_id = existing_id
+            else:
+                # Nouvel appareil - utiliser l'ID de la liste new_device_ids
+                if new_device_index < len(new_device_ids):
+                    device_id = new_device_ids[new_device_index]
+                    new_device_index += 1
+                else:
+                    print(f"⚠️ BATCH: Pas assez d'IDs pour les nouveaux appareils")
+                    continue
+            
+            try:
+                # Utiliser le callback pour gestion intelligente des libellés
+                def smart_label_callback(ref_piece, current_desc, new_desc):
+                    # Si nouveau libellé fourni: l'utiliser (remplace l'ancien)
+                    if new_desc and new_desc.strip():
+                        return new_desc.strip()
+                    # Si pas de nouveau libellé: conserver l'ancien
+                    else:
+                        return current_desc
+                
+                # Utiliser le libellé spécifique pour cette référence avec callback
+                result = self.db_manager.add_or_update_piece_with_description(
+                    reference, device_id, label, confirm_callback=smart_label_callback
+                )
+                
+                # result = (assoc_id, description_updated, association_created)
+                assoc_id, description_updated, association_created = result
+                
+                if association_created:
+                    results['created'] += 1
+                else:
+                    results['existing'] += 1
+                    
+            except Exception as e:
+                print(f"❌ BATCH: Erreur association {reference}: {e}")
+        
+        print(f"🔗 BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
         return results
     
     def _parse_row_data(self, row: List[str], config: ImportConfiguration) -> Optional[Dict[str, Any]]:

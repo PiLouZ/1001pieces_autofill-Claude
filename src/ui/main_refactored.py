@@ -19,6 +19,11 @@ from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, Q
 from PyQt5.QtCore import QSize, QMimeData, QUrl, QStringListModel
 from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
+# Phase 4: Import des services pour l'architecture découplée
+from ..services import SearchService, ExportService, ImportService, EventBus
+from ..services.event_bus import event_bus
+from ..services.export_service import ExportFormat
+
 # Imports des modules refactorisés
 import sys
 import os
@@ -764,6 +769,14 @@ class MainWindow(QMainWindow):
             self.db_manager = DatabaseManager()
             self.validator = DataValidator()
             self.exporter = DataExporter(self.db_manager)
+            
+            # Phase 4: Services découplés
+            self.search_service = SearchService(self.db_manager)
+            self.export_service = ExportService(self.db_manager)
+            self.import_service = ImportService(self.db_manager)
+            
+            # Écouter les événements des services
+            self._setup_service_events()
             self.seo_generator = SEOGenerator()
             
             # Nouveau gestionnaire d'import unifié
@@ -806,6 +819,12 @@ class MainWindow(QMainWindow):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._perform_delayed_search)
         self.pending_search_term = None
+        
+        # Timer pour débounce des filtres de colonnes (400ms)
+        self.column_filter_timer = QTimer()
+        self.column_filter_timer.setSingleShot(True)
+        self.column_filter_timer.timeout.connect(self._perform_delayed_column_filter)
+        self.pending_column_filter = None
         
         # Gestion débouncing des barres de progression
         self.last_progress_update = 0
@@ -850,6 +869,78 @@ class MainWindow(QMainWindow):
         # Layout principal
         main_layout = QVBoxLayout(central_widget)
         main_layout.addWidget(main_splitter)
+    
+    def _setup_service_events(self):
+        """Phase 4: Configuration des événements des services"""
+        # Événements de recherche
+        event_bus.on('search.started', self._on_search_started)
+        event_bus.on('search.completed', self._on_search_completed) 
+        event_bus.on('search.error', self._on_search_error)
+        
+        # Événements d'export
+        event_bus.on('export.started', self._on_export_started)
+        event_bus.on('export.completed', self._on_export_completed)
+        event_bus.on('export.error', self._on_export_error)
+        
+        # Événements d'import
+        event_bus.on('import.started', self._on_import_started)
+        event_bus.on('import.completed', self._on_import_completed)
+        event_bus.on('import.error', self._on_import_error)
+    
+    def _on_search_started(self, data):
+        """Gestionnaire événement début de recherche"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"🔍 Recherche en cours: '{data['term']}'...")
+    
+    def _on_search_completed(self, data):
+        """Gestionnaire événement fin de recherche"""
+        if hasattr(self, 'statusbar'):
+            cache_info = " (cache)" if data.get('has_cache_hit') else ""
+            self.statusbar.showMessage(
+                f"✅ Recherche terminée: {data['results_count']} résultats{cache_info}", 
+                3000
+            )
+    
+    def _on_search_error(self, data):
+        """Gestionnaire événement erreur de recherche"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"❌ Erreur recherche: {data['error']}", 5000)
+    
+    def _on_export_started(self, data):
+        """Gestionnaire événement début d'export"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"📤 Export {data['format']} en cours...")
+    
+    def _on_export_completed(self, data):
+        """Gestionnaire événement fin d'export"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(
+                f"✅ Export terminé: {data['count']} lignes → {data['output_file']}", 
+                5000
+            )
+    
+    def _on_export_error(self, data):
+        """Gestionnaire événement erreur d'export"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"❌ Erreur export: {data['error']}", 5000)
+    
+    def _on_import_started(self, data):
+        """Gestionnaire événement début d'import"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"📥 Import de {data['file_count']} fichier(s)...")
+    
+    def _on_import_completed(self, data):
+        """Gestionnaire événement fin d'import"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(
+                f"✅ Import terminé: {data['total_imported']} lignes traitées", 
+                5000
+            )
+    
+    def _on_import_error(self, data):
+        """Gestionnaire événement erreur d'import"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"❌ Erreur import: {data['error']}", 5000)
 
     def _create_table_widget(self) -> QWidget:
         """Créer le widget du tableau"""
@@ -1460,6 +1551,10 @@ class MainWindow(QMainWindow):
         import time
         start_time = time.time()
         
+        # FIXME: Désactiver auto-save pendant chargement pour éviter historique parasites
+        old_auto_save_enabled = getattr(self, 'auto_save_enabled', True)
+        self.auto_save_enabled = False
+        
         try:
             # Indicateur de chargement intelligent - seulement pour les opérations non-recherche
             # ou les recherches avec beaucoup de données
@@ -1491,8 +1586,9 @@ class MainWindow(QMainWindow):
             sort_column = self.current_sort_column if hasattr(self, 'current_sort_column') and self.current_sort_column >= 0 else None
             sort_order = "ASC" if hasattr(self, 'current_sort_order') and self.current_sort_order == Qt.SortOrder.AscendingOrder else "DESC"
             
-            # Compter le total de lignes
-            self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
+            # Compter le total de lignes (seulement si pas déjà calculé par SearchService)
+            if not hasattr(self, 'total_rows') or not is_search:
+                self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
             
             # Préparer une barre de progression pour les gros volumes
             progress_dialog = None
@@ -1508,8 +1604,18 @@ class MainWindow(QMainWindow):
                 progress_dialog.show()
                 QApplication.processEvents()
             
-            # Déterminer si utiliser la pagination
-            if self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
+            # Optimisation Phase 2: Pagination intelligente automatique
+            # FIXME: Respecter le choix utilisateur "Tout" 
+            user_wants_all = getattr(self, 'page_size', 0) == -1 or not self.use_pagination
+            should_paginate = (self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS) and not user_wants_all
+            
+            if should_paginate:
+                # Activer automatiquement la pagination si nécessaire
+                if not self.use_pagination and self.total_rows > Config.PAGINATION_THRESHOLD:
+                    print(f"🚀 Pagination automatique activée pour {self.total_rows} lignes (seuil: {Config.PAGINATION_THRESHOLD})")
+                    self.use_pagination = True
+                    self._update_pagination_controls()  # Montrer les contrôles
+                
                 # Calculer offset pour la pagination
                 offset = self.current_page * self.page_size
                 limit = self.page_size
@@ -1524,89 +1630,16 @@ class MainWindow(QMainWindow):
                 # Charger toutes les données (pour les petites bases ou recherches) avec tri
                 records = self.db_manager.load_data(search_term, column_filters, None, None, sort_column, sort_order, incomplete_filter)
             
-            # Remplir le tableau
+            # Remplir le tableau avec optimisation par chunks
             self.table.setRowCount(len(records))
             
             self._update_progress_with_debounce(progress_dialog, 60, "Remplissage du tableau...")
             
-            for row_idx, record in enumerate(records):
-                # Mise à jour de la progression pour les gros volumes (moins fréquente)
-                if progress_dialog and row_idx % 5000 == 0:  # Réduire la fréquence des mises à jour
-                    if progress_dialog.wasCanceled():
-                        break
-                    progress_value = 60 + (row_idx / len(records)) * 35  # 60% -> 95%
-                    self._update_progress_with_debounce(progress_dialog, int(progress_value), 
-                                                       f"Remplissage du tableau... {row_idx}/{len(records)} lignes")
-                db_id = record[0]
-                # Ne plus utiliser les en-têtes verticaux pour stocker db_id
-                self.table.setVerticalHeaderItem(row_idx, QTableWidgetItem(str(row_idx + 1)))
-                
-                # Traiter toutes les colonnes UI (8 colonnes maintenant, AVEC Nb Pièces)
-                for col_idx in range(len(Config.UI_HEADERS)):
-                    if col_idx < len(Config.DB_HEADERS):
-                        # Colonnes normales de la DB: record[0] = id, record[1..7] = données colonnes
-                        if col_idx + 1 < len(record):
-                            actual_data = record[col_idx + 1]  # record[0] = db_id, donc col_idx + 1
-                            item = QTableWidgetItem(str(actual_data or ""))
-                        else:
-                            item = QTableWidgetItem("")
-                    else:
-                        # Dernière colonne: Nb Pièces (record[-1] = pieces_count)
-                        pieces_count = record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0
-                        item = QTableWidgetItem(str(pieces_count))
-                        # Colonne lecture seule pour le nombre de pièces
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                        
-                        # Style spécial pour la colonne Nb Pièces
-                        if pieces_count > 0:
-                            item.setBackground(QColor(220, 248, 198))  # Vert clair
-                            item.setToolTip(f"{pieces_count} pièce(s) associée(s)")
-                        else:
-                            item.setBackground(QColor(248, 248, 248))  # Gris clair
-                            item.setToolTip("Aucune pièce associée")
-                    
-                    # Stocker le db_id dans chaque cellule via UserRole
-                    item.setData(Qt.ItemDataRole.UserRole, db_id)
-                    
-                    # Mise en évidence des résultats de recherche (sauf pour la colonne Nb Pièces)
-                    if search_term and col_idx < len(Config.DB_HEADERS):
-                        # Gérer les différents types de search_term
-                        if isinstance(search_term, str):
-                            # Recherche simple (chaîne)
-                            if search_term.lower() in str(item.text()).lower():
-                                item.setBackground(QColor(*Config.SEARCH_HIGHLIGHT_COLOR))
-                        elif isinstance(search_term, dict):
-                            # Recherche parsée (dictionnaire)
-                            should_highlight = False
-                            item_text = str(item.text()).lower()
-                            
-                            if search_term.get('type') == 'simple':
-                                # Recherche simple parsée
-                                terms = search_term.get('terms', [])
-                                if terms and terms[0].lower() in item_text:
-                                    should_highlight = True
-                            elif search_term.get('type') == 'regex':
-                                # Recherche par expression régulière
-                                try:
-                                    import re
-                                    pattern = search_term.get('pattern', '')
-                                    if re.search(pattern, item_text, re.IGNORECASE):
-                                        should_highlight = True
-                                except:
-                                    pass
-                            elif search_term.get('type') == 'or':
-                                # Recherche avec opérateurs OR
-                                for group in search_term.get('groups', []):
-                                    if group.get('type') == 'and':
-                                        # Tous les termes doivent être présents
-                                        if all(term.lower() in item_text for term in group.get('terms', [])):
-                                            should_highlight = True
-                                            break
-                            
-                            if should_highlight:
-                                item.setBackground(QColor(*Config.SEARCH_HIGHLIGHT_COLOR))
-                    
-                    self.table.setItem(row_idx, col_idx, item)
+            # Optimisation Phase 2: Remplissage par chunks pour améliorer la responsivité
+            if len(records) > Config.CHUNK_SIZE:
+                self._fill_table_chunked(records, progress_dialog, search_term)
+            else:
+                self._fill_table_standard(records, progress_dialog, search_term)
             
             # Finalisation
             self._update_progress_with_debounce(progress_dialog, 95, "Finalisation...")
@@ -1669,7 +1702,154 @@ class MainWindow(QMainWindow):
         finally:
             self.table.blockSignals(False)
             self._position_drag_handle()
+            # FIXME: Restaurer l'état d'auto-save
+            self.auto_save_enabled = old_auto_save_enabled
+    
+    def _fill_table_chunked(self, records: List, progress_dialog, search_term):
+        """Remplissage optimisé par chunks pour améliorer la responsivité"""
+        import time
+        
+        chunk_size = Config.CHUNK_SIZE
+        total_chunks = (len(records) + chunk_size - 1) // chunk_size
+        
+        self.table.blockSignals(True)  # Bloquer les signaux pendant le remplissage
+        
+        try:
+            last_update_time = time.time()
             
+            for chunk_idx in range(total_chunks):
+                start_idx = chunk_idx * chunk_size
+                end_idx = min(start_idx + chunk_size, len(records))
+                chunk_records = records[start_idx:end_idx]
+                
+                # Traitement du chunk
+                for local_idx, record in enumerate(chunk_records):
+                    row_idx = start_idx + local_idx
+                    self._fill_single_row(row_idx, record, search_term)
+                
+                # Mise à jour responsive de l'interface
+                current_time = time.time()
+                if (current_time - last_update_time) * 1000 > Config.RESPONSIVE_UPDATE_INTERVAL:
+                    QApplication.processEvents()  # Maintenir la responsivité
+                    last_update_time = current_time
+                
+                # Progression
+                if progress_dialog:
+                    if progress_dialog.wasCanceled():
+                        break
+                    progress_value = 60 + ((chunk_idx + 1) / total_chunks) * 35  # 60% -> 95%
+                    self._update_progress_with_debounce(
+                        progress_dialog, 
+                        int(progress_value), 
+                        f"Remplissage optimisé... {end_idx}/{len(records)} lignes"
+                    )
+        
+        finally:
+            self.table.blockSignals(False)  # Réactiver les signaux
+    
+    def _fill_table_standard(self, records: List, progress_dialog, search_term):
+        """Remplissage standard pour les petites tables"""
+        for row_idx, record in enumerate(records):
+            if progress_dialog and progress_dialog.wasCanceled():
+                break
+            
+            self._fill_single_row(row_idx, record, search_term)
+            
+            # Mise à jour de progression moins fréquente pour petites tables
+            if progress_dialog and row_idx % 100 == 0:
+                progress_value = 60 + (row_idx / len(records)) * 35
+                self._update_progress_with_debounce(
+                    progress_dialog,
+                    int(progress_value),
+                    f"Remplissage du tableau... {row_idx}/{len(records)} lignes"
+                )
+    
+    def _fill_single_row(self, row_idx: int, record, search_term):
+        """Remplir une seule ligne de manière optimisée"""
+        db_id = record[0]
+        
+        # En-tête vertical optimisé 
+        self.table.setVerticalHeaderItem(row_idx, QTableWidgetItem(str(row_idx + 1)))
+        
+        # Traitement optimisé des colonnes par batch
+        items_to_set = []  # Liste des (row, col, item) à traiter ensemble
+        
+        # Traiter toutes les colonnes UI (8 colonnes maintenant, AVEC Nb Pièces)
+        for col_idx in range(len(Config.UI_HEADERS)):
+            item = self._create_table_item(record, col_idx, db_id, search_term)
+            items_to_set.append((row_idx, col_idx, item))
+        
+        # Appel groupé de setItem pour cette ligne (plus efficace)
+        for row, col, item in items_to_set:
+            self.table.setItem(row, col, item)
+    
+    def _create_table_item(self, record, col_idx: int, db_id: int, search_term) -> QTableWidgetItem:
+        """Créer un item de table optimisé"""
+        if col_idx < len(Config.DB_HEADERS):
+            # Colonnes normales de la DB: record[0] = id, record[1..7] = données colonnes
+            if col_idx + 1 < len(record):
+                actual_data = record[col_idx + 1]  # record[0] = db_id, donc col_idx + 1
+                item = QTableWidgetItem(str(actual_data or ""))
+            else:
+                item = QTableWidgetItem("")
+        else:
+            # Dernière colonne: Nb Pièces (record[-1] = pieces_count)
+            pieces_count = record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0
+            item = QTableWidgetItem(str(pieces_count))
+            # Colonne lecture seule pour le nombre de pièces
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            
+            # Style spécial pour la colonne Nb Pièces
+            if pieces_count > 0:
+                item.setBackground(QColor(220, 248, 198))  # Vert clair
+                item.setToolTip(f"{pieces_count} pièce(s) associée(s)")
+            else:
+                item.setBackground(QColor(248, 248, 248))  # Gris clair
+                item.setToolTip("Aucune pièce associée")
+        
+        # Stocker le db_id dans chaque cellule via UserRole
+        item.setData(Qt.ItemDataRole.UserRole, db_id)
+        
+        # Optimisation: Mise en évidence des résultats de recherche (sauf pour la colonne Nb Pièces)
+        if search_term and col_idx < len(Config.DB_HEADERS):
+            self._apply_search_highlight(item, search_term)
+        
+        return item
+    
+    def _apply_search_highlight(self, item: QTableWidgetItem, search_term):
+        """Appliquer la mise en évidence de recherche de manière optimisée"""
+        item_text = str(item.text()).lower()
+        should_highlight = False
+        
+        if isinstance(search_term, str):
+            # Recherche simple (chaîne)
+            should_highlight = search_term.lower() in item_text
+        elif isinstance(search_term, dict):
+            # Recherche parsée (dictionnaire)
+            if search_term.get('type') == 'simple':
+                # Recherche simple parsée
+                terms = search_term.get('terms', [])
+                if terms:
+                    should_highlight = terms[0].lower() in item_text
+            elif search_term.get('type') == 'regex':
+                # Recherche par expression régulière
+                try:
+                    import re
+                    pattern = search_term.get('pattern', '')
+                    should_highlight = bool(re.search(pattern, item_text, re.IGNORECASE))
+                except:
+                    pass
+            elif search_term.get('type') == 'or':
+                # Recherche avec opérateurs OR
+                for group in search_term.get('groups', []):
+                    if group.get('type') == 'and':
+                        # Tous les termes doivent être présents
+                        if all(term.lower() in item_text for term in group.get('terms', [])):
+                            should_highlight = True
+                            break
+        
+        if should_highlight:
+            item.setBackground(QColor(*Config.SEARCH_HIGHLIGHT_COLOR))
 
     def _get_db_id_from_row(self, row: int) -> int:
         """Récupérer le db_id depuis la première cellule de la ligne"""
@@ -2485,10 +2665,11 @@ class MainWindow(QMainWindow):
             old_display = f"'{old_value}'" if old_value else "vide"
             new_display = f"'{new_value}'" if new_value else "vide"
             
-            # Ajouter le message à l'historique
-            self._add_to_history(
-                f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
-            )
+            # Ajouter le message à l'historique seulement si auto-save activé
+            if getattr(self, 'auto_save_enabled', True):
+                self._add_to_history(
+                    f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
+                )
         except Exception as e:
             print(f"Erreur ajout historique: {e}")
         
@@ -2525,11 +2706,175 @@ class MainWindow(QMainWindow):
     # --- Méthodes d'export ---
 
     def _export_data(self, export_format: ExportFormat):
-        """Exporter les données dans le format spécifié"""
+        """Export avec sélection de référence (comportement original)"""
         search_term = self.search_input.text().strip()
         if not search_term:
             QMessageBox.information(self, "Information", "Veuillez entrer un terme de recherche")
             return
+        
+        try:
+            # Détecter si c'est une recherche multiple OR pour proposer sélection de référence
+            parsed_term = getattr(self, 'pending_search_term', search_term)
+            
+            # Gérer différemment selon le format d'export
+            if export_format == ExportFormat.CSV:
+                # Pour CSV : demander sélection de référence pour recherches multiples
+                if isinstance(parsed_term, dict) and parsed_term.get('type') == 'or':
+                    # Extraire tous les termes de la recherche OR
+                    terms = []
+                    for group in parsed_term.get('groups', []):
+                        terms.extend(group.get('terms', []))
+                    
+                    if terms:
+                        # Demander à l'utilisateur de choisir une référence
+                        selected_reference = self._show_reference_selection_dialog(
+                            "Référence pour l'export CSV",
+                            f"Recherche multiple détectée ({len(terms)} références).\n"
+                            f"Termes: {', '.join(terms)}\n"
+                            f"Choisissez la référence à utiliser pour l'export :",
+                            terms[0]  # Premier terme par défaut
+                        )
+                        
+                        if not selected_reference:
+                            return  # Utilisateur a annulé
+                        
+                        export_data_term = parsed_term
+                        export_reference = selected_reference
+                    else:
+                        export_data_term = search_term
+                        export_reference = search_term
+                else:
+                    # Recherche simple - TOUJOURS demander confirmation de la référence
+                    selected_reference = self._show_reference_selection_dialog(
+                        "Référence pour l'export CSV",
+                        f"Référence détectée : {search_term}\n"
+                        f"Confirmez ou modifiez la référence à utiliser pour la première colonne :",
+                        search_term  # Terme de recherche actuel par défaut
+                    )
+                    
+                    if not selected_reference:
+                        return  # Utilisateur a annulé
+                        
+                    export_data_term = search_term 
+                    export_reference = selected_reference
+            else:
+                # Pour HTML : pas de demande de confirmation, utiliser directement tous les résultats
+                export_data_term = parsed_term if isinstance(parsed_term, dict) else search_term
+                export_reference = "recherche_multiple"  # Nom générique pour HTML
+            
+            # Charger les résultats pour vérification
+            results = self.db_manager.load_data(search_term=parsed_term)
+            if not results:
+                QMessageBox.information(self, "Information", "Aucun résultat trouvé pour cette recherche")
+                return
+            
+            # Exporter avec tous les résultats mais utiliser la référence sélectionnée pour le fichier
+            success = self._export_with_custom_reference(export_data_term, export_reference, export_format, len(results))
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'export: {e}")
+    
+    def _export_with_custom_reference(self, search_data_term, reference_for_file: str, export_format: ExportFormat, results_count: int) -> bool:
+        """Exporter avec tous les résultats mais utiliser une référence spécifique pour le nom et la première colonne"""
+        try:
+            # Récupérer toutes les données avec la recherche complète
+            if isinstance(search_data_term, dict):
+                # Recherche complexe - utiliser get_export_data avec fallback
+                data = self.db_manager.get_export_data(search_data_term)
+            else:
+                # Recherche simple
+                data = self.db_manager.get_export_data(search_data_term)
+            
+            if not data:
+                raise Exception(f"Aucune donnée trouvée pour la recherche")
+            
+            # Créer un filename personnalisé avec la référence sélectionnée
+            if export_format == ExportFormat.CSV:
+                filename = f"{reference_for_file}_everyParts.csv"
+                success = self._export_csv_with_reference(data, filename, reference_for_file)
+                if success:
+                    self._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
+                return success
+            elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
+                success = self._export_html_with_reference(data, reference_for_file, export_format)
+                if success:
+                    format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
+                    self._add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
+                return success
+            else:
+                # Utiliser l'exportateur standard pour les autres formats
+                success = self.exporter.export_search_results(reference_for_file, export_format)
+                if success:
+                    self._add_to_history(f"Export {export_format.value}: {len(data)} lignes")
+                return success
+                
+        except Exception as e:
+            raise Exception(f"Erreur lors de l'export personnalisé: {e}")
+    
+    def _export_csv_with_reference(self, data, filename: str, reference: str) -> bool:
+        """Exporter en CSV avec format exact spécifié"""
+        try:
+            import csv
+            import os
+            
+            # Chemin vers le Bureau
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            full_path = os.path.join(desktop_path, filename)
+            
+            with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile, delimiter=';')
+                
+                # En-têtes exacts selon spécification
+                headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
+                writer.writerow(headers)
+                
+                # Données selon le format spécifié
+                for row in data:
+                    # get_export_data structure: [type, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece]
+                    # Indexes:                     0     1            2           3               4          5
+                    
+                    type_val = row[0] if len(row) > 0 else ''
+                    manufacturer_val = row[1] if len(row) > 1 else ''
+                    ref_modele_val = row[2] if len(row) > 2 else ''
+                    commercial_ref_val = row[3] if len(row) > 3 else ''
+                    
+                    # modele_name = "Référence Modèle - Référence Commerciale"
+                    modele_name = f"{ref_modele_val} - {commercial_ref_val}".strip(' -')
+                    
+                    csv_row = [
+                        reference,                    # product: Référence confirmée
+                        type_val,                     # type: Type  
+                        manufacturer_val,             # manufacturer: Fabricant
+                        modele_name,                  # modele_name: "Référence Modèle - Référence Commerciale"
+                        ref_modele_val,               # reference_modele: Référence Modèle
+                        commercial_ref_val            # commercial_reference: Référence Commerciale
+                    ]
+                    writer.writerow(csv_row)
+            
+            return True
+            
+        except Exception as e:
+            raise Exception(f"Erreur export CSV: {e}")
+    
+    def _export_html_with_reference(self, data, reference: str, export_format: ExportFormat) -> bool:
+        """Exporter en HTML avec référence personnalisée"""
+        try:
+            # Utiliser l'exportateur standard mais avec référence personnalisée
+            if export_format == ExportFormat.HTML_BRANDS:
+                result = self.exporter._export_html_brands(data, reference)
+            else:  # HTML_DETAILS
+                result = self.exporter._export_html_details(data, reference)
+            
+            # Copier dans le presse-papiers
+            from PyQt5.QtWidgets import QApplication
+            QApplication.clipboard().setText(result)
+            
+            return True
+            
+        except Exception as e:
+            raise Exception(f"Erreur export HTML: {e}")
+    
+    def _export_data_legacy(self, export_format: ExportFormat):
+        """Ancienne méthode d'export (fallback)"""
         
         # Sauvegarder le terme de recherche original avant modification
         original_search_term = search_term
@@ -2548,7 +2893,7 @@ class MainWindow(QMainWindow):
                     multi_terms[0]  # Premier terme par défaut
                 )
             else:
-                # Recherche simple - afficher aussi le dialogue pour permettre de modifier la référence
+                # Recherche simple - TOUJOURS afficher le dialogue pour confirmer la référence
                 selected_reference = self._show_reference_selection_dialog(
                     "Référence pour l'export CSV",
                     f"Référence détectée : {search_term}\n"
@@ -2776,10 +3121,25 @@ class MainWindow(QMainWindow):
     # --- Méthodes d'action (stubs pour les fonctionnalités à implémenter) ---
 
     def _apply_column_filter(self, column: int, text: str):
-        """Appliquer un filtre sur une colonne"""
-        # Utiliser la recherche parsée actuelle
-        search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-        self.load_data(search_term)
+        """Appliquer un filtre sur une colonne avec debounce de 400ms"""
+        # Stocker les informations de filtrage en attente
+        self.pending_column_filter = (column, text)
+        
+        # Redémarrer le timer de debounce
+        self.column_filter_timer.stop()
+        self.column_filter_timer.start(400)  # 400ms de délai
+
+    def _perform_delayed_column_filter(self):
+        """Exécuter le filtrage de colonne après le délai de debounce"""
+        if hasattr(self, 'pending_column_filter') and self.pending_column_filter:
+            column, text = self.pending_column_filter
+            
+            # Effectuer le filtrage réel
+            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            self.load_data(search_term)
+            
+            # Nettoyer
+            self.pending_column_filter = None
 
     def _parse_advanced_search(self, text: str):
         """Parser la recherche avancée avec opérateurs && et ||"""
@@ -2838,13 +3198,17 @@ class MainWindow(QMainWindow):
         """Rechercher dans le tableau avec débounce et support avancé"""
         search_term = text.strip()
         
-        # Parser la recherche avancée
-        parsed_search = self._parse_advanced_search(search_term) if search_term else None
-        self.pending_search_term = parsed_search
+        # Phase 4: Parser la recherche avancée mais garder terme simple si pas d'opérateurs
+        if search_term and ('&&' in search_term or '||' in search_term):
+            parsed_search = self._parse_advanced_search(search_term)
+            self.pending_search_term = parsed_search
+        else:
+            # Terme simple - utiliser directement pour éviter problèmes de cache
+            self.pending_search_term = search_term
         
         # Arrêter le timer précédent et démarrer un nouveau délai
         self.search_timer.stop()
-        self.search_timer.start(300)  # Attendre 300ms avant de lancer la recherche
+        self.search_timer.start(500)  # Attendre 500ms avant de lancer la recherche
         
         # Activer/désactiver les boutons d'export et SEO uniquement pour les références de pièce
         has_search = bool(search_term)
@@ -2860,13 +3224,75 @@ class MainWindow(QMainWindow):
         self.meta_desc_btn.setEnabled(is_piece_search)
     
     def _perform_delayed_search(self):
-        """Effectuer la recherche après le délai de débounce"""
-        if hasattr(self, 'pending_search_term'):
-            self.load_data(self.pending_search_term, is_search=True)
+        """Phase 4: Effectuer la recherche via le service avec pagination correcte"""
+        if hasattr(self, 'pending_search_term') and self.pending_search_term:
+            try:
+                # D'abord compter le nombre total pour décider de la pagination
+                total_results = self.search_service.count_results(self.pending_search_term)
+                
+                # Calculer limit et offset seulement si nécessaire
+                limit = None
+                offset = None
+                should_paginate = (self.use_pagination and 
+                                 total_results > Config.MAX_DISPLAY_ROWS and 
+                                 hasattr(self, 'page_size') and self.page_size > 0)
+                
+                if should_paginate:
+                    limit = self.page_size
+                    offset = getattr(self, 'current_page', 0) * self.page_size
+                
+                # Utiliser le service de recherche avec pagination
+                results = self.search_service.search(
+                    term=self.pending_search_term,
+                    column_filters=getattr(self, '_current_column_filters', None),
+                    sort_column=getattr(self, 'current_sort_column', None),
+                    sort_order=getattr(self, 'current_sort_order', None),
+                    limit=limit,
+                    offset=offset
+                )
+                
+                # Mettre à jour l'affichage avec les résultats
+                self._display_search_results(results, self.pending_search_term)
+                
+            except Exception as e:
+                print(f"⚠️ Erreur service recherche: {e}")
+                # Fallback vers l'ancienne méthode
+                self.load_data(self.pending_search_term, is_search=True)
+    
+    def _display_search_results(self, results: List, search_term: str):
+        """Phase 4: Afficher les résultats de recherche du service"""
+        # FIXME: Désactiver l'auto-sauvegarde pendant l'affichage
+        old_auto_save_enabled = getattr(self, 'auto_save_enabled', True)
+        self.auto_save_enabled = False
+        
+        try:
+            # Mettre à jour le compteur total pour la pagination (important!)
+            if hasattr(self, 'search_service'):
+                self.total_rows = self.search_service.count_results(search_term)
+            
+            # Réutiliser la logique d'affichage existante mais avec résultats du service
+            self.table.setRowCount(len(results))
+            
+            # Utiliser la logique optimisée Phase 2
+            if len(results) > Config.CHUNK_SIZE:
+                self._fill_table_chunked(results, None, search_term)
+            else:
+                self._fill_table_standard(results, None, search_term)
+            
+            # Finalisation
+            self.table.resizeColumnsToContents()
+            self._update_counter()
+            self._update_pagination_controls()
+            self._init_previous_values()
+            
+        finally:
+            # Réactiver l'auto-sauvegarde
+            self.auto_save_enabled = old_auto_save_enabled
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
-        if not self.modified_cells:
+        # FIXME: Éviter auto-save pendant chargement/recherche
+        if not self.modified_cells or not getattr(self, 'auto_save_enabled', True):
             return
         
         try:

@@ -5,6 +5,8 @@ Gestionnaire de base de données pour l'application de gestion d'appareils
 import sqlite3
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
+from collections import OrderedDict
+import hashlib
 
 try:
     from PyQt5.QtCore import QThread, pyqtSignal
@@ -29,6 +31,67 @@ from src.core.config import Config
 class DatabaseError(Exception):
     """Exception personnalisée pour les erreurs de base de données"""
     pass
+
+
+class SearchCache:
+    """Cache optimisé pour les recherches - Phase 3"""
+    
+    def __init__(self, max_size: int = 1000):
+        self.max_size = max_size
+        self.cache = OrderedDict()
+        self.hits = 0
+        self.misses = 0
+    
+    def _make_key(self, search_term: str, column_filters: Dict, sort_info: Tuple) -> str:
+        """Créer une clé unique pour la recherche"""
+        key_data = {
+            'search': search_term,
+            'filters': column_filters,
+            'sort': sort_info
+        }
+        return hashlib.md5(str(key_data).encode()).hexdigest()
+    
+    def get(self, search_term: str, column_filters: Dict = None, sort_info: Tuple = None) -> Optional[List]:
+        """Récupérer du cache"""
+        key = self._make_key(search_term, column_filters or {}, sort_info or ())
+        
+        if key in self.cache:
+            # Déplacer vers la fin (plus récent)
+            result = self.cache.pop(key)
+            self.cache[key] = result
+            self.hits += 1
+            return result
+        
+        self.misses += 1
+        return None
+    
+    def put(self, search_term: str, results: List, column_filters: Dict = None, sort_info: Tuple = None):
+        """Mettre en cache"""
+        key = self._make_key(search_term, column_filters or {}, sort_info or ())
+        
+        # Limiter la taille du cache
+        if len(self.cache) >= self.max_size:
+            # Supprimer le plus ancien
+            self.cache.popitem(last=False)
+        
+        self.cache[key] = results
+    
+    def clear(self):
+        """Vider le cache"""
+        self.cache.clear()
+        self.hits = 0
+        self.misses = 0
+    
+    def get_stats(self) -> Dict[str, int]:
+        """Statistiques du cache"""
+        total = self.hits + self.misses
+        hit_rate = (self.hits / total * 100) if total > 0 else 0
+        return {
+            'hits': self.hits,
+            'misses': self.misses,
+            'hit_rate': round(hit_rate, 1),
+            'size': len(self.cache)
+        }
 
 
 class DatabaseWorker(QThread):
@@ -62,6 +125,8 @@ class DatabaseManager:
         self.db_file = db_file or Config.DB_FILE
         self.conn = None
         self.cursor = None
+        # Phase 3: Initialiser le cache de recherche optimisé
+        self.search_cache = SearchCache(Config.SEARCH_CACHE_SIZE) if Config.FULLTEXT_CACHE_ENABLED else None
         self._connect()
         self._setup_database()
     
@@ -73,17 +138,50 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Impossible de se connecter à la base de données: {e}")
     
+    def get_connection(self):
+        """Retourner la connexion pour les opérations batch"""
+        return self.conn
+    
     def _build_search_condition(self, search_term):
         """Construire une condition de recherche basée sur le terme de recherche (simple ou avancé)"""
         import re
         
+        # Phase 3: Utiliser la nouvelle logique optimisée
+        return self._build_search_condition_optimized(search_term)
+    
+    def _build_search_condition_optimized(self, search_term):
+        """Phase 3: Condition de recherche optimisée selon le type de requête"""
         # Si c'est une chaîne simple (ancienne API), traiter comme recherche simple
         if isinstance(search_term, str):
             if not search_term.strip():
                 return None
+            
+            term = search_term.strip()
+            
+            # Optimisation: recherche exacte pour les termes longs/spécifiques
+            if len(term) >= Config.EXACT_SEARCH_THRESHOLD and not any(c in term for c in ['*', '%', '_']):
+                # Recherche exacte optimisée (peut utiliser les index)
+                return {
+                    'query_type': 'exact',
+                    'condition': Config.QUERIES['exact_search_optimized'],
+                    'params': [term, term, term, term]
+                }
+            
+            # Optimisation: recherche par préfixe si pas de caractères spéciaux au début
+            if not term.startswith('%') and len(term) >= 3:
+                # Recherche par préfixe (terme + %) - peut utiliser les index
+                prefix_term = f"{term}%"
+                return {
+                    'query_type': 'prefix',
+                    'condition': Config.QUERIES['prefix_search_optimized'],
+                    'params': [prefix_term, prefix_term, prefix_term, prefix_term]
+                }
+            
+            # Recherche LIKE classique (plus lente)
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
             search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
             return {
+                'query_type': 'like',
                 'condition': f"({' OR '.join(search_conditions)})",
                 'params': [f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1)
             }
@@ -136,6 +234,20 @@ class DatabaseManager:
                     
                     if and_conditions:
                         group_conditions.append(f"({' AND '.join(and_conditions)})")
+                        
+                elif group['type'] == 'simple':
+                    # Groupe simple : terme unique à rechercher dans toutes les colonnes
+                    terms = group.get('terms', [])
+                    if not terms:
+                        continue
+                    
+                    term = terms[0]  # Premier terme du groupe simple
+                    # Chercher le terme dans toutes les colonnes
+                    term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
+                    term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+                    
+                    group_conditions.append(f"({' OR '.join(term_conditions)})")
+                    all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
             
             if group_conditions:
                 return {
@@ -145,9 +257,14 @@ class DatabaseManager:
         
         return None
     
-    def _parse_search_term_for_export(self, search_term: str):
+    def _parse_search_term_for_export(self, search_term):
         """Parser un terme de recherche pour l'export - reproduit la logique de _parse_advanced_search"""
-        if not search_term.strip():
+        # Si c'est déjà un objet parsé, le retourner tel quel
+        if isinstance(search_term, dict):
+            return search_term
+        
+        # Si c'est une chaîne vide, la retourner telle quelle
+        if not search_term or not search_term.strip():
             return search_term
         
         # Si pas d'opérateurs, retourner tel quel pour traitement simple
@@ -546,7 +663,114 @@ class DatabaseManager:
                   sort_column: Optional[int] = None,
                   sort_order: Optional[str] = None,
                   incomplete_filter: bool = False) -> List[Tuple]:
-        """Charger les données avec filtres optionnels"""
+        """Charger les données avec filtres optionnels - Phase 3 optimisé"""
+        
+        # Phase 3: Cache réactivé avec support pagination
+        if (self.search_cache and search_term and not column_filters and not incomplete_filter):
+            # Inclure pagination dans la clé de cache
+            cache_key_data = {
+                'term': search_term,
+                'sort': (sort_column, sort_order),
+                'pagination': (limit, offset)
+            }
+            
+            # Utiliser la méthode interne du cache avec clé complexe
+            import hashlib
+            cache_key = hashlib.md5(str(cache_key_data).encode()).hexdigest()
+            
+            if cache_key in self.search_cache.cache:
+                cached_results = self.search_cache.cache[cache_key]
+                # Déplacer vers la fin (LRU)
+                self.search_cache.cache.move_to_end(cache_key)
+                self.search_cache.hits += 1
+                # Nettoyer l'affichage des termes de recherche complexes pour le log
+                display_term = str(search_term)
+                if isinstance(search_term, dict):
+                    if 'original' in search_term:
+                        display_term = search_term['original']
+                    else:
+                        display_term = str(search_term)[:50] + '...'
+                print(f"🎯 CACHE HIT pour '{display_term}' (page {offset//limit+1 if limit and offset is not None else 'all'}) - {len(cached_results)} résultats")
+                return cached_results
+            
+            # Pas en cache - on mettra en cache après la requête
+            cache_this_result = cache_key
+        else:
+            cache_this_result = None
+        
+        # Fallback vers l'ancienne méthode
+        results = self._load_data_original(search_term, column_filters, limit, offset, 
+                                         sort_column, sort_order, incomplete_filter)
+        
+        # Mettre en cache si nécessaire
+        if cache_this_result and len(results) <= 5000:  # Limiter taille cache
+            # Limiter la taille du cache
+            if len(self.search_cache.cache) >= self.search_cache.max_size:
+                self.search_cache.cache.popitem(last=False)  # Supprimer le plus ancien
+            
+            self.search_cache.cache[cache_this_result] = results
+            self.search_cache.misses += 1
+            page_info = f" (page {offset//limit+1})" if limit and offset is not None else " (all)"
+            # Nettoyer l'affichage des termes de recherche complexes pour le log
+            display_term = str(search_term)
+            if isinstance(search_term, dict):
+                if 'original' in search_term:
+                    display_term = search_term['original']
+                else:
+                    display_term = str(search_term)[:50] + '...'
+            print(f"💾 CACHE MISS pour '{display_term}'{page_info} - {len(results)} résultats mis en cache")
+        
+        return results
+    
+    def _load_data_optimized(self, search_term: Optional[str] = None, 
+                           column_filters: Optional[Dict[int, str]] = None, 
+                           limit: Optional[int] = None,
+                           offset: Optional[int] = None,
+                           sort_column: Optional[int] = None,
+                           sort_order: Optional[str] = None,
+                           incomplete_filter: bool = False) -> List[Tuple]:
+        """Phase 3: Version optimisée avec requêtes spécialisées"""
+        try:
+            # Recherche optimisée si possible
+            if search_term and not column_filters and not incomplete_filter:
+                search_condition = self._build_search_condition_optimized(search_term)
+                
+                if search_condition and search_condition.get('query_type') in ['exact', 'prefix']:
+                    # Utiliser les requêtes optimisées pré-compilées
+                    query = search_condition['condition']
+                    params = search_condition['params']
+                    
+                    # Ajouter tri si nécessaire
+                    if sort_column is not None and sort_column < len(Config.DB_HEADERS):
+                        order_by = f" ORDER BY a.[{Config.DB_HEADERS[sort_column]}] {sort_order or 'ASC'}"
+                        query += order_by
+                    
+                    # Ajouter LIMIT/OFFSET si nécessaire  
+                    if limit:
+                        query += f" LIMIT {limit}"
+                        if offset:
+                            query += f" OFFSET {offset}"
+                    
+                    print(f"🚀 Recherche optimisée ({search_condition['query_type']}) pour: '{search_term}'")
+                    return self.execute_query(query, params)
+            
+            # Fallback vers méthode complète pour cas complexes
+            return self._load_data_original(search_term, column_filters, limit, offset,
+                                          sort_column, sort_order, incomplete_filter)
+            
+        except Exception as e:
+            print(f"⚠️ Erreur recherche optimisée, fallback: {e}")
+            return self._load_data_original(search_term, column_filters, limit, offset,
+                                          sort_column, sort_order, incomplete_filter)
+    
+    def _load_data_original(self, search_term: Optional[str] = None, 
+                          column_filters: Optional[Dict[int, str]] = None, 
+                          limit: Optional[int] = None,
+                          offset: Optional[int] = None,
+                          sort_column: Optional[int] = None,
+                          sort_order: Optional[str] = None,
+                          incomplete_filter: bool = False) -> List[Tuple]:
+        """Méthode originale de chargement des données (fallback)"""
         try:
             # Construction de la requête avec comptage des pièces (seulement celles qui existent)
             headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS)
@@ -566,10 +790,22 @@ class DatabaseManager:
             
             # Recherche globale pour load_data (avec support recherche avancée)
             if search_term:
-                search_condition = self._build_search_condition(search_term)
+                search_condition = self._build_search_condition_optimized(search_term)
                 if search_condition:
-                    conditions.append(search_condition['condition'])
-                    params.extend(search_condition['params'])
+                    # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
+                    if search_condition.get('query_type') in ['exact', 'prefix']:
+                        # Pour les requêtes optimisées, extraire juste la condition WHERE
+                        if search_condition['query_type'] == 'exact':
+                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                        else:  # prefix
+                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                        
+                        conditions.append(condition)
+                        params.extend(search_condition['params'])
+                    else:
+                        # Condition WHERE classique
+                        conditions.append(search_condition['condition'])
+                        params.extend(search_condition['params'])
             
             # Filtres par colonne pour load_data
             if column_filters:
@@ -618,21 +854,40 @@ class DatabaseManager:
                    incomplete_filter: bool = False) -> int:
         """Compter le nombre total de lignes correspondant aux critères"""
         try:
-            query = "SELECT COUNT(*) FROM appareils a"
+            # Utiliser la même structure FROM que load_data pour cohérence
+            query = """
+                SELECT COUNT(*) FROM appareils a
+                LEFT JOIN (
+                    SELECT pa.appareil_id, COUNT(*) as pieces_count
+                    FROM piece_associations pa
+                    INNER JOIN pieces p ON pa.piece_id = p.id
+                    GROUP BY pa.appareil_id
+                ) p ON a.id = p.appareil_id
+            """
             params = []
             conditions = []
             
             # Recherche globale pour count_data (avec support recherche avancée)
             if search_term:
-                search_condition = self._build_search_condition(search_term)
+                search_condition = self._build_search_condition_optimized(search_term)
                 if search_condition:
                     # Si c'est une recherche regex, on ne peut pas compter précisément avec SQLite
-                    # On retourne une estimation pour éviter l'erreur
                     if 'regex_filter' in search_condition:
                         # Pour les regex, retourner un count approximatif (total)
-                        # Le vrai filtrage se fera côté Python
                         return self.cursor.execute("SELECT COUNT(*) FROM appareils").fetchone()[0]
+                    
+                    # Phase 3: Gérer les requêtes optimisées (SELECT complets)
+                    elif search_condition.get('query_type') in ['exact', 'prefix']:
+                        # Pour les requêtes optimisées, extraire juste la condition WHERE
+                        if search_condition['query_type'] == 'exact':
+                            condition = "(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                        else:  # prefix
+                            condition = "(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                        
+                        conditions.append(condition)
+                        params.extend(search_condition['params'])
                     else:
+                        # Condition WHERE classique
                         conditions.append(search_condition['condition'])
                         params.extend(search_condition['params'])
             
@@ -1422,7 +1677,12 @@ class DatabaseManager:
             """
             
             # Paramètre fixe pour la référence de pièce dans le résultat
-            params = [search_term]
+            # Si c'est un objet dict, utiliser un terme par défaut pour le paramètre  
+            if isinstance(search_term, dict):
+                display_term = "recherche_multiple"
+            else:
+                display_term = search_term
+            params = [display_term]
             conditions = []
             
             # Recherche globale utilisant la même logique que load_data
@@ -1431,8 +1691,20 @@ class DatabaseManager:
                 parsed_search = self._parse_search_term_for_export(search_term)
                 search_condition = self._build_search_condition(parsed_search)
                 if search_condition:
-                    conditions.append(search_condition['condition'])
-                    params.extend(search_condition['params'])
+                    # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
+                    if search_condition.get('query_type') in ['exact', 'prefix']:
+                        # Pour les requêtes optimisées, extraire juste la condition WHERE
+                        if search_condition['query_type'] == 'exact':
+                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                        else:  # prefix
+                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                        
+                        conditions.append(condition)
+                        params.extend(search_condition['params'])
+                    else:
+                        # Condition WHERE classique
+                        conditions.append(search_condition['condition'])
+                        params.extend(search_condition['params'])
             
             # Filtres par colonne (comme dans load_data)
             if column_filters:

@@ -50,6 +50,15 @@ class Config:
     # Performance et pagination
     DEFAULT_PAGE_SIZE = 1000  # Lignes par page
     MAX_DISPLAY_ROWS = 2000   # Maximum sans pagination
+    # Optimisations Phase 2 - Interface
+    CHUNK_SIZE = 500          # Taille des chunks pour setItem optimisé
+    PAGINATION_THRESHOLD = 5000  # Activer pagination automatiquement
+    RESPONSIVE_UPDATE_INTERVAL = 250  # ms entre les mises à jour UI
+    
+    # Optimisations Phase 3 - Recherche
+    SEARCH_CACHE_SIZE = 1000  # Nombre de recherches à garder en cache
+    FULLTEXT_CACHE_ENABLED = True  # Activer le cache full-text
+    EXACT_SEARCH_THRESHOLD = 10  # Longueur min pour recherche exacte optimisée
     SEARCH_LIMIT = 5000       # Limite pour les recherches
     
     # Historique
@@ -102,7 +111,7 @@ class Config:
         'export_error': "Erreur lors de l'export: {error}"
     }
     
-    # Requêtes SQL fréquentes
+    # Requêtes SQL fréquentes (Prepared Statements optimisés)
     QUERIES = {
         'select_all': "SELECT id, {headers} FROM appareils",
         'search_condition': "({search_fields}) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)",
@@ -113,7 +122,42 @@ class Config:
                            GROUP BY ref_modele HAVING COUNT(*) > 1""",
         'empty_critical': """SELECT COUNT(*) FROM appareils 
                            WHERE (type IS NULL OR type = '') 
-                           AND (manufacturer IS NULL OR manufacturer = '')"""
+                           AND (manufacturer IS NULL OR manufacturer = '')""",
+        # Nouvelles requêtes optimisées pour les imports
+        'find_device_by_refs': """SELECT id FROM appareils 
+                                WHERE (ref_modele = ? AND commercial_ref = ?) 
+                                   OR (ref_modele = ? AND commercial_ref IS NULL AND ? IS NULL)
+                                   OR (ref_modele IS NULL AND commercial_ref = ? AND ? IS NULL)""",
+        'insert_device_batch': """INSERT INTO appareils (type, manufacturer, ref_modele, commercial_ref, other_ref, notes, category)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        'update_device_other_ref': "UPDATE appareils SET other_ref = ? WHERE id = ?",
+        'update_device_notes': "UPDATE appareils SET notes = ? WHERE id = ?",
+        'autocomplete_search': """SELECT id, ref_modele, commercial_ref, type, manufacturer 
+                               FROM appareils 
+                               WHERE (ref_modele LIKE ? OR commercial_ref LIKE ?) 
+                               AND (type IS NOT NULL AND type != '') 
+                               AND (manufacturer IS NOT NULL AND manufacturer != '')
+                               LIMIT 10""",
+        'preload_all_devices': """SELECT id, ref_modele, commercial_ref, type, manufacturer, other_ref, notes 
+                               FROM appareils 
+                               WHERE (ref_modele IS NOT NULL AND ref_modele != '') 
+                                  OR (commercial_ref IS NOT NULL AND commercial_ref != '')""",
+        # Requêtes optimisées Phase 3 - Recherche
+        'exact_search_optimized': """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes,
+                                    (SELECT COUNT(*) FROM piece_associations pa WHERE pa.appareil_id = a.id) as pieces_count
+                                    FROM appareils a 
+                                    WHERE (ref_modele = ? OR commercial_ref = ? OR other_ref = ?)
+                                       OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa 
+                                                  JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)""",
+        'prefix_search_optimized': """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes,
+                                     (SELECT COUNT(*) FROM piece_associations pa WHERE pa.appareil_id = a.id) as pieces_count
+                                     FROM appareils a 
+                                     WHERE (ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?)
+                                        OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa 
+                                                   JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)""",
+        'search_pieces_only': """SELECT DISTINCT pa.appareil_id FROM piece_associations pa 
+                               JOIN pieces p ON pa.piece_id = p.id 
+                               WHERE p.ref_piece LIKE ?"""
     }
     
     # Structure de la base de données (SANS pieces_count pour simplifier)
