@@ -13,6 +13,7 @@ from PyQt5.QtGui import QColor, QBrush
 from ..core.config import Config
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager
+from ..services.pieces_count_service import PiecesCountService
 
 
 class CustomTableWidget(QTableWidget):
@@ -25,6 +26,34 @@ class CustomTableWidget(QTableWidget):
     def set_db_manager(self, db_manager):
         """Définir le gestionnaire de base de données pour l'auto-complétion"""
         self.db_manager = db_manager
+    
+    def keyPressEvent(self, event):
+        """Gestion des événements clavier"""
+        from PyQt5.QtGui import QKeyEvent
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtWidgets import QApplication
+        
+        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+            # Effacer le contenu des cellules sélectionnées
+            selected_items = self.selectedItems()
+            if selected_items:
+                for item in selected_items:
+                    if item:
+                        item.setText("")
+                return
+        
+        # Popup avec liste complète via Cmd+D (ou Ctrl+D sur Windows/Linux)
+        if event.key() == Qt.Key_D and (event.modifiers() & Qt.MetaModifier or event.modifiers() & Qt.ControlModifier):
+            # Déléguer à la fenêtre parent pour l'auto-complétion
+            main_window = self.parent()
+            while main_window and not hasattr(main_window, '_show_column_values_list'):
+                main_window = main_window.parent()
+            if main_window:
+                main_window._show_column_values_list()
+            return
+        
+        # Appeler la méthode parent pour les autres touches
+        super().keyPressEvent(event)
 
 
 class TableController:
@@ -33,6 +62,7 @@ class TableController:
     def __init__(self, parent_window, db_manager: DatabaseManager):
         self.parent_window = parent_window
         self.db_manager = db_manager
+        self.pieces_count_service = PiecesCountService(db_manager)
         
         # Variables de pagination
         self.current_page = 1
@@ -51,6 +81,12 @@ class TableController:
         self.column_filter_timer.timeout.connect(self._perform_delayed_column_filter)
         self.pending_column_filter = None
         
+        # Timer pour recherche automatique (800ms)
+        self.search_timer = QTimer()
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self._perform_delayed_search)
+        self.pending_search_term = None
+        
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
         self.filter_widget = None
@@ -65,25 +101,7 @@ class TableController:
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Barre de recherche principale
-        search_layout = QHBoxLayout()
-        search_label = QLabel("🔍 Recherche:")
-        search_layout.addWidget(search_label)
-        
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Tapez ici pour rechercher...")
-        self.search_input.textChanged.connect(self._on_search_text_changed)
-        search_layout.addWidget(self.search_input)
-        
-        search_btn = QPushButton("Rechercher")
-        search_btn.clicked.connect(self._perform_search)
-        search_layout.addWidget(search_btn)
-        
-        clear_btn = QPushButton("Effacer")
-        clear_btn.clicked.connect(self._clear_search)
-        search_layout.addWidget(clear_btn)
-        
-        layout.addLayout(search_layout)
+        # Barre de recherche supprimée d'ici - maintenant sous le tableau
         
         # Filtres par colonne prenant toute la largeur disponible
         filter_widget = QWidget()
@@ -92,8 +110,10 @@ class TableController:
         filter_layout.setSpacing(2)  # Petit espacement entre les filtres
         
         for i, header in enumerate(Config.UI_HEADERS):
-            # Skip filter for "Nb Pièces" column (index 7) - pas de spacer
+            # Skip filters for invisible or useless columns
             if i == 7:  # "Nb Pièces" column
+                continue
+            if i == 5 or i == 6:  # "Catégorie" et "Notes" - inutiles
                 continue
             
             # Create dropdown filters for Type (index 0) and Fabricant (index 1)
@@ -151,13 +171,38 @@ class TableController:
         
         layout.addWidget(self.table)
         
+        # Barre de recherche SOUS le tableau (position correcte)
+        search_layout2 = QHBoxLayout()
+        search_label2 = QLabel("🔍 Recherche avancée:")
+        search_layout2.addWidget(search_label2)
+        
+        self.advanced_search_input = QLineEdit()
+        self.advanced_search_input.setPlaceholderText("Recherche avancée: 'terme1 && terme2' ou 'terme1 || terme2'...")
+        self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
+        search_layout2.addWidget(self.advanced_search_input)
+        
+        clear_search_btn = QPushButton("Effacer")
+        clear_search_btn.clicked.connect(self._clear_advanced_search)
+        search_layout2.addWidget(clear_search_btn)
+        
+        layout.addLayout(search_layout2)
+        
         # Boutons d'export
         self._add_export_buttons(layout)
         
         # Contrôles de pagination
         self._add_pagination_controls(layout)
         
+        # Bouton pour lignes incomplètes
+        self._add_incomplete_filter_button(layout)
+        
         return widget
+    
+    def connect_selection_signals(self, on_selection_changed_callback):
+        """Connecter les signaux de sélection du tableau à un callback"""
+        if self.table:
+            self.table.itemSelectionChanged.connect(on_selection_changed_callback)
+            self.table.currentCellChanged.connect(lambda: on_selection_changed_callback())
     
     def load_data(self, search_term: str = None, is_search: bool = False):
         """Charger les données dans le tableau avec pagination et filtres"""
@@ -187,8 +232,17 @@ class TableController:
             # Ajouter le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
             
-            # Compter le total pour la pagination
-            self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
+            # Parser les recherches avancées pour la DB
+            if search_term and ('&&' in search_term or '||' in search_term):
+                if hasattr(self.parent_window, '_parse_advanced_search'):
+                    parsed_term = self.parent_window._parse_advanced_search(search_term)
+                    self.total_rows = self.db_manager.count_data(parsed_term, column_filters, incomplete_filter=incomplete_filter)
+                else:
+                    # Fallback terme brut
+                    self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
+            else:
+                # Compter le total pour la pagination
+                self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
             
             if self.page_size == -1:  # Mode "Tout"
                 self.total_pages = 1
@@ -198,23 +252,33 @@ class TableController:
                 if self.current_page > self.total_pages:
                     self.current_page = self.total_pages
             
-            # Charger les données
-            if self.page_size == -1 and self.total_rows > 5000:
-                # Mode "Tout" avec beaucoup de données - utiliser chunked loading
+            # Charger les données selon le type de recherche
+            if search_term and ('&&' in search_term or '||' in search_term):
+                if hasattr(self.parent_window, '_parse_advanced_search'):
+                    parsed_term = self.parent_window._parse_advanced_search(search_term)
+                    records = self.db_manager.load_data(parsed_term, column_filters, limit, offset, 
+                                                       self.current_sort_column, self.current_sort_order, incomplete_filter)
+                else:
+                    # Fallback
+                    records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
+                                                       self.current_sort_column, self.current_sort_order, incomplete_filter)
+            else:
+                # Chargement normal via db_manager
                 records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
                                                    self.current_sort_column, self.current_sort_order, incomplete_filter)
+            
+            # Remplir le tableau
+            if self.total_rows > 1000:
                 self._fill_table_chunked(records, None, search_term)
             else:
-                # Chargement normal
-                records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
-                                                   self.current_sort_column, self.current_sort_order, incomplete_filter)
-                if self.total_rows > 1000:
-                    self._fill_table_chunked(records, None, search_term)
-                else:
-                    self._fill_table_standard(records, None, search_term)
+                self._fill_table_standard(records, None, search_term)
             
             # Mettre à jour les contrôles de pagination
             self._update_pagination_controls()
+            
+            # Initialiser les valeurs précédentes pour le tracking des modifications
+            if hasattr(self.parent_window, '_init_previous_values'):
+                self.parent_window._init_previous_values()
             
             # Performance logging
             elapsed = time.time() - start_time
@@ -354,8 +418,21 @@ class TableController:
     def _apply_database_sort(self):
         """Appliquer le tri au niveau de la base de données"""
         try:
-            # Recharger les données avec le nouveau tri
-            search_term = getattr(self.parent_window, 'current_search_term', None)
+            # Récupérer le terme de recherche actif de manière robuste
+            search_term = None
+            
+            # 1. Essayer pending_search_term (recherche avec opérateurs || &&)
+            if hasattr(self.parent_window, 'pending_search_term') and self.parent_window.pending_search_term:
+                search_term = self.parent_window.pending_search_term
+            # 2. Sinon, utiliser current_search_term
+            elif hasattr(self.parent_window, 'current_search_term') and self.parent_window.current_search_term:
+                search_term = self.parent_window.current_search_term
+            # 3. En dernier recours, prendre le texte direct de la barre de recherche
+            elif hasattr(self.parent_window, 'search_input') and self.parent_window.search_input:
+                text = self.parent_window.search_input.text().strip()
+                search_term = text if text else None
+            
+            print(f"🔄 Tri appliqué avec recherche: '{search_term}'")
             self.load_data(search_term)
             self._update_sort_indicators()
         except Exception as e:
@@ -370,6 +447,24 @@ class TableController:
                 )
         except Exception as e:
             app_logger.error(f"Erreur mise à jour indicateurs tri: {e}")
+
+    # === Gestion des mises à jour de la colonne Nb Pièces ===
+    
+    def find_row_by_db_id(self, db_id: int) -> Optional[int]:
+        """Trouver le numéro de ligne correspondant à un ID d'appareil"""
+        return self.pieces_count_service.find_row_by_db_id(self.table, db_id)
+    
+    def update_pieces_count_for_rows(self, rows: set):
+        """Mettre à jour la colonne Nb Pièces pour les lignes spécifiées"""
+        self.pieces_count_service.update_pieces_count_for_rows(self.table, rows)
+
+    def refresh_pieces_count_column(self):
+        """Rafraîchir la colonne Nb Pièces pour toutes les lignes visibles"""
+        self.pieces_count_service.refresh_entire_pieces_column(self.table)
+    
+    def get_pieces_count_summary(self):
+        """Obtenir un résumé du comptage des pièces dans le tableau"""
+        return self.pieces_count_service.get_pieces_count_summary(self.table)
     
     def _add_pagination_controls(self, layout: QVBoxLayout):
         """Ajouter les contrôles de pagination"""
@@ -397,7 +492,7 @@ class TableController:
         pagination_layout.addWidget(size_label)
         
         size_combo = QComboBox()
-        size_combo.addItems(["25", "50", "100", "200", "500", "Tout"])
+        size_combo.addItems(["100", "250", "500", "1000", "2000", "Tout"])
         size_combo.setCurrentText("100")
         size_combo.currentTextChanged.connect(self._change_page_size)
         pagination_layout.addWidget(size_combo)
@@ -555,3 +650,93 @@ class TableController:
         """Ajouter les boutons d'export - délégué vers MainWindow"""
         if hasattr(self.parent_window, '_add_export_buttons'):
             self.parent_window._add_export_buttons(layout)
+    
+    def _on_advanced_search_changed(self, text: str):
+        """Gestionnaire de changement du texte de recherche avancée avec timer automatique"""
+        search_term = text.strip()
+        
+        # Stocker le terme original - le parsing sera fait dans load_data si nécessaire
+        self.pending_search_term = search_term
+            
+        self.search_timer.stop()
+        self.search_timer.start(800)  # 800ms de délai pour recherche automatique
+    
+    def _perform_delayed_search(self):
+        """Effectuer la recherche après le délai"""
+        if self.pending_search_term is not None:
+            search_term = self.pending_search_term if self.pending_search_term else None
+            self.load_data(search_term, is_search=bool(search_term))
+            
+            # Mettre à jour l'état des boutons d'export via le parent
+            if hasattr(self.parent_window, '_update_export_buttons_state'):
+                # Passer le terme original pour l'évaluation des boutons d'export
+                self.parent_window._update_export_buttons_state(search_term)
+            
+            self.pending_search_term = None
+    
+    def _clear_advanced_search(self):
+        """Effacer la recherche avancée"""
+        self.advanced_search_input.clear()
+        self.load_data(None, is_search=False)
+        
+        # Désactiver les boutons d'export quand on vide la recherche
+        if hasattr(self.parent_window, '_update_export_buttons_state'):
+            self.parent_window._update_export_buttons_state("")
+    
+    def _add_incomplete_filter_button(self, layout):
+        """Ajouter le bouton de filtre pour les lignes incomplètes"""
+        from PyQt5.QtWidgets import QPushButton, QHBoxLayout
+        from ..core.config import pluralize
+        
+        # Layout centré pour le bouton
+        incomplete_layout = QHBoxLayout()
+        incomplete_layout.addStretch()  # Centrer le bouton
+        
+        # Bouton pour afficher seulement les lignes incomplètes
+        self.incomplete_filter_btn = QPushButton("📋 Lignes à traiter")
+        self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
+        self.incomplete_filter_btn.setCheckable(True)
+        self.incomplete_filter_btn.clicked.connect(self._toggle_incomplete_filter)
+        self.incomplete_filter_btn.setObjectName("incompleteBtn")
+        incomplete_layout.addWidget(self.incomplete_filter_btn)
+        
+        incomplete_layout.addStretch()  # Centrer le bouton
+        layout.addLayout(incomplete_layout)
+        
+        # Mettre à jour la visibilité
+        self._update_incomplete_button_visibility()
+    
+    def _toggle_incomplete_filter(self, checked: bool):
+        """Basculer le filtre pour afficher seulement les lignes incomplètes"""
+        if hasattr(self.parent_window, 'show_incomplete_only'):
+            self.parent_window.show_incomplete_only = checked
+            
+            # Recharger les données avec le filtre - garder la recherche actuelle
+            current_search = getattr(self.parent_window, 'search_input', None)
+            search_term = current_search.text() if current_search else None
+            
+            self.load_data(search_term, is_search=bool(search_term and search_term.strip()))
+            self._update_incomplete_button_visibility()
+    
+    def _update_incomplete_button_visibility(self):
+        """Mettre à jour la visibilité du bouton incomplètes selon les données"""
+        from ..core.config import pluralize
+        try:
+            incomplete_count = self.db_manager.count_incomplete_devices() if hasattr(self.db_manager, 'count_incomplete_devices') else 0
+            show_incomplete_only = getattr(self.parent_window, 'show_incomplete_only', False)
+            
+            if hasattr(self, 'incomplete_filter_btn'):
+                if incomplete_count > 0:
+                    self.incomplete_filter_btn.show()
+                    self.incomplete_filter_btn.setChecked(show_incomplete_only)
+                    
+                    if show_incomplete_only:
+                        self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
+                        self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+                    else:
+                        self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
+                        self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+                else:
+                    self.incomplete_filter_btn.hide()
+        except Exception as e:
+            print(f"Erreur mise à jour bouton incomplètes: {e}")

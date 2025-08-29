@@ -167,7 +167,8 @@ class StyleManager:
             border: 1px solid #dee2e6;
             border-radius: 6px;
             gridline-color: #e9ecef;
-            selection-background-color: #e7f1ff;
+            selection-background-color: #0056b3;
+            selection-color: white;
         }
         
         QHeaderView::section {

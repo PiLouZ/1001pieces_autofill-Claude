@@ -964,6 +964,16 @@ class ImportManager:
         # Référence individuelle du fichier avec son libellé
         individual_ref = config.individual_references.get(file.path, file.suggested_reference)
         individual_label = config.individual_labels.get(file.path, "")
+        
+        # NOUVEAU: Modifier la référence pour imports multi-fichiers afin d'éviter les faux doublons
+        # Quand plusieurs fichiers sont importés et qu'un même appareil apparaît dans différents fichiers,
+        # on veut créer des associations de pièces distinctes pour chaque fichier
+        if config.import_type == ImportType.MULTI_FILE and individual_ref and individual_ref.strip():
+            # Ajouter un suffixe basé sur le nom du fichier pour garantir l'unicité
+            file_basename = os.path.splitext(os.path.basename(file.path))[0]
+            individual_ref = f"{individual_ref}@{file_basename}"
+            print(f"  🔧 Import multi-fichiers: référence modifiée en '{individual_ref}' pour éviter les doublons cross-fichiers")
+        
         # Garder le libellé vide si l'utilisateur n'a rien saisi
         references_and_labels.append((individual_ref, individual_label))
         

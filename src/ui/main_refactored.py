@@ -487,7 +487,6 @@ class DragHandle(QWidget):
         if self.history_pending and self.main_window and self.drag_direction:
             direction_text = "vers le bas" if self.drag_direction == "down" else "vers le haut"
             self.main_window._add_to_history(f"Duplication {direction_text}")
-            
             # Sauvegarder les modifications dans la base de données
             self.main_window._save_drag_changes()
             
@@ -573,10 +572,7 @@ class DragHandle(QWidget):
             )
             self.table.setRangeSelected(new_selection, True)
             
-            # Ajouter à l'historique
-            if self.main_window:
-                self.main_window._add_to_history(f"Duplication automatique ({duplicated_cells} cellules)")
-                self.main_window._save_drag_changes()
+            # La sauvegarde et l'historique sont gérés par mouseReleaseEvent
     
     def _find_fill_end_row(self, selection, start_row):
         """Trouver la dernière ligne à remplir (tant que les cellules sont vides dans la sélection)"""
@@ -775,6 +771,12 @@ class MainWindow(QMainWindow):
             # Phase 2: Controller pour le tableau
             self.table_controller = TableController(self, self.db_manager)
             
+            # Initialiser les variables d'état
+            self.previous_values = {}  # Pour tracker les valeurs précédentes (drag handle)
+            self.drag_overlay_active = False  # Pour le drag&drop overlay
+            self._piece_description_decisions = {}  # Cache des décisions de description pour l'import
+            self.show_incomplete_only = False  # Filtre pour lignes incomplètes
+            
             # Écouter les événements des services
             self._setup_service_events()
             self.seo_generator = SEOGenerator()
@@ -943,8 +945,42 @@ class MainWindow(QMainWindow):
         
         # Garder des références pour la compatibilité
         self.table = self.table_controller.table
-        self.search_input = self.table_controller.search_input
+        self.search_input = self.table_controller.advanced_search_input  # Le vrai search input
+        
+        # Connecter les signaux de sélection pour le panneau des pièces
+        self.table_controller.connect_selection_signals(self._on_selection_changed)
+        
+        # CRUCIAL: Reconnecter les signaux de modification des cellules
+        self.table.itemChanged.connect(self._on_cell_changed)
+        self.table.currentItemChanged.connect(self._on_current_item_changed)
+        
+        # Configurer la poignée de duplication après création du tableau
+        self._setup_drag_handle()
+        
+        # Configurer le menu contextuel du tableau
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_table_context_menu)
+        
         return table_widget
+    
+    def _update_export_buttons_state(self, search_term: str):
+        """Mettre à jour l'état des boutons d'export selon le terme de recherche"""
+        has_search = bool(search_term)
+        is_piece_search = has_search and self._is_piece_reference_search()
+        
+        # Tous les boutons d'export nécessitent une référence de pièce
+        if hasattr(self, 'export_csv_btn'):
+            self.export_csv_btn.setEnabled(is_piece_search)
+        if hasattr(self, 'export_html_brands_btn'):
+            self.export_html_brands_btn.setEnabled(is_piece_search)
+        if hasattr(self, 'export_html_details_btn'):
+            self.export_html_details_btn.setEnabled(is_piece_search)
+        
+        # Boutons SEO également limités aux références de pièce
+        if hasattr(self, 'meta_title_btn'):
+            self.meta_title_btn.setEnabled(is_piece_search)
+        if hasattr(self, 'meta_desc_btn'):
+            self.meta_desc_btn.setEnabled(is_piece_search)
     def _create_pieces_widget(self) -> QWidget:
         """Créer le widget des pièces"""
         widget = QWidget()
@@ -1590,10 +1626,18 @@ class MainWindow(QMainWindow):
             # Mettre à jour les indicateurs visuels de tri avec des flèches Unicode
             self._update_sort_indicators()
             
-            # Recharger les données avec le nouveau tri
-            # Utiliser la recherche parsée actuelle
-            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-            self.load_data(search_term)
+            # Recharger les données avec le nouveau tri en maintenant la recherche active
+            search_term = None
+            if hasattr(self, 'search_input') and self.search_input:
+                search_term = self.search_input.text().strip()
+                search_term = search_term if search_term else None
+            
+            # Synchroniser le tri avec TableController avant le rechargement
+            if hasattr(self, 'table_controller'):
+                self.table_controller.current_sort_column = self.current_sort_column
+                self.table_controller.current_sort_order = self.current_sort_order
+            
+            self.load_data(search_term, is_search=bool(search_term))
             
         except Exception as e:
             app_logger.error(f"Erreur lors de l'application du tri: {e}")
@@ -1641,15 +1685,16 @@ class MainWindow(QMainWindow):
         try:
             if self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
                 total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
-                current_page_display = self.current_page + 1
+                current_page = getattr(self.table_controller, 'current_page', 0)
+                current_page_display = current_page + 1
                 
                 self.page_info_label.setText(f"Page {current_page_display} / {total_pages}")
                 
                 # Activer/désactiver les boutons
-                self.first_page_btn.setEnabled(self.current_page > 0)
-                self.prev_page_btn.setEnabled(self.current_page > 0)
-                self.next_page_btn.setEnabled(self.current_page < total_pages - 1)
-                self.last_page_btn.setEnabled(self.current_page < total_pages - 1)
+                self.first_page_btn.setEnabled(current_page > 0)
+                self.prev_page_btn.setEnabled(current_page > 0)
+                self.next_page_btn.setEnabled(current_page < total_pages - 1)
+                self.last_page_btn.setEnabled(current_page < total_pages - 1)
                 
                 # Afficher les contrôles
                 for btn in [self.first_page_btn, self.prev_page_btn, self.next_page_btn, self.last_page_btn]:
@@ -1668,16 +1713,16 @@ class MainWindow(QMainWindow):
         """Aller à la page suivante"""
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            if self.current_page < total_pages - 1:
-                self.current_page += 1
+            if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page < total_pages - 1:
+                self.table_controller.current_page += 1
                 # Utiliser la recherche parsée actuelle
                 search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
                 self.load_data(search_term, is_search=bool(search_term))
     
     def _previous_page(self):
         """Aller à la page précédente"""
-        if self.current_page > 0:
-            self.current_page -= 1
+        if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page > 0:
+            self.table_controller.current_page -= 1
             search_text = self.search_input.text()
             self.load_data(search_text, is_search=bool(search_text.strip()))
     
@@ -1686,7 +1731,8 @@ class MainWindow(QMainWindow):
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
             if 0 <= page < total_pages:
-                self.current_page = page
+                if hasattr(self.table_controller, 'current_page'):
+                    self.table_controller.current_page = page
                 # Utiliser la recherche parsée actuelle
                 search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
                 self.load_data(search_term, is_search=bool(search_term))
@@ -1695,7 +1741,8 @@ class MainWindow(QMainWindow):
         """Aller à la dernière page"""
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            self.current_page = max(0, total_pages - 1)
+            if hasattr(self.table_controller, 'current_page'):
+                self.table_controller.current_page = max(0, total_pages - 1)
             # Utiliser la recherche parsée actuelle
             search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
             self.load_data(search_term)
@@ -1709,7 +1756,8 @@ class MainWindow(QMainWindow):
                 self.use_pagination = True
                 self.page_size = int(size_text)
                 
-            self.current_page = 0  # Retour à la première page
+            if hasattr(self.table_controller, 'current_page'):
+                self.table_controller.current_page = 0  # Retour à la première page
             # Utiliser la recherche parsée actuelle
             search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
             self.load_data(search_term, is_search=bool(search_term))
@@ -1741,7 +1789,8 @@ class MainWindow(QMainWindow):
                 self.use_pagination = True
                 self.show_all_btn.setText("📋 Toutes les lignes")
                 self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
-                self.current_page = 0
+                if hasattr(self.table_controller, 'current_page'):
+                    self.table_controller.current_page = 0
                 self.load_data()
                 
         except Exception as e:
@@ -1806,8 +1855,104 @@ class MainWindow(QMainWindow):
         except Exception as e:
             app_logger.error(f"Erreur navigation cellule: {e}")
     
+    def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "") -> str:
+        """Afficher une fenêtre d'auto-complétion dédiée"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setMinimumSize(400, 300)
+        dialog.setModal(True)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Label d'instruction
+        instruction_label = QLabel(label)
+        layout.addWidget(instruction_label)
+        
+        # Champ de saisie avec valeur actuelle
+        input_field = QLineEdit(current_value)
+        input_field.setPlaceholderText("Tapez pour filtrer la liste...")
+        layout.addWidget(input_field)
+        
+        # Liste des valeurs existantes
+        values_list = QListWidget()
+        layout.addWidget(values_list)
+        
+        # Récupérer les valeurs de la base de données
+        try:
+            query = f"SELECT DISTINCT [{db_field}] FROM appareils WHERE [{db_field}] IS NOT NULL AND [{db_field}] != '' ORDER BY [{db_field}] LIMIT 200"
+            results = self.db_manager.execute_custom_query(query)
+            all_values = [row[0] for row in results if row[0] and row[0].strip()]
+            
+            def update_list():
+                """Mettre à jour la liste selon le filtre"""
+                filter_text = input_field.text().lower()
+                values_list.clear()
+                
+                for value in all_values:
+                    if not filter_text or filter_text in value.lower():
+                        item = QListWidgetItem(value)
+                        values_list.addItem(item)
+                        
+                        # Sélectionner l'item qui correspond à la valeur actuelle
+                        if value == current_value:
+                            values_list.setCurrentItem(item)
+            
+            # Connecter le filtrage
+            input_field.textChanged.connect(update_list)
+            
+            # Double-clic pour valider
+            def on_item_double_clicked(item):
+                input_field.setText(item.text())
+                dialog.accept()
+            
+            values_list.itemDoubleClicked.connect(on_item_double_clicked)
+            
+            # Clic simple pour remplir le champ
+            def on_item_clicked(item):
+                input_field.setText(item.text())
+            
+            values_list.itemClicked.connect(on_item_clicked)
+            
+            # Initialiser la liste
+            update_list()
+            
+        except Exception as e:
+            QMessageBox.warning(dialog, "Erreur", f"Impossible de charger les valeurs: {e}")
+        
+        # Boutons
+        buttons_layout = QHBoxLayout()
+        
+        ok_button = QPushButton("Valider")
+        ok_button.clicked.connect(dialog.accept)
+        ok_button.setDefault(True)
+        
+        cancel_button = QPushButton("Annuler")
+        cancel_button.clicked.connect(dialog.reject)
+        
+        clear_button = QPushButton("Effacer")
+        clear_button.clicked.connect(lambda: input_field.clear())
+        
+        buttons_layout.addWidget(clear_button)
+        buttons_layout.addStretch()
+        buttons_layout.addWidget(cancel_button)
+        buttons_layout.addWidget(ok_button)
+        
+        layout.addLayout(buttons_layout)
+        
+        # Focus sur le champ de saisie
+        input_field.setFocus()
+        input_field.selectAll()
+        
+        # Afficher le dialogue
+        if dialog.exec_() == QDialog.Accepted:
+            return input_field.text().strip()
+        else:
+            return None
+    
     def _show_column_values_list(self):
-        """Afficher une liste des valeurs existantes dans la colonne courante (Cmd+D)"""
+        """Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D)"""
         try:
             current_item = self.table.currentItem()
             if not current_item:
@@ -1817,45 +1962,37 @@ class MainWindow(QMainWindow):
             if current_col < 0:
                 return
                 
-            # Récupérer le nom du champ DB
+            # Récupérer le nom du champ DB et de la colonne UI
             db_field = self._get_db_field_name(current_col)
+            column_name = Config.UI_HEADERS[current_col] if current_col < len(Config.UI_HEADERS) else "Colonne"
+            
             if not db_field:
                 return
                 
-            # Récupérer toutes les valeurs uniques de cette colonne depuis la DB
-            query = f"SELECT DISTINCT [{db_field}] FROM appareils WHERE [{db_field}] IS NOT NULL AND [{db_field}] != '' ORDER BY [{db_field}] LIMIT 100"
+            # Créer une fenêtre dédiée selon la colonne
+            if db_field == 'type':
+                dialog_title = "Auto-complétion Type"
+                dialog_label = "Sélectionnez ou saisissez un type d'appareil :"
+            elif db_field == 'manufacturer':
+                dialog_title = "Auto-complétion Fabricant"  
+                dialog_label = "Sélectionnez ou saisissez un fabricant :"
+            else:
+                dialog_title = f"Auto-complétion {column_name}"
+                dialog_label = f"Sélectionnez ou saisissez une valeur pour {column_name} :"
             
-            try:
-                results = self.db_manager.execute_custom_query(query)
-                values = [row[0] for row in results if row[0] and row[0].strip()]
+            # Créer la fenêtre d'auto-complétion
+            selected_value = self._show_autocompletion_dialog(
+                dialog_title, dialog_label, db_field, current_item.text()
+            )
+            
+            if selected_value is not None:
+                # Appliquer la valeur sélectionnée
+                current_item.setText(selected_value)
                 
-                if not values:
-                    QMessageBox.information(self, "Valeurs de colonne", "Aucune valeur trouvée dans cette colonne")
-                    return
+                # Déclencher la sauvegarde
+                self._on_cell_changed(current_item)
                     
-                # Limiter à 100 valeurs pour la performance
-                if len(values) > 100:
-                    values = values[:100]
-                    values.append("... (plus de valeurs disponibles)")
-                
-                # Afficher la liste de sélection
-                selected_value, ok = QInputDialog.getItem(
-                    self, 
-                    f"Valeurs de la colonne '{Config.UI_HEADERS[current_col]}'",
-                    f"Choisir une valeur ({len(values)} disponible(s)):",
-                    values,
-                    0,
-                    True  # Editable
-                )
-                
-                if ok and selected_value and not selected_value.startswith("..."):
-                    # Appliquer la valeur sélectionnée
-                    current_item.setText(selected_value)
-                    
-                    # Déclencher la sauvegarde
-                    self._on_cell_changed(current_item)
-                    
-            except Exception as e:
+        except Exception as e:
                 app_logger.error(f"Erreur récupération valeurs colonne: {e}")
                 QMessageBox.warning(self, "Erreur", f"Impossible de récupérer les valeurs: {e}")
                 
@@ -2265,16 +2402,17 @@ class MainWindow(QMainWindow):
             search_term = selected_reference
         
         try:
-            # Récupérer les filtres de colonnes actifs
+            # Récupérer les filtres de colonnes actifs via TableController
             column_filters = {}
-            for col_idx, filter_widget in self.filter_widgets.items():
-                if filter_widget is not None:  # Skip removed filters
-                    if isinstance(filter_widget, QComboBox):
-                        filter_text = filter_widget.currentText().strip()
-                    else:  # QLineEdit
-                        filter_text = filter_widget.text().strip()
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
+            if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
+                for col_idx, filter_widget in self.table_controller.filter_widgets.items():
+                    if filter_widget is not None:  # Skip removed filters
+                        if isinstance(filter_widget, QComboBox):
+                            filter_text = filter_widget.currentText().strip()
+                        else:  # QLineEdit
+                            filter_text = filter_widget.text().strip()
+                        if filter_text:
+                            column_filters[col_idx] = filter_text
             
             # Récupérer le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self, 'show_incomplete_only', False)
@@ -2420,13 +2558,21 @@ class MainWindow(QMainWindow):
             return "cancel"
 
     def _update_counter(self):
-        """Mettre à jour le compteur de lignes"""
+        """Mettre à jour le compteur de lignes via TableController"""
         displayed_count = self.table.rowCount()
         
-        if hasattr(self, 'total_rows') and self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
-            self.counter_label.setText(f"Affichées : {displayed_count} / Total : {self.total_rows:,}")
-        else:
-            self.counter_label.setText(f"Lignes : {displayed_count:,}")
+        # Utiliser le size_label du TableController si disponible
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'size_label') and self.table_controller.size_label:
+            if hasattr(self, 'total_rows') and self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
+                self.table_controller.size_label.setText(f"Affichées : {displayed_count} / Total : {self.total_rows:,}")
+            else:
+                self.table_controller.size_label.setText(f"Lignes : {displayed_count:,}")
+        # Fallback sur counter_label si il existe encore
+        elif hasattr(self, 'counter_label'):
+            if hasattr(self, 'total_rows') and self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
+                self.counter_label.setText(f"Affichées : {displayed_count} / Total : {self.total_rows:,}")
+            else:
+                self.counter_label.setText(f"Lignes : {displayed_count:,}")
 
     def _update_toolbar_states(self):
         """Mettre à jour l'état des boutons"""
@@ -2542,21 +2688,8 @@ class MainWindow(QMainWindow):
         if not text.strip():
             return None
         
-        # Vérifier si c'est une expression régulière
-        if self.regex_checkbox.isChecked():
-            try:
-                # Tester la validité de l'expression régulière
-                re.compile(text)
-                return {
-                    'type': 'regex',
-                    'pattern': text
-                }
-            except re.error:
-                # Expression régulière invalide, traiter comme recherche normale
-                return {
-                    'type': 'simple',
-                    'terms': [text.strip()]
-                }
+        # Les expressions régulières ne sont plus supportées dans l'interface refactorisée
+        # On se concentre sur les recherches && et ||
         
         # Parser les opérateurs logiques
         # Diviser d'abord par || (OU)
@@ -2633,7 +2766,8 @@ class MainWindow(QMainWindow):
                 
                 if should_paginate:
                     limit = self.page_size
-                    offset = getattr(self, 'current_page', 0) * self.page_size
+                    current_page = getattr(self.table_controller, 'current_page', 0) if hasattr(self, 'table_controller') else 0
+                    offset = current_page * self.page_size
                 
                 # Utiliser le service de recherche avec pagination
                 results = self.search_service.search(
@@ -2689,6 +2823,8 @@ class MainWindow(QMainWindow):
         if not self.modified_cells or not getattr(self, 'auto_save_enabled', True):
             return
         
+        print(f"💾 DEBUG: Sauvegarde de {len(self.modified_cells)} cellules modifiées: {list(self.modified_cells)}")
+        
         try:
             # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
             updates_by_db_id = {}
@@ -2711,7 +2847,11 @@ class MainWindow(QMainWindow):
             
             # Exécuter les mises à jour par lots
             if updates_by_db_id:
+                print(f"💾 DEBUG: Mise à jour DB pour {len(updates_by_db_id)} appareils: {updates_by_db_id}")
                 self.db_manager.update_multiple_cells_batch(updates_by_db_id)
+                print(f"💾 DEBUG: Mise à jour DB terminée")
+            else:
+                print(f"💾 DEBUG: Aucune mise à jour DB nécessaire")
                 
             # Mettre à jour les valeurs précédentes et nettoyer modified_cells
             for row, col in list(self.modified_cells):
@@ -2738,7 +2878,7 @@ class MainWindow(QMainWindow):
         # Ajouter à l'historique
         self._add_to_history("Sauvegarde manuelle effectuée")
 
-    def _update_cell_in_db(self, item: QTableWidgetItem):
+    def _update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False):
         """Mettre à jour une cellule dans la base de données"""
         try:
             row, col = item.row(), item.column()
@@ -2765,8 +2905,8 @@ class MainWindow(QMainWindow):
             success = self.db_manager.update_cell(db_id, column_name, new_value)
             
             if success:
-                # Ajouter à l'historique seulement si la valeur a réellement changé
-                if old_value != new_value:
+                # Ajouter à l'historique seulement si la valeur a réellement changé ET si pas de skip_history
+                if old_value != new_value and not skip_history:
                     # Nom de la colonne plus convivial
                     column_display_name = self._get_column_display_name(col)
                     self._add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
@@ -2797,7 +2937,7 @@ class MainWindow(QMainWindow):
                         for col in range(selection.leftColumn(), selection.rightColumn() + 1):
                             item = self.table.item(row, col)
                             if item:
-                                self._update_cell_in_db(item)
+                                self._update_cell_in_db(item, skip_history=True)
                                 
                 elif direction == "up":
                     # Sauvegarder les cellules ajoutées vers le haut
@@ -2806,7 +2946,7 @@ class MainWindow(QMainWindow):
                         for col in range(selection.leftColumn(), selection.rightColumn() + 1):
                             item = self.table.item(row, col)
                             if item:
-                                self._update_cell_in_db(item)
+                                self._update_cell_in_db(item, skip_history=True)
                                 
         except Exception as e:
             self._show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
@@ -3143,17 +3283,6 @@ class MainWindow(QMainWindow):
             self._show_error(f"Erreur lors du traitement du lien: {e}")
 
     
-    def _update_pieces_count_for_rows(self, rows: set):
-        """Mettre à jour la colonne Nb Pièces pour les lignes spécifiées"""
-        for row in rows:
-            try:
-                db_id = self._get_db_id_from_row(row)
-                pieces_count = self.db_manager.get_pieces_count_for_appareil(db_id)
-                
-                # Plus de mise à jour de la colonne Nb Pièces (supprimée)
-                
-            except Exception as e:
-                print(f"Erreur mise à jour Nb Pièces ligne {row}: {e}")
 
     def _add_piece(self):
         """Ajouter une pièce"""
@@ -3202,12 +3331,12 @@ class MainWindow(QMainWindow):
                     # Vérifier si la pièce n'est pas déjà associée
                     if not self._piece_already_associated(db_id, ref_piece):
                         # Ajouter la pièce avec libellé optionnel
-                        _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
+                        _, _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
                         added_count += 1
                     else:
                         # Pièce déjà associée, mais vérifier le libellé si fourni
                         if libelle_piece and libelle_piece.strip():
-                            _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
+                            _, _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
                             print(f"Libellé vérifié pour pièce {ref_piece} déjà associée ligne {row}")
                         error_count += 1
                         print(f"Pièce {ref_piece} déjà associée à l'appareil ligne {row}")
@@ -3222,10 +3351,9 @@ class MainWindow(QMainWindow):
             self._update_pieces_panel()
             
             # Mettre à jour la colonne Nb Pièces pour les lignes concernées
-            self._update_pieces_count_for_rows(selected_rows)
+            self.table_controller.update_pieces_count_for_rows(selected_rows)
             
-            # Forcer le rafraîchissement pour corriger les couleurs
-            # Plus besoin de rafraîchir la colonne Nb Pièces (supprimée)
+            # Forcer le rafraîchissement pour corriger les couleurs après la mise à jour des pièces
             
             # Ajouter à l'historique
             if added_count > 0:
@@ -3417,6 +3545,11 @@ class MainWindow(QMainWindow):
                         Config.STATUS_MESSAGE_TIMEOUT
                     )
                     
+                    # Mettre à jour la colonne Nb Pièces pour l'appareil concerné
+                    affected_row = self.table_controller.find_row_by_db_id(appareil_id)
+                    if affected_row is not None:
+                        self.table_controller.update_pieces_count_for_rows({affected_row})
+                    
                     # Ajouter à l'historique avec la référence de l'appareil
                     self._add_to_history(f"Suppression de pièce: {ref_piece} (appareil: {appareil_ref})")
                 else:
@@ -3496,6 +3629,15 @@ class MainWindow(QMainWindow):
                         f"Pièce '{ref_piece}' supprimée de {deleted_count} appareils", 
                         Config.STATUS_MESSAGE_TIMEOUT
                     )
+                    
+                    # Mettre à jour la colonne Nb Pièces pour tous les appareils concernés
+                    affected_rows = set()
+                    for appareil_id in appareil_ids:
+                        row = self.table_controller.find_row_by_db_id(appareil_id)
+                        if row is not None:
+                            affected_rows.add(row)
+                    if affected_rows:
+                        self.table_controller.update_pieces_count_for_rows(affected_rows)
                     
                     # Ajouter à l'historique
                     self.undo_manager.add_action({
@@ -4350,7 +4492,7 @@ class MainWindow(QMainWindow):
                             ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
                             already_associated = self._piece_already_associated(device_id, ref_piece_safe)
                             if ref_piece_safe and not already_associated:
-                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
+                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                 results['associations_created'] += 1
                                 if desc_updated:
                                     results['descriptions_updated'] += 1
@@ -4363,7 +4505,7 @@ class MainWindow(QMainWindow):
                             else:
                                 # Pièce déjà associée, mais vérifier le libellé si fourni
                                 if libelle_piece and str(libelle_piece).strip():
-                                    _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
+                                    _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                     if desc_updated:
                                         results['descriptions_updated'] += 1
                                     print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
@@ -4456,7 +4598,7 @@ class MainWindow(QMainWindow):
                                         ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
                                         already_associated = self._piece_already_associated(device_id, ref_piece_safe)
                                         if ref_piece_safe and not already_associated:
-                                            _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
+                                            _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                             results['associations_created'] += 1
                                             if desc_updated:
                                                 results['descriptions_updated'] += 1
@@ -4469,7 +4611,7 @@ class MainWindow(QMainWindow):
                                         else:
                                             # Pièce déjà associée, mais vérifier le libellé si fourni
                                             if libelle_piece and libelle_piece.strip():
-                                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
+                                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
                                                 if desc_updated:
                                                     results['descriptions_updated'] += 1
                                                 print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
@@ -4709,11 +4851,13 @@ class MainWindow(QMainWindow):
         if not rows:
             return 0
             
-        # Compter les colonnes de chaque ligne
+        # Compter les colonnes de chaque ligne avec détection de séparateur
         column_counts = []
+        # Détecter le séparateur (tabulation ou point-virgule)
+        separator = '\t' if '\t' in clipboard_text else ';'
         for row in rows:
             if row.strip():  # Ignorer les lignes vides
-                columns = row.split('\t')
+                columns = row.split(separator)
                 column_counts.append(len(columns))
         
         if not column_counts:
@@ -5113,15 +5257,16 @@ class MainWindow(QMainWindow):
             self._show_error(f"Erreur lors de l'ouverture du gestionnaire de pièces: {e}")
     
     def _clear_column_filters(self):
-        """Nettoyer tous les filtres de colonnes"""
-        for col_idx, filter_widget in self.filter_widgets.items():
-            if filter_widget is not None:  # Skip removed filters
-                filter_widget.blockSignals(True)
-                if isinstance(filter_widget, QComboBox):
-                    filter_widget.setCurrentText("")
-                else:  # QLineEdit
-                    filter_widget.clear()
-                filter_widget.blockSignals(False)
+        """Nettoyer tous les filtres de colonnes via TableController"""
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
+            for col_idx, filter_widget in self.table_controller.filter_widgets.items():
+                if filter_widget is not None:  # Skip removed filters
+                    filter_widget.blockSignals(True)
+                    if isinstance(filter_widget, QComboBox):
+                        filter_widget.setCurrentText("")
+                    else:  # QLineEdit
+                        filter_widget.clear()
+                    filter_widget.blockSignals(False)
     
     def _update_incomplete_button_visibility(self):
         """Mettre à jour la visibilité du bouton incomplètes selon les données"""
@@ -5183,7 +5328,8 @@ class MainWindow(QMainWindow):
             
             # Retourner à la première page si demandé (après modifications globales)
             if reset_page:
-                self.current_page = 0
+                if hasattr(self.table_controller, 'current_page'):
+                    self.table_controller.current_page = 0
             
             # Nettoyer les filtres de colonnes si demandé
             if clear_filters:
@@ -5213,7 +5359,8 @@ class MainWindow(QMainWindow):
             # Repositionner la poignée de drag
             self._position_drag_handle()
             
-            app_logger.debug(f"Rafraîchissement forcé terminé - Page: {self.current_page} - Critères: '{temp_search}' - Lignes affichées: {self.table.rowCount()}")
+            current_page = getattr(self.table_controller, 'current_page', 0) if hasattr(self, 'table_controller') else 0
+            app_logger.debug(f"Rafraîchissement forcé terminé - Page: {current_page} - Critères: '{temp_search}' - Lignes affichées: {self.table.rowCount()}")
             
         except Exception as e:
             app_logger.error(f"Erreur lors du rafraîchissement forcé: {e}")
@@ -5338,9 +5485,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """Appliquer la visibilité des colonnes au tableau"""
         for col_idx, visible in self.visible_columns.items():
             self.table.setColumnHidden(col_idx, not visible)
-            # Masquer aussi les filtres correspondants
-            if col_idx in self.filter_widgets:
-                self.filter_widgets[col_idx].setVisible(visible)
+            # Masquer aussi les filtres correspondants via TableController
+            if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
+                if col_idx in self.table_controller.filter_widgets:
+                    self.table_controller.filter_widgets[col_idx].setVisible(visible)
     
     def _configure_columns(self):
         """Ouvrir la boîte de dialogue de configuration des colonnes"""
@@ -5423,9 +5571,11 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _clear_search(self):
         """Effacer le champ de recherche principal et tous les filtres"""
         self.search_input.clear()
-        # Effacer aussi tous les filtres de colonnes
-        for filter_widget in self.filter_widgets.values():
-            filter_widget.clear()
+        # Effacer aussi tous les filtres de colonnes via TableController
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
+            for filter_widget in self.table_controller.filter_widgets.values():
+                if filter_widget is not None:
+                    filter_widget.clear()
         self.load_data()
 
     # --- Méthodes d'événements ---
@@ -6102,18 +6252,19 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _handle_paste(self):
         """Gestion du collage de données depuis le presse-papiers"""
-        # Vider le cache des décisions de description au début de chaque import
-        self._piece_description_decisions.clear()
-        
-        clipboard_text = QApplication.clipboard().text()
-        if not clipboard_text.strip():
-            QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
-            return
-        
         try:
+            # Vider le cache des décisions de description au début de chaque import
+            self._piece_description_decisions.clear()
+            
+            clipboard_text = QApplication.clipboard().text()
+            if not clipboard_text.strip():
+                QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
+                return
             # Séparer les lignes et colonnes proprement
             lines = clipboard_text.strip().split('\n')
-            rows = [line.split('\t') for line in lines]
+            # Détecter le séparateur (tabulation ou point-virgule)
+            separator = '\t' if '\t' in clipboard_text else ';'
+            rows = [line.split(separator) for line in lines]
             
             if not rows:
                 return
@@ -6302,7 +6453,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     # Ajouter la pièce si spécifiée
                     if ref_piece and ref_piece.strip():
                         if not self._piece_already_associated(appareil_id, ref_piece.strip()):
-                            _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
+                            _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
                             associations_created += 1
                             if desc_updated:
                                 descriptions_updated += 1
@@ -6310,7 +6461,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                         else:
                             # Pièce déjà associée, mais vérifier le libellé si fourni
                             if libelle_piece and libelle_piece.strip():
-                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
+                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
                                 if desc_updated:
                                     descriptions_updated += 1
                                 print(f"  📝 Libellé vérifié pour pièce {ref_piece.strip()} déjà associée")
@@ -6384,7 +6535,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                             
                             # Ajouter la pièce si spécifiée
                             if ref_piece and ref_piece.strip():
-                                _, desc_updated = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
+                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
                                 associations_created += 1
                                 if desc_updated:
                                     descriptions_updated += 1
@@ -6604,8 +6755,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         self.statusbar.showMessage("Application rafraîchie", Config.STATUS_MESSAGE_TIMEOUT)
     
     def _refresh_pieces_count_column(self):
-        """Méthode désactivée - colonne Nb Pièces supprimée"""
-        pass  # Ne fait plus rien
+        """Rafraîchir la colonne Nb Pièces pour toutes les lignes visibles"""
+        self.table_controller.refresh_pieces_count_column()
 
     def closeEvent(self, event):
         """Gestion de la fermeture"""
@@ -7019,10 +7170,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if not parsed_search:
                 return []
             
-            # Obtenir les filtres de colonnes (si applicable)
+            # Obtenir les filtres de colonnes (si applicable) via TableController
             column_filters = {}
-            if hasattr(self, 'filter_widgets'):
-                for col_idx, filter_widget in self.filter_widgets.items():
+            if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
+                for col_idx, filter_widget in self.table_controller.filter_widgets.items():
                     if filter_widget is not None:  # Skip removed filters
                         if isinstance(filter_widget, QComboBox):
                             filter_text = filter_widget.currentText().strip()
