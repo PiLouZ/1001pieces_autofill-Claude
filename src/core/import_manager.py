@@ -975,8 +975,8 @@ class ImportManager:
         references_and_labels.append((individual_ref, individual_label))
         
         # Effectuer l'import des données - Mode batch pour gros volumes
-        # Seuil pour activer le mode batch optimisé
-        BATCH_THRESHOLD = 500  # lignes
+        # Seuil pour activer le mode batch optimisé (réduit pour meilleure performance)
+        BATCH_THRESHOLD = 50  # lignes - batch dès 50 lignes pour optimisation immédiate
         
         if len(data) >= BATCH_THRESHOLD:
             print(f"🚀 Mode BATCH activé pour {len(data)} lignes (seuil: {BATCH_THRESHOLD})")
@@ -1137,7 +1137,12 @@ class ImportManager:
         existing_updates = []
         associations_batch = []
         
-        for row in data:
+        # Configuration pour progress optimisé
+        from .config import Config
+        progress_frequency = Config.IMPORT_PROGRESS_FREQUENCY
+        total_rows = len(data)
+        
+        for idx, row in enumerate(data):
             if not row or not any(cell.strip() if cell is not None else False for cell in row):
                 continue
                 
@@ -1183,6 +1188,12 @@ class ImportManager:
             for reference, label in references_and_labels:
                 if reference:
                     associations_batch.append((reference, label, device_data, existing_id))
+            
+            # Progress update optimisé (pas à chaque ligne pour éviter ralentissements)
+            if idx > 0 and idx % progress_frequency == 0:
+                progress_percent = int((idx / total_rows) * 30)  # 30% pour cette étape
+                batch_progress.setLabelText(f"💾 Analyse: {idx}/{total_rows} lignes ({progress_percent}%)")
+                QApplication.processEvents()
         
         # ÉTAPE 3: Batch operations sur la base
         batch_progress.setValue(2)
@@ -1315,55 +1326,54 @@ class ImportManager:
         return bool(device_data.get('other_ref') or device_data.get('notes'))
     
     def _batch_insert_devices(self, devices_batch: List[Dict[str, Any]]) -> List[int]:
-        """Insertion en lot des nouveaux appareils"""
+        """Insertion en lot des nouveaux appareils avec chunking optimisé"""
         if not devices_batch:
             return []
         
-        # Préparer les données pour executemany
-        insert_data = []
-        for device in devices_batch:
-            insert_data.append((
-                device.get('type', ''),
-                device.get('manufacturer', ''),
-                device.get('ref_modele', ''),
-                device.get('commercial_ref', ''),
-                device.get('other_ref', ''),
-                device.get('notes', ''),
-                device.get('category', '')
-            ))
-        
-        # Batch insert avec executemany (requête optimisée)
         from .config import Config
         query = Config.QUERIES['insert_device_batch']
+        chunk_size = Config.BATCH_INSERT_SIZE
         
-        # Utiliser une transaction pour l'efficacité
+        print(f"🚀 BATCH INSERT: {len(devices_batch)} appareils à insérer par chunks de {chunk_size}")
+        
+        # Utiliser une transaction globale pour l'efficacité
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
+        all_new_ids = []
         
         try:
-            cursor.executemany(query, insert_data)
-            
-            # Récupérer les IDs des appareils insérés (correction pour executemany)
-            if cursor.lastrowid is not None:
-                # SQLite avec executemany: lastrowid pointe vers le dernier ID inséré
-                last_id = cursor.lastrowid
-                first_id = last_id - len(insert_data) + 1
-                new_ids = list(range(first_id, last_id + 1))
-            else:
-                # Fallback: récupérer les IDs manuellement
-                print("⚠️ BATCH: lastrowid=None, récupération manuelle des IDs...")
-                cursor.execute("SELECT last_insert_rowid()")
-                last_id = cursor.fetchone()[0]
-                if last_id:
+            # Traiter par chunks pour optimiser SQLite
+            for i in range(0, len(devices_batch), chunk_size):
+                chunk = devices_batch[i:i + chunk_size]
+                
+                # Préparer les données pour ce chunk
+                insert_data = []
+                for device in chunk:
+                    insert_data.append((
+                        device.get('type', ''),
+                        device.get('manufacturer', ''),
+                        device.get('ref_modele', ''),
+                        device.get('commercial_ref', ''),
+                        device.get('other_ref', ''),
+                        device.get('notes', ''),
+                        device.get('category', '')
+                    ))
+                
+                # Exécuter le chunk
+                cursor.executemany(query, insert_data)
+                
+                # Récupérer les IDs pour ce chunk
+                if cursor.lastrowid is not None:
+                    last_id = cursor.lastrowid
                     first_id = last_id - len(insert_data) + 1
-                    new_ids = list(range(first_id, last_id + 1))
-                else:
-                    print("❌ BATCH: Impossible de récupérer les IDs")
-                    new_ids = []
+                    chunk_ids = list(range(first_id, last_id + 1))
+                    all_new_ids.extend(chunk_ids)
+                    
+                print(f"✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
             
             conn.commit()
-            print(f"✅ BATCH: {len(new_ids)} appareils insérés (IDs: {new_ids[0] if new_ids else 'N/A'}...{new_ids[-1] if new_ids else 'N/A'})")
-            return new_ids
+            print(f"✅ BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
+            return all_new_ids
             
         except Exception as e:
             conn.rollback()

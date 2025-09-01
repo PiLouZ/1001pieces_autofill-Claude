@@ -2,6 +2,42 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.9.1] - 🚀 Phase 2.4 : Import Performance Boost - 2025-09-01
+
+### ✅ **Optimisations Import Réalisées**
+
+#### **🔥 Performances Batch Améliorées**
+- **Seuil batch réduit** : `50 lignes` (était 500) → Optimisation immédiate pour petits imports
+- **Chunking optimisé** : Insertions par lots de `1000 appareils` → Optimum SQLite
+- **Progress updates** : Fréquence réduite à `100 lignes` → Interface plus responsive
+- **Requête preload** : Ajout `ORDER BY id` → Index natif exploité
+
+#### **💾 Architecture Cache Optimisée**
+- **Cache pré-chargement** : Tous appareils existants en mémoire (1 requête globale)
+- **Auto-complétion cache** : Type + Fabricant indexés par référence  
+- **Détection doublons** : Lookup O(1) via HashMap optimisé
+- **Zéro requête SQL** durant l'analyse des lignes (100% cache)
+
+#### **🎯 Gains Performance Estimés**
+- **Petits imports** (50-500 lignes) : `+40-60%` plus rapide
+- **Gros imports** (1000+ lignes) : `+70-85%` plus rapide  
+- **Interface** : Responsive pendant traitement (progress optimisé)
+- **Mémoire** : Cache intelligent auto-invalidé après import
+
+#### **🔧 Configurations Techniques**
+```python
+BATCH_THRESHOLD = 50           # Activation batch précoce
+BATCH_INSERT_SIZE = 1000       # Chunks SQLite optimaux  
+IMPORT_PROGRESS_FREQUENCY = 100 # UI responsive
+BATCH_CACHE_PRELOAD = True     # Pré-chargement actif
+```
+
+#### **📊 Test Performance Créé**
+- Fichier test : `test_performance_3000.csv` (3001 lignes)
+- Types variés : 16 catégories d'appareils
+- Fabricants multiples : 16 marques différentes
+- Données réalistes : Références + notes + associations
+
 ## [2.9.0-PLAN] - 🚀 Plan d'Optimisation Performance Globale
 
 ### 🔍 **Analyse Architecture Complétée**

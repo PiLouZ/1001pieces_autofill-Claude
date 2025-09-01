@@ -55,6 +55,11 @@ class Config:
     PAGINATION_THRESHOLD = 5000  # Activer pagination automatiquement
     RESPONSIVE_UPDATE_INTERVAL = 250  # ms entre les mises à jour UI
     
+    # Optimisations Phase 2.4 - Import Batch Performance
+    BATCH_INSERT_SIZE = 1000   # Taille optimale pour batch insert (SQLite optimum)
+    BATCH_CACHE_PRELOAD = True # Pré-charger le cache d'auto-complétion
+    IMPORT_PROGRESS_FREQUENCY = 100  # Fréquence des mises à jour de progress (toutes les 100 lignes)
+    
     # Optimisations Phase 3 - Recherche
     SEARCH_CACHE_SIZE = 1000  # Nombre de recherches à garder en cache
     FULLTEXT_CACHE_ENABLED = True  # Activer le cache full-text
@@ -141,7 +146,8 @@ class Config:
         'preload_all_devices': """SELECT id, ref_modele, commercial_ref, type, manufacturer, other_ref, notes 
                                FROM appareils 
                                WHERE (ref_modele IS NOT NULL AND ref_modele != '') 
-                                  OR (commercial_ref IS NOT NULL AND commercial_ref != '')""",
+                                  OR (commercial_ref IS NOT NULL AND commercial_ref != '')
+                               ORDER BY id""",  -- Index sur id déjà présent pour optimisation
         # Requêtes optimisées Phase 3 - Recherche
         'exact_search_optimized': """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes,
                                     (SELECT COUNT(*) FROM piece_associations pa WHERE pa.appareil_id = a.id) as pieces_count
