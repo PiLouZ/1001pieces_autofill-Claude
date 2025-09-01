@@ -143,11 +143,12 @@ class Config:
                                AND (type IS NOT NULL AND type != '') 
                                AND (manufacturer IS NOT NULL AND manufacturer != '')
                                LIMIT 10""",
+        # Index sur id déjà présent pour optimisation
         'preload_all_devices': """SELECT id, ref_modele, commercial_ref, type, manufacturer, other_ref, notes 
                                FROM appareils 
                                WHERE (ref_modele IS NOT NULL AND ref_modele != '') 
                                   OR (commercial_ref IS NOT NULL AND commercial_ref != '')
-                               ORDER BY id""",  -- Index sur id déjà présent pour optimisation
+                               ORDER BY id""",
         # Requêtes optimisées Phase 3 - Recherche
         'exact_search_optimized': """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes,
                                     (SELECT COUNT(*) FROM piece_associations pa WHERE pa.appareil_id = a.id) as pieces_count
