@@ -653,7 +653,7 @@ class ImportManager:
                             break
                         
                         # Ignorer les lignes vides
-                        if any(cell.strip() for cell in row):
+                        if any(cell.strip() if cell is not None else False for cell in row):
                             rows.append(row)
                     
                     return rows
@@ -893,8 +893,8 @@ class ImportManager:
             'file_details': []  # Nouveau: détails par fichier
         }
         
-        # Suivi global des doublons entre tous les fichiers
-        global_seen_device_refs = set()
+        # PHASE 2.3+: Plus de suivi global - chaque fichier traité indépendamment
+        # pour permettre associations cross-fichiers
         
         # Barre de progression
         progress = QProgressDialog(
@@ -916,7 +916,9 @@ class ImportManager:
             QApplication.processEvents()
             
             try:
-                file_results = self._import_single_file(file, config, global_seen_device_refs)
+                # Chaque fichier a son propre set pour éviter doublons intra-fichier seulement
+                file_local_seen_refs = set()
+                file_results = self._import_single_file(file, config, file_local_seen_refs)
                 results['successful_files'] += 1
                 
                 # Ajouter les détails du fichier
@@ -937,9 +939,13 @@ class ImportManager:
         progress.setValue(len(config.files))
         progress.close()
         
+        # Phase 2.3: Invalider le cache après import complet
+        if hasattr(self.db_manager, 'cache_invalidation'):
+            self.db_manager.cache_invalidation.invalidate_after_import(results)
+        
         return results
     
-    def _import_single_file(self, file: ImportFile, config: ImportConfiguration, global_seen_device_refs: set) -> Dict[str, Any]:
+    def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Dict[str, Any]:
         """Importer un fichier unique"""
         # Charger les données du fichier avec les méthodes unifiées
         if file.type == FileType.CSV:
@@ -965,15 +971,6 @@ class ImportManager:
         individual_ref = config.individual_references.get(file.path, file.suggested_reference)
         individual_label = config.individual_labels.get(file.path, "")
         
-        # NOUVEAU: Modifier la référence pour imports multi-fichiers afin d'éviter les faux doublons
-        # Quand plusieurs fichiers sont importés et qu'un même appareil apparaît dans différents fichiers,
-        # on veut créer des associations de pièces distinctes pour chaque fichier
-        if config.import_type == ImportType.MULTI_FILE and individual_ref and individual_ref.strip():
-            # Ajouter un suffixe basé sur le nom du fichier pour garantir l'unicité
-            file_basename = os.path.splitext(os.path.basename(file.path))[0]
-            individual_ref = f"{individual_ref}@{file_basename}"
-            print(f"  🔧 Import multi-fichiers: référence modifiée en '{individual_ref}' pour éviter les doublons cross-fichiers")
-        
         # Garder le libellé vide si l'utilisateur n'a rien saisi
         references_and_labels.append((individual_ref, individual_label))
         
@@ -988,7 +985,7 @@ class ImportManager:
                 references_and_labels,
                 config,
                 file,
-                global_seen_device_refs
+                file_seen_device_refs
             )
         else:
             print(f"📝 Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
@@ -997,7 +994,7 @@ class ImportManager:
                 references_and_labels,  # Maintenant liste de tuples (ref, label)
                 config,
                 file,  # Passer le fichier pour les associations par fichier
-                global_seen_device_refs  # Suivi global des doublons
+                file_seen_device_refs  # CORRECTION: Suivi local par fichier
             )
     
     
@@ -1018,15 +1015,15 @@ class ImportManager:
         # Utiliser le set global des références déjà vues pour détecter les doublons entre tous les fichiers
         
         for row in data:
-            if not row or not any(cell.strip() for cell in row):
+            if not row or not any(cell.strip() if cell is not None else False for cell in row):
                 continue
             
             # Compter chaque ligne non vide comme extraite du fichier
             results['total_lines_extracted'] += 1
             
             # Extraire les références principales pour vérification doublon
-            ref_modele = str(row[0]).strip() if len(row) >= 1 else ""
-            commercial_ref = str(row[1]).strip() if len(row) >= 2 else ""
+            ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
+            commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
             
             # Vérifier si c'est un doublon dans le fichier
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
@@ -1141,14 +1138,14 @@ class ImportManager:
         associations_batch = []
         
         for row in data:
-            if not row or not any(cell.strip() for cell in row):
+            if not row or not any(cell.strip() if cell is not None else False for cell in row):
                 continue
                 
             results['total_lines_extracted'] += 1
             
             # Détection doublons (identique)
-            ref_modele = str(row[0]).strip() if len(row) >= 1 else ""
-            commercial_ref = str(row[1]).strip() if len(row) >= 2 else ""
+            ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
+            commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
             
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
@@ -1216,6 +1213,10 @@ class ImportManager:
         # Fermer le dialogue de progress
         batch_progress.close()
         
+        # Phase 2.3: Invalider le cache après import batch
+        if hasattr(self.db_manager, 'cache_invalidation'):
+            self.db_manager.cache_invalidation.invalidate_after_import(results)
+        
         print(f"✅ BATCH: Terminé - {results['total_imported']} lignes traitées")
         return results
     
@@ -1249,10 +1250,10 @@ class ImportManager:
         autocomplete_cache = {}
         
         for key, device in existing_devices_cache.items():
-            ref_modele = device.get('ref_modele', '').strip()
-            commercial_ref = device.get('commercial_ref', '').strip()
-            device_type = device.get('type', '').strip()
-            manufacturer = device.get('manufacturer', '').strip()
+            ref_modele = (device.get('ref_modele') or '').strip()
+            commercial_ref = (device.get('commercial_ref') or '').strip()
+            device_type = (device.get('type') or '').strip()
+            manufacturer = (device.get('manufacturer') or '').strip()
             
             # Créer des entrées pour auto-complétion si Type ET/OU Fabricant disponibles
             if device_type or manufacturer:
@@ -1275,11 +1276,11 @@ class ImportManager:
     def _apply_autocomplete_from_cache(self, device_data: Dict[str, Any], autocomplete_cache: Dict[str, Dict[str, str]]):
         """Appliquer l'auto-complétion depuis le cache (pas de SQL!)"""
         # Ne compléter que si Type OU Fabricant manquant
-        if device_data.get('type', '').strip() and device_data.get('manufacturer', '').strip():
+        if (device_data.get('type') or '').strip() and (device_data.get('manufacturer') or '').strip():
             return  # Déjà complet
         
-        ref_modele = device_data.get('ref_modele', '').strip()
-        commercial_ref = device_data.get('commercial_ref', '').strip()
+        ref_modele = (device_data.get('ref_modele') or '').strip()
+        commercial_ref = (device_data.get('commercial_ref') or '').strip()
         
         # Chercher d'abord par ref_modele
         cache_entry = None
@@ -1292,15 +1293,15 @@ class ImportManager:
         
         # Appliquer les données trouvées si disponibles
         if cache_entry:
-            if not device_data.get('type', '').strip() and cache_entry.get('type'):
+            if not (device_data.get('type') or '').strip() and cache_entry.get('type'):
                 device_data['type'] = cache_entry['type']
-            if not device_data.get('manufacturer', '').strip() and cache_entry.get('manufacturer'):
+            if not (device_data.get('manufacturer') or '').strip() and cache_entry.get('manufacturer'):
                 device_data['manufacturer'] = cache_entry['manufacturer']
     
     def _find_in_cache(self, device_data: Dict[str, Any], cache: Dict[str, Dict]) -> Optional[int]:
         """Trouver un appareil dans le cache (pas de SQL!)"""
-        ref_modele = device_data.get('ref_modele', '').strip()
-        commercial_ref = device_data.get('commercial_ref', '').strip()
+        ref_modele = (device_data.get('ref_modele') or '').strip()
+        commercial_ref = (device_data.get('commercial_ref') or '').strip()
         
         if ref_modele and commercial_ref:
             key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
@@ -1462,14 +1463,14 @@ class ImportManager:
         data = {}
         
         if len(row) >= 1:
-            data['ref_modele'] = str(row[0]).strip()
+            data['ref_modele'] = str(row[0]).strip() if row[0] is not None else ""
         
         if len(row) >= 2:
-            data['commercial_ref'] = str(row[1]).strip()
+            data['commercial_ref'] = str(row[1]).strip() if row[1] is not None else ""
         
         if len(row) >= 3:
             # Traiter la 3ème colonne selon le paramètre third_column_choice
-            third_col_value = str(row[2]).strip()
+            third_col_value = str(row[2]).strip() if row[2] is not None else ""
             if config.third_column_choice == "other_ref":
                 data['other_ref'] = third_col_value
             elif config.third_column_choice == "notes":
@@ -1477,14 +1478,14 @@ class ImportManager:
             # Si choice == "ignore", ne rien faire avec cette colonne
         
         if len(row) >= 4:
-            data['type'] = str(row[0]).strip()
-            data['manufacturer'] = str(row[1]).strip()
-            data['ref_modele'] = str(row[2]).strip()
-            data['commercial_ref'] = str(row[3]).strip()
+            data['type'] = str(row[0]).strip() if row[0] is not None else ""
+            data['manufacturer'] = str(row[1]).strip() if row[1] is not None else ""
+            data['ref_modele'] = str(row[2]).strip() if row[2] is not None else ""
+            data['commercial_ref'] = str(row[3]).strip() if row[3] is not None else ""
             
         if len(row) >= 5:
             # Pour les fichiers 5+ colonnes, la 5ème colonne pourrait aussi être concernée
-            fifth_col_value = str(row[4]).strip()
+            fifth_col_value = str(row[4]).strip() if row[4] is not None else ""
             if config.third_column_choice == "other_ref":
                 data['other_ref'] = fifth_col_value
             elif config.third_column_choice == "notes":

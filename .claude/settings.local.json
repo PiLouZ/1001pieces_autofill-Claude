@@ -55,7 +55,8 @@
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
       "Bash(sed:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Read(/tmp/**)"
     ],
     "deny": [],
     "additionalDirectories": [

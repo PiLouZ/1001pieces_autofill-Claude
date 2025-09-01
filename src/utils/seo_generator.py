@@ -375,7 +375,7 @@ class SEOGenerator:
         return result_str
     
     def _smart_truncate_title(self, title: str, max_length: int) -> str:
-        """Troncature intelligente pour le titre (inspiré du script.js)"""
+        """Troncature intelligente pour le titre"""
         if len(title) <= max_length:
             return title
         

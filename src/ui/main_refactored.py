@@ -19,6 +19,7 @@ from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
 # Phase 4: Import des services pour l'architecture découplée
 from ..services import SearchService, ExportService, ImportService, EventBus
+from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..services.export_service import ExportFormat
 
@@ -753,7 +754,7 @@ class MainWindow(QMainWindow):
         self._init_connections()
         
         # Chargement initial des données
-        self.load_data()
+        self.table_controller.load_data()
 
     def _init_components(self):
         """Initialiser les composants principaux"""
@@ -765,8 +766,16 @@ class MainWindow(QMainWindow):
             
             # Phase 4: Services découplés
             self.search_service = SearchService(self.db_manager)
+            self.advanced_search_service = AdvancedSearchService(self.search_service, self)
             self.export_service = ExportService(self.db_manager)
             self.import_service = ImportService(self.db_manager)
+            
+            # Phase 2.4: Service d'autocomplétion
+            from ..services.autocompletion_service import AutoCompletionService
+            self.autocompletion_service = AutoCompletionService(self.db_manager, self)
+            
+            # PHASE 2.3: Connecter signaux AdvancedSearchService
+            self._connect_advanced_search_signals()
             
             # Phase 2: Controller pour le tableau
             self.table_controller = TableController(self, self.db_manager)
@@ -815,11 +824,8 @@ class MainWindow(QMainWindow):
         self.auto_save_timer.timeout.connect(self._auto_save)
         self.auto_save_timer.start(Config.AUTO_SAVE_INTERVAL)
         
-        # Timer pour débounce de la recherche
-        self.search_timer = QTimer()
-        self.search_timer.setSingleShot(True)
-        self.search_timer.timeout.connect(self._perform_delayed_search)
-        self.pending_search_term = None
+        # PHASE 2.3: Recherche gérée par AdvancedSearchService
+        # Plus besoin de timer local - géré par le service
         
         # Timers de filtres maintenant dans TableController
         
@@ -878,6 +884,14 @@ class MainWindow(QMainWindow):
         event_bus.on('export.started', self._on_export_started)
         event_bus.on('export.completed', self._on_export_completed)
         event_bus.on('export.error', self._on_export_error)
+    
+    def _connect_advanced_search_signals(self):
+        """PHASE 2.3: Connecter les signaux du service de recherche avancé"""
+        if hasattr(self, 'advanced_search_service'):
+            self.advanced_search_service.search_started.connect(self._on_advanced_search_started)
+            self.advanced_search_service.search_completed.connect(self._on_advanced_search_completed)
+            self.advanced_search_service.search_error.connect(self._on_advanced_search_error)
+            self.advanced_search_service.export_buttons_update.connect(self._on_export_buttons_update)
         
         # Événements d'import
         event_bus.on('import.started', self._on_import_started)
@@ -902,6 +916,48 @@ class MainWindow(QMainWindow):
         """Gestionnaire événement erreur de recherche"""
         if hasattr(self, 'statusbar'):
             self.statusbar.showMessage(f"❌ Erreur recherche: {data['error']}", 5000)
+    
+    # PHASE 2.3: Gestionnaires AdvancedSearchService
+    def _on_advanced_search_started(self, term):
+        """Gestionnaire début recherche avancée"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"🔍 Recherche avancée: '{term}'...")
+    
+    def _on_advanced_search_completed(self, results, search_term):
+        """Gestionnaire fin recherche avancée - afficher résultats"""
+        try:
+            # Afficher les résultats via la méthode existante
+            self._display_search_results(results, search_term)
+            
+            # Message status
+            if hasattr(self, 'statusbar'):
+                self.statusbar.showMessage(
+                    f"✅ Recherche terminée: {len(results)} résultats", 
+                    Config.STATUS_MESSAGE_TIMEOUT
+                )
+        except Exception as e:
+            app_logger.error(f"Erreur affichage résultats recherche: {e}")
+    
+    def _on_advanced_search_error(self, error_msg):
+        """Gestionnaire erreur recherche avancée"""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(f"❌ {error_msg}", 5000)
+    
+    def _on_export_buttons_update(self, is_piece_search):
+        """Gestionnaire mise à jour boutons export selon recherche"""
+        # Tous les boutons d'export nécessitent une référence de pièce
+        if hasattr(self, 'export_csv_btn'):
+            self.export_csv_btn.setEnabled(is_piece_search)
+        if hasattr(self, 'export_html_brands_btn'):
+            self.export_html_brands_btn.setEnabled(is_piece_search)
+        if hasattr(self, 'export_html_details_btn'):
+            self.export_html_details_btn.setEnabled(is_piece_search)
+        
+        # Boutons SEO également limités aux références de pièce
+        if hasattr(self, 'meta_title_btn'):
+            self.meta_title_btn.setEnabled(is_piece_search)
+        if hasattr(self, 'meta_desc_btn'):
+            self.meta_desc_btn.setEnabled(is_piece_search)
     
     def _on_export_started(self, data):
         """Gestionnaire événement début d'export"""
@@ -1197,7 +1253,7 @@ class MainWindow(QMainWindow):
         self.first_page_btn = QPushButton("««")
         self.first_page_btn.setObjectName("paginationBtn")
         self.first_page_btn.setToolTip("Première page")
-        self.first_page_btn.clicked.connect(lambda: self._go_to_page(0))
+        self.first_page_btn.clicked.connect(lambda: self._go_to_page(1))
         pagination_layout.addWidget(self.first_page_btn)
         
         self.prev_page_btn = QPushButton("«")
@@ -1437,13 +1493,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes de gestion des données ---
 
-    def load_data(self, search_term: str = None, is_search: bool = False):
-        """Charger les données via TableController"""
-        # Stocker le terme de recherche courant pour les autres méthodes
-        self.current_search_term = search_term
-        
-        # Déléguer au TableController
-        self.table_controller.load_data(search_term, is_search)    
     def _fill_table_chunked(self, records: List, progress_dialog, search_term):
         """Remplissage optimisé par chunks pour améliorer la responsivité"""
         import time
@@ -1551,7 +1600,12 @@ class MainWindow(QMainWindow):
         
         # Optimisation: Mise en évidence des résultats de recherche (sauf pour la colonne Nb Pièces)
         if search_term and col_idx < len(Config.DB_HEADERS):
-            self._apply_search_highlight(item, search_term)
+            # PHASE 2.3: Utiliser AdvancedSearchService pour highlighting
+            if hasattr(self, 'advanced_search_service'):
+                self.advanced_search_service.apply_search_highlight(item, search_term)
+            else:
+                # Fallback vers ancienne méthode
+                self._apply_search_highlight(item, search_term)
         
         return item
     
@@ -1637,7 +1691,7 @@ class MainWindow(QMainWindow):
                 self.table_controller.current_sort_column = self.current_sort_column
                 self.table_controller.current_sort_order = self.current_sort_order
             
-            self.load_data(search_term, is_search=bool(search_term))
+            self.table_controller.load_data(search_term, is_search=bool(search_term))
             
         except Exception as e:
             app_logger.error(f"Erreur lors de l'application du tri: {e}")
@@ -1685,16 +1739,16 @@ class MainWindow(QMainWindow):
         try:
             if self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
                 total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
-                current_page = getattr(self.table_controller, 'current_page', 0)
-                current_page_display = current_page + 1
+                current_page = getattr(self.table_controller, 'current_page', 1)
+                current_page_display = current_page
                 
                 self.page_info_label.setText(f"Page {current_page_display} / {total_pages}")
                 
                 # Activer/désactiver les boutons
-                self.first_page_btn.setEnabled(current_page > 0)
-                self.prev_page_btn.setEnabled(current_page > 0)
-                self.next_page_btn.setEnabled(current_page < total_pages - 1)
-                self.last_page_btn.setEnabled(current_page < total_pages - 1)
+                self.first_page_btn.setEnabled(current_page > 1)
+                self.prev_page_btn.setEnabled(current_page > 1)
+                self.next_page_btn.setEnabled(current_page < total_pages)
+                self.last_page_btn.setEnabled(current_page < total_pages)
                 
                 # Afficher les contrôles
                 for btn in [self.first_page_btn, self.prev_page_btn, self.next_page_btn, self.last_page_btn]:
@@ -1709,43 +1763,60 @@ class MainWindow(QMainWindow):
         except Exception as e:
             app_logger.error(f"Erreur mise à jour pagination: {e}")
     
+    def _reload_current_search(self):
+        """Recharger les données avec la recherche et filtres actuels (factorisation pagination)"""
+        # DEBUG: Analyser tous les états possibles
+        tc_term = getattr(self.table_controller, 'pending_search_term', 'NON_DEFINI') if hasattr(self, 'table_controller') else 'PAS_TC'
+        as_term = self.advanced_search_service.get_current_search_term() if hasattr(self, 'advanced_search_service') else 'PAS_AS'
+        main_term = getattr(self, 'current_search_term', 'NON_DEFINI')
+        search_input_text = self.search_input.text().strip() if hasattr(self, 'search_input') else 'PAS_INPUT'
+        
+        app_logger.debug(f"DEBUG _reload_current_search - États:")
+        app_logger.debug(f"  TableController.pending_search_term: '{tc_term}'")
+        app_logger.debug(f"  AdvancedSearchService.current_search_term: '{as_term}'")
+        app_logger.debug(f"  main_refactored.current_search_term: '{main_term}'")
+        app_logger.debug(f"  search_input.text(): '{search_input_text}'")
+        
+        search_term = self._get_current_search_term()
+        app_logger.debug(f"DEBUG _reload_current_search - terme final choisi: '{search_term}'")
+        self.table_controller.load_data(search_term, is_search=bool(search_term))
+    
     def _next_page(self):
         """Aller à la page suivante"""
+        app_logger.debug(f"DEBUG _next_page appelée - total_rows: {self.total_rows}")
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page < total_pages - 1:
+            current_page = self.table_controller.current_page if hasattr(self.table_controller, 'current_page') else 0
+            app_logger.debug(f"DEBUG _next_page - current_page: {current_page}, total_pages: {total_pages}")
+            if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page < total_pages:
                 self.table_controller.current_page += 1
-                # Utiliser la recherche parsée actuelle
-                search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-                self.load_data(search_term, is_search=bool(search_term))
+                app_logger.debug(f"DEBUG _next_page - nouvelle current_page: {self.table_controller.current_page}, appel _reload_current_search()")
+                self._reload_current_search()
+            else:
+                app_logger.debug("DEBUG _next_page - conditions non remplies, pas de navigation")
     
     def _previous_page(self):
         """Aller à la page précédente"""
-        if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page > 0:
+        if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page > 1:
             self.table_controller.current_page -= 1
-            search_text = self.search_input.text()
-            self.load_data(search_text, is_search=bool(search_text.strip()))
+            self._reload_current_search()
     
     def _go_to_page(self, page: int):
-        """Aller à une page spécifique"""
+        """Aller à une page spécifique (page base 1)"""
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            if 0 <= page < total_pages:
+            if 1 <= page <= total_pages:
                 if hasattr(self.table_controller, 'current_page'):
                     self.table_controller.current_page = page
-                # Utiliser la recherche parsée actuelle
-                search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-                self.load_data(search_term, is_search=bool(search_term))
+                self._reload_current_search()
     
     def _go_to_last_page(self):
         """Aller à la dernière page"""
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
             if hasattr(self.table_controller, 'current_page'):
-                self.table_controller.current_page = max(0, total_pages - 1)
-            # Utiliser la recherche parsée actuelle
-            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-            self.load_data(search_term)
+                self.table_controller.current_page = total_pages
+            self._reload_current_search()
     
     def _change_page_size(self, size_text: str):
         """Changer la taille de page"""
@@ -1757,10 +1828,8 @@ class MainWindow(QMainWindow):
                 self.page_size = int(size_text)
                 
             if hasattr(self.table_controller, 'current_page'):
-                self.table_controller.current_page = 0  # Retour à la première page
-            # Utiliser la recherche parsée actuelle
-            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-            self.load_data(search_term, is_search=bool(search_term))
+                self.table_controller.current_page = 1  # Retour à la première page
+            self._reload_current_search()
             
         except ValueError:
             pass  # Ignorer les valeurs non valides
@@ -1783,7 +1852,7 @@ class MainWindow(QMainWindow):
                     self.use_pagination = False
                     self.show_all_btn.setText("📄 Pagination")
                     self.show_all_btn.setToolTip("Revenir à l'affichage paginé")
-                    self.load_data()
+                    self.table_controller.load_data()
             else:
                 # Revenir en mode pagination
                 self.use_pagination = True
@@ -1791,7 +1860,7 @@ class MainWindow(QMainWindow):
                 self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
                 if hasattr(self.table_controller, 'current_page'):
                     self.table_controller.current_page = 0
-                self.load_data()
+                self.table_controller.load_data()
                 
         except Exception as e:
             app_logger.error(f"Erreur basculement affichage: {e}")
@@ -1855,134 +1924,16 @@ class MainWindow(QMainWindow):
         except Exception as e:
             app_logger.error(f"Erreur navigation cellule: {e}")
     
-    def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "") -> str:
-        """Afficher une fenêtre d'auto-complétion dédiée"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle(title)
-        dialog.setMinimumSize(400, 300)
-        dialog.setModal(True)
-        
-        layout = QVBoxLayout(dialog)
-        
-        # Label d'instruction
-        instruction_label = QLabel(label)
-        layout.addWidget(instruction_label)
-        
-        # Champ de saisie avec valeur actuelle
-        input_field = QLineEdit(current_value)
-        input_field.setPlaceholderText("Tapez pour filtrer la liste...")
-        layout.addWidget(input_field)
-        
-        # Liste des valeurs existantes
-        values_list = QListWidget()
-        layout.addWidget(values_list)
-        
-        # Récupérer les valeurs de la base de données
-        try:
-            query = f"SELECT DISTINCT [{db_field}] FROM appareils WHERE [{db_field}] IS NOT NULL AND [{db_field}] != '' ORDER BY [{db_field}] LIMIT 200"
-            results = self.db_manager.execute_custom_query(query)
-            all_values = [row[0] for row in results if row[0] and row[0].strip()]
-            
-            def update_list():
-                """Mettre à jour la liste selon le filtre"""
-                filter_text = input_field.text().lower()
-                values_list.clear()
-                
-                for value in all_values:
-                    if not filter_text or filter_text in value.lower():
-                        item = QListWidgetItem(value)
-                        values_list.addItem(item)
-                        
-                        # Sélectionner l'item qui correspond à la valeur actuelle
-                        if value == current_value:
-                            values_list.setCurrentItem(item)
-            
-            # Connecter le filtrage
-            input_field.textChanged.connect(update_list)
-            
-            # Double-clic pour valider
-            def on_item_double_clicked(item):
-                input_field.setText(item.text())
-                dialog.accept()
-            
-            values_list.itemDoubleClicked.connect(on_item_double_clicked)
-            
-            # Clic simple pour remplir le champ
-            def on_item_clicked(item):
-                input_field.setText(item.text())
-            
-            values_list.itemClicked.connect(on_item_clicked)
-            
-            # Initialiser la liste
-            update_list()
-            
-        except Exception as e:
-            QMessageBox.warning(dialog, "Erreur", f"Impossible de charger les valeurs: {e}")
-        
-        # Boutons
-        buttons_layout = QHBoxLayout()
-        
-        ok_button = QPushButton("Valider")
-        ok_button.clicked.connect(dialog.accept)
-        ok_button.setDefault(True)
-        
-        cancel_button = QPushButton("Annuler")
-        cancel_button.clicked.connect(dialog.reject)
-        
-        clear_button = QPushButton("Effacer")
-        clear_button.clicked.connect(lambda: input_field.clear())
-        
-        buttons_layout.addWidget(clear_button)
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(cancel_button)
-        buttons_layout.addWidget(ok_button)
-        
-        layout.addLayout(buttons_layout)
-        
-        # Focus sur le champ de saisie
-        input_field.setFocus()
-        input_field.selectAll()
-        
-        # Afficher le dialogue
-        if dialog.exec_() == QDialog.Accepted:
-            return input_field.text().strip()
-        else:
-            return None
     
     def _show_column_values_list(self):
-        """Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D)"""
+        """Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D) - Délégation au service"""
         try:
             current_item = self.table.currentItem()
-            if not current_item:
-                return
-                
             current_col = self.table.currentColumn()
-            if current_col < 0:
-                return
-                
-            # Récupérer le nom du champ DB et de la colonne UI
-            db_field = self._get_db_field_name(current_col)
-            column_name = Config.UI_HEADERS[current_col] if current_col < len(Config.UI_HEADERS) else "Colonne"
             
-            if not db_field:
-                return
-                
-            # Créer une fenêtre dédiée selon la colonne
-            if db_field == 'type':
-                dialog_title = "Auto-complétion Type"
-                dialog_label = "Sélectionnez ou saisissez un type d'appareil :"
-            elif db_field == 'manufacturer':
-                dialog_title = "Auto-complétion Fabricant"  
-                dialog_label = "Sélectionnez ou saisissez un fabricant :"
-            else:
-                dialog_title = f"Auto-complétion {column_name}"
-                dialog_label = f"Sélectionnez ou saisissez une valeur pour {column_name} :"
-            
-            # Créer la fenêtre d'auto-complétion
-            selected_value = self._show_autocompletion_dialog(
-                dialog_title, dialog_label, db_field, current_item.text()
+            # Phase 2.4: Déléguer au service d'autocomplétion
+            selected_value = self.autocompletion_service.show_column_values_dialog(
+                self.table, current_item, current_col
             )
             
             if selected_value is not None:
@@ -1993,11 +1944,9 @@ class MainWindow(QMainWindow):
                 self._on_cell_changed(current_item)
                     
         except Exception as e:
-                app_logger.error(f"Erreur récupération valeurs colonne: {e}")
-                QMessageBox.warning(self, "Erreur", f"Impossible de récupérer les valeurs: {e}")
-                
-        except Exception as e:
             app_logger.error(f"Erreur affichage valeurs colonne: {e}")
+            QMessageBox.warning(self, "Erreur", f"Impossible de récupérer les valeurs: {e}")
+    
     
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
@@ -2175,7 +2124,7 @@ class MainWindow(QMainWindow):
         
         try:
             # Détecter si c'est une recherche multiple OR pour proposer sélection de référence
-            parsed_term = getattr(self, 'pending_search_term', search_term)
+            parsed_term = self._get_current_search_term() or search_term
             
             # Gérer différemment selon le format d'export
             if export_format == ExportFormat.CSV:
@@ -2193,7 +2142,7 @@ class MainWindow(QMainWindow):
                             f"Recherche multiple détectée ({len(terms)} références).\n"
                             f"Termes: {', '.join(terms)}\n"
                             f"Choisissez la référence à utiliser pour l'export :",
-                            terms[0]  # Premier terme par défaut
+                            self._extract_first_term(terms[0]) if terms else ""  # Premier terme par défaut
                         )
                         
                         if not selected_reference:
@@ -2210,7 +2159,7 @@ class MainWindow(QMainWindow):
                         "Référence pour l'export CSV",
                         f"Référence détectée : {search_term}\n"
                         f"Confirmez ou modifiez la référence à utiliser pour la première colonne :",
-                        search_term  # Terme de recherche actuel par défaut
+                        self._extract_first_term(search_term)  # Premier terme seulement
                     )
                     
                     if not selected_reference:
@@ -2223,8 +2172,14 @@ class MainWindow(QMainWindow):
                 export_data_term = parsed_term if isinstance(parsed_term, dict) else search_term
                 export_reference = "recherche_multiple"  # Nom générique pour HTML
             
-            # Charger les résultats pour vérification
-            results = self.db_manager.load_data(search_term=parsed_term)
+            # Charger les résultats pour vérification - utiliser la même logique que TableController
+            if search_term and ('&&' in search_term or '||' in search_term):
+                # Recherche avancée avec opérateurs
+                parsed_search_term = self._parse_advanced_search(search_term)
+                results = self.db_manager.load_data(parsed_search_term, {}, None, None, None, None, False)
+            else:
+                # Recherche simple
+                results = self.db_manager.load_data(search_term, {}, None, None, None, None, False)
             if not results:
                 QMessageBox.information(self, "Information", "Aucun résultat trouvé pour cette recherche")
                 return
@@ -2316,45 +2271,9 @@ class MainWindow(QMainWindow):
     def _export_html_with_reference(self, data, reference: str, export_format: ExportFormat) -> bool:
         """Exporter en HTML avec référence personnalisée"""
         try:
-            if export_format == ExportFormat.HTML_BRANDS:
-                # Extraire les marques uniques
-                brands = set()
-                for record in data:
-                    manufacturer = record[1]  # Index 1 = manufacturer
-                    if manufacturer and manufacturer.strip():
-                        brands.add(manufacturer.strip())
-                
-                # Générer les liens HTML
-                html_links = []
-                for brand in sorted(brands):
-                    html_links.append(f'<a href="#{brand}">{brand}</a>')
-                
-                result = ' '.join(html_links)
-            else:  # HTML_DETAILS
-                # Version simplifiée des détails HTML
-                brands_data = {}
-                for record in data:
-                    manufacturer = record[1]  # Index 1 = manufacturer
-                    ref_modele = record[2]    # Index 2 = ref_modele
-                    commercial_ref = record[3] # Index 3 = commercial_ref
-                    
-                    if manufacturer and manufacturer.strip():
-                        if manufacturer not in brands_data:
-                            brands_data[manufacturer] = []
-                        brands_data[manufacturer].append({
-                            'ref_modele': ref_modele or '',
-                            'commercial_ref': commercial_ref or ''
-                        })
-                
-                # Générer HTML simplifié
-                html_parts = []
-                for brand in sorted(brands_data.keys()):
-                    html_parts.append(f'<h3>{brand}</h3>')
-                    for item in brands_data[brand]:
-                        ref_text = f"{item['ref_modele']} - {item['commercial_ref']}" if item['ref_modele'] and item['commercial_ref'] else (item['ref_modele'] or item['commercial_ref'])
-                        html_parts.append(f'<p>{ref_text}</p>')
-                
-                result = '\n'.join(html_parts)
+            # Phase 2.3: Utiliser le service d'export factorié
+            # Utiliser le service d'export existant avec les méthodes HTML ajoutées
+            result = self.export_service.export_to_html(data, export_format)
             
             # Copier dans le presse-papiers
             from PyQt5.QtWidgets import QApplication
@@ -2640,8 +2559,8 @@ class MainWindow(QMainWindow):
             column, text = self.pending_column_filter
             
             # Effectuer le filtrage réel
-            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-            self.load_data(search_term)
+            search_term = self._get_current_search_term()
+            self.table_controller.load_data(search_term)
             
             # Nettoyer
             self.pending_column_filter = None
@@ -2722,33 +2641,60 @@ class MainWindow(QMainWindow):
         }
     
     def _search_table(self, text: str):
-        """Rechercher dans le tableau avec débounce et support avancé"""
-        search_term = text.strip()
-        
-        # Phase 4: Parser la recherche avancée mais garder terme simple si pas d'opérateurs
-        if search_term and ('&&' in search_term or '||' in search_term):
-            parsed_search = self._parse_advanced_search(search_term)
-            self.pending_search_term = parsed_search
+        """PHASE 2.3: Recherche via AdvancedSearchService"""
+        if hasattr(self, 'advanced_search_service'):
+            # Déléguer au service avancé
+            self.advanced_search_service.search_with_debounce(text, 500)
         else:
-            # Terme simple - utiliser directement pour éviter problèmes de cache
-            self.pending_search_term = search_term
+            # Fallback vers ancienne méthode
+            app_logger.warning("AdvancedSearchService non disponible, utilisation méthode fallback")
+            self._search_table_fallback(text)
+    
+    def _search_table_fallback(self, text: str):
+        """Méthode fallback temporaire pour la recherche"""
+        # Simple chargement de toutes les données
+        self.table_controller.load_data(text.strip() if text.strip() else None)
+    
+    def _extract_first_term(self, search_text: str) -> str:
+        """Extraire le premier terme d'une recherche (avant || ou &&)"""
+        if not search_text:
+            return ""
         
-        # Arrêter le timer précédent et démarrer un nouveau délai
-        self.search_timer.stop()
-        self.search_timer.start(500)  # Attendre 500ms avant de lancer la recherche
+        # Séparer par || d'abord, puis par &&
+        for separator in ['||', '&&']:
+            if separator in search_text:
+                return search_text.split(separator)[0].strip()
         
-        # Activer/désactiver les boutons d'export et SEO uniquement pour les références de pièce
-        has_search = bool(search_term)
-        is_piece_search = has_search and self._is_piece_reference_search()
+        # Si pas d'opérateur, retourner tel quel
+        return search_text.strip()
+    
+    def _get_current_search_term(self):
+        """PHASE 2.3: Récupérer le terme de recherche actuel - SOURCE DE VÉRITÉ = champ de recherche visible"""
+        # SOURCE DE VÉRITÉ: Le champ de recherche visible par l'utilisateur
+        if hasattr(self, 'search_input') and self.search_input:
+            visible_term = self.search_input.text().strip()
+            app_logger.debug(f"DEBUG _get_current_search_term - champ visible: '{visible_term}'")
+            if visible_term:
+                return visible_term
         
-        # Tous les boutons d'export nécessitent une référence de pièce
-        self.export_csv_btn.setEnabled(is_piece_search)
-        self.export_html_brands_btn.setEnabled(is_piece_search)
-        self.export_html_details_btn.setEnabled(is_piece_search)
+        # Fallback 1: TableController car c'est lui qui gère les recherches
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'pending_search_term'):
+            term = self.table_controller.pending_search_term
+            app_logger.debug(f"DEBUG _get_current_search_term - TableController: {term}")
+            if term:
+                return term
+                
+        # Fallback 2: AdvancedSearchService  
+        if hasattr(self, 'advanced_search_service'):
+            term = self.advanced_search_service.get_current_search_term()
+            app_logger.debug(f"DEBUG _get_current_search_term - AdvancedSearchService: {term}")
+            if term:
+                return term
         
-        # Boutons SEO également limités aux références de pièce
-        self.meta_title_btn.setEnabled(is_piece_search)
-        self.meta_desc_btn.setEnabled(is_piece_search)
+        # Fallback 3: current_search_term de main_refactored
+        term = getattr(self, 'current_search_term', None)
+        app_logger.debug(f"DEBUG _get_current_search_term - main_refactored: {term}")
+        return term
     
     def _perform_delayed_search(self):
         """Phase 4: Effectuer la recherche via le service avec pagination correcte"""
@@ -2785,7 +2731,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"⚠️ Erreur service recherche: {e}")
                 # Fallback vers l'ancienne méthode
-                self.load_data(self.pending_search_term, is_search=True)
+                self.table_controller.load_data(self.pending_search_term, is_search=True)
     
     def _display_search_results(self, results: List, search_term: str):
         """Phase 4: Afficher les résultats de recherche du service"""
@@ -3468,15 +3414,15 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         
         # Action modifier
-        edit_action = menu.addAction("✏️ Modifier")
+        edit_action = menu.addAction("Modifier")
         edit_action.triggered.connect(lambda: self._edit_piece(item))
         
         # Action copier
-        copy_action = menu.addAction("📋 Copier")
+        copy_action = menu.addAction("Copier")
         copy_action.triggered.connect(lambda: self._copy_piece(item))
         
         # Action supprimer
-        delete_action = menu.addAction("🗑️ Supprimer")
+        delete_action = menu.addAction("Supprimer")
         delete_action.triggered.connect(lambda: self._delete_piece(item))
         
         # Vérifier s'il y a plusieurs appareils sélectionnés
@@ -4111,7 +4057,7 @@ class MainWindow(QMainWindow):
             
             if results:
                 self._show_import_results_new(results)
-                self.load_data()  # Rafraîchir l'affichage
+                self.table_controller.load_data()  # Rafraîchir l'affichage
         
     
     def _detect_csv_columns(self, filename):
@@ -5289,7 +5235,7 @@ class MainWindow(QMainWindow):
                     # Désactiver le filtre si il n'y a plus d'appareils incomplets
                     if self.show_incomplete_only:
                         self.show_incomplete_only = False
-                        self.load_data()
+                        self.table_controller.load_data()
         except Exception as e:
             print(f"Erreur lors de la mise à jour du bouton incomplètes: {e}")
 
@@ -5315,10 +5261,11 @@ class MainWindow(QMainWindow):
             # Le style est géré par le CSS moderne
         
         # Recharger les données avec ou sans filtre
-        self.current_page = 0  # Retour à la première page
+        # NOTE: Cette ligne semble erronée, current_page devrait être sur table_controller
+        # self.current_page = 1  # Retour à la première page
         # Utiliser la recherche parsée actuelle
         search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-        self.load_data(search_term)
+        self.table_controller.load_data(search_term)
     
     def _force_refresh_display(self, reset_page=False, clear_filters=False):
         """Forcer le rafraîchissement complet de l'affichage du tableau"""
@@ -5341,7 +5288,7 @@ class MainWindow(QMainWindow):
                 self.table.blockSignals(False)
             
             # Recharger avec les critères appropriés
-            self.load_data(temp_search)
+            self.table_controller.load_data(temp_search)
             
             # Forcer la mise à jour de l'interface
             self.table.viewport().update()
@@ -5576,7 +5523,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             for filter_widget in self.table_controller.filter_widgets.values():
                 if filter_widget is not None:
                     filter_widget.clear()
-        self.load_data()
+        self.table_controller.load_data()
 
     # --- Méthodes d'événements ---
 
@@ -5663,7 +5610,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 
                 if results:
                     self._show_import_results_new(results)
-                    self.load_data()  # Rafraîchir l'affichage
+                    self.table_controller.load_data()  # Rafraîchir l'affichage
                 
                 event.acceptProposedAction()
                 return
@@ -5707,7 +5654,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             results = self.import_manager.import_from_drag_drop([file_path])
             if results:
                 self._show_import_results_new(results)
-                self.load_data()
+                self.table_controller.load_data()
                 return
         except Exception as e:
             app_logger.warning(f"Échec ImportManager drag&drop CSV, fallback vers ancien système: {e}")
@@ -5802,7 +5749,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             results = self.import_manager.import_from_drag_drop(file_paths)
             if results:
                 self._show_import_results_new(results)
-                self.load_data()
+                self.table_controller.load_data()
                 return
         except Exception as e:
             app_logger.warning(f"Échec ImportManager drag&drop PDF, fallback vers ancien système: {e}")
@@ -6212,8 +6159,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 super().keyPressEvent(event)
         elif event.key() == Qt.Key.Key_F5:
             # Utiliser la recherche parsée actuelle
-            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-            self.load_data(search_term)
+            search_term = self._get_current_search_term()
+            self.table_controller.load_data(search_term)
         elif event.key() == Qt.Key.Key_F12:
             self._open_log_viewer()
         elif event.key() == Qt.Key.Key_Escape:
@@ -6230,8 +6177,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Recharger et se positionner sur la nouvelle ligne
             # Utiliser la recherche parsée actuelle
-            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-            self.load_data(search_term)
+            search_term = self._get_current_search_term()
+            self.table_controller.load_data(search_term)
             
             if self.table.rowCount() > 0:
                 self.table.setCurrentCell(0, 0)  # Première ligne (tri DESC)
@@ -6751,7 +6698,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """Rafraîchir l'application"""
         # Utiliser la recherche parsée actuelle
         search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-        self.load_data(search_term)
+        self.table_controller.load_data(search_term)
         self.statusbar.showMessage("Application rafraîchie", Config.STATUS_MESSAGE_TIMEOUT)
     
     def _refresh_pieces_count_column(self):

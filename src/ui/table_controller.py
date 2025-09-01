@@ -52,6 +52,22 @@ class CustomTableWidget(QTableWidget):
                 main_window._show_column_values_list()
             return
         
+        # Gestion de la touche Entrée pour passer à la cellule suivante vers le bas
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            current_item = self.currentItem()
+            if current_item:
+                current_row = current_item.row()
+                current_col = current_item.column()
+                
+                # Passer à la cellule suivante vers le bas
+                if current_row < self.rowCount() - 1:
+                    next_row = current_row + 1
+                    next_item = self.item(next_row, current_col)
+                    if next_item:
+                        self.setCurrentItem(next_item)
+                        self.setFocus()  # S'assurer que le tableau garde le focus
+            return
+        
         # Appeler la méthode parent pour les autres touches
         super().keyPressEvent(event)
 
@@ -86,6 +102,7 @@ class TableController:
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._perform_delayed_search)
         self.pending_search_term = None
+        self.current_search_term = None  # Terme de recherche persistant pour pagination
         
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
@@ -166,8 +183,14 @@ class TableController:
         self.table.horizontalHeader().setSortIndicatorShown(True)
         self.table.horizontalHeader().sectionClicked.connect(self._on_header_click)
         
+        # Log des largeurs de colonnes quand elles sont modifiées
+        self.table.horizontalHeader().sectionResized.connect(self._on_column_resized)
+        
         # Appliquer la visibilité des colonnes
         self._apply_column_visibility()
+        
+        # Définir les largeurs par défaut des colonnes
+        self._set_default_column_widths()
         
         layout.addWidget(self.table)
         
@@ -208,6 +231,7 @@ class TableController:
         """Charger les données dans le tableau avec pagination et filtres"""
         import time
         start_time = time.time()
+        
         
         try:
             # Calculer les paramètres de pagination
@@ -400,6 +424,43 @@ class TableController:
         except Exception as e:
             app_logger.error(f"Erreur application visibilité colonnes: {e}")
     
+    def _set_default_column_widths(self):
+        """Définir les largeurs par défaut des colonnes"""
+        try:
+            # Largeurs optimisées selon les préférences utilisateur
+            # Basé sur les ajustements manuels : 2025-09-01 09:01:21
+            default_widths = {
+                0: 120,  # Type
+                1: 124,  # Fabricant
+                2: 150,  # Référence Modèle
+                3: 214,  # Référence Commerciale
+                4: 166,  # Autre Référence
+                5: 100,  # Catégorie (peut être cachée)
+                6: 200,  # Notes (peut être cachée)
+                7: 52,   # Nb Pièces
+            }
+            
+            app_logger.info("Configuration largeurs colonnes par défaut...")
+            
+            # Appliquer les largeurs
+            for col_index, width in default_widths.items():
+                if col_index < self.table.columnCount():
+                    self.table.setColumnWidth(col_index, width)
+                    col_name = Config.UI_HEADERS[col_index] if col_index < len(Config.UI_HEADERS) else f"Col{col_index}"
+                    app_logger.debug(f"Largeur définie: {col_name} = {width}px")
+            
+            # Log des largeurs appliquées
+            current_widths = []
+            for i in range(self.table.columnCount()):
+                width = self.table.columnWidth(i)
+                col_name = Config.UI_HEADERS[i] if i < len(Config.UI_HEADERS) else f"Col{i}"
+                current_widths.append(f"{col_name}:{width}")
+            
+            print(f"🎯 LARGEURS PAR DÉFAUT APPLIQUÉES: {', '.join(current_widths)}")
+            
+        except Exception as e:
+            app_logger.error(f"Erreur définition largeurs par défaut: {e}")
+    
     def _on_header_click(self, logical_index: int):
         """Gestionnaire de clic sur les en-têtes pour le tri"""
         try:
@@ -424,9 +485,9 @@ class TableController:
             # 1. Essayer pending_search_term (recherche avec opérateurs || &&)
             if hasattr(self.parent_window, 'pending_search_term') and self.parent_window.pending_search_term:
                 search_term = self.parent_window.pending_search_term
-            # 2. Sinon, utiliser current_search_term
-            elif hasattr(self.parent_window, 'current_search_term') and self.parent_window.current_search_term:
-                search_term = self.parent_window.current_search_term
+            # 2. Sinon, utiliser current_search_term persistant du TableController
+            elif hasattr(self, 'current_search_term') and self.current_search_term:
+                search_term = self.current_search_term
             # 3. En dernier recours, prendre le texte direct de la barre de recherche
             elif hasattr(self.parent_window, 'search_input') and self.parent_window.search_input:
                 text = self.parent_window.search_input.text().strip()
@@ -516,21 +577,24 @@ class TableController:
         """Aller à la page suivante"""
         if self.current_page < self.total_pages:
             self.current_page += 1
-            search_term = getattr(self.parent_window, 'current_search_term', None)
+            # Utiliser le terme de recherche persistant pour pagination
+            search_term = getattr(self, 'current_search_term', None)
             self.load_data(search_term)
     
     def _previous_page(self):
         """Aller à la page précédente"""
         if self.current_page > 1:
             self.current_page -= 1
-            search_term = getattr(self.parent_window, 'current_search_term', None)
+            # Utiliser le terme de recherche persistant pour pagination
+            search_term = getattr(self, 'current_search_term', None)
             self.load_data(search_term)
     
     def _go_to_page(self, page: int):
         """Aller à une page spécifique"""
         if 1 <= page <= self.total_pages:
             self.current_page = page
-            search_term = getattr(self.parent_window, 'current_search_term', None)
+            # Utiliser le terme de recherche persistant pour pagination
+            search_term = getattr(self, 'current_search_term', None)
             self.load_data(search_term)
     
     def _change_page_size(self, size_text: str):
@@ -544,7 +608,8 @@ class TableController:
                 self.page_size = 100
         
         self.current_page = 1  # Reset à la première page
-        search_term = getattr(self.parent_window, 'current_search_term', None)
+        # Utiliser le terme de recherche persistant pour changement taille page
+        search_term = getattr(self, 'current_search_term', None)
         self.load_data(search_term)
     
     def _apply_column_filter(self, column: int, text: str):
@@ -558,8 +623,8 @@ class TableController:
         if hasattr(self, 'pending_column_filter') and self.pending_column_filter:
             column, text = self.pending_column_filter
             
-            # Effectuer le filtrage réel
-            search_term = getattr(self.parent_window, 'current_search_term', None)
+            # Effectuer le filtrage réel - utiliser terme persistant
+            search_term = getattr(self, 'current_search_term', None)
             self.load_data(search_term)
             
             # Nettoyer
@@ -665,6 +730,8 @@ class TableController:
         """Effectuer la recherche après le délai"""
         if self.pending_search_term is not None:
             search_term = self.pending_search_term if self.pending_search_term else None
+            # STOCKER le terme pour la pagination AVANT de le remettre à None
+            self.current_search_term = search_term
             self.load_data(search_term, is_search=bool(search_term))
             
             # Mettre à jour l'état des boutons d'export via le parent
@@ -677,6 +744,7 @@ class TableController:
     def _clear_advanced_search(self):
         """Effacer la recherche avancée"""
         self.advanced_search_input.clear()
+        self.current_search_term = None  # Nettoyer aussi le terme persistant
         self.load_data(None, is_search=False)
         
         # Désactiver les boutons d'export quand on vide la recherche
@@ -740,3 +808,25 @@ class TableController:
                     self.incomplete_filter_btn.hide()
         except Exception as e:
             print(f"Erreur mise à jour bouton incomplètes: {e}")
+    
+    def _on_column_resized(self, logical_index: int, old_size: int, new_size: int):
+        """Log des largeurs de colonnes quand elles sont modifiées"""
+        try:
+            # Récupérer le nom de la colonne
+            column_name = Config.UI_HEADERS[logical_index] if logical_index < len(Config.UI_HEADERS) else f"Colonne {logical_index}"
+            
+            # Log de la modification
+            app_logger.info(f"LARGEUR COLONNE MODIFIÉE: '{column_name}' (index {logical_index}) = {new_size}px (était {old_size}px)")
+            
+            # Afficher toutes les largeurs actuelles
+            current_widths = []
+            for i in range(self.table.columnCount()):
+                width = self.table.columnWidth(i)
+                col_name = Config.UI_HEADERS[i] if i < len(Config.UI_HEADERS) else f"Col{i}"
+                current_widths.append(f"{col_name}:{width}")
+            
+            app_logger.info(f"LARGEURS ACTUELLES: {', '.join(current_widths)}")
+            print(f"🔧 LARGEURS COLONNES: {', '.join(current_widths)}")
+            
+        except Exception as e:
+            app_logger.error(f"Erreur log largeur colonne: {e}")

@@ -3,12 +3,13 @@ Export Service - Phase 4 Architecture Refactoring
 Sépare la logique d'export de l'interface utilisateur
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import csv
 import json
 from datetime import datetime
 from ..data.database_manager import DatabaseManager
 from ..core.config import Config
+from ..core.logger import app_logger
 from .event_bus import event_bus
 
 try:
@@ -83,121 +84,199 @@ class ExportService:
             error_result = {
                 'success': False,
                 'error': str(e),
-                'format': export_format,
-                'search_term': search_term
+                'count': 0
             }
+            
             event_bus.emit('export.error', error_result)
             return error_result
     
-    def _prepare_export_data(self, results: List, include_pieces: bool = True) -> List[Dict[str, Any]]:
+    # Phase 2.3: Ajouter les méthodes HTML factorées ici
+    def export_to_html(self, data: List[Tuple], export_format: str) -> str:
+        """
+        Exporter les données au format HTML
+        
+        Args:
+            data: Liste des données (tuples avec id, manufacturer, ref_modele, commercial_ref...)
+            export_format: Format HTML souhaité (HTML_BRANDS ou HTML_DETAILS)
+            
+        Returns:
+            str: Code HTML généré
+        """
+        try:
+            if export_format == ExportFormat.HTML_BRANDS:
+                return self._generate_html_brands(data)
+            elif export_format == ExportFormat.HTML_DETAILS:
+                return self._generate_html_details(data)
+            else:
+                raise ValueError(f"Format d'export HTML non supporté: {export_format}")
+                
+        except Exception as e:
+            app_logger.error(f"Erreur export HTML: {e}")
+            raise
+    
+    def _generate_html_brands(self, data: List[Tuple]) -> str:
+        """Générer les liens HTML vers les marques"""
+        brands = set()
+        
+        for record in data:
+            if len(record) >= 2:
+                manufacturer = record[1]  # Index 1 = manufacturer
+                if manufacturer and manufacturer.strip():
+                    brands.add(manufacturer.strip())
+        
+        # Générer les liens HTML
+        html_links = []
+        for brand in sorted(brands):
+            html_links.append(f'<a href="#{brand}">{brand}</a>')
+        
+        return ' '.join(html_links)
+    
+    def _generate_html_details(self, data: List[Tuple]) -> str:
+        """Générer HTML détaillé avec références par marque"""
+        brands_data = {}
+        
+        # Grouper par marque
+        for record in data:
+            if len(record) >= 4:
+                manufacturer = record[1]  # Index 1 = manufacturer
+                ref_modele = record[2]    # Index 2 = ref_modele
+                commercial_ref = record[3] # Index 3 = commercial_ref
+                
+                if manufacturer and manufacturer.strip():
+                    if manufacturer not in brands_data:
+                        brands_data[manufacturer] = []
+                    brands_data[manufacturer].append({
+                        'ref_modele': ref_modele or '',
+                        'commercial_ref': commercial_ref or ''
+                    })
+        
+        # Générer HTML avec div vide entre les marques
+        html_parts = []
+        for i, brand in enumerate(sorted(brands_data.keys())):
+            # Ajouter div vide avant chaque marque sauf la première
+            if i > 0:
+                html_parts.append('<div>&nbsp;</div>')
+            
+            # En-tête de marque
+            html_parts.append(f'<div id="{brand}"><b><u>{brand}</u></b></div>')
+            
+            # Références de la marque
+            for item in brands_data[brand]:
+                ref_text = self._format_reference_text(item['ref_modele'], item['commercial_ref'])
+                html_parts.append(f'<div>{ref_text}</div>')
+        
+        return '\n'.join(html_parts)
+    
+    def _format_reference_text(self, ref_modele: str, commercial_ref: str) -> str:
+        """Formater le texte d'une référence"""
+        if ref_modele and commercial_ref:
+            return f"{ref_modele} - {commercial_ref}"
+        return ref_modele or commercial_ref or ""
+    
+    def _prepare_export_data(self, results: List[tuple], include_pieces: bool = True) -> List[Dict[str, Any]]:
         """Préparer les données pour l'export"""
         export_data = []
         
-        for result in results:
-            # result = (id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes, pieces_count)
+        for row in results:
+            # Structure de base pour les appareils
             row_data = {
-                'ID': result[0],
-                'Type': result[1] or '',
-                'Fabricant': result[2] or '',
-                'Référence Modèle': result[3] or '',
-                'Référence Commerciale': result[4] or '', 
-                'Autre Référence': result[5] or '',
-                'Catégorie': result[6] or '',
-                'Notes': result[7] or '',
-                'Nb Pièces': result[8] if len(result) > 8 else 0
+                'id': row[0],
+                'manufacturer': row[1],
+                'ref_modele': row[2],
+                'commercial_ref': row[3],
+                'type': row[4],
+                'other_ref': row[5] if len(row) > 5 else '',
+                'notes': row[6] if len(row) > 6 else ''
             }
             
-            # Ajouter les pièces associées si demandé
-            if include_pieces and len(result) > 8 and result[8] > 0:
+            # Ajouter les pièces si demandé
+            if include_pieces:
                 try:
-                    pieces = self.db_manager.execute_query("""
-                        SELECT p.ref_piece, p.description
-                        FROM pieces p
-                        JOIN piece_associations pa ON p.id = pa.piece_id  
-                        WHERE pa.appareil_id = ?
-                        ORDER BY p.ref_piece
-                    """, [result[0]])
-                    
-                    pieces_list = []
-                    for piece in pieces:
-                        piece_str = piece[0]
-                        if piece[1]:  # Description existe
-                            piece_str += f" ({piece[1]})"
-                        pieces_list.append(piece_str)
-                    
-                    row_data['Pièces Associées'] = ' | '.join(pieces_list)
+                    pieces = self.db_manager.get_pieces_for_device(row[0])
+                    row_data['pieces'] = pieces
+                    row_data['pieces_count'] = len(pieces)
                 except Exception as e:
-                    print(f"⚠️ Erreur chargement pièces pour appareil {result[0]}: {e}")
-                    row_data['Pièces Associées'] = 'Erreur chargement'
+                    app_logger.error(f"Erreur récupération pièces pour appareil {row[0]}: {e}")
+                    row_data['pieces'] = []
+                    row_data['pieces_count'] = 0
             
             export_data.append(row_data)
         
         return export_data
     
-    def _export_csv(self, data: List[Dict[str, Any]], output_file: str) -> None:
-        """Export au format CSV"""
-        if not data:
-            return
-        
+    def _export_csv(self, data: List[Dict[str, Any]], output_file: str):
+        """Export CSV"""
         with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = list(data[0].keys())
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if not data:
+                return
             
+            # Headers de base
+            headers = ['id', 'manufacturer', 'ref_modele', 'commercial_ref', 'type', 'other_ref', 'notes']
+            
+            # Ajouter headers pour pièces si présentes
+            if 'pieces' in data[0]:
+                headers.extend(['pieces_count', 'pieces_list'])
+            
+            writer = csv.DictWriter(csvfile, fieldnames=headers)
             writer.writeheader()
+            
             for row in data:
-                writer.writerow(row)
+                # Préparer la ligne d'export
+                export_row = {k: v for k, v in row.items() if k in headers}
+                
+                # Formater la liste des pièces
+                if 'pieces' in row:
+                    export_row['pieces_list'] = '; '.join([p.get('ref_piece', '') for p in row['pieces']])
+                
+                writer.writerow(export_row)
     
-    def _export_excel(self, data: List[Dict[str, Any]], output_file: str) -> None:
-        """Export au format Excel"""
+    def _export_excel(self, data: List[Dict[str, Any]], output_file: str):
+        """Export Excel"""
         if not EXCEL_AVAILABLE:
-            raise ImportError("openpyxl n'est pas installé pour l'export Excel")
+            raise ImportError("openpyxl n'est pas installé. Impossible d'exporter en Excel.")
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Export"
         
         if not data:
+            wb.save(output_file)
             return
         
-        workbook = Workbook()
-        worksheet = workbook.active
-        worksheet.title = "Export Résultats"
+        # Headers
+        headers = ['ID', 'Fabricant', 'Réf. Modèle', 'Réf. Commerciale', 'Type', 'Autre Réf.', 'Notes']
+        if 'pieces' in data[0]:
+            headers.extend(['Nb Pièces', 'Liste Pièces'])
         
-        # En-têtes
-        fieldnames = list(data[0].keys())
-        for col, header in enumerate(fieldnames, 1):
-            worksheet.cell(row=1, column=col, value=header)
+        # Écrire les headers
+        for col, header in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=header)
         
-        # Données
+        # Écrire les données
         for row_idx, row_data in enumerate(data, 2):
-            for col_idx, field in enumerate(fieldnames, 1):
-                worksheet.cell(row=row_idx, column=col_idx, value=row_data.get(field, ''))
+            ws.cell(row=row_idx, column=1, value=row_data.get('id'))
+            ws.cell(row=row_idx, column=2, value=row_data.get('manufacturer'))
+            ws.cell(row=row_idx, column=3, value=row_data.get('ref_modele'))
+            ws.cell(row=row_idx, column=4, value=row_data.get('commercial_ref'))
+            ws.cell(row=row_idx, column=5, value=row_data.get('type'))
+            ws.cell(row=row_idx, column=6, value=row_data.get('other_ref'))
+            ws.cell(row=row_idx, column=7, value=row_data.get('notes'))
+            
+            if 'pieces' in row_data:
+                ws.cell(row=row_idx, column=8, value=row_data.get('pieces_count', 0))
+                pieces_list = '; '.join([p.get('ref_piece', '') for p in row_data.get('pieces', [])])
+                ws.cell(row=row_idx, column=9, value=pieces_list)
         
-        # Auto-ajuster les colonnes
-        for column in worksheet.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            worksheet.column_dimensions[column_letter].width = adjusted_width
-        
-        workbook.save(output_file)
+        wb.save(output_file)
     
-    def _export_json(self, data: List[Dict[str, Any]], output_file: str) -> None:
-        """Export au format JSON"""
-        export_obj = {
+    def _export_json(self, data: List[Dict[str, Any]], output_file: str):
+        """Export JSON"""
+        export_info = {
             'export_date': datetime.now().isoformat(),
-            'total_records': len(data),
+            'format': 'json',
+            'count': len(data),
             'data': data
         }
         
         with open(output_file, 'w', encoding='utf-8') as jsonfile:
-            json.dump(export_obj, jsonfile, indent=2, ensure_ascii=False)
-    
-    def get_supported_formats(self) -> List[str]:
-        """Obtenir la liste des formats supportés"""
-        formats = [ExportFormat.CSV, ExportFormat.JSON]
-        if EXCEL_AVAILABLE:
-            formats.append(ExportFormat.EXCEL)
-        return formats
+            json.dump(export_info, jsonfile, indent=2, ensure_ascii=False)

@@ -165,15 +165,19 @@ class CamelotPDFExtractor:
             # Nettoyer chaque cellule
             cleaned_row = []
             for cell in row:
-                cleaned_cell = str(cell).strip()
-                # Supprimer les astérisques en début
-                if cleaned_cell.startswith('*'):
-                    cleaned_cell = cleaned_cell[1:].strip()
+                # Sécuriser contre les valeurs None
+                if cell is None:
+                    cleaned_cell = ''
+                else:
+                    cleaned_cell = str(cell).strip()
+                    # Supprimer les astérisques en début
+                    if cleaned_cell.startswith('*'):
+                        cleaned_cell = cleaned_cell[1:].strip()
                 cleaned_row.append(cleaned_cell)
             
             # Garder les lignes qui ont du contenu utile (au moins une cellule non vide)
             # Plus permissif comme l'import manuel
-            if any(cell.strip() for cell in cleaned_row):
+            if any(cell.strip() if cell else False for cell in cleaned_row):
                 cleaned_data.append(cleaned_row)
         
         return cleaned_data

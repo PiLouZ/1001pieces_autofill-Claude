@@ -127,6 +127,9 @@ class DatabaseManager:
         self.cursor = None
         # Phase 3: Initialiser le cache de recherche optimisé
         self.search_cache = SearchCache(Config.SEARCH_CACHE_SIZE) if Config.FULLTEXT_CACHE_ENABLED else None
+        # Phase 2.3: Initialiser le service d'invalidation de cache (import local pour éviter cycle)
+        from ..services.search_cache_service import SearchCacheInvalidationService
+        self.cache_invalidation = SearchCacheInvalidationService(self)
         self._connect()
         self._setup_database()
     
@@ -940,6 +943,11 @@ class DatabaseManager:
             """
             self.cursor.execute(query, (value, db_id))
             self.conn.commit()
+            
+            # Phase 2.3: Invalider le cache après mise à jour d'appareil
+            if hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_device_modification("modification", 1)
+            
             return True
             
         except sqlite3.Error as e:
@@ -970,6 +978,11 @@ class DatabaseManager:
             
             # Valider la transaction
             self.conn.commit()
+            
+            # Phase 2.3: Invalider le cache après mise à jour multiple
+            if hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_device_modification("modification", len(updates_by_db_id))
+            
             return True
             
         except sqlite3.Error as e:
@@ -1001,6 +1014,11 @@ class DatabaseManager:
             
             self.cursor.execute(query, values)
             self.conn.commit()
+            
+            # Phase 2.3: Invalider le cache après ajout d'appareil
+            if hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_device_modification("ajout", 1)
+            
             return self.cursor.lastrowid
             
         except sqlite3.Error as e:
@@ -1019,6 +1037,10 @@ class DatabaseManager:
             deleted_count = self.cursor.rowcount
             self.conn.commit()
             
+            # Phase 2.3: Invalider le cache après suppression d'appareils
+            if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_device_modification("suppression", deleted_count)
+            
             return deleted_count
             
         except sqlite3.Error as e:
@@ -1032,6 +1054,10 @@ class DatabaseManager:
             self.cursor.execute(query, [appareil_id])
             success = self.cursor.rowcount > 0
             self.conn.commit()
+            
+            # Phase 2.3: Invalider le cache après suppression d'appareil
+            if success and hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_device_modification("suppression", 1)
             
             return success
             
@@ -1228,6 +1254,11 @@ class DatabaseManager:
             assoc_id = self.cursor.lastrowid
             
             self.conn.commit()
+            
+            # Phase 2.3: Invalider le cache après ajout de pièce
+            if hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_piece_modification("ajout", ref_piece, 1)
+            
             return assoc_id
             
         except sqlite3.Error as e:
@@ -1294,6 +1325,11 @@ class DatabaseManager:
                 # Association existante
                 assoc_id = assoc_result[0][0]
                 print(f"  🔗 Association existante (ID: {assoc_id})")
+                
+                # Invalider le cache si description modifiée
+                if description_updated and hasattr(self, 'cache_invalidation'):
+                    self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
+                
                 return (assoc_id, description_updated, False)  # False = pas nouvelle association
             else:
                 # Nouvelle association
@@ -1301,6 +1337,11 @@ class DatabaseManager:
                 assoc_id = self.cursor.lastrowid
                 self.conn.commit()
                 print(f"  🔗 Association créée (ID: {assoc_id})")
+                
+                # Phase 2.3: Invalider le cache après création d'association
+                if hasattr(self, 'cache_invalidation'):
+                    self.cache_invalidation.invalidate_after_piece_modification("ajout", ref_piece, 1)
+                
                 return (assoc_id, description_updated, True)  # True = nouvelle association
                 
         except sqlite3.Error as e:
@@ -1311,8 +1352,14 @@ class DatabaseManager:
         try:
             query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
             self.cursor.execute(query, (description, ref_piece))
+            updated = self.cursor.rowcount > 0
             self.conn.commit()
-            return self.cursor.rowcount > 0
+            
+            # Phase 2.3: Invalider le cache après mise à jour de pièce
+            if updated and hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
+            
+            return updated
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la mise à jour de la pièce: {e}")
@@ -1363,6 +1410,11 @@ class DatabaseManager:
                 self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
             
             self.conn.commit()
+            
+            # Phase 2.3: Invalider le cache après suppression de pièce
+            if hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, 1)
+            
             return True
             
         except sqlite3.Error as e:
@@ -1397,6 +1449,11 @@ class DatabaseManager:
                     self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
             
             self.conn.commit()
+            
+            # Phase 2.3: Invalider le cache après suppression de pièces d'appareil
+            if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_device_modification("suppression de pièces", 1)
+            
             return deleted_count
             
         except sqlite3.Error as e:
@@ -1409,6 +1466,11 @@ class DatabaseManager:
             for appareil_id in appareil_ids:
                 if self.delete_piece(ref_piece, appareil_id):
                     deleted_count += 1
+            
+            # Phase 2.3: Invalider le cache après suppression multiple
+            if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, deleted_count)
+            
             return deleted_count
             
         except sqlite3.Error as e:
