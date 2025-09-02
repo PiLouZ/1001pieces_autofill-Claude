@@ -39,6 +39,7 @@ from .table_controller import TableController
 from .paste_data_processor import PasteDataProcessor, PasteProcessingResult
 from .data_management_service import DataManagementService, FieldCompletionResult
 from .user_interaction_service import UserInteractionService
+from .log_viewer import LogViewer
 
 
 class CustomTableWidget(QTableWidget):
