@@ -786,6 +786,26 @@ class MainWindow(QMainWindow):
             from .toolbar_service import ToolbarService
             self.toolbar_service = ToolbarService(self)
             
+            # Phase 2.6: Service de dialogues  
+            from .dialog_service import DialogService
+            self.dialog_service = DialogService(self)
+            
+            # Phase 2.7: Service de traitement des fichiers
+            from .file_processing_service import FileProcessingService
+            self.file_processing_service = FileProcessingService(self)
+            
+            # Phase 2.8: Service d'export legacy
+            from .legacy_export_service import LegacyExportService
+            self.legacy_export_service = LegacyExportService(self)
+            
+            # Phase 2.9: Service de référence personnalisée
+            from .custom_reference_service import CustomReferenceService
+            self.custom_reference_service = CustomReferenceService(self)
+            
+            # Phase 2.10: Service du panneau des pièces
+            from .pieces_panel_service import PiecesPanelService
+            self.pieces_panel_service = PiecesPanelService(self)
+            
             # PHASE 2.3: Connecter signaux AdvancedSearchService
             self._connect_advanced_search_signals()
             
@@ -2174,126 +2194,9 @@ class MainWindow(QMainWindow):
             raise Exception(f"Erreur export HTML: {e}")
     
     def _export_data_legacy(self, export_format: ExportFormat):
-        """Ancienne méthode d'export (fallback)"""
-        
-        # Sauvegarder le terme de recherche original avant modification
-        original_search_term = search_term
-        is_multi_reference_export = False
-        
-        # Afficher dialogue de sélection de référence pour TOUS les exports CSV
-        if export_format == ExportFormat.CSV:
-            multi_terms = self._get_multi_reference_terms()
-            if multi_terms:
-                is_multi_reference_export = True
-                # Demander à l'utilisateur de confirmer/choisir la référence pour CSV multi-références
-                selected_reference = self._show_reference_selection_dialog(
-                    "Référence pour l'export CSV",
-                    f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                    f"Choisissez la référence à utiliser pour la première colonne :",
-                    multi_terms[0]  # Premier terme par défaut
-                )
-            else:
-                # Recherche simple - TOUJOURS afficher le dialogue pour confirmer la référence
-                selected_reference = self._show_reference_selection_dialog(
-                    "Référence pour l'export CSV",
-                    f"Référence détectée : {search_term}\n"
-                    f"Confirmez ou modifiez la référence à utiliser pour la première colonne :",
-                    search_term  # Terme de recherche actuel par défaut
-                )
-                
-            if not selected_reference:
-                return  # Annulé par l'utilisateur
-            
-            # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
-            
-            # Remplacer le search_term par la référence sélectionnée pour l'export CSV
-            search_term = selected_reference
-        
-        try:
-            # Récupérer les filtres de colonnes actifs via TableController
-            column_filters = {}
-            if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
-                for col_idx, filter_widget in self.table_controller.filter_widgets.items():
-                    if filter_widget is not None:  # Skip removed filters
-                        if isinstance(filter_widget, QComboBox):
-                            filter_text = filter_widget.currentText().strip()
-                        else:  # QLineEdit
-                            filter_text = filter_widget.text().strip()
-                        if filter_text:
-                            column_filters[col_idx] = filter_text
-            
-            # Récupérer le filtre des lignes incomplètes si activé
-            incomplete_filter = getattr(self, 'show_incomplete_only', False)
-            
-            # Pour les exports CSV, utiliser une méthode simplifiée qui exporte directement le tableau
-            if export_format == ExportFormat.CSV:
-                try:
-                    result = self._export_displayed_table_as_csv(search_term)
-                    if result:
-                        self._add_to_history(f"Export CSV: {result}")
-                    return  # Sortir ici pour éviter le code complexe
-                except Exception as csv_error:
-                    import traceback
-                    traceback.print_exc()
-                    QMessageBox.critical(self, "Erreur d'export", f"Erreur lors de l'export CSV:\n{csv_error}")
-                    return
-            
-            # Pour les autres formats, utiliser l'ancien système
-            use_custom_export = False
-            
-            if use_custom_export:
-                try:
-                    # Export personnalisé - utiliser les données de recherche avec référence custom
-                    result = self._export_custom_reference_csv_with_current_data(search_term, original_search_term)
-                except Exception as e:
-                    app_logger.error(f"Erreur export référence personnalisée: {e}")
-                    # Fallback simple: créer un CSV minimal avec juste la référence personnalisée
-                    try:
-                        result = self._create_minimal_csv_fallback(search_term)
-                        QMessageBox.information(self, "Export de secours", 
-                                              f"L'export personnalisé a échoué.\n"
-                                              f"Un fichier CSV minimal a été créé avec votre référence.")
-                    except Exception as e2:
-                        app_logger.error(f"Erreur fallback export: {e2}")
-                        QMessageBox.warning(self, "Erreur d'export", 
-                                          f"Impossible d'exporter les données.\n"
-                                          f"Erreur: {e}\n"
-                                          f"Erreur fallback: {e2}")
-                        return
-            else:
-                # Pour les exports HTML, utiliser le terme de recherche original pour préserver les opérateurs || et &&
-                export_search_term = original_search_term if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS] else search_term
-                result = self.exporter.export_search_results(export_search_term, export_format, 
-                                                           column_filters=column_filters, 
-                                                           incomplete_filter=incomplete_filter)
-            
-            if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
-                # Copier dans le presse-papiers
-                QApplication.clipboard().setText(result)
-                
-                # Afficher les informations sur le format utilisé pour HTML Détails
-                if export_format == ExportFormat.HTML_DETAILS:
-                    export_info = self.exporter.get_last_export_info()
-                    if export_info:
-                        format_msg = f"Export HTML copié ({export_info['description']}) - {export_info['char_count']:,} caractères"
-                        if export_info['format_used'] != 'complet':
-                            format_msg += f" (limite: {export_info['char_limit']:,})"
-                        self.statusbar.showMessage(format_msg, Config.LONG_STATUS_MESSAGE_TIMEOUT * 2)
-                    else:
-                        self.statusbar.showMessage(Config.get_message('data_copied'), Config.STATUS_MESSAGE_TIMEOUT)
-                else:
-                    self.statusbar.showMessage(Config.get_message('data_copied'), Config.STATUS_MESSAGE_TIMEOUT)
-            else:
-                self.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-                
-                # Ajouter l'export dans l'historique avec le chemin du fichier
-                if export_format == ExportFormat.CSV:
-                    self._add_to_history(f"Export CSV: {result}")
-                else:
-                    self._add_to_history(f"Export {export_format.value}: {result}")
-                
-        except ExportError as e:
-            self._show_error(f"Erreur d'export: {e}")
+        """Ancienne méthode d'export (fallback) - Phase 2.8"""
+        # Déléguer au service LegacyExportService
+        return self.legacy_export_service.export_data_legacy(export_format)
 
     # --- Méthodes utilitaires ---
 
@@ -2787,96 +2690,8 @@ class MainWindow(QMainWindow):
             self._show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
 
     def _update_pieces_panel(self):
-        """Mettre à jour le panneau des pièces (communes pour sélection multiple)"""
-        self.pieces_list.clear()
-        
-        # Récupérer toutes les lignes sélectionnées
-        selected_rows = set()
-        selected_ranges = self.table.selectedRanges()
-        
-        if selected_ranges:
-            # Utiliser les plages sélectionnées
-            for range_sel in selected_ranges:
-                for row in range(range_sel.topRow(), range_sel.bottomRow() + 1):
-                    selected_rows.add(row)
-        else:
-            # Fallback sur la ligne courante si aucune sélection
-            current_row = self.table.currentRow()
-            if current_row >= 0:
-                selected_rows.add(current_row)
-        
-        if not selected_rows:
-            return
-        
-        try:
-            if len(selected_rows) == 1:
-                # Un seul appareil sélectionné - comportement normal
-                row = list(selected_rows)[0]
-                db_id = self._get_db_id_from_row(row)
-                pieces = self.db_manager.get_pieces_for_appareil(db_id)
-                
-                for ref_piece, description in pieces:
-                    item_text = ref_piece
-                    if description:
-                        item_text += f" - {description}"
-                    
-                    item = QListWidgetItem(item_text)
-                    item.setData(Qt.UserRole, ref_piece)
-                    self.pieces_list.addItem(item)
-            
-            else:
-                # Plusieurs appareils sélectionnés - afficher seulement les pièces communes
-                all_pieces_sets = []
-                
-                for row in selected_rows:
-                    try:
-                        db_id = self._get_db_id_from_row(row)
-                        pieces = self.db_manager.get_pieces_for_appareil(db_id)
-                        # Créer un set des références de pièces pour cet appareil
-                        piece_refs = {ref_piece for ref_piece, description in pieces}
-                        all_pieces_sets.append(piece_refs)
-                    except Exception:
-                        continue
-                
-                if all_pieces_sets:
-                    # Calculer l'intersection de tous les sets (pièces communes)
-                    common_pieces = set.intersection(*all_pieces_sets)
-                    
-                    if common_pieces:
-                        # Récupérer les descriptions des pièces communes
-                        # Prendre la description du premier appareil qui contient la pièce
-                        for common_ref in sorted(common_pieces):
-                            description = ""
-                            for row in selected_rows:
-                                try:
-                                    db_id = self._get_db_id_from_row(row)
-                                    pieces = self.db_manager.get_pieces_for_appareil(db_id)
-                                    for ref_piece, desc in pieces:
-                                        if ref_piece == common_ref and desc:
-                                            description = desc
-                                            break
-                                    if description:
-                                        break
-                                except Exception:
-                                    continue
-                            
-                            item_text = f"{common_ref} (commune à {len(selected_rows)} appareils)"
-                            if description:
-                                item_text = f"{common_ref} - {description} (commune à {len(selected_rows)} appareils)"
-                            
-                            item = QListWidgetItem(item_text)
-                            item.setData(Qt.UserRole, common_ref)
-                            # Marquer visuellement les pièces communes
-                            item.setBackground(QColor(240, 248, 255))  # Bleu très clair
-                            self.pieces_list.addItem(item)
-                    else:
-                        # Aucune pièce commune
-                        item = QListWidgetItem(f"Aucune pièce commune aux {len(selected_rows)} appareils sélectionnés")
-                        item.setForeground(QColor(108, 117, 125))  # Gris
-                        self.pieces_list.addItem(item)
-                
-        except Exception as e:
-            self._show_error(f"Erreur lors de la mise à jour des pièces: {e}")
+        """Mettre à jour le panneau des pièces (communes pour sélection multiple) - Phase 2.10"""
+        self.pieces_panel_service.update_pieces_panel()
     
     def _confirm_piece_description_update(self, ref_piece: str, existing_desc: str, new_desc: str) -> str:
         """
@@ -3713,167 +3528,11 @@ class MainWindow(QMainWindow):
                 self.table_controller.load_data()  # Rafraîchir l'affichage
     
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
-        """Dialogue unifié pour choisir les options d'import (fallback legacy)"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Options d'import {import_method}")
-        dialog.setModal(True)
-        dialog.setMinimumWidth(600)  # Fenêtre plus large pour l'aperçu
-        
-        layout = QVBoxLayout()
-        
-        # Information sur les colonnes détectées
-        if detected_columns:
-            if import_method == "CSV":
-                info_label = QLabel(f"📊 Fichier détecté: {detected_columns} colonnes")
-            elif import_method == "PDF":
-                info_label = QLabel(f"📄 Données PDF détectées: {detected_columns} colonnes")
-            else:  # COLLAGE
-                info_label = QLabel(f"📋 Données détectées: {detected_columns} colonnes")
-            info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
-            layout.addWidget(info_label)
-        
-        # Description du format
-        format_label = QLabel("Format reconnu:")
-        format_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(format_label)
-        
-        if detected_columns == 1:
-            format_desc = QLabel("• 1 colonne → Réf. Modèle uniquement")
-        elif detected_columns == 2:
-            format_desc = QLabel("• 2 colonnes → Réf. Modèle + Réf. Commerciale")
-        elif detected_columns == 3:
-            if import_method == "PDF":
-                format_desc = QLabel("• 3 colonnes → Réf. technique + Réf. commerciale + Description")
-            else:
-                format_desc = QLabel("• 3 colonnes → Réf. Modèle + Réf. Commerciale + Autre")
-        elif detected_columns >= 4:
-            format_desc = QLabel("• 4+ colonnes → Format complet (Type, Fabricant, Réf. Modèle, Réf. Commerciale, ...)")
-        else:
-            format_desc = QLabel("• Format non reconnu")
-        
-        format_desc.setStyleSheet("color: #6c757d; margin-left: 20px;")
-        layout.addWidget(format_desc)
-        
-        # Aperçu des données (si disponible)
-        if sample_data and len(sample_data) > 0:
-            preview_label = QLabel("Aperçu des données:")
-            preview_label.setStyleSheet("font-weight: bold; margin-top: 15px;")
-            layout.addWidget(preview_label)
-            
-            # Créer un aperçu formaté des 3 premières lignes
-            preview_text = QTextEdit()
-            preview_text.setMaximumHeight(120)
-            preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 11px;")
-            preview_text.setReadOnly(True)
-            
-            # Formatage de l'aperçu
-            preview_content = ""
-            max_lines_to_show = min(3, len(sample_data))
-            
-            # En-têtes de colonnes
-            if detected_columns:
-                header_line = ""
-                for i in range(detected_columns):
-                    header_line += f"Col{i+1:<15} "
-                preview_content += f"{'='*60}\n{header_line}\n{'='*60}\n"
-            
-            # Données d'exemple
-            for i in range(max_lines_to_show):
-                row = sample_data[i]
-                line = ""
-                for j in range(min(detected_columns or len(row), len(row))):
-                    cell_value = str(row[j])[:12] + "..." if len(str(row[j])) > 12 else str(row[j])
-                    line += f"{cell_value:<15} "
-                preview_content += f"{line}\n"
-                
-            if len(sample_data) > 3:
-                preview_content += f"\n... et {len(sample_data) - 3} autres lignes"
-                
-            preview_text.setPlainText(preview_content)
-            layout.addWidget(preview_text)
-        
-        # Référence de pièce (optionnelle)
-        ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence de pièce (optionnelle):"))
-        ref_input = QLineEdit()
-        ref_input.setText(default_ref_piece if default_ref_piece else "")
-        ref_input.setPlaceholderText("Référence de la pièce à associer à tous les appareils")
-        ref_layout.addWidget(ref_input)
-        layout.addLayout(ref_layout)
-        
-        # Libellé de la pièce (optionnel)
-        libelle_layout = QHBoxLayout()
-        libelle_layout.addWidget(QLabel("Libellé de la pièce (optionnel):"))
-        libelle_input = QLineEdit()
-        libelle_input.setPlaceholderText("Description/libellé de la pièce")
-        libelle_layout.addWidget(libelle_input)
-        layout.addLayout(libelle_layout)
-        
-        # Case à cocher pour les en-têtes (CSV uniquement)
-        headers_checkbox = None
-        if import_method == "CSV":
-            headers_checkbox = QCheckBox("Le fichier contient une ligne d'en-têtes (ignorer la première ligne)")
-            headers_checkbox.setChecked(False)
-            headers_checkbox.setToolTip("Cochez cette case si la première ligne de votre fichier contient les noms des colonnes")
-            layout.addWidget(headers_checkbox)
-        
-        # Gestion de la 3ème colonne (seulement si 3 colonnes)
-        third_col_combo = None
-        if detected_columns == 3:
-            third_col_layout = QHBoxLayout()
-            if import_method == "PDF":
-                third_col_layout.addWidget(QLabel("Destination Description:"))
-            else:
-                third_col_layout.addWidget(QLabel("Destination 3ème colonne:"))
-            third_col_combo = QComboBox()
-            third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
-            third_col_combo.setCurrentIndex(0)  # Par défaut "Ignorer"
-            third_col_layout.addWidget(third_col_combo)
-            layout.addLayout(third_col_layout)
-        
-        # Boutons
-        button_layout = QHBoxLayout()
-        ok_button = QPushButton("Importer")
-        ok_button.setDefault(True)
-        ok_button.setStyleSheet("QPushButton { background-color: #28a745; color: white; font-weight: bold; padding: 8px 16px; }")
-        cancel_button = QPushButton("Annuler")
-        cancel_button.setStyleSheet("QPushButton { padding: 8px 16px; }")
-        
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_button)
-        button_layout.addWidget(ok_button)
-        layout.addLayout(button_layout)
-        
-        dialog.setLayout(layout)
-        
-        # Connexions des boutons
-        ok_button.clicked.connect(dialog.accept)
-        cancel_button.clicked.connect(dialog.reject)
-        
-        # Afficher le dialogue
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # Déterminer le type d'import
-            import_type = detected_columns if detected_columns else 3
-            
-            # Mapper le choix de la 3ème colonne
-            third_column_choice = "ignore"  # Valeur par défaut
-            if third_col_combo:
-                choice = third_col_combo.currentText()
-                if choice == "Ignorer":
-                    third_column_choice = "ignore"
-                elif choice == "Autre référence":
-                    third_column_choice = "other_ref"
-                elif choice == "Notes":
-                    third_column_choice = "notes"
-            
-            # Récupérer l'option d'en-têtes (CSV uniquement)
-            has_headers = headers_checkbox.isChecked() if headers_checkbox else False
-            
-            return import_type, ref_input.text().strip(), third_column_choice, has_headers, libelle_input.text().strip()
-        
-        return None, None, None, None, None
+        """Dialogue unifié pour choisir les options d'import - Phase 2.6"""
+        # Déléguer au service DialogService
+        return self.dialog_service.get_import_options_unified(
+            detected_columns, default_ref_piece, import_method, sample_data
+        )
 
     def _show_import_summary(self, results, ref_piece, method="CSV"):
         """Afficher la synthèse d'import avec le nouveau format unifié"""
@@ -4635,164 +4294,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self._show_error(f"Erreur lors de l'import CSV par glisser/déposer: {e}")
     
     def _import_pdf_from_path(self, file_paths):
-        """Importer un ou plusieurs fichiers PDF depuis des chemins donnés
-        
-        MIGRATION: Utilise ImportManager pour le drag&drop avec fallback vers ancien système
-        """
-        try:
-            # Assurer que file_paths est une liste
-            if isinstance(file_paths, str):
-                file_paths = [file_paths]
-            
-            # NOUVEAU : Utiliser ImportManager pour drag&drop
-            results = self.import_manager.import_from_drag_drop(file_paths)
-            if results:
-                self._show_import_results_new(results)
-                self.table_controller.load_data()
-                return
-        except Exception as e:
-            app_logger.warning(f"Échec ImportManager drag&drop PDF, fallback vers ancien système: {e}")
-        
-        # FALLBACK : Code legacy en cas d'échec ImportManager
-        try:
-            from src.data.pdf_extractor_camelot import CamelotPDFExtractor, PDFExtractionError
-            import os
-            
-            # Assurer que file_paths est une liste
-            if isinstance(file_paths, str):
-                file_paths = [file_paths]
-            
-            # Extraire le nom du fichier pour la référence de pièce (si un seul fichier)
-            suggested_ref_piece = None
-            if len(file_paths) == 1:
-                suggested_ref_piece = os.path.splitext(os.path.basename(file_paths[0]))[0]
-            
-            # Utiliser ImportManager pour analyser le PDF
-            sample_data = []
-            if len(file_paths) > 0:
-                try:
-                    sample_data = self.import_manager.load_pdf_data(file_paths[0], max_rows=3)
-                except Exception as e:
-                    print(f"Erreur lecture aperçu PDF: {e}")
-                    sample_data = []
-            
-            # Afficher la boîte de dialogue d'options d'import avec aperçu
-            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(3, suggested_ref_piece, "PDF", sample_data)
-            if import_type is None:
-                return
-            
-            # Créer l'extracteur Camelot
-            extractor = CamelotPDFExtractor()
-            
-            # Traiter tous les fichiers
-            all_converted_data = []
-            processed_files = []
-            pdf_files_info = []  # Pour collecter les informations des fichiers PDF
-            
-            # Créer une barre de progression pour l'import PDF
-            total_files = len(file_paths)
-            progress_dialog = self._create_progress_dialog("Import PDF", total_files, "Import PDF en cours... {} / {} fichier(s)")
-            progress_dialog.show()
-            QApplication.processEvents()  # Forcer l'affichage
-            
-            for file_idx, file_path in enumerate(file_paths):
-                # Mettre à jour la barre de progression
-                if progress_dialog.wasCanceled():
-                    break
-                    
-                progress_dialog.setValue(file_idx)
-                progress_dialog.setLabelText(f"Traitement: {os.path.basename(file_path)} ({file_idx + 1} / {total_files})")
-                QApplication.processEvents()
-                try:
-                    # Valider la compatibilité
-                    is_compatible, error_msg = extractor.validate_pdf_compatibility(file_path)
-                    if not is_compatible:
-                        self._show_error(f"PDF non compatible ({os.path.basename(file_path)}): {error_msg}")
-                        continue
-                    
-                    # Extraire les données
-                    extracted_data = extractor.extract_data(file_path)
-                    
-                    if not extracted_data:
-                        self._show_error(f"Aucune donnée extraite du fichier PDF: {os.path.basename(file_path)}")
-                        continue
-                    
-                    # Collecter les informations du fichier PDF pour l'historique
-                    pdf_files_info.append({
-                        'filename': os.path.basename(file_path),
-                        'lines_extracted': len(extracted_data)
-                    })
-                    
-                    # Convertir les données extraites en format 3 colonnes pour import_type = 3
-                    for row in extracted_data:
-                        # Les données PDF sont en format [ref_technique, ref_commerciale, description]
-                        # On les garde en 3 colonnes selon le choix de l'utilisateur
-                        if third_column_choice == "notes":
-                            all_converted_data.append([row[0], row[1], row[2]])  # [ref_modele, commercial_ref, notes]
-                        elif third_column_choice == "other_ref":
-                            all_converted_data.append([row[0], row[1], row[2]])  # [ref_modele, commercial_ref, other_ref]
-                        else:  # ignore
-                            all_converted_data.append([row[0], row[1], ""])  # [ref_modele, commercial_ref, ignored]
-                    
-                    processed_files.append(os.path.basename(file_path))
-                    
-                except Exception as e:
-                    self._show_error(f"Erreur lors du traitement de {os.path.basename(file_path)}: {e}")
-                    continue
-            
-            # Fermer la barre de progression
-            if progress_dialog:
-                progress_dialog.setValue(total_files)
-                progress_dialog.close()
-            
-            if not all_converted_data:
-                self._show_error("Aucune donnée extraite des fichiers PDF")
-                return
-            
-            # Debug : afficher le total des lignes converties
-            print(f"📊 Total des lignes converties pour traitement: {len(all_converted_data)}")
-            
-            # Créer une barre de progression pour le traitement des lignes
-            lines_progress = None
-            if len(all_converted_data) >= 1000:  # Seulement pour les gros imports
-                lines_progress = QProgressDialog(
-                    f"Traitement des lignes... 0 / {len(all_converted_data)}",
-                    "Annuler",
-                    0, len(all_converted_data),
-                    self
-                )
-                lines_progress.setWindowTitle("Traitement des données")
-                lines_progress.setWindowModality(Qt.WindowModality.WindowModal)
-                lines_progress.show()
-                QApplication.processEvents()
-            
-            # Traiter l'import avec la même logique que CSV
-            results = self._process_import(all_converted_data, import_type, ref_piece, third_column_choice, lines_progress, libelle_piece)
-            
-            # Fermer la barre de progression des lignes
-            if lines_progress:
-                lines_progress.setValue(len(all_converted_data))
-                lines_progress.close()
-            
-            # Afficher la synthèse
-            
-            # Enregistrer dans l'historique
-            if len(processed_files) == 1:
-                source_info = f"PDF ({processed_files[0]})"
-            else:
-                source_info = f"PDF ({len(processed_files)} fichiers)"
-            
-            self._log_import_to_history(results, ref_piece, source_info, pdf_files_info)
-            
-            # Gérer les doublons s'il y en a
-            
-            # Actualiser l'affichage
-            self._force_refresh_display(reset_page=True, clear_filters=True)
-            
-        except PDFExtractionError as e:
-            self._show_error(f"Erreur d'extraction PDF: {e}")
-        except Exception as e:
-            self._show_error(f"Erreur lors de l'import PDF: {e}")
+        """Importer un ou plusieurs fichiers PDF depuis des chemins donnés - Phase 2.7"""
+        # Déléguer au service FileProcessingService
+        return self.file_processing_service.import_pdf_files(file_paths)
     
 
     def _get_import_options_pdf(self, suggested_ref_piece=None):
@@ -5854,152 +5358,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             raise Exception(f"Erreur lors de l'export CSV: {e}")
 
     def _export_custom_reference_csv_with_current_data(self, custom_reference: str, original_search_term: str = None) -> str:
-        """Créer un export CSV avec toutes les données de la recherche mais avec une référence personnalisée"""
-        try:
-            import csv
-            import os
-            from datetime import datetime
-            
-            # Générer un nom de fichier simplifié
-            filename = f"{custom_reference}_everyParts.csv"
-            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
-            
-            # Utiliser les données actuellement affichées dans le tableau
-            # au lieu de refaire une requête en base de données
-            data = self._get_displayed_table_data()
-            
-            if not data:
-                raise Exception("Aucune donnée affichée dans le tableau à exporter")
-            
-            # Plus besoin de récupérer les filtres - on utilise directement les données affichées
-            
-            # Récupérer le filtre des lignes incomplètes si activé
-            incomplete_filter = getattr(self, 'show_incomplete_only', False)
-            
-            # Vérifier que le db_manager existe
-            if not hasattr(self, 'db_manager') or self.db_manager is None:
-                raise Exception("Database manager non disponible")
-            
-            # Vérifier si c'est une recherche multi-références
-            if '||' in original_search_term or '&&' in original_search_term:
-                # Diviser les références selon l'opérateur utilisé
-                if '||' in original_search_term:
-                    references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
-                    # Opérateur OR: union de tous les résultats (sans doublons)
-                    all_data = []
-                    seen_records = set()
-                    
-                    for ref in references:
-                        ref_data = self.db_manager.get_export_data(ref, column_filters, incomplete_filter)
-                        if ref_data:
-                            for record in ref_data:
-                                # Créer une clé unique pour chaque appareil (sans la référence de pièce)
-                                record_key = (record[0], record[1], record[2], record[3], record[4])  # type, manufacturer, ref_modele, commercial_ref, other_ref
-                                if record_key not in seen_records:
-                                    seen_records.add(record_key)
-                                    all_data.append(record)
-                    
-                    data = all_data
-                else:  # && présent
-                    references = [ref.strip() for ref in original_search_term.split('&&') if ref.strip()]
-                    # Opérateur AND: intersection - appareils qui contiennent TOUTES les pièces
-                    if references:
-                        # Commencer avec les données de la première référence
-                        first_ref = references[0]
-                        data = self.db_manager.get_export_data(first_ref, column_filters, incomplete_filter)
-                        
-                        # Pour chaque référence suivante, garder seulement les appareils qui la contiennent aussi
-                        for ref in references[1:]:
-                            ref_data = self.db_manager.get_export_data(ref, column_filters, incomplete_filter)
-                            if ref_data:
-                                # Créer un set des IDs d'appareils de cette référence
-                                ref_appareil_ids = set()
-                                for record in ref_data:
-                                    # Construire un identifiant unique pour chaque appareil
-                                    appareil_id = (record[0], record[1], record[2], record[3])  # type, manufacturer, ref_modele, commercial_ref
-                                    ref_appareil_ids.add(appareil_id)
-                                
-                                # Filtrer data pour garder seulement les appareils présents dans ref_data
-                                data = [record for record in data 
-                                       if (record[0], record[1], record[2], record[3]) in ref_appareil_ids]
-                            else:
-                                # Si une référence n'a pas de données, l'intersection est vide
-                                data = []
-                                break
-                    else:
-                        data = []
-            else:
-                # Recherche simple
-                data = self.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
-            
-            if not data:
-                raise Exception(f"Aucune donnée trouvée pour la recherche: {original_search_term}")
-            
-            # Créer le fichier CSV
-            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                # En-têtes
-                headers = [
-                    'product',
-                    'type', 
-                    'manufacturer',
-                    'modele_name',
-                    'reference_modele',
-                    'commercial_reference'
-                ]
-                writer.writerow(headers)
-                
-                # Écrire les données en remplaçant la référence par la référence personnalisée
-                for record in data:
-                    type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-                    modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
-                    
-                    writer.writerow([
-                        custom_reference,  # product (référence personnalisée au lieu de ref_piece)
-                        type_app or '',
-                        manufacturer or '',
-                        modele_complet,
-                        ref_modele or '',
-                        commercial_ref or ''
-                    ])
-            
-            return f"Fichier CSV créé: {filepath}"
-            
-        except Exception as e:
-            app_logger.error(f"Erreur export CSV personnalisé: {e}")
-            raise Exception(f"Erreur lors de l'export CSV personnalisé: {e}")
+        """Créer un export CSV avec toutes les données de la recherche mais avec une référence personnalisée - Phase 2.9"""
+        return self.custom_reference_service.export_custom_reference_csv_with_current_data(custom_reference, original_search_term)
     
     def _create_minimal_csv_fallback(self, custom_reference: str) -> str:
-        """Créer un CSV minimal en cas d'erreur avec l'export personnalisé"""
-        try:
-            import csv
-            import os
-            from datetime import datetime
-            
-            filename = f"{custom_reference}_everyParts.csv"
-            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
-            
-            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
-                writer.writerow(headers)
-                
-                # Une seule ligne avec la référence personnalisée
-                writer.writerow([
-                    custom_reference,
-                    'appareil électroménager',
-                    'multi-marques',
-                    f'Modèle compatible {custom_reference}',
-                    custom_reference,
-                    custom_reference
-                ])
-            
-            return f"Fichier CSV de secours créé: {filepath}"
-            
-        except Exception as e:
-            raise Exception(f"Erreur création CSV fallback: {e}")
+        """Créer un CSV minimal en cas d'erreur avec l'export personnalisé - Phase 2.9"""
+        return self.custom_reference_service.create_minimal_csv_fallback(custom_reference)
     
     def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
         """Récupérer la description d'une pièce depuis sa référence"""
