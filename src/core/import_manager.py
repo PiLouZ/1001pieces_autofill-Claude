@@ -1202,6 +1202,15 @@ class ImportManager:
         
         new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
         
+        # DEBUG CRITIQUE: Vérifier la correspondance IDs vs appareils
+        print(f"🔧 CRITIQUE: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
+        if len(new_devices_batch) != len(new_device_ids):
+            print(f"❌ PROBLÈME: Discordance entre appareils créés et IDs récupérés!")
+            print(f"   new_devices_batch: {len(new_devices_batch)}")
+            print(f"   new_device_ids: {len(new_device_ids)}")
+            if new_device_ids:
+                print(f"   Premier ID: {new_device_ids[0]}, Dernier ID: {new_device_ids[-1]}")
+        
         batch_progress.setLabelText(f"🔄 Mise à jour de {len(existing_updates)} appareils existants...")
         QApplication.processEvents()
         
@@ -1211,6 +1220,17 @@ class ImportManager:
         batch_progress.setValue(3)
         batch_progress.setLabelText(f"🔗 Création de {len(associations_batch)} associations...")
         QApplication.processEvents()
+        
+        # DEBUG: Analyser les associations qui ont besoin de nouveaux appareils
+        new_device_associations = [assoc for assoc in associations_batch if not assoc[3]]  # existing_id est None
+        existing_device_associations = [assoc for assoc in associations_batch if assoc[3]]  # existing_id existe
+        print(f"🔧 ASSOCIATIONS: {len(associations_batch)} total = {len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants")
+        print(f"🔧 COMPARAISON: {len(new_devices_batch)} appareils à créer vs {len(new_device_associations)} associations nouvelles")
+        
+        # Vérifier si le nombre d'associations nouvelles correspond aux appareils à créer
+        if len(new_device_associations) != len(new_devices_batch):
+            print(f"❌ ATTENTION: Discordance entre appareils ({len(new_devices_batch)}) et associations nouvelles ({len(new_device_associations)})")
+            print(f"   Cela peut causer le bug d'allocation d'IDs !")
         
         if associations_batch:
             batch_results = self._batch_create_associations(associations_batch, new_device_ids)
@@ -1341,8 +1361,14 @@ class ImportManager:
         cursor = conn.cursor()
         all_new_ids = []
         
+        # DEBUG: Vérifier la query
+        print(f"🔧 DEBUG: Query utilisée = {query[:100]}...")
+        
         try:
             # Traiter par chunks pour optimiser SQLite
+            total_chunks = (len(devices_batch) + chunk_size - 1) // chunk_size
+            print(f"🔧 DEBUG: {total_chunks} chunks à traiter")
+            
             for i in range(0, len(devices_batch), chunk_size):
                 chunk = devices_batch[i:i + chunk_size]
                 
@@ -1359,17 +1385,30 @@ class ImportManager:
                         device.get('category', '')
                     ))
                 
+                # DEBUG: Données du chunk
+                print(f"🔧 DEBUG Chunk {i//chunk_size + 1}: {len(insert_data)} appareils, premier: {insert_data[0] if insert_data else 'Aucun'}")
+                
                 # Exécuter le chunk
                 cursor.executemany(query, insert_data)
                 
-                # Récupérer les IDs pour ce chunk
+                # DEBUG: Vérifier l'exécution
+                print(f"🔧 DEBUG: rowcount après executemany = {cursor.rowcount}")
+                
+                # Récupérer les IDs pour ce chunk - FIX du bug d'allocation
+                chunk_ids = []
                 if cursor.lastrowid is not None:
+                    # Pour executemany(), lastrowid est l'ID de la dernière insertion
+                    # Mais on doit récupérer tous les IDs individuellement
                     last_id = cursor.lastrowid
+                    # Calculer le premier ID de ce chunk (pour SQLite auto-increment)
                     first_id = last_id - len(insert_data) + 1
                     chunk_ids = list(range(first_id, last_id + 1))
                     all_new_ids.extend(chunk_ids)
-                    
-                print(f"✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
+                    print(f"✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés (IDs: {first_id}-{last_id})")
+                else:
+                    # Si lastrowid est None, il y a eu un problème
+                    print(f"❌ Chunk {i//chunk_size + 1}: Impossible de récupérer les IDs")
+                    return []  # Échec critique
             
             conn.commit()
             print(f"✅ BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
@@ -1378,6 +1417,9 @@ class ImportManager:
         except Exception as e:
             conn.rollback()
             print(f"❌ BATCH: Erreur insertion: {e}")
+            print(f"❌ BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
+            import traceback
+            print(f"❌ BATCH: Stack trace: {traceback.format_exc()}")
             return []
     
     def _batch_update_devices(self, updates_batch: List[Tuple[int, Dict[str, Any]]]):

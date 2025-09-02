@@ -38,6 +38,7 @@ from .style_manager import StyleManager
 from .table_controller import TableController
 from .paste_data_processor import PasteDataProcessor, PasteProcessingResult
 from .data_management_service import DataManagementService, FieldCompletionResult
+from .user_interaction_service import UserInteractionService
 
 
 class CustomTableWidget(QTableWidget):
@@ -806,6 +807,17 @@ class MainWindow(QMainWindow):
             from .pieces_panel_service import PiecesPanelService
             self.pieces_panel_service = PiecesPanelService(self)
             
+            # Phase 2.11: Service d'export principal
+            from .export_service import MainExportService
+            self.main_export_service = MainExportService(self)
+            
+            # Phase 2.12: Service des composants UI
+            from .ui_component_service import UIComponentService
+            self.ui_component_service = UIComponentService(self)
+            
+            # Phase 2.13: Service d'interaction utilisateur
+            self.user_interaction_service = UserInteractionService(self)
+            
             # PHASE 2.3: Connecter signaux AdvancedSearchService
             self._connect_advanced_search_signals()
             
@@ -1052,23 +1064,9 @@ class MainWindow(QMainWindow):
         return table_widget
     
     def _update_export_buttons_state(self, search_term: str):
-        """Mettre à jour l'état des boutons d'export selon le terme de recherche"""
-        has_search = bool(search_term)
-        is_piece_search = has_search and self._is_piece_reference_search()
-        
-        # Tous les boutons d'export nécessitent une référence de pièce
-        if hasattr(self, 'export_csv_btn'):
-            self.export_csv_btn.setEnabled(is_piece_search)
-        if hasattr(self, 'export_html_brands_btn'):
-            self.export_html_brands_btn.setEnabled(is_piece_search)
-        if hasattr(self, 'export_html_details_btn'):
-            self.export_html_details_btn.setEnabled(is_piece_search)
-        
-        # Boutons SEO également limités aux références de pièce
-        if hasattr(self, 'meta_title_btn'):
-            self.meta_title_btn.setEnabled(is_piece_search)
-        if hasattr(self, 'meta_desc_btn'):
-            self.meta_desc_btn.setEnabled(is_piece_search)
+        """Mettre à jour l'état des boutons d'export selon le terme de recherche - Phase 2.12"""
+        self.ui_component_service.update_export_buttons_state(search_term)
+
     def _create_pieces_widget(self) -> QWidget:
         """Créer le widget des pièces"""
         widget = QWidget()
@@ -1162,96 +1160,8 @@ class MainWindow(QMainWindow):
         return widget
 
     def _add_export_buttons(self, layout: QVBoxLayout):
-        """Ajouter les boutons d'export"""
-        # Ligne 1: Boutons d'export traditionnels
-        export_layout = QHBoxLayout()
-        
-        self.export_csv_btn = QPushButton("Exporter CSV")
-        self.export_csv_btn.clicked.connect(lambda: self._export_data(ExportFormat.CSV))
-        self.export_csv_btn.setEnabled(False)
-        self.export_csv_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #134c4d; 
-                color: white; 
-                font-weight: bold; 
-                border: none; 
-                padding: 8px 12px; 
-                border-radius: 4px; 
-            }
-            QPushButton:hover { 
-                background-color: #11403f; 
-            }
-            QPushButton:disabled { 
-                background-color: #cccccc; 
-                color: #666666; 
-            }
-        """)
-        export_layout.addWidget(self.export_csv_btn)
-        
-        self.export_html_brands_btn = QPushButton("HTML Marques")
-        self.export_html_brands_btn.clicked.connect(lambda: self._export_data(ExportFormat.HTML_BRANDS))
-        self.export_html_brands_btn.setEnabled(False)
-        export_layout.addWidget(self.export_html_brands_btn)
-        
-        self.export_html_details_btn = QPushButton("HTML Détails")
-        self.export_html_details_btn.clicked.connect(lambda: self._export_data(ExportFormat.HTML_DETAILS))
-        self.export_html_details_btn.setEnabled(False)
-        export_layout.addWidget(self.export_html_details_btn)
-        
-        layout.addLayout(export_layout)
-        
-        # Ligne 2: Boutons SEO métadonnées (alignés sous les boutons HTML)
-        seo_layout = QHBoxLayout()
-        
-        self.meta_title_btn = QPushButton("📝 Méta Title")
-        self.meta_title_btn.clicked.connect(self._generate_meta_title)
-        self.meta_title_btn.setEnabled(False)
-        self.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (60 caractères max)")
-        self.meta_title_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #fd7e14; 
-                color: white; 
-                font-weight: bold; 
-                border: none; 
-                padding: 8px 12px; 
-                border-radius: 4px; 
-            }
-            QPushButton:hover { 
-                background-color: #e5711f; 
-            }
-            QPushButton:disabled { 
-                background-color: #cccccc; 
-                color: #666666; 
-            }
-        """)
-        seo_layout.addWidget(self.meta_title_btn)
-        
-        self.meta_desc_btn = QPushButton("📋 Méta Desc")
-        self.meta_desc_btn.clicked.connect(self._generate_meta_description)
-        self.meta_desc_btn.setEnabled(False)
-        self.meta_desc_btn.setToolTip("Générer une méta description SEO aléatoire (150 caractères max)")
-        self.meta_desc_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #ffc107; 
-                color: white; 
-                font-weight: bold; 
-                border: none; 
-                padding: 8px 12px; 
-                border-radius: 4px; 
-            }
-            QPushButton:hover { 
-                background-color: #e6ad06; 
-            }
-            QPushButton:disabled { 
-                background-color: #cccccc; 
-                color: #666666; 
-            }
-        """)
-        seo_layout.addWidget(self.meta_desc_btn)
-        
-        # Laisser les boutons alignés à gauche naturellement (sous les boutons HTML)
-        
-        layout.addLayout(seo_layout)
+        """Ajouter les boutons d'export - Phase 2.12: Délégation vers UIComponentService"""
+        self.ui_component_service.add_export_buttons(layout)
 
     def _add_action_buttons(self, layout: QVBoxLayout):
         """Ajouter les boutons d'action"""
@@ -1270,107 +1180,8 @@ class MainWindow(QMainWindow):
         self._add_pagination_controls(layout)
 
     def _add_pagination_controls(self, layout: QVBoxLayout):
-        """Ajouter les contrôles de pagination modernes"""
-        
-        # Section pagination moderne
-        pagination_section = QWidget()
-        pagination_section.setObjectName("paginationSection")
-        pagination_section_layout = QVBoxLayout(pagination_section)
-        pagination_section_layout.setContentsMargins(12, 8, 12, 8)
-        
-        pagination_layout = QHBoxLayout()
-        pagination_layout.setSpacing(4)
-        
-        # Boutons de navigation
-        self.first_page_btn = QPushButton("««")
-        self.first_page_btn.setObjectName("paginationBtn")
-        self.first_page_btn.setToolTip("Première page")
-        self.first_page_btn.clicked.connect(lambda: self._go_to_page(1))
-        pagination_layout.addWidget(self.first_page_btn)
-        
-        self.prev_page_btn = QPushButton("«")
-        self.prev_page_btn.setObjectName("paginationBtn")
-        self.prev_page_btn.setToolTip("Page précédente")
-        self.prev_page_btn.clicked.connect(self._previous_page)
-        pagination_layout.addWidget(self.prev_page_btn)
-        
-        # Indicateur de page
-        self.page_info_label = QLabel("Page 1 / 1")
-        pagination_layout.addWidget(self.page_info_label)
-        
-        self.next_page_btn = QPushButton("»")
-        self.next_page_btn.setObjectName("paginationBtn")
-        self.next_page_btn.setToolTip("Page suivante")
-        self.next_page_btn.clicked.connect(self._next_page)
-        pagination_layout.addWidget(self.next_page_btn)
-        
-        self.last_page_btn = QPushButton("»»")
-        self.last_page_btn.setObjectName("paginationBtn")
-        self.last_page_btn.setToolTip("Dernière page")
-        self.last_page_btn.clicked.connect(self._go_to_last_page)
-        pagination_layout.addWidget(self.last_page_btn)
-        
-        pagination_layout.addWidget(QLabel("|  "))
-        
-        pagination_layout.addStretch()
-        
-        # Sélecteur de taille de page aligné à droite
-        size_label = QLabel("Afficher:")
-        size_label.setObjectName("inlineLabel")
-        pagination_layout.addWidget(size_label)
-        
-        self.page_size_combo = QComboBox()
-        self.page_size_combo.addItems(["500", "1000", "2000", "5000", "10000", "Tout"])
-        self.page_size_combo.setCurrentText(str(Config.DEFAULT_PAGE_SIZE))
-        self.page_size_combo.currentTextChanged.connect(self._change_page_size)
-        pagination_layout.addWidget(self.page_size_combo)
-        
-        pagination_section_layout.addLayout(pagination_layout)
-        
-        # Deuxième ligne avec bouton Incomplète centré et informations à droite
-        pagination_layout_2 = QHBoxLayout()
-        pagination_layout_2.setSpacing(4)
-        
-        # Espace pour centrer le bouton Incomplète
-        pagination_layout_2.addStretch()
-        
-        # Bouton pour afficher seulement les lignes incomplètes (centré)
-        incomplete_btn = QPushButton("📋 Lignes à traiter")
-        incomplete_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
-        incomplete_btn.setCheckable(True)
-        incomplete_btn.clicked.connect(self._toggle_incomplete_filter)
-        incomplete_btn.setObjectName("incompleteBtn")
-        pagination_layout_2.addWidget(incomplete_btn)
-        self.incomplete_filter_btn = incomplete_btn
-        
-        # Vérifier et masquer le bouton si aucun appareil incomplet
-        self._update_incomplete_button_visibility()
-        
-        # Espace pour centrer le bouton et pousser les infos à droite
-        pagination_layout_2.addStretch()
-        
-        # Compteur de lignes et indicateur de performance alignés à droite
-        self.counter_label = QLabel("Lignes : 0")
-        self.counter_label.setObjectName("counterLabel")
-        pagination_layout_2.addWidget(self.counter_label)
-        
-        pagination_layout_2.addWidget(QLabel("  |  "))
-        
-        # Indicateur de performance
-        self.perf_label = QLabel("⚡ Prêt")
-        self.perf_label.setObjectName("perfLabel")
-        pagination_layout_2.addWidget(self.perf_label)
-        
-        # Bouton pour afficher toutes les lignes (masqué car option "Tout" existe dans la selectlist)
-        self.show_all_btn = QPushButton("📋 Toutes les lignes")
-        self.show_all_btn.setObjectName("paginationBtn")
-        self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
-        self.show_all_btn.clicked.connect(self._toggle_show_all)
-        self.show_all_btn.setVisible(False)  # Masqué
-        pagination_layout_2.addWidget(self.show_all_btn)
-        
-        pagination_section_layout.addLayout(pagination_layout_2)
-        layout.addWidget(pagination_section)
+        """Ajouter les contrôles de pagination modernes - Phase 2.12: Délégation vers UIComponentService"""
+        self.ui_component_service.add_pagination_controls(layout)
 
     def _setup_drag_handle(self):
         """Configurer la poignée de glisser-déposer"""
@@ -2025,79 +1836,9 @@ class MainWindow(QMainWindow):
     # --- Méthodes d'export ---
 
     def _export_data(self, export_format: ExportFormat):
-        """Export avec sélection de référence (comportement original)"""
-        search_term = self.search_input.text().strip()
-        if not search_term:
-            QMessageBox.information(self, "Information", "Veuillez entrer un terme de recherche")
-            return
-        
-        try:
-            # Détecter si c'est une recherche multiple OR pour proposer sélection de référence
-            parsed_term = self._get_current_search_term() or search_term
-            
-            # Gérer différemment selon le format d'export
-            if export_format == ExportFormat.CSV:
-                # Pour CSV : demander sélection de référence pour recherches multiples
-                if isinstance(parsed_term, dict) and parsed_term.get('type') == 'or':
-                    # Extraire tous les termes de la recherche OR
-                    terms = []
-                    for group in parsed_term.get('groups', []):
-                        terms.extend(group.get('terms', []))
-                    
-                    if terms:
-                        # Demander à l'utilisateur de choisir une référence
-                        selected_reference = self._show_reference_selection_dialog(
-                            "Référence pour l'export CSV",
-                            f"Recherche multiple détectée ({len(terms)} références).\n"
-                            f"Termes: {', '.join(terms)}\n"
-                            f"Choisissez la référence à utiliser pour l'export :",
-                            self._extract_first_term(terms[0]) if terms else ""  # Premier terme par défaut
-                        )
-                        
-                        if not selected_reference:
-                            return  # Utilisateur a annulé
-                        
-                        export_data_term = parsed_term
-                        export_reference = selected_reference
-                    else:
-                        export_data_term = search_term
-                        export_reference = search_term
-                else:
-                    # Recherche simple - TOUJOURS demander confirmation de la référence
-                    selected_reference = self._show_reference_selection_dialog(
-                        "Référence pour l'export CSV",
-                        f"Référence détectée : {search_term}\n"
-                        f"Confirmez ou modifiez la référence à utiliser pour la première colonne :",
-                        self._extract_first_term(search_term)  # Premier terme seulement
-                    )
-                    
-                    if not selected_reference:
-                        return  # Utilisateur a annulé
-                        
-                    export_data_term = search_term 
-                    export_reference = selected_reference
-            else:
-                # Pour HTML : pas de demande de confirmation, utiliser directement tous les résultats
-                export_data_term = parsed_term if isinstance(parsed_term, dict) else search_term
-                export_reference = "recherche_multiple"  # Nom générique pour HTML
-            
-            # Charger les résultats pour vérification - utiliser la même logique que TableController
-            if search_term and ('&&' in search_term or '||' in search_term):
-                # Recherche avancée avec opérateurs
-                parsed_search_term = self._parse_advanced_search(search_term)
-                results = self.db_manager.load_data(parsed_search_term, {}, None, None, None, None, False)
-            else:
-                # Recherche simple
-                results = self.db_manager.load_data(search_term, {}, None, None, None, None, False)
-            if not results:
-                QMessageBox.information(self, "Information", "Aucun résultat trouvé pour cette recherche")
-                return
-            
-            # Exporter avec tous les résultats mais utiliser la référence sélectionnée pour le fichier
-            success = self._export_with_custom_reference(export_data_term, export_reference, export_format, len(results))
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'export: {e}")
-    
+        """Export avec sélection de référence (comportement original) - Phase 2.11"""
+        self.main_export_service.export_data(export_format)
+
     def _export_with_custom_reference(self, search_data_term, reference_for_file: str, export_format: ExportFormat, results_count: int) -> bool:
         """Exporter avec tous les résultats mais utiliser une référence spécifique pour le nom et la première colonne"""
         try:
@@ -2201,89 +1942,24 @@ class MainWindow(QMainWindow):
     # --- Méthodes utilitaires ---
 
     def _show_error(self, message: str):
-        """Afficher une erreur"""
-        QMessageBox.critical(self, "Erreur", message)
+        """Afficher une erreur - Phase 2.13: Délégation vers UserInteractionService"""
+        self.user_interaction_service.show_error(message)
 
     def _show_info(self, message: str):
-        """Afficher une information"""
-        QMessageBox.information(self, "Information", message)
+        """Afficher une information - Phase 2.13: Délégation vers UserInteractionService"""
+        self.user_interaction_service.show_info(message)
     
     def _show_confirmation(self, title: str, message: str, default_yes: bool = False) -> bool:
-        """Afficher une confirmation avec support des raccourcis clavier (Entrée/Échap)"""
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setIcon(QMessageBox.Question)
-        
-        # Créer les boutons
-        yes_btn = msg_box.addButton("Oui", QMessageBox.YesRole)
-        no_btn = msg_box.addButton("Non", QMessageBox.NoRole)
-        
-        # Configurer le bouton par défaut
-        if default_yes:
-            msg_box.setDefaultButton(yes_btn)
-            yes_btn.setDefault(True)
-        else:
-            msg_box.setDefaultButton(no_btn)
-            no_btn.setDefault(True)
-        
-        # Configurer les raccourcis clavier
-        yes_btn.setShortcut("Return")  # Entrée
-        no_btn.setShortcut("Escape")   # Échap
-        
-        # Afficher et récupérer le résultat
-        result = msg_box.exec_()
-        return msg_box.clickedButton() == yes_btn
+        """Afficher une confirmation - Phase 2.13: Délégation vers UserInteractionService"""
+        return self.user_interaction_service.show_confirmation(title, message, default_yes)
     
     def _show_save_confirmation(self, title: str, message: str):
-        """Afficher une confirmation Oui/Non/Annuler avec raccourcis clavier"""
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setIcon(QMessageBox.Question)
-        
-        # Créer les boutons
-        yes_btn = msg_box.addButton("Oui", QMessageBox.YesRole)
-        no_btn = msg_box.addButton("Non", QMessageBox.NoRole) 
-        cancel_btn = msg_box.addButton("Annuler", QMessageBox.RejectRole)
-        
-        # Configurer le bouton par défaut
-        msg_box.setDefaultButton(yes_btn)
-        yes_btn.setDefault(True)
-        
-        # Configurer les raccourcis clavier
-        yes_btn.setShortcut("Return")  # Entrée pour Oui (sauvegarder)
-        cancel_btn.setShortcut("Escape")  # Échap pour Annuler
-        # N pour Non
-        no_btn.setShortcut("N")
-        
-        # Afficher et récupérer le résultat
-        result = msg_box.exec_()
-        clicked_button = msg_box.clickedButton()
-        
-        if clicked_button == yes_btn:
-            return "yes"
-        elif clicked_button == no_btn:
-            return "no"
-        else:  # cancel_btn ou fermeture
-            return "cancel"
+        """Afficher une confirmation Oui/Non/Annuler - Phase 2.13: Délégation vers UserInteractionService"""
+        return self.user_interaction_service.show_save_confirmation(title, message)
 
     def _update_counter(self):
-        """Mettre à jour le compteur de lignes via TableController"""
-        displayed_count = self.table.rowCount()
-        
-        # Utiliser le size_label du TableController si disponible
-        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'size_label') and self.table_controller.size_label:
-            if hasattr(self, 'total_rows') and self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
-                self.table_controller.size_label.setText(f"Affichées : {displayed_count} / Total : {self.total_rows:,}")
-            else:
-                self.table_controller.size_label.setText(f"Lignes : {displayed_count:,}")
-        # Fallback sur counter_label si il existe encore
-        elif hasattr(self, 'counter_label'):
-            if hasattr(self, 'total_rows') and self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
-                self.counter_label.setText(f"Affichées : {displayed_count} / Total : {self.total_rows:,}")
-            else:
-                self.counter_label.setText(f"Lignes : {displayed_count:,}")
+        """Mettre à jour le compteur de lignes - Phase 2.13: Délégation vers UserInteractionService"""
+        self.user_interaction_service.update_counter()
 
     def _update_toolbar_states(self):
         """Mettre à jour l'état des boutons"""
@@ -2774,75 +2450,8 @@ class MainWindow(QMainWindow):
             return existing_desc
     
     def _add_to_history(self, message: str):
-        """Ajouter un message à l'historique"""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        # Initialiser ou récupérer la liste des messages d'historique
-        if not hasattr(self, '_history_messages'):
-            self._history_messages = []
-        
-        # Appliquer le formatage spécialisé pour les messages d'import
-        formatted_message = self._format_message_for_history(message, timestamp)
-        
-        # Ajouter le nouveau message au début de la liste
-        self._history_messages.insert(0, formatted_message)
-        
-        # Limiter à 50 entrées
-        if len(self._history_messages) > 50:
-            self._history_messages = self._history_messages[:50]
-        
-        # Reconstruire tout le HTML
-        html_content = """<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }
-        p { margin: 1px 0; line-height: 1.0; }
-        p.message-block { margin: 1px 0; line-height: 1.0; }
-        p.separator { margin: 4px 0; }
-        .timestamp { color: #666; }
-        .message { color: #333; }
-        .indented { margin-left: 20px; }
-        .import-header { font-weight: bold; color: #2c5282; }
-        .import-section { margin-left: 20px; color: #555; }
-        .import-summary { margin-left: 20px; color: #2d5a87; font-weight: 500; }
-        .entry-separator { height: 8px; margin: 4px 0; }
-    </style>
-</head>
-<body>
-"""
-        
-        # Ajouter tous les messages
-        for i, msg in enumerate(self._history_messages):
-            # Séparer timestamp et contenu pour styling
-            if msg.startswith('[') and '] ' in msg:
-                parts = msg.split('] ', 1)
-                timestamp_part = parts[0] + ']'
-                content_part = parts[1] if len(parts) > 1 else ''
-                # Convertir les retours à la ligne en HTML et appliquer l'indentation CSS
-                content_part = self._apply_css_indentation(content_part)
-                # Cadre rouge (timestamp) : bien séparé du contenu suivant  
-                html_content += f"<p class='separator'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
-            else:
-                # Convertir les retours à la ligne en HTML avec interligne minimal et indentation CSS
-                msg_html = self._apply_css_indentation(msg)
-                html_content += f"<p class='message-block'>{msg_html}</p>\n"
-            
-            # Ajouter une ligne vide sous chaque entrée d'historique (sauf la dernière)
-            if i < len(self._history_messages) - 1:
-                html_content += "<br>\n"
-        
-        html_content += """</body>
-</html>"""
-        
-        # Définir le contenu HTML en une fois
-        self.history_list.setHtml(html_content)
-        
-        # Positionner en haut pour voir la dernière entrée
-        cursor = self.history_list.textCursor()
-        cursor.movePosition(cursor.MoveOperation.Start)
-        self.history_list.setTextCursor(cursor)
+        """Ajouter un message à l'historique - Phase 2.13: Délégation vers UserInteractionService"""
+        self.user_interaction_service.add_to_history(message)
     
     def _apply_css_indentation(self, content: str) -> str:
         """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""
