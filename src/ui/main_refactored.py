@@ -36,6 +36,8 @@ from src.data.data_exporter import DataExporter, ExportError
 from src.utils.seo_generator import SEOGenerator
 from .style_manager import StyleManager
 from .table_controller import TableController
+from .paste_data_processor import PasteDataProcessor, PasteProcessingResult
+from .data_management_service import DataManagementService, FieldCompletionResult
 
 
 class CustomTableWidget(QTableWidget):
@@ -774,6 +776,16 @@ class MainWindow(QMainWindow):
             from ..services.autocompletion_service import AutoCompletionService
             self.autocompletion_service = AutoCompletionService(self.db_manager, self)
             
+            # Phase 2.5: Processeur de données collées
+            self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
+            
+            # Phase 2.5c: Service de gestion des données
+            self.data_management_service = DataManagementService(self.db_manager, self)
+            
+            # Phase 2.5d: Service de barre d'outils
+            from .toolbar_service import ToolbarService
+            self.toolbar_service = ToolbarService(self)
+            
             # PHASE 2.3: Connecter signaux AdvancedSearchService
             self._connect_advanced_search_signals()
             
@@ -1346,133 +1358,10 @@ class MainWindow(QMainWindow):
         self.table.viewport().installEventFilter(self)
 
     def _setup_toolbar(self):
-        """Configurer la barre d'outils moderne"""
-        toolbar = QToolBar()
-        toolbar.setObjectName("modernToolbar")
-        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        toolbar.setMovable(False)  # Fixer la barre pour un look plus moderne
-        toolbar.setIconSize(QSize(20, 20))  # Icônes de taille uniforme
-        self.addToolBar(toolbar)
-        
-        # Groupe Actualisation
-        refresh_action = QAction("↻", self)
-        refresh_action.setShortcut("F5")
-        refresh_action.setToolTip("Rafraîchir l'application (F5)")
-        refresh_action.triggered.connect(self._refresh_application)
-        toolbar.addAction(refresh_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Édition
-        self.undo_action = QAction("←", self)
-        self.undo_action.setShortcut(QKeySequence.Undo)
-        self.undo_action.setToolTip("Annuler la dernière action (Cmd+Z)")
-        self.undo_action.triggered.connect(self._undo)
-        toolbar.addAction(self.undo_action)
-        
-        self.redo_action = QAction("→", self)
-        self.redo_action.setShortcut(QKeySequence.Redo)
-        self.redo_action.setToolTip("Rétablir l'action annulée (Cmd+Y)")
-        self.redo_action.triggered.connect(self._redo)
-        toolbar.addAction(self.redo_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Presse-papiers
-        copy_action = QAction("📋", self)
-        copy_action.setShortcut(QKeySequence.Copy)
-        copy_action.setToolTip("Copier la sélection (Cmd+C)")
-        copy_action.triggered.connect(self._handle_copy)
-        toolbar.addAction(copy_action)
-        
-        paste_action = QAction("📥", self)
-        paste_action.setShortcut(QKeySequence.Paste)
-        paste_action.setToolTip("Coller depuis le presse-papiers (Cmd+V)")
-        paste_action.triggered.connect(self._handle_paste)
-        toolbar.addAction(paste_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Sauvegarde
-        save_action = QAction("💾", self)
-        save_action.setShortcut(QKeySequence.Save)
-        save_action.setToolTip("Sauvegarder toutes les modifications (Cmd+S)")
-        save_action.triggered.connect(self._manual_save)
-        toolbar.addAction(save_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Menus déroulants
-        # Menu Gestion dans la toolbar
-        gestion_btn = QPushButton("Gestion")
-        gestion_btn.setObjectName("menuButton")
-        gestion_menu = QMenu()
-        
-        categories_action = QAction("🏷️ Catégories", self)
-        categories_action.triggered.connect(self._manage_categories)
-        gestion_menu.addAction(categories_action)
-        
-        pieces_action = QAction("🔧 Pièces", self) 
-        pieces_action.triggered.connect(self._open_pieces_manager)
-        gestion_menu.addAction(pieces_action)
-        
-        validate_action = QAction("🔍 Incohérences", self)
-        validate_action.triggered.connect(self._validate_and_detect_inconsistencies)
-        gestion_menu.addAction(validate_action)
-        
-        gestion_btn.setMenu(gestion_menu)
-        toolbar.addWidget(gestion_btn)
-        
-        # Menu Action dans la toolbar
-        action_btn = QPushButton("Action")
-        action_btn.setObjectName("menuButton")
-        action_menu = QMenu()
-        
-        import_action = QAction("📈 Import", self)
-        import_action.triggered.connect(self._import_file)
-        action_menu.addAction(import_action)
-        
-        action_menu.addSeparator()
-        
-        autocomplete_action = QAction("🗯️ Autocomplétion", self)
-        autocomplete_action.triggered.connect(self._fill_empty_fields)
-        action_menu.addAction(autocomplete_action)
-        
-        clean_action = QAction("🧹 Nettoyer les doublons", self)
-        clean_action.triggered.connect(self._clean_data)
-        action_menu.addAction(clean_action)
-        
-        action_btn.setMenu(action_menu)
-        toolbar.addWidget(action_btn)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Outils
-        logs_action = QAction("📊 Journal", self)
-        logs_action.setToolTip("Ouvrir le visualiseur de logs")
-        logs_action.triggered.connect(self._open_log_viewer)
-        toolbar.addAction(logs_action)
-        
-        guide_action = QAction("📖 Guide", self)
-        guide_action.setToolTip("Ouvrir le guide d'utilisation")
-        guide_action.triggered.connect(self._open_user_guide)
-        toolbar.addAction(guide_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Bouton configuration des colonnes
-        columns_action = QAction("☰ Colonnes", self)
-        columns_action.setToolTip("Configurer l'affichage des colonnes")
-        columns_action.triggered.connect(self._configure_columns)
-        toolbar.addAction(columns_action)
-        
+        """Configurer la barre d'outils moderne - Phase 2.5d"""
+        # Déléguer la configuration au service spécialisé
+        self.toolbar = self.toolbar_service.setup_toolbar()
         self._update_toolbar_states()
-    
-    def _add_toolbar_separator(self, toolbar):
-        """Ajouter un séparateur moderne à la toolbar"""
-        separator = toolbar.addSeparator()
-        # Le style du séparateur est géré par le CSS
-        return separator
 
     def _setup_statusbar(self):
         """Configurer la barre de statut"""
@@ -3665,20 +3554,21 @@ class MainWindow(QMainWindow):
                 self.previous_values[key] = action['new_value']
 
     def _fill_empty_fields(self):
-        """Compléter les champs vides"""
+        """Compléter les champs vides - Version refactorisée Phase 2.5c"""
         try:
-            # Compter les champs complétés
-            completed_count = 0
             total_rows = self.table.rowCount()
             
             if total_rows == 0:
                 self._show_info("Aucune donnée à compléter")
                 return
             
+            # Préparer les données pour le service
+            table_data = []
+            
             # Bloquer les signaux pendant la complétion
             self.table.blockSignals(True)
             
-            # Parcourir toutes les lignes
+            # Collecter les données de toutes les lignes
             for row in range(total_rows):
                 header_item = self.table.verticalHeaderItem(row)
                 if not header_item:
@@ -3687,317 +3577,114 @@ class MainWindow(QMainWindow):
                 try:
                     db_id = self._get_db_id_from_row(row)
                     
-                    # Récupérer les données actuelles de la ligne avec mapping correct
+                    # Récupérer les données actuelles de la ligne
                     appareil_data = {}
-                    
-                    # Parcourir toutes les colonnes UI et mapper vers DB
                     for ui_col_idx in range(self.table.columnCount()):
                         db_field = self._get_db_field_name(ui_col_idx)
-                        if db_field:  # Ignorer pieces_count (index 5)
+                        if db_field:  # Ignorer pieces_count
                             item = self.table.item(row, ui_col_idx)
                             cell_value = item.text() if item else ""
                             appareil_data[db_field] = cell_value
-                            
-                            # Debug pour la colonne D (maintenant index 3)
-                            if db_field == 'commercial_ref':
-                                app_logger.debug(f"ROW {row}, COL {ui_col_idx}: commercial_ref = '{cell_value}'")
                     
-                    # Vérifier si Type ou Fabricant sont vides
-                    type_empty = not appareil_data.get('type', '').strip()
-                    manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
+                    table_data.append({
+                        'id': db_id,
+                        'row': row,
+                        'data': appareil_data
+                    })
                     
-                    if type_empty or manufacturer_empty:
-                        # Essayer de compléter automatiquement
-                        original_data = appareil_data.copy()
-                        
-                        # Log de l'opération de complétion
-                        app_logger.log_user_action("fill_empty_fields", {
-                            "row": row,
-                            "db_id": db_id,
-                            "type_empty": type_empty,
-                            "manufacturer_empty": manufacturer_empty,
-                            "original_data": original_data
-                        })
-                        
-                        self._try_auto_complete(appareil_data)
-                        
-                        # Récupérer les items du tableau pour mise à jour
-                        type_item = self.table.item(row, 0)  # Colonne A (Type)
-                        manufacturer_item = self.table.item(row, 1)  # Colonne B (Manufacturer)
-                        
-                        # Mettre à jour les cellules si des champs ont été complétés
-                        if type_empty and appareil_data.get('type', '').strip():
-                            # Vérifier si on va écraser des données existantes
-                            current_type = type_item.text() if type_item else ""
-                            if current_type.strip():
-                                app_logger.warning(f"ATTENTION: Type existant détecté lors de la complétion! Ligne {row}, DB_ID {db_id}: '{current_type}' -> '{appareil_data['type']}'")
-                            
-                            # Mettre à jour Type dans la base et l'interface
-                            self.db_manager.update_cell(db_id, 'type', appareil_data['type'])
-                            
-                            # Log de l'opération de mise à jour
-                            app_logger.log_data_operation(
-                                "UPDATE_TYPE_AUTOCOMPLETE",
-                                {"field": "type", "old_value": current_type, "new_value": appareil_data['type']},
-                                table_id=db_id,
-                                success=True
-                            )
-                            
-                            if type_item:
-                                type_item.setText(appareil_data['type'])
-                            completed_count += 1
-                        
-                        if manufacturer_empty and appareil_data.get('manufacturer', '').strip():
-                            # Vérifier si on va écraser des données existantes
-                            current_manufacturer = manufacturer_item.text() if manufacturer_item else ""
-                            if current_manufacturer.strip():
-                                app_logger.warning(f"ATTENTION: Fabricant existant détecté lors de la complétion! Ligne {row}, DB_ID {db_id}: '{current_manufacturer}' -> '{appareil_data['manufacturer']}'")
-                            
-                            # Mettre à jour Fabricant dans la base et l'interface
-                            self.db_manager.update_cell(db_id, 'manufacturer', appareil_data['manufacturer'])
-                            
-                            # Log de l'opération de mise à jour
-                            app_logger.log_data_operation(
-                                "UPDATE_MANUFACTURER_AUTOCOMPLETE",
-                                {"field": "manufacturer", "old_value": current_manufacturer, "new_value": appareil_data['manufacturer']},
-                                table_id=db_id,
-                                success=True
-                            )
-                            
-                            if manufacturer_item:
-                                manufacturer_item.setText(appareil_data['manufacturer'])
-                            completed_count += 1
-                
-                except (ValueError, DatabaseError) as e:
-                    print(f"Erreur lors de la complétion de la ligne {row}: {e}")
-                    continue
+                except Exception as e:
+                    app_logger.error(f"Erreur récupération ligne {row}: {e}")
             
-            # Réactiver les signaux et forcer le rafraîchissement (retour première page)
+            # Phase 2.5c: Déléguer l'auto-complétion au service spécialisé
+            result = self.data_management_service.auto_complete_empty_fields(table_data)
+            
+            # Débloquer les signaux
             self.table.blockSignals(False)
-            self._force_refresh_display(reset_page=True, clear_filters=True)
+            
+            # Recharger les données pour refléter les changements
+            self.table_controller.load_data()
             
             # Afficher le résultat
-            if completed_count > 0:
-                message = f"Complétion automatique: {completed_count} champ(s) complété(s)"
-                self._add_to_history(message)
-                self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
+            if result.errors:
+                error_msg = f"Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
+                if len(result.errors) > 5:
+                    error_msg += f"\n... et {len(result.errors) - 5} autres erreurs"
+                self._show_error(error_msg)
+            
+            if result.completed_count > 0:
+                self._show_info(f"✅ Auto-complétion réussie !\n\n"
+                               f"🎯 {result.completed_count} ligne(s) complétée(s)\n"
+                               f"📊 {result.total_rows_processed} ligne(s) traitée(s)")
             else:
-                message = "Complétion automatique: Aucun champ à compléter trouvé"
-                self._add_to_history(message)
-                
+                self._show_info("ℹ️ Aucun champ à compléter automatiquement.\n\n"
+                               "Tous les appareils ont déjà un Type et un Fabricant, "
+                               "ou aucune référence similaire n'a été trouvée.")
+            
+        except DatabaseError as e:
+            self.table.blockSignals(False)
+            self._show_error(f"Erreur de base de données lors de l'auto-complétion: {e}")
         except Exception as e:
+            self.table.blockSignals(False)
+            self._show_error(f"Erreur lors de l'auto-complétion: {e}")
             self.table.blockSignals(False)  # S'assurer que les signaux sont réactivés
             self._show_error(f"Erreur lors de la complétion: {e}")
 
     def _clean_data(self):
-        """Nettoyer les données avec prévisualisation détaillée"""
-        from .cleanup_preview import CleanupPreviewDialog
-        
-        # Ouvrir la fenêtre de prévisualisation
-        preview_dialog = CleanupPreviewDialog(self)
-        
-        if preview_dialog.exec_() != QDialog.Accepted:
-            return
-        
-        # Récupérer les options de nettoyage
-        cleanup_options = preview_dialog.get_cleanup_options()
-        
-        # Si aucun doublon trouvé, ne rien faire
-        if not cleanup_options['analysis_data'] or \
-           (cleanup_options['analysis_data']['statistics']['total_devices_to_delete'] == 0 and \
-            cleanup_options['analysis_data']['statistics']['total_duplicate_pieces'] == 0 and \
-            cleanup_options['analysis_data']['statistics']['inconsistencies_count'] == 0):
-            self._show_info("✅ Aucun doublon trouvé ! La base de données est déjà propre.")
-            return
-        
-        # Confirmation finale
-        stats = cleanup_options['analysis_data']['statistics']
-        operations = []
-        
-        if cleanup_options['clean_devices'] and stats['total_devices_to_delete'] > 0:
-            operations.append(f"• Supprimer {stats['total_devices_to_delete']} appareils en doublon")
-            operations.append(f"• Transférer {stats['total_pieces_to_transfer']} pièces associées")
-        
-        if cleanup_options['clean_pieces'] and stats['total_duplicate_pieces'] > 0:
-            operations.append(f"• Supprimer {stats['total_duplicate_pieces']} références de pièces dupliquées")
-        
-        if cleanup_options['clean_inconsistencies'] and stats['inconsistencies_count'] > 0:
-            inconsistencies_to_merge = 0
-            for group_data in cleanup_options.get('inconsistencies_fusion_data', []):
-                if group_data.get('master_device'):
-                    # Compter les appareils qui seront fusionnés (tous sauf le maître)
-                    inconsistencies_to_merge += len(group_data['devices']) - 1
-            if inconsistencies_to_merge > 0:
-                operations.append(f"• Fusionner {inconsistencies_to_merge} appareils avec doublons de références")
-        
-        if not operations:
-            # Message plus informatif selon le contexte
-            debug_info = []
-            if stats['total_devices_to_delete'] > 0:
-                debug_info.append(f"Appareils en doublon: {stats['total_devices_to_delete']} (option cochée: {cleanup_options['clean_devices']})")
-            if stats['total_duplicate_pieces'] > 0:
-                debug_info.append(f"Pièces dupliquées: {stats['total_duplicate_pieces']} (option cochée: {cleanup_options['clean_pieces']})")
-            if stats['inconsistencies_count'] > 0:
-                fusion_count = len(cleanup_options.get('inconsistencies_fusion_data', []))
-                debug_info.append(f"Doublons de références: {stats['inconsistencies_count']} détectés, {fusion_count} avec sélection (option cochée: {cleanup_options['clean_inconsistencies']})")
-            
-            message = "Aucune opération sélectionnée.\n\n"
-            if debug_info:
-                message += "État actuel:\n" + "\n".join(f"• {info}" for info in debug_info)
-                message += "\n\nVeuillez cocher les options de nettoyage souhaitées et/ou sélectionner des appareils à fusionner."
-            else:
-                message += "Veuillez cocher au moins une option de nettoyage."
-            
-            self._show_info(message)
-            return
-        
-        final_confirmation = QMessageBox.question(
-            self,
-            "Confirmation finale",
-            "Opérations à effectuer :\n\n" + "\n".join(operations) + 
-            "\n\n⚠️ Cette action est IRRÉVERSIBLE !\n\nÊtes-vous absolument certain ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if final_confirmation != QMessageBox.Yes:
-            return
-        
+        """Nettoyer les données avec prévisualisation détaillée - Version refactorisée Phase 2.5c"""
         try:
-            devices_deleted = 0
-            pieces_deleted = 0
+            # Phase 2.5c: Déléguer la préparation du nettoyage au service
+            cleanup_options = self.data_management_service.prepare_data_cleaning()
             
-            # Nettoyer selon les options choisies
+            if cleanup_options is None:
+                self._show_info("✅ Aucun doublon trouvé ! La base de données est déjà propre.")
+                return
+            
+            # Afficher la confirmation finale (UI reste dans MainWindow)
+            stats = cleanup_options['analysis_data']['statistics']
+            operations = []
+            
             if cleanup_options['clean_devices'] and stats['total_devices_to_delete'] > 0:
-                devices_deleted = self.db_manager.remove_duplicate_devices()
+                operations.append(f"• Supprimer {stats['total_devices_to_delete']} appareils en doublon")
+                operations.append(f"• Transférer {stats['total_pieces_to_transfer']} pièces associées")
             
             if cleanup_options['clean_pieces'] and stats['total_duplicate_pieces'] > 0:
-                pieces_deleted = self.db_manager.remove_duplicate_pieces()
+                operations.append(f"• Supprimer {stats['total_duplicate_pieces']} références de pièces dupliquées")
             
-            # Fusionner les doublons de références selon les choix utilisateur
-            inconsistencies_merged = 0
-            if cleanup_options['clean_inconsistencies'] and stats['inconsistencies_count'] > 0:
-                for group_data in cleanup_options.get('inconsistencies_fusion_data', []):
-                    master_device = group_data.get('master_device')
-                    if not master_device:
-                        continue
-                        
-                    master_id = master_device['id']
-                    
-                    # Appliquer les modifications du maître s'il y en a
-                    if master_device.get('modified', False):
-                        current_data = master_device['current_data']
-                        for field, value in current_data.items():
-                            if field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref', 'other_ref', 'category', 'notes']:
-                                self.db_manager.update_cell(master_id, field, value)
-                    
-                    # Fusionner tous les autres appareils vers le maître
-                    for device in group_data['devices']:
-                        if device['id'] != master_id and not device.get('is_master', False):
-                            # Transférer les pièces vers l'appareil maître
-                            self.db_manager.transfer_pieces(device['id'], master_id)
-                            # Supprimer l'appareil
-                            self.db_manager.delete_appareils([device['id']])
-                            inconsistencies_merged += 1
-            
-            # Nettoyer les données (fonction originale)
-            result = self.db_manager.clean_data()
-            
-            # Message de résultat
-            message_parts = []
-            if devices_deleted > 0:
-                message_parts.append(f"{devices_deleted} appareils dupliqués cumulés")
-            if pieces_deleted > 0:
-                message_parts.append(f"{pieces_deleted} références de pièces dupliquées cumulées")
-            if inconsistencies_merged > 0:
-                message_parts.append(f"{inconsistencies_merged} appareils avec incohérences fusionnés")
-            if result.get('deleted_empty', 0) > 0:
-                message_parts.append(f"{result['deleted_empty']} lignes vides supprimées")
-            if result.get('deleted_duplicates', 0) > 0:
-                message_parts.append(f"{result['deleted_duplicates']} doublons supprimés")
-            if result.get('merged_notes', 0) > 0:
-                message_parts.append(f"{result['merged_notes']} notes fusionnées")
-            
-            if message_parts:
-                message = f"Nettoyage terminé: {', '.join(message_parts)}"
-            else:
-                message = "Nettoyage terminé: Aucun problème détecté"
-            
-            self._add_to_history(message)
-            self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-            self._force_refresh_display(reset_page=True, clear_filters=True)
-            
-            # Actualiser la fenêtre de validation si elle est ouverte
-            if hasattr(self, 'validation_window') and self.validation_window:
-                self.validation_window._load_data()
+            # Demander confirmation finale
+            if operations:
+                from PyQt5.QtWidgets import QMessageBox
+                operations_text = "\n".join(operations)
+                reply = QMessageBox.question(
+                    self, "Confirmer le nettoyage",
+                    f"⚠️ Opérations de nettoyage à effectuer :\n\n{operations_text}\n\nContinuer ?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
                 
-        except DatabaseError as e:
-            self._show_error(f"Erreur lors du nettoyage: {e}")
+                if reply != QMessageBox.Yes:
+                    return
+            
+            # Phase 2.5c: Exécuter le nettoyage via le service
+            cleanup_result = self.data_management_service.execute_data_cleaning(cleanup_options)
+            
+            if 'error' in cleanup_result:
+                self._show_error(f"Erreur lors du nettoyage: {cleanup_result['error']}")
+                return
+            
+            # Recharger les données
+            self.table_controller.load_data()
+            
+            # Afficher le résumé des opérations
+            self._show_info(f"✅ Nettoyage terminé avec succès !\n\n"
+                           f"Opérations effectuées :\n{operations_text}")
+            
+        except Exception as e:
+            self._show_error(f"Erreur lors du nettoyage des données: {e}")
     
-    def _clean_duplicate_devices(self):
-        """Supprimer seulement les doublons d'appareils"""
-        reply = QMessageBox.question(
-            self, 
-            "Supprimer doublons d'appareils",
-            "Cette opération va supprimer les appareils en doublon en gardant le plus ancien.\n"
-            "Les pièces seront transférées vers l'appareil conservé.\n\n"
-            "Cette action est irréversible. Continuer ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if reply != QMessageBox.Yes:
-            return
-        
-        try:
-            deleted_count = self.db_manager.remove_duplicate_devices()
-            
-            if deleted_count > 0:
-                message = f"Nettoyage terminé: {deleted_count} appareils en doublon supprimés"
-            else:
-                message = "Nettoyage terminé: Aucun doublon d'appareil détecté"
-            
-            self._add_to_history(message)
-            self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-            self._force_refresh_display(reset_page=True, clear_filters=True)
-            
-        except DatabaseError as e:
-            self._show_error(f"Erreur lors de la suppression des doublons d'appareils: {e}")
-    
-    def _clean_duplicate_pieces(self):
-        """Supprimer seulement les doublons de pièces"""
-        reply = QMessageBox.question(
-            self, 
-            "Supprimer doublons de pièces",
-            "Cette opération va supprimer les références de pièces dupliquées.\n"
-            "Seule la première occurrence de chaque référence sera conservée.\n\n"
-            "Cette action est irréversible. Continuer ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if reply != QMessageBox.Yes:
-            return
-        
-        try:
-            deleted_count = self.db_manager.remove_duplicate_pieces()
-            
-            if deleted_count > 0:
-                message = f"Nettoyage terminé: {deleted_count} références de pièces dupliquées supprimées"
-            else:
-                message = "Nettoyage terminé: Aucun doublon de pièce détecté"
-            
-            self._add_to_history(message)
-            self.statusbar.showMessage(message, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-            self._update_pieces_panel()  # Actualiser le panneau des pièces
-            
-        except DatabaseError as e:
-            self._show_error(f"Erreur lors de la suppression des doublons de pièces: {e}")
-
     def _manage_categories(self):
         """Gérer les catégories"""
         try:
             current_categories = self.db_manager.get_categories()
+            from .category_dialog import CategoryDialog
             new_categories = CategoryDialog.get_categories(self, current_categories)
             
             if new_categories is not None:
@@ -4006,46 +3693,12 @@ class MainWindow(QMainWindow):
                     Config.get_message('categories_updated'), 
                     Config.STATUS_MESSAGE_TIMEOUT
                 )
-        except DatabaseError as e:
+        except Exception as e:
             self._show_error(f"Erreur lors de la gestion des catégories: {e}")
-
-    def _edit_notes(self):
-        """Éditer les notes"""
-        current_row = self.table.currentRow()
-        if current_row < 0:
-            self._show_info(Config.get_message('no_selection'))
-            return
-        
-        try:
-            db_id = self._get_db_id_from_row(current_row)
-            
-            # Récupérer les notes actuelles (simplification)
-            current_notes = ""
-            notes_item = self.table.item(current_row, 6)  # Colonne notes (maintenant à l'index 6)
-            if notes_item:
-                current_notes = notes_item.text()
-            
-            new_notes = NotesDialog.get_notes(self, current_notes)
-            
-            if new_notes is not None:
-                success = self.db_manager.update_cell(db_id, 'notes', new_notes)
-                if success:
-                    if notes_item:
-                        preview = new_notes[:Config.NOTES_PREVIEW_LENGTH]
-                        if len(new_notes) > Config.NOTES_PREVIEW_LENGTH:
-                            preview += "..."
-                        notes_item.setText(preview)
-                    
-                    self.statusbar.showMessage(
-                        Config.get_message('notes_updated'), 
-                        Config.STATUS_MESSAGE_TIMEOUT
-                    )
-                    
-        except DatabaseError as e:
-            self._show_error(f"Erreur lors de l'édition des notes: {e}")
-
+    
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""
+        from PyQt5.QtWidgets import QFileDialog
         filenames, _ = QFileDialog.getOpenFileNames(
             self, "Importer fichier(s)", "", 
             "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
@@ -4058,761 +3711,7 @@ class MainWindow(QMainWindow):
             if results:
                 self._show_import_results_new(results)
                 self.table_controller.load_data()  # Rafraîchir l'affichage
-        
     
-    def _detect_csv_columns(self, filename):
-        """Détecter automatiquement le nombre de colonnes du fichier CSV (fallback legacy)"""
-        try:
-            import csv
-            
-            # Détecter l'encodage automatiquement
-            encoding = self._detect_file_encoding(filename)
-            
-            with open(filename, 'r', encoding=encoding, errors='replace') as file:
-                # Lire un échantillon pour détecter le séparateur
-                sample = file.read(1024)
-                file.seek(0)
-                
-                # Détecter le séparateur
-                sniffer = csv.Sniffer()
-                try:
-                    dialect = sniffer.sniff(sample, delimiters=',;\t')
-                    reader = csv.reader(file, dialect)
-                except csv.Error:
-                    if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
-                        reader = csv.reader(file, delimiter=';')
-                    elif sample.count('\t') > sample.count(','):
-                        reader = csv.reader(file, delimiter='\t')
-                    else:
-                        reader = csv.reader(file, delimiter=',')
-                
-                # Analyser les premières lignes pour déterminer le nombre de colonnes
-                column_counts = []
-                for i, row in enumerate(reader):
-                    if i >= 5:  # Analyser les 5 premières lignes
-                        break
-                    if row:  # Ignorer les lignes vides
-                        column_counts.append(len(row))
-                
-                if not column_counts:
-                    QMessageBox.warning(self, "Fichier vide", "Le fichier CSV semble être vide.")
-                    return None
-                
-                # Prendre le nombre de colonnes le plus fréquent
-                most_common_columns = max(set(column_counts), key=column_counts.count)
-                
-                return most_common_columns
-                
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur d'analyse", f"Erreur lors de l'analyse du fichier: {e}")
-            return None
-    
-    def _detect_file_encoding(self, filename):
-        """Détecter automatiquement l'encodage d'un fichier"""
-        # Encodages courants à tester dans l'ordre de priorité
-        encodings_to_try = ['utf-8', 'utf-8-sig', 'cp1252', 'latin-1', 'iso-8859-1', 'iso-8859-15', 'windows-1252', 'utf-16']
-        
-        # D'abord essayer avec chardet si disponible
-        try:
-            import chardet
-            with open(filename, 'rb') as file:
-                raw_data = file.read(50000)  # Lire plus de données pour une meilleure détection
-                detected = chardet.detect(raw_data)
-                if detected and detected['encoding'] and detected['confidence'] > 0.5:  # Seuil réduit
-                    encoding = detected['encoding'].lower()
-                    # Mapper certains encodages vers des versions plus compatibles
-                    if encoding in ['windows-1252', 'cp1252']:
-                        return 'cp1252'
-                    elif encoding in ['iso-8859-1', 'latin-1']:
-                        return 'latin-1' 
-                    elif encoding.startswith('utf-8'):
-                        return 'utf-8'
-                    elif encoding.startswith('utf-16'):
-                        return 'utf-16'
-                    else:
-                        return detected['encoding']
-        except (ImportError, Exception) as e:
-            app_logger.debug(f"Chardet non disponible ou erreur: {e}")
-        
-        # Sinon, tester manuellement les encodages courants en lisant tout le fichier
-        for encoding in encodings_to_try:
-            try:
-                with open(filename, 'r', encoding=encoding, errors='replace') as file:
-                    file.read()  # Lire tout le fichier pour s'assurer que l'encodage fonctionne
-                    app_logger.debug(f"Encodage détecté avec succès: {encoding}")
-                    return encoding
-            except UnicodeDecodeError:
-                continue
-            except Exception:
-                continue
-        
-        # Par défaut, retourner latin-1 qui peut lire tous les bytes
-        app_logger.warning(f"Aucun encodage détecté pour {filename}, utilisation de latin-1")
-        return 'latin-1'
-    
-    def _detect_separator(self, filename):
-        """Détecter automatiquement le séparateur CSV"""
-        try:
-            import csv
-            
-            # Détecter l'encodage d'abord
-            encoding = self._detect_file_encoding(filename)
-            
-            with open(filename, 'r', encoding=encoding, errors='replace') as file:
-                sample = file.read(1024)
-                
-                sniffer = csv.Sniffer()
-                try:
-                    dialect = sniffer.sniff(sample, delimiters=',;\t')
-                    return dialect.delimiter
-                except csv.Error:
-                    if sample.count(';') > sample.count(',') and sample.count(';') > sample.count('\t'):
-                        return ';'
-                    elif sample.count('\t') > sample.count(','):
-                        return '\t'
-                    else:
-                        return ','
-                        
-        except Exception as e:
-            return ','  # Default fallback
-    
-    def _create_progress_dialog(self, title, total_items, label_template="Traitement... {} / {} éléments"):
-        """Factory method pour créer des dialogues de progression cohérents"""
-        from PyQt5.QtWidgets import QProgressDialog
-        from PyQt5.QtCore import Qt
-        from PyQt5.QtWidgets import QApplication
-        
-        progress_dialog = QProgressDialog(
-            label_template.format(0, total_items),
-            "Annuler", 0, total_items, self
-        )
-        progress_dialog.setWindowTitle(title)
-        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        progress_dialog.show()
-        QApplication.processEvents()
-        return progress_dialog
-    
-    def _prepare_csv_sample_data(self, file_path, max_lines=3):
-        """Préparer les données d'exemple pour l'aperçu CSV (fallback legacy)"""
-        sample_data = []
-        try:
-            import csv
-            encoding = self._detect_file_encoding(file_path)
-            separator = self._detect_separator(file_path)
-            
-            with open(file_path, 'r', encoding=encoding, errors='replace') as file:
-                reader = csv.reader(file, delimiter=separator)
-                for i, row in enumerate(reader):
-                    if i < max_lines and row:
-                        sample_data.append(row)
-                    elif i >= max_lines:
-                        break
-        except Exception as e:
-            print(f"Erreur lecture aperçu CSV: {e}")
-        return sample_data
-    
-    def _detect_column_mapping(self, sample_data):
-        """Détecter automatiquement l'ordre des colonnes en analysant le contenu"""
-        if not sample_data or len(sample_data) == 0:
-            return None
-            
-        mapping = {}
-        
-        # Analyser chaque colonne pour détecter son type
-        num_cols = max(len(row) for row in sample_data if row)
-        
-        for col_idx in range(num_cols):
-            # Extraire les valeurs de cette colonne (non vides)
-            col_values = []
-            for row in sample_data:
-                if len(row) > col_idx and row[col_idx] is not None:
-                    val = str(row[col_idx]).strip()
-                    if val:
-                        col_values.append(val)
-            
-            if not col_values:
-                continue
-                
-            # Analyser les patterns de cette colonne
-            col_type = self._analyze_column_content(col_values)
-            
-            # Assigner le type détecté à cette colonne
-            if col_type == 'ref_modele' and 'ref_modele' not in mapping:
-                mapping['ref_modele'] = col_idx
-            elif col_type == 'commercial_ref' and 'commercial_ref' not in mapping:
-                mapping['commercial_ref'] = col_idx  
-            elif col_type == 'type' and 'type' not in mapping:
-                mapping['type'] = col_idx
-            elif col_type == 'manufacturer' and 'manufacturer' not in mapping:
-                mapping['manufacturer'] = col_idx
-            else:
-                # Colonne non identifiée
-                if 'other' not in mapping:
-                    mapping['other'] = col_idx
-        
-        return mapping if mapping else None
-    
-    def _analyze_column_content(self, values):
-        """Analyser le contenu d'une colonne pour déterminer son type"""
-        if not values:
-            return 'unknown'
-            
-        # Compter les patterns
-        patterns = {
-            'ref_modele': 0,      # GK 200, GK 215, etc.
-            'commercial_ref': 0,  # 090990201, 090267006, etc. (chiffres)
-            'type': 0,           # RÉFRIGÉRATEUR, MODÈLE, TABLE-TOP, etc. (mots longs)
-            'manufacturer': 0     # Noms de marque
-        }
-        
-        for value in values[:5]:  # Analyser seulement les 5 premiers
-            value = value.upper().strip()
-            
-            # Pattern ref_modele: lettres + chiffres, court (ex: GK 200, GK215)
-            if len(value) <= 10 and any(c.isalpha() for c in value) and any(c.isdigit() for c in value):
-                patterns['ref_modele'] += 2
-                
-            # Pattern commercial_ref: principalement chiffres, long (ex: 090990201)
-            elif len(value) >= 6 and value.replace(' ', '').isdigit():
-                patterns['commercial_ref'] += 2
-                
-            # Pattern type: mots longs avec tirets/espaces (ex: RÉFRIGÉRATEUR-MODÈLE TABLE-TOP)
-            elif len(value) > 15 and ('-' in value or len(value.split()) > 2):
-                patterns['type'] += 2
-                
-            # Pattern manufacturer: mots courts, noms propres
-            elif len(value) <= 15 and value.isalpha():
-                patterns['manufacturer'] += 1
-                
-            # Fallback: longueur comme indicateur
-            if len(value) <= 8:
-                patterns['ref_modele'] += 0.5
-            elif 8 < len(value) <= 15:
-                patterns['commercial_ref'] += 0.5
-            else:
-                patterns['type'] += 0.5
-        
-        # Retourner le type avec le score le plus élevé
-        best_type = max(patterns, key=patterns.get)
-        return best_type if patterns[best_type] > 0 else 'other'
-    
-    def _process_import(self, imported_data, import_type, ref_piece, third_column_choice="ignore", progress_dialog=None, libelle_piece=None):
-        """Traiter les données d'import avec détection intelligente des colonnes"""
-        # Stocker la référence de pièce pour vérification post-import
-        self.last_imported_piece_ref = ref_piece
-        
-        # Vider le cache des décisions de description au début de chaque import
-        self._piece_description_decisions.clear()
-        
-        results = {
-            'total_imported': 0,
-            'matches_found': 0,
-            'manual_completion': 0,
-            'duplicates_skipped': 0,
-            'new_entries': 0,
-            'associations_created': 0,
-            'descriptions_updated': 0,
-            'duplicates_in_file': 0,
-            'auto_completed': 0,
-            'original_line_count': len(imported_data)  # Nombre réel de lignes dans le fichier
-        }
-        
-        # Set pour tracker les doublons dans le fichier
-        seen_device_refs = set()
-        
-        # Note: La détection automatique des colonnes est désactivée pour les PDF
-        # Les PDF suivent toujours la logique fixe: col0->ref_modele, col1->commercial_ref, col2->choix utilisateur
-        column_mapping = None
-        
-        # Log de démarrage avec format unifié
-        print(f"\n🔍 Début du traitement de {len(imported_data)} lignes d'import")
-        
-        for row_idx, row in enumerate(imported_data):
-            # Compter TOUTES les lignes traitées (même en cas d'erreur)
-            results['total_imported'] += 1
-            
-            # Mettre à jour la barre de progression
-            if progress_dialog:
-                if progress_dialog.wasCanceled():
-                    break
-                progress_dialog.setValue(row_idx)
-                progress_dialog.setLabelText(f"Traitement des lignes... {row_idx + 1} / {len(imported_data)}")
-                if row_idx % 100 == 0:  # Traiter les événements toutes les 100 lignes
-                    QApplication.processEvents()
-            
-            try:
-                # Initialiser les variables par défaut
-                type_val = ""
-                manufacturer = ""
-                ref_modele = ""
-                commercial_ref = ""
-                other_ref = ""
-                notes = ""
-                
-                if import_type == 1:
-                    # 1 colonne: importer dans ref_modele uniquement
-                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
-                    commercial_ref = ""
-                elif import_type == 2:
-                    # 2 colonnes: ref_modele, commercial_ref (colonnes C et D)
-                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
-                    commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                elif import_type == 3:
-                    # 3 colonnes PDF: logique fixe
-                    # col0 → ref_modele (colonne C), col1 → commercial_ref (colonne D), col2 → selon choix
-                    ref_modele = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
-                    commercial_ref = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                    third_value = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
-                    
-                    # Les colonnes A (type) et B (manufacturer) restent vides pour les PDF
-                    # sauf si la 3ème colonne contient des informations pertinentes
-                    type_val = ""
-                    manufacturer = ""
-                    
-                    # Gérer la 3ème colonne selon le choix utilisateur
-                    if third_column_choice == "other_ref":
-                        other_ref = third_value
-                        notes = ""
-                    elif third_column_choice == "notes":
-                        other_ref = ""
-                        notes = third_value
-                    else:
-                        # Si "ignore", les deux restent vides
-                        other_ref = ""
-                        notes = ""
-                elif import_type >= 4:
-                    # 4+ colonnes: type, manufacturer, ref_modele, commercial_ref, other_ref, ...
-                    type_val = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
-                    manufacturer = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                    ref_modele = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
-                    commercial_ref = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ""
-                    other_ref = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
-                    # notes peuvent être en colonne 5 si présentes
-                
-                # Log de la ligne en cours
-                print(f"\n🔵 Ligne {row_idx + 1}: {len(row)} colonnes - {row[:4]}{'...' if len(row) > 4 else ''}")
-                
-                # Vérifier si c'est un doublon dans le fichier
-                # Créer une clé unique basée sur les références principales
-                device_key = f"{ref_modele.strip().lower()}|{commercial_ref.strip().lower()}"
-                if device_key in seen_device_refs and (ref_modele.strip() or commercial_ref.strip()):
-                    results['duplicates_in_file'] += 1
-                    print(f"  🔄 Doublon dans le fichier ignoré - Ligne {row_idx + 1}: {ref_modele} | {commercial_ref}")
-                    continue
-                elif ref_modele.strip() or commercial_ref.strip():
-                    seen_device_refs.add(device_key)
-                
-                # Chercher l'appareil existant par ses références avec logique intelligente
-                existing_device = self._find_existing_device_by_refs(ref_modele, commercial_ref, type_val, manufacturer)
-                
-                if existing_device:
-                    # Appareil existant trouvé - compléter avec les infos importées
-                    device_id = existing_device['id']
-                    print(f"  ✅ Appareil existant trouvé par combinaison exacte: {ref_modele} + {commercial_ref}")
-                    print(f"🔄 Ligne {row_idx + 1}: Appareil existant trouvé (ID: {device_id})")
-                    
-                    # Mettre à jour les champs avec les nouvelles valeurs (logique import)
-                    updates = {}
-                    # Pour les imports, on met à jour si une nouvelle valeur est fournie
-                    if type_val:
-                        updates['type'] = type_val
-                    if manufacturer:
-                        updates['manufacturer'] = manufacturer
-                    if ref_modele:
-                        updates['ref_modele'] = ref_modele
-                    if commercial_ref:
-                        updates['commercial_ref'] = commercial_ref
-                    if other_ref:
-                        updates['other_ref'] = other_ref
-                    if notes:
-                        updates['notes'] = notes
-                    
-                    # Appliquer les mises à jour
-                    if updates:
-                        self._update_device_info(device_id, updates)
-                        print(f"  ⚙️ Mis à jour: {list(updates.keys())}")
-                    
-                    # Créer association si référence de pièce fournie
-                    if ref_piece and str(ref_piece).strip():
-                        try:
-                            ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
-                            already_associated = self._piece_already_associated(device_id, ref_piece_safe)
-                            if ref_piece_safe and not already_associated:
-                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
-                                results['associations_created'] += 1
-                                if desc_updated:
-                                    results['descriptions_updated'] += 1
-                                print(f"  🔗 Pièce {ref_piece_safe} associée")
-                                
-                                # Vérifier immédiatement après création que l'association existe
-                                if not self._piece_already_associated(device_id, ref_piece_safe):
-                                    print(f"  ❌ ERREUR: Association {ref_piece_safe} -> {device_id} créée mais non trouvée!")
-                                    
-                            else:
-                                # Pièce déjà associée, mais vérifier le libellé si fourni
-                                if libelle_piece and str(libelle_piece).strip():
-                                    _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
-                                    if desc_updated:
-                                        results['descriptions_updated'] += 1
-                                    print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
-                                results['duplicates_skipped'] += 1
-                                print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée (appareil {device_id})")
-                                
-                                # Collecter les détails du doublon pour CSV/PDF
-                                if not hasattr(self, '_current_import_duplicates'):
-                                    self._current_import_duplicates = []
-                                self._current_import_duplicates.append({
-                                    'ligne': row_idx + 1,
-                                    'appareil_id': device_id,
-                                    'ref_piece': str(ref_piece).strip() if ref_piece else '',
-                                    'appareil_data': {
-                                        'ref_modele': existing_device.get('ref_modele', '') or '',
-                                        'commercial_ref': existing_device.get('commercial_ref', '') or '',
-                                        'type': existing_device.get('type', '') or '',
-                                        'manufacturer': existing_device.get('manufacturer', '') or ''
-                                    }
-                                })
-                        except Exception as piece_error:
-                            ref_piece_safe = str(ref_piece).strip() if ref_piece else 'N/A'
-                            print(f"❌ Échec association pièce {ref_piece_safe} avec appareil {device_id}: {piece_error}")
-                            app_logger.error(f"Échec association pièce {ref_piece_safe} avec appareil {device_id}: {piece_error}")
-                    else:
-                        # Ligne sans référence de pièce - compter dans les associations manquantes
-                        results['no_piece_ref'] = results.get('no_piece_ref', 0) + 1
-                        print(f"  ⚠️ Ligne {row_idx + 1}: Appareil traité mais pas de référence de pièce")
-                    
-                    # Vérifier si l'appareil nécessite encore une complétion manuelle
-                    # après mise à jour (seuls ceux sans type ET fabricant)
-                    final_device_data = dict(existing_device)
-                    final_device_data.update(updates)
-                    if self._needs_manual_completion(final_device_data):
-                        results['manual_completion'] += 1
-                    
-                    # Compter comme "mis à jour" seulement si les colonnes importantes (A et B) ont été modifiées
-                    important_updates = [k for k in updates.keys() if k in ['type', 'manufacturer']]
-                    if important_updates:
-                        results['matches_found'] += 1
-                    # NE PAS créer de nouvelle ligne dans le tableau
-                else:
-                    # Nouvel appareil - utiliser la même logique harmonisée que le collage
-                    if (ref_modele and str(ref_modele).strip()) or (commercial_ref and str(commercial_ref).strip()):
-                        print(f"✨ Ligne {row_idx + 1}: Création d'un nouvel appareil")
-                        # Préparer les données d'appareil comme dans _handle_paste
-                        appareil_data = {
-                            'type': str(type_val).strip() if type_val else '',
-                            'manufacturer': str(manufacturer).strip() if manufacturer else '',
-                            'ref_modele': str(ref_modele).strip() if ref_modele else '',
-                            'commercial_ref': str(commercial_ref).strip() if commercial_ref else '',
-                            'other_ref': str(other_ref).strip() if other_ref else '',
-                            'category': '',
-                            'notes': str(notes).strip() if notes else ''
-                        }
-                        
-                        # Essayer l'auto-complétion AVANT de vérifier si complétion manuelle nécessaire
-                        auto_completion_success = False
-                        if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
-                            auto_completion_success = self._try_auto_complete(appareil_data)
-                        
-                        # Filtrer les données vides comme dans _handle_paste
-                        filtered_data = {}
-                        for field, value in appareil_data.items():
-                            if value and str(value).strip():
-                                filtered_data[field] = value
-                        
-                        # S'assurer qu'on a les références essentielles
-                        if 'ref_modele' not in filtered_data and ref_modele.strip():
-                            filtered_data['ref_modele'] = ref_modele.strip()
-                        if 'commercial_ref' not in filtered_data and commercial_ref.strip():
-                            filtered_data['commercial_ref'] = commercial_ref.strip()
-                        
-                        if filtered_data:
-                            device_id = self.db_manager.insert_appareil(filtered_data)
-                            if device_id:
-                                results['new_entries'] += 1
-                                print(f"  ✅ Nouvel appareil créé (ID: {device_id})")
-                                
-                                # Incrémenter auto_completed si l'auto-complétion a réussi
-                                if auto_completion_success:
-                                    results['auto_completed'] += 1
-                                
-                                # Vérifier si l'appareil nécessite une complétion manuelle APRÈS création
-                                # (utiliser les données filtrées qui incluent l'auto-complétion)
-                                if self._needs_manual_completion(filtered_data):
-                                    results['manual_completion'] += 1
-                                if ref_piece and str(ref_piece).strip():
-                                    try:
-                                        ref_piece_safe = str(ref_piece).strip() if ref_piece else ''
-                                        already_associated = self._piece_already_associated(device_id, ref_piece_safe)
-                                        if ref_piece_safe and not already_associated:
-                                            _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
-                                            results['associations_created'] += 1
-                                            if desc_updated:
-                                                results['descriptions_updated'] += 1
-                                            print(f"  🔗 Pièce {ref_piece_safe} associée")
-                                            
-                                            # Vérifier immédiatement après création que l'association existe
-                                            if not self._piece_already_associated(device_id, ref_piece_safe):
-                                                print(f"  ❌ ERREUR: Association {ref_piece_safe} -> {device_id} créée mais non trouvée!")
-                                                
-                                        else:
-                                            # Pièce déjà associée, mais vérifier le libellé si fourni
-                                            if libelle_piece and libelle_piece.strip():
-                                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece_safe, device_id, libelle_piece, self._confirm_piece_description_update)
-                                                if desc_updated:
-                                                    results['descriptions_updated'] += 1
-                                                print(f"  📝 Libellé vérifié pour pièce {ref_piece_safe} déjà associée")
-                                            results['duplicates_skipped'] += 1
-                                            print(f"  ⚠️ Pièce {ref_piece_safe} déjà associée (appareil {device_id})")
-                                            
-                                            # IMPORTANT: Vérifier si l'appareil associé à cette pièce nécessite complétion
-                                            # Ceci peut arriver quand l'appareil existe mais n'est pas trouvé par notre recherche
-                                            try:
-                                                query = """SELECT a.id, a.type, a.manufacturer, a.ref_modele, a.commercial_ref, a.other_ref, a.category, a.notes 
-                                                          FROM appareils a 
-                                                          JOIN piece_associations pa ON a.id = pa.appareil_id 
-                                                          JOIN pieces p ON pa.piece_id = p.id 
-                                                          WHERE p.ref_piece = ? LIMIT 1"""
-                                                existing_result = self.db_manager.execute_query(query, [ref_piece_safe])
-                                                if existing_result:
-                                                    existing_appareil = {
-                                                        'id': existing_result[0][0],
-                                                        'type': existing_result[0][1],
-                                                        'manufacturer': existing_result[0][2],
-                                                        'ref_modele': existing_result[0][3],
-                                                        'commercial_ref': existing_result[0][4],
-                                                        'other_ref': existing_result[0][5],
-                                                        'category': existing_result[0][6],
-                                                        'notes': existing_result[0][7]
-                                                    }
-                                                    if self._needs_manual_completion(existing_appareil):
-                                                        results['manual_completion'] += 1
-                                                        print(f"  📝 Appareil associé nécessite complétion manuelle")
-                                            except Exception as e:
-                                                print(f"❌ Erreur vérification appareil associé: {e}")
-                                            
-                                            # Collecter les détails du doublon pour CSV/PDF
-                                            if not hasattr(self, '_current_import_duplicates'):
-                                                self._current_import_duplicates = []
-                                            self._current_import_duplicates.append({
-                                                'ligne': row_idx + 1,
-                                                'appareil_id': device_id,
-                                                'ref_piece': ref_piece_safe,
-                                                'appareil_data': {
-                                                    'ref_modele': str(ref_modele).strip() if ref_modele else '',
-                                                    'commercial_ref': str(commercial_ref).strip() if commercial_ref else '',
-                                                    'type': str(type_val).strip() if type_val else '',
-                                                    'manufacturer': str(manufacturer).strip() if manufacturer else ''
-                                                }
-                                            })
-                                    except Exception as piece_error:
-                                        ref_piece_safe_err = str(ref_piece).strip() if ref_piece else 'N/A'
-                                        print(f"❌ Échec association pièce {ref_piece_safe_err} avec nouvel appareil {device_id}: {piece_error}")
-                                        app_logger.error(f"Échec association pièce {ref_piece_safe_err} avec nouvel appareil {device_id}: {piece_error}")
-                                else:
-                                    # Nouvel appareil sans référence de pièce - compter dans les associations manquantes
-                                    results['no_piece_ref'] = results.get('no_piece_ref', 0) + 1
-                                    print(f"  ⚠️ Ligne {row_idx + 1}: Nouvel appareil créé mais pas de référence de pièce")
-                                
-                                # Compter si nécessite complétion manuelle (basé sur l'état d'origine)
-                                if needs_completion:
-                                    results['manual_completion'] += 1
-                            else:
-                                # Échec de l'insertion, logger l'erreur
-                                print(f"❌ Échec insertion appareil: {filtered_data}")
-                                app_logger.error(f"Échec insertion appareil: {filtered_data}")
-                        else:
-                            # Pas de données valides, logger l'erreur
-                            print(f"❌ Aucune donnée valide pour ligne: {row}")
-                            app_logger.error(f"Aucune donnée valide pour ligne: {row}")
-                
-            except Exception as e:
-                print(f"❌ ERREUR lors du traitement de la ligne {row}: {e}")
-                app_logger.error(f"Erreur traitement ligne {row}: {e}")
-                # Ne pas compter cette ligne comme traitée si elle échoue
-                continue
-        
-        # Utiliser le nouveau format de résumé unifié
-        source = "CSV" if import_type == "csv" else "Collage"
-        console_summary = self._generate_console_summary(results, ref_piece, source)
-        print(f"\n{console_summary}")
-        
-        # Informations complémentaires spécifiques
-        descriptions_updated = results.get('descriptions_updated', 0)
-        if descriptions_updated > 0:
-            print(f"  Libellés mis à jour : {descriptions_updated}")
-            
-        no_piece_ref = results.get('no_piece_ref', 0)
-        if no_piece_ref > 0:
-            print(f"  Lignes sans référence pièce : {no_piece_ref}")
-        
-        # Ajouter les doublons collectés aux résultats
-        if hasattr(self, '_current_import_duplicates'):
-            results['duplicates_list'] = self._current_import_duplicates
-            delattr(self, '_current_import_duplicates')  # Nettoyer
-        
-        return results
-    
-    def _normalize_reference(self, ref):
-        """Normaliser une référence pour la comparaison fuzzy"""
-        if not ref:
-            return ""
-        
-        # Supprimer les espaces et convertir en majuscules
-        normalized = str(ref).strip().upper()
-        
-        # Supprimer les zéros initiaux mais garder au moins un chiffre
-        if normalized.isdigit():
-            normalized = normalized.lstrip('0') or '0'
-        
-        return normalized
-
-    def _find_existing_device_by_refs(self, ref_modele, commercial_ref, type_val="", manufacturer=""):
-        """
-        Chercher un appareil existant selon la logique corrigée:
-        1. Chercher par ref_modele + commercial_ref (colonnes C et D)
-        2. Si trouvé ET que A et B sont fournies dans l'import:
-           - A et B vides dans la base → compléter
-           - A et B identiques → mettre à jour  
-           - A et B différentes → créer nouveau
-        3. Si trouvé MAIS A et B ne sont PAS fournies dans l'import:
-           - Utiliser l'appareil existant (association simple)
-        """
-        try:
-            # Chercher d'abord par les références (colonnes C et D)
-            if ref_modele and ref_modele.strip() and commercial_ref and commercial_ref.strip():
-                query = """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes 
-                          FROM appareils 
-                          WHERE ref_modele = ? AND commercial_ref = ?"""
-                params = [ref_modele.strip(), commercial_ref.strip()]
-                result = self.db_manager.execute_query(query, params)
-                
-                if result:
-                    existing = {
-                        'id': result[0][0], 
-                        'type': result[0][1] or '', 
-                        'manufacturer': result[0][2] or '',
-                        'ref_modele': result[0][3],
-                        'commercial_ref': result[0][4],
-                        'other_ref': result[0][5],
-                        'category': result[0][6],
-                        'notes': result[0][7]
-                    }
-                    
-                    # Vérifier si A et B sont fournies dans l'import
-                    import_has_type_manufacturer = bool(type_val and type_val.strip()) or bool(manufacturer and manufacturer.strip())
-                    
-                    if not import_has_type_manufacturer:
-                        # Import sans A et B (CSV 2 colonnes, PDF 3 colonnes) → Association simple
-                        print(f"  ✅ Appareil trouvé par C+D, import sans A+B → association directe")
-                        return existing
-                    
-                    # Import avec A et B → Appliquer la logique de comparaison
-                    existing_type = existing['type'].strip()
-                    existing_manufacturer = existing['manufacturer'].strip()
-                    import_type = type_val.strip() if type_val else ""
-                    import_manufacturer = manufacturer.strip() if manufacturer else ""
-                    
-                    # Cas 1: A et B vides dans la base → compléter
-                    if not existing_type and not existing_manufacturer:
-                        print(f"  ✅ Appareil trouvé avec A et B vides → complétion possible")
-                        return existing
-                    
-                    # Cas 2: A et B identiques → mise à jour
-                    elif (existing_type == import_type and existing_manufacturer == import_manufacturer):
-                        print(f"  ✅ Appareil trouvé avec A et B identiques → mise à jour")
-                        return existing
-                    
-                    # Cas 3: A et B différentes → ne pas utiliser l'existant (créer nouveau)
-                    else:
-                        print(f"  ⚠️ Appareil trouvé mais A et B différentes ({existing_type}/{existing_manufacturer} vs {import_type}/{import_manufacturer}) → créer nouveau")
-                        return None
-                    
-            return None
-        except Exception as e:
-            print(f"Erreur recherche appareil: {e}")
-            return None
-    
-    def _piece_already_associated(self, device_id, ref_piece):
-        """Vérifier si la pièce est déjà associée à l'appareil (nouvelle structure)"""
-        try:
-            query = """
-                SELECT pa.id 
-                FROM piece_associations pa
-                JOIN pieces p ON pa.piece_id = p.id
-                WHERE pa.appareil_id = ? AND p.ref_piece = ? 
-                LIMIT 1
-            """
-            result = self.db_manager.execute_query(query, [device_id, ref_piece])
-            is_associated = len(result) > 0
-            
-            # Debug: Log pour traquer les fausses détections
-            if is_associated:
-                pass  # Appareil déjà associé
-            else:
-                pass  # Appareil pas associé
-                
-            return is_associated
-        except Exception as e:
-            print(f"Erreur lors de la vérification de l'association: {e}")
-            return False
-    
-    def _create_new_device(self, device_type, manufacturer, ref_modele):
-        """Créer un nouvel appareil"""
-        try:
-            query = "INSERT INTO appareils (type, manufacturer, ref_modele) VALUES (?, ?, ?)"
-            return self.db_manager.execute_insert(query, [device_type, manufacturer, ref_modele])
-        except Exception as e:
-            print(f"Erreur création appareil: {e}")
-            return None
-    
-    # Méthode supprimée - logique harmonisée avec _handle_paste dans _process_import
-    
-    def _update_device_info(self, device_id, updates):
-        """Mettre à jour les informations d'un appareil"""
-        try:
-            if not updates:
-                return
-            
-            set_clauses = []
-            params = []
-            
-            for field, value in updates.items():
-                set_clauses.append(f"{field} = ?")
-                params.append(value)
-            
-            params.append(device_id)
-            query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
-            
-            self.db_manager.cursor.execute(query, params)
-            self.db_manager.conn.commit()
-            
-        except Exception as e:
-            print(f"Erreur mise à jour appareil: {e}")
-    
-
-
-    def _detect_paste_columns(self, clipboard_text):
-        """Détecter le nombre de colonnes dans les données collées"""
-        rows = clipboard_text.strip().split('\n')
-        if not rows:
-            return 0
-            
-        # Compter les colonnes de chaque ligne avec détection de séparateur
-        column_counts = []
-        # Détecter le séparateur (tabulation ou point-virgule)
-        separator = '\t' if '\t' in clipboard_text else ';'
-        for row in rows:
-            if row.strip():  # Ignorer les lignes vides
-                columns = row.split(separator)
-                column_counts.append(len(columns))
-        
-        if not column_counts:
-            return 0
-            
-        # Retourner le nombre de colonnes le plus fréquent
-        most_common_count = max(set(column_counts), key=column_counts.count)
-        return most_common_count
-
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
         """Dialogue unifié pour choisir les options d'import (fallback legacy)"""
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit
@@ -6198,7 +5097,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self._show_error(f"Erreur lors de l'ajout d'une nouvelle ligne: {e}")
 
     def _handle_paste(self):
-        """Gestion du collage de données depuis le presse-papiers"""
+        """Gestion du collage de données depuis le presse-papiers - Version refactorisée Phase 2.5"""
         try:
             # Vider le cache des décisions de description au début de chaque import
             self._piece_description_decisions.clear()
@@ -6207,19 +5106,11 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             if not clipboard_text.strip():
                 QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
                 return
-            # Séparer les lignes et colonnes proprement
-            lines = clipboard_text.strip().split('\n')
-            # Détecter le séparateur (tabulation ou point-virgule)
-            separator = '\t' if '\t' in clipboard_text else ';'
-            rows = [line.split(separator) for line in lines]
             
-            if not rows:
-                return
-
-            # Analyser les données pour déterminer le nombre de colonnes
-            detected_columns = self._detect_paste_columns(clipboard_text)
+            # Phase 2.5: Utiliser le nouveau processeur pour les données
+            detected_columns = self.paste_processor.detect_columns_count(clipboard_text)
             
-            # Vérifier si on a au moins 1 colonne (modifié pour accepter 1 colonne)
+            # Vérifier si on a au moins 1 colonne
             if detected_columns < 1:
                 QMessageBox.warning(
                     self, 
@@ -6235,15 +5126,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 )
                 return
             
-            # Préparer les données d'exemple pour l'aperçu 
-            sample_data = []
-            try:
-                for i in range(min(3, len(rows))):  # Maximum 3 lignes pour l'aperçu
-                    if rows[i] and any(cell.strip() for cell in rows[i]):
-                        sample_data.append(rows[i])
-            except Exception as e:
-                print(f"Erreur préparation aperçu COLLAGE: {e}")
-                sample_data = []
+            # Parser les données avec le nouveau processeur
+            rows = self.paste_processor.parse_clipboard_data(clipboard_text)
+            if not rows:
+                return
+            
+            # Préparer les données d'exemple pour l'aperçu
+            sample_data = self.paste_processor.prepare_sample_data(rows)
             
             # Demander les options d'import avec la fenêtre unifiée et aperçu
             import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, None, "COLLAGE", sample_data)
@@ -6252,18 +5141,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 
             # Le collage n'utilise pas import_type mais on récupère les autres paramètres
             category = ""  # Pas de catégorie dans la fenêtre unifiée pour l'instant
-
-            # Insérer les données
-            inserted_count = 0
-            updated_count = 0
-            ignored_count = 0
-            associations_created = 0  # Compter les vraies associations créées
-            duplicates_skipped = 0   # Compter les associations déjà existantes
-            manual_completion_count = 0  # Compter les appareils nécessitant complétion manuelle
-            no_piece_ref_count = 0  # Compter les lignes sans référence de pièce
-            descriptions_updated = 0  # Compter les mises à jour de libellés
             total_rows = len(rows)
-            duplicates_list = []  # Liste des doublons pour intervention manuelle
+            
+            # Phase 2.5: Déléguer le traitement des données au processeur spécialisé
             
             # Créer une barre de progression pour les gros imports (10K+ lignes)
             progress_dialog = None
@@ -6277,284 +5157,52 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 progress_dialog.setWindowTitle("Import de données")
                 progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
                 progress_dialog.show()
-                QApplication.processEvents()  # Forcer l'affichage
+                QApplication.processEvents()
             
-            print(f"\n🔍 Début du traitement de {len(rows)} lignes d'import par collage")
-            for row_idx, row_data in enumerate(rows):
-                # Mettre à jour la barre de progression
-                if progress_dialog:
-                    if progress_dialog.wasCanceled():
-                        break
-                    
-                    progress_dialog.setValue(row_idx)
-                    progress_dialog.setLabelText(f"Import en cours... {row_idx + 1} / {total_rows} lignes")
-                    
-                    # Traiter les événements de l'interface toutes les 100 lignes
-                    if row_idx % 100 == 0:
-                        QApplication.processEvents()
-                # Nettoyer les données de façon robuste
-                clean_row = []
-                for cell in row_data:
-                    if cell:
-                        # Supprimer les caractères de contrôle dangereux mais garder tout le reste
-                        cleaned_cell = ''.join(char for char in cell if char not in ['\0', '\r', '\n', '\t']).strip()
-                        clean_row.append(cleaned_cell)
-                    else:
-                        clean_row.append('')
-                
-                num_cols = len(clean_row)
-                print(f"\n🔵 Ligne {row_idx + 1}: {num_cols} colonnes - {clean_row[:4]}{'...' if len(clean_row) > 4 else ''}")
-                
-                # Appliquer les règles de mapping selon le nombre de colonnes
-                appareil_data = {}
-                
-                if num_cols >= 4:
-                    # 4+ colonnes : insérer à partir de la colonne A (Type, Fabricant, Ref_Modele, Commercial_Ref, Other_Ref, etc.)
-                    for i, header in enumerate(Config.DB_HEADERS):
-                        if i < len(clean_row):
-                            appareil_data[header] = clean_row[i]
-                        else:
-                            appareil_data[header] = ''
-                            
-                elif num_cols == 1:
-                    # 1 colonne : mapper sur ref_modele uniquement
-                    # Laisser tous les autres champs vides pour auto-completion
-                    appareil_data['type'] = ''
-                    appareil_data['manufacturer'] = ''
-                    appareil_data['ref_modele'] = clean_row[0]
-                    appareil_data['commercial_ref'] = ''
-                    appareil_data['other_ref'] = ''
-                    appareil_data['category'] = ''
-                    appareil_data['notes'] = ''
-                    
-                elif num_cols == 2 or num_cols == 3:
-                    # 2-3 colonnes : insérer à partir de la colonne C (Ref_Modele, Commercial_Ref, Other_Ref/Notes)
-                    # Laisser Type et Fabricant vides pour auto-completion
-                    appareil_data['type'] = ''  # Colonne A vide
-                    appareil_data['manufacturer'] = ''  # Colonne B vide
-                    
-                    # Mapper à partir de la colonne C (ref_modele)
-                    if num_cols == 2:
-                        mapping_headers = ['ref_modele', 'commercial_ref']
-                    else:  # num_cols == 3
-                        if third_column_choice == "ignore":
-                            mapping_headers = ['ref_modele', 'commercial_ref']
-                        else:
-                            mapping_headers = ['ref_modele', 'commercial_ref', third_column_choice]
-                    
-                    for i, value in enumerate(clean_row):
-                        if i < len(mapping_headers):
-                            appareil_data[mapping_headers[i]] = value
-                    
-                    # Compléter les autres champs
-                    remaining_headers = ['other_ref', 'category', 'notes']
-                    for header in remaining_headers:
-                        if header not in appareil_data:
-                            appareil_data[header] = ''
-                            
-                else:
-                    # Nombre de colonnes non supporté
-                    print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: {num_cols} colonne(s) non supportée(s) (attendu: 1, 2-3 ou 4+)")
-                    print(f"    Données: {clean_row}")
-                    ignored_count += 1
-                    continue
-                
-                # Ajouter la catégorie si sélectionnée (écrase la catégorie des données)
-                if category:
-                    appareil_data['category'] = category
-                
-                # Valider les données avec approche plus permissive
-                validation_result = self.validator.validate_record(appareil_data)
-                if not validation_result.is_valid:
-                    # Log l'erreur mais continue l'import avec un avertissement
-                    app_logger.warning(f"Données ligne {row_idx + 1} avec avertissement: {validation_result.error_message}")
-                    print(f"⚠️ Ligne {row_idx + 1}: VALIDATION: {validation_result.error_message} - Continuant l'import...")
-                    print(f"    Données concernées: {appareil_data}")
-                    # Continue au lieu d'arrêter l'import
-                
-                # Chercher d'abord si l'appareil existe déjà
-                existing_device = self._find_existing_device_by_refs(
-                    appareil_data.get('ref_modele', ''), 
-                    appareil_data.get('commercial_ref', ''),
-                    appareil_data.get('type', ''),
-                    appareil_data.get('manufacturer', '')
+            # Traitement des données via le processeur spécialisé
+            try:
+                result = self.paste_processor.process_rows_batch(
+                    rows, ref_piece, third_column_choice, 
+                    libelle_piece, category, 
+                    self._piece_description_decisions
                 )
                 
-                if existing_device:
-                    # Appareil existant trouvé - mettre à jour les champs manquants
-                    appareil_id = existing_device['id']
-                    print(f"🔄 Ligne {row_idx + 1}: Appareil existant trouvé (ID: {appareil_id})")
-                    
-                    # Préparer les mises à jour nécessaires
-                    updates = {}
-                    for field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref', 'other_ref', 'category', 'notes']:
-                        new_value = appareil_data.get(field, '').strip()
-                        if new_value and not existing_device.get(field):
-                            updates[field] = new_value
-                    
-                    # Appliquer les mises à jour
-                    if updates:
-                        self._update_device_info(appareil_id, updates)
-                        print(f"  ⚙️ Mis à jour: {list(updates.keys())}")
-                    
-                    # Ajouter la pièce si spécifiée
-                    if ref_piece and ref_piece.strip():
-                        if not self._piece_already_associated(appareil_id, ref_piece.strip()):
-                            _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
-                            associations_created += 1
-                            if desc_updated:
-                                descriptions_updated += 1
-                            print(f"  🔗 Pièce {ref_piece.strip()} associée")
-                        else:
-                            # Pièce déjà associée, mais vérifier le libellé si fourni
-                            if libelle_piece and libelle_piece.strip():
-                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
-                                if desc_updated:
-                                    descriptions_updated += 1
-                                print(f"  📝 Libellé vérifié pour pièce {ref_piece.strip()} déjà associée")
-                            duplicates_skipped += 1
-                            # Enregistrer les détails du doublon
-                            duplicates_list.append({
-                                'ligne': row_idx + 1,
-                                'appareil_id': appareil_id,
-                                'ref_piece': ref_piece.strip(),
-                                'appareil_data': {
-                                    'ref_modele': existing_device.get('ref_modele', ''),
-                                    'commercial_ref': existing_device.get('commercial_ref', ''),
-                                    'type': existing_device.get('type', ''),
-                                    'manufacturer': existing_device.get('manufacturer', '')
-                                }
-                            })
-                            print(f"  ⚠️ Pièce {ref_piece.strip()} déjà associée")
-                    else:
-                        # Ligne sans référence de pièce - compter dans les associations manquantes
-                        no_piece_ref_count += 1
-                        print(f"  ⚠️ Ligne {row_idx + 1}: Appareil traité mais pas de référence de pièce")
-                    
-                    # Vérifier si l'appareil nécessite encore une complétion manuelle
-                    # après mise à jour (seuls ceux sans type ET fabricant)
-                    final_device_data = dict(existing_device)
-                    final_device_data.update(updates)
-                    if self._needs_manual_completion(final_device_data):
-                        manual_completion_count += 1
-                    
-                    # Compter comme "mis à jour" seulement si les colonnes importantes (A et B) ont été modifiées
-                    important_updates = [k for k in updates.keys() if k in ['type', 'manufacturer']]
-                    if important_updates:
-                        updated_count += 1
-                    
-                else:
-                    # Nouvel appareil - utiliser la même logique que l'import CSV
-                    # Créer avec seulement les références essentielles pour éviter les appareils vides
-                    ref_modele = appareil_data.get('ref_modele', '').strip()
-                    commercial_ref = appareil_data.get('commercial_ref', '').strip()
-                    
-                    # Vérifier qu'on a au moins une référence valide
-                    if ref_modele or commercial_ref:
-                        # Vérifier si l'appareil nécessite une complétion manuelle AVANT auto-complétion
-                        needs_completion = self._needs_manual_completion(appareil_data)
-                        
-                        # Essayer d'abord l'auto-complétion avec les références
-                        if not appareil_data.get('type') or not appareil_data.get('manufacturer'):
-                            self._try_auto_complete(appareil_data)
-                        
-                        # Créer l'appareil avec les données disponibles (non vides seulement)
-                        filtered_data = {}
-                        for field, value in appareil_data.items():
-                            if value and str(value).strip():  # Seulement les valeurs non vides
-                                filtered_data[field] = value
-                        
-                        # S'assurer qu'on a au moins les références
-                        if 'ref_modele' not in filtered_data and ref_modele:
-                            filtered_data['ref_modele'] = ref_modele
-                        if 'commercial_ref' not in filtered_data and commercial_ref:
-                            filtered_data['commercial_ref'] = commercial_ref
-                        
-                        if filtered_data:  # Seulement si on a des données réelles
-                            appareil_id = self.db_manager.insert_appareil(filtered_data)
-                            inserted_count += 1
-                            print(f"✨ Ligne {row_idx + 1}: Nouvel appareil créé (ID: {appareil_id})")
-                            
-                            # Vérifier si l'appareil nécessite une complétion manuelle
-                            # après auto-complétion (seuls ceux sans type ET fabricant)
-                            if self._needs_manual_completion(filtered_data):
-                                manual_completion_count += 1
-                            
-                            # Ajouter la pièce si spécifiée
-                            if ref_piece and ref_piece.strip():
-                                _, desc_updated, _ = self.db_manager.add_or_update_piece_with_description(ref_piece.strip(), appareil_id, libelle_piece, self._confirm_piece_description_update)
-                                associations_created += 1
-                                if desc_updated:
-                                    descriptions_updated += 1
-                                print(f"  🔗 Pièce {ref_piece.strip()} associée")
-                            else:
-                                # Nouvel appareil sans référence de pièce - compter dans les associations manquantes
-                                no_piece_ref_count += 1
-                                print(f"  ⚠️ Ligne {row_idx + 1}: Nouvel appareil créé mais pas de référence de pièce")
-                        else:
-                            print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: aucune donnée valide détectée après filtrage")
-                            print(f"    Données filtrées vides: {appareil_data}")
-                            ignored_count += 1
-                    else:
-                        print(f"❌ REJET #{ignored_count + 1} - Ligne {row_idx + 1}: aucune référence valide")
-                        print(f"    ref_modele: '{ref_modele}', commercial_ref: '{commercial_ref}'")
-                        print(f"    Données complètes: {appareil_data}")
-                        ignored_count += 1
-            
-            # Fermer la barre de progression
-            if progress_dialog:
-                progress_dialog.setValue(total_rows)
-                progress_dialog.close()
-            
-            # Forcer le rafraîchissement et afficher le résultat
-            self._force_refresh_display(reset_page=True, clear_filters=True)
-            
-            # Résumé selon le format standardisé
-            from src.core.config import pluralize
-            detailed_summary = f"📊 Import Collage"
-            if ref_piece and ref_piece.strip():
-                detailed_summary += f" (pièce: {ref_piece})"
-            detailed_summary += ":\n"
-            detailed_summary += f"Lignes traitées : {total_rows - ignored_count}\n"
-            detailed_summary += f"Appareils créés : {inserted_count}\n"
-            # TOUJOURS afficher les sous-détails même si 0
-            detailed_summary += f"  ==> Mis à jour : {updated_count}\n"
-            detailed_summary += f"  ==> À compléter : {manual_completion_count}\n"
-            detailed_summary += f"Associations créées : {associations_created}\n"
-            # TOUJOURS afficher même si 0
-            detailed_summary += f"Associations déjà existantes : {duplicates_skipped}"
-            
-            print(f"\n{detailed_summary}")
-            
-            
-            # Afficher la synthèse comme pour l'import CSV
-            results = {
-                'total_imported': total_rows - ignored_count,
-                'matches_found': updated_count,
-                'manual_completion': manual_completion_count,
-                'duplicates_skipped': duplicates_skipped,
-                'new_entries': inserted_count,
-                'associations_created': associations_created,
-                'rejected_lines': ignored_count,
-                'no_piece_ref': no_piece_ref_count,
-                'descriptions_updated': descriptions_updated
-            }
-            
-            # Utiliser la même méthode d'affichage que l'import CSV
-            
-            # Ajouter à l'historique avec le bon format
-            self._log_import_to_history(results, ref_piece.strip() if ref_piece else None, "par collage")
-            
-            # Gérer les doublons s'il y en a
-            if duplicates_list:
-                # Ajouter aux résultats pour traitement unifié
-                results['duplicates_list'] = duplicates_list
+                # Fermer la barre de progression si elle existe
+                if progress_dialog:
+                    progress_dialog.close()
+                
+                # Recharger les données dans le tableau pour refléter les nouveaux ajouts
+                self.table_controller.load_data()
+                
+                # Log les résultats dans l'historique
+                self._log_paste_results(
+                    result.inserted_count, result.updated_count, result.ignored_count, 
+                    result.associations_created, result.duplicates_skipped, 
+                    result.manual_completion_count, result.descriptions_updated, 
+                    total_rows, ref_piece
+                )
+                
+                # Afficher le résumé
+                self._show_paste_summary(
+                    result.inserted_count, result.updated_count, result.ignored_count, 
+                    result.associations_created, result.duplicates_skipped, 
+                    result.manual_completion_count, result.descriptions_updated, 
+                    total_rows
+                )
+                
+            except Exception as e:
+                if progress_dialog:
+                    progress_dialog.close()
+                raise e
             
         except DatabaseError as e:
             self._show_error(f"Erreur lors du collage: {e}")
         except Exception as e:
             self._show_error(f"Erreur inattendue lors du collage: {e}")
 
+    def _detect_paste_columns(self, clipboard_text: str) -> int:
+        """Méthode de compatibilité - délègue au processeur"""
+        return self.paste_processor.detect_columns_count(clipboard_text)
     def _handle_copy(self):
         """Gestion de la copie des données sélectionnées"""
         selected = self.table.selectedRanges()
