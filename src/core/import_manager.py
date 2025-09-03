@@ -1136,6 +1136,7 @@ class ImportManager:
         new_devices_batch = []
         existing_updates = []
         associations_batch = []
+        processed_line_index = 0  # Compteur pour les lignes réellement traitées (hors continue)
         
         # Configuration pour progress optimisé
         from .config import Config
@@ -1159,12 +1160,13 @@ class ImportManager:
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
             
-            results['total_imported'] += 1
-            
-            # Parser les données
+            # Parser les données AVANT de compter total_imported
             device_data = self._parse_row_data(row, config)
             if not device_data:
-                continue
+                continue  # Ligne non parsable, ne pas compter
+            
+            # MAINTENANT on compte comme ligne réellement traitée
+            results['total_imported'] += 1
             
             # Utiliser cache auto-complétion pour améliorer les données (pas de SQL!)
             self._apply_autocomplete_from_cache(device_data, autocomplete_cache)
@@ -1185,9 +1187,20 @@ class ImportManager:
                 new_devices_batch.append(device_data)
             
             # Préparer associations (sera traitée après insertion batch)
+            # CORRECTION: Utiliser processed_line_index pour avoir des indices consécutifs
+            associations_added_for_line = 0
             for reference, label in references_and_labels:
                 if reference:
-                    associations_batch.append((reference, label, device_data, existing_id))
+                    # Utiliser processed_line_index pour avoir des indices consécutifs sans trous
+                    associations_batch.append((reference, label, processed_line_index, existing_id))
+                    associations_added_for_line += 1
+            
+            # DEBUG: Vérifier qu'au moins une association est créée par ligne
+            if associations_added_for_line == 0:
+                print(f"⚠️ LIGNE {processed_line_index}: Aucune association créée pour cette ligne (pas de référence valide)")
+            
+            # Incrémenter le compteur des lignes réellement traitées
+            processed_line_index += 1
             
             # Progress update optimisé (pas à chaque ligne pour éviter ralentissements)
             if idx > 0 and idx % progress_frequency == 0:
@@ -1224,13 +1237,30 @@ class ImportManager:
         # DEBUG: Analyser les associations qui ont besoin de nouveaux appareils
         new_device_associations = [assoc for assoc in associations_batch if not assoc[3]]  # existing_id est None
         existing_device_associations = [assoc for assoc in associations_batch if assoc[3]]  # existing_id existe
-        print(f"🔧 ASSOCIATIONS: {len(associations_batch)} total = {len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants")
-        print(f"🔧 COMPARAISON: {len(new_devices_batch)} appareils à créer vs {len(new_device_associations)} associations nouvelles")
         
-        # Vérifier si le nombre d'associations nouvelles correspond aux appareils à créer
-        if len(new_device_associations) != len(new_devices_batch):
-            print(f"❌ ATTENTION: Discordance entre appareils ({len(new_devices_batch)}) et associations nouvelles ({len(new_device_associations)})")
-            print(f"   Cela peut causer le bug d'allocation d'IDs !")
+        # Calculer le nombre d'appareils uniques concernés par les nouvelles associations
+        unique_new_device_indices = set(assoc[2] for assoc in new_device_associations)  # assoc[2] = data_index
+        unique_existing_device_indices = set(assoc[2] for assoc in existing_device_associations)
+        all_unique_indices = unique_new_device_indices | unique_existing_device_indices
+        
+        print(f"🔧 ASSOCIATIONS: {len(associations_batch)} total = {len(new_device_associations)} pour nouveaux + {len(existing_device_associations)} pour existants")
+        print(f"🔧 CORRESPONDANCE CORRECTE: {len(new_devices_batch)} nouveaux appareils = {len(unique_new_device_indices)} indices d'appareils uniques nouveaux")
+        print(f"🔧 VÉRIFICATION CRITIQUE: {results['total_imported']} lignes traitées vs {len(all_unique_indices)} lignes avec associations")
+        
+        # ALERTE si discordance entre lignes traitées et associations
+        if results['total_imported'] != len(all_unique_indices):
+            print(f"❌ PROBLÈME MAJEUR: {results['total_imported']} lignes traitées mais seulement {len(all_unique_indices)} ont des associations!")
+            print(f"   Différence: {results['total_imported'] - len(all_unique_indices)} lignes sans association")
+            # Créer l'ensemble attendu basé sur processed_line_index (0, 1, 2, ..., total_imported-1)
+            expected_indices = set(range(results['total_imported']))
+            missing_indices = expected_indices - all_unique_indices
+            if missing_indices:
+                print(f"   Indices manquants (premières 10): {sorted(list(missing_indices))[:10]}")
+            
+            # Debug supplémentaire: vérifier si references_and_labels est vide
+            if not any(ref for ref, label in references_and_labels if ref):
+                print(f"   🚨 CAUSE PROBABLE: references_and_labels ne contient aucune référence valide!")
+                print(f"   references_and_labels: {references_and_labels}")
         
         if associations_batch:
             batch_results = self._batch_create_associations(associations_batch, new_device_ids)
@@ -1361,13 +1391,9 @@ class ImportManager:
         cursor = conn.cursor()
         all_new_ids = []
         
-        # DEBUG: Vérifier la query
-        print(f"🔧 DEBUG: Query utilisée = {query[:100]}...")
-        
         try:
             # Traiter par chunks pour optimiser SQLite
             total_chunks = (len(devices_batch) + chunk_size - 1) // chunk_size
-            print(f"🔧 DEBUG: {total_chunks} chunks à traiter")
             
             for i in range(0, len(devices_batch), chunk_size):
                 chunk = devices_batch[i:i + chunk_size]
@@ -1385,30 +1411,20 @@ class ImportManager:
                         device.get('category', '')
                     ))
                 
-                # DEBUG: Données du chunk
-                print(f"🔧 DEBUG Chunk {i//chunk_size + 1}: {len(insert_data)} appareils, premier: {insert_data[0] if insert_data else 'Aucun'}")
-                
-                # Exécuter le chunk
-                cursor.executemany(query, insert_data)
-                
-                # DEBUG: Vérifier l'exécution
-                print(f"🔧 DEBUG: rowcount après executemany = {cursor.rowcount}")
-                
-                # Récupérer les IDs pour ce chunk - FIX du bug d'allocation
+                # CORRECTION: Insérer un par un pour récupérer les IDs correctement
+                # executemany() ne garantit pas cursor.lastrowid dans SQLite
                 chunk_ids = []
-                if cursor.lastrowid is not None:
-                    # Pour executemany(), lastrowid est l'ID de la dernière insertion
-                    # Mais on doit récupérer tous les IDs individuellement
-                    last_id = cursor.lastrowid
-                    # Calculer le premier ID de ce chunk (pour SQLite auto-increment)
-                    first_id = last_id - len(insert_data) + 1
-                    chunk_ids = list(range(first_id, last_id + 1))
-                    all_new_ids.extend(chunk_ids)
-                    print(f"✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés (IDs: {first_id}-{last_id})")
-                else:
-                    # Si lastrowid est None, il y a eu un problème
-                    print(f"❌ Chunk {i//chunk_size + 1}: Impossible de récupérer les IDs")
-                    return []  # Échec critique
+                for device_data in insert_data:
+                    cursor.execute(query, device_data)
+                    if cursor.lastrowid is not None:
+                        chunk_ids.append(cursor.lastrowid)
+                    else:
+                        print(f"❌ Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
+                        conn.rollback()
+                        return []
+                
+                all_new_ids.extend(chunk_ids)
+                print(f"✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
             
             conn.commit()
             print(f"✅ BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
@@ -1459,22 +1475,30 @@ class ImportManager:
         
         results = {'created': 0, 'existing': 0}
         
-        # Mapper les device_data vers les IDs réels (nouveaux + existants)
+        # Mapper les indices de data vers les IDs réels (nouveaux + existants) 
         device_id_mapping = {}
-        new_device_index = 0
+        new_device_counter = 0
         
-        # Traiter chaque association: (reference, label, device_data, existing_id)
-        for reference, label, device_data, existing_id in associations_batch:
-            if existing_id:
+        # Traiter chaque association: (reference, label, data_index, existing_id)
+        for reference, label, data_index, existing_id in associations_batch:
+            # Utiliser l'index comme clé pour éviter les doublons d'attribution d'ID
+            cache_key = f"{data_index}_{existing_id}"
+            
+            if cache_key in device_id_mapping:
+                # Réutiliser l'ID déjà attribué pour cette ligne de donnée
+                device_id = device_id_mapping[cache_key]
+            elif existing_id:
                 # Appareil existant
                 device_id = existing_id
+                device_id_mapping[cache_key] = device_id
             else:
                 # Nouvel appareil - utiliser l'ID de la liste new_device_ids
-                if new_device_index < len(new_device_ids):
-                    device_id = new_device_ids[new_device_index]
-                    new_device_index += 1
+                if new_device_counter < len(new_device_ids):
+                    device_id = new_device_ids[new_device_counter]
+                    device_id_mapping[cache_key] = device_id
+                    new_device_counter += 1
                 else:
-                    print(f"⚠️ BATCH: Pas assez d'IDs pour les nouveaux appareils")
+                    print(f"⚠️ BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
                     continue
             
             try:
