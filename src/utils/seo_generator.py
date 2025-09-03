@@ -65,32 +65,34 @@ class SEOGenerator:
             description_clean = description.strip().capitalize()
             type_clean = type_appareil.strip().lower()
             
-            # Étape 1: Garantir au moins 1 marque dans le titre
-            fabricant_garantie = self._ensure_one_brand_in_title(fabricants, reference_clean, 
+            # Étape 1: Maximiser le nombre de marques pour atteindre ~60 caractères
+            fabricants_optimaux = self._maximize_brands_in_title(fabricants, reference_clean, 
                                                                description_clean, type_clean, max_length)
             
-            # Construire le titre de base avec au moins 1 fabricant
-            base_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricant_garantie}"
+            # Construire le titre de base avec le maximum de fabricants possible
+            base_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
             
             # Étape 2: Optimiser si le titre dépasse 60 caractères
             if len(base_title) > max_length:
                 # Essayer sans " - " (gagne 3 caractères)
-                compact_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricant_garantie}"
+                compact_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricants_optimaux}"
                 if len(compact_title) <= max_length:
                     base_title = compact_title
                 else:
-                    # Appliquer les optimisations intelligentes tout en gardant la marque
-                    base_title = self._optimize_title_with_brand(compact_title, fabricant_garantie, max_length)
+                    # Appliquer les optimisations intelligentes tout en gardant les marques
+                    base_title = self._optimize_title_with_brands(compact_title, fabricants_optimaux, max_length)
             
             # Informations de génération
+            original_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
             generation_info = {
-                'original_length': len(f"{reference_clean} - {description_clean} pour {type_clean} {fabricant_garantie}"),
+                'original_length': len(original_title),
                 'final_length': len(base_title),
-                'truncated': len(base_title) < len(f"{reference_clean} - {description_clean} pour {type_clean} {fabricant_garantie}"),
+                'truncated': len(base_title) < len(original_title),
                 'within_limit': len(base_title) <= max_length,
-                'fabricants_used': fabricant_garantie,
-                'fabricants_count': len(fabricants),
-                'brand_guaranteed': bool(fabricant_garantie.strip())
+                'fabricants_used': fabricants_optimaux,
+                'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
+                'total_fabricants_available': len(fabricants),
+                'brand_guaranteed': bool(fabricants_optimaux.strip())
             }
             
             self.last_generation_info['title'] = generation_info
@@ -169,124 +171,150 @@ class SEOGenerator:
                 'info': {'error': str(e)}
             }
     
-    def _ensure_one_brand_in_title(self, fabricants: List[str], reference: str, 
-                                 description: str, type_appareil: str, max_length: int) -> str:
-        """Garantir au moins 1 marque dans le titre, même si cela dépasse temporairement 60 caractères"""
+    def _maximize_brands_in_title(self, fabricants: List[str], reference: str, 
+                                description: str, type_appareil: str, max_length: int) -> str:
+        """Maximiser le nombre de marques dans le titre pour atteindre ~60 caractères"""
         if not fabricants:
             return ""
         
-        # Choisir une marque aléatoire (priorisation du hasard)
-        selected_brand = random.choice(list(set(fabricants))).strip()
+        # Dédupliquer et trier les fabricants par longueur (plus courts d'abord pour en avoir plus)
+        unique_fabricants = list(set(f.strip() for f in fabricants if f.strip()))
+        unique_fabricants.sort(key=len)  # Marques courtes d'abord
         
-        # Calculer si le titre avec cette marque dépasse la limite
-        test_title = f"{reference} - {description} pour {type_appareil} {selected_brand}"
+        # Calculer l'espace disponible pour les marques
+        base_without_brands = f"{reference} - {description} pour {type_appareil} "
+        available_space = max_length - len(base_without_brands)
         
-        # Retourner la marque sélectionnée (même si le titre dépasse, on optimisera après)
-        return selected_brand
+        # Construire la liste des marques optimale
+        selected_brands = []
+        current_length = 0
+        
+        for brand in unique_fabricants:
+            # Calculer la longueur si on ajoute cette marque
+            if selected_brands:
+                # Ajouter un espace entre les marques
+                new_length = current_length + 1 + len(brand)
+            else:
+                # Première marque
+                new_length = len(brand)
+            
+            # Si ça rentre, ajouter la marque
+            if new_length <= available_space:
+                selected_brands.append(brand)
+                current_length = new_length
+            else:
+                # Si on a déjà au moins une marque, on s'arrête
+                if selected_brands:
+                    break
+                # Si même la première marque ne rentre pas, la prendre quand même
+                else:
+                    selected_brands.append(brand)
+                    break
+        
+        # Si aucune marque sélectionnée, prendre au moins la première
+        if not selected_brands and unique_fabricants:
+            selected_brands = [unique_fabricants[0]]
+        
+        return " ".join(selected_brands)
     
-    def _optimize_title_with_brand(self, title: str, required_brand: str, max_length: int) -> str:
+    def _optimize_title_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
         """
-        Optimiser un titre en gardant obligatoirement la marque spécifiée
-        1. Supprimer les mots de liaison (de, des, pour)
-        2. Appliquer les raccourcis (réfrigérateur → frigo)
-        3. Tronquer intelligemment si nécessaire
+        Optimiser un titre en gardant obligatoirement les marques spécifiées
+        1. Appliquer les raccourcis (réfrigérateur → frigo)
+        2. Supprimer les mots de liaison (de, des, pour)
+        3. Réduire le nombre de marques si nécessaire
+        4. Tronquer intelligemment en dernier recours
         """
         if len(title) <= max_length:
             return title
         
-        # Étape 1: Supprimer les mots de liaison en préservant la marque
-        optimized_title = self._remove_filler_words_keep_brand(title, required_brand)
+        # Étape 1: Appliquer les raccourcis de mots
+        optimized_title = self._apply_word_replacements(title)
         
         if len(optimized_title) <= max_length:
             return optimized_title
-            
-        # Étape 2: Appliquer les raccourcis
-        optimized_title = self._apply_shortcuts_keep_brand(optimized_title, required_brand)
+        
+        # Étape 2: Supprimer les mots de liaison en préservant les marques
+        optimized_title = self._remove_filler_words_keep_brands(optimized_title, required_brands)
         
         if len(optimized_title) <= max_length:
             return optimized_title
-            
-        # Étape 3: Troncature intelligente en préservant la marque
-        return self._smart_truncate_keep_brand(optimized_title, required_brand, max_length)
+        
+        # Étape 3: Si toujours trop long, réduire le nombre de marques
+        optimized_title = self._reduce_brands_if_needed(optimized_title, max_length)
+        
+        
+        # Étape 4: Troncature intelligente en dernier recours
+        return self._smart_truncate_with_brands(optimized_title, required_brands, max_length)
     
-    def _remove_filler_words_keep_brand(self, title: str, required_brand: str) -> str:
-        """Supprimer les mots de liaison tout en préservant la marque"""
+    def _apply_word_replacements(self, title: str) -> str:
+        """Appliquer les raccourcis de mots pour économiser des caractères"""
+        result = title
+        for original, replacement in self.WORD_REPLACEMENTS.items():
+            result = result.replace(original, replacement)
+            result = result.replace(original.capitalize(), replacement)
+        return result
+    
+    def _remove_filler_words_keep_brands(self, title: str, required_brands: str) -> str:
+        """Supprimer les mots de liaison tout en préservant les marques"""
         words = title.split()
-        brand_words = required_brand.split()
+        brand_words = required_brands.split() if required_brands else []
         
         result_words = []
-        i = 0
-        while i < len(words):
-            word = words[i]
+        for word in words:
             word_lower = word.lower().rstrip("',.:;!?")  # Nettoyer la ponctuation
             
-            # Préserver les mots qui font partie de la marque
+            # Préserver les mots qui font partie des marques
             is_brand_word = any(brand_word.lower() == word_lower for brand_word in brand_words)
             
             if is_brand_word or word_lower not in self.FILLER_WORDS:
                 result_words.append(word)
-            
-            i += 1
-            
+                
         return " ".join(result_words)
     
-    def _apply_shortcuts_keep_brand(self, title: str, required_brand: str) -> str:
-        """Appliquer les raccourcis tout en préservant la marque"""
-        result = title
-        brand_words = required_brand.split()
-        
-        # Appliquer les raccourcis seulement si les mots ne font pas partie de la marque
-        for original, replacement in self.WORD_REPLACEMENTS.items():
-            # Vérifier que le mot original n'est pas dans la marque
-            is_in_brand = any(brand_word.lower() == original.lower() for brand_word in brand_words)
-            
-            if not is_in_brand and original in result.lower():
-                result = result.replace(original, replacement)
-                result = result.replace(original.capitalize(), replacement)
-                
-        return result
-    
-    def _smart_truncate_keep_brand(self, title: str, required_brand: str, max_length: int) -> str:
-        """Troncature intelligente en garantissant que la marque reste dans le titre"""
+    def _reduce_brands_if_needed(self, title: str, max_length: int) -> str:
+        """Réduire le nombre de marques si le titre est encore trop long"""
         if len(title) <= max_length:
             return title
             
-        # Si la marque à elle seule + référence dépassent déjà, on garde au minimum la référence + marque
-        words = title.split()
-        brand_words = required_brand.split()
-        
-        # Identifier les mots essentiels (référence au début + marque)
-        essential_words = []
-        brand_indices = []
-        
-        # Trouver la référence (premier mot généralement)
-        if words:
-            essential_words.append(words[0])  # Référence
+        # Séparer le titre en parties
+        parts = title.split()
+        if len(parts) < 4:  # Pas assez de parties à optimiser
+            return title
             
-        # Trouver tous les mots de la marque dans le titre
-        for i, word in enumerate(words):
-            if any(brand_word.lower() == word.lower() for brand_word in brand_words):
-                if word not in essential_words:
-                    essential_words.append(word)
-                brand_indices.append(i)
-        
-        # Construire le titre minimal (référence + marque)
-        minimal_title = " ".join(essential_words)
-        
-        if len(minimal_title) >= max_length:
-            # Cas extrême: tronquer même avec juste référence + marque
-            return minimal_title[:max_length]
+        # Trouver où commencent les marques (après le type d'appareil)
+        try:
+            # Format: "référence description pour type marque1 marque2 marque3"
+            type_index = parts.index("pour") + 1  # Position du type d'appareil
+            if type_index + 1 < len(parts):  # Il y a des marques après le type
+                # Garder le titre jusqu'au type + une seule marque
+                reduced_title = " ".join(parts[:type_index + 2])  # référence + desc + pour + type + 1 marque
+                return reduced_title
+        except ValueError:
+            pass  # Si structure inattendue, continuer avec la troncature normale
             
-        # Ajouter d'autres mots jusqu'à atteindre la limite
-        result_words = essential_words.copy()
-        remaining_space = max_length - len(" ".join(result_words))
+        return title[:max_length]  # Troncature brute en dernier recours
+    
+    def _smart_truncate_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
+        """Troncature intelligente en essayant de garder au moins une marque"""
+        if len(title) <= max_length:
+            return title
+            
+        # Si même avec toutes les optimisations c'est trop long, tronquer intelligemment
+        # Essayer de garder au moins la première marque
+        brand_words = required_brands.split() if required_brands else []
+        if brand_words:
+            first_brand = brand_words[0]
+            # Trouver la position de la première marque et garder jusqu'à elle
+            if first_brand in title:
+                brand_pos = title.find(first_brand)
+                brand_end = brand_pos + len(first_brand)
+                if brand_end <= max_length:
+                    return title[:brand_end]
         
-        for i, word in enumerate(words):
-            if word not in result_words and remaining_space > len(" " + word):
-                result_words.append(word)
-                remaining_space -= len(" " + word)
-                
-        return " ".join(result_words)
+        # Troncature brute
+        return title[:max_length]
+    
 
     def _select_fabricants_for_title(self, fabricants: List[str], reference: str, 
                                    description: str, type_appareil: str, max_length: int) -> str:

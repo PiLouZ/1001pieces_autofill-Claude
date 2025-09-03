@@ -56,7 +56,12 @@
       "Bash(git rebase:*)",
       "Bash(sed:*)",
       "Bash(git tag:*)",
-      "Read(/tmp/**)"
+      "Read(/tmp/**)",
+      "Read(/private/tmp/**)",
+      "Read(/private/tmp/**)",
+      "Read(/private/tmp/**)",
+      "Read(/private/tmp/**)",
+      "Bash(/dev/null)"
     ],
     "deny": [],
     "additionalDirectories": [

@@ -33,13 +33,15 @@ from src.core.import_manager import ImportManager
 from src.data.database_manager import DatabaseManager, DatabaseError
 from src.data.data_validator import DataValidator, ValidationResult
 from src.data.data_exporter import DataExporter, ExportError
-from src.utils.seo_generator import SEOGenerator
 from .style_manager import StyleManager
 from .table_controller import TableController
 from .paste_data_processor import PasteDataProcessor, PasteProcessingResult
 from .data_management_service import DataManagementService, FieldCompletionResult
 from .user_interaction_service import UserInteractionService
 from .log_viewer import LogViewer
+from .piece_management_service import PieceManagementService
+from .seo_service import SEOService
+from .pieces_list_service import PiecesListService
 
 
 class CustomTableWidget(QTableWidget):
@@ -819,6 +821,15 @@ class MainWindow(QMainWindow):
             # Phase 2.13: Service d'interaction utilisateur
             self.user_interaction_service = UserInteractionService(self)
             
+            # Phase 2.14: Service de gestion des pièces
+            self.piece_management_service = PieceManagementService(self)
+            
+            # Phase 2.15: Service SEO
+            self.seo_service = SEOService(self)
+            
+            # Phase 2.16: Service liste des pièces avec boutons d'action
+            self.pieces_list_service = PiecesListService(self)
+            
             # PHASE 2.3: Connecter signaux AdvancedSearchService
             self._connect_advanced_search_signals()
             
@@ -833,7 +844,6 @@ class MainWindow(QMainWindow):
             
             # Écouter les événements des services
             self._setup_service_events()
-            self.seo_generator = SEOGenerator()
             
             # Nouveau gestionnaire d'import unifié
             self.import_manager = ImportManager(self.db_manager, parent_widget=self)
@@ -998,11 +1008,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'export_html_details_btn'):
             self.export_html_details_btn.setEnabled(is_piece_search)
         
-        # Boutons SEO également limités aux références de pièce
-        if hasattr(self, 'meta_title_btn'):
-            self.meta_title_btn.setEnabled(is_piece_search)
-        if hasattr(self, 'meta_desc_btn'):
-            self.meta_desc_btn.setEnabled(is_piece_search)
+        # Boutons SEO également limités aux références de pièce - Phase 2.15: Délégation vers SEOService
+        self.seo_service.update_seo_buttons_state()
     
     def _on_export_started(self, data):
         """Gestionnaire événement début d'export"""
@@ -1081,12 +1088,15 @@ class MainWindow(QMainWindow):
         top_layout = QVBoxLayout(top_widget)
         
         self.pieces_tabs = QTabWidget()
+        # Correction largeur onglet: empêcher le texte bold qui déborde
+        self.pieces_tabs.setStyleSheet("""
+            QTabBar::tab:selected {
+                font-weight: normal;  /* Enlever le bold par défaut pour éviter débordement */
+            }
+        """)
         
-        # Liste des pièces
-        self.pieces_list = QListWidget()
-        self.pieces_list.itemDoubleClicked.connect(self._edit_piece)
-        self.pieces_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.pieces_list.customContextMenuRequested.connect(self._show_pieces_context_menu)
+        # Liste des pièces avec boutons d'action au survol - Phase 2.16: Délégation vers PiecesListService
+        self.pieces_list = self.pieces_list_service.create_pieces_list_widget()
         self.pieces_tabs.addTab(self.pieces_list, "Liste des pièces associées")
         
         # Ajout de pièce
@@ -2371,84 +2381,8 @@ class MainWindow(QMainWindow):
         self.pieces_panel_service.update_pieces_panel()
     
     def _confirm_piece_description_update(self, ref_piece: str, existing_desc: str, new_desc: str) -> str:
-        """
-        Demander à l'utilisateur de confirmer la mise à jour d'une description de pièce.
-        Retourne la description finale à utiliser.
-        Utilise un cache pour éviter de redemander pour la même référence.
-        """
-        # Vérifier si on a déjà une décision pour cette référence + nouvelle description
-        cache_key = f"{ref_piece}|{existing_desc}|{new_desc}"
-        if cache_key in self._piece_description_decisions:
-            return self._piece_description_decisions[cache_key]
-        
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Conflit de description de pièce")
-        dialog.setModal(True)
-        dialog.resize(500, 300)
-        
-        layout = QVBoxLayout(dialog)
-        
-        # Message d'information
-        info_label = QLabel(f"La référence <b>{ref_piece}</b> possède déjà un libellé.")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-        
-        # Description existante
-        layout.addWidget(QLabel("Libellé actuel :"))
-        existing_label = QLabel(f"<i>{existing_desc}</i>")
-        existing_label.setStyleSheet("background-color: #f0f0f0; padding: 5px; border: 1px solid #ccc;")
-        existing_label.setWordWrap(True)
-        layout.addWidget(existing_label)
-        
-        # Nouvelle description éditable
-        layout.addWidget(QLabel("Nouveau libellé (éditable) :"))
-        new_desc_input = QLineEdit()
-        new_desc_input.setText(new_desc)
-        new_desc_input.selectAll()  # Sélectionner tout le texte
-        layout.addWidget(new_desc_input)
-        
-        # Boutons
-        button_layout = QHBoxLayout()
-        
-        keep_existing_btn = QPushButton("Conserver l'actuel")
-        keep_existing_btn.clicked.connect(lambda: dialog.done(0))
-        
-        use_new_btn = QPushButton("Utiliser le nouveau")
-        use_new_btn.clicked.connect(lambda: dialog.done(1))
-        use_new_btn.setDefault(True)
-        
-        button_layout.addWidget(keep_existing_btn)
-        button_layout.addWidget(use_new_btn)
-        layout.addLayout(button_layout)
-        
-        # Afficher le dialogue
-        result = dialog.exec()
-        
-        if result == 1:  # Utiliser le nouveau
-            final_desc = new_desc_input.text().strip()
-            if final_desc:
-                # Mettre à jour toutes les entrées de cette référence
-                try:
-                    update_query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
-                    self.db_manager.cursor.execute(update_query, (final_desc, ref_piece))
-                    self.db_manager.conn.commit()
-                    print(f"  📝 Toutes les descriptions mises à jour pour {ref_piece}")
-                    
-                    # Mettre en cache la décision
-                    self._piece_description_decisions[cache_key] = final_desc
-                    return final_desc
-                except Exception as e:
-                    print(f"Erreur mise à jour globale: {e}")
-                    self._piece_description_decisions[cache_key] = existing_desc
-                    return existing_desc
-            else:
-                self._piece_description_decisions[cache_key] = existing_desc
-                return existing_desc
-        else:  # Conserver l'existant
-            self._piece_description_decisions[cache_key] = existing_desc
-            return existing_desc
+        """Confirmer la mise à jour d'une description de pièce - Phase 2.14: Délégation vers PieceManagementService"""
+        return self.piece_management_service.confirm_piece_description_update(ref_piece, existing_desc, new_desc)
     
     def _add_to_history(self, message: str):
         """Ajouter un message à l'historique - Phase 2.13: Délégation vers UserInteractionService"""
@@ -2545,376 +2479,25 @@ class MainWindow(QMainWindow):
     
 
     def _add_piece(self):
-        """Ajouter une pièce"""
-        # Récupérer la référence et le libellé
-        ref_piece = self.piece_input.text().strip()
-        libelle_piece = self.piece_libelle_input.text().strip()
-        
-        # Récupérer toutes les lignes sélectionnées
-        selected_rows = set()
-        selected_ranges = self.table.selectedRanges()
-        
-        if selected_ranges:
-            # Utiliser les plages sélectionnées
-            for range_sel in selected_ranges:
-                for row in range(range_sel.topRow(), range_sel.bottomRow() + 1):
-                    selected_rows.add(row)
-        else:
-            # Fallback sur la ligne courante si aucune sélection
-            current_row = self.table.currentRow()
-            if current_row >= 0:
-                selected_rows.add(current_row)
-        
-        if not selected_rows:
-            self._show_info(Config.get_message('no_selection'))
-            return
-        
-        if not ref_piece:
-            self._show_info(Config.get_message('no_piece_ref'))
-            return
-        
-        # Validation
-        validation_result = self.validator.validate_piece_reference(ref_piece)
-        if not validation_result.is_valid:
-            QMessageBox.warning(self, "Validation", validation_result.error_message)
-            return
-        
-        try:
-            # Ajouter la pièce à tous les appareils sélectionnés (sans description)
-            added_count = 0
-            error_count = 0
-            
-            for row in selected_rows:
-                try:
-                    db_id = self._get_db_id_from_row(row)
-                    
-                    # Vérifier si la pièce n'est pas déjà associée
-                    if not self._piece_already_associated(db_id, ref_piece):
-                        # Ajouter la pièce avec libellé optionnel
-                        _, _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
-                        added_count += 1
-                    else:
-                        # Pièce déjà associée, mais vérifier le libellé si fourni
-                        if libelle_piece and libelle_piece.strip():
-                            _, _, _ = self.db_manager.add_or_update_piece_with_description(ref_piece, db_id, libelle_piece, self._confirm_piece_description_update)
-                            print(f"Libellé vérifié pour pièce {ref_piece} déjà associée ligne {row}")
-                        error_count += 1
-                        print(f"Pièce {ref_piece} déjà associée à l'appareil ligne {row}")
-                    
-                except (ValueError, DatabaseError) as e:
-                    error_count += 1
-                    print(f"Erreur lors de l'ajout de la pièce à la ligne {row}: {e}")
-                    continue
-            
-            # Nettoyer et mettre à jour
-            self.piece_input.clear()
-            self._update_pieces_panel()
-            
-            # Mettre à jour la colonne Nb Pièces pour les lignes concernées
-            self.table_controller.update_pieces_count_for_rows(selected_rows)
-            
-            # Forcer le rafraîchissement pour corriger les couleurs après la mise à jour des pièces
-            
-            # Ajouter à l'historique
-            if added_count > 0:
-                from src.core.config import pluralize
-                history_message = f"Pièce '{ref_piece}' ajoutée à {pluralize(added_count, 'appareil')}"
-                if error_count > 0:
-                    history_message += f" ({error_count} erreur(s))"
-                self._add_to_history(history_message)
-                
-                self.statusbar.showMessage(history_message, Config.STATUS_MESSAGE_TIMEOUT)
-                
-                # Vider les champs après ajout réussi
-                self.piece_input.clear()
-                self.piece_libelle_input.clear()
-            else:
-                self._add_to_history(f"Erreur: Aucune pièce n'a pu être ajoutée pour '{ref_piece}'")
-            
-        except Exception as e:
-            error_msg = f"Erreur lors de l'ajout de la pièce: {e}"
-            self._add_to_history(error_msg)
-            self._show_error(error_msg)
+        """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService"""
+        self.piece_management_service.add_piece()
 
     def _edit_piece(self, item: QListWidgetItem):
-        """Éditer une pièce"""
-        ref_piece = item.data(Qt.UserRole)
-        if not ref_piece:
-            return
-        
-        # Obtenir l'ID de l'appareil actuel
-        current_row = self.table.currentRow()
-        if current_row < 0:
-            self._show_error("Aucun appareil sélectionné")
-            return
-        
-        try:
-            # Récupérer l'ID de l'appareil
-            appareil_id = self._get_db_id_from_row(current_row)
-            
-            # Récupérer les informations actuelles de la pièce
-            piece_info = self.db_manager.get_piece_info(ref_piece, appareil_id)
-            if not piece_info:
-                self._show_error(f"Pièce '{ref_piece}' introuvable")
-                return
-                
-            current_ref, current_desc = piece_info
-            
-            # Obtenir la référence de l'appareil pour l'historique
-            appareil_ref = ""
-            try:
-                # Essayer d'obtenir la référence modèle (colonne 2)
-                ref_modele_item = self.table.item(current_row, 2)
-                if ref_modele_item and ref_modele_item.text().strip():
-                    appareil_ref = ref_modele_item.text().strip()
-                else:
-                    # Sinon, utiliser la référence commerciale (colonne 3)
-                    commercial_ref_item = self.table.item(current_row, 3)
-                    if commercial_ref_item and commercial_ref_item.text().strip():
-                        appareil_ref = commercial_ref_item.text().strip()
-                    else:
-                        # En dernier recours, utiliser l'ID
-                        appareil_ref = f"ID:{appareil_id}"
-            except Exception:
-                appareil_ref = f"ID:{appareil_id}"
-            
-            # Demander la nouvelle description (pré-remplir avec la description actuelle)
-            new_desc, ok = QInputDialog.getText(
-                self, "Modifier la pièce", 
-                f"Description pour '{ref_piece}':",
-                text=current_desc or ""
-            )
-            
-            if ok:
-                new_desc_stripped = new_desc.strip() if new_desc else None
-                
-                # Vérifier si la description a réellement changé
-                if new_desc_stripped != current_desc:
-                    success = self.db_manager.update_piece(ref_piece, new_desc_stripped)
-                    if success:
-                        self._update_pieces_panel()
-                        self.statusbar.showMessage(
-                            Config.get_message('piece_updated') + f": {ref_piece}", 
-                            Config.STATUS_MESSAGE_TIMEOUT
-                        )
-                        
-                        # Ajouter à l'historique avec les détails de la modification
-                        old_desc_display = f"'{current_desc}'" if current_desc else "vide"
-                        new_desc_display = f"'{new_desc_stripped}'" if new_desc_stripped else "vide"
-                        self._add_to_history(
-                            f"Modification de pièce: {ref_piece} (appareil: {appareil_ref}) - "
-                            f"Description: {old_desc_display} → {new_desc_display}"
-                        )
-                    else:
-                        self._show_error("Erreur lors de la modification de la pièce")
-                else:
-                    # Aucune modification, pas besoin de mettre à jour
-                    self.statusbar.showMessage(
-                        f"Aucune modification pour la pièce: {ref_piece}", 
-                        Config.STATUS_MESSAGE_TIMEOUT
-                    )
-                    
-        except DatabaseError as e:
-            self._show_error(f"Erreur lors de la modification: {e}")
-        except Exception as e:
-            self._show_error(f"Erreur inattendue: {e}")
+        """Éditer une pièce - Phase 2.14: Délégation vers PieceManagementService"""
+        self.piece_management_service.edit_piece(item)
     
-    def _show_pieces_context_menu(self, position):
-        """Afficher le menu contextuel pour les pièces"""
-        item = self.pieces_list.itemAt(position)
-        if not item:
-            return
-        
-        menu = QMenu(self)
-        
-        # Action modifier
-        edit_action = menu.addAction("Modifier")
-        edit_action.triggered.connect(lambda: self._edit_piece(item))
-        
-        # Action copier
-        copy_action = menu.addAction("Copier")
-        copy_action.triggered.connect(lambda: self._copy_piece(item))
-        
-        # Action supprimer
-        delete_action = menu.addAction("Supprimer")
-        delete_action.triggered.connect(lambda: self._delete_piece(item))
-        
-        # Vérifier s'il y a plusieurs appareils sélectionnés
-        selected_ranges = self.table.selectedRanges()
-        multiple_selection = len(selected_ranges) > 0 and sum(
-            range_sel.bottomRow() - range_sel.topRow() + 1 
-            for range_sel in selected_ranges
-        ) > 1
-        
-        if multiple_selection:
-            menu.addSeparator()
-            delete_from_all_action = menu.addAction("🗑️ Supprimer de tous les appareils sélectionnés")
-            delete_from_all_action.triggered.connect(lambda: self._delete_piece_from_selected(item))
-        
-        # Afficher le menu
-        menu.exec_(self.pieces_list.mapToGlobal(position))
     
     def _delete_piece(self, item: QListWidgetItem):
-        """Supprimer une pièce avec confirmation"""
-        ref_piece = item.data(Qt.UserRole)
-        if not ref_piece:
-            return
-        
-        # Demander confirmation avec raccourcis clavier
-        confirmed = self._show_confirmation(
-            "Confirmer la suppression",
-            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?",
-            default_yes=False
-        )
-        
-        if confirmed:
-            try:
-                # Obtenir l'ID de l'appareil sélectionné
-                current_row = self.table.currentRow()
-                if current_row < 0:
-                    self._show_error("Aucun appareil sélectionné")
-                    return
-                
-                # Obtenir l'ID de l'appareil à partir de la ligne courante
-                appareil_id = self._get_db_id_from_row(current_row)
-                
-                # Obtenir la référence de l'appareil pour l'historique
-                appareil_ref = ""
-                try:
-                    # Essayer d'obtenir la référence modèle (colonne 2)
-                    ref_modele_item = self.table.item(current_row, 2)
-                    if ref_modele_item and ref_modele_item.text().strip():
-                        appareil_ref = ref_modele_item.text().strip()
-                    else:
-                        # Sinon, utiliser la référence commerciale (colonne 3)
-                        commercial_ref_item = self.table.item(current_row, 3)
-                        if commercial_ref_item and commercial_ref_item.text().strip():
-                            appareil_ref = commercial_ref_item.text().strip()
-                        else:
-                            # En dernier recours, utiliser l'ID
-                            appareil_ref = f"ID:{appareil_id}"
-                except Exception:
-                    appareil_ref = f"ID:{appareil_id}"
-                
-                # Supprimer la pièce
-                success = self.db_manager.delete_piece(ref_piece, appareil_id)
-                if success:
-                    self._update_pieces_panel()
-                    self.statusbar.showMessage(
-                        f"Pièce supprimée: {ref_piece}", 
-                        Config.STATUS_MESSAGE_TIMEOUT
-                    )
-                    
-                    # Mettre à jour la colonne Nb Pièces pour l'appareil concerné
-                    affected_row = self.table_controller.find_row_by_db_id(appareil_id)
-                    if affected_row is not None:
-                        self.table_controller.update_pieces_count_for_rows({affected_row})
-                    
-                    # Ajouter à l'historique avec la référence de l'appareil
-                    self._add_to_history(f"Suppression de pièce: {ref_piece} (appareil: {appareil_ref})")
-                else:
-                    self._show_error("Erreur lors de la suppression de la pièce")
-                    
-            except DatabaseError as e:
-                self._show_error(f"Erreur lors de la suppression: {e}")
-            except Exception as e:
-                app_logger.error(f"Erreur inattendue lors de la suppression de pièce: {e}")
-                self._show_error(f"Erreur inattendue: {e}")
+        """Supprimer une pièce - Phase 2.14: Délégation vers PieceManagementService"""
+        self.piece_management_service.delete_piece(item)
     
     def _copy_piece(self, item: QListWidgetItem):
-        """Copier une pièce dans le presse-papiers"""
-        ref_piece = item.data(Qt.UserRole)
-        if not ref_piece:
-            return
-        
-        # Copier la référence de la pièce dans le presse-papiers
-        clipboard = QApplication.clipboard()
-        clipboard.setText(ref_piece)
-        
-        # Afficher un message de confirmation
-        self.statusbar.showMessage(
-            f"Pièce copiée: {ref_piece}", 
-            Config.STATUS_MESSAGE_TIMEOUT
-        )
+        """Copier une pièce - Phase 2.14: Délégation vers PieceManagementService"""
+        self.piece_management_service.copy_piece(item)
     
     def _delete_piece_from_selected(self, item: QListWidgetItem):
-        """Supprimer une pièce de tous les appareils sélectionnés"""
-        ref_piece = item.data(Qt.UserRole)
-        if not ref_piece:
-            return
-        
-        # Récupérer les appareils sélectionnés
-        selected_rows = set()
-        selected_ranges = self.table.selectedRanges()
-        
-        if selected_ranges:
-            for range_sel in selected_ranges:
-                for row in range(range_sel.topRow(), range_sel.bottomRow() + 1):
-                    selected_rows.add(row)
-        
-        if len(selected_rows) <= 1:
-            # Fallback vers la suppression normale si un seul appareil
-            self._delete_piece(item)
-            return
-        
-        # Demander confirmation
-        confirmed = self._show_confirmation(
-            "Confirmer la suppression multiple",
-            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' de {len(selected_rows)} appareils ?",
-            default_yes=False
-        )
-        
-        if confirmed:
-            try:
-                # Récupérer les IDs des appareils sélectionnés
-                appareil_ids = []
-                for row in selected_rows:
-                    try:
-                        appareil_id = self._get_db_id_from_row(row)
-                        appareil_ids.append(appareil_id)
-                    except (ValueError, IndexError):
-                        continue
-                
-                if not appareil_ids:
-                    self._show_error("Aucun appareil valide sélectionné")
-                    return
-                
-                # Supprimer la pièce de tous les appareils
-                deleted_count = self.db_manager.delete_piece_from_multiple_appareils(ref_piece, appareil_ids)
-                
-                if deleted_count > 0:
-                    # Mettre à jour l'interface
-                    self._update_pieces_panel()
-                    self.statusbar.showMessage(
-                        f"Pièce '{ref_piece}' supprimée de {deleted_count} appareils", 
-                        Config.STATUS_MESSAGE_TIMEOUT
-                    )
-                    
-                    # Mettre à jour la colonne Nb Pièces pour tous les appareils concernés
-                    affected_rows = set()
-                    for appareil_id in appareil_ids:
-                        row = self.table_controller.find_row_by_db_id(appareil_id)
-                        if row is not None:
-                            affected_rows.add(row)
-                    if affected_rows:
-                        self.table_controller.update_pieces_count_for_rows(affected_rows)
-                    
-                    # Ajouter à l'historique
-                    self.undo_manager.add_action({
-                        'type': 'delete_piece_multiple',
-                        'ref_piece': ref_piece,
-                        'appareil_ids': appareil_ids,
-                        'deleted_count': deleted_count,
-                        'description': f"Suppression multiple de pièce: {ref_piece} ({deleted_count} appareils)"
-                    })
-                else:
-                    self._show_error("Aucune pièce n'a été supprimée")
-                    
-            except DatabaseError as e:
-                self._show_error(f"Erreur lors de la suppression multiple: {e}")
-            except Exception as e:
-                app_logger.error(f"Erreur inattendue lors de la suppression multiple: {e}")
-                self._show_error(f"Erreur inattendue: {e}")
+        """Supprimer une pièce des appareils sélectionnés - Phase 2.14: Délégation vers PieceManagementService"""
+        self.piece_management_service.delete_piece_from_selected(item)
 
     def _undo(self):
         """Annuler la dernière action"""
@@ -3294,11 +2877,18 @@ class MainWindow(QMainWindow):
             # Créer un résumé détaillé EXACTEMENT comme l'ancien format
             # Note: _add_to_history ajoute automatiquement le timestamp, pas besoin de le faire ici
             
-            # Déterminer le type d'import
+            # Déterminer le type d'import et ajouter le nom de fichier
             if results.get('total_files', 0) > 1:
                 import_type = f"📊 Import Multi-fichiers ({results['total_files']} fichiers)"
             else:
-                import_type = "📊 Import"
+                # Pour l'import simple, récupérer le nom du fichier
+                file_details = results.get('file_details', [])
+                if file_details:
+                    first_file = file_details[0]
+                    filename = first_file.get('filename', 'fichier')
+                    import_type = f"📊 Import {filename}"
+                else:
+                    import_type = "📊 Import"
             
             # Commencer le résumé
             summary = f"{import_type}:\n"
@@ -3308,6 +2898,12 @@ class MainWindow(QMainWindow):
                 file_details = results.get('file_details', [])
                 for detail in file_details:
                     summary += f"📄 Fichier {detail['type']} {detail['filename']}: {detail['lines_processed']} lignes extraites\n"
+            else:
+                # Pour l'import simple, afficher aussi le détail du fichier
+                file_details = results.get('file_details', [])
+                if file_details:
+                    detail = file_details[0]
+                    summary += f"📄 Fichier {detail['type']}: {detail['lines_processed']} lignes extraites\n"
             
             # Calculer le total des lignes extraites de tous les fichiers
             file_details = results.get('file_details', [])
@@ -3357,18 +2953,8 @@ class MainWindow(QMainWindow):
             self._show_error(f"Erreur lors de l'ouverture de la validation: {e}")
     
     def _open_pieces_manager(self):
-        """Ouvrir la fenêtre de gestion des pièces"""
-        try:
-            from .pieces_manager import PiecesManagerWindow
-            if not hasattr(self, 'pieces_manager') or not self.pieces_manager:
-                self.pieces_manager = PiecesManagerWindow(self, self.db_manager)
-            
-            self.pieces_manager.show()
-            self.pieces_manager.raise_()
-            self.pieces_manager.activateWindow()
-            
-        except Exception as e:
-            self._show_error(f"Erreur lors de l'ouverture du gestionnaire de pièces: {e}")
+        """Ouvrir la fenêtre de gestion des pièces - Phase 2.14: Délégation vers PieceManagementService"""
+        self.piece_management_service.open_pieces_manager()
     
     def _clear_column_filters(self):
         """Nettoyer tous les filtres de colonnes via TableController"""
@@ -3438,8 +3024,16 @@ class MainWindow(QMainWindow):
     def _force_refresh_display(self, reset_page=False, clear_filters=False):
         """Forcer le rafraîchissement complet de l'affichage du tableau"""
         try:
-            # Sauvegarder l'état de recherche actuel
-            temp_search = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            # Sauvegarder l'état de recherche actuel - prioriser table_controller.pending_search_term
+            temp_search = None
+            if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'pending_search_term'):
+                temp_search = self.table_controller.pending_search_term
+            elif hasattr(self, 'pending_search_term'):
+                temp_search = self.pending_search_term
+            
+            # Si pas de recherche dans pending_search_term, essayer de récupérer depuis search_input
+            if not temp_search and hasattr(self, 'search_input') and self.search_input.text().strip():
+                temp_search = self.search_input.text().strip()
             
             # Retourner à la première page si demandé (après modifications globales)
             if reset_page:
@@ -4122,8 +3716,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 # Ajouter à l'historique
                 self._add_to_history(f"🗑️ Suppression de {pluralize(deleted_count, 'ligne')}")
                 
-                # Actualiser l'affichage
-                self._force_refresh_display()
+                # Actualiser l'affichage - conserver la recherche et les filtres 
+                self._force_refresh_display(reset_page=False, clear_filters=False)
             else:
                 self._show_error("Aucune ligne n'a pu être supprimée")
                 
@@ -4499,481 +4093,56 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         
         event.accept()
 
-    # Méthodes pour les fonctionnalités SEO
+    # Méthodes SEO - Phase 2.15: Délégation vers SEOService
     def _generate_meta_title(self):
-        """Générer et copier un méta titre SEO optimisé"""
-        try:
-            # Gérer les recherches multi-références
-            multi_terms = self._get_multi_reference_terms()
-            if multi_terms:
-                # Demander à l'utilisateur de choisir la référence pour la génération SEO
-                selected_reference = self._show_reference_selection_dialog(
-                    "Référence pour Méta Title",
-                    f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                    f"Choisissez la référence à utiliser pour la génération SEO :",
-                    multi_terms[0]  # Premier terme par défaut
-                )
-                
-                if not selected_reference:
-                    return  # Annulé par l'utilisateur
-                
-                # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
-                
-                # Récupérer les données pour la référence sélectionnée
-                search_data = self._get_current_search_data_for_reference(selected_reference)
-            else:
-                # Récupérer les données de recherche actuelles (comportement normal)
-                search_data = self._get_current_search_data()
-            
-            if not search_data:
-                self.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
-                return
-            
-            # Générer le méta titre
-            result = self.seo_generator.generate_meta_title(
-                reference=search_data['reference'],
-                description=search_data['description'], 
-                type_appareil=search_data['type_appareil'],
-                fabricants=search_data['fabricants']
-            )
-            
-            # Copier dans le presse-papiers
-            QApplication.clipboard().setText(result['title'])
-            
-            # Message de statut avec informations détaillées
-            length = result['length']
-            color = "green" if length <= 60 else "red"
-            fabricants_info = f"({result['info']['fabricants_count']} fabricants)" if result['info']['fabricants_count'] > 0 else ""
-            
-            status_msg = f"Méta titre copié ({length}/60 caractères) {fabricants_info}"
-            if result['info']['truncated']:
-                status_msg += " [Tronqué]"
-            
-            self.statusbar.showMessage(status_msg, 5000)
-            
-        except Exception as e:
-            self.statusbar.showMessage(f"Erreur génération méta titre: {e}", 3000)
-            app_logger.error(f"Erreur génération méta titre: {e}")
+        """Générer et copier un méta titre SEO optimisé - Phase 2.15: Délégation vers SEOService"""
+        self.seo_service.generate_meta_title()
     
     def _generate_meta_description(self):
-        """Générer et copier une méta description SEO aléatoire"""
-        try:
-            # Gérer les recherches multi-références
-            multi_terms = self._get_multi_reference_terms()
-            if multi_terms:
-                # Demander à l'utilisateur de choisir la référence pour la génération SEO
-                selected_reference = self._show_reference_selection_dialog(
-                    "Référence pour Méta Description",
-                    f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                    f"Choisissez la référence à utiliser pour la génération SEO :",
-                    multi_terms[0]  # Premier terme par défaut
-                )
-                
-                if not selected_reference:
-                    return  # Annulé par l'utilisateur
-                
-                # Pas de validation - l'utilisateur peut saisir une référence non présente en BDD
-                
-                # Récupérer les données pour la référence sélectionnée
-                search_data = self._get_current_search_data_for_reference(selected_reference)
-            else:
-                # Récupérer les données de recherche actuelles (comportement normal)
-                search_data = self._get_current_search_data()
-            
-            if not search_data:
-                self.statusbar.showMessage("Aucune recherche active pour générer la méta description", 3000)
-                return
-            
-            # Générer la méta description
-            result = self.seo_generator.generate_meta_description(
-                reference=search_data['reference'],
-                description=search_data['description'],
-                type_appareil=search_data['type_appareil'],
-                fabricants=search_data['fabricants']
-            )
-            
-            # Copier dans le presse-papiers
-            QApplication.clipboard().setText(result['description'])
-            
-            # Message de statut avec informations détaillées
-            length = result['length']
-            status_msg = f"Méta description copiée ({length}/150 caractères)"
-            if result['info']['truncated']:
-                status_msg += " [Tronquée]"
-            
-            self.statusbar.showMessage(status_msg, 5000)
-            
-        except Exception as e:
-            self.statusbar.showMessage(f"Erreur génération méta description: {e}", 3000)
-            app_logger.error(f"Erreur génération méta description: {e}")
+        """Générer et copier une méta description SEO - Phase 2.15: Délégation vers SEOService"""
+        self.seo_service.generate_meta_description()
     
-    def _get_current_search_data(self) -> Optional[Dict[str, any]]:
-        """Extraire les données de la recherche actuelle pour la génération SEO"""
+    def _is_piece_reference_search(self) -> bool:
+        """Vérifier si la recherche actuelle est une référence de pièce - Support multi-références"""
         try:
-            # Récupérer le terme de recherche actuel
             search_term = self.search_input.text().strip()
             if not search_term:
-                return None
+                return False
             
-            # Pour les recherches multi-références, utiliser le premier terme
+            # Détecter les recherches multi-références avec || ou &&
+            if '||' in search_term or '&&' in search_term:
+                return self._are_all_terms_piece_references(search_term)
+            
+            # Recherche simple - vérifier si c'est une référence de pièce
+            return self._get_piece_description_from_reference(search_term) is not None
+        
+        except Exception as e:
+            app_logger.error(f"Erreur vérification référence pièce: {e}")
+            return False
+    
+    def _are_all_terms_piece_references(self, search_term: str) -> bool:
+        """Vérifier si tous les termes d'une recherche multi-références sont des références de pièce"""
+        try:
+            # Diviser selon l'opérateur utilisé
             if '||' in search_term:
-                terms = [term.strip() for term in search_term.split('||')]
-                if terms:
-                    search_term = terms[0]
+                terms = [term.strip() for term in search_term.split('||') if term.strip()]
+            elif '&&' in search_term:
+                terms = [term.strip() for term in search_term.split('&&') if term.strip()]
+            else:
+                return False
             
-            # Vérifier si c'est une référence de pièce (recherche dans la table pieces)
-            piece_description = self._get_piece_description_from_reference(search_term)
-            if not piece_description:
-                return None  # Ne pas activer les boutons SEO si ce n'est pas une référence de pièce
-            
-            # Analyser les données du tableau pour extraire les informations des appareils
-            if self.table.rowCount() == 0:
-                return None
-            
-            # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
-            # (Pas seulement ceux visibles dans le tableau)
-            types_appareil = set()
-            fabricants = set()
-            
-            # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
-            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
-            
-            try:
-                all_data = self.db_manager.execute_custom_query(fabricants_query, [search_term])
-                for type_val, manufacturer in all_data:
-                    if type_val and type_val.strip():
-                        types_appareil.add(type_val.strip())
-                    if manufacturer and manufacturer.strip():
-                        fabricants.add(manufacturer.strip())
-                        
-            except Exception as e:
-                app_logger.error(f"Erreur récupération fabricants pour {search_term}: {e}")
+            # Au moins un terme doit être une référence de pièce pour les recherches ||
+            # Tous les termes doivent être des références de pièce pour les recherches &&
+            if '||' in search_term:
+                # Pour ||, au moins une référence valide suffit
+                return any(self._get_piece_description_from_reference(term) is not None for term in terms)
+            else:  # && 
+                # Pour &&, toutes les références doivent être valides
+                return all(self._get_piece_description_from_reference(term) is not None for term in terms)
                 
-                # Fallback: utiliser les données visibles du tableau si la requête échoue
-                for row in range(min(self.table.rowCount(), 20)):
-                    if not self.table.isRowHidden(row):
-                        # Type appareil (colonne 0)
-                        type_item = self.table.item(row, 0)
-                        if type_item and type_item.text().strip():
-                            types_appareil.add(type_item.text().strip())
-                        
-                        # Fabricant (colonne 1)
-                        fabricant_item = self.table.item(row, 1)
-                        if fabricant_item and fabricant_item.text().strip():
-                            fabricants.add(fabricant_item.text().strip())
-            
-            # Utiliser la référence de recherche et la vraie description de la pièce
-            reference = search_term
-            description = piece_description
-            
-            # Prendre le type le plus fréquent ou le premier
-            type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
-            
-            # Convertir les sets en listes
-            fabricants_list = sorted(list(fabricants)) if fabricants else ["multi-marques"]
-            
-            return {
-                'reference': reference,
-                'description': description,
-                'type_appareil': type_appareil,
-                'fabricants': fabricants_list
-            }
-            
         except Exception as e:
-            app_logger.error(f"Erreur extraction données recherche: {e}")
-            return None
-    
-    def _get_current_search_data_for_reference(self, specific_reference: str) -> Optional[Dict[str, any]]:
-        """
-        Extraire les données pour une référence spécifique (utilisé pour les multi-références)
-        """
-        try:
-            # Récupérer le terme de recherche original
-            original_search_term = self.search_input.text().strip()
-            
-            # Si c'est une recherche multi-références, utiliser les données d'une référence existante
-            if '||' in original_search_term or '&&' in original_search_term:
-                # Diviser selon l'opérateur utilisé
-                if '||' in original_search_term:
-                    references = [ref.strip() for ref in original_search_term.split('||') if ref.strip()]
-                else:  # && présent
-                    references = [ref.strip() for ref in original_search_term.split('&&') if ref.strip()]
-                    
-                app_logger.info(f"Génération méta pour multi-références: {references}")
-                
-                # Essayer de trouver une référence qui existe en BDD pour récupérer les vraies données
-                real_reference_data = None
-                for ref in references:
-                    piece_description = self._get_piece_description_from_reference(ref)
-                    if piece_description:
-                        app_logger.info(f"Utilisation des données de la référence existante: {ref}")
-                        real_reference_data = self._get_search_data_for_existing_reference(ref, piece_description)
-                        break
-                
-                if real_reference_data:
-                    # Utiliser les vraies données mais avec la référence personnalisée
-                    real_reference_data['reference'] = specific_reference
-                    return real_reference_data
-                else:
-                    app_logger.warning("Aucune référence valide trouvée dans la recherche multi-références")
-            
-            # Vérifier si c'est une référence de pièce valide (cas normal)
-            piece_description = self._get_piece_description_from_reference(specific_reference)
-            
-            # Si la référence n'existe pas en BDD, créer des données par défaut
-            if not piece_description:
-                return {
-                    'reference': specific_reference,
-                    'description': f"Pièce détachée {specific_reference}",
-                    'type_appareil': "appareil électroménager", 
-                    'fabricants': ["multi-marques"]
-                }
-            
-            # Analyser les données du tableau pour extraire les informations des appareils
-            if self.table.rowCount() == 0:
-                return None
-            
-            # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
-            types_appareil = set()
-            fabricants = set()
-            
-            # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
-            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
-            
-            try:
-                all_data = self.db_manager.execute_custom_query(fabricants_query, [specific_reference])
-                for type_val, manufacturer in all_data:
-                    if type_val and type_val.strip():
-                        types_appareil.add(type_val.strip())
-                    if manufacturer and manufacturer.strip():
-                        fabricants.add(manufacturer.strip())
-                        
-            except Exception as e:
-                app_logger.error(f"Erreur récupération fabricants pour {specific_reference}: {e}")
-                
-                # Fallback: utiliser les données visibles du tableau si la requête échoue
-                for row in range(min(self.table.rowCount(), 20)):
-                    if not self.table.isRowHidden(row):
-                        # Type appareil (colonne 0)
-                        type_item = self.table.item(row, 0)
-                        if type_item and type_item.text().strip():
-                            types_appareil.add(type_item.text().strip())
-                        
-                        # Fabricant (colonne 1)
-                        fabricant_item = self.table.item(row, 1)
-                        if fabricant_item and fabricant_item.text().strip():
-                            fabricants.add(fabricant_item.text().strip())
-            
-            # Prendre le type le plus fréquent ou le premier
-            type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
-            
-            # Convertir les sets en listes
-            fabricants_list = sorted(list(fabricants)) if fabricants else ["multi-marques"]
-            
-            return {
-                'reference': specific_reference,
-                'description': piece_description,
-                'type_appareil': type_appareil,
-                'fabricants': fabricants_list
-            }
-            
-        except Exception as e:
-            app_logger.error(f"Erreur récupération données référence spécifique: {e}")
-            return None
-    
-    def _get_search_data_for_existing_reference(self, reference: str, piece_description: str) -> Dict[str, any]:
-        """
-        Récupérer les vraies données SEO pour une référence existante en BDD
-        """
-        try:
-            # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
-            types_appareil = set()
-            fabricants = set()
-            
-            # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
-            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
-            
-            try:
-                all_data = self.db_manager.execute_custom_query(fabricants_query, [reference])
-                for type_val, manufacturer in all_data:
-                    if type_val and type_val.strip():
-                        types_appareil.add(type_val.strip())
-                    if manufacturer and manufacturer.strip():
-                        fabricants.add(manufacturer.strip())
-                        
-            except Exception as e:
-                app_logger.error(f"Erreur récupération fabricants pour {reference}: {e}")
-                # Fallback minimal
-                types_appareil.add("appareil électroménager")
-                fabricants.add("multi-marques")
-            
-            # Prendre le type le plus fréquent ou le premier
-            type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
-            
-            # Convertir les sets en listes
-            fabricants_list = sorted(list(fabricants)) if fabricants else ["multi-marques"]
-            
-            return {
-                'reference': reference,  # Sera remplacé par la référence personnalisée plus tard
-                'description': piece_description,
-                'type_appareil': type_appareil,
-                'fabricants': fabricants_list
-            }
-            
-        except Exception as e:
-            app_logger.error(f"Erreur récupération données SEO pour {reference}: {e}")
-            return {
-                'reference': reference,
-                'description': f"Pièce détachée {reference}",
-                'type_appareil': "appareil électroménager", 
-                'fabricants': ["multi-marques"]
-            }
-    
-    def _get_displayed_table_data(self) -> List[Tuple]:
-        """Récupérer les données actuellement affichées dans le tableau"""
-        data = []
-        
-        if not hasattr(self, 'table') or self.table.rowCount() == 0:
-            return data
-        
-        # Parcourir chaque ligne du tableau
-        for row in range(self.table.rowCount()):
-            row_data = []
-            # Récupérer les données de chaque colonne (sauf la dernière "Nb Pièces")
-            for col in range(len(Config.DB_HEADERS)):  # Exclure colonne "Nb Pièces"
-                item = self.table.item(row, col)
-                if item:
-                    row_data.append(item.text())
-                else:
-                    row_data.append("")
-            
-            # Récupérer le db_id depuis UserRole de la première cellule
-            first_item = self.table.item(row, 0)
-            if first_item:
-                db_id = first_item.data(Qt.ItemDataRole.UserRole)
-                if db_id:
-                    # Ajouter l'ID en première position (comme dans les requêtes DB)
-                    row_data.insert(0, db_id)
-                    data.append(tuple(row_data))
-        
-        return data
-
-    def _get_all_search_data(self) -> List[Tuple]:
-        """Récupérer TOUTES les données correspondant à la recherche actuelle (sans pagination)"""
-        try:
-            # Récupérer les paramètres de recherche actuels depuis le champ de saisie
-            current_search = self.search_input.text().strip() if hasattr(self, 'search_input') else ''
-            
-            incomplete_filter = getattr(self, 'show_incomplete_only', False)
-            
-            if not current_search:
-                return []
-            
-            # Parser la recherche comme dans _parse_advanced_search
-            try:
-                parsed_search = self._parse_advanced_search(current_search)
-            except Exception as parse_error:
-                # En cas d'erreur de parsing, utiliser une recherche simple
-                parsed_search = {'SIMPLE': current_search}
-            
-            if not parsed_search:
-                return []
-            
-            # Obtenir les filtres de colonnes (si applicable) via TableController
-            column_filters = {}
-            if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
-                for col_idx, filter_widget in self.table_controller.filter_widgets.items():
-                    if filter_widget is not None:  # Skip removed filters
-                        if isinstance(filter_widget, QComboBox):
-                            filter_text = filter_widget.currentText().strip()
-                        else:  # QLineEdit
-                            filter_text = filter_widget.text().strip()
-                        if filter_text:
-                            column_filters[col_idx] = filter_text
-            
-            # Utiliser load_data sans limites
-            all_results = self.db_manager.load_data(
-                search_term=parsed_search,
-                column_filters=column_filters,
-                limit=None,  # Aucune limite = récupérer tout
-                offset=None,  # Pas d'offset = depuis le début
-                sort_column=None,  # Pas de tri spécifique
-                sort_order="ASC",  # Ordre croissant par défaut
-                incomplete_filter=incomplete_filter
-            )
-            
-            return all_results if all_results else []
-            
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return []
-
-    def _export_displayed_table_as_csv(self, custom_reference: str) -> str:
-        """Exporter TOUTES les données de la recherche vers un fichier CSV (pas seulement celles affichées)"""
-        try:
-            import csv
-            import os
-            from datetime import datetime
-            
-            # Récupérer TOUTES les données de la recherche actuelle, pas seulement celles affichées
-            data = self._get_all_search_data()
-            
-            if not data:
-                raise Exception("Aucune donnée trouvée pour la recherche actuelle")
-            
-            # Générer le nom de fichier
-            filename = f"{custom_reference}_everyParts.csv"
-            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
-            
-            # Créer le fichier CSV
-            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                # En-têtes
-                headers = [
-                    'product',
-                    'type', 
-                    'manufacturer',
-                    'modele_name',
-                    'reference_modele',
-                    'commercial_reference'
-                ]
-                writer.writerow(headers)
-                
-                # Écrire les données
-                processed_count = 0
-                for record in data:
-                    try:
-                        if len(record) >= 5:  # Au minimum 5 champs requis
-                            db_id, type_app, manufacturer, ref_modele, commercial_ref = record[:5]
-                            modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
-                            
-                            writer.writerow([
-                                custom_reference,  # product (référence personnalisée)
-                                type_app or '',
-                                manufacturer or '',
-                                modele_complet,
-                                ref_modele or '',
-                                commercial_ref or ''
-                            ])
-                            processed_count += 1
-                    except Exception as record_error:
-                        print(f"📊 ERREUR sur l'enregistrement {processed_count}: {record_error}")
-                        print(f"📊 Record problématique: {record}")
-                        continue
-            return filepath
-            
-        except Exception as e:
-            raise Exception(f"Erreur lors de l'export CSV: {e}")
-
-    def _export_custom_reference_csv_with_current_data(self, custom_reference: str, original_search_term: str = None) -> str:
-        """Créer un export CSV avec toutes les données de la recherche mais avec une référence personnalisée - Phase 2.9"""
-        return self.custom_reference_service.export_custom_reference_csv_with_current_data(custom_reference, original_search_term)
-    
-    def _create_minimal_csv_fallback(self, custom_reference: str) -> str:
-        """Créer un CSV minimal en cas d'erreur avec l'export personnalisé - Phase 2.9"""
-        return self.custom_reference_service.create_minimal_csv_fallback(custom_reference)
+            app_logger.error(f"Erreur vérification multi-références: {e}")
+            return False
     
     def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
         """Récupérer la description d'une pièce depuis sa référence"""
@@ -5008,139 +4177,35 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             app_logger.error(f"Erreur récupération description pièce: {e}")
             return None
     
-    def _is_piece_reference_search(self) -> bool:
-        """
-        Vérifier si la recherche actuelle correspond à une référence de pièce
-        Supporte maintenant les recherches multi-références avec || et &&
-        """
-        search_term = self.search_input.text().strip()
-        if not search_term:
-            return False
-        
-        # Détecter les recherches multi-références avec || ou &&
-        if '||' in search_term or '&&' in search_term:
-            return self._are_all_terms_piece_references(search_term)
-        
-        # Recherche simple (comportement existant)
-        return self._get_piece_description_from_reference(search_term) is not None
-    
-    def _are_all_terms_piece_references(self, search_term: str) -> bool:
-        """
-        Vérifier que tous les termes d'une recherche multi-références sont valides
-        Format attendu: "REF001 || REF002 || REF003" ou "REF001 && REF002 && REF003"
-        """
-        # Diviser par || ou && et nettoyer les espaces
-        if '||' in search_term:
-            terms = [term.strip() for term in search_term.split('||')]
-        elif '&&' in search_term:
-            terms = [term.strip() for term in search_term.split('&&')]
-        else:
-            return False  # Pas d'opérateur multi-références
-        
-        # Vérifier que tous les termes sont des références valides
-        for term in terms:
-            if not term:  # Terme vide
+    def _old_is_piece_reference_search_fallback(self) -> bool:
+        """Ancienne méthode de vérification en fallback"""
+        try:
+            search_term = self.search_input.text().strip()
+            if not search_term:
                 return False
-            if self._get_piece_description_from_reference(term) is None:
-                return False
-        
-        return len(terms) > 1  # Au moins 2 références pour être considéré comme multi-référence
-    
-    def _get_multi_reference_terms(self) -> Optional[List[str]]:
-        """
-        Extraire les termes d'une recherche multi-références
-        Retourne None si ce n'est pas une recherche multi-références valide
-        Support des opérateurs || et &&
-        """
-        search_term = self.search_input.text().strip()
-        if not search_term:
-            return None
-        
-        # Vérifier la présence des opérateurs || ou &&
-        if '||' not in search_term and '&&' not in search_term:
-            return None
             
-        if not self._are_all_terms_piece_references(search_term):
-            return None
-        
-        # Diviser selon l'opérateur présent
-        if '||' in search_term:
-            return [term.strip() for term in search_term.split('||')]
-        else:  # && est présent
-            return [term.strip() for term in search_term.split('&&')]
-    
-    def _show_reference_selection_dialog(self, title: str, message: str, default_reference: str) -> Optional[str]:
-        """
-        Afficher une fenêtre de sélection de référence pour les exports multi-références
-        """
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle(title)
-        dialog.setModal(True)
-        dialog.resize(450, 200)  # Augmenter la hauteur pour améliorer la lisibilité
-        
-        layout = QVBoxLayout()
-        
-        # Message d'explication
-        label = QLabel(message)
-        label.setWordWrap(True)
-        layout.addWidget(label)
-        
-        # Champ de saisie avec la référence par défaut
-        self.reference_input = QLineEdit(default_reference)
-        self.reference_input.selectAll()  # Sélectionner tout le texte
-        layout.addWidget(self.reference_input)
-        
-        # Boutons
-        button_layout = QHBoxLayout()
-        
-        confirm_btn = QPushButton("Confirmer")
-        confirm_btn.clicked.connect(dialog.accept)
-        confirm_btn.setDefault(True)
-        confirm_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #28a745; 
-                color: white; 
-                font-weight: bold; 
-                padding: 8px 16px; 
-                border: none; 
-                border-radius: 4px; 
-            }
-            QPushButton:hover { 
-                background-color: #218838; 
-            }
-        """)
-        
-        cancel_btn = QPushButton("Annuler")
-        cancel_btn.clicked.connect(dialog.reject)
-        cancel_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #6c757d; 
-                color: white; 
-                font-weight: bold; 
-                padding: 8px 16px; 
-                border: none; 
-                border-radius: 4px; 
-            }
-            QPushButton:hover { 
-                background-color: #5a6268; 
-            }
-        """)
-        
-        button_layout.addWidget(confirm_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addLayout(button_layout)
-        
-        dialog.setLayout(layout)
-        
-        # Afficher et récupérer le résultat
-        if dialog.exec_() == QDialog.Accepted:
-            selected_reference = self.reference_input.text().strip()
-            if selected_reference:
-                return selected_reference
-        
-        return None
+            # Vérifier si le terme de recherche correspond à une référence de pièce dans la BDD
+            # Utiliser la méthode load_data pour rechercher
+            try:
+                # Recherche avec load_data (méthode qui existe)
+                results = self.db_manager.load_data(
+                    search_term=search_term,
+                    limit=1
+                )
+                return len(results) > 0
+                
+            except Exception:
+                # Fallback avec requête SQL directe
+                try:
+                    query = "SELECT COUNT(*) FROM pieces WHERE ref_piece = ? LIMIT 1"
+                    result = self.db_manager.execute_custom_query(query, [search_term])
+                    return result and len(result) > 0 and result[0][0] > 0
+                except:
+                    return False
+            
+        except Exception as e:
+            app_logger.error(f"Erreur vérification référence pièce: {e}")
+            return False
 
 
 def main():

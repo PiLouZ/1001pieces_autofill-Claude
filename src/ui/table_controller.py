@@ -82,7 +82,7 @@ class TableController:
         
         # Variables de pagination
         self.current_page = 1
-        self.page_size = 100
+        self.page_size = 1000
         self.total_pages = 1
         self.total_rows = 0
         

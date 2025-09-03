@@ -5,11 +5,143 @@ Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, 
                            QTableWidgetItem, QLabel, QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
-                           QCheckBox, QApplication)
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor
+                           QCheckBox, QApplication, QWidget, QMenu, QAction)
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QColor, QPainter
 import sqlite3
 from typing import List, Tuple, Dict
+
+
+class ActionButtonWidget(QWidget):
+    """Widget contenant les boutons d'action pour chaque ligne"""
+    
+    editRequested = pyqtSignal(int)
+    deleteRequested = pyqtSignal(int)
+    
+    def __init__(self, row_index: int, parent=None):
+        super().__init__(parent)
+        self.row_index = row_index
+        self.setFixedSize(120, 30)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setSpacing(3)
+        
+        # Bouton éditer
+        edit_btn = QPushButton("✏️")
+        edit_btn.setFixedSize(25, 25)
+        edit_btn.setToolTip("Modifier cette pièce")
+        edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        edit_btn.clicked.connect(lambda: self.editRequested.emit(self.row_index))
+        layout.addWidget(edit_btn)
+        
+        # Bouton supprimer 
+        delete_btn = QPushButton("🗑️")
+        delete_btn.setFixedSize(25, 25)
+        delete_btn.setToolTip("Supprimer cette pièce")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        delete_btn.clicked.connect(lambda: self.deleteRequested.emit(self.row_index))
+        layout.addWidget(delete_btn)
+        
+        layout.addStretch()
+
+
+class PiecesTableWidget(QTableWidget):
+    """Table widget personnalisé avec boutons d'action au survol"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.action_widgets = {}
+        self.setMouseTracking(True)
+        
+    def enterEvent(self, event):
+        """Souris entre dans le widget"""
+        super().enterEvent(event)
+        
+    def leaveEvent(self, event):
+        """Souris quitte le widget"""
+        super().leaveEvent(event)
+        # Masquer tous les boutons d'action
+        for widget in self.action_widgets.values():
+            widget.hide()
+    
+    def mouseMoveEvent(self, event):
+        """Gérer le survol des lignes"""
+        super().mouseMoveEvent(event)
+        
+        item = self.itemAt(event.pos())
+        if item is not None:
+            row = item.row()
+            self._show_action_buttons_for_row(row)
+        else:
+            # Masquer tous les boutons
+            for widget in self.action_widgets.values():
+                widget.hide()
+    
+    def _show_action_buttons_for_row(self, row: int):
+        """Afficher les boutons d'action pour une ligne"""
+        # Masquer tous les boutons d'abord
+        for widget in self.action_widgets.values():
+            widget.hide()
+        
+        # Créer ou réutiliser le widget pour cette ligne
+        if row not in self.action_widgets:
+            widget = ActionButtonWidget(row, self)
+            widget.editRequested.connect(self._on_edit_requested)
+            widget.deleteRequested.connect(self._on_delete_requested) 
+            self.action_widgets[row] = widget
+            
+        # Positionner et afficher le widget
+        widget = self.action_widgets[row]
+        
+        # Calculer la position (colonne des actions - dernière colonne)
+        if self.columnCount() > 0:
+            column = self.columnCount() - 1
+            rect = self.visualItemRect(self.item(row, column))
+            widget.move(rect.right() - widget.width() - 5, rect.top() + 2)
+            widget.show()
+            widget.raise_()
+    
+    def _on_edit_requested(self, row: int):
+        """Signal émis quand édition demandée"""
+        if hasattr(self.parent(), '_edit_piece_at_row'):
+            self.parent()._edit_piece_at_row(row)
+    
+    def _on_delete_requested(self, row: int):
+        """Signal émis quand suppression demandée"""
+        if hasattr(self.parent(), '_delete_piece_at_row'):
+            self.parent()._delete_piece_at_row(row)
+    
+    def setRowCount(self, rows: int):
+        """Override pour nettoyer les widgets d'action"""
+        super().setRowCount(rows)
+        # Nettoyer les widgets obsolètes
+        for row in list(self.action_widgets.keys()):
+            if row >= rows:
+                self.action_widgets[row].deleteLater()
+                del self.action_widgets[row]
 
 
 class PiecesManagerWindow(QDialog):
@@ -64,8 +196,8 @@ class PiecesManagerWindow(QDialog):
         # Splitter principal
         splitter = QSplitter(Qt.Orientation.Vertical)
         
-        # Tableau des pièces
-        self.pieces_table = QTableWidget()
+        # Tableau des pièces avec boutons d'action au survol
+        self.pieces_table = PiecesTableWidget()
         self.pieces_table.setColumnCount(4)
         self.pieces_table.setHorizontalHeaderLabels([
             "Référence Pièce", "Libellé", "Nb Appareils", "Type d'Appareils"
@@ -467,6 +599,103 @@ class PiecesManagerWindow(QDialog):
                 
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de la modification: {e}")
+    
+    def _edit_piece_at_row(self, row: int):
+        """Éditer la pièce à la ligne spécifiée (appelée depuis boutons au survol)"""
+        if row < 0 or row >= self.pieces_table.rowCount():
+            return
+        
+        # Obtenir les données de la ligne
+        ref_item = self.pieces_table.item(row, 0)
+        desc_item = self.pieces_table.item(row, 1)
+        
+        if not ref_item:
+            return
+        
+        current_ref = ref_item.text()
+        current_desc = desc_item.text() if desc_item else ""
+        
+        # Ouvrir le dialogue d'édition
+        dialog = PieceEditDialog(self, current_ref, current_desc)
+        if dialog.exec_() == QDialog.Accepted:
+            new_ref = dialog.ref_input.text().strip()
+            new_desc = dialog.desc_input.text().strip()
+            
+            if not new_ref:
+                QMessageBox.warning(self, "Erreur", "La référence ne peut pas être vide.")
+                return
+            
+            try:
+                # Mettre à jour la pièce
+                query_update = "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?"
+                self.db_manager.cursor.execute(query_update, (new_ref, new_desc, current_ref))
+                self.db_manager.conn.commit()
+                
+                # Recharger les données
+                self._load_pieces_data()
+                
+                # Ajouter à l'historique si parent supporte cette méthode
+                if hasattr(self.parent(), '_add_to_history'):
+                    changes = []
+                    if new_ref != current_ref:
+                        changes.append(f"référence: '{current_ref}' → '{new_ref}'")
+                    if new_desc != current_desc:
+                        changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
+                    
+                    if changes:
+                        summary = f"✏️ Modification de la pièce: {', '.join(changes)}"
+                        self.parent()._add_to_history(summary)
+                
+                QMessageBox.information(self, "Succès", "La pièce a été modifiée avec succès.")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Erreur lors de la modification: {e}")
+    
+    def _delete_piece_at_row(self, row: int):
+        """Supprimer la pièce à la ligne spécifiée (appelée depuis boutons au survol)"""
+        if row < 0 or row >= self.pieces_table.rowCount():
+            return
+        
+        # Obtenir la référence de la pièce
+        ref_item = self.pieces_table.item(row, 0)
+        if not ref_item:
+            return
+        
+        ref_piece = ref_item.text()
+        
+        # Confirmation
+        reply = QMessageBox.question(
+            self, 
+            "Confirmer la suppression",
+            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?\n\n"
+            f"Cette action supprimera également toutes ses associations avec les appareils.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                # Supprimer les associations d'abord
+                query_assoc = "DELETE FROM piece_associations WHERE piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)"
+                self.db_manager.cursor.execute(query_assoc, [ref_piece])
+                
+                # Puis supprimer la pièce
+                query_piece = "DELETE FROM pieces WHERE ref_piece = ?"
+                self.db_manager.cursor.execute(query_piece, [ref_piece])
+                
+                self.db_manager.conn.commit()
+                
+                # Recharger les données
+                self._load_pieces_data()
+                
+                # Ajouter à l'historique
+                if hasattr(self.parent(), '_add_to_history'):
+                    self.parent()._add_to_history(f"🗑️ Suppression de la pièce: {ref_piece}")
+                
+                QMessageBox.information(self, "Succès", f"La pièce '{ref_piece}' a été supprimée avec succès.")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression: {e}")
 
 
 class PieceEditDialog(QDialog):

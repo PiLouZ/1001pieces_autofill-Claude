@@ -44,9 +44,9 @@ class DialogService:
         # Information sur les colonnes détectées
         if detected_columns:
             if import_method == "CSV":
-                info_label = QLabel(f"📊 Fichier détecté: {detected_columns} colonnes")
+                info_label = QLabel(f"📊 Fichier CSV détecté : {detected_columns} colonnes")
             elif import_method == "PDF":
-                info_label = QLabel(f"📄 Données PDF détectées: {detected_columns} colonnes")
+                info_label = QLabel(f"📄 Données PDF détectées : {detected_columns} colonnes")
             else:  # COLLAGE
                 info_label = QLabel(f"📋 Données détectées: {detected_columns} colonnes")
             info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
@@ -54,7 +54,7 @@ class DialogService:
         
         # Référence par défaut
         ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence par défaut:"))
+        ref_layout.addWidget(QLabel("Référence par défaut :"))
         ref_input = QLineEdit(default_ref_piece or "")
         ref_input.setPlaceholderText("Laisser vide pour auto-détection")
         ref_layout.addWidget(ref_input)
@@ -62,7 +62,7 @@ class DialogService:
         
         # Mode d'import
         mode_layout = QHBoxLayout()
-        mode_layout.addWidget(QLabel("Mode d'import:"))
+        mode_layout.addWidget(QLabel("Mode d'import :"))
         mode_combo = QComboBox()
         mode_combo.addItems([
             "Ajouter aux données existantes",
@@ -91,7 +91,7 @@ class DialogService:
         
         # Aperçu des données si disponibles
         if sample_data:
-            preview_label = QLabel("Aperçu des données:")
+            preview_label = QLabel("Aperçu des données :")
             preview_label.setStyleSheet("font-weight: bold; margin-top: 15px;")
             layout.addWidget(preview_label)
             
@@ -269,23 +269,32 @@ class DialogService:
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle(title)
         dialog.setModal(True)
-        dialog.resize(450, 200)  # Augmenter la hauteur pour améliorer la lisibilité
         
         layout = QVBoxLayout()
         
-        # Message d'explication
+        # Message d'explication avec adaptation automatique
         label = QLabel(message)
         label.setWordWrap(True)
         label.setStyleSheet("""
             QLabel {
-                padding: 10px;
+                padding: 15px;
                 background-color: #f8f9fa;
                 border: 1px solid #e9ecef;
                 border-radius: 4px;
                 color: #495057;
+                line-height: 1.4;
             }
         """)
         layout.addWidget(label)
+        
+        # Calculer la taille optimale selon le contenu du message
+        text_metrics = label.fontMetrics()
+        text_lines = message.count('\n') + 1
+        # Estimation largeur nécessaire (minimum 500px, maximum 800px)
+        text_width = min(max(text_metrics.horizontalAdvance(message) // text_lines + 100, 500), 800)
+        # Hauteur adaptée au nombre de lignes + padding + contrôles
+        dialog_height = min(max(250 + (text_lines - 1) * 25, 250), 400)
+        dialog.resize(text_width, dialog_height)
         
         # Champ de saisie pour la référence
         input_layout = QHBoxLayout()
