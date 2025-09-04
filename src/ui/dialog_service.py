@@ -96,7 +96,19 @@ class DialogService:
             layout.addWidget(preview_label)
             
             preview_text = QTextEdit()
-            preview_text.setPlainText(sample_data)
+            # Convertir sample_data en chaîne formatée si c'est une liste
+            if isinstance(sample_data, list):
+                # sample_data est une List[List[str]], formatter pour affichage
+                formatted_preview = ""
+                for i, row in enumerate(sample_data[:5]):  # Max 5 lignes d'aperçu
+                    if isinstance(row, list):
+                        formatted_preview += " | ".join(str(cell) for cell in row) + "\n"
+                    else:
+                        formatted_preview += str(row) + "\n"
+                preview_text.setPlainText(formatted_preview.strip())
+            else:
+                # sample_data est déjà une chaîne
+                preview_text.setPlainText(str(sample_data))
             preview_text.setMaximumHeight(150)
             preview_text.setReadOnly(True)
             preview_text.setStyleSheet("""

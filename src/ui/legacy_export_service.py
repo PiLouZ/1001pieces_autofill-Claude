@@ -173,7 +173,7 @@ class LegacyExportService:
         try:
             result = self.main_window._export_displayed_table_as_csv(search_term)
             if result:
-                self.main_window._add_to_history(f"Export CSV: {result}")
+                self.main_window.user_interaction_service.add_to_history(f"Export CSV: {result}")
                 self.main_window.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
         except Exception as csv_error:
             import traceback
@@ -303,9 +303,9 @@ class LegacyExportService:
             
             # Ajouter l'export dans l'historique avec le chemin du fichier
             if export_format == ExportFormat.CSV:
-                self.main_window._add_to_history(f"Export CSV: {result}")
+                self.main_window.user_interaction_service.add_to_history(f"Export CSV: {result}")
             else:
-                self.main_window._add_to_history(f"Export {export_format.value}: {result}")
+                self.main_window.user_interaction_service.add_to_history(f"Export {export_format.value}: {result}")
     
     def _show_html_details_info(self) -> None:
         """Afficher les informations détaillées pour l'export HTML Details"""

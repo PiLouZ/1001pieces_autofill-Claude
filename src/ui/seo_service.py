@@ -456,8 +456,8 @@ class SEOService:
             # Mettre à jour l'état des boutons SEO
             if hasattr(self.main_window, 'meta_title_btn'):
                 self.main_window.meta_title_btn.setEnabled(is_piece_search)
-            if hasattr(self.main_window, 'meta_description_btn'):
-                self.main_window.meta_description_btn.setEnabled(is_piece_search)
+            if hasattr(self.main_window, 'meta_desc_btn'):
+                self.main_window.meta_desc_btn.setEnabled(is_piece_search)
                 
         except Exception as e:
             app_logger.error(f"Erreur mise à jour état boutons SEO: {e}")

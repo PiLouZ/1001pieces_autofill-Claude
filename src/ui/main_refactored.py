@@ -22,6 +22,8 @@ from ..services import SearchService, ExportService, ImportService, EventBus
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..services.export_service import ExportFormat
+from ..services.device_manager import DeviceManager
+from ..services.paste_results_service import PasteResultsService
 
 # Imports des modules refactorisés
 import os
@@ -493,7 +495,7 @@ class DragHandle(QWidget):
         # Sauvegarder et ajouter à l'historique uniquement au relâchement
         if self.history_pending and self.main_window and self.drag_direction:
             direction_text = "vers le bas" if self.drag_direction == "down" else "vers le haut"
-            self.main_window._add_to_history(f"Duplication {direction_text}")
+            self.main_window.user_interaction_service.add_to_history(f"Duplication {direction_text}")
             # Sauvegarder les modifications dans la base de données
             self.main_window._save_drag_changes()
             
@@ -761,6 +763,9 @@ class MainWindow(QMainWindow):
         
         # Chargement initial des données
         self.table_controller.load_data()
+        
+        # S'assurer que le bouton "lignes à compléter" est mis à jour après l'initialisation
+        self._update_incomplete_button_visibility()
 
     def _init_components(self):
         """Initialiser les composants principaux"""
@@ -779,6 +784,12 @@ class MainWindow(QMainWindow):
             # Phase 2.4: Service d'autocomplétion
             from ..services.autocompletion_service import AutoCompletionService
             self.autocompletion_service = AutoCompletionService(self.db_manager, self)
+            
+            # Phase 2.16: Device Manager
+            self.device_manager = DeviceManager(self.db_manager)
+            
+            # Phase 2.16: Paste Results Service
+            self.paste_results_service = PasteResultsService(self)
             
             # Phase 2.5: Processeur de données collées
             self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
@@ -841,6 +852,7 @@ class MainWindow(QMainWindow):
             self.drag_overlay_active = False  # Pour le drag&drop overlay
             self._piece_description_decisions = {}  # Cache des décisions de description pour l'import
             self.show_incomplete_only = False  # Filtre pour lignes incomplètes
+            self.use_pagination = True  # Contrôle de l'utilisation de la pagination
             
             # Écouter les événements des services
             self._setup_service_events()
@@ -981,8 +993,25 @@ class MainWindow(QMainWindow):
     def _on_advanced_search_completed(self, results, search_term):
         """Gestionnaire fin recherche avancée - afficher résultats"""
         try:
-            # Afficher les résultats via la méthode existante
-            self._display_search_results(results, search_term)
+            # Stocker le terme de recherche dans le controller pour la pagination
+            self.table_controller.current_search_term = search_term
+            
+            # Réinitialiser pagination à la première page
+            self.table_controller.current_page = 1
+            
+            # Utiliser les résultats déjà trouvés par AdvancedSearchService
+            # au lieu de relancer une recherche
+            self.table_controller.total_rows = len(results)
+            self.table_controller.total_pages = max(1, (self.table_controller.total_rows + self.table_controller.page_size - 1) // self.table_controller.page_size)
+            
+            # Remplir le tableau directement avec les résultats
+            if self.table_controller.total_rows > 1000:
+                self.table_controller._fill_table_chunked(results, None, search_term)
+            else:
+                self.table_controller._fill_table_standard(results, None, search_term)
+            
+            # Mettre à jour les contrôles de pagination
+            self.table_controller._update_pagination_controls()
             
             # Message status
             if hasattr(self, 'statusbar'):
@@ -1052,6 +1081,7 @@ class MainWindow(QMainWindow):
         # Garder des références pour la compatibilité
         self.table = self.table_controller.table
         self.search_input = self.table_controller.advanced_search_input  # Le vrai search input
+        self.incomplete_filter_btn = self.table_controller.incomplete_filter_btn  # Référence au bouton lignes à compléter
         
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
@@ -1066,6 +1096,9 @@ class MainWindow(QMainWindow):
         # Configurer le menu contextuel du tableau
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_table_context_menu)
+        
+        # CRUCIAL: Connecter la barre de recherche à AdvancedSearchService pour activation des boutons
+        self.search_input.textChanged.connect(self.advanced_search_service.search_with_debounce)
         
         return table_widget
     
@@ -1781,7 +1814,7 @@ class MainWindow(QMainWindow):
             
             # Ajouter le message à l'historique seulement si auto-save activé
             if getattr(self, 'auto_save_enabled', True):
-                self._add_to_history(
+                self.user_interaction_service.add_to_history(
                     f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
                 )
         except Exception as e:
@@ -1842,13 +1875,13 @@ class MainWindow(QMainWindow):
                 filename = f"{reference_for_file}_everyParts.csv"
                 success = self._export_csv_with_reference(data, filename, reference_for_file)
                 if success:
-                    self._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
+                    self.user_interaction_service.add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
                 return success
             elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
                 success = self._export_html_with_reference(data, reference_for_file, export_format)
                 if success:
                     format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
-                    self._add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
+                    self.user_interaction_service.add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
                 return success
             else:
                 # Autres formats non supportés pour export avec référence personnalisée
@@ -2188,7 +2221,7 @@ class MainWindow(QMainWindow):
             
             # Finalisation
             self.table.resizeColumnsToContents()
-            self._update_counter()
+            self.user_interaction_service.update_counter()
             self._update_pagination_controls()
             self._init_previous_values()
             
@@ -2248,14 +2281,14 @@ class MainWindow(QMainWindow):
             self._update_incomplete_button_visibility()
             
         except Exception as e:
-            self._show_error(f"Erreur lors de la sauvegarde automatique: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde automatique: {e}")
 
     def _manual_save(self):
         """Sauvegarde manuelle"""
         self._auto_save()
         self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
         # Ajouter à l'historique
-        self._add_to_history("Sauvegarde manuelle effectuée")
+        self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
 
     def _update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False):
         """Mettre à jour une cellule dans la base de données"""
@@ -2288,7 +2321,7 @@ class MainWindow(QMainWindow):
                 if old_value != new_value and not skip_history:
                     # Nom de la colonne plus convivial
                     column_display_name = self._get_column_display_name(col)
-                    self._add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
+                    self.user_interaction_service.add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
                 
                 # Retirer de la liste des modifications
                 self.modified_cells.discard((row, col))
@@ -2299,7 +2332,7 @@ class MainWindow(QMainWindow):
                     self.save_indicator.setStyleSheet("color: green;")
                     
         except Exception as e:
-            self._show_error(f"Erreur lors de la mise à jour: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la mise à jour: {e}")
 
     def _save_drag_changes(self):
         """Sauvegarder les modifications du glisser-déposer"""
@@ -2328,7 +2361,7 @@ class MainWindow(QMainWindow):
                                 self._update_cell_in_db(item, skip_history=True)
                                 
         except Exception as e:
-            self._show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
 
     
     
@@ -2417,9 +2450,9 @@ class MainWindow(QMainWindow):
         url_str = url.toString() if isinstance(url, QUrl) else str(url)
         
         try:
-            self._show_error(f"Lien non reconnu: {url_str}")
+            self.user_interaction_service.show_error(f"Lien non reconnu: {url_str}")
         except Exception as e:
-            self._show_error(f"Erreur lors du traitement du lien: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors du traitement du lien: {e}")
 
     
 
@@ -2512,7 +2545,7 @@ class MainWindow(QMainWindow):
             total_rows = self.table.rowCount()
             
             if total_rows == 0:
-                self._show_info("Aucune donnée à compléter")
+                self.user_interaction_service.show_info("Aucune donnée à compléter")
                 return
             
             # Préparer les données pour le service
@@ -2562,25 +2595,25 @@ class MainWindow(QMainWindow):
                 error_msg = f"Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
                 if len(result.errors) > 5:
                     error_msg += f"\n... et {len(result.errors) - 5} autres erreurs"
-                self._show_error(error_msg)
+                self.user_interaction_service.show_error(error_msg)
             
             if result.completed_count > 0:
-                self._show_info(f"✅ Auto-complétion réussie !\n\n"
+                self.user_interaction_service.show_info(f"✅ Auto-complétion réussie !\n\n"
                                f"🎯 {result.completed_count} ligne(s) complétée(s)\n"
                                f"📊 {result.total_rows_processed} ligne(s) traitée(s)")
             else:
-                self._show_info("ℹ️ Aucun champ à compléter automatiquement.\n\n"
+                self.user_interaction_service.show_info("ℹ️ Aucun champ à compléter automatiquement.\n\n"
                                "Tous les appareils ont déjà un Type et un Fabricant, "
                                "ou aucune référence similaire n'a été trouvée.")
             
         except DatabaseError as e:
             self.table.blockSignals(False)
-            self._show_error(f"Erreur de base de données lors de l'auto-complétion: {e}")
+            self.user_interaction_service.show_error(f"Erreur de base de données lors de l'auto-complétion: {e}")
         except Exception as e:
             self.table.blockSignals(False)
-            self._show_error(f"Erreur lors de l'auto-complétion: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de l'auto-complétion: {e}")
             self.table.blockSignals(False)  # S'assurer que les signaux sont réactivés
-            self._show_error(f"Erreur lors de la complétion: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la complétion: {e}")
 
     def _clean_data(self):
         """Nettoyer les données avec prévisualisation détaillée - Version refactorisée Phase 2.5c"""
@@ -2589,7 +2622,7 @@ class MainWindow(QMainWindow):
             cleanup_options = self.data_management_service.prepare_data_cleaning()
             
             if cleanup_options is None:
-                self._show_info("✅ Aucun doublon trouvé ! La base de données est déjà propre.")
+                self.user_interaction_service.show_info("✅ Aucun doublon trouvé ! La base de données est déjà propre.")
                 return
             
             # Afficher la confirmation finale (UI reste dans MainWindow)
@@ -2620,18 +2653,18 @@ class MainWindow(QMainWindow):
             cleanup_result = self.data_management_service.execute_data_cleaning(cleanup_options)
             
             if 'error' in cleanup_result:
-                self._show_error(f"Erreur lors du nettoyage: {cleanup_result['error']}")
+                self.user_interaction_service.show_error(f"Erreur lors du nettoyage: {cleanup_result['error']}")
                 return
             
             # Recharger les données
             self.table_controller.load_data()
             
             # Afficher le résumé des opérations
-            self._show_info(f"✅ Nettoyage terminé avec succès !\n\n"
+            self.user_interaction_service.show_info(f"✅ Nettoyage terminé avec succès !\n\n"
                            f"Opérations effectuées :\n{operations_text}")
             
         except Exception as e:
-            self._show_error(f"Erreur lors du nettoyage des données: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors du nettoyage des données: {e}")
     
     def _manage_categories(self):
         """Gérer les catégories"""
@@ -2647,7 +2680,7 @@ class MainWindow(QMainWindow):
                     Config.STATUS_MESSAGE_TIMEOUT
                 )
         except Exception as e:
-            self._show_error(f"Erreur lors de la gestion des catégories: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la gestion des catégories: {e}")
     
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""
@@ -2722,7 +2755,7 @@ class MainWindow(QMainWindow):
         if no_piece_ref > 0:
             summary += f"  {no_piece_ref} ligne sans référence de pièce\n"
         
-        self._show_info(summary)
+        self.user_interaction_service.show_info(summary)
     
     def _generate_console_summary(self, results, ref_piece, source, pdf_files_info=None):
         """Générer la synthèse dans le format console standardisé"""
@@ -2809,7 +2842,7 @@ class MainWindow(QMainWindow):
         })
         
         # Ajouter à l'historique visible avec le format console
-        self._add_to_history(console_summary)
+        self.user_interaction_service.add_to_history(console_summary)
     
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
@@ -2873,14 +2906,14 @@ class MainWindow(QMainWindow):
             summary += f"     ==> Déjà associés : {results.get('associations_existing', 0)}"
             
             # Ajouter SEULEMENT à l'historique (timestamp ajouté automatiquement)
-            self._add_to_history(summary)
+            self.user_interaction_service.add_to_history(summary)
             
         except Exception as e:
             QMessageBox.critical(self, "Erreur d'affichage", f"Impossible de traiter les résultats: {e}")
             # En cas d'erreur, au moins ajouter un message basique à l'historique
             try:
                 basic_msg = f"📥 Import effectué (erreur d'affichage des détails)"
-                self._add_to_history(basic_msg)
+                self.user_interaction_service.add_to_history(basic_msg)
             except:
                 pass  # Si même l'historique échoue, on ne peut rien faire
 
@@ -2895,7 +2928,7 @@ class MainWindow(QMainWindow):
             self.validation_window.activateWindow()
             
         except Exception as e:
-            self._show_error(f"Erreur lors de l'ouverture de la validation: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de l'ouverture de la validation: {e}")
     
     def _open_pieces_manager(self):
         """Ouvrir la fenêtre de gestion des pièces - Phase 2.14: Délégation vers PieceManagementService"""
@@ -3005,7 +3038,7 @@ class MainWindow(QMainWindow):
             self.table.resizeColumnsToContents()
             
             # Mettre à jour le compteur
-            self._update_counter()
+            self.user_interaction_service.update_counter()
             
             # Mettre à jour la visibilité du bouton incomplètes après rafraîchissement
             self._update_incomplete_button_visibility()
@@ -3018,7 +3051,7 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             app_logger.error(f"Erreur lors du rafraîchissement forcé: {e}")
-            self._show_error(f"Erreur lors du rafraîchissement: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors du rafraîchissement: {e}")
     
     
     def _open_log_viewer(self):
@@ -3032,7 +3065,7 @@ class MainWindow(QMainWindow):
             self.log_viewer.activateWindow()
             
         except Exception as e:
-            self._show_error(f"Erreur lors de l'ouverture du visualiseur de logs: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de l'ouverture du visualiseur de logs: {e}")
     
     def _open_user_guide(self):
         """Ouvrir le guide d'utilisation"""
@@ -3133,7 +3166,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             dialog.exec_()
             
         except Exception as e:
-            self._show_error(f"Erreur lors de l'affichage du guide local: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de l'affichage du guide local: {e}")
     
     def _apply_column_visibility(self):
         """Appliquer la visibilité des colonnes au tableau"""
@@ -3194,7 +3227,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             dialog.exec_()
             
         except Exception as e:
-            self._show_error(f"Erreur lors de la configuration des colonnes: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la configuration des colonnes: {e}")
     
     def _reset_column_defaults(self, checkboxes):
         """Réinitialiser les colonnes aux valeurs par défaut"""
@@ -3220,7 +3253,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self.statusbar.showMessage("Configuration des colonnes mise à jour", Config.STATUS_MESSAGE_TIMEOUT)
             
         except Exception as e:
-            self._show_error(f"Erreur lors de l'application de la configuration: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de l'application de la configuration: {e}")
     
     def _clear_search(self):
         """Effacer le champ de recherche principal et tous les filtres"""
@@ -3378,7 +3411,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 detected_columns = len(sample_data[0]) if sample_data else 0
                 
                 if detected_columns == 0:
-                    self._show_error("Impossible de détecter les colonnes du fichier CSV")
+                    self.user_interaction_service.show_error("Impossible de détecter les colonnes du fichier CSV")
                     return
                 
                 # Extraire référence depuis nom de fichier
@@ -3391,7 +3424,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     return
                     
             except Exception as e:
-                self._show_error(f"Erreur lors de l'analyse du fichier CSV: {e}")
+                self.user_interaction_service.show_error(f"Erreur lors de l'analyse du fichier CSV: {e}")
                 return
             
             # Le reste du traitement est identique à _import_csv
@@ -3440,7 +3473,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self._log_import_to_history(results, ref_piece, f"CSV (Glisser/Déposer - {os.path.basename(file_path)})")
             
         except Exception as e:
-            self._show_error(f"Erreur lors de l'import CSV par glisser/déposer: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de l'import CSV par glisser/déposer: {e}")
     
     def _import_pdf_from_path(self, file_paths):
         """Importer un ou plusieurs fichiers PDF depuis des chemins donnés - Phase 2.7"""
@@ -3659,15 +3692,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 self.statusbar.showMessage(message, Config.STATUS_MESSAGE_TIMEOUT)
                 
                 # Ajouter à l'historique
-                self._add_to_history(f"🗑️ Suppression de {pluralize(deleted_count, 'ligne')}")
+                self.user_interaction_service.add_to_history(f"🗑️ Suppression de {pluralize(deleted_count, 'ligne')}")
                 
                 # Actualiser l'affichage - conserver la recherche et les filtres 
                 self._force_refresh_display(reset_page=False, clear_filters=False)
             else:
-                self._show_error("Aucune ligne n'a pu être supprimée")
+                self.user_interaction_service.show_error("Aucune ligne n'a pu être supprimée")
                 
         except Exception as e:
-            self._show_error(f"Erreur lors de la suppression des lignes: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la suppression des lignes: {e}")
 
     def keyPressEvent(self, event):
         """Gestion des raccourcis clavier"""
@@ -3739,7 +3772,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     self.table.editItem(item)
             
             # Ajouter à l'historique
-            self._add_to_history(f"Nouvel appareil ajouté (ID: {db_id})")
+            self.user_interaction_service.add_to_history(f"Nouvel appareil ajouté (ID: {db_id})")
             
             self.statusbar.showMessage(
                 Config.get_message('new_row_added'), 
@@ -3747,7 +3780,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             )
             
         except DatabaseError as e:
-            self._show_error(f"Erreur lors de l'ajout d'une nouvelle ligne: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de l'ajout d'une nouvelle ligne: {e}")
 
     def _handle_paste(self):
         """Gestion du collage de données depuis le presse-papiers - Version refactorisée Phase 2.5"""
@@ -3827,8 +3860,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 # Recharger les données dans le tableau pour refléter les nouveaux ajouts
                 self.table_controller.load_data()
                 
-                # Log les résultats dans l'historique
-                self._log_paste_results(
+                # Log les résultats dans l'historique et afficher le résumé via le service
+                self.paste_results_service.log_paste_results(
                     result.inserted_count, result.updated_count, result.ignored_count, 
                     result.associations_created, result.duplicates_skipped, 
                     result.manual_completion_count, result.descriptions_updated, 
@@ -3836,7 +3869,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 )
                 
                 # Afficher le résumé
-                self._show_paste_summary(
+                self.paste_results_service.show_paste_summary(
                     result.inserted_count, result.updated_count, result.ignored_count, 
                     result.associations_created, result.duplicates_skipped, 
                     result.manual_completion_count, result.descriptions_updated, 
@@ -3849,9 +3882,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 raise e
             
         except DatabaseError as e:
-            self._show_error(f"Erreur lors du collage: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors du collage: {e}")
         except Exception as e:
-            self._show_error(f"Erreur inattendue lors du collage: {e}")
+            self.user_interaction_service.show_error(f"Erreur inattendue lors du collage: {e}")
 
     def _detect_paste_columns(self, clipboard_text: str) -> int:
         """Méthode de compatibilité - délègue au processeur"""
@@ -3881,7 +3914,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             )
             
         except Exception as e:
-            self._show_error(f"Erreur lors de la copie: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors de la copie: {e}")
 
     def _needs_manual_completion(self, appareil_data: dict) -> bool:
         """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""
@@ -4010,7 +4043,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """Gestion de la fermeture"""
         # Sauvegarder les modifications en attente
         if self.modified_cells:
-            reply = self._show_save_confirmation(
+            reply = self.user_interaction_service.show_save_confirmation(
                 "Modifications non sauvegardées", 
                 "Des modifications ne sont pas sauvegardées. Les sauvegarder avant de quitter ?"
             )
@@ -4151,6 +4184,31 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         except Exception as e:
             app_logger.error(f"Erreur vérification référence pièce: {e}")
             return False
+    
+    # --- Méthodes de gestion des dispositifs pour le collage (délégation vers DeviceManager) ---
+    
+    def _find_existing_device_by_refs(self, ref_modele: str, commercial_ref: str, 
+                                    device_type: str = "", manufacturer: str = "") -> Optional[Dict]:
+        """Déléguer vers DeviceManager"""
+        return self.device_manager.find_existing_device_by_refs(ref_modele, commercial_ref, device_type, manufacturer)
+    
+    def _try_auto_complete(self, device_data: Dict[str, str]) -> bool:
+        """Déléguer vers DeviceManager"""
+        return self.device_manager.try_auto_complete(device_data)
+    
+    def _needs_manual_completion(self, device_data: Dict[str, str]) -> bool:
+        """Déléguer vers DeviceManager"""
+        return self.device_manager.needs_manual_completion(device_data)
+    
+    def _create_new_device(self, device_data: Dict[str, str]) -> Optional[int]:
+        """Déléguer vers DeviceManager"""
+        return self.device_manager.create_new_device(device_data)
+    
+    def _update_device_info(self, device_id: int, updates: Dict[str, str]) -> bool:
+        """Déléguer vers DeviceManager"""
+        return self.device_manager.update_device_info(device_id, updates)
+    
+    # Les méthodes _log_paste_results et _show_paste_summary ont été déplacées vers PasteResultsService
 
 
 def main():

@@ -201,7 +201,8 @@ class TableController:
         
         self.advanced_search_input = QLineEdit()
         self.advanced_search_input.setPlaceholderText("Recherche avancée: 'terme1 && terme2' ou 'terme1 || terme2'...")
-        self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
+        # Sera connecté par MainWindow à AdvancedSearchService  
+        # self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
         search_layout2.addWidget(self.advanced_search_input)
         
         clear_search_btn = QPushButton("Effacer")
@@ -233,8 +234,15 @@ class TableController:
         import time
         start_time = time.time()
         
-        
         try:
+            # Réinitialiser le tri seulement si c'est une nouvelle recherche ET qu'on n'est pas en train de faire un tri
+            # Ne pas réinitialiser si c'est un appel depuis _apply_database_sort
+            if (is_search and 
+                search_term != getattr(self, 'previous_search_term', None) and 
+                not getattr(self, '_sorting_in_progress', False)):
+                self.current_sort_column = -1
+                self.current_sort_order = Qt.AscendingOrder
+                self.previous_search_term = search_term
             # Calculer les paramètres de pagination
             if self.page_size == -1:  # "Tout" sélectionné
                 limit = None
@@ -257,8 +265,12 @@ class TableController:
             # Ajouter le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
             
-            # Parser les recherches avancées pour la DB
-            if search_term and ('&&' in search_term or '||' in search_term):
+            # Gérer les recherches avancées (dict parsé) ou normales (string)
+            if search_term and isinstance(search_term, dict):
+                # Terme déjà parsé par AdvancedSearchService
+                self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
+            elif search_term and isinstance(search_term, str) and ('&&' in search_term or '||' in search_term):
+                # Terme brut à parser 
                 if hasattr(self.parent_window, '_parse_advanced_search'):
                     parsed_term = self.parent_window._parse_advanced_search(search_term)
                     self.total_rows = self.db_manager.count_data(parsed_term, column_filters, incomplete_filter=incomplete_filter)
@@ -266,7 +278,7 @@ class TableController:
                     # Fallback terme brut
                     self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
             else:
-                # Compter le total pour la pagination
+                # Compter le total pour la pagination (recherche simple)
                 self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
             
             if self.page_size == -1:  # Mode "Tout"
@@ -277,8 +289,13 @@ class TableController:
                 if self.current_page > self.total_pages:
                     self.current_page = self.total_pages
             
-            # Charger les données selon le type de recherche
-            if search_term and ('&&' in search_term or '||' in search_term):
+            # Charger les données selon le type de recherche (même logique que count)
+            if search_term and isinstance(search_term, dict):
+                # Terme déjà parsé par AdvancedSearchService
+                records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
+                                                   self.current_sort_column, self.current_sort_order, incomplete_filter)
+            elif search_term and isinstance(search_term, str) and ('&&' in search_term or '||' in search_term):
+                # Terme brut à parser
                 if hasattr(self.parent_window, '_parse_advanced_search'):
                     parsed_term = self.parent_window._parse_advanced_search(search_term)
                     records = self.db_manager.load_data(parsed_term, column_filters, limit, offset, 
@@ -288,7 +305,7 @@ class TableController:
                     records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
                                                        self.current_sort_column, self.current_sort_order, incomplete_filter)
             else:
-                # Chargement normal via db_manager
+                # Chargement normal via db_manager (recherche simple)
                 records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
                                                    self.current_sort_column, self.current_sort_order, incomplete_filter)
             
@@ -300,6 +317,9 @@ class TableController:
             
             # Mettre à jour les contrôles de pagination
             self._update_pagination_controls()
+            
+            # Mettre à jour les indicateurs de tri pour s'assurer qu'ils sont corrects
+            self._update_sort_indicators()
             
             # Initialiser les valeurs précédentes pour le tracking des modifications
             if hasattr(self.parent_window, '_init_previous_values'):
@@ -480,6 +500,9 @@ class TableController:
     def _apply_database_sort(self):
         """Appliquer le tri au niveau de la base de données"""
         try:
+            # Marquer qu'un tri est en cours pour éviter la réinitialisation
+            self._sorting_in_progress = True
+            
             # Récupérer le terme de recherche actif de manière robuste
             search_term = None
             
@@ -494,11 +517,91 @@ class TableController:
                 text = self.parent_window.search_input.text().strip()
                 search_term = text if text else None
             
-            print(f"🔄 Tri appliqué avec recherche: '{search_term}'")
-            self.load_data(search_term)
+            # Convertir Qt.SortOrder en string pour la DB
+            sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
+            print(f"🔄 Tri appliqué avec recherche: '{search_term}' (colonne {self.current_sort_column}, ordre {sort_order_str})")
+            
+            # Appeler load_data avec les bonnes valeurs
+            self._load_data_with_sort(search_term, self.current_sort_column, sort_order_str)
             self._update_sort_indicators()
         except Exception as e:
             app_logger.error(f"Erreur lors de l'application du tri: {e}")
+        finally:
+            # Nettoyer le flag de tri en cours
+            self._sorting_in_progress = False
+    
+    def _load_data_with_sort(self, search_term: str, sort_column: int, sort_order_str: str):
+        """Charger les données avec tri spécifique sans passer par load_data standard"""
+        try:
+            # Calculer les paramètres de pagination
+            if self.page_size == -1:  # "Tout" sélectionné
+                limit = None
+                offset = None
+            else:
+                limit = self.page_size
+                offset = (self.current_page - 1) * self.page_size
+            
+            # Obtenir les filtres de colonnes
+            column_filters = {}
+            for col_idx, filter_widget in self.filter_widgets.items():
+                if filter_widget is not None:  # Skip removed filters
+                    if isinstance(filter_widget, QComboBox):
+                        filter_text = filter_widget.currentText().strip()
+                    else:  # QLineEdit
+                        filter_text = filter_widget.text().strip()
+                    if filter_text:
+                        column_filters[col_idx] = filter_text
+            
+            # Ajouter le filtre des lignes incomplètes si activé
+            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+            
+            # Détecter si c'est une recherche avancée parsée (soit dict, soit string contenant 'type': 'or'/'and')
+            is_advanced_search = (isinstance(search_term, dict) or 
+                                (isinstance(search_term, str) and ("'type': 'or'" in search_term or "'type': 'and'" in search_term)))
+            
+            if is_advanced_search:
+                # Si c'est une string, on doit la reconvertir en dict pour l'utiliser avec la DB
+                if isinstance(search_term, str):
+                    # Essayer de retrouver le terme parsé original via AdvancedSearchService
+                    if hasattr(self.parent_window, 'advanced_search_service'):
+                        # Retrouver le terme original depuis la string
+                        if "'original':" in search_term:
+                            import re
+                            match = re.search(r"'original': '([^']+)'", search_term)
+                            if match:
+                                original_term = match.group(1)
+                                search_term = self.parent_window.advanced_search_service.parse_advanced_search(original_term)
+                
+                # Désactiver temporairement le cache pour cette requête triée
+                cache_backup = self.db_manager.search_cache
+                self.db_manager.search_cache = None
+                
+                try:
+                    records = self.db_manager.load_data(
+                        search_term, column_filters, limit, offset, 
+                        sort_column, sort_order_str, incomplete_filter
+                    )
+                finally:
+                    # Restaurer le cache
+                    self.db_manager.search_cache = cache_backup
+            else:
+                # Appel normal avec cache pour les recherches simples
+                records = self.db_manager.load_data(
+                    search_term, column_filters, limit, offset, 
+                    sort_column, sort_order_str, incomplete_filter
+                )
+            
+            # Remplir le tableau
+            if self.total_rows > 1000:
+                self._fill_table_chunked(records, None, search_term)
+            else:
+                self._fill_table_standard(records, None, search_term)
+            
+            # Mettre à jour les contrôles de pagination
+            self._update_pagination_controls()
+            
+        except Exception as e:
+            app_logger.error(f"Erreur lors du chargement avec tri: {e}")
     
     def _update_sort_indicators(self):
         """Mettre à jour les indicateurs visuels de tri"""
@@ -765,7 +868,7 @@ class TableController:
         self.incomplete_filter_btn = QPushButton("📋 Lignes à traiter")
         self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
         self.incomplete_filter_btn.setCheckable(True)
-        self.incomplete_filter_btn.clicked.connect(self._toggle_incomplete_filter)
+        self.incomplete_filter_btn.clicked.connect(self.parent_window._toggle_incomplete_filter)
         self.incomplete_filter_btn.setObjectName("incompleteBtn")
         incomplete_layout.addWidget(self.incomplete_filter_btn)
         

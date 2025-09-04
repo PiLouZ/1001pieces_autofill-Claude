@@ -534,11 +534,11 @@ class PiecesManagerWindow(QDialog):
     def _add_to_main_history(self, ref_piece, nb_associations):
         """Ajouter une entrée dans l'historique de la fenêtre principale"""
         try:
-            if hasattr(self.parent(), '_add_to_history'):
+            if hasattr(self.parent(), 'user_interaction_service'):
                 # Ajouter directement à l'historique visible de la fenêtre principale
                 from src.core.config import pluralize
                 summary = f"🗑️ Suppression de la pièce '{ref_piece}' ({pluralize(nb_associations, 'association')})"
-                self.parent()._add_to_history(summary)
+                self.parent().user_interaction_service.add_to_history(summary)
         except Exception as e:
             print(f"Erreur lors de l'ajout à l'historique: {e}")
     
@@ -584,7 +584,7 @@ class PiecesManagerWindow(QDialog):
                 self._load_pieces_data()
                 
                 # Ajouter à l'historique de la fenêtre principale
-                if hasattr(self.parent(), '_add_to_history'):
+                if hasattr(self.parent(), 'user_interaction_service'):
                     changes = []
                     if new_ref != current_ref:
                         changes.append(f"référence: '{current_ref}' → '{new_ref}'")
@@ -593,7 +593,7 @@ class PiecesManagerWindow(QDialog):
                     
                     if changes:
                         summary = f"✏️ Modification de la pièce: {', '.join(changes)}"
-                        self.parent()._add_to_history(summary)
+                        self.parent().user_interaction_service.add_to_history(summary)
                 
                 QMessageBox.information(self, "Succès", "La pièce a été modifiée avec succès.")
                 
@@ -635,7 +635,7 @@ class PiecesManagerWindow(QDialog):
                 self._load_pieces_data()
                 
                 # Ajouter à l'historique si parent supporte cette méthode
-                if hasattr(self.parent(), '_add_to_history'):
+                if hasattr(self.parent(), 'user_interaction_service'):
                     changes = []
                     if new_ref != current_ref:
                         changes.append(f"référence: '{current_ref}' → '{new_ref}'")
@@ -644,7 +644,7 @@ class PiecesManagerWindow(QDialog):
                     
                     if changes:
                         summary = f"✏️ Modification de la pièce: {', '.join(changes)}"
-                        self.parent()._add_to_history(summary)
+                        self.parent().user_interaction_service.add_to_history(summary)
                 
                 QMessageBox.information(self, "Succès", "La pièce a été modifiée avec succès.")
                 
@@ -689,8 +689,8 @@ class PiecesManagerWindow(QDialog):
                 self._load_pieces_data()
                 
                 # Ajouter à l'historique
-                if hasattr(self.parent(), '_add_to_history'):
-                    self.parent()._add_to_history(f"🗑️ Suppression de la pièce: {ref_piece}")
+                if hasattr(self.parent(), 'user_interaction_service'):
+                    self.parent().user_interaction_service.add_to_history(f"🗑️ Suppression de la pièce: {ref_piece}")
                 
                 QMessageBox.information(self, "Succès", f"La pièce '{ref_piece}' a été supprimée avec succès.")
                 

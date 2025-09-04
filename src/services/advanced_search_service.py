@@ -11,6 +11,7 @@ from PyQt5.QtGui import QColor
 
 from .search_service import SearchService
 from ..core.logger import app_logger
+from ..core.config import Config
 
 
 class AdvancedSearchService(QObject):
@@ -100,7 +101,9 @@ class AdvancedSearchService(QObject):
             
             # Stocker terme actuel et émettre résultats
             self.current_search_term = search_term
-            self.search_completed.emit(results, search_term)
+            # Convertir search_term en string pour le signal
+            search_term_str = str(search_term) if isinstance(search_term, dict) else search_term
+            self.search_completed.emit(results, search_term_str)
             
         except Exception as e:
             error_msg = f"Erreur recherche: {e}"
@@ -224,10 +227,19 @@ class AdvancedSearchService(QObject):
             
             # Appliquer le style si match
             if should_highlight:
-                item.setBackground(QColor(255, 255, 0, 100))  # Jaune translucide
+                # Utiliser la couleur configurée avec une opacité réduite pour éviter le problème de lisibilité
+                highlight_color = Config.SEARCH_HIGHLIGHT_COLOR
+                if len(highlight_color) == 4:  # RGBA
+                    # Réduire l'opacité pour éviter que le texte devienne illisible
+                    r, g, b, a = highlight_color
+                    item.setBackground(QColor(r, g, b, min(a, 50)))  # Max 50 sur 255 pour plus de lisibilité
+                else:  # RGB
+                    r, g, b = highlight_color
+                    item.setBackground(QColor(r, g, b, 50))  # Opacité 50 sur 255
                 return True
             else:
-                item.setBackground(QColor())  # Transparent/défaut
+                # Remettre la couleur par défaut explicitement (blanc)
+                item.setBackground(QColor(255, 255, 255))  # Blanc par défaut
                 return False
                 
         except Exception as e:

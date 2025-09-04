@@ -252,7 +252,7 @@ class MainExportService:
         filename = f"{reference_for_file}_everyParts.csv"
         success = self._export_csv_with_reference(data, filename, reference_for_file)
         if success:
-            self.main_window._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
+            self.main_window.user_interaction_service.add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
         return success
     
     def _handle_html_export(self, data: List, reference_for_file: str, export_format: ExportFormat) -> bool:
@@ -270,7 +270,7 @@ class MainExportService:
         success = self._export_html_with_reference(data, reference_for_file, export_format)
         if success:
             format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
-            self.main_window._add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
+            self.main_window.user_interaction_service.add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
         return success
     
     def _export_csv_with_reference(self, data: List, filename: str, reference: str) -> bool:
