@@ -1181,6 +1181,9 @@ class MainWindow(QMainWindow):
         # Tous les boutons sont maintenant dans les menus ou la zone de pagination
         # layout.addLayout(btn_layout)  # Commenté car plus de boutons dans cette section
         
+        # Ajouter les boutons d'export
+        self.ui_component_service.add_export_buttons(layout)
+        
         # Ajouter les contrôles de pagination
         self.ui_component_service.add_pagination_controls(layout)
 
