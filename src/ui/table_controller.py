@@ -14,62 +14,9 @@ from ..core.config import Config
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
+from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 
 
-class CustomTableWidget(QTableWidget):
-    """Table personnalisée avec gestion des touches Delete/Backspace et auto-complétion"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.db_manager = None
-        
-    def set_db_manager(self, db_manager):
-        """Définir le gestionnaire de base de données pour l'auto-complétion"""
-        self.db_manager = db_manager
-    
-    def keyPressEvent(self, event):
-        """Gestion des événements clavier"""
-        from PyQt5.QtGui import QKeyEvent
-        from PyQt5.QtCore import Qt
-        from PyQt5.QtWidgets import QApplication
-        
-        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
-            # Effacer le contenu des cellules sélectionnées
-            selected_items = self.selectedItems()
-            if selected_items:
-                for item in selected_items:
-                    if item:
-                        item.setText("")
-                return
-        
-        # Popup avec liste complète via Cmd+D (ou Ctrl+D sur Windows/Linux)
-        if event.key() == Qt.Key_D and (event.modifiers() & Qt.MetaModifier or event.modifiers() & Qt.ControlModifier):
-            # Déléguer à la fenêtre parent pour l'auto-complétion
-            main_window = self.parent()
-            while main_window and not hasattr(main_window, '_show_column_values_list'):
-                main_window = main_window.parent()
-            if main_window:
-                main_window._show_column_values_list()
-            return
-        
-        # Gestion de la touche Entrée pour passer à la cellule suivante vers le bas
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-            current_item = self.currentItem()
-            if current_item:
-                current_row = current_item.row()
-                current_col = current_item.column()
-                
-                # Passer à la cellule suivante vers le bas
-                if current_row < self.rowCount() - 1:
-                    next_row = current_row + 1
-                    next_item = self.item(next_row, current_col)
-                    if next_item:
-                        self.setCurrentItem(next_item)
-                        self.setFocus()  # S'assurer que le tableau garde le focus
-            return
-        
-        # Appeler la méthode parent pour les autres touches
-        super().keyPressEvent(event)
 
 
 class TableController:
@@ -79,6 +26,7 @@ class TableController:
         self.parent_window = parent_window
         self.db_manager = db_manager
         self.pieces_count_service = PiecesCountService(db_manager)
+        self.table_widget_service = TableWidgetService(db_manager)
         
         # Variables de pagination
         self.current_page = 1
@@ -171,10 +119,9 @@ class TableController:
         self.filter_layout = filter_layout
         
         # Tableau principal avec gestion des touches
-        self.table = CustomTableWidget()
+        self.table = self.table_widget_service.create_custom_table()
         self.table.setColumnCount(len(Config.UI_HEADERS))
         self.table.setHorizontalHeaderLabels(Config.UI_HEADERS)
-        self.table.set_db_manager(self.db_manager)
         self.table.setAcceptDrops(True)
         self.table.setDragDropMode(QTableWidget.DragDropMode.DropOnly)
         
