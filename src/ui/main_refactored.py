@@ -1049,7 +1049,16 @@ class MainWindow(QMainWindow):
 
     def _create_table_widget(self) -> QWidget:
         """Créer le widget du tableau via TableController"""
+        # Widget conteneur principal
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+        
+        # Créer le widget du tableau
         table_widget = self.table_controller.create_table_widget()
+        main_layout.addWidget(table_widget)
+        
+        # Ajouter les boutons d'action sous le tableau
+        self._add_action_buttons(main_layout)
         
         # Garder des références pour la compatibilité
         self.table = self.table_controller.table
@@ -1069,7 +1078,7 @@ class MainWindow(QMainWindow):
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_table_context_menu)
         
-        return table_widget
+        return main_widget
     
 
     def _create_pieces_widget(self) -> QWidget:
