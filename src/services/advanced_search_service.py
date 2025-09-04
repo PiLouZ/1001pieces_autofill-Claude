@@ -235,19 +235,67 @@ class AdvancedSearchService(QObject):
             return False
     
     def _is_piece_reference_search(self, search_term: str) -> bool:
-        """Détecter si la recherche concerne une référence de pièce"""
-        if not search_term:
+        """Détecter si la recherche concerne une référence de pièce - Vraie logique avec DB"""
+        try:
+            if not search_term or not search_term.strip():
+                return False
+            
+            # Détecter les recherches multi-références avec || ou &&
+            if '||' in search_term or '&&' in search_term:
+                return self._are_all_terms_piece_references(search_term)
+            
+            # Recherche simple - vérifier si c'est une référence de pièce
+            return self._get_piece_description_from_reference(search_term) is not None
+        
+        except Exception as e:
+            app_logger.error(f"Erreur vérification référence pièce: {e}")
             return False
-        
-        # Recherche multi-références avec || ou &&
-        if '||' in search_term or '&&' in search_term:
-            # Pour multi-références, considérer comme référence de pièce
-            return True
-        
-        # Pour recherche simple, vérifier format référence
-        # Logique simplifiée : au moins 2 caractères, pas que des espaces
-        clean_term = search_term.strip()
-        return len(clean_term) >= 2
+    
+    def _are_all_terms_piece_references(self, search_term: str) -> bool:
+        """Vérifier si tous les termes d'une recherche multi-références sont des références de pièce"""
+        try:
+            # Diviser selon l'opérateur utilisé
+            if '||' in search_term:
+                terms = [term.strip() for term in search_term.split('||') if term.strip()]
+            elif '&&' in search_term:
+                terms = [term.strip() for term in search_term.split('&&') if term.strip()]
+            else:
+                return False
+            
+            # Au moins un terme doit être une référence de pièce pour les recherches ||
+            # Tous les termes doivent être des références de pièce pour les recherches &&
+            if '||' in search_term:
+                # Pour ||, au moins une référence valide suffit
+                return any(self._get_piece_description_from_reference(term) is not None for term in terms)
+            else:  # && 
+                # Pour &&, toutes les références doivent être valides
+                return all(self._get_piece_description_from_reference(term) is not None for term in terms)
+                
+        except Exception as e:
+            app_logger.error(f"Erreur vérification multi-références: {e}")
+            return False
+    
+    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
+        """Récupérer la description d'une pièce depuis sa référence"""
+        try:
+            # Rechercher la pièce par référence exacte
+            query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
+            result = self.search_service.db_manager.execute_query(query, [reference])
+            
+            if result:
+                description = result[0][0]
+                # Vérifier que la description n'est pas None ou vide
+                if description and description.strip():
+                    return description.strip()
+                else:
+                    # Description vide mais référence existe
+                    return ""
+            
+            return None
+            
+        except Exception as e:
+            app_logger.error(f"Erreur récupération description pièce pour '{reference}': {e}")
+            return None
     
     def _get_display_term(self, search_term) -> str:
         """Obtenir terme lisible pour affichage"""
