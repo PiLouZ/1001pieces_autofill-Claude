@@ -46,45 +46,9 @@ from .seo_service import SEOService
 from .pieces_list_service import PiecesListService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 from ..services.drag_handle_service import DragHandle, DragHandleService
+from ..services.undo_manager import UndoRedoManager, UndoManagerService
 
 
-class UndoRedoManager:
-    """Gestionnaire simplifié d'annulation/rétablissement"""
-    
-    def __init__(self, max_history: int = None):
-        self.history = []
-        self.current_index = -1
-        self.max_history = max_history or Config.UNDO_HISTORY_SIZE
-    
-    def add_action(self, action: Dict[str, Any]):
-        """Ajouter une action à l'historique"""
-        self.history = self.history[:self.current_index + 1]
-        self.history.append(action)
-        
-        if len(self.history) > self.max_history:
-            self.history.pop(0)
-        else:
-            self.current_index += 1
-    
-    def can_undo(self) -> bool:
-        return self.current_index >= 0
-    
-    def can_redo(self) -> bool:
-        return self.current_index < len(self.history) - 1
-    
-    def undo(self) -> Optional[Dict[str, Any]]:
-        if self.can_undo():
-            action = self.history[self.current_index]
-            self.current_index -= 1
-            return action
-        return None
-    
-    def redo(self) -> Optional[Dict[str, Any]]:
-        if self.can_redo():
-            self.current_index += 1
-            action = self.history[self.current_index]
-            return action
-        return None
 
 
 
@@ -218,6 +182,9 @@ class MainWindow(QMainWindow):
             # Phase 2.17: Service drag handle
             self.drag_handle_service = DragHandleService()
             
+            # Phase 2.18: Service undo manager
+            self.undo_manager_service = UndoManagerService()
+            
             # PHASE 2.3: Connecter signaux AdvancedSearchService
             self._connect_advanced_search_signals()
             
@@ -238,7 +205,7 @@ class MainWindow(QMainWindow):
             self.import_manager = ImportManager(self.db_manager, parent_widget=self)
             
             # Gestionnaires UI
-            self.undo_manager = UndoRedoManager()
+            self.undo_manager = self.undo_manager_service.create_undo_manager()
             self.settings = QSettings("DeviceManager", "MainApp")
             
             # État de l'application
