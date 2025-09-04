@@ -1049,16 +1049,10 @@ class MainWindow(QMainWindow):
 
     def _create_table_widget(self) -> QWidget:
         """Créer le widget du tableau via TableController"""
-        # Widget conteneur principal
-        main_widget = QWidget()
-        main_layout = QVBoxLayout(main_widget)
+        # Passer le service UI au TableController pour qu'il puisse ajouter les boutons d'export
+        self.table_controller.ui_component_service = self.ui_component_service
         
-        # Créer le widget du tableau
         table_widget = self.table_controller.create_table_widget()
-        main_layout.addWidget(table_widget)
-        
-        # Ajouter les boutons d'action sous le tableau
-        self._add_action_buttons(main_layout)
         
         # Garder des références pour la compatibilité
         self.table = self.table_controller.table
@@ -1078,7 +1072,7 @@ class MainWindow(QMainWindow):
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_table_context_menu)
         
-        return main_widget
+        return table_widget
     
 
     def _create_pieces_widget(self) -> QWidget:
@@ -1176,25 +1170,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(pieces_splitter)
         return widget
 
-
-    def _add_action_buttons(self, layout: QVBoxLayout):
-        """Ajouter les boutons d'action"""
-        btn_layout = QHBoxLayout()
-        
-        # Les boutons Autocomplétion et Nettoyer doublons sont maintenant dans le menu Action
-        # Le bouton Incomplète est déplacé dans la zone de pagination
-        
-        # Variable pour le filtre des incomplètes
-        self.show_incomplete_only = False
-        
-        # Tous les boutons sont maintenant dans les menus ou la zone de pagination
-        # layout.addLayout(btn_layout)  # Commenté car plus de boutons dans cette section
-        
-        # Ajouter les boutons d'export
-        self.ui_component_service.add_export_buttons(layout)
-        
-        # Ajouter les contrôles de pagination
-        self.ui_component_service.add_pagination_controls(layout)
 
 
     def _setup_drag_handle(self):
