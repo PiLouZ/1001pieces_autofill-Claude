@@ -1071,9 +1071,6 @@ class MainWindow(QMainWindow):
         
         return table_widget
     
-    def _update_export_buttons_state(self, search_term: str):
-        """Mettre à jour l'état des boutons d'export selon le terme de recherche - Phase 2.12"""
-        self.ui_component_service.update_export_buttons_state(search_term)
 
     def _create_pieces_widget(self) -> QWidget:
         """Créer le widget des pièces"""
@@ -1170,9 +1167,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(pieces_splitter)
         return widget
 
-    def _add_export_buttons(self, layout: QVBoxLayout):
-        """Ajouter les boutons d'export - Phase 2.12: Délégation vers UIComponentService"""
-        self.ui_component_service.add_export_buttons(layout)
 
     def _add_action_buttons(self, layout: QVBoxLayout):
         """Ajouter les boutons d'action"""
@@ -1188,11 +1182,8 @@ class MainWindow(QMainWindow):
         # layout.addLayout(btn_layout)  # Commenté car plus de boutons dans cette section
         
         # Ajouter les contrôles de pagination
-        self._add_pagination_controls(layout)
-
-    def _add_pagination_controls(self, layout: QVBoxLayout):
-        """Ajouter les contrôles de pagination modernes - Phase 2.12: Délégation vers UIComponentService"""
         self.ui_component_service.add_pagination_controls(layout)
+
 
     def _setup_drag_handle(self):
         """Configurer la poignée de glisser-déposer"""
@@ -1822,7 +1813,7 @@ class MainWindow(QMainWindow):
     def _on_selection_changed(self):
         """Gérer le changement de sélection"""
         self._position_drag_handle()
-        self._update_pieces_panel()
+        self.pieces_panel_service.update_pieces_panel()
 
     # --- Méthodes utilitaires ---
 
@@ -1952,25 +1943,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes utilitaires ---
 
-    def _show_error(self, message: str):
-        """Afficher une erreur - Phase 2.13: Délégation vers UserInteractionService"""
-        self.user_interaction_service.show_error(message)
-
-    def _show_info(self, message: str):
-        """Afficher une information - Phase 2.13: Délégation vers UserInteractionService"""
-        self.user_interaction_service.show_info(message)
-    
-    def _show_confirmation(self, title: str, message: str, default_yes: bool = False) -> bool:
-        """Afficher une confirmation - Phase 2.13: Délégation vers UserInteractionService"""
-        return self.user_interaction_service.show_confirmation(title, message, default_yes)
-    
-    def _show_save_confirmation(self, title: str, message: str):
-        """Afficher une confirmation Oui/Non/Annuler - Phase 2.13: Délégation vers UserInteractionService"""
-        return self.user_interaction_service.show_save_confirmation(title, message)
-
-    def _update_counter(self):
-        """Mettre à jour le compteur de lignes - Phase 2.13: Délégation vers UserInteractionService"""
-        self.user_interaction_service.update_counter()
 
     def _update_toolbar_states(self):
         """Mettre à jour l'état des boutons"""
@@ -2376,17 +2348,8 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
 
-    def _update_pieces_panel(self):
-        """Mettre à jour le panneau des pièces (communes pour sélection multiple) - Phase 2.10"""
-        self.pieces_panel_service.update_pieces_panel()
     
-    def _confirm_piece_description_update(self, ref_piece: str, existing_desc: str, new_desc: str) -> str:
-        """Confirmer la mise à jour d'une description de pièce - Phase 2.14: Délégation vers PieceManagementService"""
-        return self.piece_management_service.confirm_piece_description_update(ref_piece, existing_desc, new_desc)
     
-    def _add_to_history(self, message: str):
-        """Ajouter un message à l'historique - Phase 2.13: Délégation vers UserInteractionService"""
-        self.user_interaction_service.add_to_history(message)
     
     def _apply_css_indentation(self, content: str) -> str:
         """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""
