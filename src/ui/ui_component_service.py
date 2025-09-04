@@ -227,6 +227,25 @@ class UIComponentService:
         
         return pagination_layout_2
     
+    def update_export_buttons_state_by_search(self, is_piece_search: bool) -> None:
+        """
+        Mettre à jour l'état des boutons d'export selon le type de recherche
+        
+        Args:
+            is_piece_search: True si c'est une recherche de référence de pièce
+        """
+        # Tous les boutons d'export nécessitent une référence de pièce
+        if hasattr(self.main_window, 'export_csv_btn'):
+            self.main_window.export_csv_btn.setEnabled(is_piece_search)
+        if hasattr(self.main_window, 'export_html_brands_btn'):
+            self.main_window.export_html_brands_btn.setEnabled(is_piece_search)
+        if hasattr(self.main_window, 'export_html_details_btn'):
+            self.main_window.export_html_details_btn.setEnabled(is_piece_search)
+        if hasattr(self.main_window, 'copy_csv_btn'):
+            self.main_window.copy_csv_btn.setEnabled(is_piece_search)
+        if hasattr(self.main_window, 'copy_html_btn'):
+            self.main_window.copy_html_btn.setEnabled(is_piece_search)
+    
     def update_export_buttons_state(self, search_term: str) -> None:
         """
         Mettre à jour l'état des boutons d'export selon le terme de recherche

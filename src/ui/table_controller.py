@@ -210,8 +210,9 @@ class TableController:
         
         layout.addLayout(search_layout2)
         
-        # Boutons d'export
-        self._add_export_buttons(layout)
+        # Boutons d'export (si le service UI est disponible)
+        if hasattr(self, 'ui_component_service') and self.ui_component_service:
+            self.ui_component_service.add_export_buttons(layout)
         
         # Contrôles de pagination
         self._add_pagination_controls(layout)

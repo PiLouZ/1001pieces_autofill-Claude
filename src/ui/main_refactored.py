@@ -1000,13 +1000,8 @@ class MainWindow(QMainWindow):
     
     def _on_export_buttons_update(self, is_piece_search):
         """Gestionnaire mise à jour boutons export selon recherche"""
-        # Tous les boutons d'export nécessitent une référence de pièce
-        if hasattr(self, 'export_csv_btn'):
-            self.export_csv_btn.setEnabled(is_piece_search)
-        if hasattr(self, 'export_html_brands_btn'):
-            self.export_html_brands_btn.setEnabled(is_piece_search)
-        if hasattr(self, 'export_html_details_btn'):
-            self.export_html_details_btn.setEnabled(is_piece_search)
+        # Déléguer au service UI qui gère maintenant les boutons
+        self.ui_component_service.update_export_buttons_state_by_search(is_piece_search)
         
         # Boutons SEO également limités aux références de pièce - Phase 2.15: Délégation vers SEOService
         self.seo_service.update_seo_buttons_state()
