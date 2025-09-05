@@ -49,6 +49,7 @@ from ..services.drag_handle_service import DragHandle, DragHandleService
 from ..services.undo_manager import UndoRedoManager, UndoManagerService
 from ..services.dialog_service import CategoryDialog, NotesDialog, DialogService
 from ..services.event_handlers_service import EventHandlersService
+from ..services.table_fill_service import TableFillService
 
 
 
@@ -100,6 +101,9 @@ class MainWindow(QMainWindow):
             
             # ÉTAPE 6: Event Handlers Service (avant setup events)
             self.event_handlers_service = EventHandlersService(self)
+            
+            # ÉTAPE 7: Table Fill Service  
+            self.table_fill_service = TableFillService(self)
             
             # Phase 2.5: Processeur de données collées
             self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
@@ -445,166 +449,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes de gestion des données ---
 
-    def _fill_table_chunked(self, records: List, progress_dialog, search_term):
-        """Remplissage optimisé par chunks pour améliorer la responsivité"""
-        import time
-        
-        chunk_size = Config.CHUNK_SIZE
-        total_chunks = (len(records) + chunk_size - 1) // chunk_size
-        
-        self.table.blockSignals(True)  # Bloquer les signaux pendant le remplissage
-        
-        try:
-            last_update_time = time.time()
-            
-            for chunk_idx in range(total_chunks):
-                start_idx = chunk_idx * chunk_size
-                end_idx = min(start_idx + chunk_size, len(records))
-                chunk_records = records[start_idx:end_idx]
-                
-                # Traitement du chunk
-                for local_idx, record in enumerate(chunk_records):
-                    row_idx = start_idx + local_idx
-                    self._fill_single_row(row_idx, record, search_term)
-                
-                # Mise à jour responsive de l'interface
-                current_time = time.time()
-                if (current_time - last_update_time) * 1000 > Config.RESPONSIVE_UPDATE_INTERVAL:
-                    QApplication.processEvents()  # Maintenir la responsivité
-                    last_update_time = current_time
-                
-                # Progression
-                if progress_dialog:
-                    if progress_dialog.wasCanceled():
-                        break
-                    progress_value = 60 + ((chunk_idx + 1) / total_chunks) * 35  # 60% -> 95%
-                    self._update_progress_with_debounce(
-                        progress_dialog, 
-                        int(progress_value), 
-                        f"Remplissage optimisé... {end_idx}/{len(records)} lignes"
-                    )
-        
-        finally:
-            self.table.blockSignals(False)  # Réactiver les signaux
-    
-    def _fill_table_standard(self, records: List, progress_dialog, search_term):
-        """Remplissage standard pour les petites tables"""
-        for row_idx, record in enumerate(records):
-            if progress_dialog and progress_dialog.wasCanceled():
-                break
-            
-            self._fill_single_row(row_idx, record, search_term)
-            
-            # Mise à jour de progression moins fréquente pour petites tables
-            if progress_dialog and row_idx % 100 == 0:
-                progress_value = 60 + (row_idx / len(records)) * 35
-                self._update_progress_with_debounce(
-                    progress_dialog,
-                    int(progress_value),
-                    f"Remplissage du tableau... {row_idx}/{len(records)} lignes"
-                )
-    
-    def _fill_single_row(self, row_idx: int, record, search_term):
-        """Remplir une seule ligne de manière optimisée"""
-        db_id = record[0]
-        
-        # En-tête vertical optimisé 
-        self.table.setVerticalHeaderItem(row_idx, QTableWidgetItem(str(row_idx + 1)))
-        
-        # Traitement optimisé des colonnes par batch
-        items_to_set = []  # Liste des (row, col, item) à traiter ensemble
-        
-        # Traiter toutes les colonnes UI (8 colonnes maintenant, AVEC Nb Pièces)
-        for col_idx in range(len(Config.UI_HEADERS)):
-            item = self._create_table_item(record, col_idx, db_id, search_term)
-            items_to_set.append((row_idx, col_idx, item))
-        
-        # Appel groupé de setItem pour cette ligne (plus efficace)
-        for row, col, item in items_to_set:
-            self.table.setItem(row, col, item)
-    
-    def _create_table_item(self, record, col_idx: int, db_id: int, search_term) -> QTableWidgetItem:
-        """Créer un item de table optimisé"""
-        if col_idx < len(Config.DB_HEADERS):
-            # Colonnes normales de la DB: record[0] = id, record[1..7] = données colonnes
-            if col_idx + 1 < len(record):
-                actual_data = record[col_idx + 1]  # record[0] = db_id, donc col_idx + 1
-                item = QTableWidgetItem(str(actual_data or ""))
-            else:
-                item = QTableWidgetItem("")
-        else:
-            # Dernière colonne: Nb Pièces (record[-1] = pieces_count)
-            pieces_count = record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0
-            item = QTableWidgetItem(str(pieces_count))
-            # Colonne lecture seule pour le nombre de pièces
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            
-            # Style spécial pour la colonne Nb Pièces
-            if pieces_count > 0:
-                item.setBackground(QColor(220, 248, 198))  # Vert clair
-                item.setToolTip(f"{pieces_count} pièce(s) associée(s)")
-            else:
-                item.setBackground(QColor(248, 248, 248))  # Gris clair
-                item.setToolTip("Aucune pièce associée")
-        
-        # Stocker le db_id dans chaque cellule via UserRole
-        item.setData(Qt.ItemDataRole.UserRole, db_id)
-        
-        # Optimisation: Mise en évidence des résultats de recherche (sauf pour la colonne Nb Pièces)
-        if search_term and col_idx < len(Config.DB_HEADERS):
-            # PHASE 2.3: Utiliser AdvancedSearchService pour highlighting
-            if hasattr(self, 'advanced_search_service'):
-                self.advanced_search_service.apply_search_highlight(item, search_term)
-            else:
-                # Fallback vers ancienne méthode
-                self._apply_search_highlight(item, search_term)
-        
-        return item
-    
-    def _apply_search_highlight(self, item: QTableWidgetItem, search_term):
-        """Appliquer la mise en évidence de recherche de manière optimisée"""
-        item_text = str(item.text()).lower()
-        should_highlight = False
-        
-        if isinstance(search_term, str):
-            # Recherche simple (chaîne)
-            should_highlight = search_term.lower() in item_text
-        elif isinstance(search_term, dict):
-            # Recherche parsée (dictionnaire)
-            if search_term.get('type') == 'simple':
-                # Recherche simple parsée
-                terms = search_term.get('terms', [])
-                if terms:
-                    should_highlight = terms[0].lower() in item_text
-            elif search_term.get('type') == 'regex':
-                # Recherche par expression régulière
-                try:
-                    import re
-                    pattern = search_term.get('pattern', '')
-                    should_highlight = bool(re.search(pattern, item_text, re.IGNORECASE))
-                except:
-                    pass
-            elif search_term.get('type') == 'or':
-                # Recherche avec opérateurs OR
-                for group in search_term.get('groups', []):
-                    if group.get('type') == 'and':
-                        # Tous les termes doivent être présents
-                        if all(term.lower() in item_text for term in group.get('terms', [])):
-                            should_highlight = True
-                            break
-        
-        if should_highlight:
-            item.setBackground(QColor(*Config.SEARCH_HIGHLIGHT_COLOR))
-
-    def _get_db_id_from_row(self, row: int) -> int:
-        """Récupérer le db_id depuis la première cellule de la ligne"""
-        # Chercher dans la première cellule non-vide de la ligne
-        for col in range(self.table.columnCount()):
-            item = self.table.item(row, col)
-            if item and item.data(Qt.ItemDataRole.UserRole) is not None:
-                return int(item.data(Qt.ItemDataRole.UserRole))
-        raise ValueError(f"Aucun db_id trouvé pour la ligne {row}")
-    
     def _on_header_clicked(self, logical_index: int):
         """Gérer le clic sur un header pour trier"""
         try:
@@ -1009,7 +853,7 @@ class MainWindow(QMainWindow):
             # Obtenir la référence de l'appareil
             appareil_ref = ""
             try:
-                db_id = self._get_db_id_from_row(row)
+                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
                 # Logique pour obtenir la référence (comme dans _edit_piece)
                 ref_modele_item = self.table.item(row, 2)
                 if ref_modele_item and ref_modele_item.text().strip():
@@ -1461,7 +1305,7 @@ class MainWindow(QMainWindow):
                 if item:
                     db_id = item.data(Qt.ItemDataRole.UserRole)
                     if db_id is None:
-                        db_id = self._get_db_id_from_row(row)
+                        db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
                     else:
                         db_id = int(db_id)
                     
@@ -1518,7 +1362,7 @@ class MainWindow(QMainWindow):
             db_id = item.data(Qt.ItemDataRole.UserRole)
             if db_id is None:
                 # Fallback : chercher dans une autre cellule de la ligne
-                db_id = self._get_db_id_from_row(row)
+                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
             else:
                 db_id = int(db_id)
             
@@ -1776,7 +1620,7 @@ class MainWindow(QMainWindow):
                     continue
                 
                 try:
-                    db_id = self._get_db_id_from_row(row)
+                    db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
                     
                     # Récupérer les données actuelles de la ligne
                     appareil_data = {}
@@ -2887,7 +2731,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             for row in selected_rows:
                 # Récupérer l'ID de l'appareil
-                db_id = self._get_db_id_from_row(row)
+                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
                 if db_id:
                     # Supprimer de la base de données
                     success = self.db_manager.delete_appareil(db_id)

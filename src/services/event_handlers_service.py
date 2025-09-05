@@ -62,11 +62,15 @@ class EventHandlersService:
             self.main_window.table_controller.total_rows = len(results)
             self.main_window.table_controller.total_pages = max(1, (self.main_window.table_controller.total_rows + self.main_window.table_controller.page_size - 1) // self.main_window.table_controller.page_size)
             
-            # Remplir le tableau directement avec les résultats
+            # Remplir le tableau directement avec les résultats via TableFillService
             if self.main_window.table_controller.total_rows > 1000:
-                self.main_window.table_controller._fill_table_chunked(results, None, search_term)
+                self.main_window.table_fill_service.fill_table_chunked(
+                    self.main_window.table, results, None, search_term
+                )
             else:
-                self.main_window.table_controller._fill_table_standard(results, None, search_term)
+                self.main_window.table_fill_service.fill_table_standard(
+                    self.main_window.table, results, None, search_term
+                )
             
             # Mettre à jour les contrôles de pagination
             self.main_window.table_controller._update_pagination_controls()
