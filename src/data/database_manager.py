@@ -955,9 +955,13 @@ class DatabaseManager:
     
     def update_multiple_cells_batch(self, updates_by_db_id: Dict[int, Dict[str, str]]) -> bool:
         """Mettre à jour plusieurs cellules en une seule transaction optimisée"""
+        # Vérifier s'il y a déjà une transaction active pour éviter les transactions imbriquées
+        in_transaction = self.conn.in_transaction if hasattr(self.conn, 'in_transaction') else False
+        
         try:
-            # Commencer une transaction unique
-            self.cursor.execute("BEGIN TRANSACTION")
+            # Commencer une transaction uniquement si pas déjà en cours
+            if not in_transaction:
+                self.cursor.execute("BEGIN TRANSACTION")
             
             for db_id, column_updates in updates_by_db_id.items():
                 if column_updates:  # Vérifier qu'il y a des mises à jour
@@ -976,8 +980,9 @@ class DatabaseManager:
                     query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
                     self.cursor.execute(query, values)
             
-            # Valider la transaction
-            self.conn.commit()
+            # Valider la transaction seulement si on l'a commencée
+            if not in_transaction:
+                self.conn.commit()
             
             # Phase 2.3: Invalider le cache après mise à jour multiple
             if hasattr(self, 'cache_invalidation'):
@@ -986,8 +991,9 @@ class DatabaseManager:
             return True
             
         except sqlite3.Error as e:
-            # Annuler la transaction en cas d'erreur
-            self.conn.rollback()
+            # Annuler la transaction en cas d'erreur (seulement si on l'a commencée)
+            if not in_transaction:
+                self.conn.rollback()
             raise DatabaseError(f"Erreur lors de la mise à jour par lots: {e}")
     
     def insert_appareil(self, data: Dict[str, Any]) -> int:
@@ -1025,17 +1031,29 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors de l'insertion: {e}")
     
     def delete_appareils(self, ids: List[int]) -> int:
-        """Supprimer des appareils par ID"""
+        """Supprimer des appareils par ID et toutes leurs associations de pièces"""
         try:
             if not ids:
                 return 0
             
             placeholders = ','.join('?' for _ in ids)
-            query = f"DELETE FROM appareils WHERE id IN ({placeholders})"
             
-            self.cursor.execute(query, ids)
+            # D'abord supprimer toutes les associations de pièces pour ces appareils
+            assoc_query = f"DELETE FROM piece_associations WHERE appareil_id IN ({placeholders})"
+            self.cursor.execute(assoc_query, ids)
+            associations_deleted = self.cursor.rowcount
+            
+            # Puis supprimer les appareils eux-mêmes
+            device_query = f"DELETE FROM appareils WHERE id IN ({placeholders})"
+            self.cursor.execute(device_query, ids)
             deleted_count = self.cursor.rowcount
+            
             self.conn.commit()
+            
+            if deleted_count > 0 and associations_deleted > 0:
+                print(f"  ✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
+            elif deleted_count > 0:
+                print(f"  ✅ {deleted_count} appareil(s) supprimé(s) (aucune association de pièce)")
             
             # Phase 2.3: Invalider le cache après suppression d'appareils
             if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
@@ -1047,13 +1065,27 @@ class DatabaseManager:
             raise DatabaseError(f"Erreur lors de la suppression: {e}")
     
     def delete_appareil(self, appareil_id: int) -> bool:
-        """Supprimer un appareil par ID"""
+        """Supprimer un appareil par ID et toutes ses associations de pièces"""
         try:
-            query = "DELETE FROM appareils WHERE id = ?"
+            # D'abord supprimer toutes les associations de pièces pour cet appareil
+            assoc_query = "DELETE FROM piece_associations WHERE appareil_id = ?"
+            self.cursor.execute(assoc_query, [appareil_id])
+            associations_deleted = self.cursor.rowcount
             
-            self.cursor.execute(query, [appareil_id])
-            success = self.cursor.rowcount > 0
+            # Puis supprimer l'appareil lui-même
+            device_query = "DELETE FROM appareils WHERE id = ?"
+            self.cursor.execute(device_query, [appareil_id])
+            device_deleted = self.cursor.rowcount > 0
+            
             self.conn.commit()
+            
+            # Log optionnel pour debug 
+            if device_deleted and associations_deleted > 0:
+                print(f"  ✅ Appareil {appareil_id} supprimé avec {associations_deleted} association(s) de pièce(s)")
+            elif device_deleted:
+                print(f"  ✅ Appareil {appareil_id} supprimé (aucune association de pièce)")
+            
+            success = device_deleted
             
             # Phase 2.3: Invalider le cache après suppression d'appareil
             if success and hasattr(self, 'cache_invalidation'):
