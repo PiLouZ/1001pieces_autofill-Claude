@@ -117,6 +117,9 @@ class MainWindow(QMainWindow):
             from .custom_reference_service import CustomReferenceService
             self.custom_reference_service = CustomReferenceService(self)
             
+            from ..services.paste_cleanup_service import PasteCleanupService
+            self.paste_cleanup_service = PasteCleanupService(self)
+            
             from .pieces_panel_service import PiecesPanelService
             self.pieces_panel_service = PiecesPanelService(self)
             
@@ -291,6 +294,9 @@ class MainWindow(QMainWindow):
         # CRUCIAL: Connecter la barre de recherche à AdvancedSearchService pour activation des boutons
         self.search_input.textChanged.connect(self.advanced_search_service.search_with_debounce)
         
+        # Intégrer le service de nettoyage de collage
+        self._setup_paste_cleanup_for_search_input()
+        
         return table_widget
     
 
@@ -422,6 +428,107 @@ class MainWindow(QMainWindow):
     def _init_connections(self):
         """Initialiser les connexions de signaux"""
         pass  # Les connexions sont déjà configurées dans les méthodes de création
+    
+    def _setup_paste_cleanup_for_search_input(self):
+        """Configure l'interception du collage pour le champ de recherche"""
+        from PyQt5.QtWidgets import QLineEdit
+        from PyQt5.QtCore import QEvent
+        from PyQt5.QtGui import QClipboard
+        
+        class PasteInterceptor(QLineEdit):
+            def __init__(self, parent_window, paste_service):
+                super().__init__()
+                self.parent_window = parent_window
+                self.paste_service = paste_service
+                
+            def keyPressEvent(self, event):
+                # Intercepter Cmd+V (ou Ctrl+V)
+                if event.matches(self.parent_window.style().SP_ComputerIcon) or \
+                   (event.modifiers() & (0x10000000 | 0x04000000)) and event.key() == 0x56:  # Cmd/Ctrl+V
+                    self._handle_paste_event()
+                    return
+                super().keyPressEvent(event)
+                
+            def insertFromMimeData(self, source):
+                # Méthode alternative pour intercepter le collage
+                if source.hasText():
+                    original_text = source.text()
+                    cleaned_text = self.paste_service.process_paste_content(
+                        original_text, self.parent_window
+                    )
+                    
+                    if cleaned_text != original_text:
+                        # Créer un nouveau MimeData avec le texte nettoyé
+                        from PyQt5.QtCore import QMimeData
+                        clean_mime = QMimeData()
+                        clean_mime.setText(cleaned_text)
+                        super().insertFromMimeData(clean_mime)
+                        return
+                        
+                super().insertFromMimeData(source)
+                
+            def _handle_paste_event(self):
+                """Gère l'événement de collage avec nettoyage"""
+                from PyQt5.QtWidgets import QApplication
+                clipboard = QApplication.clipboard()
+                original_text = clipboard.text()
+                
+                if original_text:
+                    cleaned_text = self.paste_service.process_paste_content(
+                        original_text, self.parent_window
+                    )
+                    
+                    if cleaned_text != original_text:
+                        # Remplacer le texte dans le champ
+                        cursor_pos = self.cursorPosition()
+                        selected_text = self.selectedText()
+                        
+                        if selected_text:
+                            # Remplacer le texte sélectionné
+                            self.insert(cleaned_text)
+                        else:
+                            # Insérer à la position du curseur
+                            self.insert(cleaned_text)
+                    else:
+                        # Collage normal
+                        self.paste()
+        
+        # Remplacer le QLineEdit standard par notre interceptor
+        if hasattr(self, 'search_input') and self.search_input:
+            # Sauvegarder les propriétés existantes
+            parent = self.search_input.parent()
+            text = self.search_input.text()
+            placeholder = self.search_input.placeholderText()
+            
+            # Créer le nouvel input avec interception
+            new_input = PasteInterceptor(self, self.paste_cleanup_service)
+            new_input.setText(text)
+            new_input.setPlaceholderText(placeholder)
+            
+            # Remplacer dans le layout
+            if parent and hasattr(parent, 'layout') and parent.layout():
+                layout = parent.layout()
+                for i in range(layout.count()):
+                    if layout.itemAt(i).widget() == self.search_input:
+                        # Déconnecter les anciens signaux
+                        try:
+                            self.search_input.textChanged.disconnect()
+                        except:
+                            pass
+                        
+                        # Supprimer l'ancien widget
+                        layout.removeWidget(self.search_input)
+                        self.search_input.deleteLater()
+                        
+                        # Ajouter le nouveau
+                        layout.insertWidget(i, new_input)
+                        self.search_input = new_input
+                        
+                        # Reconnecter les signaux
+                        self.search_input.textChanged.connect(
+                            self.advanced_search_service.search_with_debounce
+                        )
+                        break
 
     # --- Méthodes de gestion des données ---
 
@@ -1099,60 +1206,7 @@ class MainWindow(QMainWindow):
             # En cas d'erreur, transformer le combo en champ texte basique
             combo_widget.setEditable(True)
 
-    def _parse_advanced_search(self, text: str):
-        """Parser la recherche avancée avec opérateurs && et ||"""
-        import re
-        
-        if not text.strip():
-            return None
-        
-        # Les expressions régulières ne sont plus supportées dans l'interface refactorisée
-        # On se concentre sur les recherches && et ||
-        
-        # Parser les opérateurs logiques
-        # Diviser d'abord par || (OU)
-        or_groups = text.split('||')
-        
-        parsed_groups = []
-        for group in or_groups:
-            group = group.strip()
-            if not group:
-                continue
-                
-            # Diviser chaque groupe par && (ET)
-            and_terms = [term.strip() for term in group.split('&&') if term.strip()]
-            if and_terms:
-                parsed_groups.append({
-                    'type': 'and',
-                    'terms': and_terms
-                })
-        
-        if not parsed_groups:
-            # Pas d'opérateurs trouvés, recherche simple
-            return {
-                'type': 'simple',
-                'terms': [text.strip()]
-            }
-        
-        return {
-            'type': 'or',
-            'groups': parsed_groups
-        }
     
-    def _search_table(self, text: str):
-        """PHASE 2.3: Recherche via AdvancedSearchService"""
-        if hasattr(self, 'advanced_search_service'):
-            # Déléguer au service avancé
-            self.advanced_search_service.search_with_debounce(text, 500)
-        else:
-            # Fallback vers ancienne méthode
-            app_logger.warning("AdvancedSearchService non disponible, utilisation méthode fallback")
-            self._search_table_fallback(text)
-    
-    def _search_table_fallback(self, text: str):
-        """Méthode fallback temporaire pour la recherche"""
-        # Simple chargement de toutes les données
-        self.table_controller.load_data(text.strip() if text.strip() else None)
     
     def _extract_first_term(self, search_text: str) -> str:
         """Extraire le premier terme d'une recherche (avant || ou &&)"""
@@ -1195,42 +1249,6 @@ class MainWindow(QMainWindow):
         app_logger.debug(f"DEBUG _get_current_search_term - main_refactored: {term}")
         return term
     
-    def _perform_delayed_search(self):
-        """Phase 4: Effectuer la recherche via le service avec pagination correcte"""
-        if hasattr(self, 'pending_search_term') and self.pending_search_term:
-            try:
-                # D'abord compter le nombre total pour décider de la pagination
-                total_results = self.search_service.count_results(self.pending_search_term)
-                
-                # Calculer limit et offset seulement si nécessaire
-                limit = None
-                offset = None
-                should_paginate = (self.use_pagination and 
-                                 total_results > Config.MAX_DISPLAY_ROWS and 
-                                 hasattr(self, 'page_size') and self.page_size > 0)
-                
-                if should_paginate:
-                    limit = self.page_size
-                    current_page = getattr(self.table_controller, 'current_page', 0) if hasattr(self, 'table_controller') else 0
-                    offset = current_page * self.page_size
-                
-                # Utiliser le service de recherche avec pagination
-                results = self.search_service.search(
-                    term=self.pending_search_term,
-                    column_filters=getattr(self, '_current_column_filters', None),
-                    sort_column=getattr(self, 'current_sort_column', None),
-                    sort_order=getattr(self, 'current_sort_order', None),
-                    limit=limit,
-                    offset=offset
-                )
-                
-                # Mettre à jour l'affichage avec les résultats
-                self._display_search_results(results, self.pending_search_term)
-                
-            except Exception as e:
-                print(f"⚠️ Erreur service recherche: {e}")
-                # Fallback vers l'ancienne méthode
-                self.table_controller.load_data(self.pending_search_term, is_search=True)
     
     def _display_search_results(self, results: List, search_term: str):
         """Phase 4: Afficher les résultats de recherche du service"""
