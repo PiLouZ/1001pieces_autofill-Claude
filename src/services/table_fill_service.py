@@ -31,6 +31,7 @@ class TableFillService:
         total_chunks = (len(records) + chunk_size - 1) // chunk_size
         
         table.blockSignals(True)  # Bloquer les signaux pendant le remplissage
+        table.setRowCount(len(records))  # CRUCIAL: Définir le nombre de lignes avant remplissage
         
         try:
             last_update_time = time.time()
@@ -68,6 +69,7 @@ class TableFillService:
     def fill_table_standard(self, table, records: List, progress_dialog, search_term):
         """Remplissage standard pour les petites tables"""
         table.blockSignals(True)  # CRITIQUE: Bloquer les signaux pour éviter les modifications DB
+        table.setRowCount(len(records))  # CRUCIAL: Définir le nombre de lignes avant remplissage
         
         try:
             for row_idx, record in enumerate(records):

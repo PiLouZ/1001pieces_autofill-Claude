@@ -1272,11 +1272,11 @@ class MainWindow(QMainWindow):
             # Réutiliser la logique d'affichage existante mais avec résultats du service
             self.table.setRowCount(len(results))
             
-            # Utiliser la logique optimisée Phase 2
+            # Utiliser la logique optimisée Phase 2 via TableFillService
             if len(results) > Config.CHUNK_SIZE:
-                self._fill_table_chunked(results, None, search_term)
+                self.table_fill_service.fill_table_chunked(self.table, results, None, search_term)
             else:
-                self._fill_table_standard(results, None, search_term)
+                self.table_fill_service.fill_table_standard(self.table, results, None, search_term)
             
             # Finalisation
             self.table.resizeColumnsToContents()

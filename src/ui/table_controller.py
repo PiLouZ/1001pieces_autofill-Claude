@@ -258,9 +258,9 @@ class TableController:
             
             # Remplir le tableau
             if self.total_rows > 1000:
-                self._fill_table_chunked(records, None, search_term)
+                self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
             else:
-                self._fill_table_standard(records, None, search_term)
+                self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
             
             # Mettre à jour les contrôles de pagination
             self._update_pagination_controls()
@@ -280,94 +280,6 @@ class TableController:
             app_logger.error(f"Erreur lors du chargement des données: {e}")
             self.table.setRowCount(0)
     
-    def _fill_table_chunked(self, records: List, progress_dialog, search_term):
-        """Remplir le tableau par chunks pour de gros volumes"""
-        if not records:
-            self.table.setRowCount(0)
-            return
-            
-        self.table.blockSignals(True)
-        self.table.setRowCount(len(records))
-        
-        chunk_size = 100
-        for i in range(0, len(records), chunk_size):
-            chunk = records[i:i + chunk_size]
-            for j, record in enumerate(chunk):
-                row_idx = i + j
-                self._fill_single_row(row_idx, record, search_term)
-            
-            # Permettre à l'interface de se mettre à jour
-            QApplication.processEvents()
-        
-        self.table.blockSignals(False)
-        self._update_row_numbers()
-    
-    def _fill_table_standard(self, records: List, progress_dialog, search_term):
-        """Remplir le tableau de manière standard"""
-        if not records:
-            self.table.setRowCount(0)
-            return
-            
-        self.table.blockSignals(True)
-        self.table.setRowCount(len(records))
-        
-        for row_idx, record in enumerate(records):
-            self._fill_single_row(row_idx, record, search_term)
-        
-        self.table.blockSignals(False)
-        self._update_row_numbers()
-    
-    def _fill_single_row(self, row_idx: int, record, search_term):
-        """Remplir une seule ligne du tableau"""
-        try:
-            # Récupérer l'ID de la base de données depuis le record
-            db_id = record[0] if len(record) > 0 else -1
-            
-            # Remplir chaque colonne
-            for col_idx in range(min(len(Config.UI_HEADERS), len(record) - 1)):
-                # Décaler l'index car record[0] = id
-                value_idx = col_idx + 1
-                if value_idx < len(record):
-                    item = self._create_table_item(record, col_idx, db_id, search_term)
-                    self.table.setItem(row_idx, col_idx, item)
-        except Exception as e:
-            app_logger.error(f"Erreur remplissage ligne {row_idx}: {e}")
-    
-    def _create_table_item(self, record, col_idx: int, db_id: int, search_term) -> QTableWidgetItem:
-        """Créer un item du tableau avec le formatage approprié"""
-        value_idx = col_idx + 1  # Décaler car record[0] = id
-        value = record[value_idx] if value_idx < len(record) else ""
-        
-        # Formater la valeur selon le type de colonne
-        if col_idx == len(Config.UI_HEADERS) - 1:  # Colonne "Nb Pièces"
-            try:
-                count = int(value) if value else 0
-                display_value = str(count)
-            except (ValueError, TypeError):
-                display_value = "0"
-        else:
-            display_value = str(value) if value is not None else ""
-        
-        item = QTableWidgetItem(display_value)
-        item.setData(Qt.UserRole, db_id)  # Stocker l'ID de la DB
-        
-        # Appliquer la mise en évidence si nécessaire
-        if search_term:
-            self._apply_search_highlight(item, search_term)
-        
-        return item
-    
-    def _apply_search_highlight(self, item: QTableWidgetItem, search_term):
-        """Appliquer la mise en évidence pour les termes de recherche"""
-        if not search_term or not item.text():
-            return
-        
-        text = item.text().lower()
-        search_lower = str(search_term).lower()
-        
-        if search_lower in text:
-            # Surligner en jaune
-            item.setBackground(QBrush(QColor(255, 255, 0, 100)))
     
     def _update_row_numbers(self):
         """Mettre à jour les numéros de lignes après un tri"""
@@ -540,9 +452,9 @@ class TableController:
             
             # Remplir le tableau
             if self.total_rows > 1000:
-                self._fill_table_chunked(records, None, search_term)
+                self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
             else:
-                self._fill_table_standard(records, None, search_term)
+                self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
             
             # Mettre à jour les contrôles de pagination
             self._update_pagination_controls()
