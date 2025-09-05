@@ -254,7 +254,7 @@ class UIComponentService:
             search_term: Terme de recherche actuel
         """
         has_search = bool(search_term)
-        is_piece_search = has_search and self.main_window._is_piece_reference_search()
+        is_piece_search = has_search and self.main_window.advanced_search_service._is_piece_reference_search(search_term)
         
         # Tous les boutons d'export nécessitent une référence de pièce
         export_buttons = [

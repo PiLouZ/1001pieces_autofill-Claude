@@ -1250,35 +1250,6 @@ class MainWindow(QMainWindow):
         return term
     
     
-    def _display_search_results(self, results: List, search_term: str):
-        """Phase 4: Afficher les résultats de recherche du service"""
-        # FIXME: Désactiver l'auto-sauvegarde pendant l'affichage
-        old_auto_save_enabled = getattr(self, 'auto_save_enabled', True)
-        self.auto_save_enabled = False
-        
-        try:
-            # Mettre à jour le compteur total pour la pagination (important!)
-            if hasattr(self, 'search_service'):
-                self.total_rows = self.search_service.count_results(search_term)
-            
-            # Réutiliser la logique d'affichage existante mais avec résultats du service
-            self.table.setRowCount(len(results))
-            
-            # Utiliser la logique optimisée Phase 2 via TableFillService
-            if len(results) > Config.CHUNK_SIZE:
-                self.table_fill_service.fill_table_chunked(self.table, results, None, search_term)
-            else:
-                self.table_fill_service.fill_table_standard(self.table, results, None, search_term)
-            
-            # Finalisation
-            self.table.resizeColumnsToContents()
-            self.user_interaction_service.update_counter()
-            self._update_pagination_controls()
-            self._init_previous_values()
-            
-        finally:
-            # Réactiver l'auto-sauvegarde
-            self.auto_save_enabled = old_auto_save_enabled
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
@@ -3136,101 +3107,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Détecter les recherches multi-références avec || ou &&
             if '||' in search_term or '&&' in search_term:
-                return self._are_all_terms_piece_references(search_term)
+                return self.advanced_search_service._are_all_terms_piece_references(search_term)
             
             # Recherche simple - vérifier si c'est une référence de pièce
-            return self._get_piece_description_from_reference(search_term) is not None
+            return self.advanced_search_service._get_piece_description_from_reference(search_term) is not None
         
         except Exception as e:
             app_logger.error(f"Erreur vérification référence pièce: {e}")
             return False
     
-    def _are_all_terms_piece_references(self, search_term: str) -> bool:
-        """Vérifier si tous les termes d'une recherche multi-références sont des références de pièce"""
-        try:
-            # Diviser selon l'opérateur utilisé
-            if '||' in search_term:
-                terms = [term.strip() for term in search_term.split('||') if term.strip()]
-            elif '&&' in search_term:
-                terms = [term.strip() for term in search_term.split('&&') if term.strip()]
-            else:
-                return False
-            
-            # Au moins un terme doit être une référence de pièce pour les recherches ||
-            # Tous les termes doivent être des références de pièce pour les recherches &&
-            if '||' in search_term:
-                # Pour ||, au moins une référence valide suffit
-                return any(self._get_piece_description_from_reference(term) is not None for term in terms)
-            else:  # && 
-                # Pour &&, toutes les références doivent être valides
-                return all(self._get_piece_description_from_reference(term) is not None for term in terms)
-                
-        except Exception as e:
-            app_logger.error(f"Erreur vérification multi-références: {e}")
-            return False
-    
-    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
-        """Récupérer la description d'une pièce depuis sa référence"""
-        try:
-            # Rechercher la pièce par référence exacte
-            query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
-            result = self.db_manager.execute_custom_query(query, [reference])
-            
-            if result:
-                description = result[0][0]
-                # Vérifier que la description n'est pas None ou vide
-                if description and description.strip():
-                    return description.strip()
-                else:
-                    # Si la description est vide, utiliser une description générique
-                    return "pièce détachée"
-            
-            # Essayer une recherche partielle si la recherche exacte échoue
-            query_partial = "SELECT description FROM pieces WHERE ref_piece LIKE ? LIMIT 1"
-            result_partial = self.db_manager.execute_custom_query(query_partial, [f"%{reference}%"])
-            
-            if result_partial:
-                description = result_partial[0][0]
-                if description and description.strip():
-                    return description.strip()
-                else:
-                    return "pièce détachée"
-            
-            return None  # Aucune pièce trouvée
-            
-        except Exception as e:
-            app_logger.error(f"Erreur récupération description pièce: {e}")
-            return None
-    
-    def _old_is_piece_reference_search_fallback(self) -> bool:
-        """Ancienne méthode de vérification en fallback"""
-        try:
-            search_term = self.search_input.text().strip()
-            if not search_term:
-                return False
-            
-            # Vérifier si le terme de recherche correspond à une référence de pièce dans la BDD
-            # Utiliser la méthode load_data pour rechercher
-            try:
-                # Recherche avec load_data (méthode qui existe)
-                results = self.db_manager.load_data(
-                    search_term=search_term,
-                    limit=1
-                )
-                return len(results) > 0
-                
-            except Exception:
-                # Fallback avec requête SQL directe
-                try:
-                    query = "SELECT COUNT(*) FROM pieces WHERE ref_piece = ? LIMIT 1"
-                    result = self.db_manager.execute_custom_query(query, [search_term])
-                    return result and len(result) > 0 and result[0][0] > 0
-                except:
-                    return False
-            
-        except Exception as e:
-            app_logger.error(f"Erreur vérification référence pièce: {e}")
-            return False
     
     # --- Méthodes de gestion des dispositifs pour le collage (délégation vers DeviceManager) ---
     
