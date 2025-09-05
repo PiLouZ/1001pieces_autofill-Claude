@@ -1721,8 +1721,21 @@ class MainWindow(QMainWindow):
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
         """Dialogue unifié pour choisir les options d'import - Phase 2.6"""
         # Déléguer au service DialogService
-        return self.dialog_service.get_import_options_unified(
+        result = self.dialog_service.get_import_options_unified(
             detected_columns, default_ref_piece, import_method, sample_data
+        )
+        
+        # Convertir le dictionnaire en tuple pour compatibilité avec le code existant
+        if result is None:
+            return None
+        
+        # Extraire les valeurs du dictionnaire et les retourner comme tuple
+        return (
+            result.get('mode', 0),  # import_type (mode d'import)
+            result.get('reference', ''),  # ref_piece
+            None,  # third_column_choice (pas utilisé dans cette version)
+            False,  # has_headers (pas utilisé dans cette version)  
+            ''  # libelle_piece (pas utilisé dans cette version)
         )
 
     def _show_import_summary(self, results, ref_piece, method="CSV"):
