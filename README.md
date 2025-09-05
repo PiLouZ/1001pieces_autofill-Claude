@@ -59,6 +59,14 @@ python3 -m src.ui.main_refactored
 
 ## ✨ Nouvelles Fonctionnalités Majeures
 
+### 📋 **PasteCleanupService - Collage Intelligent (v2.5.0)**
+- **Interception automatique** - Détecte et nettoie les extensions lors du collage (Cmd+V)
+- **Transformation intelligente** - "46X0008.pdf 45X2378.pdf" → "46X0008 || 45X2378"
+- **Fenêtre de configuration** - Choix du remplacement (||, &&, espace, supprimer)
+- **Mémorisation des préférences** - Se souvient des choix par type d'extension  
+- **Interface intégrée** - Menu "Gestion" → "Configuration Collage"
+- **Architecture robuste** - Remplacement intelligent du champ de recherche avec gestion des signaux PyQt5
+
 ### 🛠️ **Gestion Avancée des Pièces (v2.4.0)**
 - **Libellés de pièces** - Nouveau champ dans tous les imports (CSV, PDF, Collage)
 - **Gestionnaire de pièces** - Fenêtre dédiée avec édition temps réel
@@ -239,7 +247,22 @@ Cette version représente une refonte complète avec :
 - **💾 Stabilité renforcée** - Gestion d'erreurs et sauvegarde automatique
 - **🎯 Expérience utilisateur** - Intuitive et productive
 
-### 🆕 Dernières Améliorations (v2.3.0)
+### 🆕 Dernières Améliorations (v2.5.0)
+
+#### 📋 **PasteCleanupService - Collage Intelligent Premium (v2.5.0)**
+- **✅ Interception Cmd+V** - Détection automatique du collage dans le champ de recherche
+- **✅ Transformation intelligente** - Extensions (.pdf, .csv, .xlsx, etc.) automatiquement remplacées
+- **✅ Interface complète** - Menu "Gestion" → "Configuration Collage" avec dialogue avancé
+- **✅ Choix multiples** - Remplacement par ||, &&, espace simple ou suppression complète
+- **✅ Mémorisation** - Se souvient des préférences par type d'extension
+- **✅ Architecture robuste** - PasteInterceptor avec recherche récursive de layouts et gestion des signaux PyQt5
+
+#### 🎛️ **Réorganisation Interface (v2.5.0)**
+- **✅ Menu Gestion étendu** - "Configuration Collage" et "Colonnes" déplacés depuis toolbar
+- **✅ Suppression doublons** - Bouton "Incohérences" défaillant retiré
+- **✅ Code optimisé** - Suppression des logs de debug, architecture modulaire finalisée
+
+### 🆕 Améliorations Précédentes (v2.3.0)
 
 #### 🚀 **Import PDF Révolutionnaire avec Camelot-Py**
 - **✅ Extraction multi-fichiers** - Drag & drop de plusieurs PDFs simultanément
@@ -293,5 +316,5 @@ Cette version représente une refonte complète avec :
 - **⚡ Performance optimisée** - Architecture modulaire pour évolutions futures
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
-**📅 Version 2025 - Architecture modulaire et corrections critiques**  
-**🚀 v3.0.1 - Migration des services et stabilité maximale**
+**📅 Version 2025 - Architecture modulaire et PasteCleanupService premium**  
+**🚀 v2.5.0 - Collage intelligent et interface optimisée**
