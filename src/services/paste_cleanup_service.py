@@ -26,7 +26,7 @@ class PasteCleanupService(QObject):
         
         # Paramètres utilisateur
         self._default_replacement = '||'  # OU par défaut
-        self._ask_confirmation = True
+        self._ask_confirmation = False  # Nettoyage automatique sans confirmation
         self._remember_choice = True
         self._user_choice_memory = {}  # Cache des choix utilisateur
         

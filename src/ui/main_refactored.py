@@ -117,10 +117,9 @@ class MainWindow(QMainWindow):
             from .custom_reference_service import CustomReferenceService
             self.custom_reference_service = CustomReferenceService(self)
             
-            # TEMPORAIREMENT DÉSACTIVÉ - PasteCleanupService non finalisé dans V3.0.0
-            # from ..services.paste_cleanup_service import PasteCleanupService  
-            # self.paste_cleanup_service = PasteCleanupService(self)
-            self.paste_cleanup_service = None  # Placeholder pour éviter les erreurs
+            # PasteCleanupService - Nettoyage automatique des extensions collées
+            from ..services.paste_cleanup_service import PasteCleanupService  
+            self.paste_cleanup_service = PasteCleanupService(self)
             
             from .pieces_panel_service import PiecesPanelService
             self.pieces_panel_service = PiecesPanelService(self)
@@ -296,8 +295,8 @@ class MainWindow(QMainWindow):
         # CRUCIAL: Connecter la barre de recherche à AdvancedSearchService pour activation des boutons
         self.search_input.textChanged.connect(self.advanced_search_service.search_with_debounce)
         
-        # TEMPORAIREMENT DÉSACTIVÉ - PasteCleanupService non finalisé dans V3.0.0
-        # self._setup_paste_cleanup_for_search_input()
+        # Configuration du nettoyage automatique pour le champ de recherche
+        self._setup_paste_cleanup_for_search_input()
         
         return table_widget
     
