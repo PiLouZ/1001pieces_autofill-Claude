@@ -1952,10 +1952,12 @@ class MainWindow(QMainWindow):
             if cleanup_options['clean_pieces'] and stats['total_duplicate_pieces'] > 0:
                 operations.append(f"• Supprimer {stats['total_duplicate_pieces']} références de pièces dupliquées")
             
+            # Créer le texte des opérations (même si vide)
+            operations_text = "\n".join(operations) if operations else "Aucune opération nécessaire"
+            
             # Demander confirmation finale
             if operations:
                 from PyQt5.QtWidgets import QMessageBox
-                operations_text = "\n".join(operations)
                 reply = QMessageBox.question(
                     self, "Confirmer le nettoyage",
                     f"⚠️ Opérations de nettoyage à effectuer :\n\n{operations_text}\n\nContinuer ?",
