@@ -1364,6 +1364,68 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la mise à jour de la pièce: {e}")
     
+    def update_piece_complete(self, old_ref_piece: str, new_ref_piece: str, description: str, appareil_id: int) -> bool:
+        """Mettre à jour complètement une pièce (référence ET description)"""
+        try:
+            # Si la référence ne change pas, utiliser update_piece simple
+            if old_ref_piece == new_ref_piece:
+                return self.update_piece(new_ref_piece, description)
+            
+            # Si la référence change, vérifier que la nouvelle référence n'existe pas déjà
+            check_query = "SELECT COUNT(*) FROM pieces WHERE ref_piece = ?"
+            self.cursor.execute(check_query, (new_ref_piece,))
+            if self.cursor.fetchone()[0] > 0:
+                # La nouvelle référence existe déjà - on va faire une association
+                # Supprimer l'ancienne association et créer la nouvelle
+                piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
+                self.cursor.execute(piece_query, (old_ref_piece,))
+                old_piece_result = self.cursor.fetchone()
+                
+                self.cursor.execute(piece_query, (new_ref_piece,))
+                new_piece_result = self.cursor.fetchone()
+                
+                if old_piece_result and new_piece_result:
+                    old_piece_id, new_piece_id = old_piece_result[0], new_piece_result[0]
+                    
+                    # Supprimer l'ancienne association
+                    delete_assoc = "DELETE FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
+                    self.cursor.execute(delete_assoc, (old_piece_id, appareil_id))
+                    
+                    # Ajouter la nouvelle association si elle n'existe pas
+                    check_assoc = "SELECT COUNT(*) FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
+                    self.cursor.execute(check_assoc, (new_piece_id, appareil_id))
+                    if self.cursor.fetchone()[0] == 0:
+                        insert_assoc = "INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)"
+                        self.cursor.execute(insert_assoc, (new_piece_id, appareil_id))
+                    
+                    # Mettre à jour la description si fournie
+                    if description:
+                        self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (description, new_piece_id))
+                    
+                    self.conn.commit()
+                    
+                    # Invalider le cache
+                    if hasattr(self, 'cache_invalidation'):
+                        self.cache_invalidation.invalidate_after_piece_modification("modification", new_ref_piece, 1)
+                    
+                    return True
+            else:
+                # La nouvelle référence n'existe pas - mise à jour directe
+                update_query = "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?"
+                self.cursor.execute(update_query, (new_ref_piece, description, old_ref_piece))
+                updated = self.cursor.rowcount > 0
+                self.conn.commit()
+                
+                # Invalider le cache
+                if updated and hasattr(self, 'cache_invalidation'):
+                    self.cache_invalidation.invalidate_after_piece_modification("modification", new_ref_piece, 1)
+                
+                return updated
+                
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Erreur lors de la mise à jour complète de la pièce: {e}")
+    
     def get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
         """Récupérer les informations d'une pièce spécifique (nouvelle structure)"""
         try:

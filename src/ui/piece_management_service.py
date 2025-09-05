@@ -209,28 +209,33 @@ class PieceManagementService:
                     )
                     return
                 
-                # Mettre à jour la pièce - utiliser update_piece si elle existe ou une logique alternative
-                # D'abord supprimer l'ancienne et ajouter la nouvelle si la référence a changé
-                if new_ref != ref_piece:
-                    # Si la référence change, supprimer l'ancienne et créer une nouvelle
-                    delete_success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
-                    if delete_success:
-                        add_result = self.main_window.db_manager.add_piece(new_ref, db_id, new_libelle)
-                        success = bool(add_result)
-                    else:
-                        success = False
-                else:
-                    # Si seul le libellé change, utiliser update_piece si disponible
-                    try:
-                        success = self.main_window.db_manager.update_piece(new_ref, new_libelle)
-                    except AttributeError:
-                        # Si update_piece n'existe pas, recréer la pièce
+                # Utiliser la nouvelle méthode update_piece_complete pour une vraie mise à jour
+                try:
+                    success = self.main_window.db_manager.update_piece_complete(
+                        ref_piece, new_ref, new_libelle, db_id
+                    )
+                except AttributeError:
+                    # Fallback vers l'ancienne logique si update_piece_complete n'existe pas
+                    if new_ref != ref_piece:
+                        # Si la référence change, supprimer l'ancienne et créer une nouvelle
                         delete_success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
                         if delete_success:
                             add_result = self.main_window.db_manager.add_piece(new_ref, db_id, new_libelle)
                             success = bool(add_result)
                         else:
                             success = False
+                    else:
+                        # Si seul le libellé change, utiliser update_piece si disponible
+                        try:
+                            success = self.main_window.db_manager.update_piece(new_ref, new_libelle)
+                        except AttributeError:
+                            # Si update_piece n'existe pas, recréer la pièce
+                            delete_success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
+                            if delete_success:
+                                add_result = self.main_window.db_manager.add_piece(new_ref, db_id, new_libelle)
+                                success = bool(add_result)
+                            else:
+                                success = False
                 
                 if success:
                     self.main_window.pieces_panel_service.update_pieces_panel()
