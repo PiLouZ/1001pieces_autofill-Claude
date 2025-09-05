@@ -67,20 +67,26 @@ class TableFillService:
     
     def fill_table_standard(self, table, records: List, progress_dialog, search_term):
         """Remplissage standard pour les petites tables"""
-        for row_idx, record in enumerate(records):
-            if progress_dialog and progress_dialog.wasCanceled():
-                break
-            
-            self.fill_single_row(table, row_idx, record, search_term)
-            
-            # Mise à jour de progression moins fréquente pour petites tables
-            if progress_dialog and row_idx % 100 == 0:
-                progress_value = 60 + (row_idx / len(records)) * 35
-                self._update_progress_with_debounce(
-                    progress_dialog,
-                    int(progress_value),
-                    f"Remplissage du tableau... {row_idx}/{len(records)} lignes"
-                )
+        table.blockSignals(True)  # CRITIQUE: Bloquer les signaux pour éviter les modifications DB
+        
+        try:
+            for row_idx, record in enumerate(records):
+                if progress_dialog and progress_dialog.wasCanceled():
+                    break
+                
+                self.fill_single_row(table, row_idx, record, search_term)
+                
+                # Mise à jour de progression moins fréquente pour petites tables
+                if progress_dialog and row_idx % 100 == 0:
+                    progress_value = 60 + (row_idx / len(records)) * 35
+                    self._update_progress_with_debounce(
+                        progress_dialog,
+                        int(progress_value),
+                        f"Remplissage du tableau... {row_idx}/{len(records)} lignes"
+                    )
+        
+        finally:
+            table.blockSignals(False)  # CRITIQUE: Réactiver les signaux
     
     def fill_single_row(self, table, row_idx: int, record, search_term):
         """Remplir une seule ligne de manière optimisée"""
