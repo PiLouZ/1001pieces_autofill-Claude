@@ -79,7 +79,7 @@ class PieceManagementService:
         for row in selected_rows:
             try:
                 # Obtenir l'ID de l'appareil depuis la ligne
-                db_id = self.main_window._get_db_id_from_row(row)
+                db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
                 if not db_id:
                     app_logger.warning(f"ID non trouvé pour la ligne {row}")
                     error_count += 1
@@ -144,7 +144,7 @@ class PieceManagementService:
             self.main_window.user_interaction_service.show_error("Aucun appareil sélectionné")
             return
         
-        db_id = self.main_window._get_db_id_from_row(current_row)
+        db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, current_row)
         if not db_id:
             self.main_window.user_interaction_service.show_error("Impossible de récupérer l'ID de l'appareil")
             return
@@ -267,7 +267,7 @@ class PieceManagementService:
                     self.main_window.user_interaction_service.show_error("Aucun appareil sélectionné")
                     return
                 
-                db_id = self.main_window._get_db_id_from_row(current_row)
+                db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, current_row)
                 if not db_id:
                     self.main_window.user_interaction_service.show_error("Impossible de récupérer l'ID de l'appareil")
                     return
@@ -336,7 +336,7 @@ class PieceManagementService:
             
             for row in selected_rows:
                 try:
-                    db_id = self.main_window._get_db_id_from_row(row)
+                    db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
                     if db_id:
                         success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
                         if success:

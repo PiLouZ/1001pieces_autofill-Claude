@@ -85,7 +85,7 @@ class PiecesPanelService:
             selected_rows: Ensemble contenant une seule ligne sélectionnée
         """
         row = list(selected_rows)[0]
-        db_id = self.main_window._get_db_id_from_row(row)
+        db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
         pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
         
         for ref_piece, description in pieces:
@@ -130,7 +130,7 @@ class PiecesPanelService:
         
         for row in selected_rows:
             try:
-                db_id = self.main_window._get_db_id_from_row(row)
+                db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
                 pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
                 # Créer un set des références de pièces pour cet appareil
                 piece_refs = {ref_piece for ref_piece, description in pieces}
@@ -175,7 +175,7 @@ class PiecesPanelService:
         """
         for row in selected_rows:
             try:
-                db_id = self.main_window._get_db_id_from_row(row)
+                db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
                 pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
                 for ref, desc in pieces:
                     if ref == ref_piece and desc:
