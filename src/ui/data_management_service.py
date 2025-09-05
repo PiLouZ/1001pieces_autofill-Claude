@@ -298,9 +298,28 @@ class DataManagementService:
             return {'error': 'MainWindow requis pour le nettoyage'}
         
         try:
-            # Déléguer l'exécution du nettoyage à la méthode existante
-            # Cette partie reste dans MainWindow car elle utilise beaucoup de méthodes UI
-            return self.main_window._execute_cleanup_operations(cleanup_options)
+            # Exécuter le nettoyage des données selon les options
+            stats = {'devices_deleted': 0, 'pieces_deleted': 0, 'pieces_merged': 0}
+            
+            # Nettoyer les appareils orphelins si demandé
+            if cleanup_options.get('clean_devices', False):
+                orphan_devices = self.db_manager.get_orphan_devices()
+                for device_id in orphan_devices:
+                    self.db_manager.delete_device(device_id)
+                    stats['devices_deleted'] += 1
+            
+            # Nettoyer les pièces dupliquées si demandé  
+            if cleanup_options.get('clean_pieces', False):
+                duplicates = self.db_manager.get_duplicate_pieces()
+                for duplicate_group in duplicates:
+                    # Garder la première pièce, supprimer les autres
+                    primary_piece = duplicate_group[0]
+                    for duplicate_piece in duplicate_group[1:]:
+                        self.db_manager.delete_piece(duplicate_piece['id'])
+                        stats['pieces_deleted'] += 1
+                        stats['pieces_merged'] += 1
+            
+            return stats
             
         except Exception as e:
             app_logger.error(f"Erreur exécution nettoyage: {e}")
