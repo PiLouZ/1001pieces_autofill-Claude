@@ -59,7 +59,7 @@ python3 -m src.ui.main_refactored
 
 ## ✨ Nouvelles Fonctionnalités Majeures
 
-### 📋 **PasteCleanupService - Collage Intelligent (v2.5.0)**
+### 📋 **PasteCleanupService - Collage Intelligent (v3.1.0)**
 - **Interception automatique** - Détecte et nettoie les extensions lors du collage (Cmd+V)
 - **Transformation intelligente** - "46X0008.pdf 45X2378.pdf" → "46X0008 || 45X2378"
 - **Fenêtre de configuration** - Choix du remplacement (||, &&, espace, supprimer)
@@ -247,9 +247,9 @@ Cette version représente une refonte complète avec :
 - **💾 Stabilité renforcée** - Gestion d'erreurs et sauvegarde automatique
 - **🎯 Expérience utilisateur** - Intuitive et productive
 
-### 🆕 Dernières Améliorations (v2.5.0)
+### 🆕 Dernières Améliorations (v3.1.0)
 
-#### 📋 **PasteCleanupService - Collage Intelligent Premium (v2.5.0)**
+#### 📋 **PasteCleanupService - Collage Intelligent Premium (v3.1.0)**
 - **✅ Interception Cmd+V** - Détection automatique du collage dans le champ de recherche
 - **✅ Transformation intelligente** - Extensions (.pdf, .csv, .xlsx, etc.) automatiquement remplacées
 - **✅ Interface complète** - Menu "Gestion" → "Configuration Collage" avec dialogue avancé
@@ -257,7 +257,7 @@ Cette version représente une refonte complète avec :
 - **✅ Mémorisation** - Se souvient des préférences par type d'extension
 - **✅ Architecture robuste** - PasteInterceptor avec recherche récursive de layouts et gestion des signaux PyQt5
 
-#### 🎛️ **Réorganisation Interface (v2.5.0)**
+#### 🎛️ **Réorganisation Interface (v3.1.0)**
 - **✅ Menu Gestion étendu** - "Configuration Collage" et "Colonnes" déplacés depuis toolbar
 - **✅ Suppression doublons** - Bouton "Incohérences" défaillant retiré
 - **✅ Code optimisé** - Suppression des logs de debug, architecture modulaire finalisée
@@ -317,4 +317,4 @@ Cette version représente une refonte complète avec :
 
 **🤝 Développé par Claude (Anthropic) en collaboration avec l'utilisateur**  
 **📅 Version 2025 - Architecture modulaire et PasteCleanupService premium**  
-**🚀 v2.5.0 - Collage intelligent et interface optimisée**
+**🚀 v3.1.0 - Collage intelligent et interface optimisée**
