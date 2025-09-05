@@ -17,7 +17,6 @@ from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, Q
 from PyQt5.QtCore import QSize, QMimeData, QUrl, QStringListModel
 from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
-# Phase 4: Import des services pour l'architecture découplée
 from ..services import SearchService, ExportService, ImportService, EventBus
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
@@ -83,88 +82,65 @@ class MainWindow(QMainWindow):
             self.validator = DataValidator()
             self.exporter = DataExporter(self.db_manager)
             
-            # Phase 4: Services découplés
             self.search_service = SearchService(self.db_manager)
             self.advanced_search_service = AdvancedSearchService(self.search_service, self)
             self.export_service = ExportService(self.db_manager)
             self.import_service = ImportService(self.db_manager)
             
-            # Phase 2.4: Service d'autocomplétion
             from ..services.autocompletion_service import AutoCompletionService
             self.autocompletion_service = AutoCompletionService(self.db_manager, self)
             
-            # Phase 2.16: Device Manager
             self.device_manager = DeviceManager(self.db_manager)
             
-            # Phase 2.16: Paste Results Service
             self.paste_results_service = PasteResultsService(self)
             
-            # ÉTAPE 6: Event Handlers Service (avant setup events)
             self.event_handlers_service = EventHandlersService(self)
             
-            # ÉTAPE 7: Table Fill Service  
             self.table_fill_service = TableFillService(self)
             
-            # Phase 2.5: Processeur de données collées
             self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
             
-            # Phase 2.5c: Service de gestion des données
             self.data_management_service = DataManagementService(self.db_manager, self)
             
-            # Phase 2.5d: Service de barre d'outils
             from .toolbar_service import ToolbarService
             self.toolbar_service = ToolbarService(self)
             
-            # Phase 2.6: Service de dialogues  
             from .dialog_service import DialogService
             self.dialog_service = DialogService(self)
             
-            # Phase 2.7: Service de traitement des fichiers
             from .file_processing_service import FileProcessingService
             self.file_processing_service = FileProcessingService(self)
             
-            # Phase 2.8: Service d'export legacy
             from .legacy_export_service import LegacyExportService
             self.legacy_export_service = LegacyExportService(self)
             
-            # Phase 2.9: Service de référence personnalisée
             from .custom_reference_service import CustomReferenceService
             self.custom_reference_service = CustomReferenceService(self)
             
-            # Phase 2.10: Service du panneau des pièces
             from .pieces_panel_service import PiecesPanelService
             self.pieces_panel_service = PiecesPanelService(self)
             
-            # Phase 2.11: Service d'export principal
             from .export_service import MainExportService
             self.main_export_service = MainExportService(self)
             
-            # Phase 2.12: Service des composants UI
             from .ui_component_service import UIComponentService
             self.ui_component_service = UIComponentService(self)
             
-            # Phase 2.13: Service d'interaction utilisateur
             self.user_interaction_service = UserInteractionService(self)
             
-            # Phase 2.14: Service de gestion des pièces
             self.piece_management_service = PieceManagementService(self)
             
-            # Phase 2.15: Service SEO
             self.seo_service = SEOService(self)
             
-            # Phase 2.16: Service liste des pièces avec boutons d'action
             self.pieces_list_service = PiecesListService(self)
             
-            # Phase 2.17: Service drag handle
             self.drag_handle_service = DragHandleService()
             
-            # Phase 2.18: Service undo manager
             self.undo_manager_service = UndoManagerService()
             
             # PHASE 2.3: Connecter signaux AdvancedSearchService
             self._connect_advanced_search_signals()
             
-            # Phase 2: Controller pour le tableau
             self.table_controller = TableController(self, self.db_manager)
             
             # Initialiser les variables d'état
@@ -727,7 +703,6 @@ class MainWindow(QMainWindow):
             current_item = self.table.currentItem()
             current_col = self.table.currentColumn()
             
-            # Phase 2.4: Déléguer au service d'autocomplétion
             selected_value = self.autocompletion_service.show_column_values_dialog(
                 self.table, current_item, current_col
             )
@@ -997,7 +972,6 @@ class MainWindow(QMainWindow):
     def _export_html_with_reference(self, data, reference: str, export_format: ExportFormat) -> bool:
         """Exporter en HTML avec référence personnalisée"""
         try:
-            # Phase 2.3: Utiliser le service d'export factorié
             # Utiliser le service d'export existant avec les méthodes HTML ajoutées
             result = self.export_service.export_to_html(data, export_format)
             
@@ -1640,7 +1614,6 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     app_logger.error(f"Erreur récupération ligne {row}: {e}")
             
-            # Phase 2.5c: Déléguer l'auto-complétion au service spécialisé
             result = self.data_management_service.auto_complete_empty_fields(table_data)
             
             # Débloquer les signaux
@@ -1677,7 +1650,6 @@ class MainWindow(QMainWindow):
     def _clean_data(self):
         """Nettoyer les données avec prévisualisation détaillée - Version refactorisée Phase 2.5c"""
         try:
-            # Phase 2.5c: Déléguer la préparation du nettoyage au service
             cleanup_options = self.data_management_service.prepare_data_cleaning()
             
             if cleanup_options is None:
@@ -1710,7 +1682,6 @@ class MainWindow(QMainWindow):
                 if reply != QMessageBox.Yes:
                     return
             
-            # Phase 2.5c: Exécuter le nettoyage via le service
             cleanup_result = self.data_management_service.execute_data_cleaning(cleanup_options)
             
             if 'error' in cleanup_result:
@@ -2853,7 +2824,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
                 return
             
-            # Phase 2.5: Utiliser le nouveau processeur pour les données
             detected_columns = self.paste_processor.detect_columns_count(clipboard_text)
             
             # Vérifier si on a au moins 1 colonne
@@ -2889,7 +2859,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             category = ""  # Pas de catégorie dans la fenêtre unifiée pour l'instant
             total_rows = len(rows)
             
-            # Phase 2.5: Déléguer le traitement des données au processeur spécialisé
             
             # Créer une barre de progression pour les gros imports (10K+ lignes)
             progress_dialog = None

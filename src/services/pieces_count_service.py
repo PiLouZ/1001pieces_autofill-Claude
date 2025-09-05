@@ -36,9 +36,9 @@ class PiecesCountService:
                     success = self._update_pieces_cell(table, row, pieces_count, db_id)
                     if success:
                         updated_count += 1
-                        print(f"  ✅ Nb Pièces mis à jour: ligne {row} → {pieces_count} pièces")
+                        app_logger.debug(f"Nb Pièces mis à jour: ligne {row} → {pieces_count} pièces")
                     else:
-                        print(f"  ❌ Échec mise à jour ligne {row}")
+                        app_logger.warning(f"Échec mise à jour Nb Pièces ligne {row}")
                         
             except Exception as e:
                 app_logger.error(f"Erreur mise à jour Nb Pièces ligne {row}: {e}")

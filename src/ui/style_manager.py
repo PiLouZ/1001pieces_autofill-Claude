@@ -13,7 +13,7 @@ class StyleManager:
         return """
         /* === RESET ET BASE === */
         QWidget {
-            font-family: 'Segoe UI', 'SF Pro Display', system-ui, -apple-system, sans-serif;
+            font-family: -apple-system, 'SF Pro Display', system-ui, 'Helvetica Neue', sans-serif;
             font-size: 13px;
         }
 

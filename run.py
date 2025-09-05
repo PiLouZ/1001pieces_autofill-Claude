@@ -7,6 +7,15 @@ Point d'entrée unique pour l'application reorganisée
 import sys
 import os
 
+# Supprimer les warnings macOS et Qt pour une console plus propre
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.fonts=false'
+os.environ['PYTHONWARNINGS'] = 'ignore'
+os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
+
+# Rediriger stderr temporairement pour masquer le warning macOS
+import warnings
+warnings.filterwarnings('ignore')
+
 # Ajouter le répertoire src au path Python
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')

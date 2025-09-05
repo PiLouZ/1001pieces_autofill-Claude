@@ -1,5 +1,4 @@
 """
-Table Controller - Phase 2 Refactoring
 Gestion centralisée du tableau, filtres, pagination et tri
 """
 
@@ -320,7 +319,7 @@ class TableController:
                 7: 52,   # Nb Pièces
             }
             
-            app_logger.info("Configuration largeurs colonnes par défaut...")
+            app_logger.debug("Configuration largeurs colonnes par défaut...")
             
             # Appliquer les largeurs
             for col_index, width in default_widths.items():
@@ -336,7 +335,7 @@ class TableController:
                 col_name = Config.UI_HEADERS[i] if i < len(Config.UI_HEADERS) else f"Col{i}"
                 current_widths.append(f"{col_name}:{width}")
             
-            print(f"🎯 LARGEURS PAR DÉFAUT APPLIQUÉES: {', '.join(current_widths)}")
+            app_logger.debug(f"🎯 LARGEURS PAR DÉFAUT APPLIQUÉES: {', '.join(current_widths)}")
             
         except Exception as e:
             app_logger.error(f"Erreur définition largeurs par défaut: {e}")
@@ -778,18 +777,8 @@ class TableController:
             # Récupérer le nom de la colonne
             column_name = Config.UI_HEADERS[logical_index] if logical_index < len(Config.UI_HEADERS) else f"Colonne {logical_index}"
             
-            # Log de la modification
-            app_logger.info(f"LARGEUR COLONNE MODIFIÉE: '{column_name}' (index {logical_index}) = {new_size}px (était {old_size}px)")
-            
-            # Afficher toutes les largeurs actuelles
-            current_widths = []
-            for i in range(self.table.columnCount()):
-                width = self.table.columnWidth(i)
-                col_name = Config.UI_HEADERS[i] if i < len(Config.UI_HEADERS) else f"Col{i}"
-                current_widths.append(f"{col_name}:{width}")
-            
-            app_logger.info(f"LARGEURS ACTUELLES: {', '.join(current_widths)}")
-            print(f"🔧 LARGEURS COLONNES: {', '.join(current_widths)}")
+            # Log de la modification (niveau DEBUG pour réduire le bruit)
+            app_logger.debug(f"LARGEUR COLONNE MODIFIÉE: '{column_name}' (index {logical_index}) = {new_size}px (était {old_size}px)")
             
         except Exception as e:
             app_logger.error(f"Erreur log largeur colonne: {e}")
