@@ -48,6 +48,7 @@ from ..services.table_widget_service import CustomTableWidget, TableWidgetServic
 from ..services.drag_handle_service import DragHandle, DragHandleService
 from ..services.undo_manager import UndoRedoManager, UndoManagerService
 from ..services.dialog_service import CategoryDialog, NotesDialog, DialogService
+from ..services.event_handlers_service import EventHandlersService
 
 
 
@@ -96,6 +97,9 @@ class MainWindow(QMainWindow):
             
             # Phase 2.16: Paste Results Service
             self.paste_results_service = PasteResultsService(self)
+            
+            # ÉTAPE 6: Event Handlers Service (avant setup events)
+            self.event_handlers_service = EventHandlersService(self)
             
             # Phase 2.5: Processeur de données collées
             self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
@@ -255,133 +259,28 @@ class MainWindow(QMainWindow):
     def _setup_service_events(self):
         """Phase 4: Configuration des événements des services"""
         # Événements de recherche
-        event_bus.on('search.started', self._on_search_started)
-        event_bus.on('search.completed', self._on_search_completed) 
-        event_bus.on('search.error', self._on_search_error)
+        event_bus.on('search.started', self.event_handlers_service.on_search_started)
+        event_bus.on('search.completed', self.event_handlers_service.on_search_completed) 
+        event_bus.on('search.error', self.event_handlers_service.on_search_error)
         
         # Événements d'export
-        event_bus.on('export.started', self._on_export_started)
-        event_bus.on('export.completed', self._on_export_completed)
-        event_bus.on('export.error', self._on_export_error)
+        event_bus.on('export.started', self.event_handlers_service.on_export_started)
+        event_bus.on('export.completed', self.event_handlers_service.on_export_completed)
+        event_bus.on('export.error', self.event_handlers_service.on_export_error)
     
     def _connect_advanced_search_signals(self):
         """PHASE 2.3: Connecter les signaux du service de recherche avancé"""
         if hasattr(self, 'advanced_search_service'):
-            self.advanced_search_service.search_started.connect(self._on_advanced_search_started)
-            self.advanced_search_service.search_completed.connect(self._on_advanced_search_completed)
-            self.advanced_search_service.search_error.connect(self._on_advanced_search_error)
-            self.advanced_search_service.export_buttons_update.connect(self._on_export_buttons_update)
+            self.advanced_search_service.search_started.connect(self.event_handlers_service.on_advanced_search_started)
+            self.advanced_search_service.search_completed.connect(self.event_handlers_service.on_advanced_search_completed)
+            self.advanced_search_service.search_error.connect(self.event_handlers_service.on_advanced_search_error)
+            self.advanced_search_service.export_buttons_update.connect(self.event_handlers_service.on_export_buttons_update)
         
         # Événements d'import
-        event_bus.on('import.started', self._on_import_started)
-        event_bus.on('import.completed', self._on_import_completed)
-        event_bus.on('import.error', self._on_import_error)
+        event_bus.on('import.started', self.event_handlers_service.on_import_started)
+        event_bus.on('import.completed', self.event_handlers_service.on_import_completed)
+        event_bus.on('import.error', self.event_handlers_service.on_import_error)
     
-    def _on_search_started(self, data):
-        """Gestionnaire événement début de recherche"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"🔍 Recherche en cours: '{data['term']}'...")
-    
-    def _on_search_completed(self, data):
-        """Gestionnaire événement fin de recherche"""
-        if hasattr(self, 'statusbar'):
-            cache_info = " (cache)" if data.get('has_cache_hit') else ""
-            self.statusbar.showMessage(
-                f"✅ Recherche terminée: {data['results_count']} résultats{cache_info}", 
-                3000
-            )
-    
-    def _on_search_error(self, data):
-        """Gestionnaire événement erreur de recherche"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"❌ Erreur recherche: {data['error']}", 5000)
-    
-    # PHASE 2.3: Gestionnaires AdvancedSearchService
-    def _on_advanced_search_started(self, term):
-        """Gestionnaire début recherche avancée"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"🔍 Recherche avancée: '{term}'...")
-    
-    def _on_advanced_search_completed(self, results, search_term):
-        """Gestionnaire fin recherche avancée - afficher résultats"""
-        try:
-            # Stocker le terme de recherche dans le controller pour la pagination
-            self.table_controller.current_search_term = search_term
-            
-            # Réinitialiser pagination à la première page
-            self.table_controller.current_page = 1
-            
-            # Utiliser les résultats déjà trouvés par AdvancedSearchService
-            # au lieu de relancer une recherche
-            self.table_controller.total_rows = len(results)
-            self.table_controller.total_pages = max(1, (self.table_controller.total_rows + self.table_controller.page_size - 1) // self.table_controller.page_size)
-            
-            # Remplir le tableau directement avec les résultats
-            if self.table_controller.total_rows > 1000:
-                self.table_controller._fill_table_chunked(results, None, search_term)
-            else:
-                self.table_controller._fill_table_standard(results, None, search_term)
-            
-            # Mettre à jour les contrôles de pagination
-            self.table_controller._update_pagination_controls()
-            
-            # Message status
-            if hasattr(self, 'statusbar'):
-                self.statusbar.showMessage(
-                    f"✅ Recherche terminée: {len(results)} résultats", 
-                    Config.STATUS_MESSAGE_TIMEOUT
-                )
-        except Exception as e:
-            app_logger.error(f"Erreur affichage résultats recherche: {e}")
-    
-    def _on_advanced_search_error(self, error_msg):
-        """Gestionnaire erreur recherche avancée"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"❌ {error_msg}", 5000)
-    
-    def _on_export_buttons_update(self, is_piece_search):
-        """Gestionnaire mise à jour boutons export selon recherche"""
-        # Déléguer au service UI qui gère maintenant les boutons
-        self.ui_component_service.update_export_buttons_state_by_search(is_piece_search)
-        
-        # Boutons SEO également limités aux références de pièce - Phase 2.15: Délégation vers SEOService
-        self.seo_service.update_seo_buttons_state()
-    
-    def _on_export_started(self, data):
-        """Gestionnaire événement début d'export"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"📤 Export {data['format']} en cours...")
-    
-    def _on_export_completed(self, data):
-        """Gestionnaire événement fin d'export"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(
-                f"✅ Export terminé: {data['count']} lignes → {data['output_file']}", 
-                5000
-            )
-    
-    def _on_export_error(self, data):
-        """Gestionnaire événement erreur d'export"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"❌ Erreur export: {data['error']}", 5000)
-    
-    def _on_import_started(self, data):
-        """Gestionnaire événement début d'import"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"📥 Import de {data['file_count']} fichier(s)...")
-    
-    def _on_import_completed(self, data):
-        """Gestionnaire événement fin d'import"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(
-                f"✅ Import terminé: {data['total_imported']} lignes traitées", 
-                5000
-            )
-    
-    def _on_import_error(self, data):
-        """Gestionnaire événement erreur d'import"""
-        if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage(f"❌ Erreur import: {data['error']}", 5000)
 
     def _create_table_widget(self) -> QWidget:
         """Créer le widget du tableau via TableController"""
