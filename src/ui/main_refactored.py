@@ -1208,12 +1208,6 @@ class MainWindow(QMainWindow):
             # En cas d'erreur, transformer le combo en champ texte basique
             combo_widget.setEditable(True)
 
-    
-    
-    
-    
-    
-
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
         # FIXME: Éviter auto-save pendant chargement/recherche

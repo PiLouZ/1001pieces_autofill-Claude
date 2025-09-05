@@ -320,7 +320,7 @@ class AdvancedSearchService(QObject):
         return self.current_search_term
         
     def get_current_search_term_with_fallback(self, main_window):
-        """PHASE 2.3: Récupérer le terme de recherche actuel - SOURCE DE VÉRITÉ = champ de recherche visible"""
+        """Récupérer le terme de recherche actuel avec fallback intelligent - SOURCE DE VÉRITÉ = champ de recherche visible"""
         from ..core.logger import app_logger
         
         # SOURCE DE VÉRITÉ: Le champ de recherche visible par l'utilisateur
