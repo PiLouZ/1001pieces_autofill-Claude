@@ -102,7 +102,7 @@ class PieceManagementService:
         
         # Rafraîchissement et messages
         if success_count > 0:
-            self.main_window._update_pieces_panel()
+            self.main_window.pieces_panel_service.update_pieces_panel()
             self.main_window._refresh_pieces_count_column()
             
             # Message de succès
@@ -233,7 +233,7 @@ class PieceManagementService:
                             success = False
                 
                 if success:
-                    self.main_window._update_pieces_panel()
+                    self.main_window.pieces_panel_service.update_pieces_panel()
                     self.main_window._refresh_pieces_count_column()
                     self.main_window.user_interaction_service.add_to_history(f"Pièce modifiée: '{ref_piece}' → '{new_ref}'")
                     self.main_window.user_interaction_service.show_status_message(
@@ -276,7 +276,7 @@ class PieceManagementService:
                 success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
                 
                 if success:
-                    self.main_window._update_pieces_panel()
+                    self.main_window.pieces_panel_service.update_pieces_panel()
                     self.main_window._refresh_pieces_count_column()
                     self.main_window.user_interaction_service.add_to_history(f"Pièce '{ref_piece}' supprimée")
                     self.main_window.user_interaction_service.show_status_message(
@@ -352,7 +352,7 @@ class PieceManagementService:
             
             # Rafraîchissement et messages
             if success_count > 0:
-                self.main_window._update_pieces_panel()
+                self.main_window.pieces_panel_service.update_pieces_panel()
                 self.main_window._refresh_pieces_count_column()
                 
                 message = f"Pièce '{ref_piece}' supprimée de {success_count} appareil(s)"
