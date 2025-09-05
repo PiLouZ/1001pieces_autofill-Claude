@@ -68,6 +68,9 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._init_connections()
         
+        # Configuration du nettoyage automatique pour le champ de recherche (après init UI)
+        self._setup_paste_cleanup_for_search_input()
+        
         # Chargement initial des données
         self.table_controller.load_data()
         
@@ -295,9 +298,6 @@ class MainWindow(QMainWindow):
         # CRUCIAL: Connecter la barre de recherche à AdvancedSearchService pour activation des boutons
         self.search_input.textChanged.connect(self.advanced_search_service.search_with_debounce)
         
-        # Configuration du nettoyage automatique pour le champ de recherche
-        self._setup_paste_cleanup_for_search_input()
-        
         return table_widget
     
 
@@ -443,11 +443,14 @@ class MainWindow(QMainWindow):
                 self.paste_service = paste_service
                 
             def keyPressEvent(self, event):
-                # Intercepter Cmd+V (ou Ctrl+V)
-                if event.matches(self.parent_window.style().SP_ComputerIcon) or \
-                   (event.modifiers() & (0x10000000 | 0x04000000)) and event.key() == 0x56:  # Cmd/Ctrl+V
+                # Intercepter Cmd+V (ou Ctrl+V) - Code 86 pour V, modifiers 0x10000000 pour Cmd
+                if (event.modifiers() & 0x10000000) and event.key() == 86:  # Cmd+V sur macOS
                     self._handle_paste_event()
                     return
+                elif (event.modifiers() & 0x04000000) and event.key() == 86:  # Ctrl+V sur autres OS
+                    self._handle_paste_event()
+                    return
+                    
                 super().keyPressEvent(event)
                 
             def insertFromMimeData(self, source):
@@ -509,6 +512,9 @@ class MainWindow(QMainWindow):
             # Remplacer dans le layout
             if parent and hasattr(parent, 'layout') and parent.layout():
                 layout = parent.layout()
+                
+                # Tentative 1: Recherche directe
+                search_found = False
                 for i in range(layout.count()):
                     if layout.itemAt(i).widget() == self.search_input:
                         # Déconnecter les anciens signaux
@@ -529,7 +535,88 @@ class MainWindow(QMainWindow):
                         self.search_input.textChanged.connect(
                             self.advanced_search_service.search_with_debounce
                         )
+                        search_found = True
                         break
+                
+                # Tentative 2: Si pas trouvé, chercher dans les sous-layouts
+                if not search_found:
+                    def find_and_replace_in_layout(layout_to_search, level=0):
+                        for i in range(layout_to_search.count()):
+                            item = layout_to_search.itemAt(i)
+                            if item.widget() == self.search_input:
+                                # Déconnecter signaux
+                                try:
+                                    self.search_input.textChanged.disconnect()
+                                except:
+                                    pass
+                                
+                                # Remplacer dans ce layout
+                                layout_to_search.removeWidget(self.search_input)
+                                self.search_input.deleteLater()
+                                layout_to_search.insertWidget(i, new_input)
+                                
+                                # Mettre à jour la référence 
+                                self.search_input = new_input
+                                
+                                # Reconnecter signaux
+                                self.search_input.textChanged.connect(
+                                    self.advanced_search_service.search_with_debounce
+                                )
+                                return True
+                            
+                            # Si c'est un widget avec un layout, chercher récursivement
+                            widget = item.widget()
+                            if widget and hasattr(widget, 'layout') and widget.layout():
+                                if find_and_replace_in_layout(widget.layout(), level + 1):
+                                    return True
+                            
+                            # Si c'est un layout item direct
+                            if item.layout():
+                                if find_and_replace_in_layout(item.layout(), level + 1):
+                                    return True
+                        
+                        return False
+                    
+                    # Chercher récursivement
+                    if find_and_replace_in_layout(layout):
+                        search_found = True
+                    
+                # Tentative 3: Fallback setParent si toujours pas trouvé    
+                if not search_found:
+                    try:
+                        # Déconnecter les anciens signaux
+                        try:
+                            self.search_input.textChanged.disconnect()
+                        except:
+                            pass
+                        
+                        # Garder les propriétés originales
+                        size_hint = self.search_input.sizeHint()
+                        min_size = self.search_input.minimumSize()
+                        max_size = self.search_input.maximumSize()
+                        
+                        # Configurer le nouveau avec les mêmes propriétés
+                        new_input.setParent(parent)
+                        new_input.setMinimumSize(min_size)
+                        new_input.setMaximumSize(max_size)
+                        new_input.resize(size_hint)
+                        
+                        # Supprimer l'ancien et montrer le nouveau
+                        self.search_input.hide()
+                        self.search_input.deleteLater()
+                        new_input.show()
+                        
+                        # Remplacer la référence
+                        self.search_input = new_input
+                        
+                        # Reconnecter les signaux
+                        self.search_input.textChanged.connect(
+                            self.advanced_search_service.search_with_debounce
+                        )
+                        
+                    except Exception as e:
+                        from ..core.logger import app_logger
+                        app_logger.error(f"Erreur remplacement search_input: {e}")
 
     # --- Méthodes de gestion des données ---
 
