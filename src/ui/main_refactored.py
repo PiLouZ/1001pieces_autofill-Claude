@@ -47,44 +47,12 @@ from .pieces_list_service import PiecesListService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 from ..services.drag_handle_service import DragHandle, DragHandleService
 from ..services.undo_manager import UndoRedoManager, UndoManagerService
+from ..services.dialog_service import CategoryDialog, NotesDialog, DialogService
 
 
 
 
 
-
-class CategoryDialog(QInputDialog):
-    """Dialogue simplifié pour la gestion des catégories"""
-    
-    @staticmethod
-    def get_categories(parent, current_categories: List[str]) -> Optional[List[str]]:
-        """Méthode statique pour obtenir les catégories"""
-        text, ok = QInputDialog.getMultiLineText(
-            parent, 
-            "Gestion des Catégories",
-            "Entrez les catégories (une par ligne):",
-            '\n'.join(current_categories)
-        )
-        
-        if ok:
-            return [line.strip() for line in text.split('\n') if line.strip()]
-        return None
-
-
-class NotesDialog(QInputDialog):
-    """Dialogue simplifié pour l'édition des notes"""
-    
-    @staticmethod
-    def get_notes(parent, current_notes: str = "") -> Optional[str]:
-        """Méthode statique pour obtenir les notes"""
-        text, ok = QInputDialog.getMultiLineText(
-            parent,
-            "Notes et Commentaires",
-            "Entrez vos notes:",
-            current_notes
-        )
-        
-        return text if ok else None
 
 
 class MainWindow(QMainWindow):
@@ -2018,8 +1986,7 @@ class MainWindow(QMainWindow):
         """Gérer les catégories"""
         try:
             current_categories = self.db_manager.get_categories()
-            from .category_dialog import CategoryDialog
-            new_categories = CategoryDialog.get_categories(self, current_categories)
+            new_categories = DialogService.get_categories(self, current_categories)
             
             if new_categories is not None:
                 self.db_manager.update_categories(new_categories)
