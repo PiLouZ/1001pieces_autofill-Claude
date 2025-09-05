@@ -658,7 +658,7 @@ class MainWindow(QMainWindow):
         app_logger.debug(f"  main_refactored.current_search_term: '{main_term}'")
         app_logger.debug(f"  search_input.text(): '{search_input_text}'")
         
-        search_term = self._get_current_search_term()
+        search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
         app_logger.debug(f"DEBUG _reload_current_search - terme final choisi: '{search_term}'")
         self.table_controller.load_data(search_term, is_search=bool(search_term))
     
@@ -1167,7 +1167,7 @@ class MainWindow(QMainWindow):
             column, text = self.pending_column_filter
             
             # Effectuer le filtrage réel
-            search_term = self._get_current_search_term()
+            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
             self.table_controller.load_data(search_term)
             
             # Nettoyer
@@ -1210,46 +1210,7 @@ class MainWindow(QMainWindow):
 
     
     
-    def _extract_first_term(self, search_text: str) -> str:
-        """Extraire le premier terme d'une recherche (avant || ou &&)"""
-        if not search_text:
-            return ""
-        
-        # Séparer par || d'abord, puis par &&
-        for separator in ['||', '&&']:
-            if separator in search_text:
-                return search_text.split(separator)[0].strip()
-        
-        # Si pas d'opérateur, retourner tel quel
-        return search_text.strip()
     
-    def _get_current_search_term(self):
-        """PHASE 2.3: Récupérer le terme de recherche actuel - SOURCE DE VÉRITÉ = champ de recherche visible"""
-        # SOURCE DE VÉRITÉ: Le champ de recherche visible par l'utilisateur
-        if hasattr(self, 'search_input') and self.search_input:
-            visible_term = self.search_input.text().strip()
-            app_logger.debug(f"DEBUG _get_current_search_term - champ visible: '{visible_term}'")
-            if visible_term:
-                return visible_term
-        
-        # Fallback 1: TableController car c'est lui qui gère les recherches
-        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'pending_search_term'):
-            term = self.table_controller.pending_search_term
-            app_logger.debug(f"DEBUG _get_current_search_term - TableController: {term}")
-            if term:
-                return term
-                
-        # Fallback 2: AdvancedSearchService  
-        if hasattr(self, 'advanced_search_service'):
-            term = self.advanced_search_service.get_current_search_term()
-            app_logger.debug(f"DEBUG _get_current_search_term - AdvancedSearchService: {term}")
-            if term:
-                return term
-        
-        # Fallback 3: current_search_term de main_refactored
-        term = getattr(self, 'current_search_term', None)
-        app_logger.debug(f"DEBUG _get_current_search_term - main_refactored: {term}")
-        return term
     
     
 
@@ -2290,15 +2251,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         except Exception as e:
             self.user_interaction_service.show_error(f"Erreur lors de l'application de la configuration: {e}")
     
-    def _clear_search(self):
-        """Effacer le champ de recherche principal et tous les filtres"""
-        self.search_input.clear()
-        # Effacer aussi tous les filtres de colonnes via TableController
-        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
-            for filter_widget in self.table_controller.filter_widgets.values():
-                if filter_widget is not None:
-                    filter_widget.clear()
-        self.table_controller.load_data()
 
     # --- Méthodes d'événements ---
 
@@ -2779,12 +2731,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 super().keyPressEvent(event)
         elif event.key() == Qt.Key.Key_F5:
             # Utiliser la recherche parsée actuelle
-            search_term = self._get_current_search_term()
+            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
             self.table_controller.load_data(search_term)
         elif event.key() == Qt.Key.Key_F12:
             self._open_log_viewer()
         elif event.key() == Qt.Key.Key_Escape:
-            self._clear_search()
+            self.advanced_search_service.clear_search_ui(self)
         else:
             super().keyPressEvent(event)
 
@@ -2797,7 +2749,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Recharger et se positionner sur la nouvelle ligne
             # Utiliser la recherche parsée actuelle
-            search_term = self._get_current_search_term()
+            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
             self.table_controller.load_data(search_term)
             
             if self.table.rowCount() > 0:

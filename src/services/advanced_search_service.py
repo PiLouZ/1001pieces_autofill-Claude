@@ -318,6 +318,35 @@ class AdvancedSearchService(QObject):
     def get_current_search_term(self):
         """Obtenir le terme de recherche actuellement actif"""
         return self.current_search_term
+        
+    def get_current_search_term_with_fallback(self, main_window):
+        """PHASE 2.3: Récupérer le terme de recherche actuel - SOURCE DE VÉRITÉ = champ de recherche visible"""
+        from ..core.logger import app_logger
+        
+        # SOURCE DE VÉRITÉ: Le champ de recherche visible par l'utilisateur
+        if hasattr(main_window, 'search_input') and main_window.search_input:
+            visible_term = main_window.search_input.text().strip()
+            app_logger.debug(f"DEBUG get_current_search_term - champ visible: '{visible_term}'")
+            if visible_term:
+                return visible_term
+        
+        # Fallback 1: TableController car c'est lui qui gère les recherches
+        if hasattr(main_window, 'table_controller') and hasattr(main_window.table_controller, 'pending_search_term'):
+            term = main_window.table_controller.pending_search_term
+            app_logger.debug(f"DEBUG get_current_search_term - TableController: {term}")
+            if term:
+                return term
+                
+        # Fallback 2: AdvancedSearchService  
+        term = self.get_current_search_term()
+        app_logger.debug(f"DEBUG get_current_search_term - AdvancedSearchService: {term}")
+        if term:
+            return term
+        
+        # Fallback 3: current_search_term de main_refactored
+        term = getattr(main_window, 'current_search_term', None)
+        app_logger.debug(f"DEBUG get_current_search_term - main_refactored: {term}")
+        return term
     
     def clear_search(self):
         """Nettoyer l'état de recherche"""
@@ -325,6 +354,25 @@ class AdvancedSearchService(QObject):
         self.pending_search_term = None
         self.current_search_term = None
         self._last_processed_term = None
+        
+    def clear_search_ui(self, main_window):
+        """Effacer le champ de recherche principal et tous les filtres"""
+        # Nettoyer l'état de recherche interne
+        self.clear_search()
+        
+        # Nettoyer l'interface utilisateur
+        if hasattr(main_window, 'search_input') and main_window.search_input:
+            main_window.search_input.clear()
+            
+        # Effacer aussi tous les filtres de colonnes via TableController
+        if hasattr(main_window, 'table_controller') and hasattr(main_window.table_controller, 'filter_widgets'):
+            for filter_widget in main_window.table_controller.filter_widgets.values():
+                if filter_widget is not None:
+                    filter_widget.clear()
+                    
+        # Recharger les données
+        if hasattr(main_window, 'table_controller'):
+            main_window.table_controller.load_data()
     
     def force_search(self, search_term=None):
         """Forcer une recherche immédiate (sans débounce)"""

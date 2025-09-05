@@ -206,3 +206,24 @@ class SearchService:
         else:
             # Pour tout autre type, convertir en string simple
             return str(term)
+    
+    def extract_first_term(self, search_text: str) -> str:
+        """
+        Extraire le premier terme d'une recherche (avant || ou &&)
+        
+        Args:
+            search_text: Texte de recherche à analyser
+            
+        Returns:
+            str: Premier terme extrait
+        """
+        if not search_text:
+            return ""
+        
+        # Séparer par || d'abord, puis par &&
+        for separator in ['||', '&&']:
+            if separator in search_text:
+                return search_text.split(separator)[0].strip()
+        
+        # Si pas d'opérateur, retourner tel quel
+        return search_text.strip()

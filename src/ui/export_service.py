@@ -52,7 +52,7 @@ class MainExportService:
         
         try:
             # Détecter si c'est une recherche multiple OR pour proposer sélection de référence
-            parsed_term = self._get_current_search_term() or search_term
+            parsed_term = self.main_window.advanced_search_service.get_current_search_term_with_fallback(self.main_window) or search_term
             
             # Gérer différemment selon le format d'export
             if export_format == ExportFormat.CSV:
@@ -80,16 +80,6 @@ class MainExportService:
                 f"Erreur lors de l'export: {e}"
             )
     
-    def _get_current_search_term(self) -> Union[str, Dict, None]:
-        """
-        Récupérer le terme de recherche actuel parsé
-        
-        Returns:
-            Union[str, Dict, None]: Terme parsé ou None
-        """
-        if hasattr(self.main_window, '_get_current_search_term'):
-            return self.main_window._get_current_search_term()
-        return None
     
     def _handle_csv_reference_selection(self, search_term: str, parsed_term: Union[str, Dict]) -> tuple:
         """
@@ -111,7 +101,7 @@ class MainExportService:
                 "Référence pour l'export CSV",
                 f"Référence détectée : {search_term}\n"
                 f"Confirmez ou modifiez la référence à utiliser pour la première colonne :",
-                self._extract_first_term(search_term)
+                self.main_window.search_service.extract_first_term(search_term)
             )
             
             if not selected_reference:
@@ -141,7 +131,7 @@ class MainExportService:
                 f"Recherche multiple détectée ({len(terms)} références).\n"
                 f"Termes: {', '.join(terms)}\n"
                 f"Choisissez la référence à utiliser pour l'export :",
-                self._extract_first_term(terms[0]) if terms else ""
+                self.main_window.search_service.extract_first_term(terms[0]) if terms else ""
             )
             
             if not selected_reference:
@@ -151,19 +141,6 @@ class MainExportService:
         else:
             return None, None
     
-    def _extract_first_term(self, term: str) -> str:
-        """
-        Extraire le premier terme d'une recherche
-        
-        Args:
-            term: Terme de recherche brut
-            
-        Returns:
-            str: Premier terme extrait
-        """
-        if hasattr(self.main_window, '_extract_first_term'):
-            return self.main_window._extract_first_term(term)
-        return term.strip()
     
     def _validate_search_results(self, search_term: str) -> bool:
         """
