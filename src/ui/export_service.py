@@ -179,7 +179,7 @@ class MainExportService:
             # Charger les résultats pour vérification - utiliser la même logique que TableController
             if search_term and ('&&' in search_term or '||' in search_term):
                 # Recherche avancée avec opérateurs
-                parsed_search_term = self.main_window._parse_advanced_search(search_term)
+                parsed_search_term = self.main_window.advanced_search_service.parse_advanced_search(search_term)
                 results = self.main_window.db_manager.load_data(
                     parsed_search_term, {}, None, None, None, None, False
                 )

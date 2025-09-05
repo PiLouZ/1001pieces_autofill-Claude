@@ -217,8 +217,8 @@ class TableController:
                 self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
             elif search_term and isinstance(search_term, str) and ('&&' in search_term or '||' in search_term):
                 # Terme brut à parser 
-                if hasattr(self.parent_window, '_parse_advanced_search'):
-                    parsed_term = self.parent_window._parse_advanced_search(search_term)
+                if hasattr(self.parent_window, 'advanced_search_service'):
+                    parsed_term = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
                     self.total_rows = self.db_manager.count_data(parsed_term, column_filters, incomplete_filter=incomplete_filter)
                 else:
                     # Fallback terme brut
@@ -242,8 +242,8 @@ class TableController:
                                                    self.current_sort_column, self.current_sort_order, incomplete_filter)
             elif search_term and isinstance(search_term, str) and ('&&' in search_term or '||' in search_term):
                 # Terme brut à parser
-                if hasattr(self.parent_window, '_parse_advanced_search'):
-                    parsed_term = self.parent_window._parse_advanced_search(search_term)
+                if hasattr(self.parent_window, 'advanced_search_service'):
+                    parsed_term = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
                     records = self.db_manager.load_data(parsed_term, column_filters, limit, offset, 
                                                        self.current_sort_column, self.current_sort_order, incomplete_filter)
                 else:
