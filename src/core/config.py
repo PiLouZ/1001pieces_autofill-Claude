@@ -234,7 +234,68 @@ class Config:
                                                    JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)""",
         'search_pieces_only': """SELECT DISTINCT pa.appareil_id FROM piece_associations pa 
                                JOIN pieces p ON pa.piece_id = p.id 
-                               WHERE p.ref_piece LIKE ?"""
+                               WHERE p.ref_piece LIKE ?""",
+        
+        # ==========================================================================
+        # REQUÊTES CONSOLIDÉES - PRIORITÉ 3 PHASE 2
+        # Centralisation des requêtes SELECT DISTINCT fréquemment dupliquées
+        # ==========================================================================
+        
+        # Requêtes DISTINCT pour champs d'appareils
+        'distinct_types': """SELECT DISTINCT type FROM appareils 
+                           WHERE type IS NOT NULL AND type != '' 
+                           ORDER BY type LIMIT 1000""",
+        'distinct_manufacturers': """SELECT DISTINCT manufacturer FROM appareils 
+                                   WHERE manufacturer IS NOT NULL AND manufacturer != '' 
+                                   ORDER BY manufacturer LIMIT 1000""",
+        'distinct_ref_modele': """SELECT DISTINCT ref_modele FROM appareils 
+                                WHERE ref_modele IS NOT NULL AND ref_modele != '' 
+                                ORDER BY ref_modele LIMIT 1000""",
+        'distinct_commercial_ref': """SELECT DISTINCT commercial_ref FROM appareils 
+                                    WHERE commercial_ref IS NOT NULL AND commercial_ref != '' 
+                                    ORDER BY commercial_ref LIMIT 1000""",
+        'distinct_ref_pieces': """SELECT DISTINCT ref_piece FROM pieces 
+                                WHERE ref_piece IS NOT NULL AND ref_piece != '' 
+                                ORDER BY ref_piece LIMIT 1000""",
+        
+        # Requêtes pour auto-complétion avec filtre dynamique  
+        'autocomplete_field': """SELECT DISTINCT {field} FROM appareils 
+                               WHERE {field} IS NOT NULL AND {field} != '' 
+                               ORDER BY {field} LIMIT 1000""",
+        
+        # Requêtes auto-complétion avec filtre LIKE 
+        'autocomplete_types_like': """SELECT DISTINCT type FROM appareils 
+                                    WHERE type LIKE ? AND type != '' 
+                                    ORDER BY type LIMIT 20""",
+        'autocomplete_manufacturers_like': """SELECT DISTINCT manufacturer FROM appareils 
+                                            WHERE manufacturer LIKE ? AND manufacturer != '' 
+                                            ORDER BY manufacturer LIMIT 20""",
+        
+        # Requêtes pour SEO/analytics avec jointures fréquentes
+        'devices_for_piece': """SELECT DISTINCT a.type, a.manufacturer 
+                              FROM appareils a 
+                              JOIN piece_associations pa ON a.id = pa.appareil_id 
+                              JOIN pieces p ON pa.piece_id = p.id 
+                              WHERE p.ref_piece = ? 
+                                AND a.type IS NOT NULL AND a.type != '' 
+                                AND a.manufacturer IS NOT NULL AND a.manufacturer != ''""",
+        
+        # Requêtes de comptage communes
+        'count_pieces_for_device': """SELECT COUNT(*) FROM piece_associations pa 
+                                    WHERE pa.appareil_id = ?""",
+        'count_devices_for_piece': """SELECT COUNT(DISTINCT pa.appareil_id) 
+                                    FROM piece_associations pa 
+                                    JOIN pieces p ON pa.piece_id = p.id 
+                                    WHERE p.ref_piece = ?""",
+        
+        # Requêtes de validation/nettoyage communes
+        'find_duplicates_by_refs': """SELECT ref_modele, commercial_ref, COUNT(*) as count 
+                                    FROM appareils 
+                                    WHERE (ref_modele IS NOT NULL AND ref_modele != '') 
+                                       OR (commercial_ref IS NOT NULL AND commercial_ref != '')
+                                    GROUP BY ref_modele, commercial_ref 
+                                    HAVING COUNT(*) > 1""",
+        'delete_piece_by_ref': """DELETE FROM pieces WHERE ref_piece = ?"""
     }
     
     # Structure de la base de données (SANS pieces_count pour simplifier)

@@ -190,7 +190,7 @@ class SEOService:
             fabricants = set()
             
             # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
-            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
+            fabricants_query = Config.get_query('devices_for_piece')
             
             try:
                 all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [search_term])
@@ -700,7 +700,7 @@ class SEOService:
             fabricants = set()
             
             # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
-            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
+            fabricants_query = Config.get_query('devices_for_piece')
             
             try:
                 all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [specific_reference])
@@ -751,7 +751,7 @@ class SEOService:
             fabricants = set()
             
             # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
-            fabricants_query = "SELECT DISTINCT a.type, a.manufacturer FROM appareils a JOIN piece_associations pa ON a.id = pa.appareil_id JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ? AND a.type IS NOT NULL AND a.type != '' AND a.manufacturer IS NOT NULL AND a.manufacturer != ''"
+            fabricants_query = Config.get_query('devices_for_piece')
             
             try:
                 all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [reference])

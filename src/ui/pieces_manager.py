@@ -499,7 +499,7 @@ class PiecesManagerWindow(QDialog):
             
             # Supprimer chaque pièce
             for ref_piece, nb_appareils in pieces_to_delete:
-                query = "DELETE FROM pieces WHERE ref_piece = ?"
+                query = Config.get_query('delete_piece_by_ref')
                 result = self.db_manager.execute_query(query, [ref_piece])
                 deleted_count += 1
                 deleted_associations += nb_appareils

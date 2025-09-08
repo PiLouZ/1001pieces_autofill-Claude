@@ -8,6 +8,8 @@ from typing import List, Tuple, Optional, Dict, Any
 from collections import OrderedDict
 import hashlib
 
+from ..core.config import Config
+
 try:
     from PyQt5.QtCore import QThread, pyqtSignal
     PYQT_AVAILABLE = True
@@ -604,7 +606,7 @@ class DatabaseManager:
                     elif description and not pieces_data[ref_piece]['description']:
                         pieces_data[ref_piece]['description'] = description
             else:
-                self.cursor.execute("SELECT DISTINCT ref_piece FROM pieces")
+                self.cursor.execute(Config.get_query('distinct_ref_pieces'))
                 for (ref_piece,) in self.cursor.fetchall():
                     pieces_data[ref_piece] = {'description': None, 'created_at': None}
             

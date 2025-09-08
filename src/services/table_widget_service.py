@@ -192,12 +192,10 @@ class CustomTableWidget(QTableWidget):
             return []
         
         try:
-            result = self.db_manager.execute_query("""
-                SELECT DISTINCT type FROM appareils 
-                WHERE type LIKE ? AND type != '' 
-                ORDER BY type
-                LIMIT 20
-            """, (f"{partial_text}%",))
+            result = self.db_manager.execute_query(
+                Config.get_query('autocomplete_types_like'), 
+                (f"{partial_text}%",)
+            )
             
             return [row[0] for row in result]
         except Exception as e:
@@ -210,12 +208,10 @@ class CustomTableWidget(QTableWidget):
             return []
         
         try:
-            result = self.db_manager.execute_query("""
-                SELECT DISTINCT manufacturer FROM appareils 
-                WHERE manufacturer LIKE ? AND manufacturer != '' 
-                ORDER BY manufacturer
-                LIMIT 20
-            """, (f"{partial_text}%",))
+            result = self.db_manager.execute_query(
+                Config.get_query('autocomplete_manufacturers_like'), 
+                (f"{partial_text}%",)
+            )
             
             return [row[0] for row in result]
         except Exception as e:
@@ -228,11 +224,9 @@ class CustomTableWidget(QTableWidget):
             return []
         
         try:
-            result = self.db_manager.execute_query("""
-                SELECT DISTINCT type FROM appareils 
-                WHERE type != '' 
-                ORDER BY type
-            """)
+            result = self.db_manager.execute_query(
+                Config.get_query('distinct_types')
+            )
             
             return [row[0] for row in result]
         except Exception as e:
@@ -245,11 +239,9 @@ class CustomTableWidget(QTableWidget):
             return []
         
         try:
-            result = self.db_manager.execute_query("""
-                SELECT DISTINCT manufacturer FROM appareils 
-                WHERE manufacturer != '' 
-                ORDER BY manufacturer
-            """)
+            result = self.db_manager.execute_query(
+                Config.get_query('distinct_manufacturers')
+            )
             
             return [row[0] for row in result]
         except Exception as e:
