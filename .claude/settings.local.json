@@ -61,7 +61,8 @@
       "Read(/private/tmp/**)",
       "Read(/private/tmp/**)",
       "Read(/private/tmp/**)",
-      "Bash(/dev/null)"
+      "Bash(/dev/null)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "additionalDirectories": [

@@ -6,8 +6,17 @@ Architecture modulaire avec séparation des responsabilités
 import sys
 from typing import Optional, Dict, Any, List, Tuple
 
-# Imports PyQt5 centralisés
-from .qt_imports import *
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QTableWidget, QTableWidgetItem, 
+    QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
+    QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
+    QToolBar, QAction, QStatusBar, QSplitter, QTabWidget, 
+    QListWidget, QListWidgetItem, QFileDialog, QComboBox,
+    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser
+)
+from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont
+from PyQt5.QtCore import QSize, QMimeData, QUrl, QStringListModel
+from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
 
 # Helpers et utilitaires refactorisés
 from .message_helper import MessageHelper, CommonMessages, show_success, show_error, ask_confirmation
@@ -1073,7 +1082,7 @@ class MainWindow(QMainWindow):
 
     def _export_data(self, export_format: ExportFormat):
         """Export avec sélection de référence (comportement original) - Phase 2.11"""
-        self.main_export_service.export_data(export_format)
+        self.export_service.export_data(export_format)
 
     def _export_with_custom_reference(self, search_data_term, reference_for_file: str, export_format: ExportFormat, results_count: int) -> bool:
         """Exporter avec tous les résultats mais utiliser une référence spécifique pour le nom et la première colonne"""
