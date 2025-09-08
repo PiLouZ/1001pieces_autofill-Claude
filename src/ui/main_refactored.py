@@ -5,21 +5,20 @@ Architecture modulaire avec séparation des responsabilités
 
 import sys
 from typing import Optional, Dict, Any, List, Tuple
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QTableWidget, QTableWidgetItem, 
-    QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
-    QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
-    QToolBar, QAction, QStatusBar, QSplitter, QTabWidget, 
-    QListWidget, QListWidgetItem, QFileDialog, QComboBox,
-    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser
-)
-from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QBrush, QKeyEvent, QFont
-from PyQt5.QtCore import QSize, QMimeData, QUrl, Qt, QTimer, QSettings, QEvent
 
-from ..services import SearchService, ExportService, ImportService
+# Imports PyQt5 centralisés
+from .qt_imports import *
+
+# Helpers et utilitaires refactorisés
+from .message_helper import MessageHelper, CommonMessages, show_success, show_error, ask_confirmation
+from .dialog_manager import DialogManager
+from ..utils.error_handler import handle_errors, handle_database_errors, SafeOperation
+from ..core.constants import UIConfig, Messages, DatabaseConfig, FileExtensions
+
+from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
-from ..services.export_service import ExportFormat
+from ..services.export_service import ExportService, ExportFormat
 from ..services.device_manager import DeviceManager
 from ..services.paste_results_service import PasteResultsService
 
@@ -45,7 +44,7 @@ from .pieces_list_service import PiecesListService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 from ..services.drag_handle_service import DragHandle, DragHandleService
 from ..services.undo_manager import UndoRedoManager, UndoManagerService
-from ..services.dialog_service import CategoryDialog, NotesDialog, DialogService
+# Supprimé: remplacé par DialogManager dans les imports centralisés
 from ..services.event_handlers_service import EventHandlersService
 from ..services.table_fill_service import TableFillService
 
@@ -76,106 +75,104 @@ class MainWindow(QMainWindow):
         # S'assurer que le bouton "lignes à compléter" est mis à jour après l'initialisation
         self._update_incomplete_button_visibility()
 
+    @handle_database_errors("Erreur d'initialisation des composants")
     def _init_components(self):
-        """Initialiser les composants principaux"""
-        try:
-            # Gestionnaires métier
-            self.db_manager = DatabaseManager()
-            self.validator = DataValidator()
-            self.exporter = DataExporter(self.db_manager)
-            
-            self.search_service = SearchService(self.db_manager)
-            self.advanced_search_service = AdvancedSearchService(self.search_service, self)
-            self.export_service = ExportService(self.db_manager)
-            self.import_service = ImportService(self.db_manager)
-            
-            from ..services.autocompletion_service import AutoCompletionService
-            self.autocompletion_service = AutoCompletionService(self.db_manager, self)
-            
-            self.device_manager = DeviceManager(self.db_manager)
-            
-            self.paste_results_service = PasteResultsService(self)
-            
-            self.event_handlers_service = EventHandlersService(self)
-            
-            self.table_fill_service = TableFillService(self)
-            
-            self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
-            
-            self.data_management_service = DataManagementService(self.db_manager, self)
-            
-            from .toolbar_service import ToolbarService
-            self.toolbar_service = ToolbarService(self)
-            
-            from .dialog_service import DialogService
-            self.dialog_service = DialogService(self)
-            
-            from .file_processing_service import FileProcessingService
-            self.file_processing_service = FileProcessingService(self)
-            
-            from .legacy_export_service import LegacyExportService
-            self.legacy_export_service = LegacyExportService(self)
-            
-            from .custom_reference_service import CustomReferenceService
-            self.custom_reference_service = CustomReferenceService(self)
-            
-            # PasteCleanupService - Nettoyage automatique des extensions collées
-            from ..services.paste_cleanup_service import PasteCleanupService  
-            self.paste_cleanup_service = PasteCleanupService(self)
-            
-            from .pieces_panel_service import PiecesPanelService
-            self.pieces_panel_service = PiecesPanelService(self)
-            
-            from .export_service import MainExportService
-            self.main_export_service = MainExportService(self)
-            
-            from .ui_component_service import UIComponentService
-            self.ui_component_service = UIComponentService(self)
-            
-            self.user_interaction_service = UserInteractionService(self)
-            
-            self.piece_management_service = PieceManagementService(self)
-            
-            self.seo_service = SEOService(self)
-            
-            self.pieces_list_service = PiecesListService(self)
-            
-            self.drag_handle_service = DragHandleService()
-            
-            self.undo_manager_service = UndoManagerService()
-            
-            # PHASE 2.3: Connecter signaux AdvancedSearchService
-            self._connect_advanced_search_signals()
-            
-            self.table_controller = TableController(self, self.db_manager)
-            
-            # Initialiser les variables d'état
-            self.previous_values = {}  # Pour tracker les valeurs précédentes (drag handle)
-            self.drag_overlay_active = False  # Pour le drag&drop overlay
-            self._piece_description_decisions = {}  # Cache des décisions de description pour l'import
-            self.show_incomplete_only = False  # Filtre pour lignes incomplètes
-            self.use_pagination = True  # Contrôle de l'utilisation de la pagination
-            
-            # Écouter les événements des services
-            self._setup_service_events()
-            
-            # Nouveau gestionnaire d'import unifié
-            self.import_manager = ImportManager(self.db_manager, parent_widget=self)
-            
-            # Gestionnaires UI
-            self.undo_manager = self.undo_manager_service.create_undo_manager()
-            self.settings = QSettings("DeviceManager", "MainApp")
-            
-            # État de l'application
-            self.modified_cells = set()
-            self.log_viewer = None
-            
-            # Timers
-            self._setup_timers()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur d'initialisation", f"Impossible d'initialiser l'application: {e}")
-            sys.exit(1)
+        """Initialiser les composants principaux - Version refactorisée"""
+        # Gestionnaires métier centralisés
+        self.db_manager = DatabaseManager()
+        self.validator = DataValidator()
+        self.exporter = DataExporter(self.db_manager)
+        
+        # Services de recherche
+        self.search_service = SearchService(self.db_manager)
+        self.advanced_search_service = AdvancedSearchService(self.search_service, self)
+        
+        # Services d'import/export
+        self.export_service = ExportService(self.db_manager)
+        self.import_service = ImportService(self.db_manager)
+        
+        # Service d'autocomplétion
+        from ..services.autocompletion_service import AutoCompletionService
+        self.autocompletion_service = AutoCompletionService(self.db_manager, self)
+        
+        # Gestionnaire d'appareils
+        self.device_manager = DeviceManager(self.db_manager)
+        
+        # Services métier
+        self.paste_results_service = PasteResultsService(self)
+        self.event_handlers_service = EventHandlersService(self)
+        self.table_fill_service = TableFillService(self)
+        
+        # Processeurs de données
+        self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
+        self.data_management_service = DataManagementService(self.db_manager, self)
+        
+        # Service de toolbar
+        from .toolbar_service import ToolbarService
+        self.toolbar_service = ToolbarService(self)
+        
+        # Service de dialogues unifié (remplace les anciens DialogService en conflit)
+        self.dialog_manager = DialogManager(self)
+        
+        # Services de traitement de fichiers
+        from .file_processing_service import FileProcessingService
+        self.file_processing_service = FileProcessingService(self)
+        
+        from .legacy_export_service import LegacyExportService
+        self.legacy_export_service = LegacyExportService(self)
+        
+        from .custom_reference_service import CustomReferenceService
+        self.custom_reference_service = CustomReferenceService(self)
+        
+        # Service de nettoyage automatique des extensions collées
+        from ..services.paste_cleanup_service import PasteCleanupService  
+        self.paste_cleanup_service = PasteCleanupService(self)
+        
+        from .pieces_panel_service import PiecesPanelService
+        self.pieces_panel_service = PiecesPanelService(self)
+        
+        # Services d'interface utilisateur
+        from .ui_component_service import UIComponentService
+        self.ui_component_service = UIComponentService(self)
+        
+        self.user_interaction_service = UserInteractionService(self)
+        self.piece_management_service = PieceManagementService(self)
+        self.seo_service = SEOService(self)
+        self.pieces_list_service = PiecesListService(self)
+        
+        # Services de gestion d'interface avancés
+        self.drag_handle_service = DragHandleService()
+        self.undo_manager_service = UndoManagerService()
+        
+        # Configuration des signaux avancés
+        self._connect_advanced_search_signals()
+        
+        # Contrôleur principal de table
+        self.table_controller = TableController(self, self.db_manager)
+        
+        # Initialisation des variables d'état avec constantes
+        self.previous_values = {}  # Tracker des valeurs précédentes (drag handle)
+        self.drag_overlay_active = False  # État du drag&drop overlay
+        self._piece_description_decisions = {}  # Cache des décisions de description import
+        self.show_incomplete_only = False  # Filtre lignes incomplètes
+        self.use_pagination = True  # Contrôle pagination
+        
+        # Configuration des événements des services
+        self._setup_service_events()
+        
+        # Gestionnaire d'import unifié
+        self.import_manager = ImportManager(self.db_manager, parent_widget=self)
+        
+        # Gestionnaires d'interface utilisateur
+        self.undo_manager = self.undo_manager_service.create_undo_manager()
+        self.settings = QSettings("DeviceManager", "MainApp")
+        
+        # État de l'application
+        self.modified_cells = set()
+        self.log_viewer = None
+        
+        # Configuration des timers
+        self._setup_timers()
     
     def _init_column_visibility(self):
         """Initialiser la configuration de visibilité des colonnes"""
@@ -805,16 +802,10 @@ class MainWindow(QMainWindow):
         try:
             if self.use_pagination:
                 # Passer en mode "Toutes les lignes"
-                reply = QMessageBox.question(
-                    self,
-                    "Afficher toutes les lignes",
-                    f"Voulez-vous afficher toutes les {self.total_rows} lignes?\n\n"
-                    "⚠️ Cela peut être lent si vous avez beaucoup de données.",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
+                message = (f"Voulez-vous afficher toutes les {self.total_rows} lignes?\n\n"
+                          "⚠️ Cela peut être lent si vous avez beaucoup de données.")
                 
-                if reply == QMessageBox.Yes:
+                if MessageHelper.ask_question(self, message, "Afficher toutes les lignes"):
                     self.use_pagination = False
                     self.show_all_btn.setText("📄 Pagination")
                     self.show_all_btn.setToolTip("Revenir à l'affichage paginé")
@@ -910,7 +901,7 @@ class MainWindow(QMainWindow):
                     
         except Exception as e:
             app_logger.error(f"Erreur affichage valeurs colonne: {e}")
-            QMessageBox.warning(self, "Erreur", f"Impossible de récupérer les valeurs: {e}")
+            MessageHelper.show_error(self, f"Impossible de récupérer les valeurs: {e}")
     
     
     def _get_db_field_name(self, ui_column: int) -> str:
@@ -993,7 +984,7 @@ class MainWindow(QMainWindow):
         if field_name:
             validation_result = self.validator.validate_field(field_name, new_value)
             if not validation_result.is_valid:
-                QMessageBox.warning(self, "Validation", validation_result.error_message)
+                MessageHelper.show_warning(self, validation_result.error_message, Messages.TITLE_WARNING)
                 item.setText(old_value)  # Restaurer l'ancienne valeur
                 return
         
@@ -1733,7 +1724,7 @@ class MainWindow(QMainWindow):
         """Gérer les catégories"""
         try:
             current_categories = self.db_manager.get_categories()
-            new_categories = DialogService.get_categories(self, current_categories)
+            new_categories = UnifiedDialogService.get_categories(self, current_categories)
             
             if new_categories is not None:
                 self.db_manager.update_categories(new_categories)
