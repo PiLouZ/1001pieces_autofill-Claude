@@ -47,47 +47,131 @@ class MainExportService:
             return
         
         try:
-            # Détecter si c'est une recherche multiple OR pour auto-extraire la première référence
+            # Détecter si c'est une recherche multiple OR pour proposer sélection de référence
             parsed_term = self.main_window.advanced_search_service.get_current_search_term_with_fallback(self.main_window) or search_term
             
-            # Extraire automatiquement la première référence sans dialogue
-            export_reference = self._extract_reference_automatically(search_term, parsed_term)
-            export_data_term = parsed_term if isinstance(parsed_term, dict) else search_term
+            # Gérer la sélection de référence avec dialogue de confirmation
+            export_data_term, export_reference = self._handle_reference_selection_with_dialog(search_term, parsed_term, export_format)
+            if export_reference is None:
+                return  # Utilisateur a annulé
             
             # Valider que la recherche a des résultats
             if not self._validate_search_results(search_term):
                 return
             
-            # Exporter directement sans confirmation
+            # Exporter avec la référence confirmée par l'utilisateur
             self._export_with_custom_reference(export_data_term, export_reference, export_format)
             
         except Exception as e:
             self.main_window.user_interaction_service.add_to_history(f"❌ Erreur export: {str(e)}")
     
-    def _extract_reference_automatically(self, search_term: str, parsed_term: Union[str, Dict]) -> str:
+    def _handle_reference_selection_with_dialog(self, search_term: str, parsed_term: Union[str, Dict], export_format: ExportFormat) -> tuple:
         """
-        Extraire automatiquement une référence sans dialogue utilisateur
+        Gérer la sélection de référence avec dialogue de confirmation utilisateur
         
         Args:
             search_term: Terme de recherche original
             parsed_term: Terme parsé par le service de recherche avancée
+            export_format: Format d'export pour adapter le message
             
         Returns:
-            str: Référence extraite automatiquement
+            tuple: (export_data_term, export_reference) ou (None, None) si annulé
         """
         if isinstance(parsed_term, dict) and parsed_term.get('type') == 'or':
-            # Recherche multiple OR - utiliser le premier terme
-            terms = []
-            for group in parsed_term.get('groups', []):
-                terms.extend(group.get('terms', []))
-            
-            if terms:
-                return self.main_window.search_service.extract_first_term(terms[0])
-            else:
-                return self.main_window.search_service.extract_first_term(search_term)
+            # Recherche multiple OR - proposer la sélection
+            return self._handle_multiple_references_with_dialog(parsed_term, export_format)
         else:
-            # Recherche simple - utiliser le terme directement
-            return self.main_window.search_service.extract_first_term(search_term)
+            # Recherche simple - demander confirmation de la référence
+            default_reference = self.main_window.search_service.extract_first_term(search_term)
+            
+            # Adapter le message selon le format d'export
+            if export_format == ExportFormat.CSV:
+                title = "Référence pour l'export CSV"
+                message = (f"Référence détectée : {search_term}\n"
+                          f"Cette référence sera utilisée dans la première colonne du fichier CSV.\n"
+                          f"Confirmez ou modifiez la référence :")
+            else:
+                title = f"Référence pour l'export {export_format}"
+                message = (f"Référence détectée : {search_term}\n"
+                          f"Confirmez ou modifiez la référence à utiliser :")
+            
+            # Utiliser le service de dialogue unifié
+            if hasattr(self.main_window, 'dialog_service'):
+                selected_reference = self.main_window.dialog_service.show_reference_selection_dialog(
+                    title, message, default_reference
+                )
+            else:
+                # Fallback avec QInputDialog si aucun service de dialogue
+                from PyQt5.QtWidgets import QInputDialog
+                selected_reference, ok = QInputDialog.getText(
+                    self.main_window,
+                    title,
+                    message,
+                    text=default_reference
+                )
+                if not ok:
+                    selected_reference = None
+            
+            if selected_reference:
+                return search_term, selected_reference
+            else:
+                return None, None  # Utilisateur a annulé
+    
+    def _handle_multiple_references_with_dialog(self, parsed_term: Dict, export_format: ExportFormat) -> tuple:
+        """
+        Gérer la sélection de référence pour les recherches multiples avec dialogue
+        
+        Args:
+            parsed_term: Terme de recherche parsé avec structure OR
+            export_format: Format d'export
+            
+        Returns:
+            tuple: (export_data_term, export_reference) ou (None, None) si annulé
+        """
+        # Extraire les termes disponibles
+        terms = []
+        for group in parsed_term.get('groups', []):
+            terms.extend(group.get('terms', []))
+        
+        if not terms:
+            return None, None
+        
+        # Proposer la liste des termes disponibles
+        if len(terms) == 1:
+            # Un seul terme : demander confirmation
+            default_reference = self.main_window.search_service.extract_first_term(terms[0])
+            title = f"Référence pour l'export {export_format}"
+            message = (f"Terme de recherche unique détecté : {terms[0]}\n"
+                      f"Confirmez ou modifiez la référence :")
+        else:
+            # Plusieurs termes : proposer le premier et permettre modification
+            default_reference = self.main_window.search_service.extract_first_term(terms[0])
+            title = f"Référence pour l'export {export_format}"
+            message = (f"Recherche multiple détectée avec {len(terms)} termes.\n"
+                      f"Premier terme suggéré : {terms[0]}\n"
+                      f"Confirmez ou saisissez la référence à utiliser :")
+        
+        # Utiliser le service de dialogue unifié
+        if hasattr(self.main_window, 'dialog_service'):
+            selected_reference = self.main_window.dialog_service.show_reference_selection_dialog(
+                title, message, default_reference
+            )
+        else:
+            # Fallback avec QInputDialog
+            from PyQt5.QtWidgets import QInputDialog
+            selected_reference, ok = QInputDialog.getText(
+                self.main_window,
+                title,
+                message,
+                text=default_reference
+            )
+            if not ok:
+                selected_reference = None
+        
+        if selected_reference:
+            return parsed_term, selected_reference  # Utiliser la recherche complète
+        else:
+            return None, None  # Utilisateur a annulé
     
     
     
