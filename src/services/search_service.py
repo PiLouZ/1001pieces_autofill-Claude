@@ -113,59 +113,131 @@ class SearchService:
             return []
     
     def parse_advanced_search(self, text: str) -> Optional[Dict[str, Any]]:
-        """Parser une recherche avancée (regex, opérateurs OR, etc.)"""
+        """
+        Parser une recherche avancée (regex, opérateurs OR, AND, etc.)
+        
+        MÉTHODE CONSOLIDÉE - PRIORITÉ 2 
+        Centralise toute la logique de parsing pour éviter duplications
+        """
+        from ..core.logger import app_logger
+        
         if not text or not text.strip():
             return None
             
-        text = text.strip()
-        
-        # Regex pattern
-        if text.startswith('/') and text.endswith('/') and len(text) > 2:
-            pattern = text[1:-1]  # Enlever les /
-            return {
-                'type': 'regex',
-                'pattern': pattern,
-                'original': text
-            }
-        
-        # OR groups (support both ' OR ' and '||' separators)
-        if ' OR ' in text.upper() or '||' in text:
-            groups = []
-            if '||' in text:
-                # Split by || first
-                or_parts = [part.strip() for part in text.split('||')]
+        try:
+            text = text.strip()
+            
+            # Regex pattern - format /pattern/
+            if text.startswith('/') and text.endswith('/') and len(text) > 2:
+                pattern = text[1:-1]  # Enlever les /
+                return {
+                    'type': 'regex',
+                    'pattern': pattern,
+                    'original': text
+                }
+            
+            # Détecter le type d'opérateur principal (priorité aux ||)
+            if '||' in text and '&&' in text:
+                # Recherche mixte - traiter || en priorité (comme AdvancedSearchService)
+                return self._parse_or_search(text)
+            elif '||' in text:
+                # Recherche OR uniquement  
+                return self._parse_or_search(text)
+            elif '&&' in text:
+                # Recherche AND uniquement
+                return self._parse_and_search(text)
+            elif ' OR ' in text.upper():
+                # Support legacy ' OR ' (pour compatibilité)
+                return self._parse_or_search_legacy(text)
+            elif ' AND ' in text.upper():
+                # Support legacy ' AND ' (pour compatibilité)
+                return self._parse_and_search_legacy(text)
             else:
-                # Split by OR
-                or_parts = [part.strip() for part in text.upper().split(' OR ')]
-            
-            for part in or_parts:
-                if ' AND ' in part.upper() or '&&' in part:
-                    # Groupe AND (support both ' AND ' and '&&')
-                    if '&&' in part:
-                        and_terms = [term.strip() for term in part.split('&&')]
-                    else:
-                        and_terms = [term.strip() for term in part.split(' AND ')]
-                    groups.append({
-                        'type': 'and',
-                        'terms': and_terms
-                    })
-                else:
-                    # Terme simple
-                    groups.append({
-                        'type': 'simple',
-                        'terms': [part]
-                    })
-            
+                # Pas d'opérateur - recherche simple
+                return {
+                    'type': 'simple',
+                    'terms': [text],
+                    'original': text
+                }
+                
+        except Exception as e:
+            app_logger.error(f"Erreur parsing recherche avancée '{text}': {e}")
+            # Fallback vers recherche simple pour garantir robustesse
             return {
-                'type': 'or',
-                'groups': groups,
+                'type': 'simple',
+                'terms': [text],
                 'original': text
             }
+    
+    def _parse_or_search(self, text: str) -> Dict[str, Any]:
+        """Parser recherche avec opérateurs OR (||) - Logique d'AdvancedSearchService"""
+        # Diviser par || et nettoyer chaque terme
+        or_groups = [term.strip() for term in text.split('||') if term.strip()]
         
-        # Simple search
+        parsed_groups = []
+        for group in or_groups:
+            if '&&' in group:
+                # Groupe avec AND interne
+                and_terms = [t.strip() for t in group.split('&&') if t.strip()]
+                parsed_groups.append({
+                    'type': 'and',
+                    'terms': and_terms
+                })
+            else:
+                # Terme simple dans le groupe OR
+                parsed_groups.append({
+                    'type': 'simple',
+                    'terms': [group]
+                })
+        
         return {
-            'type': 'simple',
-            'terms': [text],
+            'type': 'or',
+            'groups': parsed_groups,
+            'original': text
+        }
+    
+    def _parse_and_search(self, text: str) -> Dict[str, Any]:
+        """Parser recherche avec opérateurs AND (&&) - Logique d'AdvancedSearchService"""
+        # Diviser par && et nettoyer
+        and_terms = [term.strip() for term in text.split('&&') if term.strip()]
+        
+        return {
+            'type': 'and', 
+            'terms': and_terms,
+            'original': text
+        }
+    
+    def _parse_or_search_legacy(self, text: str) -> Dict[str, Any]:
+        """Parser recherche legacy avec ' OR ' (pour compatibilité)"""
+        or_parts = [part.strip() for part in text.upper().split(' OR ')]
+        groups = []
+        
+        for part in or_parts:
+            if ' AND ' in part.upper():
+                and_terms = [term.strip() for term in part.split(' AND ')]
+                groups.append({
+                    'type': 'and',
+                    'terms': and_terms
+                })
+            else:
+                groups.append({
+                    'type': 'simple',
+                    'terms': [part]
+                })
+        
+        return {
+            'type': 'or',
+            'groups': groups,
+            'original': text
+        }
+    
+    def _parse_and_search_legacy(self, text: str) -> Dict[str, Any]:
+        """Parser recherche legacy avec ' AND ' (pour compatibilité)"""
+        and_terms = [term.strip() for term in text.split(' AND ')]
+        
+        return {
+            'type': 'and', 
+            'terms': and_terms,
             'original': text
         }
     
@@ -191,6 +263,14 @@ class SearchService:
     
     def _normalize_search_term(self, term):
         """Normaliser le terme de recherche pour le cache et la DB"""
+        return self.format_search_term_for_processing(term)
+    
+    def format_search_term_for_processing(self, term):
+        """
+        Formater un terme de recherche pour traitement (cache, DB)
+        
+        MÉTHODE CONSOLIDÉE PRIORITÉ 2 - Remplace _normalize_search_term
+        """
         if isinstance(term, str):
             return term
         elif isinstance(term, dict):
@@ -206,6 +286,16 @@ class SearchService:
         else:
             # Pour tout autre type, convertir en string simple
             return str(term)
+    
+    def format_search_term_for_display(self, search_term) -> str:
+        """
+        Formater un terme de recherche pour affichage utilisateur
+        
+        MÉTHODE CONSOLIDÉE PRIORITÉ 2 - Remplace _get_display_term d'AdvancedSearchService
+        """
+        if isinstance(search_term, dict):
+            return search_term.get('original', str(search_term)[:50] + '...')
+        return str(search_term) if search_term else ""
     
     def extract_first_term(self, search_text: str) -> str:
         """
@@ -227,3 +317,71 @@ class SearchService:
         
         # Si pas d'opérateur, retourner tel quel
         return search_text.strip()
+    
+    # ==========================================================================
+    # LOGIQUE DE DÉTECTION DES PIÈCES - CENTRALISÉE PRIORITÉ 2
+    # Déplacée depuis AdvancedSearchService pour éviter dispersement
+    # ==========================================================================
+    
+    def is_piece_reference_search(self, search_term: str) -> bool:
+        """Détecter si la recherche concerne une référence de pièce - Vraie logique avec DB"""
+        try:
+            if not search_term or not search_term.strip():
+                return False
+            
+            # Détecter les recherches multi-références avec || ou &&
+            if '||' in search_term or '&&' in search_term:
+                return self._are_all_terms_piece_references(search_term)
+            
+            # Recherche simple - vérifier si c'est une référence de pièce
+            return self._get_piece_description_from_reference(search_term) is not None
+        
+        except Exception as e:
+            print(f"⚠️ Erreur vérification référence pièce: {e}")
+            return False
+    
+    def _are_all_terms_piece_references(self, search_term: str) -> bool:
+        """Vérifier si tous les termes d'une recherche multi-références sont des références de pièce"""
+        try:
+            # Diviser selon l'opérateur utilisé
+            if '||' in search_term:
+                terms = [term.strip() for term in search_term.split('||') if term.strip()]
+            elif '&&' in search_term:
+                terms = [term.strip() for term in search_term.split('&&') if term.strip()]
+            else:
+                return False
+            
+            # Au moins un terme doit être une référence de pièce pour les recherches ||
+            # Tous les termes doivent être des références de pièce pour les recherches &&
+            if '||' in search_term:
+                # Pour ||, au moins une référence valide suffit
+                return any(self._get_piece_description_from_reference(term) is not None for term in terms)
+            else:  # && 
+                # Pour &&, toutes les références doivent être valides
+                return all(self._get_piece_description_from_reference(term) is not None for term in terms)
+                
+        except Exception as e:
+            print(f"⚠️ Erreur vérification multi-références: {e}")
+            return False
+    
+    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
+        """Récupérer la description d'une pièce depuis sa référence"""
+        try:
+            # Rechercher la pièce par référence exacte
+            query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
+            result = self.db_manager.execute_query(query, [reference])
+            
+            if result:
+                description = result[0][0]
+                # Vérifier que la description n'est pas None ou vide
+                if description and description.strip():
+                    return description.strip()
+                else:
+                    # Description vide mais référence existe
+                    return ""
+            
+            return None
+            
+        except Exception as e:
+            print(f"⚠️ Erreur récupération description pièce pour '{reference}': {e}")
+            return None

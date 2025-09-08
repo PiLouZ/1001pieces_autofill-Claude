@@ -52,7 +52,7 @@ class AdvancedSearchService(QObject):
             self.pending_search_term = search_term
         
         # Émettre signal pour boutons export (basé sur détection référence pièce)
-        is_piece_search = self._is_piece_reference_search(search_term)
+        is_piece_search = self.search_service.is_piece_reference_search(search_term)
         self.export_buttons_update.emit(is_piece_search)
         
         # Débounce : arrêter timer précédent et redémarrer
@@ -78,7 +78,7 @@ class AdvancedSearchService(QObject):
         
         try:
             # Émettre signal de début
-            display_term = self._get_display_term(search_term)
+            display_term = self.search_service.format_search_term_for_display(search_term)
             self.search_started.emit(display_term)
             
             # Exécuter via SearchService avec pagination
@@ -111,77 +111,14 @@ class AdvancedSearchService(QObject):
             self.search_error.emit(error_msg)
     
     def parse_advanced_search(self, text: str) -> Optional[Dict[str, Any]]:
-        """Parser la recherche avancée avec opérateurs && et ||"""
-        if not text.strip():
-            return None
+        """
+        Parser la recherche avancée avec opérateurs && et || 
         
-        try:
-            # Nettoyer le texte d'entrée
-            text = text.strip()
-            
-            # Détecter le type d'opérateur principal
-            if '||' in text and '&&' in text:
-                # Recherche mixte - traiter || en priorité
-                return self._parse_or_search(text)
-            elif '||' in text:
-                # Recherche OR uniquement
-                return self._parse_or_search(text)
-            elif '&&' in text:
-                # Recherche AND uniquement
-                return self._parse_and_search(text)
-            else:
-                # Pas d'opérateur - recherche simple
-                return {
-                    'type': 'simple',
-                    'terms': [text],
-                    'original': text
-                }
-        except Exception as e:
-            app_logger.error(f"Erreur parsing recherche avancée '{text}': {e}")
-            # Fallback vers recherche simple
-            return {
-                'type': 'simple', 
-                'terms': [text],
-                'original': text
-            }
+        REFACTORISÉ PRIORITÉ 2 - Délègue à SearchService.parse_advanced_search()
+        pour éviter duplication de code
+        """
+        return self.search_service.parse_advanced_search(text)
     
-    def _parse_or_search(self, text: str) -> Dict[str, Any]:
-        """Parser recherche avec opérateurs OR (||)"""
-        # Diviser par || et nettoyer chaque terme
-        or_groups = [term.strip() for term in text.split('||') if term.strip()]
-        
-        parsed_groups = []
-        for group in or_groups:
-            if '&&' in group:
-                # Groupe avec AND interne
-                and_terms = [t.strip() for t in group.split('&&') if t.strip()]
-                parsed_groups.append({
-                    'type': 'and',
-                    'terms': and_terms
-                })
-            else:
-                # Terme simple dans le groupe OR
-                parsed_groups.append({
-                    'type': 'simple',
-                    'terms': [group]
-                })
-        
-        return {
-            'type': 'or',
-            'groups': parsed_groups,
-            'original': text
-        }
-    
-    def _parse_and_search(self, text: str) -> Dict[str, Any]:
-        """Parser recherche avec opérateurs AND (&&)"""
-        # Diviser par && et nettoyer
-        and_terms = [term.strip() for term in text.split('&&') if term.strip()]
-        
-        return {
-            'type': 'and', 
-            'terms': and_terms,
-            'original': text
-        }
     
     def apply_search_highlight(self, item: QTableWidgetItem, search_term) -> bool:
         """Appliquer la mise en évidence de recherche sur un item"""
@@ -246,74 +183,7 @@ class AdvancedSearchService(QObject):
             app_logger.error(f"Erreur mise en évidence recherche: {e}")
             return False
     
-    def _is_piece_reference_search(self, search_term: str) -> bool:
-        """Détecter si la recherche concerne une référence de pièce - Vraie logique avec DB"""
-        try:
-            if not search_term or not search_term.strip():
-                return False
-            
-            # Détecter les recherches multi-références avec || ou &&
-            if '||' in search_term or '&&' in search_term:
-                return self._are_all_terms_piece_references(search_term)
-            
-            # Recherche simple - vérifier si c'est une référence de pièce
-            return self._get_piece_description_from_reference(search_term) is not None
-        
-        except Exception as e:
-            app_logger.error(f"Erreur vérification référence pièce: {e}")
-            return False
     
-    def _are_all_terms_piece_references(self, search_term: str) -> bool:
-        """Vérifier si tous les termes d'une recherche multi-références sont des références de pièce"""
-        try:
-            # Diviser selon l'opérateur utilisé
-            if '||' in search_term:
-                terms = [term.strip() for term in search_term.split('||') if term.strip()]
-            elif '&&' in search_term:
-                terms = [term.strip() for term in search_term.split('&&') if term.strip()]
-            else:
-                return False
-            
-            # Au moins un terme doit être une référence de pièce pour les recherches ||
-            # Tous les termes doivent être des références de pièce pour les recherches &&
-            if '||' in search_term:
-                # Pour ||, au moins une référence valide suffit
-                return any(self._get_piece_description_from_reference(term) is not None for term in terms)
-            else:  # && 
-                # Pour &&, toutes les références doivent être valides
-                return all(self._get_piece_description_from_reference(term) is not None for term in terms)
-                
-        except Exception as e:
-            app_logger.error(f"Erreur vérification multi-références: {e}")
-            return False
-    
-    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
-        """Récupérer la description d'une pièce depuis sa référence"""
-        try:
-            # Rechercher la pièce par référence exacte
-            query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
-            result = self.search_service.db_manager.execute_query(query, [reference])
-            
-            if result:
-                description = result[0][0]
-                # Vérifier que la description n'est pas None ou vide
-                if description and description.strip():
-                    return description.strip()
-                else:
-                    # Description vide mais référence existe
-                    return ""
-            
-            return None
-            
-        except Exception as e:
-            app_logger.error(f"Erreur récupération description pièce pour '{reference}': {e}")
-            return None
-    
-    def _get_display_term(self, search_term) -> str:
-        """Obtenir terme lisible pour affichage"""
-        if isinstance(search_term, dict):
-            return search_term.get('original', str(search_term)[:50] + '...')
-        return str(search_term) if search_term else ""
     
     def get_current_search_term(self):
         """Obtenir le terme de recherche actuellement actif"""
