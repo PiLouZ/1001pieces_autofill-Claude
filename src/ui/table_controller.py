@@ -718,12 +718,18 @@ class TableController:
     
     def _clear_advanced_search(self):
         """Effacer la recherche avancée"""
-        # Vérifier si le widget existe encore avant de l'utiliser
-        if hasattr(self, 'advanced_search_input') and self.advanced_search_input is not None:
+        # Utiliser la référence principale dans MainWindow (compatible avec PasteInterceptor)
+        if hasattr(self.parent_window, 'search_input') and self.parent_window.search_input is not None:
+            try:
+                self.parent_window.search_input.clear()
+            except RuntimeError:
+                # Le widget a été supprimé, on ignore silencieusement
+                pass
+        # Fallback vers l'ancienne méthode si nécessaire
+        elif hasattr(self, 'advanced_search_input') and self.advanced_search_input is not None:
             try:
                 self.advanced_search_input.clear()
             except RuntimeError:
-                # Le widget a été supprimé, on ignore silencieusement
                 pass
         
         self.current_search_term = None  # Nettoyer aussi le terme persistant
