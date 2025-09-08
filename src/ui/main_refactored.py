@@ -27,7 +27,8 @@ from ..core.constants import UIConfig, Messages, DatabaseConfig, FileExtensions
 from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
-from ..services.export_service import ExportService, ExportFormat
+from ..services.export_service import ExportFormat
+from .export_service import MainExportService
 from ..services.device_manager import DeviceManager
 from ..services.paste_results_service import PasteResultsService
 
@@ -97,7 +98,7 @@ class MainWindow(QMainWindow):
         self.advanced_search_service = AdvancedSearchService(self.search_service, self)
         
         # Services d'import/export
-        self.export_service = ExportService(self.db_manager)
+        self.export_service = MainExportService(self)
         self.import_service = ImportService(self.db_manager)
         
         # Service d'autocomplétion
@@ -122,6 +123,10 @@ class MainWindow(QMainWindow):
         
         # Service de dialogues unifié (remplace les anciens DialogService en conflit)
         self.dialog_manager = DialogManager(self)
+        
+        # Service de dialogue unifié pour les méthodes complexes (compatible legacy)
+        from ..services.unified_dialog_service import UnifiedDialogService
+        self.dialog_service = UnifiedDialogService(self)
         
         # Services de traitement de fichiers
         from .file_processing_service import FileProcessingService

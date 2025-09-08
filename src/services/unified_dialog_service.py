@@ -20,7 +20,7 @@ from enum import Enum
 from PyQt5.QtWidgets import (
     QInputDialog, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit, 
-    QListWidget, QListWidgetItem, QMessageBox, QButtonBox
+    QListWidget, QListWidgetItem, QMessageBox, QDialogButtonBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -235,7 +235,7 @@ class ComplexDialogs:
                 layout.addWidget(preview_text)
             
             # Boutons
-            button_box = QButtonBox(QButtonBox.Ok | QButtonBox.Cancel)
+            button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             button_box.accepted.connect(dialog.accept)
             button_box.rejected.connect(dialog.reject)
             layout.addWidget(button_box)
@@ -299,7 +299,7 @@ class ComplexDialogs:
             layout.addLayout(ref_layout)
             
             # Boutons
-            button_box = QButtonBox(QButtonBox.Ok | QButtonBox.Cancel)
+            button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             button_box.accepted.connect(dialog.accept)
             button_box.rejected.connect(dialog.reject)
             layout.addWidget(button_box)
@@ -379,7 +379,7 @@ class ComplexDialogs:
             suggestions_list.itemSelectionChanged.connect(on_suggestion_selected)
             
             # Boutons
-            button_box = QButtonBox(QButtonBox.Ok | QButtonBox.Cancel)
+            button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             button_box.accepted.connect(dialog.accept)
             button_box.rejected.connect(dialog.reject)
             layout.addWidget(button_box)
