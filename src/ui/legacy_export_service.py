@@ -43,7 +43,7 @@ class LegacyExportService:
         """
         # Récupérer le terme de recherche si non fourni
         if search_term is None:
-            search_term = self._get_current_search_term()
+            search_term = self.main_window.advanced_search_service.get_current_search_term_with_fallback(self.main_window)
             
         if not search_term:
             QMessageBox.information(
@@ -89,11 +89,6 @@ class LegacyExportService:
             app_logger.error(f"Erreur export legacy: {e}")
             self.main_window._show_error(f"Erreur inattendue lors de l'export: {e}")
     
-    def _get_current_search_term(self) -> str:
-        """Récupérer le terme de recherche actuel"""
-        if hasattr(self.main_window, 'search_input') and self.main_window.search_input:
-            return self.main_window.search_input.text().strip()
-        return ""
     
     def _handle_csv_reference_selection(self, search_term: str) -> Optional[str]:
         """

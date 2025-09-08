@@ -669,9 +669,13 @@ class TableController:
         self.load_data(search_term, is_search=True)
     
     def _clear_search(self):
-        """Effacer la recherche"""
-        self.search_input.clear()
-        self.load_data(None, is_search=False)
+        """Effacer la recherche - délégué vers AdvancedSearchService"""
+        if hasattr(self.parent_window, 'advanced_search_service'):
+            self.parent_window.advanced_search_service.clear_search_ui(self.parent_window)
+        else:
+            # Fallback direct si le service n'est pas disponible
+            self.search_input.clear()
+            self.load_data(None, is_search=False)
     
     def _add_export_buttons(self, layout):
         """Ajouter les boutons d'export - délégué vers MainWindow"""
