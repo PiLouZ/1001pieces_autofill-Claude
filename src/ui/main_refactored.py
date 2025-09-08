@@ -13,11 +13,10 @@ from PyQt5.QtWidgets import (
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
     QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser
 )
-from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont
-from PyQt5.QtCore import QSize, QMimeData, QUrl, QStringListModel
-from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
+from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QBrush, QKeyEvent, QFont
+from PyQt5.QtCore import QSize, QMimeData, QUrl, Qt, QTimer, QSettings, QEvent
 
-from ..services import SearchService, ExportService, ImportService, EventBus
+from ..services import SearchService, ExportService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..services.export_service import ExportFormat
