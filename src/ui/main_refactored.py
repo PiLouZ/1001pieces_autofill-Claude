@@ -28,7 +28,7 @@ from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..services.export_service import ExportFormat
-from .export_service import MainExportService
+from ..services.unified_export_service import MainExportService
 from ..services.device_manager import DeviceManager
 from ..services.paste_results_service import PasteResultsService
 
