@@ -196,26 +196,22 @@ class AdvancedSearchService(QObject):
         # SOURCE DE VÉRITÉ: Le champ de recherche visible par l'utilisateur
         if hasattr(main_window, 'search_input') and main_window.search_input:
             visible_term = main_window.search_input.text().strip()
-            app_logger.debug(f"DEBUG get_current_search_term - champ visible: '{visible_term}'")
             if visible_term:
                 return visible_term
         
         # Fallback 1: TableController car c'est lui qui gère les recherches
         if hasattr(main_window, 'table_controller') and hasattr(main_window.table_controller, 'pending_search_term'):
             term = main_window.table_controller.pending_search_term
-            app_logger.debug(f"DEBUG get_current_search_term - TableController: {term}")
             if term:
                 return term
                 
         # Fallback 2: AdvancedSearchService  
         term = self.get_current_search_term()
-        app_logger.debug(f"DEBUG get_current_search_term - AdvancedSearchService: {term}")
         if term:
             return term
         
         # Fallback 3: current_search_term de main_refactored
         term = getattr(main_window, 'current_search_term', None)
-        app_logger.debug(f"DEBUG get_current_search_term - main_refactored: {term}")
         return term
     
     def clear_search(self):

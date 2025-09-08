@@ -16,6 +16,8 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QScrollArea, QWidget, QGridLayout)
 from PyQt5.QtCore import Qt
 
+from .logger import app_logger
+
 
 class ImportType(Enum):
     """Types d'import supportés"""
@@ -1195,9 +1197,8 @@ class ImportManager:
                     associations_batch.append((reference, label, processed_line_index, existing_id))
                     associations_added_for_line += 1
             
-            # DEBUG: Vérifier qu'au moins une association est créée par ligne
             if associations_added_for_line == 0:
-                print(f"⚠️ LIGNE {processed_line_index}: Aucune association créée pour cette ligne (pas de référence valide)")
+                app_logger.warning(f"Ligne {processed_line_index}: Aucune association créée pour cette ligne (pas de référence valide)")
             
             # Incrémenter le compteur des lignes réellement traitées
             processed_line_index += 1
@@ -1215,8 +1216,9 @@ class ImportManager:
         
         new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
         
-        # DEBUG CRITIQUE: Vérifier la correspondance IDs vs appareils
-        print(f"🔧 CRITIQUE: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
+        # Vérifier la correspondance IDs vs appareils
+        if len(new_devices_batch) != len(new_device_ids):
+            app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
         if len(new_devices_batch) != len(new_device_ids):
             print(f"❌ PROBLÈME: Discordance entre appareils créés et IDs récupérés!")
             print(f"   new_devices_batch: {len(new_devices_batch)}")
@@ -1234,7 +1236,7 @@ class ImportManager:
         batch_progress.setLabelText(f"🔗 Création de {len(associations_batch)} associations...")
         QApplication.processEvents()
         
-        # DEBUG: Analyser les associations qui ont besoin de nouveaux appareils
+        # Analyser les associations qui ont besoin de nouveaux appareils
         new_device_associations = [assoc for assoc in associations_batch if not assoc[3]]  # existing_id est None
         existing_device_associations = [assoc for assoc in associations_batch if assoc[3]]  # existing_id existe
         
@@ -1243,9 +1245,10 @@ class ImportManager:
         unique_existing_device_indices = set(assoc[2] for assoc in existing_device_associations)
         all_unique_indices = unique_new_device_indices | unique_existing_device_indices
         
-        print(f"🔧 ASSOCIATIONS: {len(associations_batch)} total = {len(new_device_associations)} pour nouveaux + {len(existing_device_associations)} pour existants")
-        print(f"🔧 CORRESPONDANCE CORRECTE: {len(new_devices_batch)} nouveaux appareils = {len(unique_new_device_indices)} indices d'appareils uniques nouveaux")
-        print(f"🔧 VÉRIFICATION CRITIQUE: {results['total_imported']} lignes traitées vs {len(all_unique_indices)} lignes avec associations")
+        # Log détaillé pour débogage si nécessaire
+        app_logger.info(f"Associations: {len(associations_batch)} total ({len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants)")
+        app_logger.info(f"Correspondance: {len(new_devices_batch)} nouveaux appareils = {len(unique_new_device_indices)} indices uniques")
+        app_logger.info(f"Vérification: {results['total_imported']} lignes traitées vs {len(all_unique_indices)} lignes avec associations")
         
         # ALERTE si discordance entre lignes traitées et associations
         if results['total_imported'] != len(all_unique_indices):

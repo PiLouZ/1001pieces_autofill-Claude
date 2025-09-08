@@ -92,27 +92,43 @@ class MainWindow(QMainWindow):
     @handle_database_errors("Erreur d'initialisation des composants")
     def _init_components(self):
         """Initialiser les composants principaux - Version refactorisée"""
-        # Gestionnaires métier centralisés
+        self._init_core_managers()
+        self._init_search_services()
+        self._init_import_export_services()
+        self._init_business_services()
+        self._init_ui_services()
+        self._init_advanced_features()
+        self._init_app_state()
+    
+    def _init_core_managers(self):
+        """Initialiser les gestionnaires de base"""
         self.db_manager = DatabaseManager()
         self.validator = DataValidator()
         self.exporter = DataExporter(self.db_manager)
-        
-        # Services de recherche
+        self.device_manager = DeviceManager(self.db_manager)
+    
+    def _init_search_services(self):
+        """Initialiser les services de recherche"""
         self.search_service = SearchService(self.db_manager)
         self.advanced_search_service = AdvancedSearchService(self.search_service, self)
         
-        # Services d'import/export
-        self.export_service = MainExportService(self)
-        self.import_service = ImportService(self.db_manager)
-        
-        # Service d'autocomplétion
         from ..services.autocompletion_service import AutoCompletionService
         self.autocompletion_service = AutoCompletionService(self.db_manager, self)
+    
+    def _init_import_export_services(self):
+        """Initialiser les services d'import/export"""
+        self.export_service = MainExportService(self)
+        self.import_service = ImportService(self.db_manager)
+        self.import_manager = ImportManager(self.db_manager, parent_widget=self)
         
-        # Gestionnaire d'appareils
-        self.device_manager = DeviceManager(self.db_manager)
+        from .file_processing_service import FileProcessingService
+        self.file_processing_service = FileProcessingService(self)
         
-        # Services métier
+        from .legacy_export_service import LegacyExportService
+        self.legacy_export_service = LegacyExportService(self)
+    
+    def _init_business_services(self):
+        """Initialiser les services métier"""
         self.paste_results_service = PasteResultsService(self)
         self.event_handlers_service = EventHandlersService(self)
         self.table_fill_service = TableFillService(self)
@@ -121,46 +137,39 @@ class MainWindow(QMainWindow):
         self.paste_processor = PasteDataProcessor(self.db_manager, self.validator, self)
         self.data_management_service = DataManagementService(self.db_manager, self)
         
-        # Service de toolbar
+        # Services spécialisés
+        self.user_interaction_service = UserInteractionService(self)
+        self.piece_management_service = PieceManagementService(self)
+        self.seo_service = SEOService(self)
+        self.pieces_list_service = PiecesListService(self)
+    
+    def _init_ui_services(self):
+        """Initialiser les services d'interface utilisateur"""
         from .toolbar_service import ToolbarService
         self.toolbar_service = ToolbarService(self)
         
-        # Service de dialogues unifié (remplace les anciens DialogService en conflit)
         self.dialog_manager = DialogManager(self)
         
-        # Service de dialogue unifié pour les méthodes complexes (compatible legacy)
         from ..services.unified_dialog_service import UnifiedDialogService
         self.dialog_service = UnifiedDialogService(self)
-        
-        # Services de traitement de fichiers
-        from .file_processing_service import FileProcessingService
-        self.file_processing_service = FileProcessingService(self)
-        
-        from .legacy_export_service import LegacyExportService
-        self.legacy_export_service = LegacyExportService(self)
         
         from .custom_reference_service import CustomReferenceService
         self.custom_reference_service = CustomReferenceService(self)
         
-        # Service de nettoyage automatique des extensions collées
         from ..services.paste_cleanup_service import PasteCleanupService  
         self.paste_cleanup_service = PasteCleanupService(self)
         
         from .pieces_panel_service import PiecesPanelService
         self.pieces_panel_service = PiecesPanelService(self)
         
-        # Services d'interface utilisateur
         from .ui_component_service import UIComponentService
         self.ui_component_service = UIComponentService(self)
-        
-        self.user_interaction_service = UserInteractionService(self)
-        self.piece_management_service = PieceManagementService(self)
-        self.seo_service = SEOService(self)
-        self.pieces_list_service = PiecesListService(self)
-        
-        # Services de gestion d'interface avancés
+    
+    def _init_advanced_features(self):
+        """Initialiser les fonctionnalités avancées"""
         self.drag_handle_service = DragHandleService()
         self.undo_manager_service = UndoManagerService()
+        self.undo_manager = self.undo_manager_service.create_undo_manager()
         
         # Configuration des signaux avancés
         self._connect_advanced_search_signals()
@@ -168,24 +177,19 @@ class MainWindow(QMainWindow):
         # Contrôleur principal de table
         self.table_controller = TableController(self, self.db_manager)
         
-        # Initialisation des variables d'état avec constantes
+        # Configuration des événements des services
+        self._setup_service_events()
+    
+    def _init_app_state(self):
+        """Initialiser l'état de l'application"""
+        self.settings = QSettings("DeviceManager", "MainApp")
+        
+        # Variables d'état
         self.previous_values = {}  # Tracker des valeurs précédentes (drag handle)
         self.drag_overlay_active = False  # État du drag&drop overlay
         self._piece_description_decisions = {}  # Cache des décisions de description import
         self.show_incomplete_only = False  # Filtre lignes incomplètes
         self.use_pagination = True  # Contrôle pagination
-        
-        # Configuration des événements des services
-        self._setup_service_events()
-        
-        # Gestionnaire d'import unifié
-        self.import_manager = ImportManager(self.db_manager, parent_widget=self)
-        
-        # Gestionnaires d'interface utilisateur
-        self.undo_manager = self.undo_manager_service.create_undo_manager()
-        self.settings = QSettings("DeviceManager", "MainApp")
-        
-        # État de l'application
         self.modified_cells = set()
         self.log_viewer = None
         
@@ -746,35 +750,16 @@ class MainWindow(QMainWindow):
     
     def _reload_current_search(self):
         """Recharger les données avec la recherche et filtres actuels (factorisation pagination)"""
-        # DEBUG: Analyser tous les états possibles
-        tc_term = getattr(self.table_controller, 'pending_search_term', 'NON_DEFINI') if hasattr(self, 'table_controller') else 'PAS_TC'
-        as_term = self.advanced_search_service.get_current_search_term() if hasattr(self, 'advanced_search_service') else 'PAS_AS'
-        main_term = getattr(self, 'current_search_term', 'NON_DEFINI')
-        search_input_text = self.search_input.text().strip() if hasattr(self, 'search_input') else 'PAS_INPUT'
-        
-        app_logger.debug(f"DEBUG _reload_current_search - États:")
-        app_logger.debug(f"  TableController.pending_search_term: '{tc_term}'")
-        app_logger.debug(f"  AdvancedSearchService.current_search_term: '{as_term}'")
-        app_logger.debug(f"  main_refactored.current_search_term: '{main_term}'")
-        app_logger.debug(f"  search_input.text(): '{search_input_text}'")
-        
         search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
-        app_logger.debug(f"DEBUG _reload_current_search - terme final choisi: '{search_term}'")
         self.table_controller.load_data(search_term, is_search=bool(search_term))
     
     def _next_page(self):
         """Aller à la page suivante"""
-        app_logger.debug(f"DEBUG _next_page appelée - total_rows: {self.total_rows}")
         if self.total_rows > 0:
             total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            current_page = self.table_controller.current_page if hasattr(self.table_controller, 'current_page') else 0
-            app_logger.debug(f"DEBUG _next_page - current_page: {current_page}, total_pages: {total_pages}")
             if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page < total_pages:
                 self.table_controller.current_page += 1
-                app_logger.debug(f"DEBUG _next_page - nouvelle current_page: {self.table_controller.current_page}, appel _reload_current_search()")
                 self._reload_current_search()
-            else:
-                app_logger.debug("DEBUG _next_page - conditions non remplies, pas de navigation")
     
     def _previous_page(self):
         """Aller à la page précédente"""
@@ -1304,11 +1289,8 @@ class MainWindow(QMainWindow):
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
-        # FIXME: Éviter auto-save pendant chargement/recherche
         if not self.modified_cells or not getattr(self, 'auto_save_enabled', True):
             return
-        
-        print(f"💾 DEBUG: Sauvegarde de {len(self.modified_cells)} cellules modifiées: {list(self.modified_cells)}")
         
         try:
             # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
@@ -1332,11 +1314,7 @@ class MainWindow(QMainWindow):
             
             # Exécuter les mises à jour par lots
             if updates_by_db_id:
-                print(f"💾 DEBUG: Mise à jour DB pour {len(updates_by_db_id)} appareils: {updates_by_db_id}")
                 self.db_manager.update_multiple_cells_batch(updates_by_db_id)
-                print(f"💾 DEBUG: Mise à jour DB terminée")
-            else:
-                print(f"💾 DEBUG: Aucune mise à jour DB nécessaire")
                 
             # Mettre à jour les valeurs précédentes et nettoyer modified_cells
             for row, col in list(self.modified_cells):
@@ -1360,81 +1338,96 @@ class MainWindow(QMainWindow):
         """Sauvegarde manuelle"""
         self._auto_save()
         self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
-        # Ajouter à l'historique
         self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
+    
+    def _get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
+        """Récupérer les informations DB d'une cellule (db_id, column_name)"""
+        row, col = item.row(), item.column()
+        
+        # Récupérer le db_id
+        db_id = item.data(Qt.ItemDataRole.UserRole)
+        if db_id is None:
+            db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
+        else:
+            db_id = int(db_id)
+        
+        # Récupérer le nom de colonne
+        column_name = self._get_db_field_name(col)
+        
+        return db_id, column_name
 
     def _update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False):
         """Mettre à jour une cellule dans la base de données"""
         try:
             row, col = item.row(), item.column()
             new_value = item.text()
-
-            # Récupérer l'ancienne valeur depuis self.previous_values
             old_value = self.previous_values.get((row, col), '')
-
-            # Récupérer le db_id depuis les données de l'item
-            db_id = item.data(Qt.ItemDataRole.UserRole)
-            if db_id is None:
-                # Fallback : chercher dans une autre cellule de la ligne
-                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-            else:
-                db_id = int(db_id)
             
-            # Mapping direct et simple UI vers DB
-            column_name = self._get_db_field_name(col)
+            # Récupérer les informations DB de la cellule
+            db_id, column_name = self._get_cell_db_info(item)
             
-            # Toutes les colonnes sont maintenant éditables
-            if not column_name:
+            if not column_name or db_id is None:
                 return False
             
             success = self.db_manager.update_cell(db_id, column_name, new_value)
             
             if success:
-                # Ajouter à l'historique seulement si la valeur a réellement changé ET si pas de skip_history
-                if old_value != new_value and not skip_history:
-                    # Nom de la colonne plus convivial
-                    column_display_name = self._get_column_display_name(col)
-                    self.user_interaction_service.add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
-                
-                # Retirer de la liste des modifications
-                self.modified_cells.discard((row, col))
-                item.setBackground(QColor(255, 255, 255))  # Blanc
-                
-                if not self.modified_cells:
-                    self.save_indicator.setText(Config.get_message('save_success'))
-                    self.save_indicator.setStyleSheet("color: green;")
+                self._handle_successful_cell_update(item, old_value, new_value, skip_history)
                     
         except Exception as e:
             self.user_interaction_service.show_error(f"Erreur lors de la mise à jour: {e}")
+    
+    def _handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
+        """Gérer les actions post mise à jour réussie"""
+        row, col = item.row(), item.column()
+        
+        # Ajouter à l'historique si nécessaire
+        if old_value != new_value and not skip_history:
+            column_display_name = self._get_column_display_name(col)
+            self.user_interaction_service.add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
+        
+        # Nettoyer l'interface
+        self.modified_cells.discard((row, col))
+        item.setBackground(QColor(255, 255, 255))  # Blanc
+        
+        # Mettre à jour l'indicateur de sauvegarde
+        if not self.modified_cells:
+            self.save_indicator.setText(Config.get_message('save_success'))
+            self.save_indicator.setStyleSheet("color: green;")
 
     def _save_drag_changes(self):
         """Sauvegarder les modifications du glisser-déposer"""
         try:
-            # Marquer toutes les cellules modifiées pour sauvegarde
-            if hasattr(self, 'drag_handle') and self.drag_handle.orig_selection:
-                selection = self.drag_handle.orig_selection
-                direction = self.drag_handle.drag_direction
+            if not (hasattr(self, 'drag_handle') and self.drag_handle.orig_selection):
+                return
                 
-                if direction == "down":
-                    # Sauvegarder les cellules ajoutées vers le bas
-                    start_row = selection.bottomRow() + 1
-                    for row in range(start_row, self.table.rowCount()):
-                        for col in range(selection.leftColumn(), selection.rightColumn() + 1):
-                            item = self.table.item(row, col)
-                            if item:
-                                self._update_cell_in_db(item, skip_history=True)
-                                
-                elif direction == "up":
-                    # Sauvegarder les cellules ajoutées vers le haut
-                    end_row = selection.topRow() - 1
-                    for row in range(0, end_row + 1):
-                        for col in range(selection.leftColumn(), selection.rightColumn() + 1):
-                            item = self.table.item(row, col)
-                            if item:
-                                self._update_cell_in_db(item, skip_history=True)
+            selection = self.drag_handle.orig_selection
+            direction = self.drag_handle.drag_direction
+            
+            # Déterminer la plage de cellules à sauvegarder
+            rows_to_save = self._get_drag_rows_to_save(selection, direction)
+            
+            # Sauvegarder les cellules
+            self._save_cells_in_range(rows_to_save, selection.leftColumn(), selection.rightColumn())
                                 
         except Exception as e:
             self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
+    
+    def _get_drag_rows_to_save(self, selection, direction: str) -> range:
+        """Obtenir la plage de lignes à sauvegarder pour le drag"""
+        if direction == "down":
+            return range(selection.bottomRow() + 1, self.table.rowCount())
+        elif direction == "up":
+            return range(0, selection.topRow())
+        return range(0, 0)  # Plage vide si direction inconnue
+    
+    def _save_cells_in_range(self, rows: range, start_col: int, end_col: int):
+        """Sauvegarder les cellules dans une plage donnée"""
+        for row in rows:
+            for col in range(start_col, end_col + 1):
+                item = self.table.item(row, col)
+                if item:
+                    self._update_cell_in_db(item, skip_history=True)
 
     
     
