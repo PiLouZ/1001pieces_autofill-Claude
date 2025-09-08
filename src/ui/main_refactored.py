@@ -3134,6 +3134,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             except (RuntimeError, AttributeError):
                 pass  # L'objet est peut-être déjà détruit
         
+        # Nettoyer le TableController
+        if hasattr(self, 'table_controller'):
+            try:
+                self.table_controller.cleanup()
+            except Exception:
+                pass  # Ignorer les erreurs de nettoyage
+        
         # Fermer la base de données
         if hasattr(self, 'db_manager'):
             self.db_manager.close()

@@ -631,12 +631,16 @@ class TableController:
         """Nettoyer tous les filtres de colonnes"""
         for col_idx, filter_widget in self.filter_widgets.items():
             if filter_widget is not None:  # Skip removed filters
-                filter_widget.blockSignals(True)
-                if isinstance(filter_widget, QComboBox):
-                    filter_widget.setCurrentText("")
-                else:  # QLineEdit
-                    filter_widget.clear()
-                filter_widget.blockSignals(False)
+                try:
+                    filter_widget.blockSignals(True)
+                    if isinstance(filter_widget, QComboBox):
+                        filter_widget.setCurrentText("")
+                    else:  # QLineEdit
+                        filter_widget.clear()
+                    filter_widget.blockSignals(False)
+                except RuntimeError:
+                    # Le widget a été supprimé, on le retire de la liste
+                    self.filter_widgets[col_idx] = None
     
     def get_selected_row_ids(self) -> List[int]:
         """Obtenir les IDs des lignes sélectionnées"""
@@ -674,7 +678,12 @@ class TableController:
             self.parent_window.advanced_search_service.clear_search_ui(self.parent_window)
         else:
             # Fallback direct si le service n'est pas disponible
-            self.search_input.clear()
+            if hasattr(self, 'search_input') and self.search_input is not None:
+                try:
+                    self.search_input.clear()
+                except RuntimeError:
+                    # Le widget a été supprimé, on ignore silencieusement
+                    pass
             self.load_data(None, is_search=False)
     
     def _add_export_buttons(self, layout):
@@ -709,7 +718,14 @@ class TableController:
     
     def _clear_advanced_search(self):
         """Effacer la recherche avancée"""
-        self.advanced_search_input.clear()
+        # Vérifier si le widget existe encore avant de l'utiliser
+        if hasattr(self, 'advanced_search_input') and self.advanced_search_input is not None:
+            try:
+                self.advanced_search_input.clear()
+            except RuntimeError:
+                # Le widget a été supprimé, on ignore silencieusement
+                pass
+        
         self.current_search_term = None  # Nettoyer aussi le terme persistant
         self.load_data(None, is_search=False)
         
@@ -786,3 +802,17 @@ class TableController:
             
         except Exception as e:
             app_logger.error(f"Erreur log largeur colonne: {e}")
+    
+    def cleanup(self):
+        """Nettoyage sécurisé des widgets Qt pour éviter les erreurs de destruction"""
+        try:
+            # Nettoyer les références aux widgets qui pourraient être détruits
+            if hasattr(self, 'advanced_search_input'):
+                self.advanced_search_input = None
+            if hasattr(self, 'search_input'):
+                self.search_input = None
+            if hasattr(self, 'filter_widgets'):
+                self.filter_widgets.clear()
+        except Exception as e:
+            # Ignore silencieusement les erreurs de nettoyage
+            pass
