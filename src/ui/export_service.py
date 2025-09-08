@@ -13,7 +13,7 @@ Responsabilités:
 import csv
 import os
 from typing import Dict, Any, Optional, List, Union
-from PyQt5.QtWidgets import QMessageBox, QApplication
+from PyQt5.QtWidgets import QApplication
 
 from ..services.export_service import ExportFormat
 from src.core.logger import app_logger
@@ -43,103 +43,52 @@ class MainExportService:
         """
         search_term = self.main_window.search_input.text().strip()
         if not search_term:
-            QMessageBox.information(
-                self.main_window, 
-                "Information", 
-                "Veuillez entrer un terme de recherche"
-            )
+            self.main_window.user_interaction_service.add_to_history("⚠️ Erreur export: Aucun terme de recherche saisi")
             return
         
         try:
-            # Détecter si c'est une recherche multiple OR pour proposer sélection de référence
+            # Détecter si c'est une recherche multiple OR pour auto-extraire la première référence
             parsed_term = self.main_window.advanced_search_service.get_current_search_term_with_fallback(self.main_window) or search_term
             
-            # Gérer différemment selon le format d'export
-            if export_format == ExportFormat.CSV:
-                export_data_term, export_reference = self._handle_csv_reference_selection(
-                    search_term, parsed_term
-                )
-                if export_reference is None:
-                    return  # Utilisateur a annulé
-            else:
-                # Pour HTML : pas de demande de confirmation, utiliser directement tous les résultats
-                export_data_term = parsed_term if isinstance(parsed_term, dict) else search_term
-                export_reference = "recherche_multiple"  # Nom générique pour HTML
+            # Extraire automatiquement la première référence sans dialogue
+            export_reference = self._extract_reference_automatically(search_term, parsed_term)
+            export_data_term = parsed_term if isinstance(parsed_term, dict) else search_term
             
             # Valider que la recherche a des résultats
             if not self._validate_search_results(search_term):
                 return
             
-            # Exporter avec tous les résultats mais utiliser la référence sélectionnée
+            # Exporter directement sans confirmation
             self._export_with_custom_reference(export_data_term, export_reference, export_format)
             
         except Exception as e:
-            QMessageBox.critical(
-                self.main_window, 
-                "Erreur", 
-                f"Erreur lors de l'export: {e}"
-            )
+            self.main_window.user_interaction_service.add_to_history(f"❌ Erreur export: {str(e)}")
     
-    
-    def _handle_csv_reference_selection(self, search_term: str, parsed_term: Union[str, Dict]) -> tuple:
+    def _extract_reference_automatically(self, search_term: str, parsed_term: Union[str, Dict]) -> str:
         """
-        Gérer la sélection de référence pour les exports CSV
+        Extraire automatiquement une référence sans dialogue utilisateur
         
         Args:
-            search_term: Terme de recherche brut
-            parsed_term: Terme de recherche parsé
+            search_term: Terme de recherche original
+            parsed_term: Terme parsé par le service de recherche avancée
             
         Returns:
-            tuple: (export_data_term, export_reference) ou (None, None) si annulé
+            str: Référence extraite automatiquement
         """
         if isinstance(parsed_term, dict) and parsed_term.get('type') == 'or':
-            # Recherche multiple OR
-            return self._handle_multiple_references(parsed_term)
-        else:
-            # Recherche simple - TOUJOURS demander confirmation de la référence
-            selected_reference = self.main_window.dialog_service.show_reference_selection_dialog(
-                "Référence pour l'export CSV",
-                f"Référence détectée : {search_term}\n"
-                f"Confirmez ou modifiez la référence à utiliser pour la première colonne :",
-                self.main_window.search_service.extract_first_term(search_term)
-            )
+            # Recherche multiple OR - utiliser le premier terme
+            terms = []
+            for group in parsed_term.get('groups', []):
+                terms.extend(group.get('terms', []))
             
-            if not selected_reference:
-                return None, None
-                
-            return search_term, selected_reference
+            if terms:
+                return self.main_window.search_service.extract_first_term(terms[0])
+            else:
+                return self.main_window.search_service.extract_first_term(search_term)
+        else:
+            # Recherche simple - utiliser le terme directement
+            return self.main_window.search_service.extract_first_term(search_term)
     
-    def _handle_multiple_references(self, parsed_term: Dict) -> tuple:
-        """
-        Gérer les références multiples pour export CSV
-        
-        Args:
-            parsed_term: Dictionnaire de recherche parsée
-            
-        Returns:
-            tuple: (export_data_term, export_reference) ou (None, None) si annulé
-        """
-        # Extraire tous les termes de la recherche OR
-        terms = []
-        for group in parsed_term.get('groups', []):
-            terms.extend(group.get('terms', []))
-        
-        if terms:
-            # Demander à l'utilisateur de choisir une référence
-            selected_reference = self.main_window.dialog_service.show_reference_selection_dialog(
-                "Référence pour l'export CSV",
-                f"Recherche multiple détectée ({len(terms)} références).\n"
-                f"Termes: {', '.join(terms)}\n"
-                f"Choisissez la référence à utiliser pour l'export :",
-                self.main_window.search_service.extract_first_term(terms[0]) if terms else ""
-            )
-            
-            if not selected_reference:
-                return None, None
-            
-            return parsed_term, selected_reference
-        else:
-            return None, None
     
     
     def _validate_search_results(self, search_term: str) -> bool:
@@ -167,11 +116,7 @@ class MainExportService:
                 )
             
             if not results:
-                QMessageBox.information(
-                    self.main_window, 
-                    "Information", 
-                    "Aucun résultat trouvé pour cette recherche"
-                )
+                self.main_window.user_interaction_service.add_to_history("⚠️ Export annulé: Aucun résultat trouvé pour cette recherche")
                 return False
             
             return True
@@ -315,12 +260,10 @@ class MainExportService:
             bool: True si succès
         """
         try:
-            # Utiliser le service d'export existant avec les méthodes HTML
-            if hasattr(self.main_window, 'export_service'):
-                result = self.main_window.export_service.export_to_html(data, export_format)
-            else:
-                # Fallback si pas de service d'export
-                result = f"Export HTML de {len(data)} résultats avec référence {reference}"
+            # Utiliser le service d'export principal des services
+            from ..services.export_service import ExportService
+            export_service = ExportService(self.main_window.db_manager)
+            result = export_service.export_to_html(data, export_format)
             
             # Copier dans le presse-papiers
             QApplication.clipboard().setText(result)
