@@ -76,10 +76,80 @@ class Config:
     # Interface
     DRAG_HANDLE_SIZE = 10
     
-    # Couleurs
-    MODIFIED_CELL_COLOR = (255, 255, 200)  # Jaune clair
+    # ==========================================================================
+    # COULEURS - Centralisation PRIORITÉ 3
+    # Toutes les couleurs de l'application pour éviter hardcoding dispersé
+    # ==========================================================================
+    
+    # Couleurs existantes (conservées pour compatibilité)
+    MODIFIED_CELL_COLOR = (255, 255, 200)  # Jaune clair  
     SEARCH_HIGHLIGHT_COLOR = (255, 255, 0, 100)  # Jaune transparent
     DRAG_HANDLE_COLOR = (100, 100, 255)  # Bleu
+    
+    # Couleurs principales (Bootstrap-like palette)
+    class Colors:
+        # Couleurs de base
+        PRIMARY = "#0d6efd"        # Bleu principal
+        PRIMARY_HOVER = "#0b5ed7"  # Bleu principal au survol
+        PRIMARY_ACTIVE = "#0a58ca"  # Bleu principal actif
+        
+        SUCCESS = "#198754"        # Vert succès
+        SUCCESS_HOVER = "#157347"  # Vert succès au survol
+        SUCCESS_LIGHT = "#28a745"  # Vert succès clair
+        SUCCESS_BG = "#d1e7dd"     # Fond vert succès
+        SUCCESS_TEXT = "#0a3622"   # Texte vert succès
+        
+        WARNING = "#fd7e14"        # Orange avertissement
+        WARNING_HOVER = "#e8680d"  # Orange avertissement au survol
+        WARNING_BG = "#fff3cd"     # Fond orange avertissement
+        WARNING_TEXT = "#664d03"   # Texte orange avertissement
+        
+        DANGER = "#dc3545"         # Rouge erreur/danger
+        DANGER_HOVER = "#c82333"   # Rouge erreur au survol
+        DANGER_ACTIVE = "#bd2130"  # Rouge erreur actif
+        DANGER_BG = "#f8d7da"      # Fond rouge erreur
+        DANGER_TEXT = "#721c24"    # Texte rouge erreur
+        
+        INFO = "#1976d2"           # Bleu information
+        INFO_LIGHT = "#2c5282"     # Bleu information clair
+        
+        # Couleurs neutres  
+        LIGHT = "#f8f9fa"          # Gris très clair
+        LIGHT_HOVER = "#e9ecef"    # Gris très clair au survol
+        GRAY = "#6c757d"           # Gris moyen
+        GRAY_DARK = "#495057"      # Gris foncé
+        GRAY_BORDER = "#dee2e6"    # Gris bordure
+        GRAY_BORDER_HOVER = "#adb5bd"  # Gris bordure au survol
+        
+        WHITE = "#ffffff"          # Blanc
+        BLACK = "#212529"          # Noir (texte)
+        TEXT_MUTED = "#666"        # Texte atténué
+        TEXT_SECONDARY = "#555"    # Texte secondaire
+        
+        # Couleurs spécifiques pour les statuts de données
+        ORPHAN_ROW = (255, 200, 200)      # Rouge clair pour lignes orphelines
+        SINGLE_PIECE = (255, 255, 200)    # Jaune pour pièce unique
+        MULTI_PIECES = (200, 255, 200)    # Vert clair pour plusieurs pièces
+        ERROR_LOG = (255, 200, 200)       # Rouge clair pour erreurs dans logs
+        
+        # Couleurs d'interface
+        SELECTION = "#e7f1ff"      # Fond sélection
+        SELECTION_BORDER = "#80bdff"  # Bordure sélection
+        GRIDLINE = "#e9ecef"       # Lignes de grille
+        ALTERNATE_ROW = "#f8f9fa"  # Lignes alternées
+        SCROLLBAR = "#ced4da"      # Barres de défilement
+        
+        @classmethod
+        def get_qcolor_rgb(cls, hex_color):
+            """Convertir couleur hex en tuple RGB pour QColor"""
+            hex_color = hex_color.lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            
+        @classmethod  
+        def get_qcolor_rgba(cls, hex_color, alpha=255):
+            """Convertir couleur hex en tuple RGBA pour QColor"""
+            rgb = cls.get_qcolor_rgb(hex_color)
+            return rgb + (alpha,)
     
     # Messages
     MESSAGES = {

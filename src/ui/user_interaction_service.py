@@ -150,37 +150,37 @@ class UserInteractionService:
         """Formater un message pour l'historique avec gestion spécialisée des imports"""
         
         # Couleur par défaut pour les messages normaux
-        message_color = "#333"
+        message_color = Config.Colors.BLACK
         
         # Déterminer la couleur selon le type de message
         if any(keyword in message.lower() for keyword in ["erreur", "error", "échec", "failed"]):
-            message_color = "#d32f2f"  # Rouge pour erreurs
+            message_color = Config.Colors.DANGER  # Rouge pour erreurs
         elif any(keyword in message.lower() for keyword in ["succès", "success", "terminé", "completed", "ajouté", "added"]):
-            message_color = "#2e7d32"  # Vert pour succès
+            message_color = Config.Colors.SUCCESS  # Vert pour succès
         elif any(keyword in message.lower() for keyword in ["warning", "attention", "avertissement"]):
-            message_color = "#f57c00"  # Orange pour avertissements
+            message_color = Config.Colors.WARNING  # Orange pour avertissements
         elif any(keyword in message.lower() for keyword in ["import", "export", "fichier", "file"]):
-            message_color = "#1976d2"  # Bleu pour opérations fichiers
+            message_color = Config.Colors.INFO  # Bleu pour opérations fichiers
         
         return f'<p class="message-block"><span class="timestamp">[{timestamp}]</span> <span class="message" style="color: {message_color};">{message}</span></p>'
 
     def _build_history_html(self) -> str:
         """Construire le HTML complet de l'historique - Compatible avec l'ancien format"""
-        html_content = """<!DOCTYPE html>
+        html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <style>
-        body { font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }
-        p { margin: 1px 0; line-height: 1.0; }
-        p.message-block { margin: 1px 0; line-height: 1.0; }
-        p.separator { margin: 4px 0; }
-        .timestamp { color: #666; }
-        .message { color: #333; }
-        .indented { margin-left: 20px; }
-        .import-header { font-weight: bold; color: #2c5282; }
-        .import-section { margin-left: 20px; color: #555; }
-        .import-summary { margin-left: 20px; color: #2d5a87; font-weight: 500; }
-        .entry-separator { height: 8px; margin: 4px 0; }
+        body {{ font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }}
+        p {{ margin: 1px 0; line-height: 1.0; }}
+        p.message-block {{ margin: 1px 0; line-height: 1.0; }}
+        p.separator {{ margin: 4px 0; }}
+        .timestamp {{ color: {Config.Colors.TEXT_MUTED}; }}
+        .message {{ color: {Config.Colors.BLACK}; }}
+        .indented {{ margin-left: 20px; }}
+        .import-header {{ font-weight: bold; color: {Config.Colors.INFO_LIGHT}; }}
+        .import-section {{ margin-left: 20px; color: {Config.Colors.TEXT_SECONDARY}; }}
+        .import-summary {{ margin-left: 20px; color: {Config.Colors.INFO_LIGHT}; font-weight: 500; }}
+        .entry-separator {{ height: 8px; margin: 4px 0; }}
     </style>
 </head>
 <body>
@@ -319,15 +319,15 @@ class UserInteractionService:
             self.main_window._history_messages.clear()
             
         if hasattr(self.main_window, 'history_list'):
-            empty_html = """<!DOCTYPE html>
+            empty_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <style>
-        body { font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }
+        body {{ font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }}
     </style>
 </head>
 <body>
-    <p style="color: #666;">Historique vide</p>
+    <p style="color: {Config.Colors.TEXT_MUTED};">Historique vide</p>
 </body>
 </html>"""
             self.main_window.history_list.setHtml(empty_html)

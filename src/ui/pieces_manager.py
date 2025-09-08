@@ -11,6 +11,8 @@ from PyQt5.QtGui import QColor, QPainter
 import sqlite3
 from typing import List, Tuple, Dict
 
+from ..core.config import Config
+
 
 class ActionButtonWidget(QWidget):
     """Widget contenant les boutons d'action pour chaque ligne"""
@@ -31,17 +33,17 @@ class ActionButtonWidget(QWidget):
         edit_btn = QPushButton("✏️")
         edit_btn.setFixedSize(25, 25)
         edit_btn.setToolTip("Modifier cette pièce")
-        edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #007bff;
+        edit_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Config.Colors.PRIMARY};
                 color: white;
                 border: none;
                 border-radius: 3px;
                 font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #0056b3;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {Config.Colors.PRIMARY_HOVER};
+            }}
         """)
         edit_btn.clicked.connect(lambda: self.editRequested.emit(self.row_index))
         layout.addWidget(edit_btn)
@@ -50,17 +52,17 @@ class ActionButtonWidget(QWidget):
         delete_btn = QPushButton("🗑️")
         delete_btn.setFixedSize(25, 25)
         delete_btn.setToolTip("Supprimer cette pièce")
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dc3545;
+        delete_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Config.Colors.DANGER};
                 color: white;
                 border: none;
                 border-radius: 3px;
                 font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #c82333;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {Config.Colors.DANGER_HOVER};
+            }}
         """)
         delete_btn.clicked.connect(lambda: self.deleteRequested.emit(self.row_index))
         layout.addWidget(delete_btn)
@@ -168,7 +170,7 @@ class PiecesManagerWindow(QDialog):
         header_layout.addWidget(title_label)
         
         self.stats_label = QLabel("Chargement...")
-        self.stats_label.setStyleSheet("color: #666; margin: 10px;")
+        self.stats_label.setStyleSheet(f"color: {Config.Colors.TEXT_MUTED}; margin: 10px;")
         header_layout.addWidget(self.stats_label)
         header_layout.addStretch()
         
@@ -238,13 +240,13 @@ class PiecesManagerWindow(QDialog):
         edit_btn = QPushButton("✏️ Modifier pièce")
         edit_btn.setToolTip("Modifier la référence et le libellé de la pièce sélectionnée")
         edit_btn.clicked.connect(self._edit_selected_piece)
-        edit_btn.setStyleSheet("QPushButton { background-color: #007bff; color: white; }")
+        edit_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.PRIMARY}; color: white; }}")
         buttons_layout.addWidget(edit_btn)
         
         delete_btn = QPushButton("🗑️ Supprimer pièce(s)")
         delete_btn.setToolTip("Supprimer les références de pièces sélectionnées (Ctrl+Clic pour sélection multiple)")
         delete_btn.clicked.connect(self._delete_selected_pieces)
-        delete_btn.setStyleSheet("QPushButton { background-color: #dc3545; color: white; }")
+        delete_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.DANGER}; color: white; }}")
         buttons_layout.addWidget(delete_btn)
         
         close_btn = QPushButton("Fermer")
@@ -316,13 +318,13 @@ class PiecesManagerWindow(QDialog):
             # Colorer selon le statut
             from src.core.config import pluralize
             if nb_appareils == 0:
-                nb_item.setBackground(QColor(255, 200, 200))  # Rouge clair pour orphelines
+                nb_item.setBackground(QColor(*Config.Colors.ORPHAN_ROW))  # Rouge clair pour orphelines
                 nb_item.setToolTip("⚠️ Pièce orpheline - aucun appareil associé")
             elif nb_appareils == 1:
-                nb_item.setBackground(QColor(255, 255, 200))  # Jaune pour 1 seul
+                nb_item.setBackground(QColor(*Config.Colors.SINGLE_PIECE))  # Jaune pour 1 seul
                 nb_item.setToolTip("⚡ Pièce associée à un seul appareil")
             else:
-                nb_item.setBackground(QColor(200, 255, 200))  # Vert pour multiples
+                nb_item.setBackground(QColor(*Config.Colors.MULTI_PIECES))  # Vert pour multiples
                 nb_item.setToolTip(f"✅ Pièce associée à {pluralize(nb_appareils, 'appareil')}")
                 
             self.pieces_table.setItem(row_idx, 2, nb_item)
@@ -735,7 +737,7 @@ class PieceEditDialog(QDialog):
         
         save_btn = QPushButton("Sauvegarder")
         save_btn.clicked.connect(self.accept)
-        save_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; }")
+        save_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.SUCCESS_LIGHT}; color: white; }}")
         buttons_layout.addWidget(save_btn)
         
         layout.addLayout(buttons_layout)

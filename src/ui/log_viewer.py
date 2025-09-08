@@ -14,6 +14,8 @@ import json
 import os
 from datetime import datetime
 
+from ..core.config import Config
+
 from src.core.logger import app_logger
 
 
@@ -328,7 +330,7 @@ class LogViewer(QDialog):
             for col in range(8):
                 item = self.autocomplete_table.item(row, col)
                 if item:
-                    item.setBackground(QColor(255, 200, 200))  # Rouge clair pour erreurs
+                    item.setBackground(QColor(*Config.Colors.ERROR_LOG))  # Rouge clair pour erreurs
     
     def add_data_ops_row(self, data, row):
         """Ajouter une ligne à la table des opérations sur les données"""
@@ -361,7 +363,7 @@ class LogViewer(QDialog):
             for col in range(6):
                 item = self.data_ops_table.item(row, col)
                 if item:
-                    item.setBackground(QColor(255, 200, 200))
+                    item.setBackground(QColor(*Config.Colors.ERROR_LOG))
     
     def apply_filter(self):
         """Appliquer le filtre de recherche"""
