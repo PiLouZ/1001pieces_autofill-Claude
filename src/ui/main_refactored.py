@@ -15,8 +15,13 @@ from PyQt5.QtWidgets import (
     QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser
 )
 from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont
-from PyQt5.QtCore import QSize, QMimeData, QUrl, QStringListModel
-from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent
+from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel
+
+# Imports Python standard consolidés
+import os
+import csv  
+import webbrowser
+from datetime import datetime
 
 # Helpers et utilitaires refactorisés
 from .message_helper import MessageHelper, CommonMessages, show_success, show_error, ask_confirmation
@@ -33,7 +38,6 @@ from ..services.device_manager import DeviceManager
 from ..services.paste_results_service import PasteResultsService
 
 # Imports des modules refactorisés
-import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core.config import Config
