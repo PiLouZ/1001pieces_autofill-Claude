@@ -16,6 +16,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeyEvent
 
 from ..core.logger import app_logger
+from ..core.config import Config
 from ..data.database_manager import DatabaseManager
 
 
@@ -186,67 +187,62 @@ class CustomTableWidget(QTableWidget):
         dialog.exec_()
     
     
-    def _get_type_suggestions(self, partial_text: str) -> List[str]:
-        """Obtenir des suggestions pour la colonne Type"""
+    def _execute_autocomplete_query(self, query_key: str, params: tuple = (), error_context: str = "récupération données") -> List[str]:
+        """
+        Méthode générique pour exécuter les requêtes d'auto-complétion
+        
+        Args:
+            query_key: Clé de la requête dans Config.QUERIES
+            params: Paramètres pour la requête (tuple)
+            error_context: Contexte d'erreur pour le logging
+            
+        Returns:
+            List[str]: Liste des valeurs récupérées
+        """
         if not self.db_manager:
             return []
         
         try:
             result = self.db_manager.execute_query(
-                Config.get_query('autocomplete_types_like'), 
-                (f"{partial_text}%",)
+                Config.get_query(query_key), 
+                params
             )
-            
             return [row[0] for row in result]
         except Exception as e:
-            app_logger.error(f"Erreur récupération suggestions type: {e}")
+            app_logger.error(f"Erreur {error_context}: {e}")
             return []
+    
+    def _get_type_suggestions(self, partial_text: str) -> List[str]:
+        """Obtenir des suggestions pour la colonne Type"""
+        return self._execute_autocomplete_query(
+            'autocomplete_types_like', 
+            (f"{partial_text}%",),
+            "récupération suggestions type"
+        )
     
     def _get_manufacturer_suggestions(self, partial_text: str) -> List[str]:
         """Obtenir des suggestions pour la colonne Fabricant"""
-        if not self.db_manager:
-            return []
-        
-        try:
-            result = self.db_manager.execute_query(
-                Config.get_query('autocomplete_manufacturers_like'), 
-                (f"{partial_text}%",)
-            )
-            
-            return [row[0] for row in result]
-        except Exception as e:
-            app_logger.error(f"Erreur récupération suggestions fabricant: {e}")
-            return []
+        return self._execute_autocomplete_query(
+            'autocomplete_manufacturers_like', 
+            (f"{partial_text}%",),
+            "récupération suggestions fabricant"
+        )
     
     def _get_all_types(self) -> List[str]:
         """Obtenir toutes les valeurs Type disponibles"""
-        if not self.db_manager:
-            return []
-        
-        try:
-            result = self.db_manager.execute_query(
-                Config.get_query('distinct_types')
-            )
-            
-            return [row[0] for row in result]
-        except Exception as e:
-            app_logger.error(f"Erreur récupération tous les types: {e}")
-            return []
+        return self._execute_autocomplete_query(
+            'distinct_types',
+            (),
+            "récupération tous les types"
+        )
     
     def _get_all_manufacturers(self) -> List[str]:
         """Obtenir toutes les valeurs Fabricant disponibles"""
-        if not self.db_manager:
-            return []
-        
-        try:
-            result = self.db_manager.execute_query(
-                Config.get_query('distinct_manufacturers')
-            )
-            
-            return [row[0] for row in result]
-        except Exception as e:
-            app_logger.error(f"Erreur récupération tous les fabricants: {e}")
-            return []
+        return self._execute_autocomplete_query(
+            'distinct_manufacturers',
+            (),
+            "récupération tous les fabricants"
+        )
 
 
 class TableWidgetService:
