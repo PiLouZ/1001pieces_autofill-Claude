@@ -63,3 +63,5 @@ dist/
 *.egg-info/data/appareils.db
 data/appareils.db
 data/appareils.db
+.auditor_venv/
+.pf/

@@ -11,6 +11,7 @@ from PyQt5.QtGui import QColor, QBrush
 
 from ..core.config import Config
 from ..core.logger import app_logger
+from ..core.constants import UIConfig
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
@@ -29,7 +30,7 @@ class TableController:
         
         # Variables de pagination
         self.current_page = 1
-        self.page_size = 1000
+        self.page_size = UIConfig.DEFAULT_PAGE_SIZE  # Utiliser la constante commune
         self.total_pages = 1
         self.total_rows = 0
         
@@ -56,9 +57,19 @@ class TableController:
         self.filter_widget = None
         self.filter_layout = None
         
-        # Labels de pagination (seront initialisés par create_table_widget)
+        # Labels et contrôles de pagination (seront initialisés par create_table_widget)
         self.page_label = None
         self.size_label = None
+        self.prev_button = None
+        self.next_button = None
+        self.page_size_combo = None
+        
+        # Référence vers NavigationService (sera définie par set_navigation_service)
+        self.navigation_service = None
+        
+    def set_navigation_service(self, navigation_service):
+        """Définir le service de navigation pour la synchronisation"""
+        self.navigation_service = navigation_service
         
     def create_table_widget(self) -> QWidget:
         """Créer le widget complet du tableau avec barre de recherche, filtres et pagination"""
@@ -495,18 +506,18 @@ class TableController:
         pagination_layout = QHBoxLayout(pagination_widget)
         
         # Bouton page précédente
-        prev_btn = QPushButton("◀ Précédent")
-        prev_btn.clicked.connect(self._previous_page)
-        pagination_layout.addWidget(prev_btn)
+        self.prev_button = QPushButton("◀ Précédent")
+        # Navigation gérée par NavigationService
+        pagination_layout.addWidget(self.prev_button)
         
         # Label page actuelle
         self.page_label = QLabel("Page 1 sur 1")
         pagination_layout.addWidget(self.page_label)
         
         # Bouton page suivante
-        next_btn = QPushButton("Suivant ▶")
-        next_btn.clicked.connect(self._next_page)
-        pagination_layout.addWidget(next_btn)
+        self.next_button = QPushButton("Suivant ▶")
+        # Navigation gérée par NavigationService
+        pagination_layout.addWidget(self.next_button)
         
         pagination_layout.addStretch()
         
@@ -514,11 +525,11 @@ class TableController:
         size_label = QLabel("Lignes par page:")
         pagination_layout.addWidget(size_label)
         
-        size_combo = QComboBox()
-        size_combo.addItems(["100", "250", "500", "1000", "2000", "Tout"])
-        size_combo.setCurrentText("100")
-        size_combo.currentTextChanged.connect(self._change_page_size)
-        pagination_layout.addWidget(size_combo)
+        self.page_size_combo = QComboBox()
+        self.page_size_combo.addItems(["100", "250", "500", "1000", "2000", "Tout"])
+        self.page_size_combo.setCurrentText("100")
+        # Changement de taille géré par NavigationService
+        pagination_layout.addWidget(self.page_size_combo)
         
         self.size_label = QLabel(f"Total: {self.total_rows} lignes")
         pagination_layout.addWidget(self.size_label)
@@ -532,6 +543,11 @@ class TableController:
                 self.page_label.setText(f"Page {self.current_page} sur {self.total_pages}")
             if self.size_label:
                 self.size_label.setText(f"Total: {self.total_rows} lignes")
+                
+            # Synchroniser avec NavigationService si disponible
+            if self.navigation_service:
+                self.navigation_service.update_total_rows(self.total_rows)
+                
         except Exception as e:
             app_logger.error(f"Erreur mise à jour pagination: {e}")
     

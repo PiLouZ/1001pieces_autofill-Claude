@@ -33,6 +33,8 @@ from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..services.export_service import ExportFormat
+from ..services.navigation_service import NavigationService
+from ..services.cell_editing_service import CellEditingService
 # PHASE 4 : Remplacement par ExportManagerService unifié
 from ..services.export_manager import ExportManagerService, ExportType
 from ..services.device_manager import DeviceManager
@@ -167,8 +169,7 @@ class MainWindow(QMainWindow):
         self.ui_component_service = UIComponentService(self)
         
         # PHASE 5: Services de navigation et édition centralisés
-        from ..services.navigation_service import NavigationService
-        from ..services.cell_editing_service import CellEditingService
+        # Imports déplacés vers le haut du fichier
     
     def _init_advanced_features(self):
         """Initialiser les fonctionnalités avancées"""
@@ -187,7 +188,7 @@ class MainWindow(QMainWindow):
         self.cell_editing_service = CellEditingService(
             None,  # sera défini après _create_table_widget
             self.db_manager, 
-            self.data_validator, 
+            self.validator, 
             self
         )
         
@@ -355,6 +356,8 @@ class MainWindow(QMainWindow):
                 self.table_controller.next_button,
                 self.table_controller.page_size_combo
             )
+            # Établir la liaison bidirectionnelle
+            self.table_controller.set_navigation_service(self.navigation_service)
         
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
@@ -3142,7 +3145,9 @@ def main():
         window.show()
         sys.exit(app.exec_())
     except Exception as e:
-        QMessageBox.critical(None, "Erreur critique", f"Impossible de démarrer l'application: {e}")
+        print(f"ERREUR CRITIQUE: Impossible de démarrer l'application: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

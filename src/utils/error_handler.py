@@ -68,8 +68,15 @@ def handle_errors(
                 elif args and hasattr(args[0], 'parent'):
                     parent = getattr(args[0], 'parent', None)
                 elif args:
-                    # Si c'est une méthode d'instance, utiliser self comme parent
-                    parent = args[0] if hasattr(args[0], 'show') else None
+                    # Si c'est une méthode d'instance d'un QWidget, utiliser self comme parent
+                    try:
+                        from PyQt5.QtWidgets import QWidget
+                        if isinstance(args[0], QWidget):
+                            parent = args[0]
+                        else:
+                            parent = None
+                    except ImportError:
+                        parent = None
                 
                 # Message d'erreur
                 error_msg = message or str(e)

@@ -58,8 +58,8 @@ class NavigationService(QObject):
         
     def get_total_pages(self) -> int:
         """Calculer le nombre total de pages"""
-        if self.total_rows == 0:
-            return 1
+        if self.total_rows == 0 or self.page_size == -1:
+            return 1  # Mode "Tout" = 1 page
         return (self.total_rows + self.page_size - 1) // self.page_size
         
     def next_page(self):
@@ -83,7 +83,9 @@ class NavigationService(QObject):
             if 1 <= page <= total_pages:
                 self.table_controller.current_page = page
                 self.current_page = page
-                self.table_controller.load_data()
+                # Recharger avec le terme de recherche courant
+                search_term = getattr(self.table_controller, 'current_search_term', None)
+                self.table_controller.load_data(search_term)
                 self.update_pagination_controls()
                 self.page_changed.emit(page)
                 app_logger.debug(f"Navigation vers page {page}/{total_pages}")
@@ -102,7 +104,7 @@ class NavigationService(QObject):
         """Changer la taille de page"""
         try:
             if size_text == "Tout":
-                new_size = max(self.total_rows, UIConfig.DEFAULT_PAGE_SIZE)
+                new_size = -1  # Utiliser -1 comme TableController
                 show_all = True
             else:
                 new_size = int(size_text)
@@ -120,8 +122,9 @@ class NavigationService(QObject):
                 if hasattr(self.table_controller, 'current_page'):
                     self.table_controller.current_page = 1
                     
-                # Recharger les données
-                self.table_controller.load_data()
+                # Recharger les données avec le terme de recherche courant
+                search_term = getattr(self.table_controller, 'current_search_term', None)
+                self.table_controller.load_data(search_term)
                 self.update_pagination_controls()
                 
                 # Émettre le signal

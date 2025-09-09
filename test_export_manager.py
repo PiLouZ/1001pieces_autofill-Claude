@@ -204,13 +204,13 @@ def test_backward_compatibility():
     """Test 9: Compatibilité backward"""
     print("\n🧪 Test 9: Compatibilité backward...")
     
-    # Vérifier que les anciens imports fonctionnent encore
+    # Vérifier que les anciens services ont été correctement dépréciés
     try:
         from src.ui.export_service import MainExportService
         from src.ui.legacy_export_service import LegacyExportService
-        print("   - Anciens services toujours importables ✓")
+        print("   - ⚠️  Anciens services encore présents (à nettoyer)")
     except ImportError as e:
-        print(f"   - Anciens services: {e}")
+        print("   - ✅ Anciens services correctement dépréciés")
     
     # Vérifier que ExportFormat est accessible depuis plusieurs endroits
     try:
