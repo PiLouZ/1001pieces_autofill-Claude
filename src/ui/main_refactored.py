@@ -33,7 +33,8 @@ from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..services.export_service import ExportFormat
-from .export_service import MainExportService
+# PHASE 4 : Remplacement par ExportManagerService unifié
+from ..services.export_manager import ExportManagerService, ExportType
 from ..services.device_manager import DeviceManager
 from ..services.paste_results_service import PasteResultsService
 
@@ -116,14 +117,18 @@ class MainWindow(QMainWindow):
         self.autocompletion_service = AutoCompletionService(self.db_manager, self)
     
     def _init_import_export_services(self):
-        """Initialiser les services d'import/export"""
-        self.export_service = MainExportService(self)
+        """Initialiser les services d'import/export - PHASE 4 : Service unifié"""
+        # PHASE 4 : Nouveau service d'export unifié
+        self.export_manager = ExportManagerService(self)
+        
+        # Services d'import conservés
         self.import_service = ImportService(self.db_manager)
         self.import_manager = ImportManager(self.db_manager, parent_widget=self)
         
         from .file_processing_service import FileProcessingService
         self.file_processing_service = FileProcessingService(self)
         
+        # LEGACY : Conserver temporairement pour compatibility
         from .legacy_export_service import LegacyExportService
         self.legacy_export_service = LegacyExportService(self)
     
@@ -1075,8 +1080,8 @@ class MainWindow(QMainWindow):
     # --- Méthodes d'export ---
 
     def _export_data(self, export_format: ExportFormat):
-        """Export avec sélection de référence (comportement original) - Phase 2.11"""
-        self.export_service.export_data(export_format)
+        """Export avec sélection de référence - PHASE 4 : Service unifié"""
+        return self.export_manager.export_data(export_format, ExportType.MAIN)
 
     def _export_with_custom_reference(self, search_data_term, reference_for_file: str, export_format: ExportFormat, results_count: int) -> bool:
         """Exporter avec tous les résultats mais utiliser une référence spécifique pour le nom et la première colonne"""
@@ -1173,9 +1178,8 @@ class MainWindow(QMainWindow):
             raise Exception(f"Erreur export HTML: {e}")
     
     def _export_data_legacy(self, export_format: ExportFormat):
-        """Ancienne méthode d'export (fallback) - Phase 2.8"""
-        # Déléguer au service LegacyExportService
-        return self.legacy_export_service.export_data_legacy(export_format)
+        """Export legacy - PHASE 4 : Service unifié avec fallbacks"""
+        return self.export_manager.export_data(export_format, ExportType.LEGACY)
 
     # --- Méthodes utilitaires ---
 
