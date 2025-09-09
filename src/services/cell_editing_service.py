@@ -1,0 +1,332 @@
+"""
+Service d'édition des cellules
+Centralise toute la logique d'édition, validation et sauvegarde des cellules de table
+"""
+
+from typing import Optional, Tuple, Dict, Any, List
+from PyQt5.QtWidgets import QTableWidgetItem, QTableWidget
+from PyQt5.QtCore import QObject, pyqtSignal
+
+from ..core.logger import app_logger
+from ..data.database_manager import DatabaseManager
+from ..data.data_validator import DataValidator
+from ..utils.error_handler import handle_errors
+
+
+class CellEditingService(QObject):
+    """Service centralisé pour l'édition des cellules"""
+    
+    # Signaux pour notifier les changements
+    cell_updated = pyqtSignal(QTableWidgetItem, str, str)  # item, old_value, new_value
+    cell_validation_failed = pyqtSignal(QTableWidgetItem, str)  # item, error_message
+    batch_edit_completed = pyqtSignal(int)  # nombre de cellules modifiées
+    
+    def __init__(self, table_widget: QTableWidget, db_manager: DatabaseManager, 
+                 data_validator: DataValidator, parent=None):
+        super().__init__(parent)
+        self.table = table_widget
+        self.db_manager = db_manager
+        self.data_validator = data_validator
+        self.parent_window = parent
+        
+        # Cache pour optimiser les accès
+        self._column_mapping_cache = {}
+        self._validation_cache = {}
+        
+        # État des modifications
+        self.pending_changes = {}  # {(row, col): (old_value, new_value)}
+        self.is_batch_editing = False
+        
+    def get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
+        """Récupérer les informations DB d'une cellule (db_id, column_name)"""
+        try:
+            row, col = item.row(), item.column()
+            
+            # Récupérer l'ID de la base de données pour cette ligne
+            db_id_item = self.table.item(row, 0)  # L'ID est généralement en colonne 0
+            if not db_id_item:
+                return None, None
+                
+            try:
+                db_id = int(db_id_item.text())
+            except (ValueError, TypeError):
+                return None, None
+                
+            # Récupérer le nom de la colonne
+            column_name = self._get_db_column_name(col)
+            if not column_name:
+                return None, None
+                
+            return db_id, column_name
+            
+        except Exception as e:
+            app_logger.error(f"Erreur récupération info cellule: {e}")
+            return None, None
+            
+    def _get_db_column_name(self, ui_column: int) -> Optional[str]:
+        """Mapper une colonne UI vers le nom de colonne DB"""
+        # Cache pour éviter les calculs répétés
+        if ui_column in self._column_mapping_cache:
+            return self._column_mapping_cache[ui_column]
+            
+        # Mapping standard des colonnes (peut être étendu selon les besoins)
+        column_mapping = {
+            0: 'id',
+            1: 'ref_piece', 
+            2: 'designation',
+            3: 'ref_modele',
+            4: 'type_appareil',
+            5: 'manufacturer',
+            6: 'commercial_ref',
+            7: 'pieces_count',
+            # Ajouter d'autres mappings selon votre schéma
+        }
+        
+        column_name = column_mapping.get(ui_column)
+        if column_name:
+            self._column_mapping_cache[ui_column] = column_name
+            
+        return column_name
+        
+    @handle_errors("Erreur lors de la mise à jour de la cellule")
+    def update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False) -> bool:
+        """Mettre à jour une cellule dans la base de données"""
+        try:
+            row, col = item.row(), item.column()
+            new_value = item.text().strip()
+            
+            # Récupérer les informations de la cellule
+            db_id, column_name = self.get_cell_db_info(item)
+            if not db_id or not column_name:
+                app_logger.warning(f"Impossible de récupérer les infos DB pour cellule ({row}, {col})")
+                return False
+                
+            # Récupérer l'ancienne valeur
+            old_value = getattr(item, '_original_value', '')
+            
+            # Éviter les mises à jour inutiles
+            if old_value == new_value:
+                return True
+                
+            # Validation de la nouvelle valeur
+            if not self._validate_cell_value(column_name, new_value, db_id):
+                return False
+                
+            # Mise à jour en base
+            success = self.db_manager.update_record(
+                'appareils', 
+                db_id, 
+                {column_name: new_value}
+            )
+            
+            if success:
+                # Gérer les actions post mise à jour
+                self._handle_successful_cell_update(item, old_value, new_value, skip_history)
+                app_logger.debug(f"Cellule mise à jour: {column_name} = '{new_value}' (ID: {db_id})")
+                return True
+            else:
+                app_logger.error(f"Échec mise à jour cellule: {column_name} = '{new_value}' (ID: {db_id})")
+                return False
+                
+        except Exception as e:
+            app_logger.error(f"Erreur mise à jour cellule: {e}")
+            return False
+            
+    def _validate_cell_value(self, column_name: str, value: str, db_id: int) -> bool:
+        """Valider la valeur d'une cellule"""
+        try:
+            # Utiliser le cache de validation si disponible
+            cache_key = f"{column_name}:{value}"
+            if cache_key in self._validation_cache:
+                return self._validation_cache[cache_key]
+                
+            # Validation selon le type de colonne
+            is_valid = True
+            error_message = ""
+            
+            if column_name == 'pieces_count':
+                # Validation pour le nombre de pièces
+                if value and not value.isdigit():
+                    is_valid = False
+                    error_message = "Le nombre de pièces doit être un nombre entier"
+            elif column_name in ['ref_piece', 'ref_modele', 'commercial_ref']:
+                # Validation pour les références
+                if len(value) > 100:  # Limite de longueur
+                    is_valid = False
+                    error_message = "La référence ne peut pas dépasser 100 caractères"
+            elif column_name in ['type_appareil', 'manufacturer']:
+                # Validation pour les champs categoriques
+                if len(value) > 50:
+                    is_valid = False
+                    error_message = "Ce champ ne peut pas dépasser 50 caractères"
+                    
+            # Mettre en cache le résultat
+            self._validation_cache[cache_key] = is_valid
+            
+            if not is_valid and error_message:
+                self.cell_validation_failed.emit(
+                    self.table.currentItem(), 
+                    error_message
+                )
+                
+            return is_valid
+            
+        except Exception as e:
+            app_logger.error(f"Erreur validation cellule: {e}")
+            return False
+            
+    def _handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, 
+                                     new_value: str, skip_history: bool):
+        """Gérer les actions post mise à jour réussie"""
+        try:
+            row, col = item.row(), item.column()
+            
+            # Marquer l'item comme modifié (style visuel)
+            item.setData(32, True)  # Role personnalisé pour marquer les modifications
+            
+            # Sauvegarder la nouvelle valeur comme valeur originale
+            item._original_value = new_value
+            
+            # Émettre le signal de mise à jour
+            self.cell_updated.emit(item, old_value, new_value)
+            
+            # Ajouter à l'historique si requis
+            if not skip_history and hasattr(self.parent_window, 'undo_manager_service'):
+                self.parent_window.undo_manager_service.add_action({
+                    'type': 'cell_edit',
+                    'row': row,
+                    'col': col,
+                    'old_value': old_value,
+                    'new_value': new_value,
+                    'timestamp': app_logger.get_timestamp()
+                })
+                
+            # Mettre à jour les statistiques si nécessaire
+            self._update_statistics_after_edit(item)
+            
+            app_logger.debug(f"Cellule ({row}, {col}): '{old_value}' → '{new_value}'")
+            
+        except Exception as e:
+            app_logger.error(f"Erreur gestion post mise à jour: {e}")
+            
+    def _update_statistics_after_edit(self, item: QTableWidgetItem):
+        """Mettre à jour les statistiques après édition"""
+        try:
+            # Mettre à jour les boutons et compteurs si nécessaire
+            if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
+                self.parent_window._update_incomplete_button_visibility()
+                
+            # Rafraîchir la colonne de comptage si modifiée
+            column_name = self._get_db_column_name(item.column())
+            if column_name == 'pieces_count' and hasattr(self.parent_window, '_refresh_pieces_count_column'):
+                self.parent_window._refresh_pieces_count_column()
+                
+        except Exception as e:
+            app_logger.debug(f"Erreur mise à jour statistiques: {e}")
+            
+    def start_batch_edit(self):
+        """Démarrer une édition en lot"""
+        self.is_batch_editing = True
+        self.pending_changes.clear()
+        app_logger.debug("Mode édition en lot activé")
+        
+    def add_to_batch(self, item: QTableWidgetItem, new_value: str):
+        """Ajouter une modification au lot"""
+        if not self.is_batch_editing:
+            return False
+            
+        row, col = item.row(), item.column()
+        old_value = getattr(item, '_original_value', item.text())
+        self.pending_changes[(row, col)] = (old_value, new_value)
+        return True
+        
+    def commit_batch_edit(self) -> int:
+        """Valider toutes les modifications du lot"""
+        if not self.is_batch_editing:
+            return 0
+            
+        success_count = 0
+        
+        try:
+            for (row, col), (old_value, new_value) in self.pending_changes.items():
+                item = self.table.item(row, col)
+                if item:
+                    item.setText(new_value)
+                    if self.update_cell_in_db(item, skip_history=True):
+                        success_count += 1
+                        
+            # Nettoyer l'état du lot
+            self.is_batch_editing = False
+            self.pending_changes.clear()
+            
+            # Émettre le signal de fin de lot
+            self.batch_edit_completed.emit(success_count)
+            
+            app_logger.info(f"Édition en lot terminée: {success_count} cellules modifiées")
+            return success_count
+            
+        except Exception as e:
+            app_logger.error(f"Erreur lors de l'édition en lot: {e}")
+            self.is_batch_editing = False
+            self.pending_changes.clear()
+            return success_count
+            
+    def cancel_batch_edit(self):
+        """Annuler l'édition en lot"""
+        self.is_batch_editing = False
+        self.pending_changes.clear()
+        app_logger.debug("Mode édition en lot annulé")
+        
+    def navigate_to_empty_cell(self, direction: str = 'down') -> bool:
+        """Navigation intelligente vers une cellule vide"""
+        try:
+            current_row = self.table.currentRow()
+            current_col = self.table.currentColumn()
+            
+            if current_row < 0 or current_col < 0:
+                return False
+                
+            # Déterminer la direction de recherche
+            if direction == 'down':
+                start_row, end_row, step = current_row + 1, self.table.rowCount(), 1
+            elif direction == 'up':
+                start_row, end_row, step = current_row - 1, -1, -1
+            else:
+                return False
+                
+            # Chercher la prochaine cellule vide ou pleine selon le contexte
+            current_item = self.table.item(current_row, current_col)
+            current_is_empty = not current_item or not current_item.text().strip()
+            
+            for row in range(start_row, end_row, step):
+                item = self.table.item(row, current_col)
+                is_empty = not item or not item.text().strip()
+                
+                # Si on est sur une case vide, aller à la première case pleine
+                # Si on est sur une case pleine, aller à la première case vide
+                if current_is_empty and not is_empty:
+                    self.table.setCurrentCell(row, current_col)
+                    return True
+                elif not current_is_empty and is_empty:
+                    self.table.setCurrentCell(row, current_col)
+                    return True
+                    
+            return False
+            
+        except Exception as e:
+            app_logger.error(f"Erreur navigation cellule vide: {e}")
+            return False
+            
+    def clear_validation_cache(self):
+        """Vider le cache de validation"""
+        self._validation_cache.clear()
+        app_logger.debug("Cache de validation vidé")
+        
+    def get_edit_statistics(self) -> Dict[str, Any]:
+        """Obtenir les statistiques d'édition"""
+        return {
+            'pending_changes': len(self.pending_changes),
+            'is_batch_editing': self.is_batch_editing,
+            'cache_size': len(self._validation_cache),
+            'column_mappings': len(self._column_mapping_cache)
+        }

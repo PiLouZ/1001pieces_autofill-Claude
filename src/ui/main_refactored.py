@@ -127,10 +127,6 @@ class MainWindow(QMainWindow):
         
         from .file_processing_service import FileProcessingService
         self.file_processing_service = FileProcessingService(self)
-        
-        # LEGACY : Conserver temporairement pour compatibility
-        from .legacy_export_service import LegacyExportService
-        self.legacy_export_service = LegacyExportService(self)
     
     def _init_business_services(self):
         """Initialiser les services métier"""
@@ -169,6 +165,10 @@ class MainWindow(QMainWindow):
         
         from .ui_component_service import UIComponentService
         self.ui_component_service = UIComponentService(self)
+        
+        # PHASE 5: Services de navigation et édition centralisés
+        from ..services.navigation_service import NavigationService
+        from ..services.cell_editing_service import CellEditingService
     
     def _init_advanced_features(self):
         """Initialiser les fonctionnalités avancées"""
@@ -181,6 +181,15 @@ class MainWindow(QMainWindow):
         
         # Contrôleur principal de table
         self.table_controller = TableController(self, self.db_manager)
+        
+        # PHASE 5: Initialisation des services centralisés
+        self.navigation_service = NavigationService(self.table_controller, self)
+        self.cell_editing_service = CellEditingService(
+            None,  # sera défini après _create_table_widget
+            self.db_manager, 
+            self.data_validator, 
+            self
+        )
         
         # Configuration des événements des services
         self._setup_service_events()
@@ -267,7 +276,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(main_splitter)
     
     def _setup_service_events(self):
-        """Phase 4: Configuration des événements des services"""
+        """Phase 4+5: Configuration des événements des services"""
         # Événements de recherche
         event_bus.on('search.started', self.event_handlers_service.on_search_started)
         event_bus.on('search.completed', self.event_handlers_service.on_search_completed) 
@@ -277,6 +286,37 @@ class MainWindow(QMainWindow):
         event_bus.on('export.started', self.event_handlers_service.on_export_started)
         event_bus.on('export.completed', self.event_handlers_service.on_export_completed)
         event_bus.on('export.error', self.event_handlers_service.on_export_error)
+        
+        # PHASE 5: Événements des services centralisés
+        if hasattr(self, 'navigation_service'):
+            self.navigation_service.page_changed.connect(self._on_navigation_page_changed)
+            self.navigation_service.page_size_changed.connect(self._on_navigation_page_size_changed)
+            
+        if hasattr(self, 'cell_editing_service'):
+            self.cell_editing_service.cell_updated.connect(self._on_cell_editing_updated)
+            self.cell_editing_service.cell_validation_failed.connect(self._on_cell_validation_failed)
+    
+    # PHASE 5: Callbacks pour les événements des services centralisés
+    def _on_navigation_page_changed(self, page: int):
+        """Callback pour changement de page"""
+        app_logger.debug(f"Page changée vers: {page}")
+        # Pas d'action supplémentaire requise, le service gère déjà le rechargement
+        
+    def _on_navigation_page_size_changed(self, new_size: int):
+        """Callback pour changement de taille de page"""
+        app_logger.debug(f"Taille de page changée: {new_size}")
+        # Mettre à jour les variables d'état locales si nécessaire
+        self.page_size = new_size
+        
+    def _on_cell_editing_updated(self, item, old_value: str, new_value: str):
+        """Callback pour mise à jour de cellule"""
+        # Gérer les actions spécifiques à l'interface principale
+        self._handle_successful_cell_update(item, old_value, new_value, False)
+        
+    def _on_cell_validation_failed(self, item, error_message: str):
+        """Callback pour échec de validation de cellule"""
+        from .message_helper import show_error
+        show_error(self, "Erreur de validation", error_message)
     
     def _connect_advanced_search_signals(self):
         """PHASE 2.3: Connecter les signaux du service de recherche avancé"""
@@ -303,6 +343,18 @@ class MainWindow(QMainWindow):
         self.table = self.table_controller.table
         self.search_input = self.table_controller.advanced_search_input  # Le vrai search input
         self.incomplete_filter_btn = self.table_controller.incomplete_filter_btn  # Référence au bouton lignes à compléter
+        
+        # PHASE 5: Configuration des services centralisés
+        self.cell_editing_service.table = self.table
+        
+        # Configurer le service de navigation avec les widgets de pagination
+        if hasattr(self.table_controller, 'page_label'):
+            self.navigation_service.set_pagination_widgets(
+                self.table_controller.page_label,
+                self.table_controller.prev_button,
+                self.table_controller.next_button,
+                self.table_controller.page_size_combo
+            )
         
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
@@ -722,34 +774,14 @@ class MainWindow(QMainWindow):
             app_logger.error(f"Erreur lors de la mise à jour des numéros de lignes: {e}")
     
     def _update_pagination_controls(self):
-        """Mettre à jour les contrôles de pagination"""
-        if not hasattr(self, 'page_info_label'):
-            return
-            
+        """Mettre à jour les contrôles de pagination - PHASE 5: Délégation vers NavigationService"""
         try:
-            if self.use_pagination and self.total_rows > Config.MAX_DISPLAY_ROWS:
-                total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
-                current_page = getattr(self.table_controller, 'current_page', 1)
-                current_page_display = current_page
-                
-                self.page_info_label.setText(f"Page {current_page_display} / {total_pages}")
-                
-                # Activer/désactiver les boutons
-                self.first_page_btn.setEnabled(current_page > 1)
-                self.prev_page_btn.setEnabled(current_page > 1)
-                self.next_page_btn.setEnabled(current_page < total_pages)
-                self.last_page_btn.setEnabled(current_page < total_pages)
-                
-                # Afficher les contrôles
-                for btn in [self.first_page_btn, self.prev_page_btn, self.next_page_btn, self.last_page_btn]:
-                    btn.show()
-                self.page_info_label.show()
+            if hasattr(self, 'navigation_service'):
+                # Mettre à jour le total des lignes dans le service
+                self.navigation_service.update_total_rows(getattr(self, 'total_rows', 0))
+                # Le service gère automatiquement la mise à jour des contrôles
             else:
-                # Masquer les contrôles si pas de pagination
-                self.page_info_label.setText("Tout affiché")
-                for btn in [self.first_page_btn, self.prev_page_btn, self.next_page_btn, self.last_page_btn]:
-                    btn.hide()
-                    
+                app_logger.warning("NavigationService non disponible, pagination manuelle non implémentée")
         except Exception as e:
             app_logger.error(f"Erreur mise à jour pagination: {e}")
     
@@ -759,51 +791,24 @@ class MainWindow(QMainWindow):
         self.table_controller.load_data(search_term, is_search=bool(search_term))
     
     def _next_page(self):
-        """Aller à la page suivante"""
-        if self.total_rows > 0:
-            total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page < total_pages:
-                self.table_controller.current_page += 1
-                self._reload_current_search()
+        """Aller à la page suivante - PHASE 5: Délégation vers NavigationService"""
+        self.navigation_service.next_page()
     
     def _previous_page(self):
-        """Aller à la page précédente"""
-        if hasattr(self.table_controller, 'current_page') and self.table_controller.current_page > 1:
-            self.table_controller.current_page -= 1
-            self._reload_current_search()
+        """Aller à la page précédente - PHASE 5: Délégation vers NavigationService"""
+        self.navigation_service.previous_page()
     
     def _go_to_page(self, page: int):
-        """Aller à une page spécifique (page base 1)"""
-        if self.total_rows > 0:
-            total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            if 1 <= page <= total_pages:
-                if hasattr(self.table_controller, 'current_page'):
-                    self.table_controller.current_page = page
-                self._reload_current_search()
+        """Aller à une page spécifique - PHASE 5: Délégation vers NavigationService"""
+        self.navigation_service.go_to_page(page)
     
     def _go_to_last_page(self):
-        """Aller à la dernière page"""
-        if self.total_rows > 0:
-            total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            if hasattr(self.table_controller, 'current_page'):
-                self.table_controller.current_page = total_pages
-            self._reload_current_search()
+        """Aller à la dernière page - PHASE 5: Délégation vers NavigationService"""
+        self.navigation_service.go_to_last_page()
     
     def _change_page_size(self, size_text: str):
-        """Changer la taille de page"""
-        try:
-            if size_text == "Tout":
-                self.use_pagination = False
-            else:
-                self.use_pagination = True
-                self.page_size = int(size_text)
-                
-            if hasattr(self.table_controller, 'current_page'):
-                self.table_controller.current_page = 1  # Retour à la première page
-            self._reload_current_search()
-            
-        except ValueError:
-            pass  # Ignorer les valeurs non valides
+        """Changer la taille de page - PHASE 5: Délégation vers NavigationService"""
+        self.navigation_service.change_page_size(size_text)
     
     def _toggle_show_all(self):
         """Basculer entre affichage paginé et affichage de toutes les lignes"""
@@ -831,63 +836,8 @@ class MainWindow(QMainWindow):
             app_logger.error(f"Erreur basculement affichage: {e}")
     
     def _navigate_to_empty_cell(self, direction='down'):
-        """Navigation intelligente : 
-        - Si sur case vide → aller à la case pleine la plus proche
-        - Si sur case pleine → aller à la case vide la plus proche"""
-        try:
-            current_item = self.table.currentItem()
-            if not current_item:
-                return
-                
-            current_row = self.table.currentRow()
-            current_col = self.table.currentColumn()
-            
-            # Déterminer si la cellule actuelle est vide ou pleine
-            current_text = current_item.text().strip()
-            is_current_empty = not current_text
-            
-            # Rechercher dans la direction spécifiée
-            if direction == 'down':
-                # Chercher vers le bas
-                for row in range(current_row + 1, self.table.rowCount()):
-                    item = self.table.item(row, current_col)
-                    item_text = item.text().strip() if item else ""
-                    is_target_empty = not item_text
-                    
-                    # Si on est sur une case vide, chercher une case pleine
-                    # Si on est sur une case pleine, chercher une case vide
-                    if (is_current_empty and not is_target_empty) or (not is_current_empty and is_target_empty):
-                        self.table.setCurrentCell(row, current_col)
-                        if is_target_empty:  # Si on navigue vers une case vide, l'éditer
-                            self.table.editItem(self.table.item(row, current_col) or QTableWidgetItem(""))
-                        return
-                        
-                # Si aucune cellule appropriée trouvée, aller à la fin
-                last_row = self.table.rowCount() - 1
-                if last_row >= 0:
-                    self.table.setCurrentCell(last_row, current_col)
-                    
-            elif direction == 'up':
-                # Chercher vers le haut
-                for row in range(current_row - 1, -1, -1):
-                    item = self.table.item(row, current_col)
-                    item_text = item.text().strip() if item else ""
-                    is_target_empty = not item_text
-                    
-                    # Si on est sur une case vide, chercher une case pleine
-                    # Si on est sur une case pleine, chercher une case vide
-                    if (is_current_empty and not is_target_empty) or (not is_current_empty and is_target_empty):
-                        self.table.setCurrentCell(row, current_col)
-                        if is_target_empty:  # Si on navigue vers une case vide, l'éditer
-                            self.table.editItem(self.table.item(row, current_col) or QTableWidgetItem(""))
-                        return
-                        
-                # Si aucune cellule appropriée trouvée, aller au début
-                if self.table.rowCount() > 0:
-                    self.table.setCurrentCell(0, current_col)
-                
-        except Exception as e:
-            app_logger.error(f"Erreur navigation cellule: {e}")
+        """Navigation intelligente - PHASE 5: Délégation vers CellEditingService"""
+        self.cell_editing_service.navigate_to_empty_cell(direction)
     
     
     def _show_column_values_list(self):
@@ -1345,15 +1295,8 @@ class MainWindow(QMainWindow):
         self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
     
     def _get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
-        """Récupérer les informations DB d'une cellule (db_id, column_name)"""
-        row, col = item.row(), item.column()
-        
-        # Récupérer le db_id
-        db_id = item.data(Qt.ItemDataRole.UserRole)
-        if db_id is None:
-            db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-        else:
-            db_id = int(db_id)
+        """Récupérer les informations DB d'une cellule - PHASE 5: Délégation vers CellEditingService"""
+        return self.cell_editing_service.get_cell_db_info(item)
         
         # Récupérer le nom de colonne
         column_name = self._get_db_field_name(col)
@@ -1361,36 +1304,18 @@ class MainWindow(QMainWindow):
         return db_id, column_name
 
     def _update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False):
-        """Mettre à jour une cellule dans la base de données"""
-        try:
-            row, col = item.row(), item.column()
-            new_value = item.text()
-            old_value = self.previous_values.get((row, col), '')
-            
-            # Récupérer les informations DB de la cellule
-            db_id, column_name = self._get_cell_db_info(item)
-            
-            if not column_name or db_id is None:
-                return False
-            
-            success = self.db_manager.update_cell(db_id, column_name, new_value)
-            
-            if success:
-                self._handle_successful_cell_update(item, old_value, new_value, skip_history)
-                    
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de la mise à jour: {e}")
+        """Mettre à jour une cellule - PHASE 5: Délégation vers CellEditingService"""
+        return self.cell_editing_service.update_cell_in_db(item, skip_history)
     
     def _handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
-        """Gérer les actions post mise à jour réussie"""
+        """Gérer les actions post mise à jour - PHASE 5: Appel délégué + actions spécifiques"""
         row, col = item.row(), item.column()
         
-        # Ajouter à l'historique si nécessaire
+        # Actions spécifiques à l'interface principale
         if old_value != new_value and not skip_history:
             column_display_name = self._get_column_display_name(col)
             self.user_interaction_service.add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
         
-        # Nettoyer l'interface
         self.modified_cells.discard((row, col))
         item.setBackground(QColor(255, 255, 255))  # Blanc
         
