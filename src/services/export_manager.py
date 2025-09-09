@@ -22,7 +22,7 @@ from enum import Enum
 
 from ..core.logger import app_logger
 from ..core.config import Config
-from .export_service import ExportService
+# PHASE 6 CONSOLIDATION - Communication directe avec HtmlExportService
 from ..core.constants import ExportFormat
 from .html_export_service import HtmlExportService
 
@@ -54,7 +54,12 @@ class ExportManagerService:
     
     def __init__(self, main_window):
         self.main_window = main_window
-        self._base_export_service = ExportService(main_window.db_manager)
+        # PHASE 6 CONSOLIDATION - Service HTML direct, pas de couche intermédiaire
+        self._last_export_info = None  # Pour compatibilité avec get_last_export_info()
+    
+    def get_last_export_info(self):
+        """Récupérer les informations du dernier export HTML - Compatibilité avec ExportService"""
+        return self._last_export_info
         
     # ===== INTERFACE PUBLIQUE UNIFIÉE =====
     
@@ -383,7 +388,21 @@ class ExportManagerService:
     def _execute_html_export(self, data: List, reference: str, export_format: ExportFormat) -> bool:
         """Exécuter l'export HTML via service unifié"""
         try:
-            result = self._base_export_service.export_to_html(data, export_format)
+            # PHASE 6 CONSOLIDATION - Direct vers HtmlExportService
+            if export_format == ExportFormat.HTML_BRANDS:
+                result = HtmlExportService.generate_html_brands(data)
+            elif export_format == ExportFormat.HTML_DETAILS:
+                result = HtmlExportService.generate_html_details(data)
+                # Conserver les infos d'export pour compatibilité
+                char_count = HtmlExportService.count_non_html_chars(result)
+                self._last_export_info = {
+                    'format_used': 'optimisé',
+                    'char_count': char_count,
+                    'char_limit': HtmlExportService.CHAR_LIMIT,
+                    'description': 'Format optimisé automatiquement'
+                }
+            else:
+                raise ValueError(f"Format d'export HTML non supporté: {export_format}")
             
             # Copier dans le presse-papiers
             QApplication.clipboard().setText(result)
@@ -502,7 +521,7 @@ class ExportManagerService:
     def _show_export_status(self, export_format: ExportFormat, result: str) -> None:
         """Afficher le statut d'export"""
         if export_format == ExportFormat.HTML_DETAILS:
-            export_info = self._base_export_service.get_last_export_info()
+            export_info = self._last_export_info
             if export_info:
                 format_msg = (f"Export HTML copié ({export_info['description']}) - "
                              f"{export_info['char_count']:,} caractères")

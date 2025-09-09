@@ -58,7 +58,8 @@ def test_export_manager_instantiation():
     
     assert export_manager is not None
     assert export_manager.main_window == mock_window
-    assert export_manager._base_export_service is not None
+    # PHASE 6 CONSOLIDATION - _base_export_service supprimé, vérifier _last_export_info
+    assert hasattr(export_manager, '_last_export_info')
     
     print("✅ Test 1 réussi: Service instancié correctement")
 

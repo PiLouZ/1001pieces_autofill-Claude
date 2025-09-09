@@ -114,8 +114,7 @@ class AdvancedSearchService(QObject):
         """
         Parser la recherche avancée avec opérateurs && et || 
         
-        REFACTORISÉ PRIORITÉ 2 - Délègue à SearchService.parse_advanced_search()
-        pour éviter duplication de code
+        PHASE 6 CONSOLIDÉ - Délègue entièrement à SearchService
         """
         return self.search_service.parse_advanced_search(text)
     

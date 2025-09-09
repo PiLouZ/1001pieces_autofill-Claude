@@ -52,28 +52,5 @@ class UndoRedoManager:
             return action
         return None
 
-
-class UndoManagerService:
-    """
-    Service pour la gestion des gestionnaires d'annulation/rétablissement
-    
-    Responsabilités:
-    - Créer et configurer les gestionnaires d'undo/redo
-    - Fournir une interface standardisée pour l'historique des actions
-    - Gérer la configuration de la taille de l'historique
-    """
-    
-    def __init__(self):
-        pass
-    
-    def create_undo_manager(self, max_history: int = None) -> UndoRedoManager:
-        """
-        Créer un gestionnaire d'annulation/rétablissement configuré
-        
-        Args:
-            max_history: Nombre maximum d'actions dans l'historique
-        
-        Returns:
-            UndoRedoManager: Gestionnaire configuré
-        """
-        return UndoRedoManager(max_history=max_history)
+# PHASE 6 CONSOLIDATION - UndoManagerService supprimé car redondant
+# Utiliser directement UndoRedoManager qui gère déjà la configuration
