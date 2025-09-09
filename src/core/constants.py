@@ -5,6 +5,42 @@
 
 from pathlib import Path
 from typing import Dict, Any
+from enum import Enum
+
+
+class ExportFormat(Enum):
+    """Formats d'export supportés - VERSION UNIFIÉE
+    
+    Remplace les définitions incohérentes de:
+    - data_exporter.py (Enum avec valeurs minuscules)
+    - services/export_service.py (classe avec valeurs majuscules)
+    """
+    CSV = "CSV"
+    JSON = "JSON" 
+    HTML_BRANDS = "HTML_BRANDS"
+    HTML_DETAILS = "HTML_DETAILS"
+    XML = "XML"
+    EXCEL = "EXCEL"
+    
+    # Méthodes utilitaires pour la compatibilité
+    @classmethod
+    def from_string(cls, value: str):
+        """Convertir string vers ExportFormat (compatibilité)"""
+        value_upper = value.upper()
+        for format_type in cls:
+            if format_type.value == value_upper:
+                return format_type
+        raise ValueError(f"Format non supporté: {value}")
+    
+    @property
+    def lowercase(self) -> str:
+        """Retourner la valeur en minuscules (compatibilité data_exporter)"""
+        return self.value.lower()
+
+
+class ExportError(Exception):
+    """Exception pour les erreurs d'export - CENTRALISÉE"""
+    pass
 
 
 class FileExtensions:
