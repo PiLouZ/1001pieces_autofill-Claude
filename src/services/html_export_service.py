@@ -92,15 +92,16 @@ class HtmlExportService:
             strategy: 'full', 'ref_modele' ou 'commercial_ref'
             
         Returns:
-            HTML généré selon la stratégie
+            HTML généré selon la stratégie avec <div>&nbsp;</div> entre marques
         """
         html_parts = []
         
-        for brand in sorted(brands_data.keys()):
+        for i, brand in enumerate(sorted(brands_data.keys())):
             models = brands_data[brand]
             
-            # En-tête de marque
-            html_parts.append(f'<div id="{brand}"><b><u>{brand}</u></b></div>')
+            # Ajouter div vide avant chaque marque sauf la première
+            if i > 0:
+                html_parts.append('<div>&nbsp;</div>')
             
             # Collecter modèles selon la stratégie
             models_to_display = set()
@@ -125,13 +126,17 @@ class HtmlExportService:
                     if commercial_ref and commercial_ref.strip():
                         models_to_display.add(commercial_ref.strip())
             
-            # Ajouter les modèles triés
+            # Ajouter la section de marque si elle a des modèles
             if models_to_display:
-                sorted_models = sorted(models_to_display)
-                models_html = ' '.join(sorted_models)
-                html_parts.append(models_html)
+                # En-tête de marque
+                html_parts.append(f'<div id="{brand}"><b><u>{brand}</u></b></div>')
+                
+                # Appareils de la marque (chacun dans sa div)
+                for model in sorted(models_to_display):
+                    html_parts.append(f'<div>{model}</div>')
         
-        return ' '.join(html_parts)
+        # Joindre toutes les parties HTML
+        return ''.join(html_parts)
     
     @staticmethod
     def count_non_html_chars(html_content: str) -> int:
