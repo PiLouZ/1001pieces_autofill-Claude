@@ -1165,8 +1165,8 @@ class MainWindow(QMainWindow):
     def _export_html_with_reference(self, data, reference: str, export_format: ExportFormat) -> bool:
         """Exporter en HTML avec référence personnalisée"""
         try:
-            # Utiliser le service d'export existant avec les méthodes HTML ajoutées
-            result = self.export_service.export_to_html(data, export_format)
+            # Utiliser le service d'export unifié (export_manager)
+            result = self.export_manager._base_export_service.export_to_html(data, export_format)
             
             # Copier dans le presse-papiers
             from PyQt5.QtWidgets import QApplication
