@@ -60,7 +60,7 @@ from .seo_service import SEOService
 from .pieces_list_service import PiecesListService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 from ..services.drag_handle_service import DragHandle, DragHandleService
-from ..services.undo_manager import UndoRedoManager, UndoManagerService
+from ..services.undo_manager import UndoRedoManager
 # Supprimé: remplacé par DialogManager dans les imports centralisés
 from ..services.event_handlers_service import EventHandlersService
 from ..services.table_fill_service import TableFillService
@@ -174,8 +174,7 @@ class MainWindow(QMainWindow):
     def _init_advanced_features(self):
         """Initialiser les fonctionnalités avancées"""
         self.drag_handle_service = DragHandleService()
-        self.undo_manager_service = UndoManagerService()
-        self.undo_manager = self.undo_manager_service.create_undo_manager()
+        self.undo_manager = UndoRedoManager()
         
         # Configuration des signaux avancés
         self._connect_advanced_search_signals()
@@ -1034,7 +1033,11 @@ class MainWindow(QMainWindow):
 
     def _export_data(self, export_format: ExportFormat):
         """Export avec sélection de référence - PHASE 4 : Service unifié"""
-        return self.export_manager.export_data(export_format, ExportType.MAIN)
+        # Pour les exports HTML, utiliser l'export rapide sans dialogue de référence
+        if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
+            return self.export_manager.export_data(export_format, ExportType.QUICK)
+        else:
+            return self.export_manager.export_data(export_format, ExportType.MAIN)
 
     def _export_with_custom_reference(self, search_data_term, reference_for_file: str, export_format: ExportFormat, results_count: int) -> bool:
         """Exporter avec tous les résultats mais utiliser une référence spécifique pour le nom et la première colonne"""
