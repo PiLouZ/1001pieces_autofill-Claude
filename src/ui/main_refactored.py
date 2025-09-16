@@ -1690,7 +1690,7 @@ class MainWindow(QMainWindow):
         )
         
         if filenames:
-            # Utiliser le nouveau gestionnaire unifié
+            # Utiliser le nouveau gestionnaire unifié avec support async
             results = self.import_manager.import_files(filenames, show_dialog=True)
             
             if results:
@@ -2348,7 +2348,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                         supported_files.append(file_path)
             
             if supported_files:
-                # Utiliser le nouveau gestionnaire unifié
+                # Utiliser le nouveau gestionnaire unifié avec support async
                 results = self.import_manager.import_files(supported_files, show_dialog=True)
                 
                 if results:
@@ -2738,7 +2738,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             elif event.key() == Qt.Key.Key_Y:
                 self._redo()
             elif event.key() == Qt.Key.Key_D:
-                self._show_column_values_list()
+                # CMD+D ne fonctionne que depuis le tableau, pas depuis la barre de recherche
+                current_focus = self.focusWidget()
+                if current_focus != self.search_input:
+                    self._show_column_values_list()
             elif event.key() == Qt.Key.Key_Up:
                 self._navigate_to_empty_cell(direction='up')
             elif event.key() == Qt.Key.Key_Down:
@@ -2796,7 +2799,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
                 return
             
-            detected_columns = self.paste_processor.detect_columns_count(clipboard_text)
+            # Optimisation pour gros volumes - détection limitée sur échantillon
+            text_length = len(clipboard_text)
+            if text_length > 100000:  # > 100KB de données collées
+                app_logger.info(f"🚀 Gros volume de données collées ({text_length} chars), optimisation activée")
+                # Détecter sur échantillon pour éviter freeze
+                sample_text = clipboard_text[:10000]  # Premier 10KB
+                detected_columns = self.paste_processor.detect_columns_count(sample_text)
+            else:
+                detected_columns = self.paste_processor.detect_columns_count(clipboard_text)
             
             # Vérifier si on a au moins 1 colonne
             if detected_columns < 1:

@@ -18,6 +18,8 @@ from PyQt5.QtCore import Qt
 
 from .logger import app_logger
 
+# Services async seront importés de façon paresseuse pour éviter dépendances circulaires
+
 
 class ImportType(Enum):
     """Types d'import supportés"""
@@ -613,6 +615,43 @@ class ImportManager:
     def __init__(self, db_manager, parent_widget=None):
         self.db_manager = db_manager
         self.parent_widget = parent_widget
+        
+        # Services asynchrones (optionnels) - Import paresseux
+        self._async_reader = None
+        self._progress_manager = None
+        self._async_threshold = 5  # Seuil pour déclencher mode async
+        self._async_services_initialized = False
+        
+        # Initialiser services async de façon paresseuse
+        self._init_async_services_lazy()
+    
+    def _init_async_services_lazy(self):
+        """Initialiser les services async de façon paresseuse pour éviter dépendances circulaires"""
+        app_logger.info(f"🔍 INIT: _async_services_initialized = {self._async_services_initialized}")
+        if self._async_services_initialized:
+            return
+            
+        try:
+            app_logger.info("🔍 INIT: Tentative d'import des services async...")
+            # Import paresseux pour éviter dépendance circulaire
+            from ..services.async_file_reader import AsyncFileReaderService, FileReadResult
+            from ..ui.progress_dialog import ProgressDialogManager
+            
+            app_logger.info("🔍 INIT: Imports réussis, création des services...")
+            # Créer les services
+            self._async_reader = AsyncFileReaderService()
+            self._progress_manager = ProgressDialogManager(self.parent_widget)
+            self._async_services_initialized = True
+            
+            app_logger.info("🔍 INIT: Services créés avec succès")
+            app_logger.info("✅ Services async initialisés avec succès")
+            
+        except Exception as e:
+            app_logger.warning(f"🔍 INIT: ERREUR lors de l'initialisation: {e}")
+            app_logger.warning(f"Services async non disponibles: {e}")
+            self._async_reader = None
+            self._progress_manager = None
+            self._async_services_initialized = False
     
     def load_csv_data(self, file_path: str, max_rows: Optional[int] = None) -> List[List[str]]:
         """
@@ -713,6 +752,9 @@ class ImportManager:
     def import_files(self, file_paths: List[str], show_dialog: bool = True) -> Optional[Dict[str, Any]]:
         """
         Importer un ou plusieurs fichiers
+        """
+        print(f"🎯 MÉTHODE import_files APPELÉE avec {len(file_paths)} fichiers: {file_paths}")
+        """
         
         Args:
             file_paths: Liste des chemins de fichiers
@@ -1003,6 +1045,7 @@ class ImportManager:
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                            config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Traiter l'import des données avec les références et libellés séparés"""
+        print(f"🚀 MÉTHODE _process_data_import APPELÉE avec {len(data)} lignes")
         results = {
             'total_imported': 0,
             'matches_found': 0,
@@ -1014,7 +1057,8 @@ class ImportManager:
             'total_lines_extracted': 0  # Total lignes du fichier (avant traitement doublons)
         }
         
-        # Utiliser le set global des références déjà vues pour détecter les doublons entre tous les fichiers
+        # CORRECTION: Utiliser le set LOCAL pour détecter les doublons uniquement DANS ce fichier
+        # Ne PAS détecter comme doublon des lignes qui sont dans des fichiers différents
         
         for row in data:
             if not row or not any(cell.strip() if cell is not None else False for cell in row):
@@ -1023,18 +1067,40 @@ class ImportManager:
             # Compter chaque ligne non vide comme extraite du fichier
             results['total_lines_extracted'] += 1
             
-            # Extraire les références principales pour vérification doublon
-            ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
-            commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
+            # Extraire les références pour vérification doublon - LOGIQUE INTELLIGENTE
+            # Si on a 4+ colonnes et les 2 premières sont très répétitives, utiliser colonnes 2-3
+            if len(row) >= 4:
+                col0 = str(row[0]).strip() if row[0] is not None else ""
+                col1 = str(row[1]).strip() if row[1] is not None else ""  
+                col2 = str(row[2]).strip() if row[2] is not None else ""
+                col3 = str(row[3]).strip() if row[3] is not None else ""
+                
+                # Si col2 et col3 semblent plus uniques (contiennent des chiffres/codes), les privilégier
+                if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
+                    ref_modele = col2
+                    commercial_ref = col3
+                    print(f"🔍 FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
+                else:
+                    ref_modele = col0
+                    commercial_ref = col1
+                    print(f"🔍 FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
+            else:
+                # Format standard 2-3 colonnes
+                ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
+                commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
+                print(f"🔍 FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
             
             # Vérifier si c'est un doublon dans le fichier
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+            print(f"🔍 ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
+            print(f"🔍 SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
                 print(f"  🔄 Doublon dans le fichier ignoré: {ref_modele} | {commercial_ref}")
                 continue  # Les doublons ne sont PAS comptés dans total_imported
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
+                print(f"✅ LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
             
             results['total_imported'] += 1
             
@@ -1089,6 +1155,7 @@ class ImportManager:
     def _process_data_import_batch(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                                  config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Version optimisée avec batch processing pour les gros imports"""
+        print(f"🚀 MÉTHODE _process_data_import_batch APPELÉE avec {len(data)} lignes")
         print(f"🚀 BATCH MODE: Traitement optimisé de {len(data)} lignes")
         
         results = {
@@ -1151,16 +1218,39 @@ class ImportManager:
                 
             results['total_lines_extracted'] += 1
             
-            # Détection doublons (identique)
-            ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
-            commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
+            # CORRECTION BATCH: Détection doublons uniquement DANS ce fichier (pas entre fichiers)
+            # LOGIQUE INTELLIGENTE identique à la version standard
+            if len(row) >= 4:
+                col0 = str(row[0]).strip() if row[0] is not None else ""
+                col1 = str(row[1]).strip() if row[1] is not None else ""  
+                col2 = str(row[2]).strip() if row[2] is not None else ""
+                col3 = str(row[3]).strip() if row[3] is not None else ""
+                
+                # Si col2 et col3 semblent plus uniques (contiennent des chiffres/codes), les privilégier
+                if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
+                    ref_modele = col2
+                    commercial_ref = col3
+                    print(f"🔍 BATCH FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
+                else:
+                    ref_modele = col0
+                    commercial_ref = col1
+                    print(f"🔍 BATCH FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
+            else:
+                # Format standard 2-3 colonnes
+                ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
+                commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
+                print(f"🔍 BATCH FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
             
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+            print(f"🔍 BATCH ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
+            print(f"🔍 BATCH SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
+                print(f"  🔄 BATCH Doublon dans le fichier ignoré: {ref_modele} | {commercial_ref}")
                 continue
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
+                print(f"✅ BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
             
             # Parser les données AVANT de compter total_imported
             device_data = self._parse_row_data(row, config)
@@ -1718,6 +1808,361 @@ class ImportManager:
             print(f"Erreur auto-completion: {e}")
             return False
 
+    # ========== NOUVELLES MÉTHODES ASYNCHRONES ==========
+    
+    def import_files_async(self, file_paths: List[str], show_dialog: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Version asynchrone de import_files qui préserve la fenêtre d'interaction
+        
+        Architecture: 
+        1. PHASE I/O (Async) : Lecture des fichiers avec progress bar
+        2. PHASE INTERACTION (Sync) : Fenêtre d'interaction existante 
+        3. PHASE DB (Sync) : Import en base de données
+        
+        Args:
+            file_paths: Liste des chemins de fichiers
+            show_dialog: Afficher l'interface de configuration
+            
+        Returns:
+            Résultats d'import ou None si annulé
+        """
+        app_logger.info(f"🎯 APPEL: import_files_async avec {len(file_paths)} fichiers")
+        # Vérifier disponibilité services async
+        app_logger.info(f"🔍 DEBUG: _async_reader = {self._async_reader}")
+        app_logger.info(f"🔍 DEBUG: _progress_manager = {self._progress_manager}")
+        app_logger.info(f"🔍 DEBUG: _async_services_initialized = {self._async_services_initialized}")
+        
+        if not self._async_reader or not self._progress_manager:
+            app_logger.info("Services async non disponibles, fallback vers mode synchrone")
+            return self.import_files(file_paths, show_dialog)
+        
+        # Seuil pour déclencher async
+        if len(file_paths) < self._async_threshold:
+            app_logger.info(f"Moins de {self._async_threshold} fichiers, mode synchrone")
+            return self.import_files(file_paths, show_dialog)
+        
+        app_logger.info(f"🚀 Import async démarré: {len(file_paths)} fichiers")
+        
+        try:
+            # Variable pour stocker les données lues
+            self._async_file_results = None
+            self._async_import_cancelled = False
+            
+            # Callback pour progression
+            def on_progress(current: int, total: int, filename: str):
+                if hasattr(self, '_progress_dialog') and self._progress_dialog:
+                    self._progress_dialog.update_progress(current, total, filename)
+            
+            # Callback pour fin de lecture  
+            def on_completion(file_results):  # file_results: List[FileReadResult]
+                if self._async_import_cancelled:
+                    return
+                    
+                app_logger.info(f"📊 Lecture terminée: {len(file_results)} fichiers")
+                
+                # Fermer progress dialog
+                if hasattr(self, '_progress_dialog') and self._progress_dialog:
+                    success_count = sum(1 for r in file_results if r.success)
+                    self._progress_dialog.set_completed(success_count, len(file_results))
+                    # Déconnecter le signal d'annulation avant fermeture pour éviter fausse annulation
+                    try:
+                        self._progress_dialog.cancelled.disconnect(self._cancel_async_import)
+                    except:
+                        pass  # Signal déjà déconnecté
+                    self._progress_dialog.close()
+                
+                # Stocker résultats pour traitement sync
+                self._async_file_results = file_results
+                
+                # Continuer avec la fenêtre d'interaction en mode synchrone
+                self._continue_with_interaction_dialog(show_dialog)
+            
+            # Afficher dialog de progression
+            self._progress_dialog = self._progress_manager.show_file_reading_progress(len(file_paths))
+            
+            # Connecter annulation
+            self._progress_dialog.cancelled.connect(self._cancel_async_import)
+            
+            # Lancer lecture async
+            app_logger.info(f"🚀 IMPORT: Appel read_files_async avec {len(file_paths)} fichiers")
+            app_logger.info(f"🔍 IMPORT: Type de _async_reader = {type(self._async_reader)}")
+            app_logger.info(f"🔍 IMPORT: Méthodes disponibles = {[m for m in dir(self._async_reader) if not m.startswith('_')]}")
+            app_logger.info(f"🔍 IMPORT: Type de read_files_async = {type(self._async_reader.read_files_async)}")
+            app_logger.info(f"🔍 IMPORT: read_files_async callable = {callable(self._async_reader.read_files_async)}")
+            success = self._async_reader.read_files_async(
+                file_paths, 
+                progress_callback=on_progress,
+                completion_callback=on_completion
+            )
+            app_logger.info(f"🚀 IMPORT: read_files_async retourné success = {success}")
+            
+            if not success:
+                app_logger.warning("Échec lancement lecture async, fallback synchrone")
+                if hasattr(self, '_progress_dialog') and self._progress_dialog:
+                    self._progress_dialog.close()
+                return self.import_files(file_paths, show_dialog)
+            
+            # En mode async, on retourne None car le traitement continue de façon asynchrone
+            # Le résultat sera traité dans _continue_with_interaction_dialog
+            return None
+            
+        except Exception as e:
+            app_logger.error(f"Erreur import async: {e}")
+            if hasattr(self, '_progress_dialog') and self._progress_dialog:
+                self._progress_dialog.close()
+            return self.import_files(file_paths, show_dialog)
+    
+    def _continue_with_interaction_dialog(self, show_dialog: bool):
+        """
+        Continuer l'import avec la fenêtre d'interaction après lecture async
+        PRÉSERVE la fenêtre d'interaction existante
+        """
+        try:
+            if not self._async_file_results:
+                app_logger.warning("Aucun résultat de lecture async")
+                return
+            
+            # Convertir FileReadResult vers format ImportFile
+            import_files = []
+            app_logger.info(f"🔍 CONVERSION: {len(self._async_file_results)} résultats à convertir")
+            for i, result in enumerate(self._async_file_results):
+                app_logger.info(f"🔍 RESULT {i}: success={result.success}, data_len={len(result.data) if result.data else 0}")
+                if result.success and result.data:
+                    import_file = ImportFile(
+                        path=result.file_path,
+                        type=result.file_type,
+                        suggested_reference=os.path.basename(result.file_path).split('.')[0],
+                        data=result.data
+                    )
+                    import_files.append(import_file)
+                    app_logger.info(f"✅ CONVERTI: {result.file_path}")
+            
+            if not import_files:
+                app_logger.warning("Aucun fichier valide après lecture async")
+                return
+            
+            # Créer configuration d'import comme dans la méthode originale
+            import_type = ImportType.SINGLE_FILE if len(import_files) == 1 else ImportType.MULTI_FILE
+            config = ImportConfiguration(
+                files=import_files,
+                import_type=import_type
+            )
+            
+            # Utiliser le processus normal avec fenêtre d'interaction
+            if show_dialog:
+                app_logger.info("🖥️ Affichage fenêtre d'interaction (données pré-chargées)")
+                dialog = ImportDialog(self.parent_widget, config)
+                if dialog.exec_() == QDialog.Accepted:
+                    # Traitement synchrone avec les données déjà lues
+                    results = self._execute_import_with_preloaded_data(config, self._async_file_results)
+                    if results and self.parent_widget:
+                        # Afficher résultats comme dans l'import normal
+                        if hasattr(self.parent_widget, '_show_import_results_new'):
+                            self.parent_widget._show_import_results_new(results)
+                        if hasattr(self.parent_widget, 'table_controller'):
+                            self.parent_widget.table_controller.load_data()
+                else:
+                    app_logger.info("Import annulé par l'utilisateur dans la fenêtre d'interaction")
+            else:
+                # Import direct sans dialog
+                results = self._execute_import_with_preloaded_data(config, self._async_file_results)
+                return results
+            
+        except Exception as e:
+            app_logger.error(f"Erreur continuation import: {e}")
+        finally:
+            # Nettoyer
+            self._async_file_results = None
+    
+    def _execute_import_with_preloaded_data(self, config: ImportConfiguration, 
+                                          file_results) -> Optional[Dict[str, Any]]:
+        """
+        Exécuter l'import avec des données déjà lues (optimisation async)
+        """
+        try:
+            results = {
+                'successful_imports': 0,
+                'total_files': len(file_results),
+                'results': []
+            }
+            
+            # CORRECTION: Chaque fichier doit avoir son propre set pour éviter les faux doublons entre fichiers
+            # (comme dans la méthode import_files standard)
+            
+            for file_result in file_results:
+                if not file_result.success:
+                    results['results'].append({
+                        'filename': file_result.filename,
+                        'success': False,
+                        'error': file_result.error,
+                        'count': 0
+                    })
+                    continue
+                
+                # Trouver la configuration correspondante
+                import_file = None
+                for conf_file in config.files:
+                    if conf_file.path == file_result.file_path:
+                        import_file = conf_file
+                        break
+                
+                if not import_file:
+                    continue
+                
+                # CORRECTION: Chaque fichier a son propre set de doublons (comme dans import_files standard)
+                file_seen_device_refs = set()
+                
+                # Traiter avec les données pré-chargées - APPEL CORRIGÉ
+                app_logger.info(f"🔧 PROCESSING: {import_file.path} avec {len(file_result.data)} lignes")
+                file_result_dict = self._process_file_data_preloaded(
+                    import_file, 
+                    file_result.data, 
+                    config, 
+                    file_seen_device_refs
+                )
+                app_logger.info(f"🔧 RESULT: success={file_result_dict.get('success', False)}, count={file_result_dict.get('count', 0)}")
+                results['results'].append(file_result_dict)
+                
+                if file_result_dict.get('success', False):
+                    results['successful_imports'] += 1
+                    app_logger.info(f"✅ SUCCESS: Total successful = {results['successful_imports']}")
+                else:
+                    app_logger.warning(f"❌ FAILED: {file_result_dict.get('error', 'Pas d\'erreur')}")
+            
+            app_logger.info(f"✅ Import async terminé: {results['successful_imports']}/{results['total_files']} fichiers")
+            
+            # CONVERTIR vers format compatible avec synthèse existante
+            # Agréger les détails individuels pour créer un résultat synthétisé
+            total_imported = 0
+            total_matches = 0
+            total_new_entries = 0
+            total_associations_created = 0
+            total_associations_existing = 0
+            total_manual_completion = 0
+            total_duplicates = 0
+            
+            for file_result in results['results']:
+                if file_result.get('success', False) and file_result.get('details'):
+                    details = file_result['details']
+                    total_imported += details.get('total_imported', 0)
+                    total_matches += details.get('matches_found', 0)
+                    total_new_entries += details.get('new_entries', 0)
+                    total_associations_created += details.get('associations_created', 0)
+                    total_associations_existing += details.get('associations_existing', 0)
+                    total_manual_completion += details.get('manual_completion', 0)
+                    total_duplicates += details.get('duplicates_in_file', 0)
+            
+            # Format compatible avec la synthèse existante
+            synthesized_results = {
+                'total_files': results['total_files'],
+                'successful_files': results['successful_imports'],
+                'total_imported': total_imported,
+                'matches_found': total_matches,
+                'new_entries': total_new_entries,
+                'associations_created': total_associations_created,
+                'associations_existing': total_associations_existing,
+                'manual_completion': total_manual_completion,
+                'duplicates_in_file': total_duplicates,
+                'errors': [],
+                'file_details': results['results']  # Garder les détails originaux
+            }
+            
+            app_logger.info(f"🎯 SYNTHÈSE: {total_imported} lignes traitées au total")
+            return synthesized_results
+            
+        except Exception as e:
+            app_logger.error(f"Erreur exécution import preloaded: {e}")
+            return None
+    
+    def _process_file_data_preloaded(self, import_file: ImportFile, data: List[List[str]], 
+                                   config: ImportConfiguration, file_seen_device_refs: set) -> Dict[str, Any]:
+        """
+        Traiter les données d'un fichier déjà lues en async - IMPORT RÉEL en DB
+        """
+        try:
+            filename = os.path.basename(import_file.path)
+            print(f"🔥 REAL IMPORT: Début import réel pour {filename} avec {len(data)} lignes")
+            
+            if not data or len(data) <= 1:
+                return {
+                    'filename': filename,
+                    'success': False,
+                    'error': 'Aucune donnée à importer',
+                    'count': 0
+                }
+            
+            # Construire les références et libellés selon la config
+            references_and_labels = []
+            
+            # Référence commune avec son libellé
+            if config.use_common_reference and config.common_reference:
+                common_label = config.common_label if config.common_label else ""
+                references_and_labels.append((config.common_reference, common_label))
+            
+            # Référence individuelle du fichier avec son libellé
+            individual_ref = config.individual_references.get(import_file.path, import_file.suggested_reference)
+            individual_label = config.individual_labels.get(import_file.path, "")
+            references_and_labels.append((individual_ref, individual_label))
+            
+            print(f"🔥 REAL IMPORT: Références configurées: {references_and_labels}")
+            
+            # APPEL DE LA VRAIE MÉTHODE D'IMPORT
+            # Seuil pour mode batch (copié depuis _import_single_file)
+            BATCH_THRESHOLD = 50
+            
+            if len(data) >= BATCH_THRESHOLD:
+                print(f"🚀 Mode BATCH activé pour {len(data)} lignes")
+                import_result = self._process_data_import_batch(
+                    data, 
+                    references_and_labels,
+                    config,
+                    import_file,
+                    file_seen_device_refs
+                )
+            else:
+                print(f"📝 Mode standard pour {len(data)} lignes")
+                import_result = self._process_data_import(
+                    data, 
+                    references_and_labels,
+                    config,
+                    import_file,
+                    file_seen_device_refs
+                )
+            
+            print(f"🔥 REAL IMPORT: Résultat import = {import_result}")
+            
+            # Adapter le format de retour pour correspondre à l'attendu
+            return {
+                'filename': filename,
+                'success': True,
+                'count': import_result.get('total_imported', 0),
+                'message': f'Import réel: {import_result.get("total_imported", 0)} entrées traitées',
+                'details': import_result  # Garder tous les détails
+            }
+            
+        except Exception as e:
+            print(f"🔥 REAL IMPORT ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'filename': os.path.basename(import_file.path) if import_file else 'unknown',
+                'success': False,
+                'error': str(e),
+                'count': 0
+            }
+    
+    def _cancel_async_import(self):
+        """Annuler l'import asynchrone en cours"""
+        self._async_import_cancelled = True
+        if self._async_reader:
+            self._async_reader.cancel_reading()
+        app_logger.info("Import async annulé par l'utilisateur")
+    
+    def set_async_threshold(self, threshold: int):
+        """Configurer le seuil pour déclencher le mode asynchrone"""
+        self._async_threshold = max(1, threshold)
+        app_logger.info(f"Seuil async configuré: {self._async_threshold} fichiers")
+
 
 # Fonctions utilitaires pour l'intégration
 def create_import_manager(db_manager, parent_widget=None) -> ImportManager:
@@ -1735,3 +2180,19 @@ def import_from_drag_drop(file_paths: List[str], db_manager, parent_widget=None)
     """Fonction utilitaire pour import drag&drop"""
     manager = create_import_manager(db_manager, parent_widget)
     return manager.import_from_drag_drop(file_paths)
+
+
+def import_files_with_async_support(file_paths: List[str], db_manager, parent_widget=None, 
+                                   show_dialog: bool = True) -> Optional[Dict[str, Any]]:
+    """
+    Fonction utilitaire pour importer avec support async automatique
+    Fallback vers mode synchrone si async indisponible
+    """
+    manager = create_import_manager(db_manager, parent_widget)
+    
+    # Essayer async d'abord
+    try:
+        return manager.import_files_async(file_paths, show_dialog)
+    except Exception as e:
+        app_logger.warning(f"Fallback vers mode synchrone: {e}")
+        return manager.import_files(file_paths, show_dialog)

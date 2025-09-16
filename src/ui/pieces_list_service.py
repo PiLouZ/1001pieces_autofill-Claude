@@ -67,7 +67,7 @@ class PieceActionButtonWidget(QWidget):
                 background-color: #c82333;
             }
         """)
-        delete_btn.clicked.connect(self._delete_piece)
+        delete_btn.clicked.connect(self._delete_piece_from_selected)
         layout.addWidget(delete_btn)
         
         layout.addStretch()
@@ -82,15 +82,15 @@ class PieceActionButtonWidget(QWidget):
         if main_window and hasattr(main_window, '_edit_piece'):
             main_window._edit_piece(self.list_item)
     
-    def _delete_piece(self):
-        """Supprimer la pièce - Remonter vers la MainWindow"""
+    def _delete_piece_from_selected(self):
+        """Supprimer la pièce des appareils sélectionnés - Remonter vers la MainWindow"""
         # Remonter jusqu'à la MainWindow pour trouver les bonnes méthodes
         main_window = self.parent()
-        while main_window and not hasattr(main_window, '_delete_piece'):
+        while main_window and not hasattr(main_window, '_delete_piece_from_selected'):
             main_window = main_window.parent()
-        
-        if main_window and hasattr(main_window, '_delete_piece'):
-            main_window._delete_piece(self.list_item)
+
+        if main_window and hasattr(main_window, '_delete_piece_from_selected'):
+            main_window._delete_piece_from_selected(self.list_item)
 
 
 class PiecesListWidget(QListWidget):
