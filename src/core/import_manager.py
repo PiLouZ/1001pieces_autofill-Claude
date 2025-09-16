@@ -797,9 +797,73 @@ class ImportManager:
             if not config:
                 return None
         
-        # Effectuer l'import
+        # PHASE 1: Décision intelligente Async vs Sync avec fallback automatique
+        return self._execute_import_with_fallback(config)
+
+    def _execute_import_with_fallback(self, config: ImportConfiguration) -> Optional[Dict[str, Any]]:
+        """
+        Exécuter l'import avec décision intelligente Async vs Sync + fallback automatique
+
+        Logique de décision:
+        - Async si 5+ fichiers ET services initialisés ET pas de petit volume
+        - Fallback automatique vers Sync en cas d'échec
+        - Préserve TOUS les métiers existants
+        """
+        # Seuil configuré pour activation async (conservative au début)
+        ASYNC_THRESHOLD = 5  # fichiers
+
+        # Décision d'utiliser l'async
+        should_use_async = (
+            len(config.files) >= ASYNC_THRESHOLD and
+            self._async_services_initialized and
+            getattr(self, '_async_reader', None) is not None and
+            getattr(self, '_progress_manager', None) is not None
+        )
+
+        if should_use_async:
+            try:
+                app_logger.info(f"🚀 DÉCISION ASYNC: {len(config.files)} fichiers (>= {ASYNC_THRESHOLD})")
+                # Tentative d'import asynchrone
+                return self._execute_import_async_internal(config)
+
+            except Exception as e:
+                app_logger.warning(f"⚠️ ASYNC ÉCHEC - Fallback vers Sync: {e}")
+                # Fallback automatique vers synchrone
+
+        else:
+            reason = []
+            if len(config.files) < ASYNC_THRESHOLD:
+                reason.append(f"Fichiers: {len(config.files)} < {ASYNC_THRESHOLD}")
+            if not self._async_services_initialized:
+                reason.append("Services async non-initialisés")
+
+            app_logger.info(f"📝 DÉCISION SYNC: {', '.join(reason)}")
+
+        # Import synchrone (existant, éprouvé)
         return self._execute_import(config)
-    
+
+    def _execute_import_async_internal(self, config: ImportConfiguration) -> Optional[Dict[str, Any]]:
+        """
+        Wrapper pour l'exécution async - encapsule la logique existante import_files_async
+
+        Cette méthode fait le pont entre la nouvelle logique de fallback et l'implémentation
+        async existante qui était dans import_files_async()
+        """
+        # Extraire les file_paths depuis la configuration
+        file_paths = [file.path for file in config.files]
+
+        # IMPORTANT: Appeler directement la logique async interne pour éviter la récursion
+        # car import_files_async pourrait rappeler _execute_import_with_fallback
+
+        # Recréer la config pour l'ancien système si nécessaire
+        # Mais utiliser la logique async existante directement
+        try:
+            # Utiliser la méthode async existante avec bypass du dialog
+            return self.import_files_async(file_paths, show_dialog=False)  # Dialog déjà géré
+        except Exception as e:
+            app_logger.error(f"Erreur async interne: {e}")
+            raise  # Re-lever pour déclencher le fallback
+
     def import_from_drag_drop(self, file_paths: List[str]) -> Optional[Dict[str, Any]]:
         """
         Import spécialisé pour drag&drop avec paramètres par défaut intelligents
@@ -873,8 +937,8 @@ class ImportManager:
             if not config:
                 return None
             
-            # Effectuer l'import avec marquage drag&drop
-            results = self._execute_import(config)
+            # Effectuer l'import avec la même logique de fallback
+            results = self._execute_import_with_fallback(config)
             
             # Marquer les résultats comme provenant du drag&drop
             if results:
