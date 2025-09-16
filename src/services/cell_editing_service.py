@@ -41,22 +41,30 @@ class CellEditingService(QObject):
         """Récupérer les informations DB d'une cellule (db_id, column_name)"""
         try:
             row, col = item.row(), item.column()
-            
+
             # Récupérer l'ID de la base de données pour cette ligne
             db_id_item = self.table.item(row, 0)  # L'ID est généralement en colonne 0
             if not db_id_item:
+                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): Pas d'item en colonne 0 (ID)")
                 return None, None
-                
+
+            db_id_text = db_id_item.text()
+            if not db_id_text or db_id_text.strip() == "":
+                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): ID vide en colonne 0: '{db_id_text}'")
+                return None, None
+
             try:
-                db_id = int(db_id_item.text())
-            except (ValueError, TypeError):
+                db_id = int(db_id_text)
+            except (ValueError, TypeError) as e:
+                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): ID non-entier en colonne 0: '{db_id_text}' - Erreur: {e}")
                 return None, None
-                
+
             # Récupérer le nom de la colonne
             column_name = self._get_db_column_name(col)
             if not column_name:
+                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): Mapping colonne {col} inexistant")
                 return None, None
-                
+
             return db_id, column_name
             
         except Exception as e:
@@ -87,7 +95,63 @@ class CellEditingService(QObject):
             self._column_mapping_cache[ui_column] = column_name
             
         return column_name
-        
+
+    def _try_auto_create_row(self, item: QTableWidgetItem, row: int, col: int) -> bool:
+        """Essayer de créer automatiquement une ligne en base pour une cellule orpheline"""
+        try:
+            # Vérifier qu'on n'est pas en train de créer des lignes en boucle
+            if hasattr(self, '_creating_rows') and self._creating_rows:
+                return False
+
+            # Ne créer automatiquement que pour des colonnes importantes
+            # (éviter création pour colonnes calculées ou temporaires)
+            important_columns = [1, 2, 3, 4, 5, 6]  # ref_piece, designation, ref_modele, type, manufacturer, commercial_ref
+            if col not in important_columns:
+                return False
+
+            # Marquer qu'on est en création pour éviter la récursion
+            self._creating_rows = True
+
+            try:
+                from ..core.config import Config
+
+                # Créer un dictionnaire vide pour les données de base
+                empty_data = {header: '' for header in Config.DB_HEADERS}
+
+                # Ajouter la valeur actuelle de la cellule si elle n'est pas vide
+                column_name = self._get_db_column_name(col)
+                if column_name and item.text().strip():
+                    empty_data[column_name] = item.text().strip()
+
+                # Créer la ligne en base
+                db_id = self.db_manager.insert_appareil(empty_data)
+
+                if db_id:
+                    # Mettre à jour l'item de la colonne 0 avec le nouvel ID
+                    id_item = self.table.item(row, 0)
+                    if not id_item:
+                        # Créer l'item ID s'il n'existe pas
+                        from PyQt5.QtWidgets import QTableWidgetItem
+                        id_item = QTableWidgetItem(str(db_id))
+                        self.table.setItem(row, 0, id_item)
+                    else:
+                        id_item.setText(str(db_id))
+
+                    app_logger.info(f"Auto-création ligne réussie - ID: {db_id} pour cellule ({row}, {col})")
+                    return True
+                else:
+                    app_logger.warning(f"Échec insert_appareil pour auto-création ligne ({row}, {col})")
+                    return False
+
+            finally:
+                self._creating_rows = False
+
+        except Exception as e:
+            app_logger.error(f"Erreur auto-création ligne ({row}, {col}): {e}")
+            if hasattr(self, '_creating_rows'):
+                self._creating_rows = False
+            return False
+
     @handle_errors("Erreur lors de la mise à jour de la cellule")
     def update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False) -> bool:
         """Mettre à jour une cellule dans la base de données"""
@@ -98,8 +162,22 @@ class CellEditingService(QObject):
             # Récupérer les informations de la cellule
             db_id, column_name = self.get_cell_db_info(item)
             if not db_id or not column_name:
-                app_logger.warning(f"Impossible de récupérer les infos DB pour cellule ({row}, {col})")
-                return False
+                # SOLUTION: Auto-créer une ligne en base si elle n'existe pas
+                if self._try_auto_create_row(item, row, col):
+                    # Ré-essayer après création
+                    db_id, column_name = self.get_cell_db_info(item)
+                    if db_id and column_name:
+                        app_logger.debug(f"Cellule ({row}, {col}): Ligne auto-créée avec ID {db_id}")
+                    else:
+                        app_logger.warning(f"Échec création auto ligne pour cellule ({row}, {col})")
+                        return False
+                else:
+                    # Échec auto-création - utiliser debug pour colonne 1 (fréquent)
+                    if col == 1:  # Colonne ref_piece - frequent dans vos logs
+                        app_logger.debug(f"Cellule ({row}, {col}): Pas d'ID/colonne valide - échec auto-création")
+                    else:
+                        app_logger.warning(f"Impossible de récupérer les infos DB pour cellule ({row}, {col})")
+                    return False
                 
             # Récupérer l'ancienne valeur
             old_value = getattr(item, '_original_value', '')
