@@ -844,22 +844,70 @@ class ImportManager:
 
     def _execute_import_async_internal(self, config: ImportConfiguration) -> Optional[Dict[str, Any]]:
         """
-        Wrapper pour l'exécution async - encapsule la logique existante import_files_async
+        Exécution async SANS récursion - Utilise la config utilisateur préservée
 
-        Cette méthode fait le pont entre la nouvelle logique de fallback et l'implémentation
-        async existante qui était dans import_files_async()
+        CORRECTION RÉCURSION: Évite d'appeler import_files_async qui pourrait rappeler import_files
+        Extrait directement la logique de lecture async nécessaire
         """
-        # Extraire les file_paths depuis la configuration
-        file_paths = [file.path for file in config.files]
-
-        # IMPORTANT: Appeler directement la logique async interne pour éviter la récursion
-        # car import_files_async pourrait rappeler _execute_import_with_fallback
-
-        # Recréer la config pour l'ancien système si nécessaire
-        # Mais utiliser la logique async existante directement
         try:
-            # Utiliser la méthode async existante avec bypass du dialog
-            return self.import_files_async(file_paths, show_dialog=False)  # Dialog déjà géré
+            # Vérifier que les services async sont disponibles
+            if not self._async_reader or not self._progress_manager:
+                raise Exception("Services async non disponibles")
+
+            # Extraire les file_paths pour la lecture async
+            file_paths = [file.path for file in config.files]
+
+            # Phase 1: Lecture async des fichiers (logique extraite de import_files_async)
+            app_logger.info(f"🚀 ASYNC PHASE 1: Lecture de {len(file_paths)} fichiers")
+            self._async_file_results = None
+            self._async_import_cancelled = False
+
+            # Callbacks pour la progression
+            def on_progress(current: int, total: int, filename: str):
+                if hasattr(self, '_progress_dialog') and self._progress_dialog:
+                    self._progress_dialog.update_progress(current, total, filename)
+
+            def on_completion(file_results):
+                if self._async_import_cancelled:
+                    return
+                self._async_file_results = file_results
+
+            # Afficher progress dialog
+            self._progress_dialog = self._progress_manager.show_file_reading_progress(len(file_paths))
+            self._progress_dialog.cancelled.connect(self._cancel_async_import)
+
+            # Lancer lecture async
+            success = self._async_reader.read_files_async(
+                file_paths,
+                progress_callback=on_progress,
+                completion_callback=on_completion
+            )
+
+            if not success:
+                raise Exception("Échec lecture async")
+
+            # Attendre la fin de lecture (boucle événements Qt)
+            from PyQt5.QtWidgets import QApplication
+            while self._async_file_results is None and not self._async_import_cancelled:
+                QApplication.processEvents()
+
+            if self._async_import_cancelled:
+                return None
+
+            # Fermer progress dialog
+            if hasattr(self, '_progress_dialog') and self._progress_dialog:
+                success_count = sum(1 for r in self._async_file_results if r.success)
+                self._progress_dialog.set_completed(success_count, len(self._async_file_results))
+                try:
+                    self._progress_dialog.cancelled.disconnect(self._cancel_async_import)
+                except:
+                    pass
+                self._progress_dialog.close()
+
+            # Phase 2: Traitement synchrone avec la configuration utilisateur
+            app_logger.info(f"🚀 ASYNC PHASE 2: Traitement avec config utilisateur préservée")
+            return self._execute_import_with_preloaded_data(config, self._async_file_results)
+
         except Exception as e:
             app_logger.error(f"Erreur async interne: {e}")
             raise  # Re-lever pour déclencher le fallback
