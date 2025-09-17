@@ -1,0 +1,333 @@
+"""
+Service de gestion des raccourcis clavier
+Extrait de main_refactored.py - Phase 3.5
+
+Responsabilités:
+- Gestion centralisée des raccourcis clavier
+- Détection des modificateurs de plateforme (Cmd/Ctrl)
+- Dispatch vers les actions appropriées
+- Support multi-plateforme (macOS/Windows/Linux)
+"""
+
+import sys
+from typing import Optional, Callable, Dict
+from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PyQt5.QtGui import QKeySequence, QKeyEvent
+from PyQt5.QtWidgets import QWidget
+
+from ..core.config import Config
+from ..core.logger import app_logger
+
+
+class KeyboardShortcutService(QObject):
+    """Service unifié pour la gestion des raccourcis clavier"""
+
+    # Signaux pour notifier les actions de raccourcis
+    shortcut_triggered = pyqtSignal(str, object)  # shortcut_name, event
+    modifier_detected = pyqtSignal(bool)  # has_cmd_modifier
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_widget = parent
+
+        # Mapping des raccourcis vers les actions
+        self.shortcut_actions = {}
+        self.focus_dependent_shortcuts = set()
+
+        # Configuration des raccourcis par défaut
+        self._setup_default_shortcuts()
+
+        app_logger.info("✅ KeyboardShortcutService initialisé")
+
+    def initialize_services(self):
+        """Initialiser les références vers les services principaux"""
+        if not self.parent_widget:
+            app_logger.warning("⚠️ KeyboardShortcutService: parent_widget non défini")
+            return
+
+        try:
+            # Les actions seront déléguées au parent widget
+            app_logger.info("🔧 KeyboardShortcutService: Services initialisés")
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur lors de l'initialisation KeyboardShortcutService: {e}")
+
+    def _setup_default_shortcuts(self):
+        """Configurer les raccourcis par défaut"""
+        try:
+            # Raccourcis avec modificateur Cmd/Ctrl
+            self.shortcut_actions = {
+                Qt.Key.Key_N: ("new_row", "Ajouter nouvelle ligne"),
+                Qt.Key.Key_Z: ("undo", "Annuler"),
+                Qt.Key.Key_Y: ("redo", "Refaire"),
+                Qt.Key.Key_D: ("show_column_values", "Afficher valeurs colonne"),
+                Qt.Key.Key_Up: ("navigate_up", "Naviguer vers cellule vide (haut)"),
+                Qt.Key.Key_Down: ("navigate_down", "Naviguer vers cellule vide (bas)")
+            }
+
+            # Raccourcis standard Qt (utiliser strings au lieu d'enums)
+            self.standard_shortcuts = {
+                "Save": ("save", "Sauvegarder"),
+                "Find": ("find", "Rechercher"),
+                "Paste": ("paste", "Coller"),
+                "Copy": ("copy", "Copier"),
+                "Undo": ("undo", "Annuler"),
+                "Redo": ("redo", "Refaire")
+            }
+
+            # Raccourcis sans modificateur
+            self.function_key_shortcuts = {
+                Qt.Key.Key_F5: ("refresh", "Actualiser"),
+                Qt.Key.Key_F12: ("log_viewer", "Ouvrir visualiseur de logs"),
+                Qt.Key.Key_Escape: ("clear_search", "Effacer recherche")
+            }
+
+            # Raccourcis dépendants du focus
+            self.focus_dependent_shortcuts.add(Qt.Key.Key_D)
+
+            app_logger.debug("🎯 Raccourcis par défaut configurés")
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _setup_default_shortcuts: {e}")
+
+    def handle_key_press_event(self, event: QKeyEvent) -> bool:
+        """
+        Gestion centralisée des raccourcis clavier
+
+        Args:
+            event: Événement clavier Qt
+
+        Returns:
+            bool: True si l'événement a été traité, False sinon
+        """
+        try:
+            # Détecter les modificateurs de plateforme
+            has_cmd_modifier = self._detect_cmd_modifier(event)
+            self.modifier_detected.emit(has_cmd_modifier)
+
+            # Traitement des raccourcis avec modificateur
+            if has_cmd_modifier:
+                return self._handle_modifier_shortcuts(event)
+
+            # Traitement des raccourcis sans modificateur
+            else:
+                return self._handle_function_key_shortcuts(event)
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur handle_key_press_event: {e}")
+            return False
+
+    def _detect_cmd_modifier(self, event: QKeyEvent) -> bool:
+        """Détecter les modificateurs Cmd/Ctrl selon la plateforme"""
+        try:
+            if sys.platform == 'darwin':
+                # Sur macOS, tester les deux possibilités (Qt mappe parfois Cmd vers Ctrl)
+                return bool(event.modifiers() & (Qt.MetaModifier | Qt.ControlModifier))
+            else:
+                # Sur Windows/Linux, utiliser ControlModifier
+                return bool(event.modifiers() & Qt.ControlModifier)
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _detect_cmd_modifier: {e}")
+            return False
+
+    def _handle_modifier_shortcuts(self, event: QKeyEvent) -> bool:
+        """Traiter les raccourcis avec modificateur Cmd/Ctrl"""
+        try:
+            # Vérifier les raccourcis standard Qt d'abord
+            for standard_key_name, (action_name, description) in self.standard_shortcuts.items():
+                standard_key = getattr(QKeySequence.StandardKey, standard_key_name, None)
+                if standard_key and event.matches(standard_key):
+                    return self._execute_shortcut_action(action_name, event, description)
+
+            # Vérifier les raccourcis personnalisés
+            key = event.key()
+            if key in self.shortcut_actions:
+                action_name, description = self.shortcut_actions[key]
+
+                # Vérifier les contraintes de focus pour certains raccourcis
+                if key in self.focus_dependent_shortcuts:
+                    if not self._check_focus_constraint(key):
+                        return False
+
+                return self._execute_shortcut_action(action_name, event, description)
+
+            return False
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _handle_modifier_shortcuts: {e}")
+            return False
+
+    def _handle_function_key_shortcuts(self, event: QKeyEvent) -> bool:
+        """Traiter les raccourcis sans modificateur (touches fonction)"""
+        try:
+            key = event.key()
+
+            if key in self.function_key_shortcuts:
+                action_name, description = self.function_key_shortcuts[key]
+                return self._execute_shortcut_action(action_name, event, description)
+
+            return False
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _handle_function_key_shortcuts: {e}")
+            return False
+
+    def _check_focus_constraint(self, key: int) -> bool:
+        """Vérifier les contraintes de focus pour certains raccourcis"""
+        try:
+            if key == Qt.Key.Key_D:
+                # CMD+D ne fonctionne que depuis le tableau, pas depuis la barre de recherche
+                if self.parent_widget:
+                    current_focus = self.parent_widget.focusWidget()
+                    search_input = getattr(self.parent_widget, 'search_input', None)
+                    return current_focus != search_input
+
+            return True
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _check_focus_constraint: {e}")
+            return True
+
+    def _execute_shortcut_action(self, action_name: str, event: QKeyEvent, description: str) -> bool:
+        """Exécuter l'action correspondant au raccourci"""
+        try:
+            if not self.parent_widget:
+                app_logger.warning(f"⚠️ Impossible d'exécuter '{action_name}': parent_widget non défini")
+                return False
+
+            # Mapper les actions vers les méthodes du parent
+            action_methods = {
+                "new_row": "_add_new_row",
+                "save": "_manual_save",
+                "find": self._handle_find_shortcut,
+                "paste": "_handle_paste",
+                "copy": "_handle_copy",
+                "undo": "_undo",
+                "redo": "_redo",
+                "show_column_values": "_show_column_values_list",
+                "navigate_up": lambda: self._handle_navigation_shortcut('up'),
+                "navigate_down": lambda: self._handle_navigation_shortcut('down'),
+                "refresh": self._handle_refresh_shortcut,
+                "log_viewer": "_open_log_viewer",
+                "clear_search": self._handle_clear_search_shortcut
+            }
+
+            action_method = action_methods.get(action_name)
+            if action_method:
+                if callable(action_method):
+                    # Action lambda directe
+                    action_method()
+                elif isinstance(action_method, str):
+                    # Méthode du parent widget
+                    method = getattr(self.parent_widget, action_method, None)
+                    if method and callable(method):
+                        method()
+                    else:
+                        app_logger.warning(f"⚠️ Méthode '{action_method}' non trouvée")
+                        return False
+
+                # Émettre le signal de raccourci traité
+                self.shortcut_triggered.emit(action_name, event)
+                app_logger.debug(f"⌨️ Raccourci exécuté: {description}")
+                return True
+            else:
+                app_logger.warning(f"⚠️ Action '{action_name}' non configurée")
+                return False
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _execute_shortcut_action '{action_name}': {e}")
+            return False
+
+    def _handle_find_shortcut(self):
+        """Traiter le raccourci de recherche (Focus + sélection)"""
+        try:
+            if self.parent_widget:
+                search_input = getattr(self.parent_widget, 'search_input', None)
+                if search_input:
+                    search_input.setFocus()
+                    search_input.selectAll()
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _handle_find_shortcut: {e}")
+
+    def _handle_navigation_shortcut(self, direction: str):
+        """Traiter les raccourcis de navigation dans les cellules vides"""
+        try:
+            if self.parent_widget:
+                method = getattr(self.parent_widget, '_navigate_to_empty_cell', None)
+                if method and callable(method):
+                    method(direction=direction)
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _handle_navigation_shortcut: {e}")
+
+    def _handle_refresh_shortcut(self):
+        """Traiter le raccourci F5 (Actualiser)"""
+        try:
+            if self.parent_widget:
+                # Utiliser la recherche parsée actuelle
+                advanced_search_service = getattr(self.parent_widget, 'advanced_search_service', None)
+                table_controller = getattr(self.parent_widget, 'table_controller', None)
+
+                if advanced_search_service and table_controller:
+                    search_term = advanced_search_service.get_current_search_term_with_fallback(self.parent_widget)
+                    table_controller.load_data(search_term)
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _handle_refresh_shortcut: {e}")
+
+    def _handle_clear_search_shortcut(self):
+        """Traiter le raccourci Escape (Effacer recherche)"""
+        try:
+            if self.parent_widget:
+                advanced_search_service = getattr(self.parent_widget, 'advanced_search_service', None)
+                if advanced_search_service:
+                    advanced_search_service.clear_search_ui(self.parent_widget)
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _handle_clear_search_shortcut: {e}")
+
+    # === CONFIGURATION DYNAMIQUE ===
+
+    def register_shortcut(self, key: int, action_name: str, description: str, with_modifier: bool = True):
+        """Enregistrer un nouveau raccourci dynamiquement"""
+        try:
+            if with_modifier:
+                self.shortcut_actions[key] = (action_name, description)
+            else:
+                self.function_key_shortcuts[key] = (action_name, description)
+
+            app_logger.debug(f"🔧 Raccourci enregistré: {description} ({action_name})")
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur register_shortcut: {e}")
+
+    def unregister_shortcut(self, key: int, with_modifier: bool = True):
+        """Supprimer un raccourci"""
+        try:
+            if with_modifier and key in self.shortcut_actions:
+                del self.shortcut_actions[key]
+            elif not with_modifier and key in self.function_key_shortcuts:
+                del self.function_key_shortcuts[key]
+
+            app_logger.debug(f"🗑️ Raccourci supprimé: clé {key}")
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur unregister_shortcut: {e}")
+
+    def get_registered_shortcuts(self) -> Dict[str, Dict]:
+        """Obtenir la liste des raccourcis enregistrés"""
+        return {
+            "modifier_shortcuts": dict(self.shortcut_actions),
+            "standard_shortcuts": dict(self.standard_shortcuts),
+            "function_key_shortcuts": dict(self.function_key_shortcuts)
+        }
+
+    def enable_focus_constraint(self, key: int):
+        """Activer une contrainte de focus pour un raccourci"""
+        self.focus_dependent_shortcuts.add(key)
+
+    def disable_focus_constraint(self, key: int):
+        """Désactiver une contrainte de focus pour un raccourci"""
+        self.focus_dependent_shortcuts.discard(key)

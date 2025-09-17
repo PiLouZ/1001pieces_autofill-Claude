@@ -13,41 +13,72 @@ class SearchCacheInvalidationService:
     
     def __init__(self, database_manager):
         self.db_manager = database_manager
-        
+
         # Callbacks à notifier lors d'invalidation
         self.invalidation_callbacks: List[Callable] = []
-        
+
+        # OPTIMISATION: Suspension des invalidations pendant imports
+        self.invalidation_suspended = False
+        self.pending_invalidation_reason = None
+
         # Statistiques d'invalidation
         self.invalidation_stats = {
             'total_invalidations': 0,
             'import_invalidations': 0,
             'piece_modification_invalidations': 0,
             'device_modification_invalidations': 0,
-            'manual_invalidations': 0
+            'manual_invalidations': 0,
+            'suspended_invalidations': 0
         }
     
     def register_invalidation_callback(self, callback: Callable):
         """Enregistrer un callback à appeler lors d'invalidation"""
         self.invalidation_callbacks.append(callback)
         app_logger.debug(f"Callback d'invalidation enregistré: {callback.__name__}")
+
+    def suspend_invalidation(self, reason: str = "import en cours"):
+        """Suspendre temporairement les invalidations de cache (utile pendant les imports)"""
+        self.invalidation_suspended = True
+        self.pending_invalidation_reason = reason
+        app_logger.debug(f"⏸️ Invalidations cache suspendues: {reason}")
+
+    def resume_invalidation(self, force_invalidate: bool = True):
+        """Reprendre les invalidations et optionnellement invalider le cache"""
+        was_suspended = self.invalidation_suspended
+        self.invalidation_suspended = False
+
+        if was_suspended and force_invalidate:
+            reason = self.pending_invalidation_reason or "reprise après suspension"
+            app_logger.debug(f"▶️ Invalidations cache reprises - invalidation forcée: {reason}")
+            self.invalidate_search_cache(f"reprise après {reason}")
+        else:
+            app_logger.debug("▶️ Invalidations cache reprises sans invalidation")
+
+        self.pending_invalidation_reason = None
     
     def invalidate_search_cache(self, reason: str = "modification"):
         """Invalider complètement le cache de recherche"""
+        # OPTIMISATION: Vérifier si les invalidations sont suspendues
+        if self.invalidation_suspended:
+            self.invalidation_stats['suspended_invalidations'] += 1
+            app_logger.debug(f"⏸️ Invalidation suspendue: {reason}")
+            return 0
+
         if hasattr(self.db_manager, 'search_cache') and self.db_manager.search_cache:
             old_size = len(self.db_manager.search_cache.cache)
             self.db_manager.search_cache.cache.clear()
-            
+
             self.invalidation_stats['total_invalidations'] += 1
-            
+
             app_logger.info(f"🗑️ Cache de recherche invalidé: {reason} ({old_size} entrées supprimées)")
-            
+
             # Notifier les callbacks
             for callback in self.invalidation_callbacks:
                 try:
                     callback(reason)
                 except Exception as e:
                     app_logger.error(f"Erreur callback invalidation {callback.__name__}: {e}")
-            
+
             return old_size
         return 0
     
@@ -66,16 +97,24 @@ class SearchCacheInvalidationService:
         """Invalidation après modification de pièces"""
         self.invalidation_stats['piece_modification_invalidations'] += 1
         entries_cleared = self.invalidate_search_cache(f"{operation} pièce: {piece_ref}")
-        
-        app_logger.info(f"🔧 Cache invalidé après {operation} pièce '{piece_ref}' ({device_count} appareils affectés)")
+
+        # Ne logger que si l'invalidation a réellement eu lieu
+        if entries_cleared > 0:
+            app_logger.info(f"🔧 Cache invalidé après {operation} pièce '{piece_ref}' ({device_count} appareils affectés)")
+        elif self.invalidation_suspended:
+            app_logger.debug(f"⏸️ Invalidation suspendue pour {operation} pièce '{piece_ref}' ({device_count} appareils affectés)")
         return entries_cleared
     
     def invalidate_after_device_modification(self, operation: str, device_count: int = 1):
         """Invalidation après modification d'appareils"""
         self.invalidation_stats['device_modification_invalidations'] += 1
         entries_cleared = self.invalidate_search_cache(f"{operation} appareil(s)")
-        
-        app_logger.info(f"📱 Cache invalidé après {operation} de {device_count} appareil(s)")
+
+        # Ne logger que si l'invalidation a réellement eu lieu
+        if entries_cleared > 0:
+            app_logger.info(f"📱 Cache invalidé après {operation} de {device_count} appareil(s)")
+        elif self.invalidation_suspended:
+            app_logger.debug(f"⏸️ Invalidation suspendue pour {operation} de {device_count} appareil(s)")
         return entries_cleared
     
     def invalidate_manual(self, reason: str = "manuel"):

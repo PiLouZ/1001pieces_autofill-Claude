@@ -122,9 +122,46 @@ class MainWindow(QMainWindow):
         """Initialiser les services d'import/export - PHASE 4 : Service unifié"""
         # PHASE 4 : Nouveau service d'export unifié
         self.export_manager = ExportManagerService(self)
-        
+
         # Services d'import conservés
         self.import_service = ImportService(self.db_manager)
+
+        # PHASE 3.2 : Service unifié d'import/export (avec feature flag)
+        if Config.USE_NEW_IMPORT_EXPORT_SERVICE:
+            from ..services.import_export_service import ImportExportService
+            self.import_export_service = ImportExportService(self)
+            self.import_export_service.initialize_services()
+            app_logger.debug("ImportExportService activé via feature flag")
+        else:
+            self.import_export_service = None
+
+        # PHASE 3.3 : Service unifié des opérations de base de données (avec feature flag)
+        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE:
+            from ..services.database_operations_service import DatabaseOperationsService
+            self.database_operations_service = DatabaseOperationsService(self)
+            self.database_operations_service.initialize_services()
+            app_logger.debug("DatabaseOperationsService activé via feature flag")
+        else:
+            self.database_operations_service = None
+
+        # PHASE 3.4 : Service unifié de gestion de l'état UI (avec feature flag)
+        if Config.USE_NEW_UI_STATE_MANAGEMENT_SERVICE:
+            from ..services.ui_state_management_service import UIStateManagementService
+            self.ui_state_management_service = UIStateManagementService(self)
+            self.ui_state_management_service.initialize_services()
+            app_logger.debug("UIStateManagementService activé via feature flag")
+        else:
+            self.ui_state_management_service = None
+
+        # PHASE 3.5 : Service unifié des raccourcis clavier (avec feature flag)
+        if Config.USE_NEW_KEYBOARD_SHORTCUT_SERVICE:
+            from ..services.keyboard_shortcut_service import KeyboardShortcutService
+            self.keyboard_shortcut_service = KeyboardShortcutService(self)
+            self.keyboard_shortcut_service.initialize_services()
+            app_logger.debug("KeyboardShortcutService activé via feature flag")
+        else:
+            self.keyboard_shortcut_service = None
+
         self.import_manager = ImportManager(self.db_manager, parent_widget=self)
         
         from .file_processing_service import FileProcessingService
@@ -150,17 +187,28 @@ class MainWindow(QMainWindow):
         """Initialiser les services d'interface utilisateur"""
         from .toolbar_service import ToolbarService
         self.toolbar_service = ToolbarService(self)
-        
+
         self.dialog_manager = DialogManager(self)
-        
+
         from ..services.unified_dialog_service import UnifiedDialogService
         self.dialog_service = UnifiedDialogService(self)
+
+        # Service optimisé pour le bouton des lignes incomplètes
+        from ..services.incomplete_button_service import IncompleteButtonService
+        self.incomplete_button_service = IncompleteButtonService(self.db_manager, self)
         
         from .custom_reference_service import CustomReferenceService
         self.custom_reference_service = CustomReferenceService(self)
-        
-        from ..services.paste_cleanup_service import PasteCleanupService  
+
+        from ..services.paste_cleanup_service import PasteCleanupService
         self.paste_cleanup_service = PasteCleanupService(self)
+
+        # Note: AutoSaveManager est initialisé dans _setup_statusbar() pour ordre correct
+
+        # PHASE 3.1: Service de tri et filtrage avec feature flag
+        if Config.USE_NEW_SORTING_FILTERING_SERVICE:
+            from ..services.sorting_filtering_service import SortingFilteringService
+            self.sorting_filtering_service = None  # Sera initialisé après création de la table
         
         from .pieces_panel_service import PiecesPanelService
         self.pieces_panel_service = PiecesPanelService(self)
@@ -222,15 +270,20 @@ class MainWindow(QMainWindow):
 
     def _setup_timers(self):
         """Configurer les timers"""
-        self.auto_save_timer = QTimer()
-        self.auto_save_timer.timeout.connect(self._auto_save)
-        self.auto_save_timer.start(Config.AUTO_SAVE_INTERVAL)
-        
+        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
+        if Config.USE_NEW_AUTO_SAVE_MANAGER:
+            self.auto_save_manager.setup_auto_save()
+        else:
+            # Ancien système (pour rollback)
+            self.auto_save_timer = QTimer()
+            self.auto_save_timer.timeout.connect(self._auto_save)
+            self.auto_save_timer.start(Config.AUTO_SAVE_INTERVAL)
+
         # PHASE 2.3: Recherche gérée par AdvancedSearchService
         # Plus besoin de timer local - géré par le service
-        
+
         # Timers de filtres maintenant dans TableController
-        
+
         # Gestion débouncing des barres de progression
         self.last_progress_update = 0
         self.progress_update_interval = 100  # ms minimum entre les mises à jour
@@ -346,6 +399,15 @@ class MainWindow(QMainWindow):
         
         # PHASE 5: Configuration des services centralisés
         self.cell_editing_service.table = self.table
+
+        # PHASE 3.1: Initialiser le service de tri et filtrage si activé
+        if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
+            from ..services.sorting_filtering_service import SortingFilteringService
+            self.sorting_filtering_service = SortingFilteringService(
+                table_widget=self.table,
+                table_controller=self.table_controller,
+                parent=self
+            )
         
         # Configurer le service de navigation avec les widgets de pagination
         if hasattr(self.table_controller, 'page_label'):
@@ -498,7 +560,17 @@ class MainWindow(QMainWindow):
         self.save_indicator = QLabel(Config.get_message('save_success'))
         self.save_indicator.setStyleSheet("color: green;")
         self.statusbar.addPermanentWidget(self.save_indicator)
-        
+
+        # Feature Flag: AutoSaveManager - Initialisation retardée + Configuration indicateur UI
+        if Config.USE_NEW_AUTO_SAVE_MANAGER:
+            from ..services.auto_save_manager import AutoSaveManager
+            self.auto_save_manager = AutoSaveManager(
+                self.db_manager,
+                self.user_interaction_service,
+                self.statusbar
+            )
+            self.auto_save_manager.setup_ui_indicator(self.save_indicator)
+
         self.connection_indicator = QLabel(Config.get_message('connected'))
         self.connection_indicator.setStyleSheet("color: green;")
         self.statusbar.addPermanentWidget(self.connection_indicator)
@@ -700,6 +772,12 @@ class MainWindow(QMainWindow):
     def _on_header_clicked(self, logical_index: int):
         """Gérer le clic sur un header pour trier"""
         try:
+            # PHASE 3.1: Déléguer au service de tri si activé
+            if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
+                self.sorting_filtering_service.on_header_clicked(logical_index)
+                return
+
+            # Ancien système (pour compatibilité/rollback)
             # Déterminer l'ordre de tri
             if self.current_sort_column == logical_index:
                 # Basculer l'ordre si même colonne
@@ -948,12 +1026,16 @@ class MainWindow(QMainWindow):
                 item.setText(old_value)  # Restaurer l'ancienne valeur
                 return
         
-        # Marquer comme modifié (sans mise en évidence visuelle)
-        self.modified_cells.add((row, col))
-        
-        # Mettre à jour l'indicateur
-        self.save_indicator.setText(Config.get_message('save_pending'))
-        self.save_indicator.setStyleSheet("color: orange;")
+        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
+        if Config.USE_NEW_AUTO_SAVE_MANAGER:
+            self.auto_save_manager.mark_cell_modified(row, col, self.table)
+        else:
+            # Ancien système (pour rollback)
+            self.modified_cells.add((row, col))
+
+            # Mettre à jour l'indicateur
+            self.save_indicator.setText(Config.get_message('save_pending'))
+            self.save_indicator.setStyleSheet("color: orange;")
         
         # Enregistrer dans l'historique
         self.undo_manager.add_action({
@@ -1249,56 +1331,66 @@ class MainWindow(QMainWindow):
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
-        if not self.modified_cells or not getattr(self, 'auto_save_enabled', True):
-            return
-        
-        try:
-            # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
-            updates_by_db_id = {}
-            
-            for row, col in list(self.modified_cells):
-                item = self.table.item(row, col)
-                if item:
-                    db_id = item.data(Qt.ItemDataRole.UserRole)
-                    if db_id is None:
-                        db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                    else:
-                        db_id = int(db_id)
-                    
-                    if db_id not in updates_by_db_id:
-                        updates_by_db_id[db_id] = {}
-                    
-                    column_name = self._get_db_field_name(col)
-                    if column_name:
-                        updates_by_db_id[db_id][column_name] = item.text()
-            
-            # Exécuter les mises à jour par lots
-            if updates_by_db_id:
-                self.db_manager.update_multiple_cells_batch(updates_by_db_id)
-                
-            # Mettre à jour les valeurs précédentes et nettoyer modified_cells
-            for row, col in list(self.modified_cells):
-                item = self.table.item(row, col)
-                if item:
-                    self.previous_values[(row, col)] = item.text()
-            
-            self.modified_cells.clear()
-            
-            # Mettre à jour l'indicateur
-            self.save_indicator.setText(Config.get_message('auto_save_done'))
-            self.save_indicator.setStyleSheet("color: green;")
-            
-            # Mettre à jour le bouton incomplète si nécessaire
-            self._update_incomplete_button_visibility()
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde automatique: {e}")
+        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
+        if Config.USE_NEW_AUTO_SAVE_MANAGER:
+            self.auto_save_manager.perform_auto_save(self.table)
+        else:
+            # Ancien système (pour rollback)
+            if not self.modified_cells or not getattr(self, 'auto_save_enabled', True):
+                return
+
+            try:
+                # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
+                updates_by_db_id = {}
+
+                for row, col in list(self.modified_cells):
+                    item = self.table.item(row, col)
+                    if item:
+                        db_id = item.data(Qt.ItemDataRole.UserRole)
+                        if db_id is None:
+                            db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
+                        else:
+                            db_id = int(db_id)
+
+                        if db_id not in updates_by_db_id:
+                            updates_by_db_id[db_id] = {}
+
+                        column_name = self._get_db_field_name(col)
+                        if column_name:
+                            updates_by_db_id[db_id][column_name] = item.text()
+
+                # Exécuter les mises à jour par lots
+                if updates_by_db_id:
+                    self.db_manager.update_multiple_cells_batch(updates_by_db_id)
+
+                # Mettre à jour les valeurs précédentes et nettoyer modified_cells
+                for row, col in list(self.modified_cells):
+                    item = self.table.item(row, col)
+                    if item:
+                        self.previous_values[(row, col)] = item.text()
+
+                self.modified_cells.clear()
+
+                # Mettre à jour l'indicateur
+                self.save_indicator.setText(Config.get_message('auto_save_done'))
+                self.save_indicator.setStyleSheet("color: green;")
+
+                # Mettre à jour le bouton incomplète si nécessaire
+                self._update_incomplete_button_visibility()
+
+            except Exception as e:
+                self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde automatique: {e}")
 
     def _manual_save(self):
         """Sauvegarde manuelle"""
-        self._auto_save()
-        self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
-        self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
+        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
+        if Config.USE_NEW_AUTO_SAVE_MANAGER:
+            self.auto_save_manager.trigger_manual_save()
+        else:
+            # Ancien système (pour rollback)
+            self._auto_save()
+            self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
+            self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
     
     def _get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
         """Récupérer les informations DB d'une cellule - PHASE 5: Délégation vers CellEditingService"""
@@ -1357,12 +1449,23 @@ class MainWindow(QMainWindow):
         return range(0, 0)  # Plage vide si direction inconnue
     
     def _save_cells_in_range(self, rows: range, start_col: int, end_col: int):
-        """Sauvegarder les cellules dans une plage donnée"""
-        for row in rows:
-            for col in range(start_col, end_col + 1):
-                item = self.table.item(row, col)
-                if item:
-                    self._update_cell_in_db(item, skip_history=True)
+        """Sauvegarder les cellules dans une plage donnée (drag & drop)"""
+        # Suspendre les invalidations de cache pendant le drag & drop
+        cache_service = getattr(self.db_manager, 'cache_invalidation', None)
+        if cache_service:
+            cache_service.suspend_invalidation("drag & drop")
+
+        try:
+            for row in rows:
+                for col in range(start_col, end_col + 1):
+                    item = self.table.item(row, col)
+                    if item:
+                        # Sauvegarder uniquement les cellules avec ID valide
+                        self.cell_editing_service.update_cell_in_db(item, skip_history=True)
+        finally:
+            # Reprendre les invalidations avec une invalidation globale
+            if cache_service:
+                cache_service.resume_invalidation(force_invalidate=True)
 
     
     
@@ -1683,16 +1786,22 @@ class MainWindow(QMainWindow):
     
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""
+        # PHASE 3.2: Déléguer au ImportExportService si activé
+        if Config.USE_NEW_IMPORT_EXPORT_SERVICE and hasattr(self, 'import_export_service') and self.import_export_service:
+            self.import_export_service.import_file()
+            return
+
+        # Ancien système (pour compatibilité/rollback)
         from PyQt5.QtWidgets import QFileDialog
         filenames, _ = QFileDialog.getOpenFileNames(
-            self, "Importer fichier(s)", "", 
+            self, "Importer fichier(s)", "",
             "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
         )
-        
+
         if filenames:
             # Utiliser le nouveau gestionnaire unifié avec support async
             results = self.import_manager.import_files(filenames, show_dialog=True)
-            
+
             if results:
                 self._show_import_results_new(results)
                 self.table_controller.load_data()  # Rafraîchir l'affichage
@@ -1961,48 +2070,52 @@ class MainWindow(QMainWindow):
     def _update_incomplete_button_visibility(self):
         """Mettre à jour la visibilité du bouton incomplètes selon les données"""
         try:
+            # Utiliser le service optimisé au lieu de l'ancienne méthode
+            if hasattr(self, 'incomplete_button_service'):
+                # Programmer une mise à jour différée pour éviter les appels répétés
+                self.incomplete_button_service.schedule_update()
+            else:
+                # Fallback vers l'ancienne méthode si le service n'est pas encore initialisé
+                self._update_incomplete_button_visibility_legacy()
+        except Exception as e:
+            print(f"Erreur lors de la mise à jour du bouton incomplètes: {e}")
+
+    def _update_incomplete_button_visibility_legacy(self):
+        """Ancienne méthode de mise à jour (fallback)"""
+        try:
             incomplete_count = self.db_manager.count_incomplete_devices()
             if hasattr(self, 'incomplete_filter_btn'):
                 if incomplete_count > 0:
                     self.incomplete_filter_btn.show()
                     from src.core.config import pluralize
                     if self.show_incomplete_only:
-                        # Si le filtre est actif, mettre à jour avec le nombre restant
                         self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
                         self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
                     else:
-                        # Si le filtre n'est pas actif, afficher le nombre total
                         self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
                         self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
                 else:
                     self.incomplete_filter_btn.hide()
-                    # Désactiver le filtre si il n'y a plus d'appareils incomplets
                     if self.show_incomplete_only:
                         self.show_incomplete_only = False
                         self.table_controller.load_data()
         except Exception as e:
-            print(f"Erreur lors de la mise à jour du bouton incomplètes: {e}")
+            print(f"Erreur lors de la mise à jour legacy du bouton incomplètes: {e}")
 
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
         self.show_incomplete_only = checked
-        
+
+        # Notifier le service de l'état du filtre
+        if hasattr(self, 'incomplete_button_service'):
+            self.incomplete_button_service.set_filter_active(checked)
+
         if checked:
             # Activer le filtre - nettoyer les autres filtres d'abord
             self._clear_column_filters()
             self.search_input.clear()
-            
-            # Compter et afficher le nombre de lignes filtrées
-            incomplete_count = self.db_manager.count_incomplete_devices()
-            from src.core.config import pluralize
-            self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
-            # Le style est géré par le CSS moderne via :checked
-        else:
-            # Désactiver le filtre et mettre à jour le texte avec le nombre
-            incomplete_count = self.db_manager.count_incomplete_devices()
-            from src.core.config import pluralize
-            self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
-            # Le style est géré par le CSS moderne
+
+        # Le service gère automatiquement la mise à jour du texte et de l'affichage
         
         # Recharger les données avec ou sans filtre
         # NOTE: Cette ligne semble erronée, current_page devrait être sur table_controller
@@ -2389,11 +2502,16 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _import_csv_from_path(self, file_path):
         """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)
-        
+
         MIGRATION: Utilise ImportManager pour le drag&drop avec fallback vers ancien système
         """
         try:
-            # NOUVEAU : Utiliser ImportManager pour drag&drop
+            # PHASE 3.2: Déléguer au ImportExportService si activé
+            if Config.USE_NEW_IMPORT_EXPORT_SERVICE and hasattr(self, 'import_export_service') and self.import_export_service:
+                self.import_export_service.import_csv_from_path(file_path)
+                return
+
+            # ANCIEN : Utiliser ImportManager pour drag&drop (système actuel)
             results = self.import_manager.import_from_drag_drop([file_path])
             if results:
                 self._show_import_results_new(results)
@@ -2706,7 +2824,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             self.user_interaction_service.show_error(f"Erreur lors de la suppression des lignes: {e}")
 
     def keyPressEvent(self, event):
-        """Gestion des raccourcis clavier"""
+        """Gestion des raccourcis clavier - avec délégation conditionnelle au service"""
+        # PHASE 3.5: Déléguer au KeyboardShortcutService si activé
+        if Config.USE_NEW_KEYBOARD_SHORTCUT_SERVICE and self.keyboard_shortcut_service:
+            handled = self.keyboard_shortcut_service.handle_key_press_event(event)
+            if handled:
+                return
+            # Si pas géré par le service, continuer avec la logique legacy
+
+        # Logique legacy - maintenue pour compatibilité
         # Sur macOS, Qt mappe Cmd vers ControlModifier dans certains contextes
         # Nous testons les deux pour être sûr
         has_cmd_modifier = False
@@ -2716,7 +2842,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         else:
             # Sur Windows/Linux, utiliser ControlModifier
             has_cmd_modifier = bool(event.modifiers() & Qt.ControlModifier)
-        
+
         if has_cmd_modifier:
             if event.key() == Qt.Key.Key_N:
                 self._add_new_row()

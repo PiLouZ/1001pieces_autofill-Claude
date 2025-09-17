@@ -72,9 +72,19 @@ class Config:
     # Validation
     MAX_FIELD_LENGTH = 50
     NOTES_PREVIEW_LENGTH = 50
-    
+
     # Interface
     DRAG_HANDLE_SIZE = 10
+
+    # Feature Flags - Refactoring Phase 1
+    USE_NEW_AUTO_SAVE_MANAGER = False  # Migration AutoSaveManager - REPORTÉE (cycle init complexe)
+
+    # Feature Flags - Refactoring Phase 3
+    USE_NEW_SORTING_FILTERING_SERVICE = True  # Migration SortingFilteringService - PHASE 3.1 ACTIVÉE
+    USE_NEW_IMPORT_EXPORT_SERVICE = True  # Migration ImportExportService - PHASE 3.2 ACTIVÉE
+    USE_NEW_DATABASE_OPERATIONS_SERVICE = True  # Migration DatabaseOperationsService - PHASE 3.3 ACTIVÉE
+    USE_NEW_UI_STATE_MANAGEMENT_SERVICE = True  # Migration UIStateManagementService - PHASE 3.4 ACTIVÉE
+    USE_NEW_KEYBOARD_SHORTCUT_SERVICE = True  # Migration KeyboardShortcutService - PHASE 3.5 ACTIVÉE
     
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3

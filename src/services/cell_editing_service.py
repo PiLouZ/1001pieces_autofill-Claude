@@ -40,23 +40,19 @@ class CellEditingService(QObject):
     def get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
         """Récupérer les informations DB d'une cellule (db_id, column_name)"""
         try:
+            from PyQt5.QtCore import Qt
             row, col = item.row(), item.column()
 
-            # Récupérer l'ID de la base de données pour cette ligne
-            db_id_item = self.table.item(row, 0)  # L'ID est généralement en colonne 0
-            if not db_id_item:
-                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): Pas d'item en colonne 0 (ID)")
-                return None, None
-
-            db_id_text = db_id_item.text()
-            if not db_id_text or db_id_text.strip() == "":
-                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): ID vide en colonne 0: '{db_id_text}'")
+            # L'ID est stocké dans UserRole de chaque cellule
+            db_id = item.data(Qt.ItemDataRole.UserRole)
+            if db_id is None:
+                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): Pas d'ID dans UserRole")
                 return None, None
 
             try:
-                db_id = int(db_id_text)
+                db_id = int(db_id)
             except (ValueError, TypeError) as e:
-                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): ID non-entier en colonne 0: '{db_id_text}' - Erreur: {e}")
+                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): ID UserRole non-entier: '{db_id}' - Erreur: {e}")
                 return None, None
 
             # Récupérer le nom de la colonne
@@ -66,7 +62,7 @@ class CellEditingService(QObject):
                 return None, None
 
             return db_id, column_name
-            
+
         except Exception as e:
             app_logger.error(f"Erreur récupération info cellule: {e}")
             return None, None
@@ -76,24 +72,21 @@ class CellEditingService(QObject):
         # Cache pour éviter les calculs répétés
         if ui_column in self._column_mapping_cache:
             return self._column_mapping_cache[ui_column]
-            
-        # Mapping standard des colonnes (peut être étendu selon les besoins)
-        column_mapping = {
-            0: 'id',
-            1: 'ref_piece', 
-            2: 'designation',
-            3: 'ref_modele',
-            4: 'type_appareil',
-            5: 'manufacturer',
-            6: 'commercial_ref',
-            7: 'pieces_count',
-            # Ajouter d'autres mappings selon votre schéma
-        }
-        
+
+        # Mapping correct des colonnes UI vers DB selon Config.DB_HEADERS
+        from ..core.config import Config
+        column_mapping = {}
+
+        # Mapper les colonnes UI vers les colonnes DB correspondantes
+        for ui_idx, db_field in enumerate(Config.DB_HEADERS):
+            column_mapping[ui_idx] = db_field
+
+        # La dernière colonne "Nb Pièces" est en lecture seule, pas de mapping DB
+
         column_name = column_mapping.get(ui_column)
         if column_name:
             self._column_mapping_cache[ui_column] = column_name
-            
+
         return column_name
 
     def _try_auto_create_row(self, item: QTableWidgetItem, row: int, col: int) -> bool:
@@ -162,22 +155,8 @@ class CellEditingService(QObject):
             # Récupérer les informations de la cellule
             db_id, column_name = self.get_cell_db_info(item)
             if not db_id or not column_name:
-                # SOLUTION: Auto-créer une ligne en base si elle n'existe pas
-                if self._try_auto_create_row(item, row, col):
-                    # Ré-essayer après création
-                    db_id, column_name = self.get_cell_db_info(item)
-                    if db_id and column_name:
-                        app_logger.debug(f"Cellule ({row}, {col}): Ligne auto-créée avec ID {db_id}")
-                    else:
-                        app_logger.warning(f"Échec création auto ligne pour cellule ({row}, {col})")
-                        return False
-                else:
-                    # Échec auto-création - utiliser debug pour colonne 1 (fréquent)
-                    if col == 1:  # Colonne ref_piece - frequent dans vos logs
-                        app_logger.debug(f"Cellule ({row}, {col}): Pas d'ID/colonne valide - échec auto-création")
-                    else:
-                        app_logger.warning(f"Impossible de récupérer les infos DB pour cellule ({row}, {col})")
-                    return False
+                app_logger.debug(f"Cellule ({row}, {col}): Pas d'ID valide - édition ignorée")
+                return False
                 
             # Récupérer l'ancienne valeur
             old_value = getattr(item, '_original_value', '')
@@ -191,10 +170,10 @@ class CellEditingService(QObject):
                 return False
                 
             # Mise à jour en base
-            success = self.db_manager.update_record(
-                'appareils', 
-                db_id, 
-                {column_name: new_value}
+            success = self.db_manager.update_cell(
+                db_id,
+                column_name,
+                new_value
             )
             
             if success:
@@ -223,20 +202,25 @@ class CellEditingService(QObject):
             error_message = ""
             
             if column_name == 'pieces_count':
-                # Validation pour le nombre de pièces
+                # Validation pour le nombre de pièces (colonne read-only, ne devrait pas arriver)
                 if value and not value.isdigit():
                     is_valid = False
                     error_message = "Le nombre de pièces doit être un nombre entier"
-            elif column_name in ['ref_piece', 'ref_modele', 'commercial_ref']:
+            elif column_name in ['ref_modele', 'commercial_ref', 'other_ref']:
                 # Validation pour les références
                 if len(value) > 100:  # Limite de longueur
                     is_valid = False
                     error_message = "La référence ne peut pas dépasser 100 caractères"
-            elif column_name in ['type_appareil', 'manufacturer']:
-                # Validation pour les champs categoriques
+            elif column_name in ['type', 'manufacturer', 'category']:
+                # Validation pour les champs catégoriques
                 if len(value) > 50:
                     is_valid = False
                     error_message = "Ce champ ne peut pas dépasser 50 caractères"
+            elif column_name == 'notes':
+                # Validation pour les notes (peut être plus long)
+                if len(value) > 500:
+                    is_valid = False
+                    error_message = "Les notes ne peuvent pas dépasser 500 caractères"
                     
             # Mettre en cache le résultat
             self._validation_cache[cache_key] = is_valid

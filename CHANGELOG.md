@@ -2,6 +2,68 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [3.2.0] - 🏗️ REFACTORING ARCHITECTURAL PHASE 3 - 2025-09-17
+
+### 🎯 **Extraction Services Architecturaux - 5 Services Créés**
+
+#### ✅ **Nouveaux Services Extraits de main_refactored.py**
+- **SortingFilteringService** (Phase 3.1) : Service de tri et filtrage (182 lignes)
+  - Gestion centralisée des tris multi-colonnes avec indicateurs visuels
+  - Filtrage débrayable avec signaux PyQt5
+  - Tests complets (18 tests) avec feature flag
+
+- **ImportExportService** (Phase 3.2) : Service d'import/export unifié (580+ lignes)
+  - Import CSV, HTML, PDF centralisé avec validation
+  - Export multi-formats avec gestion d'erreurs robuste
+  - Tests exhaustifs (32 tests) avec mock PyQt5
+
+- **DatabaseOperationsService** (Phase 3.3) : Service CRUD unifié (500+ lignes)
+  - Opérations de base de données centralisées avec transactions
+  - Validation métier et gestion d'erreurs complète
+  - Tests complets (30 tests) avec rollback capability
+
+- **UIStateManagementService** (Phase 3.4) : Service d'état interface (320 lignes)
+  - Gestion indicateurs visuels (progress, boutons, overlays)
+  - Configuration paramètres UI et rafraîchissement global
+  - Tests robustes (33 tests) avec architecture PyQt5
+
+- **KeyboardShortcutService** (Phase 3.5) : Service raccourcis clavier (330 lignes)
+  - Gestion multi-plateforme (macOS/Windows/Linux) des raccourcis
+  - Configuration dynamique avec contraintes de focus
+  - Tests exhaustifs (32 tests) avec detection modificateurs
+
+#### 🔧 **Architecture Feature Flags Zéro Régression**
+- **Feature flags conditionnels** : `USE_NEW_*_SERVICE` dans config.py
+- **Délégation intelligente** : Logique legacy préservée en fallback
+- **Tests de régression** : Validation application OFF/ON pour chaque service
+- **Rollback capability** : Retour arrière possible à tout moment
+
+#### 📊 **Impact Architectural**
+- **~1912 lignes extraites** de main_refactored.py vers services spécialisés
+- **Architecture modulaire** : Responsabilités isolées et testables
+- **Maintenabilité améliorée** : Code réparti en services cohérents
+- **Testabilité renforcée** : 145+ tests unitaires pour les nouveaux services
+
+#### 🛡️ **Méthodologie Zéro Régression Appliquée**
+- **Tests préalables complets** avant chaque extraction
+- **Feature flags de migration** pour activation/désactivation sécurisée
+- **Validation fonctionnelle** : Application testée à chaque étape
+- **Logique legacy maintenue** : Compatibilité ascendante garantie
+
+### 🔧 **Améliorations Techniques**
+
+#### **Services PyQt5 Optimisés**
+- **Signaux/slots** : Communication inter-services robuste
+- **Gestion d'erreurs** : Error handling complet avec logging
+- **Tests unitaires** : Couverture exhaustive avec mocks PyQt5
+- **Documentation** : Code auto-documenté avec docstrings
+
+#### **Tests et Qualité**
+- **145+ tests unitaires** pour les 5 nouveaux services
+- **Compatibilité PyQt5** : Mocks et fixtures spécialisés
+- **Coverage complète** : Tous les cas d'usage testés
+- **CI/CD ready** : Tests automatisables et reproductibles
+
 ## [3.1.0] - 🚀 OPTIMIZATION MULTI-FICHIERS FINALE - 2025-09-16
 
 ### 🎯 **Abandon Async - Optimisation Synchrone Complète**
