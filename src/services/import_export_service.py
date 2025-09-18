@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (QFileDialog, QApplication, QProgressDialog, QMessag
                             QPushButton, QComboBox)
 from PyQt5.QtCore import Qt, pyqtSignal
 
+from ..core.logger import app_logger
 from ..services.export_service import ExportFormat
 from ..services.export_manager import ExportManagerService, ExportType
 from .base_service import BaseService, service_operation

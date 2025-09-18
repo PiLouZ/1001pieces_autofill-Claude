@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal
 
 from ..core.config import Config
+from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 
 

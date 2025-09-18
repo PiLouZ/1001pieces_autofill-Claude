@@ -16,6 +16,7 @@ from PyQt5.QtGui import QKeySequence, QKeyEvent
 from PyQt5.QtWidgets import QWidget
 
 from ..core.config import Config
+from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 
 

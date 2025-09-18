@@ -62,7 +62,10 @@
       "Read(/private/tmp/**)",
       "Read(/private/tmp/**)",
       "Bash(/dev/null)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(git remote add:*)",
+      "Bash(do echo \"=== $dir ===\")",
+      "Bash(do echo \"=== src/$dir ===\")"
     ],
     "deny": [],
     "additionalDirectories": [

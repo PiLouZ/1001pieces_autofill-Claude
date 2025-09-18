@@ -200,7 +200,10 @@ class UIComponentService:
         self.main_window.incomplete_filter_btn = incomplete_btn
         
         # Vérifier et masquer le bouton si aucun appareil incomplet
-        self.main_window._update_incomplete_button_visibility()
+        if hasattr(self.main_window, 'incomplete_button_service'):
+            self.main_window.incomplete_button_service.schedule_update()
+        else:
+            self.main_window._update_incomplete_button_visibility()
         
         # Espace pour centrer le bouton et pousser les infos à droite
         pagination_layout_2.addStretch()

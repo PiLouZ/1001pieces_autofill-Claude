@@ -771,10 +771,15 @@ class TableController:
         self.incomplete_filter_btn.clicked.connect(self.parent_window._toggle_incomplete_filter)
         self.incomplete_filter_btn.setObjectName("incompleteBtn")
         incomplete_layout.addWidget(self.incomplete_filter_btn)
-        
+
+        # Associer le bouton au service optimisé
+        if hasattr(self.parent_window, 'incomplete_button_service'):
+            self.parent_window.incomplete_button_service.set_button(self.incomplete_filter_btn)
+            self.parent_window.incomplete_button_service.set_filter_active(self.parent_window.show_incomplete_only)
+
         incomplete_layout.addStretch()  # Centrer le bouton
         layout.addLayout(incomplete_layout)
-        
+
         # Mettre à jour la visibilité
         self._update_incomplete_button_visibility()
     

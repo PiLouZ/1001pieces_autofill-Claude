@@ -885,88 +885,99 @@ class ImportManager:
     
     def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
         """Exécuter l'import synchrone OPTIMISÉ pour responsivité UI"""
-        results = {
-            'total_files': len(config.files),
-            'successful_files': 0,
-            'total_imported': 0,
-            'matches_found': 0,
-            'new_entries': 0,
-            'associations_created': 0,
-            'associations_existing': 0,
-            'manual_completion': 0,
-            'duplicates_in_file': 0,
-            'errors': [],
-            'file_details': []  # Nouveau: détails par fichier
-        }
+        # OPTIMISATION CACHE: Suspendre les invalidations pendant tout l'import
+        cache_service = getattr(self.db_manager, 'cache_invalidation', None)
+        if cache_service:
+            cache_service.suspend_invalidation(f"import de {len(config.files)} fichier(s)")
 
-        app_logger.info(f"📝 SYNC OPTIMISÉ: Import de {len(config.files)} fichiers")
+        try:
+            results = {
+                'total_files': len(config.files),
+                'successful_files': 0,
+                'total_imported': 0,
+                'matches_found': 0,
+                'new_entries': 0,
+                'associations_created': 0,
+                'associations_existing': 0,
+                'manual_completion': 0,
+                'duplicates_in_file': 0,
+                'errors': [],
+                'file_details': []  # Nouveau: détails par fichier
+            }
 
-        # OPTIMISATION: Barre de progression NON-MODALE pour éviter les freezes
-        progress = QProgressDialog(
+            app_logger.info(f"📝 SYNC OPTIMISÉ: Import de {len(config.files)} fichiers")
+
+            # OPTIMISATION: Barre de progression NON-MODALE pour éviter les freezes
+            progress = QProgressDialog(
             "Importation en cours...",
             "Annuler",
             0,
             len(config.files),
             self.parent_widget
-        )
-        progress.setWindowModality(Qt.NonModal)  # NON-MODAL = plus responsive
-        progress.setMinimumDuration(1000)  # Afficher après 1s seulement
-        progress.show()
+            )
+            progress.setWindowModality(Qt.NonModal)  # NON-MODAL = plus responsive
+            progress.setMinimumDuration(1000)  # Afficher après 1s seulement
+            progress.show()
 
-        for i, file in enumerate(config.files):
-            # OPTIMISATION: Plus d'appels à processEvents pour fluidité
-            QApplication.processEvents()
+            for i, file in enumerate(config.files):
+                # OPTIMISATION: Plus d'appels à processEvents pour fluidité
+                QApplication.processEvents()
 
-            if progress.wasCanceled():
-                app_logger.info(f"⚠️ Import annulé par utilisateur à {i}/{len(config.files)}")
-                break
+                if progress.wasCanceled():
+                    app_logger.info(f"⚠️ Import annulé par utilisateur à {i}/{len(config.files)}")
+                    break
 
-            progress.setValue(i)
-            progress.setLabelText(f"Import de {file.filename}... ({i+1}/{len(config.files)})")
+                progress.setValue(i)
+                progress.setLabelText(f"Import de {file.filename}... ({i+1}/{len(config.files)})")
 
-            # OPTIMISATION: ProcessEvents après chaque update UI
-            QApplication.processEvents()
+                # OPTIMISATION: ProcessEvents après chaque update UI
+                QApplication.processEvents()
 
-            try:
-                app_logger.debug(f"📁 Traitement fichier {i+1}/{len(config.files)}: {file.filename}")
+                try:
+                    app_logger.debug(f"📁 Traitement fichier {i+1}/{len(config.files)}: {file.filename}")
 
-                # Chaque fichier a son propre set pour éviter doublons intra-fichier seulement
-                file_local_seen_refs = set()
-                file_results = self._import_single_file(file, config, file_local_seen_refs)
-                results['successful_files'] += 1
+                    # Chaque fichier a son propre set pour éviter doublons intra-fichier seulement
+                    file_local_seen_refs = set()
+                    file_results = self._import_single_file(file, config, file_local_seen_refs)
+                    results['successful_files'] += 1
 
-                # Ajouter les détails du fichier
-                file_detail = {
-                    'filename': file.filename,
-                    'lines_processed': file_results.get('total_lines_extracted', 0),  # Lignes extraites du fichier
-                    'type': 'PDF' if file.type.name == 'PDF' else 'CSV'
-                }
-                results['file_details'].append(file_detail)
+                    # Ajouter les détails du fichier
+                    file_detail = {
+                        'filename': file.filename,
+                        'lines_processed': file_results.get('total_lines_extracted', 0),  # Lignes extraites du fichier
+                        'type': 'PDF' if file.type.name == 'PDF' else 'CSV'
+                    }
+                    results['file_details'].append(file_detail)
 
-                # Agréger les résultats (y compris les nouvelles métriques)
-                for key in ['total_imported', 'matches_found', 'new_entries', 'associations_created', 'associations_existing', 'manual_completion', 'duplicates_in_file']:
-                    results[key] += file_results.get(key, 0)
+                    # Agréger les résultats (y compris les nouvelles métriques)
+                    for key in ['total_imported', 'matches_found', 'new_entries', 'associations_created', 'associations_existing', 'manual_completion', 'duplicates_in_file']:
+                        results[key] += file_results.get(key, 0)
 
-                # OPTIMISATION: Mise à jour intermédiaire tous les 5 fichiers
-                if (i + 1) % 5 == 0:
-                    app_logger.info(f"⏳ Progression: {i+1}/{len(config.files)} fichiers traités")
-                    QApplication.processEvents()  # Permettre à l'UI de se rafraîchir
+                    # OPTIMISATION: Mise à jour intermédiaire tous les 5 fichiers
+                    if (i + 1) % 5 == 0:
+                        app_logger.info(f"⏳ Progression: {i+1}/{len(config.files)} fichiers traités")
+                        QApplication.processEvents()  # Permettre à l'UI de se rafraîchir
 
-            except Exception as e:
-                error_msg = f"{file.filename}: {str(e)}"
-                results['errors'].append(error_msg)
-                app_logger.error(f"❌ Erreur import fichier: {error_msg}")
+                except Exception as e:
+                    error_msg = f"{file.filename}: {str(e)}"
+                    results['errors'].append(error_msg)
+                    app_logger.error(f"❌ Erreur import fichier: {error_msg}")
 
-        progress.setValue(len(config.files))
-        progress.close()
+            progress.setValue(len(config.files))
+            progress.close()
 
-        app_logger.info(f"✅ SYNC TERMINÉ: {results['successful_files']}/{len(config.files)} fichiers importés")
+            app_logger.info(f"✅ SYNC TERMINÉ: {results['successful_files']}/{len(config.files)} fichiers importés")
 
-        # Phase 2.3: Invalider le cache après import complet
-        if hasattr(self.db_manager, 'cache_invalidation'):
-            self.db_manager.cache_invalidation.invalidate_after_import(results)
+            # Phase 2.3: Invalider le cache après import complet
+            if hasattr(self.db_manager, 'cache_invalidation'):
+                self.db_manager.cache_invalidation.invalidate_after_import(results)
 
-        return results
+            return results
+
+        finally:
+            # OPTIMISATION CACHE: Reprendre les invalidations et invalider une seule fois
+            if cache_service:
+                cache_service.resume_invalidation(force_invalidate=True)
     
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Dict[str, Any]:
         """Importer un fichier unique"""

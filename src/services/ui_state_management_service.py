@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import QApplication, QProgressBar, QLabel, QTableWidget
 from PyQt5.QtGui import QFont, QPixmap, QPainter, QIcon, QPalette
 
 from ..core.config import Config
+from ..core.logger import app_logger
 from .base_service import BaseService, DebounceTimer, service_operation
 
 

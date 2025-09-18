@@ -68,7 +68,33 @@ class BaseService(QObject):
             app_logger.info(f"🔧 {self._service_name}: Services initialisés")
 
         except Exception as e:
-            self.handle_error(e, "initialisation des services", show_dialog=False)
+            app_logger.error(f"❌ Erreur initialisation services {self._service_name}: {e}")
+
+    def inject_required_services(self):
+        """
+        Injection automatique des services requis
+        Méthode séparée pour permettre l'appel depuis initialize_services() des enfants
+        """
+        if not self.parent_window:
+            app_logger.warning(f"⚠️ {self._service_name}: parent_window non défini pour injection")
+            return
+
+        try:
+            # Injection automatique des services requis
+            for service_name in self._required_services:
+                service = getattr(self.parent_window, service_name, None)
+                setattr(self, service_name, service)
+                if service is None:
+                    app_logger.warning(f"⚠️ Service '{service_name}' non trouvé pour {self._service_name}")
+
+            # Services communs toujours injectés
+            self.dialog_service = getattr(self.parent_window, 'dialog_service', None)
+            self.user_interaction_service = getattr(self.parent_window, 'user_interaction_service', None)
+
+            app_logger.debug(f"🔧 {self._service_name}: Services injectés automatiquement")
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur injection services {self._service_name}: {e}")
 
     def handle_error(self, error: Exception, context: str, show_dialog: bool = True) -> None:
         """
