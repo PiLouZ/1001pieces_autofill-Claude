@@ -64,8 +64,8 @@ class KeyboardShortcutService(BaseService):
                 Qt.Key.Key_Z: ("undo", "Annuler"),
                 Qt.Key.Key_Y: ("redo", "Refaire"),
                 Qt.Key.Key_D: ("show_column_values", "Afficher valeurs colonne"),
-                Qt.Key.Key_Up: ("navigate_up", "Naviguer vers cellule vide (haut)"),
-                Qt.Key.Key_Down: ("navigate_down", "Naviguer vers cellule vide (bas)")
+                Qt.Key.Key_Up: ("navigate_top", "Aller tout en haut"),
+                Qt.Key.Key_Down: ("navigate_bottom", "Aller tout en bas")
             }
 
             # Raccourcis standard Qt (utiliser strings au lieu d'enums)
@@ -205,8 +205,8 @@ class KeyboardShortcutService(BaseService):
                 "undo": "_undo",
                 "redo": "_redo",
                 "show_column_values": "_show_column_values_list",
-                "navigate_up": lambda: self._handle_navigation_shortcut('up'),
-                "navigate_down": lambda: self._handle_navigation_shortcut('down'),
+                "navigate_top": lambda: self._handle_extreme_navigation('top'),
+                "navigate_bottom": lambda: self._handle_extreme_navigation('bottom'),
                 "refresh": self._handle_refresh_shortcut,
                 "log_viewer": "_open_log_viewer",
                 "clear_search": self._handle_clear_search_shortcut
@@ -250,8 +250,32 @@ class KeyboardShortcutService(BaseService):
         except Exception as e:
             app_logger.error(f"❌ Erreur _handle_find_shortcut: {e}")
 
+    def _handle_extreme_navigation(self, direction: str):
+        """Traiter les raccourcis de navigation vers le haut/bas absolu"""
+        try:
+            if self.parent_widget and hasattr(self.parent_widget, 'table'):
+                table = self.parent_widget.table
+                current_col = table.currentColumn()
+
+                if current_col < 0:
+                    current_col = 0  # Prendre la première colonne par défaut
+
+                if direction == 'top':
+                    # Aller à la première ligne
+                    table.setCurrentCell(0, current_col)
+                    app_logger.debug("🔝 Navigation: Première ligne atteinte")
+                elif direction == 'bottom':
+                    # Aller à la dernière ligne
+                    last_row = table.rowCount() - 1
+                    if last_row >= 0:
+                        table.setCurrentCell(last_row, current_col)
+                        app_logger.debug("🔻 Navigation: Dernière ligne atteinte")
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur _handle_extreme_navigation: {e}")
+
     def _handle_navigation_shortcut(self, direction: str):
-        """Traiter les raccourcis de navigation dans les cellules vides"""
+        """Traiter les raccourcis de navigation dans les cellules vides (legacy)"""
         try:
             if self.parent_widget:
                 method = getattr(self.parent_widget, '_navigate_to_empty_cell', None)
