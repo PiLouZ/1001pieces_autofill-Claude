@@ -43,13 +43,9 @@ class AdvancedSearchService(QObject):
         """Lancer une recherche avec débounce (attendre avant d'exécuter)"""
         search_term = text.strip()
         
-        # Parser la recherche avancée si opérateurs détectés
-        if search_term and ('&&' in search_term or '||' in search_term):
-            parsed_search = self.parse_advanced_search(search_term)
-            self.pending_search_term = parsed_search
-        else:
-            # Terme simple - utiliser directement pour éviter problèmes de cache
-            self.pending_search_term = search_term
+        # CORRECTION FINALE: Ne plus parser ici, laisser le table_controller s'en charger
+        # Passer le terme brut au table_controller qui fera le parsing avec SearchService
+        self.pending_search_term = search_term
         
         # Émettre signal pour boutons export (basé sur détection référence pièce)
         is_piece_search = self.search_service.is_piece_reference_search(search_term)

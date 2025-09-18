@@ -232,15 +232,15 @@ class Config:
         # Requêtes optimisées Phase 3 - Recherche
         'exact_search_optimized': """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes,
                                     (SELECT COUNT(*) FROM piece_associations pa WHERE pa.appareil_id = a.id) as pieces_count
-                                    FROM appareils a 
-                                    WHERE (ref_modele = ? OR commercial_ref = ? OR other_ref = ?)
-                                       OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa 
+                                    FROM appareils a
+                                    WHERE (type = ? OR manufacturer = ? OR ref_modele = ? OR commercial_ref = ? OR other_ref = ? OR category = ?)
+                                       OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa
                                                   JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)""",
         'prefix_search_optimized': """SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes,
                                      (SELECT COUNT(*) FROM piece_associations pa WHERE pa.appareil_id = a.id) as pieces_count
-                                     FROM appareils a 
-                                     WHERE (ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?)
-                                        OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa 
+                                     FROM appareils a
+                                     WHERE (type LIKE ? OR manufacturer LIKE ? OR ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ? OR category LIKE ?)
+                                        OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa
                                                    JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)""",
         'search_pieces_only': """SELECT DISTINCT pa.appareil_id FROM piece_associations pa 
                                JOIN pieces p ON pa.piece_id = p.id 

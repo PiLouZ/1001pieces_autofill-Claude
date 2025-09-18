@@ -163,24 +163,8 @@ class DatabaseManager:
             
             term = search_term.strip()
             
-            # Optimisation: recherche exacte pour les termes longs/spécifiques
-            if len(term) >= Config.EXACT_SEARCH_THRESHOLD and not any(c in term for c in ['*', '%', '_']):
-                # Recherche exacte optimisée (peut utiliser les index)
-                return {
-                    'query_type': 'exact',
-                    'condition': Config.QUERIES['exact_search_optimized'],
-                    'params': [term, term, term, term]
-                }
-            
-            # Optimisation: recherche par préfixe si pas de caractères spéciaux au début
-            if not term.startswith('%') and len(term) >= 3:
-                # Recherche par préfixe (terme + %) - peut utiliser les index
-                prefix_term = f"{term}%"
-                return {
-                    'query_type': 'prefix',
-                    'condition': Config.QUERIES['prefix_search_optimized'],
-                    'params': [prefix_term, prefix_term, prefix_term, prefix_term]
-                }
+            # DÉSACTIVÉ TEMPORAIREMENT: Recherches optimisées à cause de problèmes de paramètres
+            # Utiliser toujours la recherche LIKE classique pour garantir la stabilité
             
             # Recherche LIKE classique (plus lente)
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]

@@ -222,21 +222,17 @@ class TableController:
             # Ajouter le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
             
-            # Gérer les recherches avancées (dict parsé) ou normales (string)
-            if search_term and isinstance(search_term, dict):
-                # Terme déjà parsé par AdvancedSearchService
-                self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
-            elif search_term and isinstance(search_term, str) and ('&&' in search_term or '||' in search_term):
-                # Terme brut à parser 
-                if hasattr(self.parent_window, 'advanced_search_service'):
-                    parsed_term = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
-                    self.total_rows = self.db_manager.count_data(parsed_term, column_filters, incomplete_filter=incomplete_filter)
-                else:
-                    # Fallback terme brut
-                    self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
-            else:
-                # Compter le total pour la pagination (recherche simple)
-                self.total_rows = self.db_manager.count_data(search_term, column_filters, incomplete_filter=incomplete_filter)
+            # SOLUTION FINALE: Parser avec SearchService directement sans condition (UNIVERSALE)
+            effective_search_term = search_term
+            if search_term and isinstance(search_term, str) and hasattr(self.parent_window, 'search_service'):
+                # Toujours parser avec SearchService pour uniformité && et ||
+                parsed_term = self.parent_window.search_service.parse_advanced_search(search_term)
+                if parsed_term:  # Si parsing réussi, utiliser le terme parsé
+                    effective_search_term = parsed_term
+
+
+            # Compter le total avec le terme unifié
+            self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
             
             if self.page_size == -1:  # Mode "Tout"
                 self.total_pages = 1
@@ -246,26 +242,15 @@ class TableController:
                 if self.current_page > self.total_pages:
                     self.current_page = self.total_pages
             
-            # Charger les données selon le type de recherche (même logique que count)
-            if search_term and isinstance(search_term, dict):
-                # Terme déjà parsé par AdvancedSearchService
-                records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
-                                                   self.current_sort_column, self.current_sort_order, incomplete_filter)
-            elif search_term and isinstance(search_term, str) and ('&&' in search_term or '||' in search_term):
-                # Terme brut à parser
-                if hasattr(self.parent_window, 'advanced_search_service'):
-                    parsed_term = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
-                    records = self.db_manager.load_data(parsed_term, column_filters, limit, offset, 
-                                                       self.current_sort_column, self.current_sort_order, incomplete_filter)
-                else:
-                    # Fallback
-                    records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
-                                                       self.current_sort_column, self.current_sort_order, incomplete_filter)
-            else:
-                # Chargement normal via db_manager (recherche simple)
-                records = self.db_manager.load_data(search_term, column_filters, limit, offset, 
-                                                   self.current_sort_column, self.current_sort_order, incomplete_filter)
-            
+            # Charger les données avec le terme unifié (CONSOLIDATION FIXING)
+            records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
+                                               self.current_sort_column, self.current_sort_order, incomplete_filter)
+
+            # DEBUG: Log des records avant remplissage
+            app_logger.info(f"🔍 DEBUG REMPLISSAGE - Terme: {search_term}, Records trouvés: {len(records) if records else 0}")
+            if isinstance(search_term, dict):
+                app_logger.info(f"🔍 DEBUG - Type recherche: {search_term.get('type', 'unknown')}")
+
             # Remplir le tableau
             if self.total_rows > 1000:
                 self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
