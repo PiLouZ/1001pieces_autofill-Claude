@@ -352,11 +352,22 @@ class DatabaseOperationsService(BaseService):
                     # Valeur de la cellule
                     cell_value = item.text()
 
+                    # Mapper nom de colonne UI vers nom de champ BDD
+                    from ..core.config import Config
+                    db_field_name = None
+                    for col_config in Config.COLUMN_CONFIG:
+                        if col_config["name"] == column_name:
+                            db_field_name = col_config["db_field"]
+                            break
+
+                    # Utiliser le nom BDD ou l'original si pas de mapping
+                    field_name = db_field_name if db_field_name else column_name
+
                     # Ajouter aux updates
                     if db_id not in updates_by_db_id:
                         updates_by_db_id[db_id] = {}
 
-                    updates_by_db_id[db_id][column_name] = cell_value
+                    updates_by_db_id[db_id][field_name] = cell_value
 
                 except (ValueError, AttributeError) as e:
                     app_logger.warning(f"Erreur conversion cellule ({row},{col}): {e}")

@@ -81,23 +81,12 @@ class AdvancedSearchService(QObject):
             display_term = self.search_service.format_search_term_for_display(search_term)
             self.search_started.emit(display_term)
             
-            # Exécuter via SearchService avec pagination
+            # Exécuter via SearchService SANS pagination (le table_controller s'en charge)
             if search_term:
-                # Compter d'abord pour décider pagination
-                total_results = self.search_service.count_results(search_term)
-                
-                # Pagination conditionnelle (> 10000 résultats)
-                limit = 1000 if total_results > 10000 else None
-                offset = 0 if limit else None
-                
-                results = self.search_service.search(
-                    term=search_term,
-                    limit=limit,
-                    offset=offset
-                )
+                results = self.search_service.search(term=search_term)
             else:
-                # Pas de terme = afficher tout (avec limite raisonnable)
-                results = self.search_service.search(term=None, limit=1000)
+                # Pas de terme = afficher tout
+                results = self.search_service.search(term=None)
             
             # Stocker terme actuel et émettre résultats
             self.current_search_term = search_term

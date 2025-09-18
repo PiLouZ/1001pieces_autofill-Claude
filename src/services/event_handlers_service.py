@@ -49,40 +49,16 @@ class EventHandlersService:
             self.main_window.statusbar.showMessage(f"🔍 Recherche avancée: '{term}'...")
     
     def on_advanced_search_completed(self, results, search_term: str):
-        """Gestionnaire fin recherche avancée - afficher résultats"""
+        """Gestionnaire fin recherche avancée - déléguer à table_controller pour pagination"""
         try:
-            # Stocker le terme de recherche dans le controller pour la pagination
-            self.main_window.table_controller.current_search_term = search_term
-            
-            # Réinitialiser pagination à la première page
-            self.main_window.table_controller.current_page = 1
-            
-            # Utiliser les résultats déjà trouvés par AdvancedSearchService
-            # au lieu de relancer une recherche
-            self.main_window.table_controller.total_rows = len(results)
-            self.main_window.table_controller.total_pages = max(1, (self.main_window.table_controller.total_rows + self.main_window.table_controller.page_size - 1) // self.main_window.table_controller.page_size)
-            
-            # Remplir le tableau directement avec les résultats via TableFillService
-            if self.main_window.table_controller.total_rows > 1000:
-                self.main_window.table_fill_service.fill_table_chunked(
-                    self.main_window.table, results, None, search_term
-                )
-            else:
-                self.main_window.table_fill_service.fill_table_standard(
-                    self.main_window.table, results, None, search_term
-                )
-            
-            # Mettre à jour les contrôles de pagination
-            self.main_window.table_controller._update_pagination_controls()
-            
-            # Message status
-            if hasattr(self.main_window, 'statusbar'):
-                self.main_window.statusbar.showMessage(
-                    f"✅ Recherche terminée: {len(results)} résultats", 
-                    Config.STATUS_MESSAGE_TIMEOUT
-                )
+            # Déléguer entièrement au table_controller qui sait gérer la pagination
+            # Le parsing a déjà été fait par AdvancedSearchService, on passe le terme
+            self.main_window.table_controller.load_data(search_term, is_search=True)
+
         except Exception as e:
-            app_logger.error(f"Erreur affichage résultats recherche: {e}")
+            app_logger.error(f"Erreur dans on_advanced_search_completed: {e}")
+            # Fallback vers table_controller.load_data si erreur
+            self.main_window.table_controller.load_data(search_term, is_search=True)
     
     def on_advanced_search_error(self, error_msg: str):
         """Gestionnaire erreur recherche avancée"""

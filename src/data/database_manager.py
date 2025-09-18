@@ -212,54 +212,77 @@ class DatabaseManager:
                 'params': [f"%{term}%"] * (len(Config.DB_HEADERS) + 1)
             }
         
+        elif search_type == 'and':
+            # Recherche avec opérateur AND (&&) - tous les termes doivent être trouvés
+            terms = search_term.get('terms', [])
+            if not terms:
+                return None
+
+            and_conditions = []
+            all_params = []
+
+            for term in terms:
+                # Chaque terme doit être trouvé dans au moins une colonne
+                term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
+                term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+
+                and_conditions.append(f"({' OR '.join(term_conditions)})")
+                all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
+
+            if and_conditions:
+                return {
+                    'condition': f"({' AND '.join(and_conditions)})",
+                    'params': all_params
+                }
+
         elif search_type == 'or':
             # Recherche avec groupes OR
             groups = search_term.get('groups', [])
             if not groups:
                 return None
-            
+
             group_conditions = []
             all_params = []
-            
+
             for group in groups:
                 if group['type'] == 'and':
                     # Groupe AND : tous les termes doivent être présents
                     terms = group.get('terms', [])
                     if not terms:
                         continue
-                    
+
                     and_conditions = []
                     for term in terms:
                         # Chaque terme doit être trouvé dans au moins une colonne
                         term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
                         term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
-                        
+
                         and_conditions.append(f"({' OR '.join(term_conditions)})")
                         all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
-                    
+
                     if and_conditions:
                         group_conditions.append(f"({' AND '.join(and_conditions)})")
-                        
+
                 elif group['type'] == 'simple':
                     # Groupe simple : terme unique à rechercher dans toutes les colonnes
                     terms = group.get('terms', [])
                     if not terms:
                         continue
-                    
+
                     term = terms[0]  # Premier terme du groupe simple
                     # Chercher le terme dans toutes les colonnes
                     term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
                     term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
-                    
+
                     group_conditions.append(f"({' OR '.join(term_conditions)})")
                     all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
-            
+
             if group_conditions:
                 return {
                     'condition': f"({' OR '.join(group_conditions)})",
                     'params': all_params
                 }
-        
+
         return None
     
     def _parse_search_term_for_export(self, search_term):
