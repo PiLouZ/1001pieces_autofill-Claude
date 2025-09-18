@@ -177,9 +177,9 @@ class KeyboardShortcutService(BaseService):
         try:
             if key == Qt.Key.Key_D:
                 # CMD+D ne fonctionne que depuis le tableau, pas depuis la barre de recherche
-                if self.parent_widget:
-                    current_focus = self.parent_widget.focusWidget()
-                    search_input = getattr(self.parent_widget, 'search_input', None)
+                if self.parent_window:
+                    current_focus = self.parent_window.focusWidget()
+                    search_input = getattr(self.parent_window, 'search_input', None)
                     return current_focus != search_input
 
             return True
@@ -191,8 +191,8 @@ class KeyboardShortcutService(BaseService):
     def _execute_shortcut_action(self, action_name: str, event: QKeyEvent, description: str) -> bool:
         """Exécuter l'action correspondant au raccourci"""
         try:
-            if not self.parent_widget:
-                app_logger.warning(f"⚠️ Impossible d'exécuter '{action_name}': parent_widget non défini")
+            if not self.parent_window:
+                app_logger.warning(f"⚠️ Impossible d'exécuter '{action_name}': parent_window non défini")
                 return False
 
             # Mapper les actions vers les méthodes du parent
@@ -218,8 +218,8 @@ class KeyboardShortcutService(BaseService):
                     # Action lambda directe
                     action_method()
                 elif isinstance(action_method, str):
-                    # Méthode du parent widget
-                    method = getattr(self.parent_widget, action_method, None)
+                    # Méthode du parent window
+                    method = getattr(self.parent_window, action_method, None)
                     if method and callable(method):
                         method()
                     else:
@@ -241,8 +241,8 @@ class KeyboardShortcutService(BaseService):
     def _handle_find_shortcut(self):
         """Traiter le raccourci de recherche (Focus + sélection)"""
         try:
-            if self.parent_widget:
-                search_input = getattr(self.parent_widget, 'search_input', None)
+            if self.parent_window:
+                search_input = getattr(self.parent_window, 'search_input', None)
                 if search_input:
                     search_input.setFocus()
                     search_input.selectAll()
@@ -253,8 +253,8 @@ class KeyboardShortcutService(BaseService):
     def _handle_extreme_navigation(self, direction: str):
         """Traiter les raccourcis de navigation vers le haut/bas absolu"""
         try:
-            if self.parent_widget and hasattr(self.parent_widget, 'table'):
-                table = self.parent_widget.table
+            if self.parent_window and hasattr(self.parent_window, 'table'):
+                table = self.parent_window.table
                 current_col = table.currentColumn()
 
                 if current_col < 0:
@@ -277,8 +277,8 @@ class KeyboardShortcutService(BaseService):
     def _handle_navigation_shortcut(self, direction: str):
         """Traiter les raccourcis de navigation dans les cellules vides (legacy)"""
         try:
-            if self.parent_widget:
-                method = getattr(self.parent_widget, '_navigate_to_empty_cell', None)
+            if self.parent_window:
+                method = getattr(self.parent_window, '_navigate_to_empty_cell', None)
                 if method and callable(method):
                     method(direction=direction)
 
@@ -288,13 +288,13 @@ class KeyboardShortcutService(BaseService):
     def _handle_refresh_shortcut(self):
         """Traiter le raccourci F5 (Actualiser)"""
         try:
-            if self.parent_widget:
+            if self.parent_window:
                 # Utiliser la recherche parsée actuelle
-                advanced_search_service = getattr(self.parent_widget, 'advanced_search_service', None)
-                table_controller = getattr(self.parent_widget, 'table_controller', None)
+                advanced_search_service = getattr(self.parent_window, 'advanced_search_service', None)
+                table_controller = getattr(self.parent_window, 'table_controller', None)
 
                 if advanced_search_service and table_controller:
-                    search_term = advanced_search_service.get_current_search_term_with_fallback(self.parent_widget)
+                    search_term = advanced_search_service.get_current_search_term_with_fallback(self.parent_window)
                     table_controller.load_data(search_term)
 
         except Exception as e:
@@ -303,10 +303,10 @@ class KeyboardShortcutService(BaseService):
     def _handle_clear_search_shortcut(self):
         """Traiter le raccourci Escape (Effacer recherche)"""
         try:
-            if self.parent_widget:
-                advanced_search_service = getattr(self.parent_widget, 'advanced_search_service', None)
+            if self.parent_window:
+                advanced_search_service = getattr(self.parent_window, 'advanced_search_service', None)
                 if advanced_search_service:
-                    advanced_search_service.clear_search_ui(self.parent_widget)
+                    advanced_search_service.clear_search_ui(self.parent_window)
 
         except Exception as e:
             app_logger.error(f"❌ Erreur _handle_clear_search_shortcut: {e}")
