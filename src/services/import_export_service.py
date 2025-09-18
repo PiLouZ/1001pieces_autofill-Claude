@@ -30,11 +30,9 @@ class ImportExportService(BaseService):
     def __init__(self, parent_window, parent=None):
         super().__init__(parent_window=parent_window, parent=parent)
 
-        # Services requis pour l'injection automatique
+        # Services requis pour l'injection automatique (seulement les essentiels disponibles)
         self._required_services = [
-            'export_manager', 'import_manager', 'db_manager',
-            'user_interaction_service', 'dialog_service',
-            'file_processing_service', 'table_controller', 'undo_manager'
+            'export_manager', 'db_manager'  # Services essentiels et disponibles
         ]
 
     def initialize_services(self):

@@ -82,13 +82,13 @@ class MainWindow(QMainWindow):
         self._init_column_visibility()
         self._init_ui()
         self._init_connections()
-        
+
         # Configuration du nettoyage automatique pour le champ de recherche (après init UI)
         self._setup_paste_cleanup_for_search_input()
-        
+
         # Chargement initial des données
         self.table_controller.load_data()
-        
+
         # S'assurer que le bouton "lignes à compléter" est mis à jour après l'initialisation
         self._update_incomplete_button_visibility()
 
@@ -1249,7 +1249,7 @@ class MainWindow(QMainWindow):
         """Sauvegarde automatique optimisée par lots"""
         # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
         if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
-            self.database_operations_service.save_cells_batch()
+            self.database_operations_service.auto_save()
             return
 
         # Feature Flag: AutoSaveManager fallback
@@ -1260,7 +1260,10 @@ class MainWindow(QMainWindow):
         """Sauvegarde manuelle"""
         # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
         if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
-            self.database_operations_service.manual_save()
+            success = self.database_operations_service.manual_save()
+            if success:
+                self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
+                self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
             return
 
         # Feature Flag: AutoSaveManager fallback
@@ -1689,7 +1692,10 @@ class MainWindow(QMainWindow):
         """Dialogue unifié pour choisir les options d'import - Phase 2.6"""
         # Déléguer au service DialogService
         result = self.dialog_service.get_import_options_unified(
-            detected_columns, default_ref_piece, import_method, sample_data
+            detected_columns=detected_columns,
+            default_ref_piece=default_ref_piece,
+            import_method=import_method,
+            sample_data=sample_data
         )
         
         # Convertir le dictionnaire en tuple pour compatibilité avec le code existant

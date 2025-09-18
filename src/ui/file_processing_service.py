@@ -81,7 +81,10 @@ class FileProcessingService:
             
             # Afficher la boîte de dialogue d'options d'import avec aperçu
             import_options = self.main_window._get_import_options_unified(
-                3, suggested_ref_piece, "PDF", sample_data
+                detected_columns=3,
+                default_ref_piece=suggested_ref_piece,
+                import_method="PDF",
+                sample_data=sample_data
             )
             if not import_options:
                 return False

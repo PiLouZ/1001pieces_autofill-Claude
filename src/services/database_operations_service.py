@@ -5,7 +5,7 @@ Extrait de main_refactored.py pour centraliser la logique métier critique
 
 from typing import Optional, Dict, List, Any, Tuple, Callable
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, Qt
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -24,11 +24,9 @@ class DatabaseOperationsService(BaseService):
     def __init__(self, parent_window, parent=None):
         super().__init__(parent_window=parent_window, parent=parent)
 
-        # Services requis pour l'injection automatique
+        # Services requis pour l'injection automatique (seulement les essentiels disponibles)
         self._required_services = [
-            'db_manager', 'table_controller', 'user_interaction_service',
-            'table_fill_service', 'cell_editing_service', 'cache_service',
-            'auto_save_manager'
+            'db_manager'  # Seul service réellement essentiel et toujours disponible
         ]
 
         # État interne
@@ -90,8 +88,9 @@ class DatabaseOperationsService(BaseService):
                 self.table_controller.load_data()
 
             # Invalider le cache
-            if self.cache_service:
-                self.cache_service.invalidate_all("nouvel appareil ajouté")
+            cache_service = getattr(self, 'cache_service', None)
+            if cache_service:
+                cache_service.invalidate_all("nouvel appareil ajouté")
 
             # Ajouter à l'historique
             if self.user_interaction_service:
@@ -140,8 +139,9 @@ class DatabaseOperationsService(BaseService):
 
             try:
                 # Suspendre l'invalidation du cache pendant la sauvegarde
-                if self.cache_service:
-                    self.cache_service.suspend_invalidation("sauvegarde batch")
+                cache_service = getattr(self, 'cache_service', None)
+                if cache_service:
+                    cache_service.suspend_invalidation("sauvegarde batch")
 
                 # Effectuer les mises à jour en base
                 success = self.db_manager.update_multiple_cells_batch(updates_by_db_id)
@@ -168,8 +168,9 @@ class DatabaseOperationsService(BaseService):
 
             finally:
                 # Reprendre l'invalidation du cache
-                if self.cache_service:
-                    self.cache_service.resume_invalidation(force_invalidate=True)
+                cache_service = getattr(self, 'cache_service', None)
+                if cache_service:
+                    cache_service.resume_invalidation(force_invalidate=True)
 
         except Exception as e:
             app_logger.error(f"Erreur lors de la sauvegarde batch: {e}")
@@ -225,16 +226,148 @@ class DatabaseOperationsService(BaseService):
     def manual_save(self) -> bool:
         """Effectuer une sauvegarde manuelle"""
         try:
+            # Accéder directement aux modified_cells du parent
+            parent_modified_cells = getattr(self.parent_window, 'modified_cells', set())
+            print(f"🔍 manual_save DEBUT: parent modified_cells = {parent_modified_cells}")
+
+            # Vérifier s'il y a des modifications à sauvegarder
+            app_logger.debug(f"manual_save: modified_cells = {parent_modified_cells}")
+            if not parent_modified_cells:
+                print("❌ Aucune modification à sauvegarder")
+                app_logger.debug("Aucune modification à sauvegarder")
+                return True
+
+            print("🔄 Conversion des cellules modifiées...")
+            # Convertir modified_cells en format attendu (utiliser parent_modified_cells)
+            updates_by_db_id = self._convert_modified_cells_to_updates(parent_modified_cells)
+            print(f"🔄 Conversion terminée: {len(updates_by_db_id)} appareils à mettre à jour")
+
             # Déléguer au AutoSaveManager si disponible
-            if self.auto_save_manager and hasattr(self.auto_save_manager, 'save_now'):
-                return self.auto_save_manager.save_now()
+            auto_save_manager = getattr(self, 'auto_save_manager', None)
+            if auto_save_manager and hasattr(auto_save_manager, 'save_now'):
+                print("🔧 Utilisation de AutoSaveManager.save_now()")
+                return auto_save_manager.save_now()
             else:
+                print("🔧 Utilisation de save_cells_batch()")
                 # Fallback vers sauvegarde batch
-                return self.save_cells_batch()
+                return self.save_cells_batch(updates_by_db_id)
 
         except Exception as e:
+            print(f"💥 ERREUR dans manual_save: {e}")
+            import traceback
+            traceback.print_exc()
             app_logger.error(f"Erreur sauvegarde manuelle: {e}")
             return False
+
+    @service_operation("sauvegarde_automatique")
+    def auto_save(self) -> bool:
+        """Effectuer une sauvegarde automatique"""
+        try:
+            # Accéder directement aux modified_cells du parent
+            parent_modified_cells = getattr(self.parent_window, 'modified_cells', set())
+
+            # Vérifier s'il y a des modifications à sauvegarder
+            if not parent_modified_cells:
+                app_logger.debug("Aucune modification à sauvegarder automatiquement")
+                return True
+
+            # Convertir modified_cells en format attendu
+            updates_by_db_id = self._convert_modified_cells_to_updates(parent_modified_cells)
+
+            # Utiliser save_cells_batch pour l'auto-save
+            return self.save_cells_batch(updates_by_db_id)
+
+        except Exception as e:
+            app_logger.error(f"Erreur sauvegarde automatique: {e}")
+            return False
+
+    def _convert_modified_cells_to_updates(self, modified_cells_to_use=None) -> Dict[int, Dict[str, str]]:
+        """Convertir modified_cells du parent en format attendu par save_cells_batch"""
+        try:
+            if not self.parent_window or not hasattr(self.parent_window, 'table'):
+                app_logger.warning("Impossible de convertir modified_cells: parent_window ou table non disponible")
+                return {}
+
+            # Utiliser les cellules fournies ou celles du service
+            cells_to_convert = modified_cells_to_use if modified_cells_to_use is not None else self.modified_cells
+
+            table = self.parent_window.table
+            updates_by_db_id = {}
+
+            for row, col in cells_to_convert:
+                try:
+                    # Vérifier le nom de la colonne pour détecter si c'est l'ID
+                    column_header = table.horizontalHeaderItem(col)
+                    if not column_header:
+                        continue
+                    column_name = column_header.text()
+
+                    # Ignorer seulement si c'est réellement une colonne ID
+                    if col == 0 and column_name.lower() in ['id', 'db_id', 'database_id']:
+                        print(f"🚫 Ignorer modification colonne ID (row={row}, col={col}, nom={column_name})")
+                        continue
+
+
+                    # Obtenir l'item de la cellule
+                    item = table.item(row, col)
+                    if not item:
+                        continue
+
+                    # Chercher l'ID database (peut être dans une colonne cachée ou via d'autres moyens)
+                    db_id = None
+
+                    # Méthode 1: Chercher UserRole dans TOUTES les colonnes de la ligne
+                    for check_col in range(table.columnCount()):
+                        table_item = table.item(row, check_col)
+                        if table_item:
+                            user_role_data = table_item.data(Qt.UserRole)
+                            if user_role_data:
+                                try:
+                                    db_id = int(user_role_data)
+                                    break
+                                except (ValueError, TypeError):
+                                    continue
+
+                    # Méthode 2: Essayer la première colonne si elle contient un nombre
+                    if db_id is None:
+                        first_col_item = table.item(row, 0)
+                        if first_col_item and first_col_item.text().strip().isdigit():
+                            db_id = int(first_col_item.text())
+
+                    # Méthode 3: Chercher dans toutes les colonnes une qui s'appelle ID
+                    if db_id is None:
+                        for check_col in range(table.columnCount()):
+                            header = table.horizontalHeaderItem(check_col)
+                            if header and header.text().lower() in ['id', 'db_id', 'database_id']:
+                                id_item = table.item(row, check_col)
+                                if id_item and id_item.text().strip().isdigit():
+                                    db_id = int(id_item.text())
+                                    break
+
+                    if db_id is None:
+                        continue  # Ignorer les cellules sans ID database valide
+
+                    # (column_name déjà défini plus haut)
+
+                    # Valeur de la cellule
+                    cell_value = item.text()
+
+                    # Ajouter aux updates
+                    if db_id not in updates_by_db_id:
+                        updates_by_db_id[db_id] = {}
+
+                    updates_by_db_id[db_id][column_name] = cell_value
+
+                except (ValueError, AttributeError) as e:
+                    app_logger.warning(f"Erreur conversion cellule ({row},{col}): {e}")
+                    continue
+
+            app_logger.debug(f"Converti {len(cells_to_convert)} cellules en {len(updates_by_db_id)} mises à jour")
+            return updates_by_db_id
+
+        except Exception as e:
+            app_logger.error(f"Erreur _convert_modified_cells_to_updates: {e}")
+            return {}
 
     # ================================
     # OPÉRATIONS DELETE
@@ -283,8 +416,9 @@ class DatabaseOperationsService(BaseService):
                     self.table_controller.load_data()
 
                 # Invalider le cache
-                if self.cache_service:
-                    self.cache_service.invalidate_all("appareils supprimés")
+                cache_service = getattr(self, 'cache_service', None)
+                if cache_service:
+                    cache_service.invalidate_all("appareils supprimés")
 
                 # Ajouter à l'historique
                 if self.user_interaction_service and devices_info:
