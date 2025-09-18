@@ -1249,7 +1249,7 @@ class MainWindow(QMainWindow):
         """Sauvegarde automatique optimisée par lots"""
         # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
         if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
-            self.database_operations_service.save_cells_batch(self.modified_cells)
+            self.database_operations_service.save_cells_batch()
             return
 
         # Feature Flag: AutoSaveManager fallback
