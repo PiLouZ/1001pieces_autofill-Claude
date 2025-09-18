@@ -11,14 +11,14 @@ from typing import Optional, Dict, Any, List, Tuple
 from PyQt5.QtWidgets import (QFileDialog, QApplication, QProgressDialog, QMessageBox,
                             QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                             QPushButton, QComboBox)
-from PyQt5.QtCore import Qt, QObject, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 
-from ..core.logger import app_logger
 from ..services.export_service import ExportFormat
 from ..services.export_manager import ExportManagerService, ExportType
+from .base_service import BaseService, service_operation
 
 
-class ImportExportService(QObject):
+class ImportExportService(BaseService):
     """Service centralisé pour les opérations d'import et d'export"""
 
     # Signaux pour notifier les changements
@@ -27,100 +27,69 @@ class ImportExportService(QObject):
     operation_progress = pyqtSignal(int)  # pourcentage
 
     def __init__(self, parent_window, parent=None):
-        super().__init__(parent)
-        self.parent_window = parent_window
+        super().__init__(parent_window=parent_window, parent=parent)
 
-        # Services requis (seront injectés via la fenêtre parent)
-        self.export_manager = None
-        self.import_manager = None
-        self.db_manager = None
-        self.user_interaction_service = None
-        self.dialog_service = None
-        self.file_processing_service = None
-        self.table_controller = None
-        self.undo_manager = None
+        # Services requis pour l'injection automatique
+        self._required_services = [
+            'export_manager', 'import_manager', 'db_manager',
+            'user_interaction_service', 'dialog_service',
+            'file_processing_service', 'table_controller', 'undo_manager'
+        ]
 
     def initialize_services(self):
         """Initialiser les références aux services depuis la fenêtre parent"""
-        try:
-            if hasattr(self.parent_window, 'export_manager'):
-                self.export_manager = self.parent_window.export_manager
-            if hasattr(self.parent_window, 'import_manager'):
-                self.import_manager = self.parent_window.import_manager
-            if hasattr(self.parent_window, 'db_manager'):
-                self.db_manager = self.parent_window.db_manager
-            if hasattr(self.parent_window, 'user_interaction_service'):
-                self.user_interaction_service = self.parent_window.user_interaction_service
-            if hasattr(self.parent_window, 'dialog_service'):
-                self.dialog_service = self.parent_window.dialog_service
-            if hasattr(self.parent_window, 'file_processing_service'):
-                self.file_processing_service = self.parent_window.file_processing_service
-            if hasattr(self.parent_window, 'table_controller'):
-                self.table_controller = self.parent_window.table_controller
-            if hasattr(self.parent_window, 'undo_manager'):
-                self.undo_manager = self.parent_window.undo_manager
-
-            app_logger.debug("ImportExportService services initialisés")
-        except Exception as e:
-            app_logger.error(f"Erreur initialisation services ImportExportService: {e}")
+        # Utiliser l'injection automatique de BaseService
+        self.inject_required_services()
+        self.log_operation("initialize_services", "ImportExportService services initialisés", "debug")
 
     # ================================
     # MÉTHODES D'EXPORT
     # ================================
 
+    @service_operation("export_donnees")
     def export_data(self):
         """Point d'entrée principal pour export avec sélection de format"""
-        try:
-            if not self.export_manager:
-                app_logger.error("ExportManager non disponible")
-                return
+        if not self.export_manager:
+            self.handle_error(Exception("ExportManager non disponible"), "export_data")
+            return
 
-            # Déléguer à l'ExportManager
-            self.export_manager.export_data()
+        # Déléguer à l'ExportManager
+        self.export_manager.export_data()
 
-        except Exception as e:
-            app_logger.error(f"Erreur lors de l'export: {e}")
-            if self.dialog_service:
-                self.dialog_service.show_error("Erreur Export", f"Erreur lors de l'export des données: {e}")
-
+    @service_operation("export_reference_personnalisee")
     def export_with_custom_reference(self, reference_text: str = None):
         """Export avec référence personnalisée et récupération de données"""
-        try:
-            if not reference_text:
-                # Demander la référence à l'utilisateur
-                reference_text, ok = self._get_custom_reference_dialog()
-                if not ok or not reference_text.strip():
-                    return
-
-            reference_text = reference_text.strip()
-
-            # Récupérer les données depuis la base
-            if not self.db_manager:
-                app_logger.error("DatabaseManager non disponible")
+        if not reference_text:
+            # Demander la référence à l'utilisateur
+            reference_text, ok = self._get_custom_reference_dialog()
+            if not ok or not reference_text.strip():
                 return
 
-            query = """
-                SELECT type, marque, modele, reference, designation, prix, stock, notes
-                FROM appareils
-                WHERE reference LIKE ? OR designation LIKE ? OR marque LIKE ? OR modele LIKE ?
-                ORDER BY marque, modele, reference
-            """
-            search_pattern = f"%{reference_text}%"
-            results = self.db_manager.execute_query(query, (search_pattern, search_pattern, search_pattern, search_pattern))
+        reference_text = reference_text.strip()
 
-            if not results:
-                if self.dialog_service:
-                    self.dialog_service.show_info("Aucun résultat", f"Aucun appareil trouvé pour la référence '{reference_text}'")
-                return
+        # Récupérer les données depuis la base
+        if not self.db_manager:
+            self.handle_error(Exception("DatabaseManager non disponible"), "export_with_custom_reference")
+            return
 
-            # Exporter les résultats
-            self._export_custom_results(results, reference_text)
+        query = """
+            SELECT type, marque, modele, reference, designation, prix, stock, notes
+            FROM appareils
+            WHERE reference LIKE ? OR designation LIKE ? OR marque LIKE ? OR modele LIKE ?
+            ORDER BY marque, modele, reference
+        """
+        search_pattern = f"%{reference_text}%"
+        results = self.db_manager.execute_query(query, (search_pattern, search_pattern, search_pattern, search_pattern))
 
-        except Exception as e:
-            app_logger.error(f"Erreur export avec référence personnalisée: {e}")
+        if not results:
             if self.dialog_service:
-                self.dialog_service.show_error("Erreur Export", f"Erreur lors de l'export: {e}")
+                self.dialog_service.show_info("Aucun résultat", f"Aucun appareil trouvé pour la référence '{reference_text}'")
+            return
 
+        # Exporter les résultats
+        self._export_custom_results(results, reference_text)
+
+    @service_operation("export_csv_reference")
     def export_csv_with_reference(self, data: List[tuple], reference: str):
         """Export CSV avec format spécifique et gestion des headers"""
         try:

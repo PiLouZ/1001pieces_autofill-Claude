@@ -11,24 +11,26 @@ Responsabilités:
 
 import sys
 from typing import Optional, Callable, Dict
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtGui import QKeySequence, QKeyEvent
 from PyQt5.QtWidgets import QWidget
 
 from ..core.config import Config
-from ..core.logger import app_logger
+from .base_service import BaseService, service_operation
 
 
-class KeyboardShortcutService(QObject):
+class KeyboardShortcutService(BaseService):
     """Service unifié pour la gestion des raccourcis clavier"""
 
     # Signaux pour notifier les actions de raccourcis
     shortcut_triggered = pyqtSignal(str, object)  # shortcut_name, event
     modifier_detected = pyqtSignal(bool)  # has_cmd_modifier
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent_widget = parent
+    def __init__(self, parent_window=None, parent=None):
+        super().__init__(parent_window=parent_window, parent=parent)
+
+        # Services requis pour l'injection automatique
+        self._required_services = []
 
         # Mapping des raccourcis vers les actions
         self.shortcut_actions = {}
@@ -37,20 +39,20 @@ class KeyboardShortcutService(QObject):
         # Configuration des raccourcis par défaut
         self._setup_default_shortcuts()
 
-        app_logger.info("✅ KeyboardShortcutService initialisé")
+        self.log_operation("__init__", "KeyboardShortcutService initialisé", "info")
 
     def initialize_services(self):
         """Initialiser les références vers les services principaux"""
-        if not self.parent_widget:
-            app_logger.warning("⚠️ KeyboardShortcutService: parent_widget non défini")
+        if not self.parent_window:
+            self.log_operation("initialize_services", "parent_window non défini", "warning")
             return
 
         try:
-            # Les actions seront déléguées au parent widget
-            app_logger.info("🔧 KeyboardShortcutService: Services initialisés")
+            # Les actions seront déléguées au parent window
+            self.log_operation("initialize_services", "KeyboardShortcutService: Services initialisés", "info")
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur lors de l'initialisation KeyboardShortcutService: {e}")
+            self.handle_error(e, "initialisation KeyboardShortcutService")
 
     def _setup_default_shortcuts(self):
         """Configurer les raccourcis par défaut"""
@@ -85,11 +87,12 @@ class KeyboardShortcutService(QObject):
             # Raccourcis dépendants du focus
             self.focus_dependent_shortcuts.add(Qt.Key.Key_D)
 
-            app_logger.debug("🎯 Raccourcis par défaut configurés")
+            self.log_operation("_setup_default_shortcuts", "Raccourcis par défaut configurés", "debug")
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur _setup_default_shortcuts: {e}")
+            self.handle_error(e, "_setup_default_shortcuts")
 
+    @service_operation("gestion_raccourci_clavier")
     def handle_key_press_event(self, event: QKeyEvent) -> bool:
         """
         Gestion centralisée des raccourcis clavier
@@ -100,22 +103,17 @@ class KeyboardShortcutService(QObject):
         Returns:
             bool: True si l'événement a été traité, False sinon
         """
-        try:
-            # Détecter les modificateurs de plateforme
-            has_cmd_modifier = self._detect_cmd_modifier(event)
-            self.modifier_detected.emit(has_cmd_modifier)
+        # Détecter les modificateurs de plateforme
+        has_cmd_modifier = self._detect_cmd_modifier(event)
+        self.modifier_detected.emit(has_cmd_modifier)
 
-            # Traitement des raccourcis avec modificateur
-            if has_cmd_modifier:
-                return self._handle_modifier_shortcuts(event)
+        # Traitement des raccourcis avec modificateur
+        if has_cmd_modifier:
+            return self._handle_modifier_shortcuts(event)
 
-            # Traitement des raccourcis sans modificateur
-            else:
-                return self._handle_function_key_shortcuts(event)
-
-        except Exception as e:
-            app_logger.error(f"❌ Erreur handle_key_press_event: {e}")
-            return False
+        # Traitement des raccourcis sans modificateur
+        else:
+            return self._handle_function_key_shortcuts(event)
 
     def _detect_cmd_modifier(self, event: QKeyEvent) -> bool:
         """Détecter les modificateurs Cmd/Ctrl selon la plateforme"""

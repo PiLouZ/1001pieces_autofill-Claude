@@ -11,15 +11,15 @@ Responsabilités:
 """
 
 from typing import Optional, Any
-from PyQt5.QtCore import QObject, pyqtSignal, QTimer, Qt
+from PyQt5.QtCore import pyqtSignal, QTimer, Qt
 from PyQt5.QtWidgets import QApplication, QProgressBar, QLabel, QTableWidget
 from PyQt5.QtGui import QFont, QPixmap, QPainter, QIcon, QPalette
 
 from ..core.config import Config
-from ..core.logger import app_logger
+from .base_service import BaseService, DebounceTimer, service_operation
 
 
-class UIStateManagementService(QObject):
+class UIStateManagementService(BaseService):
     """Service unifié pour la gestion de l'état de l'interface utilisateur"""
 
     # Signaux pour communiquer les changements d'état
@@ -28,9 +28,11 @@ class UIStateManagementService(QObject):
     progress_updated = pyqtSignal(int)  # progress_value
     ui_refreshed = pyqtSignal()
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent_widget = parent
+    def __init__(self, parent_window=None, parent=None):
+        super().__init__(parent_window=parent_window, parent=parent)
+
+        # Services requis pour l'injection automatique
+        self._required_services = []
 
         # État des indicateurs visuels
         self.sort_indicators_enabled = True
@@ -42,69 +44,65 @@ class UIStateManagementService(QObject):
         self.progress_bar = None
         self.status_bar = None
 
-        # Timer pour les mises à jour différées
-        self.refresh_timer = QTimer()
-        self.refresh_timer.setSingleShot(True)
-        self.refresh_timer.timeout.connect(self._delayed_refresh)
+        # Timer pour les mises à jour différées avec DebounceTimer
+        self.refresh_timer = DebounceTimer(
+            callback=self._delayed_refresh,
+            delay_ms=100,
+            parent=self
+        )
 
-        app_logger.info("✅ UIStateManagementService initialisé")
+        self.log_operation("__init__", "UIStateManagementService initialisé", "info")
 
     def initialize_services(self):
         """Initialiser les références vers les widgets principaux"""
-        if not self.parent_widget:
-            app_logger.warning("⚠️ UIStateManagementService: parent_widget non défini")
+        if not self.parent_window:
+            self.log_operation("initialize_services", "parent_window non défini", "warning")
             return
 
         try:
             # Récupérer les références des widgets depuis le parent
-            self.table_widget = getattr(self.parent_widget, 'table', None)
-            self.progress_bar = getattr(self.parent_widget, 'progress_bar', None)
-            self.status_bar = getattr(self.parent_widget, 'statusbar', None)
+            self.table_widget = getattr(self.parent_window, 'table', None)
+            self.progress_bar = getattr(self.parent_window, 'progress_bar', None)
+            self.status_bar = getattr(self.parent_window, 'statusbar', None)
 
-            app_logger.info("🔧 UIStateManagementService: Services initialisés")
+            self.log_operation("initialize_services", "UIStateManagementService: Services initialisés", "info")
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur lors de l'initialisation UIStateManagementService: {e}")
+            self.handle_error(e, "initialisation UIStateManagementService")
 
     # === GESTION DES INDICATEURS VISUELS ===
 
+    @service_operation("mise_a_jour_indicateurs_tri")
     def update_sort_indicators(self, enabled: bool = True):
         """Mettre à jour l'affichage des indicateurs de tri"""
-        try:
-            self.sort_indicators_enabled = enabled
+        self.sort_indicators_enabled = enabled
 
-            if self.table_widget and hasattr(self.table_widget, 'horizontalHeader'):
-                header = self.table_widget.horizontalHeader()
-                if header:
-                    # Appliquer la visibilité des indicateurs
-                    header.setSectionsClickable(enabled)
-                    if enabled:
-                        header.setSortIndicatorShown(True)
-                    else:
-                        header.setSortIndicatorShown(False)
+        if self.table_widget and hasattr(self.table_widget, 'horizontalHeader'):
+            header = self.table_widget.horizontalHeader()
+            if header:
+                # Appliquer la visibilité des indicateurs
+                header.setSectionsClickable(enabled)
+                if enabled:
+                    header.setSortIndicatorShown(True)
+                else:
+                    header.setSortIndicatorShown(False)
 
-            self.visual_indicator_changed.emit("sort_indicators", enabled)
-            app_logger.debug(f"🎯 Indicateurs de tri: {'activés' if enabled else 'désactivés'}")
+        self.visual_indicator_changed.emit("sort_indicators", enabled)
+        self.log_operation("update_sort_indicators", f"Indicateurs de tri: {'activés' if enabled else 'désactivés'}", "debug")
 
-        except Exception as e:
-            app_logger.error(f"❌ Erreur update_sort_indicators: {e}")
-
+    @service_operation("mise_a_jour_visibilite_progress")
     def update_progress_visibility(self, visible: bool):
         """Mettre à jour la visibilité de la barre de progression"""
-        try:
-            self.progress_visible = visible
+        self.progress_visible = visible
 
-            if self.progress_bar:
-                self.progress_bar.setVisible(visible)
-                if not visible:
-                    self.progress_bar.setValue(0)
-                    self.current_progress_value = 0
+        if self.progress_bar:
+            self.progress_bar.setVisible(visible)
+            if not visible:
+                self.progress_bar.setValue(0)
+                self.current_progress_value = 0
 
-            self.visual_indicator_changed.emit("progress_bar", visible)
-            app_logger.debug(f"📊 Barre de progression: {'visible' if visible else 'cachée'}")
-
-        except Exception as e:
-            app_logger.error(f"❌ Erreur update_progress_visibility: {e}")
+        self.visual_indicator_changed.emit("progress_bar", visible)
+        self.log_operation("update_progress_visibility", f"Barre de progression: {'visible' if visible else 'cachée'}", "debug")
 
     def update_progress_value(self, value: int):
         """Mettre à jour la valeur de la barre de progression"""
@@ -117,7 +115,7 @@ class UIStateManagementService(QObject):
             self.progress_updated.emit(self.current_progress_value)
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur update_progress_value: {e}")
+            self.handle_error(e, "update_progress_value")
 
     def set_button_states(self, button_configs: dict):
         """Configurer l'état de plusieurs boutons

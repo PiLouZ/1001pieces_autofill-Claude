@@ -5,13 +5,13 @@ Extrait de main_refactored.py pour centraliser la logique métier critique
 
 from typing import Optional, Dict, List, Any, Tuple, Callable
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import pyqtSignal
 
-from ..core.logger import app_logger
 from ..core.config import Config
+from .base_service import BaseService, service_operation
 
 
-class DatabaseOperationsService(QObject):
+class DatabaseOperationsService(BaseService):
     """Service centralisé pour les opérations CRUD de base de données"""
 
     # Signaux pour notifier les changements
@@ -21,17 +21,14 @@ class DatabaseOperationsService(QObject):
     validation_failed = pyqtSignal(str)  # error_message
 
     def __init__(self, parent_window, parent=None):
-        super().__init__(parent)
-        self.parent_window = parent_window
+        super().__init__(parent_window=parent_window, parent=parent)
 
-        # Services requis (seront injectés via la fenêtre parent)
-        self.db_manager = None
-        self.table_controller = None
-        self.user_interaction_service = None
-        self.table_fill_service = None
-        self.cell_editing_service = None
-        self.cache_service = None
-        self.auto_save_manager = None
+        # Services requis pour l'injection automatique
+        self._required_services = [
+            'db_manager', 'table_controller', 'user_interaction_service',
+            'table_fill_service', 'cell_editing_service', 'cache_service',
+            'auto_save_manager'
+        ]
 
         # État interne
         self.modified_cells = set()
@@ -39,99 +36,77 @@ class DatabaseOperationsService(QObject):
 
     def initialize_services(self):
         """Initialiser les références aux services depuis la fenêtre parent"""
-        try:
-            if hasattr(self.parent_window, 'db_manager'):
-                self.db_manager = self.parent_window.db_manager
-            if hasattr(self.parent_window, 'table_controller'):
-                self.table_controller = self.parent_window.table_controller
-            if hasattr(self.parent_window, 'user_interaction_service'):
-                self.user_interaction_service = self.parent_window.user_interaction_service
-            if hasattr(self.parent_window, 'table_fill_service'):
-                self.table_fill_service = self.parent_window.table_fill_service
-            if hasattr(self.parent_window, 'cell_editing_service'):
-                self.cell_editing_service = self.parent_window.cell_editing_service
-            if hasattr(self.parent_window, 'cache_service'):
-                self.cache_service = self.parent_window.cache_service
-            if hasattr(self.parent_window, 'auto_save_manager'):
-                self.auto_save_manager = self.parent_window.auto_save_manager
+        # Utiliser l'injection automatique de BaseService
+        self.inject_required_services()
 
-            # Référence aux modified_cells de la fenêtre parent
-            if hasattr(self.parent_window, 'modified_cells'):
-                self.modified_cells = self.parent_window.modified_cells
+        # Référence aux modified_cells de la fenêtre parent
+        if hasattr(self.parent_window, 'modified_cells'):
+            self.modified_cells = self.parent_window.modified_cells
 
-            app_logger.debug("DatabaseOperationsService services initialisés")
-        except Exception as e:
-            app_logger.error(f"Erreur initialisation services DatabaseOperationsService: {e}")
+        self.log_operation("initialize_services", "DatabaseOperationsService services initialisés", "debug")
 
     # ================================
     # OPÉRATIONS CREATE
     # ================================
 
+    @service_operation("ajout_appareil")
     def add_new_device(self, device_data: Optional[Dict[str, str]] = None) -> Optional[int]:
         """Ajouter un nouvel appareil à la base de données"""
-        try:
-            if not self.db_manager:
-                app_logger.error("DatabaseManager non disponible")
-                return None
+        if not self.db_manager:
+            self.handle_error(Exception("DatabaseManager non disponible"), "add_new_device")
+            return None
 
-            # Données par défaut pour un nouvel appareil
-            if device_data is None:
-                device_data = {
-                    'type': '',
-                    'marque': '',
-                    'modele': '',
-                    'reference': '',
-                    'designation': '',
-                    'prix': '0.00',
-                    'stock': '0',
-                    'notes': ''
-                }
+        # Données par défaut pour un nouvel appareil
+        if device_data is None:
+            device_data = {
+                'type': '',
+                'marque': '',
+                'modele': '',
+                'reference': '',
+                'designation': '',
+                'prix': '0.00',
+                'stock': '0',
+                'notes': ''
+            }
 
-            # Validation des données
-            is_valid, errors = self.validate_device_data(device_data)
-            if not is_valid:
-                error_msg = "Erreurs de validation:\n" + "\n".join(errors)
-                if self.user_interaction_service:
-                    self.user_interaction_service.show_error(error_msg)
-                self.validation_failed.emit(error_msg)
-                return None
+        # Validation des données
+        is_valid, errors = self.validate_device_data(device_data)
+        if not is_valid:
+            error_msg = "Erreurs de validation:\n" + "\n".join(errors)
+            if self.user_interaction_service:
+                self.user_interaction_service.show_error(error_msg)
+            self.validation_failed.emit(error_msg)
+            return None
 
-            # Ajouter en base
-            device_id = self.db_manager.add_device(device_data)
+        # Ajouter en base
+        device_id = self.db_manager.add_device(device_data)
 
-            if device_id:
-                app_logger.info(f"Nouvel appareil ajouté avec ID: {device_id}")
+        if device_id:
+            self.log_operation("add_new_device", f"Nouvel appareil ajouté avec ID: {device_id}", "info")
 
-                # Recharger la table
-                if self.table_controller:
-                    self.table_controller.load_data()
+            # Recharger la table
+            if self.table_controller:
+                self.table_controller.load_data()
 
-                # Invalider le cache
-                if self.cache_service:
-                    self.cache_service.invalidate_all("nouvel appareil ajouté")
+            # Invalider le cache
+            if self.cache_service:
+                self.cache_service.invalidate_all("nouvel appareil ajouté")
 
-                # Ajouter à l'historique
-                if self.user_interaction_service:
-                    self.user_interaction_service.add_to_history(
-                        f"Nouvel appareil ajouté: {device_data.get('marque', '')} {device_data.get('modele', '')}"
-                    )
+            # Ajouter à l'historique
+            if self.user_interaction_service:
+                self.user_interaction_service.add_to_history(
+                    f"Nouvel appareil ajouté: {device_data.get('marque', '')} {device_data.get('modele', '')}"
+                )
 
                 # Émettre le signal
                 self.device_added.emit(device_id)
 
                 return device_id
-            else:
-                error_msg = "Erreur lors de l'ajout en base de données"
-                app_logger.error(error_msg)
-                if self.user_interaction_service:
-                    self.user_interaction_service.show_error(error_msg)
-                return None
-
-        except Exception as e:
-            app_logger.error(f"Erreur lors de l'ajout d'appareil: {e}")
-            if self.user_interaction_service:
-                self.user_interaction_service.show_error(f"Erreur lors de l'ajout: {e}")
+        else:
+            error_msg = "Erreur lors de l'ajout en base de données"
+            self.handle_error(Exception(error_msg), "add_new_device")
             return None
+
 
     # ================================
     # OPÉRATIONS UPDATE

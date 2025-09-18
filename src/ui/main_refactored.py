@@ -771,74 +771,10 @@ class MainWindow(QMainWindow):
 
     def _on_header_clicked(self, logical_index: int):
         """Gérer le clic sur un header pour trier"""
-        try:
-            # PHASE 3.1: Déléguer au service de tri si activé
-            if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
-                self.sorting_filtering_service.on_header_clicked(logical_index)
-                return
-
-            # Ancien système (pour compatibilité/rollback)
-            # Déterminer l'ordre de tri
-            if self.current_sort_column == logical_index:
-                # Basculer l'ordre si même colonne
-                if self.current_sort_order == Qt.SortOrder.AscendingOrder:
-                    self.current_sort_order = Qt.SortOrder.DescendingOrder
-                else:
-                    self.current_sort_order = Qt.SortOrder.AscendingOrder
-            else:
-                # Nouvelle colonne, commencer par ASC
-                self.current_sort_column = logical_index
-                self.current_sort_order = Qt.SortOrder.AscendingOrder
-            
-            # Appliquer le tri via la base de données
-            self._apply_database_sort()
-            
-        except Exception as e:
-            app_logger.error(f"Erreur lors du tri: {e}")
+        # PHASE 3.1: Déléguer au service de tri
+        if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
+            self.sorting_filtering_service.on_header_clicked(logical_index)
     
-    def _apply_database_sort(self):
-        """Appliquer le tri via une nouvelle requête SQL"""
-        try:
-            # Mettre à jour les indicateurs visuels de tri avec des flèches Unicode
-            self._update_sort_indicators()
-            
-            # Recharger les données avec le nouveau tri en maintenant la recherche active
-            search_term = None
-            if hasattr(self, 'search_input') and self.search_input:
-                search_term = self.search_input.text().strip()
-                search_term = search_term if search_term else None
-            
-            # Synchroniser le tri avec TableController avant le rechargement
-            if hasattr(self, 'table_controller'):
-                self.table_controller.current_sort_column = self.current_sort_column
-                self.table_controller.current_sort_order = self.current_sort_order
-            
-            self.table_controller.load_data(search_term, is_search=bool(search_term))
-            
-        except Exception as e:
-            app_logger.error(f"Erreur lors de l'application du tri: {e}")
-    
-    def _update_sort_indicators(self):
-        """Mettre à jour les indicateurs de tri dans les en-têtes avec des flèches Unicode"""
-        try:
-            # Récupérer les en-têtes originaux sans flèches
-            original_headers = Config.DB_HEADERS + ["Nb Pièces"]
-            
-            # Mettre à jour tous les en-têtes
-            for col_idx, header_text in enumerate(original_headers):
-                if col_idx == self.current_sort_column:
-                    # Ajouter la flèche appropriée
-                    if self.current_sort_order == Qt.SortOrder.AscendingOrder:
-                        header_with_arrow = f"{header_text} ↑"
-                    else:
-                        header_with_arrow = f"{header_text} ↓"
-                    self.table.horizontalHeaderItem(col_idx).setText(header_with_arrow)
-                else:
-                    # Enlever toute flèche existante
-                    self.table.horizontalHeaderItem(col_idx).setText(header_text)
-                    
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour indicateurs tri: {e}")
     
     def _get_modern_style(self) -> str:
         """Retourne le CSS moderne de l'application via StyleManager"""
@@ -1273,26 +1209,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes d'action (stubs pour les fonctionnalités à implémenter) ---
 
-    def _apply_column_filter(self, column: int, text: str):
-        """Appliquer un filtre sur une colonne avec debounce de 400ms"""
-        # Stocker les informations de filtrage en attente
-        self.pending_column_filter = (column, text)
-        
-        # Redémarrer le timer de debounce
-        self.column_filter_timer.stop()
-        self.column_filter_timer.start(400)  # 400ms de délai
-
-    def _perform_delayed_column_filter(self):
-        """Exécuter le filtrage de colonne après le délai de debounce"""
-        if hasattr(self, 'pending_column_filter') and self.pending_column_filter:
-            column, text = self.pending_column_filter
-            
-            # Effectuer le filtrage réel
-            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
-            self.table_controller.load_data(search_term)
-            
-            # Nettoyer
-            self.pending_column_filter = None
 
     def _populate_dropdown_values(self, combo_widget: QComboBox, column_index: int):
         """Peupler les valeurs du dropdown avec les données uniques de la BDD"""
@@ -1331,63 +1247,26 @@ class MainWindow(QMainWindow):
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
-        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
+        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
+        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+            self.database_operations_service.save_cells_batch(self.modified_cells)
+            return
+
+        # Feature Flag: AutoSaveManager fallback
         if Config.USE_NEW_AUTO_SAVE_MANAGER:
             self.auto_save_manager.perform_auto_save(self.table)
-        else:
-            # Ancien système (pour rollback)
-            if not self.modified_cells or not getattr(self, 'auto_save_enabled', True):
-                return
-
-            try:
-                # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
-                updates_by_db_id = {}
-
-                for row, col in list(self.modified_cells):
-                    item = self.table.item(row, col)
-                    if item:
-                        db_id = item.data(Qt.ItemDataRole.UserRole)
-                        if db_id is None:
-                            db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                        else:
-                            db_id = int(db_id)
-
-                        if db_id not in updates_by_db_id:
-                            updates_by_db_id[db_id] = {}
-
-                        column_name = self._get_db_field_name(col)
-                        if column_name:
-                            updates_by_db_id[db_id][column_name] = item.text()
-
-                # Exécuter les mises à jour par lots
-                if updates_by_db_id:
-                    self.db_manager.update_multiple_cells_batch(updates_by_db_id)
-
-                # Mettre à jour les valeurs précédentes et nettoyer modified_cells
-                for row, col in list(self.modified_cells):
-                    item = self.table.item(row, col)
-                    if item:
-                        self.previous_values[(row, col)] = item.text()
-
-                self.modified_cells.clear()
-
-                # Mettre à jour l'indicateur
-                self.save_indicator.setText(Config.get_message('auto_save_done'))
-                self.save_indicator.setStyleSheet("color: green;")
-
-                # Mettre à jour le bouton incomplète si nécessaire
-                self._update_incomplete_button_visibility()
-
-            except Exception as e:
-                self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde automatique: {e}")
 
     def _manual_save(self):
         """Sauvegarde manuelle"""
-        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
+        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
+        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+            self.database_operations_service.manual_save()
+            return
+
+        # Feature Flag: AutoSaveManager fallback
         if Config.USE_NEW_AUTO_SAVE_MANAGER:
             self.auto_save_manager.trigger_manual_save()
         else:
-            # Ancien système (pour rollback)
             self._auto_save()
             self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
             self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
@@ -2055,17 +1934,6 @@ class MainWindow(QMainWindow):
         """Ouvrir la fenêtre de gestion des pièces - Phase 2.14: Délégation vers PieceManagementService"""
         self.piece_management_service.open_pieces_manager()
     
-    def _clear_column_filters(self):
-        """Nettoyer tous les filtres de colonnes via TableController"""
-        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'filter_widgets'):
-            for col_idx, filter_widget in self.table_controller.filter_widgets.items():
-                if filter_widget is not None:  # Skip removed filters
-                    filter_widget.blockSignals(True)
-                    if isinstance(filter_widget, QComboBox):
-                        filter_widget.setCurrentText("")
-                    else:  # QLineEdit
-                        filter_widget.clear()
-                    filter_widget.blockSignals(False)
     
     def _update_incomplete_button_visibility(self):
         """Mettre à jour la visibilité du bouton incomplètes selon les données"""
@@ -2104,23 +1972,17 @@ class MainWindow(QMainWindow):
 
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
-        self.show_incomplete_only = checked
+        # PHASE 3.1: Déléguer au service de tri/filtrage si activé
+        if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
+            self.sorting_filtering_service.toggle_incomplete_filter()
+            return
 
-        # Notifier le service de l'état du filtre
+        # Legacy fallback (conservé temporairement)
+        self.show_incomplete_only = checked
         if hasattr(self, 'incomplete_button_service'):
             self.incomplete_button_service.set_filter_active(checked)
-
         if checked:
-            # Activer le filtre - nettoyer les autres filtres d'abord
-            self._clear_column_filters()
             self.search_input.clear()
-
-        # Le service gère automatiquement la mise à jour du texte et de l'affichage
-        
-        # Recharger les données avec ou sans filtre
-        # NOTE: Cette ligne semble erronée, current_page devrait être sur table_controller
-        # self.current_page = 1  # Retour à la première page
-        # Utiliser la recherche parsée actuelle
         search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
         self.table_controller.load_data(search_term)
     
@@ -2144,8 +2006,8 @@ class MainWindow(QMainWindow):
                     self.table_controller.current_page = 0
             
             # Nettoyer les filtres de colonnes si demandé
-            if clear_filters:
-                self._clear_column_filters()
+            if clear_filters and Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
+                self.sorting_filtering_service.clear_column_filters()
             
             # Débloquer les signaux si nécessaire pour éviter les blocages
             was_blocked = self.table.signalsBlocked()
@@ -2501,100 +2363,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         event.ignore()
 
     def _import_csv_from_path(self, file_path):
-        """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)
-
-        MIGRATION: Utilise ImportManager pour le drag&drop avec fallback vers ancien système
-        """
-        try:
-            # PHASE 3.2: Déléguer au ImportExportService si activé
-            if Config.USE_NEW_IMPORT_EXPORT_SERVICE and hasattr(self, 'import_export_service') and self.import_export_service:
-                self.import_export_service.import_csv_from_path(file_path)
-                return
-
-            # ANCIEN : Utiliser ImportManager pour drag&drop (système actuel)
-            results = self.import_manager.import_from_drag_drop([file_path])
-            if results:
-                self._show_import_results_new(results)
-                self.table_controller.load_data()
-                return
-        except Exception as e:
-            app_logger.warning(f"Échec ImportManager drag&drop CSV, fallback vers ancien système: {e}")
-        
-        # FALLBACK : Code legacy en cas d'échec ImportManager
-        try:
-            import csv
-            from datetime import datetime
-            
-            # Utiliser ImportManager pour analyse et dialogue
-            try:
-                # Chargement et analyse avec ImportManager
-                sample_data = self.import_manager.load_csv_data(file_path, max_rows=5)
-                detected_columns = len(sample_data[0]) if sample_data else 0
-                
-                if detected_columns == 0:
-                    self.user_interaction_service.show_error("Impossible de détecter les colonnes du fichier CSV")
-                    return
-                
-                # Extraire référence depuis nom de fichier
-                import os
-                filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
-                
-                # Utiliser dialogue deprecated (sera supprimé en Phase 4.4)
-                import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, filename_without_ext, "CSV", sample_data)
-                if import_type is None:
-                    return
-                    
-            except Exception as e:
-                self.user_interaction_service.show_error(f"Erreur lors de l'analyse du fichier CSV: {e}")
-                return
-            
-            # Le reste du traitement est identique à _import_csv
-            separator = self._detect_separator(file_path)
-            encoding = self._detect_file_encoding(file_path)
-            
-            # Utiliser la même logique que l'import CSV classique : passer des listes brutes
-            imported_data = []
-            with open(file_path, 'r', encoding=encoding, errors='replace') as file:
-                csv_reader = csv.reader(file, delimiter=separator)
-                
-                for row_index, row in enumerate(csv_reader):
-                    if row_index == 0 and has_headers:  # Header (seulement si spécifié)
-                        continue
-                    
-                    if len(row) >= 2 and any(str(cell).strip() for cell in row):  # Au moins 2 colonnes avec des données
-                        imported_data.append(row)
-            
-            if not imported_data:
-                QMessageBox.warning(self, "Import CSV", "Aucune donnée valide trouvée dans le fichier.")
-                return
-            
-            # Créer une barre de progression pour les gros imports
-            progress_dialog = None
-            if len(imported_data) >= 1000:
-                progress_dialog = QProgressDialog(
-                    f"Import CSV en cours... 0 / {len(imported_data)} lignes",
-                    "Annuler",
-                    0, len(imported_data),
-                    self
-                )
-                progress_dialog.setWindowTitle("Import CSV - Glisser/Déposer")
-                progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-                progress_dialog.show()
-                QApplication.processEvents()
-            
-            # Traitement de l'import (utiliser import_type)
-            results = self._process_import(imported_data, import_type, ref_piece, third_column_choice, progress_dialog, libelle_piece)
-            
-            # Fermer la barre de progression
-            if progress_dialog:
-                progress_dialog.setValue(len(imported_data))
-                progress_dialog.close()
-            
-            # Affichage du résumé et ajout à l'historique
-            self._log_import_to_history(results, ref_piece, f"CSV (Glisser/Déposer - {os.path.basename(file_path)})")
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de l'import CSV par glisser/déposer: {e}")
+        """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)"""
+        # PHASE 3.2: Déléguer au ImportExportService
+        if Config.USE_NEW_IMPORT_EXPORT_SERVICE and hasattr(self, 'import_export_service') and self.import_export_service:
+            self.import_export_service.import_csv_from_path(file_path)
     
     def _import_pdf_from_path(self, file_paths):
         """Importer un ou plusieurs fichiers PDF depuis des chemins donnés - Phase 2.7"""
@@ -2759,69 +2531,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     
     def _delete_selected_rows(self, selected_rows):
         """Supprimer les lignes sélectionnées"""
-        if not selected_rows:
-            return
-        
-        # Trier les lignes par ordre décroissant pour éviter les décalages d'index
-        selected_rows.sort(reverse=True)
-        
-        # Confirmation
-        from src.core.config import pluralize
-        row_count = len(selected_rows)
-        
-        if row_count == 1:
-            message = f"Supprimer la ligne sélectionnée ?"
-        else:
-            message = f"Supprimer les {row_count} lignes sélectionnées ?"
-        
-        message += "\n\nCette action est irréversible."
-        
-        reply = QMessageBox.question(
-            self, "Confirmation de suppression",
-            message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        
-        try:
-            deleted_count = 0
-            deleted_ids = []
-            
-            for row in selected_rows:
-                # Récupérer l'ID de l'appareil
-                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                if db_id:
-                    # Supprimer de la base de données
-                    success = self.db_manager.delete_appareil(db_id)
-                    if success:
-                        deleted_count += 1
-                        deleted_ids.append(db_id)
-                        
-                        # Supprimer la ligne du tableau
-                        self.table.removeRow(row)
-            
-            # Message de confirmation
-            if deleted_count > 0:
-                if deleted_count == 1:
-                    message = f"1 ligne supprimée"
-                else:
-                    message = f"{deleted_count} lignes supprimées"
-                
-                self.statusbar.showMessage(message, Config.STATUS_MESSAGE_TIMEOUT)
-                
-                # Ajouter à l'historique
-                self.user_interaction_service.add_to_history(f"🗑️ Suppression de {pluralize(deleted_count, 'ligne')}")
-                
-                # Actualiser l'affichage - conserver la recherche et les filtres 
-                self._force_refresh_display(reset_page=False, clear_filters=False)
-            else:
-                self.user_interaction_service.show_error("Aucune ligne n'a pu être supprimée")
-                
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de la suppression des lignes: {e}")
+        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
+        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+            self.database_operations_service.delete_selected_devices(selected_rows)
 
     def keyPressEvent(self, event):
         """Gestion des raccourcis clavier - avec délégation conditionnelle au service"""
@@ -2830,89 +2542,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             handled = self.keyboard_shortcut_service.handle_key_press_event(event)
             if handled:
                 return
-            # Si pas géré par le service, continuer avec la logique legacy
 
-        # Logique legacy - maintenue pour compatibilité
-        # Sur macOS, Qt mappe Cmd vers ControlModifier dans certains contextes
-        # Nous testons les deux pour être sûr
-        has_cmd_modifier = False
-        if sys.platform == 'darwin':
-            # Sur macOS, tester les deux possibilités
-            has_cmd_modifier = bool(event.modifiers() & (Qt.MetaModifier | Qt.ControlModifier))
-        else:
-            # Sur Windows/Linux, utiliser ControlModifier
-            has_cmd_modifier = bool(event.modifiers() & Qt.ControlModifier)
-
-        if has_cmd_modifier:
-            if event.key() == Qt.Key.Key_N:
-                self._add_new_row()
-            elif event.matches(QKeySequence.StandardKey.Save):
-                self._manual_save()
-            elif event.matches(QKeySequence.StandardKey.Find):
-                self.search_input.setFocus()
-                self.search_input.selectAll()
-            elif event.matches(QKeySequence.StandardKey.Paste):
-                self._handle_paste()
-            elif event.matches(QKeySequence.StandardKey.Copy):
-                self._handle_copy()
-            elif event.matches(QKeySequence.StandardKey.Undo):
-                self._undo()
-            elif event.matches(QKeySequence.StandardKey.Redo):
-                self._redo()
-            elif event.key() == Qt.Key.Key_Z:
-                self._undo()
-            elif event.key() == Qt.Key.Key_Y:
-                self._redo()
-            elif event.key() == Qt.Key.Key_D:
-                # CMD+D ne fonctionne que depuis le tableau, pas depuis la barre de recherche
-                current_focus = self.focusWidget()
-                if current_focus != self.search_input:
-                    self._show_column_values_list()
-            elif event.key() == Qt.Key.Key_Up:
-                self._navigate_to_empty_cell(direction='up')
-            elif event.key() == Qt.Key.Key_Down:
-                self._navigate_to_empty_cell(direction='down')
-            else:
-                super().keyPressEvent(event)
-        elif event.key() == Qt.Key.Key_F5:
-            # Utiliser la recherche parsée actuelle
-            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
-            self.table_controller.load_data(search_term)
-        elif event.key() == Qt.Key.Key_F12:
-            self._open_log_viewer()
-        elif event.key() == Qt.Key.Key_Escape:
-            self.advanced_search_service.clear_search_ui(self)
-        else:
-            super().keyPressEvent(event)
+        # Fallback pour événements non gérés par le service
+        super().keyPressEvent(event)
 
     def _add_new_row(self):
         """Ajouter une nouvelle ligne"""
-        try:
-            # Créer un dictionnaire vide pour les données
-            empty_data = {header: '' for header in Config.DB_HEADERS}
-            db_id = self.db_manager.insert_appareil(empty_data)
-            
-            # Recharger et se positionner sur la nouvelle ligne
-            # Utiliser la recherche parsée actuelle
-            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
-            self.table_controller.load_data(search_term)
-            
-            if self.table.rowCount() > 0:
-                self.table.setCurrentCell(0, 0)  # Première ligne (tri DESC)
-                item = self.table.item(0, 0)
-                if item:
-                    self.table.editItem(item)
-            
-            # Ajouter à l'historique
-            self.user_interaction_service.add_to_history(f"Nouvel appareil ajouté (ID: {db_id})")
-            
-            self.statusbar.showMessage(
-                Config.get_message('new_row_added'), 
-                Config.STATUS_MESSAGE_TIMEOUT
-            )
-            
-        except DatabaseError as e:
-            self.user_interaction_service.show_error(f"Erreur lors de l'ajout d'une nouvelle ligne: {e}")
+        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
+        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+            self.database_operations_service.add_new_device()
 
     def _handle_paste(self):
         """Gestion du collage de données depuis le presse-papiers - Version refactorisée Phase 2.5"""
