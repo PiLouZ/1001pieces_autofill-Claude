@@ -89,11 +89,17 @@ class DuplicateDevicesWidget(QWidget):
         self.select_none_btn = QPushButton("Tout désélectionner")
         self.auto_select_oldest_btn = QPushButton("Sélectionner automatiquement (+ anciens)")
         self.auto_select_complete_btn = QPushButton("Sélectionner automatiquement (+ complets)")
-        
+
+        # Boutons pour décisions sur doublons
+        self.mark_distinct_btn = QPushButton("✅ Marquer comme distincts")
+        self.mark_distinct_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        self.mark_distinct_btn.setEnabled(False)
+
         header_layout.addWidget(self.select_all_btn)
         header_layout.addWidget(self.select_none_btn)
         header_layout.addWidget(self.auto_select_oldest_btn)
         header_layout.addWidget(self.auto_select_complete_btn)
+        header_layout.addWidget(self.mark_distinct_btn)
         header_layout.addStretch()
         
         layout.addLayout(header_layout)
@@ -114,6 +120,8 @@ class DuplicateDevicesWidget(QWidget):
         self.select_none_btn.clicked.connect(self._select_none)
         self.auto_select_oldest_btn.clicked.connect(self._auto_select_oldest)
         self.auto_select_complete_btn.clicked.connect(self._auto_select_complete)
+        self.mark_distinct_btn.clicked.connect(self._mark_selected_as_distinct)
+        self.devices_tree.itemSelectionChanged.connect(self._update_buttons_state)
         
     def populate_devices(self, duplicate_devices: List[Dict[str, Any]]):
         """Remplir la liste des appareils en doublon"""
@@ -278,22 +286,79 @@ class DuplicateDevicesWidget(QWidget):
             # DEBUG: Log des sélections
             app_logger.debug(f"Groupe {i}: total={len(group_devices)}, sélectionnés={len(selected_devices)}")
 
-            # S'il y a des appareils sélectionnés, créer un groupe de fusion
-            if selected_devices and len(group_devices) > 1:
-                # Le maître est celui qui n'est pas sélectionné (ou le premier non sélectionné)
-                master_candidates = [d for d in group_devices if d not in selected_devices]
-                if master_candidates:
-                    master_id = master_candidates[0]
-                    merge_groups.append({
-                        'master_id': master_id,
-                        'duplicate_ids': selected_devices
-                    })
-                    app_logger.info(f"Groupe de fusion créé: maître={master_id}, doublons={selected_devices}")
-                else:
-                    app_logger.warning(f"Aucun maître trouvé pour groupe {i} (tous sélectionnés)")
+            # S'il y a exactement UN appareil sélectionné, créer un groupe de fusion
+            if len(selected_devices) == 1 and len(group_devices) > 1:
+                # L'appareil sélectionné (coché) devient le maître qui reçoit les pièces
+                master_id = selected_devices[0]
+                # Les autres appareils du groupe sont les doublons à supprimer
+                duplicate_ids = [d for d in group_devices if d != master_id]
+
+                merge_groups.append({
+                    'master_id': master_id,
+                    'duplicate_ids': duplicate_ids
+                })
+                app_logger.info(f"Groupe de fusion créé: maître={master_id} (sélectionné), doublons à supprimer={duplicate_ids}")
+            elif len(selected_devices) > 1:
+                app_logger.warning(f"Groupe {i}: Plus d'un appareil sélectionné - fusion impossible")
+            elif len(selected_devices) == 0:
+                app_logger.debug(f"Groupe {i}: Aucun appareil sélectionné - pas de fusion")
 
         app_logger.info(f"Total groupes de fusion: {len(merge_groups)}")
         return merge_groups
+
+    def _update_buttons_state(self):
+        """Mettre à jour l'état des boutons selon la sélection"""
+        current_item = self.devices_tree.currentItem()
+        has_selection = current_item is not None and current_item.parent() is not None
+
+        # Le bouton "Marquer comme distincts" est activé si on a sélectionné un groupe
+        if has_selection and current_item.parent() is None:  # C'est un groupe parent
+            self.mark_distinct_btn.setEnabled(True)
+        else:
+            self.mark_distinct_btn.setEnabled(False)
+
+    def _mark_selected_as_distinct(self):
+        """Marquer le groupe sélectionné comme distinct"""
+        current_item = self.devices_tree.currentItem()
+
+        # Trouver le groupe parent si on a sélectionné un enfant
+        if current_item and current_item.parent():
+            current_item = current_item.parent()
+
+        if not current_item:
+            app_logger.warning("Aucun groupe sélectionné pour marquage distinct")
+            return
+
+        # Extraire la référence modèle du texte du groupe
+        group_text = current_item.text(2)  # Colonne "Référence Modèle"
+        if " (" in group_text:
+            ref_modele = group_text.split(" (")[0]
+        else:
+            ref_modele = group_text
+
+        try:
+            # Utiliser le parent pour accéder au DatabaseManager
+            parent_widget = self.parent()
+            while parent_widget and not hasattr(parent_widget, 'db_manager'):
+                parent_widget = parent_widget.parent()
+
+            if parent_widget and hasattr(parent_widget, 'db_manager'):
+                success = parent_widget.db_manager.save_reference_decision(
+                    ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
+                )
+
+                if success:
+                    app_logger.info(f"Groupe {ref_modele} marqué comme distinct")
+                    # Désactiver le groupe dans l'affichage
+                    current_item.setDisabled(True)
+                    current_item.setText(2, f"{ref_modele} (MARQUÉ DISTINCT)")
+                else:
+                    app_logger.error(f"Échec marquage distinct pour {ref_modele}")
+            else:
+                app_logger.error("Impossible d'accéder au DatabaseManager")
+
+        except Exception as e:
+            app_logger.error(f"Erreur marquage distinct: {e}")
 
 
 class DuplicatePiecesWidget(QWidget):
