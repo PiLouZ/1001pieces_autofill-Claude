@@ -14,7 +14,7 @@ from ..data.database_manager import DatabaseManager
 from ..data.data_validator import DataValidator
 from ..services.duplicates_analysis_service import DuplicatesAnalysisService
 from ..services.cleanup_ui_service import CleanupUIService
-from .message_helper import show_success, show_error, ask_confirmation
+from .message_helper import show_success, show_error, MessageHelper
 
 
 class CleanupPreviewDialog(QDialog):
@@ -35,12 +35,14 @@ class CleanupPreviewDialog(QDialog):
         # État
         self.analysis_results = None
         self.user_choice = None
-        
+
         # Widgets
         self.progress_widgets = {}
         self.stats_widget = None
         self.devices_widget = None
         self.pieces_widget = None
+        self.distinct_widget = None
+        self.history_widget = None
         self.main_widget = None
         
         self._init_ui()
@@ -86,12 +88,23 @@ class CleanupPreviewDialog(QDialog):
         
         # Onglet Appareils en doublon
         self.devices_widget = self.ui_service.create_devices_widget()
+        self.devices_widget.history_callback = self.add_to_history  # Passer la callback pour l'historique
         self.tab_widget.addTab(self.devices_widget, "📱 Appareils en doublon")
         
         # Onglet Pièces dupliquées
         self.pieces_widget = self.ui_service.create_pieces_widget()
         self.tab_widget.addTab(self.pieces_widget, "🔧 Pièces dupliquées")
-        
+
+        # Onglet Références distinctes
+        self.distinct_widget = self.ui_service.create_distinct_references_widget()
+        self.distinct_widget.set_db_manager(self.db_manager)
+        self.tab_widget.addTab(self.distinct_widget, "🏷️ Références distinctes")
+
+        # Onglet Historique des actions
+        self.history_widget = self.ui_service.create_history_widget()
+        self.history_widget.set_db_manager(self.db_manager)
+        self.tab_widget.addTab(self.history_widget, "📋 Historique")
+
         main_layout.addWidget(self.tab_widget)
         
     def _init_control_buttons(self):
@@ -112,10 +125,10 @@ class CleanupPreviewDialog(QDialog):
         self.preview_btn.setEnabled(False)
         self.apply_btn.setEnabled(False)
         
+        self.control_layout.addWidget(self.cancel_btn)
+        self.control_layout.addStretch()
         self.control_layout.addWidget(self.preview_btn)
         self.control_layout.addWidget(self.apply_btn)
-        self.control_layout.addStretch()
-        self.control_layout.addWidget(self.cancel_btn)
         
     def _connect_signals(self):
         """Connecter les signaux"""
@@ -249,12 +262,12 @@ class CleanupPreviewDialog(QDialog):
         """Appliquer le nettoyage sélectionné"""
         try:
             # Confirmation
-            if not ask_confirmation(
-                self, 
-                "Confirmation du nettoyage",
+            if not MessageHelper.ask_question(
+                self,
                 "Êtes-vous sûr de vouloir appliquer ces changements?\n\n"
                 "Cette opération est irréversible.\n"
-                "Assurez-vous d'avoir une sauvegarde de votre base de données."
+                "Assurez-vous d'avoir une sauvegarde de votre base de données.",
+                "Confirmation du nettoyage"
             ):
                 return
                 
@@ -287,8 +300,13 @@ class CleanupPreviewDialog(QDialog):
                     success_message += f"• {results.get('devices_deleted', 0)} doublons d'appareils supprimés\n"
                     success_message += f"• {results.get('pieces_deleted', 0)} pièces dupliquées supprimées"
                     
-                    show_success(self, "Nettoyage terminé", success_message)
-                    
+                    MessageHelper.show_success(self, success_message, "Nettoyage terminé")
+
+                    # Enregistrer dans l'historique
+                    if self.history_widget:
+                        details = f"{results.get('devices_merged', 0)} appareils fusionnés, {results.get('devices_deleted', 0)} doublons supprimés, {results.get('pieces_deleted', 0)} pièces nettoyées"
+                        self.history_widget.add_action("Nettoyage automatique", details, "Succès")
+
                     # Fermer la boîte de dialogue
                     self.user_choice = 'applied'
                     self.accept()
@@ -302,6 +320,11 @@ class CleanupPreviewDialog(QDialog):
     def get_user_choice(self):
         """Obtenir le choix de l'utilisateur"""
         return self.user_choice
+
+    def add_to_history(self, action_type: str, details: str, result: str):
+        """Ajouter une action à l'historique"""
+        if self.history_widget:
+            self.history_widget.add_action(action_type, details, result)
         
     def closeEvent(self, event):
         """Gérer la fermeture de la fenêtre"""

@@ -1603,53 +1603,22 @@ class MainWindow(QMainWindow):
     def _clean_data(self):
         """Nettoyer les données avec prévisualisation détaillée - Version refactorisée Phase 2.5c"""
         try:
-            cleanup_options = self.data_management_service.prepare_data_cleaning()
-            
-            if cleanup_options is None:
-                self.user_interaction_service.show_info("✅ Aucun doublon trouvé ! La base de données est déjà propre.")
+            # Ouvrir la fenêtre de nettoyage refactorisée qui gère tout
+            result = self.data_management_service.prepare_data_cleaning()
+
+            if result is None:
+                # L'utilisateur a annulé ou il y a eu une erreur
                 return
-            
-            # Afficher la confirmation finale (UI reste dans MainWindow)
-            stats = cleanup_options['analysis_data']['statistics']
-            operations = []
-            
-            if cleanup_options['clean_devices'] and stats['total_devices_to_delete'] > 0:
-                operations.append(f"• Supprimer {stats['total_devices_to_delete']} appareils en doublon")
-                operations.append(f"• Transférer {stats['total_pieces_to_transfer']} pièces associées")
-            
-            if cleanup_options['clean_pieces'] and stats['total_duplicate_pieces'] > 0:
-                operations.append(f"• Supprimer {stats['total_duplicate_pieces']} références de pièces dupliquées")
-            
-            # Créer le texte des opérations (même si vide)
-            operations_text = "\n".join(operations) if operations else "Aucune opération nécessaire"
-            
-            # Demander confirmation finale
-            if operations:
-                from PyQt5.QtWidgets import QMessageBox
-                reply = QMessageBox.question(
-                    self, "Confirmer le nettoyage",
-                    f"⚠️ Opérations de nettoyage à effectuer :\n\n{operations_text}\n\nContinuer ?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                
-                if reply != QMessageBox.Yes:
-                    return
-            
-            cleanup_result = self.data_management_service.execute_data_cleaning(cleanup_options)
-            
-            if 'error' in cleanup_result:
-                self.user_interaction_service.show_error(f"Erreur lors du nettoyage: {cleanup_result['error']}")
-                return
-            
-            # Recharger les données
-            self.table_controller.load_data()
-            
-            # Afficher le résumé des opérations
-            self.user_interaction_service.show_info(f"✅ Nettoyage terminé avec succès !\n\n"
-                           f"Opérations effectuées :\n{operations_text}")
-            
+
+            # La fenêtre refactorisée gère tout le processus
+            # Si on arrive ici, le nettoyage a été effectué avec succès
+
+            if result.get('user_choice') == 'applied':
+                # Rafraîchir l'affichage après nettoyage
+                self._force_refresh_display()
+
         except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors du nettoyage des données: {e}")
+            self.user_interaction_service.show_error(f"Erreur lors du nettoyage: {e}")
     
     def _manage_categories(self):
         """Gérer les catégories"""

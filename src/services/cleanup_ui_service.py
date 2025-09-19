@@ -5,15 +5,63 @@ Centralise la logique d'affichage et d'interaction pour la prévisualisation de 
 
 from typing import Dict, List, Any, Optional
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, 
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QGroupBox, QTabWidget,
     QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication
 )
 from PyQt5.QtCore import Qt, QObject, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QKeyEvent
 
 from ..core.logger import app_logger
 from .duplicates_analysis_service import clean_display_text
+
+
+class KeyboardTreeWidget(QTreeWidget):
+    """QTreeWidget personnalisé avec gestion clavier pour sélection par barre espace"""
+
+    def keyPressEvent(self, event: QKeyEvent):
+        """Gérer les événements clavier"""
+        if event.key() == Qt.Key_Space:
+            # Basculer l'état de la checkbox de l'élément sélectionné
+            current_item = self.currentItem()
+            if current_item and current_item.flags() & Qt.ItemIsUserCheckable:
+                # Vérifier que c'est un appareil (pas un groupe)
+                if current_item.parent() is not None:  # C'est un enfant (appareil)
+                    current_state = current_item.checkState(0)
+                    new_state = Qt.Unchecked if current_state == Qt.Checked else Qt.Checked
+                    current_item.setCheckState(0, new_state)
+                    event.accept()
+                    return
+
+        # Pour toutes les autres touches, comportement par défaut
+        super().keyPressEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Gérer le menu contextuel pour copier une cellule"""
+        item = self.itemAt(event.pos())
+        if item and item.parent() is not None:  # C'est un appareil (pas un groupe)
+            from PyQt5.QtWidgets import QMenu, QAction
+            from PyQt5.QtGui import QClipboard
+            from PyQt5.QtWidgets import QApplication
+
+            menu = QMenu(self)
+
+            # Action pour copier la valeur de la cellule
+            copy_action = QAction("📋 Copier", self)
+            copy_action.triggered.connect(lambda: self._copy_cell_value(item, self.currentColumn()))
+            menu.addAction(copy_action)
+
+            menu.exec_(event.globalPos())
+
+    def _copy_cell_value(self, item, column):
+        """Copier la valeur d'une cellule dans le presse-papier"""
+        if item and 0 <= column < item.columnCount():
+            text = item.text(column)
+            if text:
+                from PyQt5.QtWidgets import QApplication
+                clipboard = QApplication.clipboard()
+                clipboard.setText(text)
+                app_logger.info(f"Valeur copiée: {text}")
 
 
 class CleanupStatsWidget(QWidget):
@@ -76,6 +124,7 @@ class DuplicateDevicesWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.duplicate_groups = []
+        self.history_callback = None  # Callback pour enregistrer dans l'historique
         self.init_ui()
         
     def init_ui(self):
@@ -87,8 +136,8 @@ class DuplicateDevicesWidget(QWidget):
         
         self.select_all_btn = QPushButton("Tout sélectionner")
         self.select_none_btn = QPushButton("Tout désélectionner")
-        self.auto_select_oldest_btn = QPushButton("Sélectionner automatiquement (+ anciens)")
-        self.auto_select_complete_btn = QPushButton("Sélectionner automatiquement (+ complets)")
+        self.auto_select_most_pieces_btn = QPushButton("Sélectionner automatiquement (+ de pièces)")
+        self.auto_select_newest_btn = QPushButton("Sélectionner automatiquement (+ récents)")
 
         # Boutons pour décisions sur doublons
         self.mark_distinct_btn = QPushButton("✅ Marquer comme distincts")
@@ -97,18 +146,18 @@ class DuplicateDevicesWidget(QWidget):
 
         header_layout.addWidget(self.select_all_btn)
         header_layout.addWidget(self.select_none_btn)
-        header_layout.addWidget(self.auto_select_oldest_btn)
-        header_layout.addWidget(self.auto_select_complete_btn)
+        header_layout.addWidget(self.auto_select_most_pieces_btn)
+        header_layout.addWidget(self.auto_select_newest_btn)
         header_layout.addWidget(self.mark_distinct_btn)
         header_layout.addStretch()
         
         layout.addLayout(header_layout)
         
-        # Arbre des appareils
-        self.devices_tree = QTreeWidget()
+        # Arbre des appareils avec gestion clavier
+        self.devices_tree = KeyboardTreeWidget()
         self.devices_tree.setHeaderLabels([
-            "Sélection", "ID", "Référence Modèle", "Type", "Fabricant", 
-            "Référence Commerciale", "Désignation", "Nb Pièces"
+            "Sélection", "ID", "Référence Modèle", "Type", "Fabricant",
+            "Référence Commerciale", "Autre Référence", "Nb Pièces"
         ])
         self.devices_tree.setRootIsDecorated(True)
         
@@ -118,8 +167,8 @@ class DuplicateDevicesWidget(QWidget):
         self.devices_tree.itemChanged.connect(self._on_item_changed)
         self.select_all_btn.clicked.connect(self._select_all)
         self.select_none_btn.clicked.connect(self._select_none)
-        self.auto_select_oldest_btn.clicked.connect(self._auto_select_oldest)
-        self.auto_select_complete_btn.clicked.connect(self._auto_select_complete)
+        self.auto_select_most_pieces_btn.clicked.connect(self._auto_select_most_pieces)
+        self.auto_select_newest_btn.clicked.connect(self._auto_select_newest)
         self.mark_distinct_btn.clicked.connect(self._mark_selected_as_distinct)
         self.devices_tree.itemSelectionChanged.connect(self._update_buttons_state)
         
@@ -149,9 +198,9 @@ class DuplicateDevicesWidget(QWidget):
             # Ajouter les appareils individuels
             for device in devices:
                 device_item = QTreeWidgetItem([
-                    "", str(device['id']), device['ref_modele'], 
+                    "", str(device['id']), device['ref_modele'],
                     device['type_appareil'], device['manufacturer'],
-                    device['commercial_ref'], device['designation'],
+                    device['commercial_ref'], device.get('other_ref', ''),
                     str(device['pieces_count'])
                 ])
                 
@@ -165,6 +214,9 @@ class DuplicateDevicesWidget(QWidget):
         # Ajuster les colonnes
         for i in range(self.devices_tree.columnCount()):
             self.devices_tree.resizeColumnToContents(i)
+
+        # Forcer l'expansion de tous les groupes pour voir tous les appareils
+        self.devices_tree.expandAll()
             
     def _on_item_changed(self, item, column):
         """Gérer les changements de sélection"""
@@ -188,68 +240,63 @@ class DuplicateDevicesWidget(QWidget):
                 device_item = group_item.child(j)
                 device_item.setCheckState(0, state)
                 
-    def _auto_select_oldest(self):
-        """Sélectionner automatiquement les plus anciens appareils (ID plus petits)"""
+    def _auto_select_most_pieces(self):
+        """Sélectionner automatiquement les appareils avec le plus de pièces associées"""
         root = self.devices_tree.invisibleRootItem()
         for i in range(root.childCount()):
             group_item = root.child(i)
-            
-            # Trouver l'appareil avec l'ID le plus petit (plus ancien)
-            oldest_item = None
-            oldest_id = float('inf')
-            
-            for j in range(group_item.childCount()):
-                device_item = group_item.child(j)
-                device_id = device_item.data(0, Qt.UserRole)
-                if device_id < oldest_id:
-                    oldest_id = device_id
-                    oldest_item = device_item
-                    
-            # Sélectionner tous sauf le plus ancien
-            for j in range(group_item.childCount()):
-                device_item = group_item.child(j)
-                if device_item == oldest_item:
-                    device_item.setCheckState(0, Qt.Unchecked)  # Garder le plus ancien
-                else:
-                    device_item.setCheckState(0, Qt.Checked)    # Supprimer les autres
-                    
-    def _auto_select_complete(self):
-        """Sélectionner automatiquement en gardant les appareils les plus complets"""
-        root = self.devices_tree.invisibleRootItem()
-        for i in range(root.childCount()):
-            group_item = root.child(i)
-            
-            # Trouver l'appareil le plus complet
+
+            # Trouver l'appareil avec le plus de pièces
             best_item = None
-            best_score = -1
-            
+            max_pieces = -1
+
             for j in range(group_item.childCount()):
                 device_item = group_item.child(j)
-                
-                # Calculer un score de complétude
-                score = 0
-                if device_item.text(3):  # type_appareil
-                    score += 1
-                if device_item.text(4):  # manufacturer
-                    score += 1
-                if device_item.text(5):  # commercial_ref
-                    score += 1
-                if device_item.text(6):  # designation
-                    score += 1
-                pieces_count = int(device_item.text(7) or 0)
-                score += min(pieces_count / 10, 1)  # Bonus pour le nombre de pièces
-                
-                if score > best_score:
-                    best_score = score
+                pieces_count = int(device_item.text(7) or 0)  # Colonne "Nb Pièces"
+                if pieces_count > max_pieces:
+                    max_pieces = pieces_count
                     best_item = device_item
-                    
-            # Sélectionner tous sauf le meilleur
+
+            # Si aucun appareil n'a de pièces, prendre le premier
+            if best_item is None and group_item.childCount() > 0:
+                best_item = group_item.child(0)
+
+            # Sélectionner celui avec le plus de pièces comme maître (coché)
             for j in range(group_item.childCount()):
                 device_item = group_item.child(j)
                 if device_item == best_item:
-                    device_item.setCheckState(0, Qt.Unchecked)  # Garder le meilleur
+                    device_item.setCheckState(0, Qt.Checked)    # Celui avec plus de pièces devient maître
                 else:
-                    device_item.setCheckState(0, Qt.Checked)    # Supprimer les autres
+                    device_item.setCheckState(0, Qt.Unchecked)  # Les autres ne sont pas sélectionnés
+                    
+    def _auto_select_newest(self):
+        """Sélectionner automatiquement les appareils les plus récents (ID plus grands)"""
+        root = self.devices_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            group_item = root.child(i)
+
+            # Trouver l'appareil avec l'ID le plus grand (plus récent)
+            newest_item = None
+            newest_id = -1
+
+            for j in range(group_item.childCount()):
+                device_item = group_item.child(j)
+                device_id = device_item.data(0, Qt.UserRole)
+                if device_id and device_id > newest_id:
+                    newest_id = device_id
+                    newest_item = device_item
+
+            # Si aucun ID trouvé, prendre le premier
+            if newest_item is None and group_item.childCount() > 0:
+                newest_item = group_item.child(0)
+
+            # Sélectionner le plus récent comme maître (coché)
+            for j in range(group_item.childCount()):
+                device_item = group_item.child(j)
+                if device_item == newest_item:
+                    device_item.setCheckState(0, Qt.Checked)    # Le plus récent devient maître
+                else:
+                    device_item.setCheckState(0, Qt.Unchecked)  # Les autres ne sont pas sélectionnés
                     
     def get_selected_devices(self) -> List[int]:
         """Obtenir les IDs des appareils sélectionnés pour suppression"""
@@ -309,16 +356,18 @@ class DuplicateDevicesWidget(QWidget):
     def _update_buttons_state(self):
         """Mettre à jour l'état des boutons selon la sélection"""
         current_item = self.devices_tree.currentItem()
-        has_selection = current_item is not None and current_item.parent() is not None
 
-        # Le bouton "Marquer comme distincts" est activé si on a sélectionné un groupe
-        if has_selection and current_item.parent() is None:  # C'est un groupe parent
+        # Le bouton "Marquer comme distincts" est activé si on a sélectionné un groupe parent
+        if current_item and current_item.parent() is None:  # C'est un groupe parent
+            self.mark_distinct_btn.setEnabled(True)
+        elif current_item and current_item.parent():  # C'est un enfant, activer pour le groupe parent
             self.mark_distinct_btn.setEnabled(True)
         else:
             self.mark_distinct_btn.setEnabled(False)
 
     def _mark_selected_as_distinct(self):
         """Marquer le groupe sélectionné comme distinct"""
+        app_logger.info("🔍 BOUTON 'Marquer comme distincts' cliqué")
         current_item = self.devices_tree.currentItem()
 
         # Trouver le groupe parent si on a sélectionné un enfant
@@ -352,6 +401,14 @@ class DuplicateDevicesWidget(QWidget):
                     # Désactiver le groupe dans l'affichage
                     current_item.setDisabled(True)
                     current_item.setText(2, f"{ref_modele} (MARQUÉ DISTINCT)")
+
+                    # Enregistrer dans l'historique
+                    if self.history_callback:
+                        self.history_callback(
+                            "Marquage distinct",
+                            f"Référence '{ref_modele}' marquée comme distincte",
+                            "Succès"
+                        )
                 else:
                     app_logger.error(f"Échec marquage distinct pour {ref_modele}")
             else:
@@ -464,6 +521,14 @@ class CleanupUIService(QObject):
     def create_pieces_widget(self) -> DuplicatePiecesWidget:
         """Créer le widget des pièces dupliquées"""
         return DuplicatePiecesWidget()
+
+    def create_distinct_references_widget(self) -> 'DistinctReferencesWidget':
+        """Créer le widget des références distinctes"""
+        return DistinctReferencesWidget()
+
+    def create_history_widget(self) -> 'ActionHistoryWidget':
+        """Créer le widget de l'historique des actions"""
+        return ActionHistoryWidget()
         
     def create_progress_widget(self) -> Dict[str, QWidget]:
         """Créer les widgets de progression"""
@@ -503,3 +568,416 @@ class CleanupUIService(QObject):
             widgets['status'].setStyleSheet("color: #dc3545; font-style: italic; padding: 5px;")
         if 'progress_bar' in widgets:
             widgets['progress_bar'].setVisible(False)
+
+
+class DistinctReferencesWidget(QWidget):
+    """Widget pour gérer les références marquées comme distinctes"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.db_manager = None
+        self.distinct_references = []
+        self.init_ui()
+
+    def init_ui(self):
+        """Initialiser l'interface pour les références distinctes"""
+        layout = QVBoxLayout(self)
+
+        # En-tête avec explication
+        header_label = QLabel(
+            "🏷️ Références marquées comme distinctes\n"
+            "Ces références ne seront plus proposées comme doublons potentiels."
+        )
+        header_label.setStyleSheet("font-size: 14px; padding: 10px; background-color: #e7f3ff; border-radius: 5px;")
+        layout.addWidget(header_label)
+
+        # Boutons d'action
+        buttons_layout = QHBoxLayout()
+
+        self.refresh_btn = QPushButton("🔄 Actualiser")
+        self.remove_btn = QPushButton("🗑️ Retirer sélection")
+        self.remove_btn.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        self.remove_btn.setEnabled(False)
+
+        buttons_layout.addWidget(self.refresh_btn)
+        buttons_layout.addWidget(self.remove_btn)
+        buttons_layout.addStretch()
+
+        layout.addLayout(buttons_layout)
+
+        # Table des références distinctes
+        self.references_tree = KeyboardTreeWidget()
+        self.references_tree.setHeaderLabels([
+            "Sélection", "Référence Modèle", "Nb Appareils", "Date Marquage", "Action"
+        ])
+        self.references_tree.setRootIsDecorated(False)
+
+        layout.addWidget(self.references_tree)
+
+        # Connecter les signaux
+        self.refresh_btn.clicked.connect(self.load_distinct_references)
+        self.remove_btn.clicked.connect(self._remove_selected_references)
+        self.references_tree.itemSelectionChanged.connect(self._update_buttons_state)
+
+    def set_db_manager(self, db_manager):
+        """Définir le gestionnaire de base de données"""
+        self.db_manager = db_manager
+        self.load_distinct_references()
+
+    def load_distinct_references(self):
+        """Charger les références marquées comme distinctes"""
+        if not self.db_manager:
+            return
+
+        try:
+            # Requête pour récupérer les références distinctes avec comptage des appareils
+            query = """
+                SELECT rd.ref_modele,
+                       COUNT(a.id) as nb_appareils,
+                       rd.created_at,
+                       rd.ref_modele as ref_key
+                FROM reference_decisions rd
+                LEFT JOIN appareils a ON a.ref_modele = rd.ref_modele
+                WHERE rd.decision = 'DISTINCT'
+                GROUP BY rd.ref_modele, rd.created_at
+                ORDER BY rd.created_at DESC
+            """
+
+            results = self.db_manager.execute_query(query)
+            self.distinct_references = results or []
+
+            # Peupler l'arbre
+            self.references_tree.clear()
+
+            for row in self.distinct_references:
+                ref_modele = row[0]
+                nb_appareils = row[1]
+                created_at = row[2]
+                ref_id = row[3]
+
+                item = QTreeWidgetItem([
+                    "", ref_modele, str(nb_appareils),
+                    created_at or "Date inconnue", "Retirer"
+                ])
+
+                # Checkbox pour sélection
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(0, Qt.Unchecked)
+                item.setData(0, Qt.UserRole, ref_modele)  # Utiliser ref_modele comme clé
+
+                self.references_tree.addTopLevelItem(item)
+
+            # Ajuster les colonnes
+            for i in range(self.references_tree.columnCount()):
+                self.references_tree.resizeColumnToContents(i)
+
+            app_logger.info(f"Chargé {len(self.distinct_references)} références distinctes")
+
+        except Exception as e:
+            app_logger.error(f"Erreur chargement références distinctes: {e}")
+
+    def _update_buttons_state(self):
+        """Mettre à jour l'état des boutons selon les sélections"""
+        has_selection = False
+
+        root = self.references_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            if item.checkState(0) == Qt.Checked:
+                has_selection = True
+                break
+
+        self.remove_btn.setEnabled(has_selection)
+
+    def _remove_selected_references(self):
+        """Retirer les références sélectionnées de la liste des distinctes"""
+        if not self.db_manager:
+            return
+
+        try:
+            # Récupérer les références sélectionnées
+            selected_refs = []
+
+            root = self.references_tree.invisibleRootItem()
+            for i in range(root.childCount()):
+                item = root.child(i)
+                if item.checkState(0) == Qt.Checked:
+                    ref_modele = item.data(0, Qt.UserRole)  # ref_modele stocké dans UserRole
+                    if ref_modele:
+                        selected_refs.append(ref_modele)
+
+            if not selected_refs:
+                return
+
+            # Confirmation
+            from .message_helper import MessageHelper
+            if not MessageHelper.ask_question(
+                self,
+                f"Êtes-vous sûr de vouloir retirer {len(selected_refs)} références "
+                f"de la liste des références distinctes?\n\n"
+                f"Ces références pourront à nouveau être proposées comme doublons potentiels.",
+                "Confirmation de suppression"
+            ):
+                return
+
+            # Supprimer de la base de données
+            placeholders = ','.join(['?'] * len(selected_refs))
+            delete_query = f"DELETE FROM reference_decisions WHERE ref_modele IN ({placeholders})"
+
+            result = self.db_manager.execute_custom_query(delete_query, selected_refs)
+            success = True  # execute_custom_query n'a pas d'erreur si ça marche
+
+            if success:
+                # Recharger la liste
+                self.load_distinct_references()
+
+                from .message_helper import show_success
+                from .message_helper import MessageHelper
+                MessageHelper.show_success(
+                    self,
+                    f"{len(selected_refs)} références retirées avec succès.\n"
+                    f"Elles pourront à nouveau être détectées comme doublons potentiels.",
+                    "Suppression réussie"
+                )
+            else:
+                from .message_helper import show_error
+                show_error(self, "Erreur", "Erreur lors de la suppression des références.")
+
+        except Exception as e:
+            app_logger.error(f"Erreur suppression références distinctes: {e}")
+            from .message_helper import show_error
+            show_error(self, "Erreur", f"Erreur lors de la suppression: {str(e)}")
+
+
+class ActionHistoryWidget(QWidget):
+    """Widget pour afficher l'historique des actions de nettoyage"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.db_manager = None
+        self.history_actions = []
+        self.init_ui()
+
+    def init_ui(self):
+        """Initialiser l'interface pour l'historique"""
+        layout = QVBoxLayout(self)
+
+        # En-tête avec explication
+        header_label = QLabel(
+            "📋 Historique des actions de nettoyage\n"
+            "Synthèse de toutes les actions de fusion et nettoyage effectuées."
+        )
+        header_label.setStyleSheet("font-size: 14px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;")
+        layout.addWidget(header_label)
+
+        # Boutons d'action
+        buttons_layout = QHBoxLayout()
+
+        self.refresh_btn = QPushButton("🔄 Actualiser")
+        self.clear_btn = QPushButton("🗑️ Vider l'historique")
+        self.clear_btn.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        self.export_btn = QPushButton("📄 Exporter")
+
+        buttons_layout.addWidget(self.refresh_btn)
+        buttons_layout.addWidget(self.clear_btn)
+        buttons_layout.addWidget(self.export_btn)
+        buttons_layout.addStretch()
+
+        layout.addLayout(buttons_layout)
+
+        # Table de l'historique
+        self.history_tree = KeyboardTreeWidget()
+        self.history_tree.setHeaderLabels([
+            "Date/Heure", "Action", "Détails", "Résultat", "Utilisateur"
+        ])
+        self.history_tree.setRootIsDecorated(False)
+
+        layout.addWidget(self.history_tree)
+
+        # Connecter les signaux
+        self.refresh_btn.clicked.connect(self.load_history)
+        self.clear_btn.clicked.connect(self._clear_history)
+        self.export_btn.clicked.connect(self._export_history)
+
+    def set_db_manager(self, db_manager):
+        """Définir le gestionnaire de base de données"""
+        self.db_manager = db_manager
+        self.load_history()
+
+    def add_action(self, action_type: str, details: str, result: str):
+        """Ajouter une action à l'historique"""
+        if not self.db_manager:
+            return
+
+        try:
+            from datetime import datetime
+            import getpass
+
+            # Insérer dans la base de données
+            query = """
+                INSERT INTO cleanup_history (timestamp, action_type, details, result, user)
+                VALUES (?, ?, ?, ?, ?)
+            """
+            values = (
+                datetime.now().isoformat(),
+                action_type,
+                details,
+                result,
+                getpass.getuser()
+            )
+
+            # Créer la table si elle n'existe pas
+            self._ensure_history_table()
+
+            result = self.db_manager.execute_insert(query, values)
+            success = result is not None
+            if success:
+                self.load_history()  # Recharger pour afficher la nouvelle entrée
+
+        except Exception as e:
+            app_logger.error(f"Erreur ajout historique: {e}")
+
+    def _ensure_history_table(self):
+        """Créer la table d'historique si elle n'existe pas"""
+        try:
+            create_table_query = """
+                CREATE TABLE IF NOT EXISTS cleanup_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    details TEXT,
+                    result TEXT,
+                    user TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            self.db_manager.execute_custom_query(create_table_query)
+        except Exception as e:
+            app_logger.error(f"Erreur création table historique: {e}")
+
+    def load_history(self):
+        """Charger l'historique des actions"""
+        if not self.db_manager:
+            return
+
+        try:
+            self._ensure_history_table()
+
+            # Requête pour récupérer l'historique
+            query = """
+                SELECT timestamp, action_type, details, result, user
+                FROM cleanup_history
+                ORDER BY timestamp DESC
+                LIMIT 100
+            """
+
+            results = self.db_manager.execute_query(query)
+            self.history_actions = results or []
+
+            # Peupler l'arbre
+            self.history_tree.clear()
+
+            for row in self.history_actions:
+                timestamp = row[0]
+                action_type = row[1]
+                details = row[2] or ""
+                result = row[3] or ""
+                user = row[4] or ""
+
+                # Formater la date
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(timestamp)
+                    formatted_date = dt.strftime("%d/%m/%Y %H:%M:%S")
+                except:
+                    formatted_date = timestamp
+
+                item = QTreeWidgetItem([
+                    formatted_date,
+                    action_type,
+                    details,
+                    result,
+                    user
+                ])
+
+                self.history_tree.addTopLevelItem(item)
+
+            # Ajuster les colonnes
+            for i in range(self.history_tree.columnCount()):
+                self.history_tree.resizeColumnToContents(i)
+
+            app_logger.info(f"Chargé {len(self.history_actions)} entrées d'historique")
+
+        except Exception as e:
+            app_logger.error(f"Erreur chargement historique: {e}")
+
+    def _clear_history(self):
+        """Vider l'historique après confirmation"""
+        try:
+            from .message_helper import MessageHelper
+            if not MessageHelper.ask_question(
+                self,
+                "Êtes-vous sûr de vouloir vider l'historique des actions?\n\n"
+                "Cette action est irréversible.",
+                "Confirmation de suppression"
+            ):
+                return
+
+            # Supprimer de la base de données
+            delete_query = "DELETE FROM cleanup_history"
+            result = self.db_manager.execute_custom_query(delete_query)
+            success = True  # execute_custom_query n'a pas d'erreur si ça marche
+
+            if success:
+                self.load_history()
+                from .message_helper import show_success
+                from .message_helper import MessageHelper
+                MessageHelper.show_success(self, "L'historique a été vidé avec succès.", "Historique vidé")
+            else:
+                from .message_helper import show_error
+                show_error(self, "Erreur", "Erreur lors de la suppression de l'historique.")
+
+        except Exception as e:
+            app_logger.error(f"Erreur suppression historique: {e}")
+            from .message_helper import show_error
+            show_error(self, "Erreur", f"Erreur lors de la suppression: {str(e)}")
+
+    def _export_history(self):
+        """Exporter l'historique en CSV"""
+        try:
+            from PyQt5.QtWidgets import QFileDialog
+            import csv
+            from datetime import datetime
+
+            if not self.history_actions:
+                from .message_helper import show_error
+                show_error(self, "Aucune donnée", "Aucun historique à exporter.")
+                return
+
+            # Demander le nom du fichier
+            filename, _ = QFileDialog.getSaveFileName(
+                self,
+                "Exporter l'historique",
+                f"historique_nettoyage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                "Fichiers CSV (*.csv)"
+            )
+
+            if not filename:
+                return
+
+            # Exporter en CSV
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["Date/Heure", "Action", "Détails", "Résultat", "Utilisateur"])
+
+                for row in self.history_actions:
+                    writer.writerow(row)
+
+            from .message_helper import show_success
+            from .message_helper import MessageHelper
+            MessageHelper.show_success(self, f"Historique exporté vers:\n{filename}", "Export réussi")
+
+        except Exception as e:
+            app_logger.error(f"Erreur export historique: {e}")
+            from .message_helper import show_error
+            show_error(self, "Erreur", f"Erreur lors de l'export: {str(e)}")

@@ -247,39 +247,31 @@ class DataManagementService:
     def prepare_data_cleaning(self) -> Optional[Dict[str, Any]]:
         """
         Préparer le nettoyage des données avec analyse préalable
-        
+
         Returns:
-            Dict avec les options de nettoyage ou None si aucun nettoyage nécessaire
+            Dict avec le résultat de la fenêtre ou None si annulé
         """
         try:
             # Importer et utiliser CleanupPreviewDialog
-            from .cleanup_preview import CleanupPreviewDialog
-            
+            from .cleanup_preview_refactored import CleanupPreviewDialog
+
             if not self.main_window:
                 app_logger.error("MainWindow nécessaire pour CleanupPreviewDialog")
                 return None
-            
+
             # Ouvrir la fenêtre de prévisualisation
             preview_dialog = CleanupPreviewDialog(self.main_window)
-            
-            if preview_dialog.exec_() != QDialog.Accepted:
+
+            result = preview_dialog.exec_()
+            user_choice = preview_dialog.get_user_choice()
+
+            # Si l'utilisateur a annulé ou fermé la fenêtre
+            if result != QDialog.Accepted and user_choice != 'applied':
                 return None
-            
-            # Récupérer les options de nettoyage
-            cleanup_options = preview_dialog.get_cleanup_options()
-            
-            # Vérifier s'il y a quelque chose à nettoyer
-            if not cleanup_options['analysis_data']:
-                return None
-                
-            stats = cleanup_options['analysis_data']['statistics']
-            if (stats['total_devices_to_delete'] == 0 and 
-                stats['total_duplicate_pieces'] == 0 and 
-                stats['inconsistencies_count'] == 0):
-                return None
-            
-            return cleanup_options
-            
+
+            # Retourner un dict indiquant que la fenêtre a été utilisée avec succès
+            return {'dialog_completed': True, 'user_choice': user_choice}
+
         except Exception as e:
             app_logger.error(f"Erreur préparation nettoyage: {e}")
             return None

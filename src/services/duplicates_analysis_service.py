@@ -34,7 +34,10 @@ class DuplicatesAnalysisWorker(QThread):
     
     def __init__(self, db_manager: DatabaseManager):
         super().__init__()
-        self.db_manager = db_manager
+        # Ne pas utiliser le db_manager du thread principal
+        # On créera une nouvelle connexion dans le thread
+        self.db_path = db_manager.db_path if hasattr(db_manager, 'db_path') else 'data/appareils.db'
+        self.db_manager = None  # Sera initialisé dans run()
         self.should_stop = False
         
     def stop(self):
@@ -44,6 +47,9 @@ class DuplicatesAnalysisWorker(QThread):
     def run(self):
         """Exécuter l'analyse des doublons"""
         try:
+            # Créer une nouvelle connexion DB pour ce thread
+            self.db_manager = DatabaseManager()
+
             results = {
                 'duplicate_devices': [],
                 'duplicate_pieces': [],
@@ -75,19 +81,30 @@ class DuplicatesAnalysisWorker(QThread):
             
             if not self.should_stop:
                 self.analysis_completed.emit(results)
-                
+
         except Exception as e:
             app_logger.error(f"Erreur lors de l'analyse des doublons: {e}")
             self.analysis_error.emit(f"Erreur lors de l'analyse: {str(e)}")
+        finally:
+            # Fermer la connexion DB du thread
+            if self.db_manager:
+                try:
+                    self.db_manager.close()
+                except:
+                    pass
             
     def _find_duplicate_devices(self) -> List[Dict[str, Any]]:
         """Trouver les appareils en doublon basés sur ref_modele"""
         try:
             query = """
             SELECT ref_modele, COUNT(*) as count, GROUP_CONCAT(id) as ids
-            FROM appareils 
-            WHERE ref_modele IS NOT NULL AND ref_modele != '' 
-            GROUP BY ref_modele 
+            FROM appareils
+            WHERE ref_modele IS NOT NULL AND ref_modele != ''
+            AND ref_modele NOT IN (
+                SELECT ref_modele FROM reference_decisions
+                WHERE decision = 'DISTINCT'
+            )
+            GROUP BY ref_modele
             HAVING count > 1
             ORDER BY count DESC
             """
@@ -103,20 +120,30 @@ class DuplicatesAnalysisWorker(QThread):
                 devices = []
                 for device_id in ids:
                     device_query = """
-                    SELECT id, ref_modele, type_appareil, manufacturer, 
-                           commercial_ref, designation, pieces_count
-                    FROM appareils WHERE id = ?
+                    SELECT a.id, a.ref_modele, a.type, a.manufacturer,
+                           a.commercial_ref, a.other_ref, a.category, a.notes,
+                           COALESCE(p.pieces_count, 0) as pieces_count
+                    FROM appareils a
+                    LEFT JOIN (
+                        SELECT pa.appareil_id, COUNT(*) as pieces_count
+                        FROM piece_associations pa
+                        INNER JOIN pieces p ON pa.piece_id = p.id
+                        GROUP BY pa.appareil_id
+                    ) p ON a.id = p.appareil_id
+                    WHERE a.id = ?
                     """
                     device_details = self.db_manager.execute_query(device_query, (device_id,))
                     if device_details:
                         device = {
                             'id': device_details[0][0],
-                            'ref_modele': clean_display_text(device_details[0][1]),
+                            'ref_modele': clean_display_text(device_details[0][1] or ''),
                             'type_appareil': clean_display_text(device_details[0][2] or ''),
                             'manufacturer': clean_display_text(device_details[0][3] or ''),
                             'commercial_ref': clean_display_text(device_details[0][4] or ''),
-                            'designation': clean_display_text(device_details[0][5] or ''),
-                            'pieces_count': device_details[0][6] or 0
+                            'other_ref': clean_display_text(device_details[0][5] or ''),
+                            'category': clean_display_text(device_details[0][6] or ''),
+                            'notes': clean_display_text(device_details[0][7] or ''),
+                            'pieces_count': device_details[0][8] or 0
                         }
                         devices.append(device)
                         
@@ -166,8 +193,8 @@ class DuplicatesAnalysisWorker(QThread):
         try:
             # Rechercher les appareils avec des références modèle similaires mais pas identiques
             query = """
-            SELECT DISTINCT a1.id, a1.ref_modele, a1.type_appareil, a1.manufacturer,
-                   a2.id, a2.ref_modele, a2.type_appareil, a2.manufacturer
+            SELECT DISTINCT a1.id, a1.ref_modele, a1.type, a1.manufacturer,
+                   a2.id, a2.ref_modele, a2.type, a2.manufacturer
             FROM appareils a1, appareils a2
             WHERE a1.id < a2.id
             AND a1.ref_modele IS NOT NULL AND a2.ref_modele IS NOT NULL
@@ -181,9 +208,9 @@ class DuplicatesAnalysisWorker(QThread):
                     OR ABS(LENGTH(a1.ref_modele) - LENGTH(a2.ref_modele)) <= 2
                 )
                 -- Même type et fabricant mais références différentes
-                OR (a1.type_appareil = a2.type_appareil 
+                OR (a1.type = a2.type 
                     AND a1.manufacturer = a2.manufacturer
-                    AND a1.type_appareil IS NOT NULL
+                    AND a1.type IS NOT NULL
                     AND a1.manufacturer IS NOT NULL)
             )
             ORDER BY a1.ref_modele, a2.ref_modele
@@ -372,15 +399,29 @@ class DuplicatesAnalysisService(QObject):
         try:
             # Pour chaque appareil dupliqué, transférer ses pièces vers le maître
             for duplicate_id in duplicate_ids:
-                # Mettre à jour les associations de pièces (table piece_associations)
+                # Stratégie: Supprimer d'abord les doublons de pièces puis transférer les uniques
+
+                # 1. Supprimer les associations de pièces qui existent déjà pour le maître
+                #    (éviter les violations de contrainte UNIQUE)
+                cleanup_query = """
+                DELETE FROM piece_associations
+                WHERE appareil_id = ?
+                AND piece_id IN (
+                    SELECT piece_id FROM piece_associations
+                    WHERE appareil_id = ?
+                )
+                """
+                self.db_manager.execute_custom_query(cleanup_query, (duplicate_id, master_id))
+
+                # 2. Transférer les pièces restantes du duplicata vers le maître
                 update_query = """
                 UPDATE piece_associations SET appareil_id = ? WHERE appareil_id = ?
                 """
-                self.db_manager.execute_update(update_query, (master_id, duplicate_id))
+                self.db_manager.execute_custom_query(update_query, (master_id, duplicate_id))
 
-                # Supprimer l'appareil dupliqué
+                # 3. Supprimer l'appareil dupliqué
                 delete_query = "DELETE FROM appareils WHERE id = ?"
-                self.db_manager.execute_update(delete_query, (duplicate_id,))
+                self.db_manager.execute_custom_query(delete_query, (duplicate_id,))
 
             app_logger.info(f"Appareil {master_id} fusionné avec {duplicate_ids}")
             return True
@@ -401,7 +442,9 @@ class DuplicatesAnalysisService(QObject):
             )
             """
             
-            result = self.db_manager.execute_update(query, (ref_piece, ref_piece))
+            result = self.db_manager.execute_custom_query(query, (ref_piece, ref_piece))
+            # execute_custom_query ne retourne pas le nombre de lignes, on simule
+            result = 1 if result is not None else 0
             app_logger.info(f"Suppression pièces dupliquées {ref_piece}: {result} supprimées")
             return result
             
