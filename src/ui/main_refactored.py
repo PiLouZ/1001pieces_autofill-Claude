@@ -2780,10 +2780,15 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             return False
 
     def _refresh_application(self):
-        """Rafraîchir l'application"""
-        # Utiliser la recherche parsée actuelle
-        search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-        self.table_controller.load_data(search_term)
+        """Rafraîchir l'application - CORRECTION: utiliser la même logique que F5"""
+        # Utiliser la même logique que F5 (raccourci clavier) pour cohérence
+        if hasattr(self, 'advanced_search_service') and hasattr(self, 'table_controller'):
+            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
+            self.table_controller.load_data(search_term)
+        else:
+            # Fallback vers ancienne logique si services indisponibles
+            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
+            self.table_controller.load_data(search_term)
         self.statusbar.showMessage("Application rafraîchie", Config.STATUS_MESSAGE_TIMEOUT)
     
     def _refresh_pieces_count_column(self):
