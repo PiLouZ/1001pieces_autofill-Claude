@@ -45,7 +45,6 @@ class IncompleteButtonService(QObject):
         """Invalider le cache (à appeler lors des modifications de données)"""
         if self._cache_valid:
             self._cache_valid = False
-            app_logger.debug(f"🗂️ Cache bouton incomplet invalidé: {reason}")
 
             # Programmer une mise à jour différée pour éviter les rafraîchissements excessifs
             self.schedule_update()
@@ -61,7 +60,6 @@ class IncompleteButtonService(QObject):
     def _perform_delayed_update(self):
         """Effectuer la mise à jour différée"""
         if self._pending_updates > 0:
-            app_logger.debug(f"🔄 Mise à jour bouton incomplet ({self._pending_updates} demandes groupées)")
             self._pending_updates = 0
             self.get_incomplete_count(force_refresh=True)
 
@@ -74,7 +72,6 @@ class IncompleteButtonService(QObject):
         if not force_refresh and self._cache_valid and self._cached_count is not None:
             # Cache valide pendant 5 secondes pour les appels répétés
             if current_time - self._last_update_time < 5.0:
-                app_logger.debug(f"📋 Utilisation cache bouton incomplet: {self._cached_count}")
                 return self._cached_count
 
         # Recalculer depuis la base de données
@@ -90,7 +87,6 @@ class IncompleteButtonService(QObject):
             # Émettre le signal si le compteur a changé
             if old_count != new_count:
                 self.count_changed.emit(new_count)
-                app_logger.debug(f"📊 Compteur incomplet mis à jour: {old_count} → {new_count}")
 
             return new_count
 

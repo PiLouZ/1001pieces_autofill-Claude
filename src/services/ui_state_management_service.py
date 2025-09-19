@@ -135,7 +135,6 @@ class UIStateManagementService(BaseService):
                     if "text" in config:
                         button.setText(config["text"])
 
-            app_logger.debug(f"🔘 États des boutons mis à jour: {list(button_configs.keys())}")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur set_button_states: {e}")
@@ -152,11 +151,9 @@ class UIStateManagementService(BaseService):
                 font = self.table_widget.font()
                 font.setPointSize(font_size)
                 self.table_widget.setFont(font)
-                app_logger.debug(f"🔤 Taille de police du tableau: {font_size}")
 
             if alternate_colors is not None:
                 self.table_widget.setAlternatingRowColors(alternate_colors)
-                app_logger.debug(f"🎨 Couleurs alternées: {'activées' if alternate_colors else 'désactivées'}")
 
             self.state_updated.emit("table_appearance", {
                 "font_size": font_size,
@@ -177,7 +174,6 @@ class UIStateManagementService(BaseService):
                     title = base_title
                 self.parent_widget.setWindowTitle(title)
 
-                app_logger.debug(f"📝 Titre de fenêtre: {title}")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur set_window_title_suffix: {e}")
@@ -205,7 +201,6 @@ class UIStateManagementService(BaseService):
                 "count": selection_count
             })
 
-            app_logger.debug(f"✅ État de sélection: {selection_count} élément(s)")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur update_selection_state: {e}")
@@ -225,7 +220,6 @@ class UIStateManagementService(BaseService):
                         header.setStretchLastSection(True)
 
             self.visual_indicator_changed.emit("drag_handles", visible)
-            app_logger.debug(f"🖱️ Poignées de redimensionnement: {'visibles' if visible else 'cachées'}")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur toggle_drag_handles_visibility: {e}")
@@ -243,7 +237,6 @@ class UIStateManagementService(BaseService):
                 self.parent_widget.setEnabled(False)
 
             QApplication.processEvents()
-            app_logger.debug(f"🔄 Overlay de chargement: {message}")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur show_loading_overlay: {e}")
@@ -258,7 +251,6 @@ class UIStateManagementService(BaseService):
                 self.status_bar.clearMessage()
 
             QApplication.processEvents()
-            app_logger.debug("✅ Overlay de chargement masqué")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur hide_loading_overlay: {e}")
@@ -282,7 +274,6 @@ class UIStateManagementService(BaseService):
                 # Effet de clignotement
                 self._flash_widget(widget)
 
-            app_logger.debug(f"✨ Effet visuel '{effect_type}' appliqué à {target_widget}")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur apply_visual_effect: {e}")
@@ -306,7 +297,6 @@ class UIStateManagementService(BaseService):
         try:
             self.refresh_timer.stop()
             self.refresh_timer.start(delay_ms)
-            app_logger.debug(f"⏱️ Rafraîchissement programmé dans {delay_ms}ms")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur schedule_refresh: {e}")

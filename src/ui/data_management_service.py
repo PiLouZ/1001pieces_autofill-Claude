@@ -59,7 +59,7 @@ class DataManagementService:
             result.errors.append("Aucune donnée à traiter")
             return result
         
-        print(f"🔧 Auto-complétion: Traitement de {len(table_data)} lignes")
+        app_logger.info(f"Auto-complétion: Traitement de {len(table_data)} lignes")
         
         for row_data in table_data:
             try:
@@ -79,14 +79,13 @@ class DataManagementService:
                     completed = self._try_auto_complete_device(db_id, device_data)
                     if completed:
                         result.completed_count += 1
-                        print(f"  ✅ Ligne ID {db_id}: {completed['fields']} complété(s)")
                 
             except Exception as e:
                 error_msg = f"Erreur ligne ID {row_data.get('id', 'inconnu')}: {e}"
                 result.errors.append(error_msg)
                 app_logger.error(error_msg)
         
-        print(f"🎉 Auto-complétion terminée: {result.completed_count}/{result.total_rows_processed} lignes complétées")
+        app_logger.info(f"Auto-complétion terminée: {result.completed_count}/{result.total_rows_processed} lignes complétées")
         return result
     
     def _try_auto_complete_device(self, db_id: int, device_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:

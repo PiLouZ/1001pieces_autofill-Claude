@@ -126,13 +126,11 @@ class DatabaseOperationsService(BaseService):
             # Utiliser les cellules modifiées si pas de données spécifiques
             if updates_by_db_id is None:
                 if not self.modified_cells:
-                    app_logger.debug("Aucune cellule modifiée à sauvegarder")
                     return True
 
                 updates_by_db_id = self._prepare_updates_from_modified_cells()
 
             if not updates_by_db_id:
-                app_logger.debug("Aucune mise à jour à effectuer")
                 return True
 
             self.save_in_progress = True
@@ -190,7 +188,6 @@ class DatabaseOperationsService(BaseService):
             # Récupérer les lignes à sauvegarder
             rows_to_save = drag_handle.get_rows_to_save()
             if not rows_to_save:
-                app_logger.debug("Aucune ligne à sauvegarder pour le drag & drop")
                 return True
 
             # Préparer les mises à jour
@@ -228,32 +225,23 @@ class DatabaseOperationsService(BaseService):
         try:
             # Accéder directement aux modified_cells du parent
             parent_modified_cells = getattr(self.parent_window, 'modified_cells', set())
-            print(f"🔍 manual_save DEBUT: parent modified_cells = {parent_modified_cells}")
 
             # Vérifier s'il y a des modifications à sauvegarder
-            app_logger.debug(f"manual_save: modified_cells = {parent_modified_cells}")
             if not parent_modified_cells:
-                print("❌ Aucune modification à sauvegarder")
-                app_logger.debug("Aucune modification à sauvegarder")
                 return True
 
-            print("🔄 Conversion des cellules modifiées...")
             # Convertir modified_cells en format attendu (utiliser parent_modified_cells)
             updates_by_db_id = self._convert_modified_cells_to_updates(parent_modified_cells)
-            print(f"🔄 Conversion terminée: {len(updates_by_db_id)} appareils à mettre à jour")
 
             # Déléguer au AutoSaveManager si disponible
             auto_save_manager = getattr(self, 'auto_save_manager', None)
             if auto_save_manager and hasattr(auto_save_manager, 'save_now'):
-                print("🔧 Utilisation de AutoSaveManager.save_now()")
                 return auto_save_manager.save_now()
             else:
-                print("🔧 Utilisation de save_cells_batch()")
                 # Fallback vers sauvegarde batch
                 return self.save_cells_batch(updates_by_db_id)
 
         except Exception as e:
-            print(f"💥 ERREUR dans manual_save: {e}")
             import traceback
             traceback.print_exc()
             app_logger.error(f"Erreur sauvegarde manuelle: {e}")
@@ -268,7 +256,6 @@ class DatabaseOperationsService(BaseService):
 
             # Vérifier s'il y a des modifications à sauvegarder
             if not parent_modified_cells:
-                app_logger.debug("Aucune modification à sauvegarder automatiquement")
                 return True
 
             # Convertir modified_cells en format attendu
@@ -304,7 +291,6 @@ class DatabaseOperationsService(BaseService):
 
                     # Ignorer seulement si c'est réellement une colonne ID
                     if col == 0 and column_name.lower() in ['id', 'db_id', 'database_id']:
-                        print(f"🚫 Ignorer modification colonne ID (row={row}, col={col}, nom={column_name})")
                         continue
 
 
@@ -373,7 +359,6 @@ class DatabaseOperationsService(BaseService):
                     app_logger.warning(f"Erreur conversion cellule ({row},{col}): {e}")
                     continue
 
-            app_logger.debug(f"Converti {len(cells_to_convert)} cellules en {len(updates_by_db_id)} mises à jour")
             return updates_by_db_id
 
         except Exception as e:
@@ -396,12 +381,10 @@ class DatabaseOperationsService(BaseService):
                 device_ids = self._get_selected_device_ids()
 
             if not device_ids:
-                app_logger.debug("Aucun appareil sélectionné pour suppression")
                 return 0
 
             # Demander confirmation
             if not self._confirm_deletion(len(device_ids)):
-                app_logger.debug("Suppression annulée par l'utilisateur")
                 return 0
 
             # Récupérer les infos avant suppression (pour historique)

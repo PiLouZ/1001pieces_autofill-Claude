@@ -246,10 +246,6 @@ class TableController:
             records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
                                                self.current_sort_column, self.current_sort_order, incomplete_filter)
 
-            # DEBUG: Log des records avant remplissage
-            app_logger.info(f"🔍 DEBUG REMPLISSAGE - Terme: {search_term}, Records trouvés: {len(records) if records else 0}")
-            if isinstance(search_term, dict):
-                app_logger.info(f"🔍 DEBUG - Type recherche: {search_term.get('type', 'unknown')}")
 
             # Remplir le tableau
             if self.total_rows > 1000:

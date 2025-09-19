@@ -62,8 +62,6 @@ class DeviceManager:
             
             query += " LIMIT 1"
             
-            app_logger.debug(f"Recherche dispositif - Requête: {query}")
-            app_logger.debug(f"Recherche dispositif - Paramètres: {params}")
             
             result = self.db_manager.execute_query(query, params)
             
@@ -78,10 +76,8 @@ class DeviceManager:
                     'commercial_ref': row[4] or '',
                     'other_ref': row[5] or ''
                 }
-                app_logger.debug(f"Dispositif trouvé: ID={device_info['id']}")
                 return device_info
             
-            app_logger.debug(f"Aucun dispositif trouvé pour ref_modele='{ref_modele}', commercial_ref='{commercial_ref}'")
             return None
             
         except Exception as e:
@@ -126,8 +122,6 @@ class DeviceManager:
             
             # Construire et exécuter la requête d'insertion
             query = f"INSERT INTO appareils ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
-            app_logger.debug(f"Création nouvel appareil - Requête: {query}")
-            app_logger.debug(f"Création nouvel appareil - Valeurs: {values}")
             
             new_id = self.db_manager.execute_insert(query, values)
             if new_id:
@@ -185,8 +179,6 @@ class DeviceManager:
             
             # Construire et exécuter la requête de mise à jour
             query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
-            app_logger.debug(f"Mise à jour appareil {device_id} - Requête: {query}")
-            app_logger.debug(f"Mise à jour appareil {device_id} - Valeurs: {values}")
             
             result = self.db_manager.execute_custom_query(query, values)
             if result is not None:
@@ -238,12 +230,10 @@ class DeviceManager:
                 if not device_data.get('type', '').strip() and suggested_type:
                     device_data['type'] = suggested_type
                     updated = True
-                    app_logger.debug(f"Auto-complétion type: {suggested_type}")
                 
                 if not device_data.get('fabricant', '').strip() and suggested_manufacturer:
                     device_data['fabricant'] = suggested_manufacturer
                     updated = True
-                    app_logger.debug(f"Auto-complétion fabricant: {suggested_manufacturer}")
                 
                 return updated
             
@@ -270,7 +260,6 @@ class DeviceManager:
             for field in essential_fields:
                 value = device_data.get(field, '').strip()
                 if not value:
-                    app_logger.debug(f"Complétion manuelle nécessaire - champ manquant: {field}")
                     return True
             
             return False

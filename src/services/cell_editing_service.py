@@ -46,19 +46,16 @@ class CellEditingService(QObject):
             # L'ID est stocké dans UserRole de chaque cellule
             db_id = item.data(Qt.ItemDataRole.UserRole)
             if db_id is None:
-                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): Pas d'ID dans UserRole")
                 return None, None
 
             try:
                 db_id = int(db_id)
             except (ValueError, TypeError) as e:
-                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): ID UserRole non-entier: '{db_id}' - Erreur: {e}")
                 return None, None
 
             # Récupérer le nom de la colonne
             column_name = self._get_db_column_name(col)
             if not column_name:
-                app_logger.debug(f"DEBUG CELLULE ({row}, {col}): Mapping colonne {col} inexistant")
                 return None, None
 
             return db_id, column_name
@@ -155,7 +152,6 @@ class CellEditingService(QObject):
             # Récupérer les informations de la cellule
             db_id, column_name = self.get_cell_db_info(item)
             if not db_id or not column_name:
-                app_logger.debug(f"Cellule ({row}, {col}): Pas d'ID valide - édition ignorée")
                 return False
                 
             # Récupérer l'ancienne valeur
@@ -179,7 +175,6 @@ class CellEditingService(QObject):
             if success:
                 # Gérer les actions post mise à jour
                 self._handle_successful_cell_update(item, old_value, new_value, skip_history)
-                app_logger.debug(f"Cellule mise à jour: {column_name} = '{new_value}' (ID: {db_id})")
                 return True
             else:
                 app_logger.error(f"Échec mise à jour cellule: {column_name} = '{new_value}' (ID: {db_id})")
@@ -266,7 +261,6 @@ class CellEditingService(QObject):
             # Mettre à jour les statistiques si nécessaire
             self._update_statistics_after_edit(item)
             
-            app_logger.debug(f"Cellule ({row}, {col}): '{old_value}' → '{new_value}'")
             
         except Exception as e:
             app_logger.error(f"Erreur gestion post mise à jour: {e}")
@@ -282,15 +276,14 @@ class CellEditingService(QObject):
             column_name = self._get_db_column_name(item.column())
             if column_name == 'pieces_count' and hasattr(self.parent_window, '_refresh_pieces_count_column'):
                 self.parent_window._refresh_pieces_count_column()
-                
+
         except Exception as e:
-            app_logger.debug(f"Erreur mise à jour statistiques: {e}")
-            
+            app_logger.error(f"Erreur mise à jour statistiques: {e}")
+
     def start_batch_edit(self):
         """Démarrer une édition en lot"""
         self.is_batch_editing = True
         self.pending_changes.clear()
-        app_logger.debug("Mode édition en lot activé")
         
     def add_to_batch(self, item: QTableWidgetItem, new_value: str):
         """Ajouter une modification au lot"""
@@ -337,7 +330,6 @@ class CellEditingService(QObject):
         """Annuler l'édition en lot"""
         self.is_batch_editing = False
         self.pending_changes.clear()
-        app_logger.debug("Mode édition en lot annulé")
         
     def navigate_to_empty_cell(self, direction: str = 'down') -> bool:
         """Navigation intelligente vers une cellule vide"""
@@ -382,7 +374,6 @@ class CellEditingService(QObject):
     def clear_validation_cache(self):
         """Vider le cache de validation"""
         self._validation_cache.clear()
-        app_logger.debug("Cache de validation vidé")
         
     def get_edit_statistics(self) -> Dict[str, Any]:
         """Obtenir les statistiques d'édition"""
