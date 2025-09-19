@@ -907,6 +907,9 @@ class ImportManager:
 
             app_logger.info(f"📝 SYNC OPTIMISÉ: Import de {len(config.files)} fichiers")
 
+            # MODIFICATION: Set GLOBAL pour détecter les doublons INTER-fichiers
+            global_seen_device_refs = set()
+
             # OPTIMISATION: Barre de progression NON-MODALE pour éviter les freezes
             progress = QProgressDialog(
             "Importation en cours...",
@@ -936,9 +939,8 @@ class ImportManager:
                 try:
                     app_logger.debug(f"📁 Traitement fichier {i+1}/{len(config.files)}: {file.filename}")
 
-                    # Chaque fichier a son propre set pour éviter doublons intra-fichier seulement
-                    file_local_seen_refs = set()
-                    file_results = self._import_single_file(file, config, file_local_seen_refs)
+                    # MODIFICATION: Utilisation du set GLOBAL pour détecter doublons inter-fichiers
+                    file_results = self._import_single_file(file, config, global_seen_device_refs)
                     results['successful_files'] += 1
 
                     # Ajouter les détails du fichier
@@ -1043,12 +1045,12 @@ class ImportManager:
             'associations_created': 0,
             'associations_existing': 0,
             'manual_completion': 0,  # Appareils créés/mis à jour sans Type ET Fabricant
-            'duplicates_in_file': 0,  # Doublons ref_modele+commercial_ref dans le fichier
+            'duplicates_in_file': 0,  # Doublons ref_modele+commercial_ref inter-fichiers
             'total_lines_extracted': 0  # Total lignes du fichier (avant traitement doublons)
         }
         
-        # CORRECTION: Utiliser le set LOCAL pour détecter les doublons uniquement DANS ce fichier
-        # Ne PAS détecter comme doublon des lignes qui sont dans des fichiers différents
+        # MODIFICATION: Utiliser le set GLOBAL pour détecter les doublons INTER-fichiers
+        # Détecter comme doublon des lignes identiques même dans des fichiers différents
         
         for row in data:
             if not row or not any(cell.strip() if cell is not None else False for cell in row):
@@ -1086,7 +1088,7 @@ class ImportManager:
             print(f"🔍 SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                print(f"  🔄 Doublon dans le fichier ignoré: {ref_modele} | {commercial_ref}")
+                print(f"  🔄 Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
                 continue  # Les doublons ne sont PAS comptés dans total_imported
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
@@ -1218,7 +1220,7 @@ class ImportManager:
 
             results['total_lines_extracted'] += 1
 
-            # CORRECTION BATCH: Détection doublons uniquement DANS ce fichier (pas entre fichiers)
+            # MODIFICATION BATCH: Détection doublons INTER-fichiers (entre tous les fichiers)
             # LOGIQUE INTELLIGENTE identique à la version standard
             if len(row) >= 4:
                 col0 = str(row[0]).strip() if row[0] is not None else ""
@@ -1246,7 +1248,7 @@ class ImportManager:
             print(f"🔍 BATCH SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                print(f"  🔄 BATCH Doublon dans le fichier ignoré: {ref_modele} | {commercial_ref}")
+                print(f"  🔄 BATCH Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
                 continue
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
