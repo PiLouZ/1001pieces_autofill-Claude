@@ -332,15 +332,24 @@ class DuplicatesAnalysisService(QObject):
                     try:
                         master_id = merge_info['master_id']
                         duplicate_ids = merge_info['duplicate_ids']
-                        
+
+                        app_logger.info(f"Tentative de fusion: maître={master_id}, doublons={duplicate_ids}")
+
+                        # Vérifier que les IDs sont valides
+                        if not master_id or not duplicate_ids:
+                            results['errors'].append(f"IDs invalides pour fusion: maître={master_id}, doublons={duplicate_ids}")
+                            continue
+
                         # Fusionner les appareils
                         if self._merge_devices(master_id, duplicate_ids):
                             results['devices_merged'] += 1
                             results['devices_deleted'] += len(duplicate_ids)
+                            app_logger.info(f"Fusion réussie: {len(duplicate_ids)} appareil(s) fusionné(s) vers {master_id}")
                         else:
                             results['errors'].append(f"Échec fusion appareil {master_id}")
-                            
+
                     except Exception as e:
+                        app_logger.error(f"Exception lors de la fusion: {e}")
                         results['errors'].append(f"Erreur fusion: {e}")
                         
             # Traiter les suppressions de pièces
@@ -363,19 +372,19 @@ class DuplicatesAnalysisService(QObject):
         try:
             # Pour chaque appareil dupliqué, transférer ses pièces vers le maître
             for duplicate_id in duplicate_ids:
-                # Mettre à jour les pièces pour qu'elles pointent vers l'appareil maître
+                # Mettre à jour les associations de pièces (table piece_associations)
                 update_query = """
-                UPDATE pieces SET appareil_id = ? WHERE appareil_id = ?
+                UPDATE piece_associations SET appareil_id = ? WHERE appareil_id = ?
                 """
                 self.db_manager.execute_update(update_query, (master_id, duplicate_id))
-                
+
                 # Supprimer l'appareil dupliqué
                 delete_query = "DELETE FROM appareils WHERE id = ?"
                 self.db_manager.execute_update(delete_query, (duplicate_id,))
-                
+
             app_logger.info(f"Appareil {master_id} fusionné avec {duplicate_ids}")
             return True
-            
+
         except Exception as e:
             app_logger.error(f"Erreur fusion appareils: {e}")
             return False

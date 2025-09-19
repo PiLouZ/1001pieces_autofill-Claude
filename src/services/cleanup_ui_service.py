@@ -260,22 +260,26 @@ class DuplicateDevicesWidget(QWidget):
         """Obtenir les groupes de fusion d'appareils"""
         merge_groups = []
         root = self.devices_tree.invisibleRootItem()
-        
+
         for i in range(root.childCount()):
             group_item = root.child(i)
             group_devices = []
             selected_devices = []
-            
+
             for j in range(group_item.childCount()):
                 device_item = group_item.child(j)
                 device_id = device_item.data(0, Qt.UserRole)
-                group_devices.append(device_id)
-                
-                if device_item.checkState(0) == Qt.Checked:
-                    selected_devices.append(device_id)
-                    
+                if device_id is not None:  # Vérifier que l'ID est valide
+                    group_devices.append(device_id)
+
+                    if device_item.checkState(0) == Qt.Checked:
+                        selected_devices.append(device_id)
+
+            # DEBUG: Log des sélections
+            app_logger.debug(f"Groupe {i}: total={len(group_devices)}, sélectionnés={len(selected_devices)}")
+
             # S'il y a des appareils sélectionnés, créer un groupe de fusion
-            if selected_devices:
+            if selected_devices and len(group_devices) > 1:
                 # Le maître est celui qui n'est pas sélectionné (ou le premier non sélectionné)
                 master_candidates = [d for d in group_devices if d not in selected_devices]
                 if master_candidates:
@@ -284,7 +288,11 @@ class DuplicateDevicesWidget(QWidget):
                         'master_id': master_id,
                         'duplicate_ids': selected_devices
                     })
-                    
+                    app_logger.info(f"Groupe de fusion créé: maître={master_id}, doublons={selected_devices}")
+                else:
+                    app_logger.warning(f"Aucun maître trouvé pour groupe {i} (tous sélectionnés)")
+
+        app_logger.info(f"Total groupes de fusion: {len(merge_groups)}")
         return merge_groups
 
 
