@@ -353,19 +353,20 @@ class TableController:
             # Marquer qu'un tri est en cours pour éviter la réinitialisation
             self._sorting_in_progress = True
             
-            # Récupérer le terme de recherche actif de manière robuste
+            # CORRECTION: Utiliser la même logique que F5 et bouton toolbar
             search_term = None
-            
-            # 1. Essayer pending_search_term (recherche avec opérateurs || &&)
-            if hasattr(self.parent_window, 'pending_search_term') and self.parent_window.pending_search_term:
-                search_term = self.parent_window.pending_search_term
-            # 2. Sinon, utiliser current_search_term persistant du TableController
-            elif hasattr(self, 'current_search_term') and self.current_search_term:
-                search_term = self.current_search_term
-            # 3. En dernier recours, prendre le texte direct de la barre de recherche
-            elif hasattr(self.parent_window, 'search_input') and self.parent_window.search_input:
-                text = self.parent_window.search_input.text().strip()
-                search_term = text if text else None
+            if (hasattr(self.parent_window, 'advanced_search_service') and
+                hasattr(self.parent_window.advanced_search_service, 'get_current_search_term_with_fallback')):
+                search_term = self.parent_window.advanced_search_service.get_current_search_term_with_fallback(self.parent_window)
+            else:
+                # Fallback vers ancienne logique si service indisponible
+                if hasattr(self.parent_window, 'pending_search_term') and self.parent_window.pending_search_term:
+                    search_term = self.parent_window.pending_search_term
+                elif hasattr(self, 'current_search_term') and self.current_search_term:
+                    search_term = self.current_search_term
+                elif hasattr(self.parent_window, 'search_input') and self.parent_window.search_input:
+                    text = self.parent_window.search_input.text().strip()
+                    search_term = text if text else None
             
             # Convertir Qt.SortOrder en string pour la DB
             sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
