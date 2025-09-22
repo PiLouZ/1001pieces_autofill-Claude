@@ -611,15 +611,24 @@ class DatabaseOperationsService(BaseService):
             for item in table.selectedItems():
                 selected_rows.add(item.row())
 
-            # Récupérer les IDs
+            # Récupérer les IDs depuis Qt.UserRole (pas depuis le texte des colonnes)
             for row in selected_rows:
-                id_item = table.item(row, 0)  # Colonne ID supposée être la première
-                if id_item:
-                    try:
-                        device_id = int(id_item.text())
-                        device_ids.append(device_id)
-                    except ValueError:
-                        continue
+                # Chercher l'ID dans n'importe quelle colonne avec Qt.UserRole
+                device_id = None
+                for col in range(table.columnCount()):
+                    item = table.item(row, col)
+                    if item and item.data(Qt.UserRole) is not None:
+                        try:
+                            device_id = int(item.data(Qt.UserRole))
+                            break
+                        except (ValueError, TypeError):
+                            continue
+
+                if device_id is not None:
+                    device_ids.append(device_id)
+                    app_logger.debug(f"ID appareil trouvé pour ligne {row}: {device_id}")
+                else:
+                    app_logger.warning(f"Aucun ID trouvé pour la ligne sélectionnée {row}")
 
         except Exception as e:
             app_logger.error(f"Erreur récupération IDs sélectionnés: {e}")
