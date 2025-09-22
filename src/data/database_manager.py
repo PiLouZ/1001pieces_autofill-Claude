@@ -9,6 +9,7 @@ from collections import OrderedDict
 import hashlib
 
 from ..core.config import Config
+from ..core.logger import app_logger
 
 try:
     from PyQt5.QtCore import QThread, pyqtSignal
