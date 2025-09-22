@@ -1070,24 +1070,33 @@ class DatabaseManager:
     def delete_appareil(self, appareil_id: int) -> bool:
         """Supprimer un appareil par ID et toutes ses associations de pièces"""
         try:
+            # Vérifier d'abord si l'appareil existe
+            check_query = "SELECT id FROM appareils WHERE id = ?"
+            result = self.execute_query(check_query, [appareil_id])
+            if not result:
+                app_logger.warning(f"Tentative suppression appareil inexistant ID: {appareil_id}")
+                return False
+
             # D'abord supprimer toutes les associations de pièces pour cet appareil
             assoc_query = "DELETE FROM piece_associations WHERE appareil_id = ?"
             self.cursor.execute(assoc_query, [appareil_id])
             associations_deleted = self.cursor.rowcount
-            
+
             # Puis supprimer l'appareil lui-même
             device_query = "DELETE FROM appareils WHERE id = ?"
             self.cursor.execute(device_query, [appareil_id])
             device_deleted = self.cursor.rowcount > 0
-            
+
             self.conn.commit()
-            
-            # Log optionnel pour debug 
+
+            # Log pour debug
             if device_deleted and associations_deleted > 0:
-                print(f"  ✅ Appareil {appareil_id} supprimé avec {associations_deleted} association(s) de pièce(s)")
+                app_logger.info(f"Appareil {appareil_id} supprimé avec {associations_deleted} association(s)")
             elif device_deleted:
-                print(f"  ✅ Appareil {appareil_id} supprimé (aucune association de pièce)")
-            
+                app_logger.info(f"Appareil {appareil_id} supprimé (aucune association)")
+            else:
+                app_logger.error(f"Échec suppression appareil {appareil_id} - rowcount: {self.cursor.rowcount}")
+
             success = device_deleted
             
             # Phase 2.3: Invalider le cache après suppression d'appareil

@@ -390,12 +390,17 @@ class DatabaseOperationsService(BaseService):
                 info = self.db_manager.get_device_info(device_id)
                 if info:
                     devices_info.append(f"{info.get('manufacturer', '')} {info.get('type', '')}")
+                    app_logger.debug(f"Préparation suppression appareil ID {device_id}: {info.get('manufacturer', '')} {info.get('type', '')}")
+                else:
+                    app_logger.warning(f"Appareil ID {device_id} introuvable lors de la récupération d'infos")
 
             # Effectuer la suppression
             deleted_count = 0
+            app_logger.info(f"Tentative suppression de {len(device_ids)} appareil(s): {device_ids}")
             for device_id in device_ids:
                 if self.db_manager.delete_appareil(device_id):
                     deleted_count += 1
+                    app_logger.info(f"Suppression réussie appareil ID: {device_id}")
                 else:
                     app_logger.warning(f"Échec suppression appareil ID: {device_id}")
 
