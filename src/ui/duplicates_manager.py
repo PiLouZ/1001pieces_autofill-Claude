@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 
-
 def clean_display_text(text):
     """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
     if not text:
@@ -24,7 +23,6 @@ def clean_display_text(text):
         text = "???"
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
-
 
 class DuplicatesManager(QDialog):
     """Gestionnaire des références en doublon avec interface de fusion"""

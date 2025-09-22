@@ -10,7 +10,6 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
 
-
 class NavigationService(QObject):
     """Service centralisé pour la gestion de la navigation et pagination"""
     

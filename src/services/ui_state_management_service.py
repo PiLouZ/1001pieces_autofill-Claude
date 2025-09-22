@@ -19,7 +19,6 @@ from ..core.config import Config
 from ..core.logger import app_logger
 from .base_service import BaseService, DebounceTimer, service_operation
 
-
 class UIStateManagementService(BaseService):
     """Service unifié pour la gestion de l'état de l'interface utilisateur"""
 
@@ -135,7 +134,6 @@ class UIStateManagementService(BaseService):
                     if "text" in config:
                         button.setText(config["text"])
 
-
         except Exception as e:
             app_logger.error(f"❌ Erreur set_button_states: {e}")
 
@@ -174,7 +172,6 @@ class UIStateManagementService(BaseService):
                     title = base_title
                 self.parent_widget.setWindowTitle(title)
 
-
         except Exception as e:
             app_logger.error(f"❌ Erreur set_window_title_suffix: {e}")
 
@@ -200,7 +197,6 @@ class UIStateManagementService(BaseService):
                 "has_selection": has_selection,
                 "count": selection_count
             })
-
 
         except Exception as e:
             app_logger.error(f"❌ Erreur update_selection_state: {e}")
@@ -273,7 +269,6 @@ class UIStateManagementService(BaseService):
             elif effect_type == "flash":
                 # Effet de clignotement
                 self._flash_widget(widget)
-
 
         except Exception as e:
             app_logger.error(f"❌ Erreur apply_visual_effect: {e}")

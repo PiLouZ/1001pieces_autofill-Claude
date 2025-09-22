@@ -13,7 +13,6 @@ from PyQt5.QtGui import QColor
 from ..core.config import Config
 from ..core.logger import app_logger
 
-
 class AutoSaveManager:
     """
     Gestionnaire de sauvegarde automatique et manuelle des modifications cellules

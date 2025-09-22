@@ -13,7 +13,6 @@ from typing import List, Tuple, Dict
 
 from ..core.config import Config
 
-
 class ActionButtonWidget(QWidget):
     """Widget contenant les boutons d'action pour chaque ligne"""
     
@@ -68,7 +67,6 @@ class ActionButtonWidget(QWidget):
         layout.addWidget(delete_btn)
         
         layout.addStretch()
-
 
 class PiecesTableWidget(QTableWidget):
     """Table widget personnalisé avec boutons d'action au survol"""
@@ -144,7 +142,6 @@ class PiecesTableWidget(QTableWidget):
             if row >= rows:
                 self.action_widgets[row].deleteLater()
                 del self.action_widgets[row]
-
 
 class PiecesManagerWindow(QDialog):
     """Fenêtre de gestion des pièces"""
@@ -542,7 +539,7 @@ class PiecesManagerWindow(QDialog):
                 summary = f"🗑️ Suppression de la pièce '{ref_piece}' ({pluralize(nb_associations, 'association')})"
                 self.parent().user_interaction_service.add_to_history(summary)
         except Exception as e:
-            print(f"Erreur lors de l'ajout à l'historique: {e}")
+            app_logger.error("Erreur", e)
     
     def _edit_selected_piece(self):
         """Modifier la pièce sélectionnée"""
@@ -698,7 +695,6 @@ class PiecesManagerWindow(QDialog):
                 
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression: {e}")
-
 
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""

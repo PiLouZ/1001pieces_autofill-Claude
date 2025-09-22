@@ -11,7 +11,6 @@ from PyQt5.QtGui import QColor
 from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
 
-
 class PiecesCountService:
     """Service dédié à la gestion du comptage et affichage des pièces associées"""
     
@@ -56,8 +55,7 @@ class PiecesCountService:
         # Collecter toutes les lignes à mettre à jour
         all_rows = set(range(table.rowCount()))
         self.update_pieces_count_for_rows(table, all_rows)
-        print(f"  🔄 Colonne Nb Pièces entièrement rafraîchie: {len(all_rows)} lignes")
-    
+            
     def find_row_by_db_id(self, table: QTableWidget, db_id: int) -> Optional[int]:
         """Trouver le numéro de ligne correspondant à un ID d'appareil"""
         if not table or db_id is None:

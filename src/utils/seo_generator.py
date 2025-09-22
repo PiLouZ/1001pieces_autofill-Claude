@@ -6,7 +6,6 @@ Inspiré du script.js pour e-commerce pièces détachées électroménager
 import random
 from typing import List, Dict, Tuple, Optional
 
-
 class SEOGenerator:
     """Générateur de métadonnées SEO pour pièces détachées électroménager"""
     
@@ -242,8 +241,7 @@ class SEOGenerator:
         
         # Étape 3: Si toujours trop long, réduire le nombre de marques
         optimized_title = self._reduce_brands_if_needed(optimized_title, max_length)
-        
-        
+
         # Étape 4: Troncature intelligente en dernier recours
         return self._smart_truncate_with_brands(optimized_title, required_brands, max_length)
     
@@ -314,7 +312,6 @@ class SEOGenerator:
         
         # Troncature brute
         return title[:max_length]
-    
 
     def _select_fabricants_for_title(self, fabricants: List[str], reference: str, 
                                    description: str, type_appareil: str, max_length: int) -> str:

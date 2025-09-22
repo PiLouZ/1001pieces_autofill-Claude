@@ -15,7 +15,6 @@ from PyQt5.QtWidgets import (QWidget, QHBoxLayout, QPushButton, QListWidget,
 from PyQt5.QtCore import Qt
 from src.core.logger import app_logger
 
-
 class PieceActionButtonWidget(QWidget):
     """Widget contenant les boutons d'action pour chaque pièce dans la liste"""
     
@@ -92,7 +91,6 @@ class PieceActionButtonWidget(QWidget):
         if main_window and hasattr(main_window, '_delete_piece_from_selected'):
             main_window._delete_piece_from_selected(self.list_item)
 
-
 class PiecesListWidget(QListWidget):
     """Liste des pièces personnalisée avec boutons d'action au survol"""
     
@@ -152,7 +150,6 @@ class PiecesListWidget(QListWidget):
             widget.deleteLater()
         self.action_widgets.clear()
         super().clear()
-
 
 class PiecesListService:
     """

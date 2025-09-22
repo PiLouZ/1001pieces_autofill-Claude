@@ -10,7 +10,6 @@ from PyQt5.QtWidgets import QTableWidget
 from ..core.config import Config
 from .base_service import BaseService, DebounceTimer, service_operation
 
-
 class SortingFilteringService(BaseService):
     """Service centralisé pour le tri et filtrage de table"""
 

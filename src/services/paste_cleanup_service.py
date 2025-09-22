@@ -10,7 +10,6 @@ from PyQt5.QtWidgets import QMessageBox
 
 from ..core.logger import app_logger
 
-
 class PasteCleanupService(QObject):
     """Service de nettoyage intelligent du contenu collé dans les champs de recherche"""
     

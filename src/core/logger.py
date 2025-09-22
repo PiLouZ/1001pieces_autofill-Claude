@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from enum import Enum
 
-
 class LogLevel(Enum):
     """Niveaux de logging personnalisés"""
     DEBUG = "DEBUG"
@@ -21,7 +20,6 @@ class LogLevel(Enum):
     DATA_OPERATION = "DATA_OP"  # Opérations sur les données
     AUTO_COMPLETE = "AUTO_COMPLETE"  # Complétion automatique
     USER_ACTION = "USER_ACTION"  # Actions utilisateur
-
 
 class AppLogger:
     """Gestionnaire de logs avancé pour l'application"""
@@ -280,7 +278,6 @@ class AppLogger:
                 return ''.join(recent_lines)
         except Exception as e:
             return f"Erreur lors de la lecture des logs: {e}"
-
 
 # Instance globale du logger
 app_logger = AppLogger()

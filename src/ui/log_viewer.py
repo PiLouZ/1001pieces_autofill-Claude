@@ -18,7 +18,6 @@ from ..core.config import Config
 
 from src.core.logger import app_logger
 
-
 class LogViewer(QDialog):
     """Visualiseur de logs avec filtrage et mise à jour en temps réel"""
     
@@ -280,7 +279,7 @@ class LogViewer(QDialog):
                 except json.JSONDecodeError:
                     continue
                 except Exception as e:
-                    print(f"Erreur parsing ligne: {e}")
+                    app_logger.error("Erreur", e)
                     continue
             
             # Redimensionner les colonnes

@@ -10,13 +10,11 @@ from PyQt5.QtGui import QKeyEvent
 
 from ..core.logger import app_logger
 
-
 class NavigationMode:
     """Modes de navigation disponibles"""
     STANDARD = "standard"
     CELL_EDITING = "cell_editing"
     MULTI_SELECTION = "multi_selection"
-
 
 class KeyboardNavigationService(QObject):
     """

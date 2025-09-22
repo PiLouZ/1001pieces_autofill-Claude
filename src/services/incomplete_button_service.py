@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import QPushButton
 
 from ..core.logger import app_logger
 
-
 class IncompleteButtonService(QObject):
     """Service optimisé pour le bouton des lignes incomplètes"""
 

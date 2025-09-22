@@ -19,7 +19,6 @@ from ..core.logger import app_logger
 from ..core.config import Config
 from ..data.database_manager import DatabaseManager
 
-
 class CustomTableWidget(QTableWidget):
     """Table personnalisée avec gestion des touches Delete/Backspace et auto-complétion"""
     
@@ -185,8 +184,7 @@ class CustomTableWidget(QTableWidget):
         search_input.selectAll()
         
         dialog.exec_()
-    
-    
+
     def _execute_autocomplete_query(self, query_key: str, params: tuple = (), error_context: str = "récupération données") -> List[str]:
         """
         Méthode générique pour exécuter les requêtes d'auto-complétion
@@ -243,7 +241,6 @@ class CustomTableWidget(QTableWidget):
             (),
             "récupération tous les fabricants"
         )
-
 
 class TableWidgetService:
     """

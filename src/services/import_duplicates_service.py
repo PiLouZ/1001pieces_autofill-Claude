@@ -6,7 +6,6 @@ Gère intelligemment les doublons cross-fichiers vs intra-fichiers
 from typing import Dict, Set, Tuple, List
 from ..core.logger import app_logger
 
-
 class ImportDuplicatesService:
     """Service de détection intelligente des doublons lors des imports multi-fichiers"""
     

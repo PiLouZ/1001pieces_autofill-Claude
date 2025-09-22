@@ -3,7 +3,6 @@ Style Manager - Phase 2 Refactoring
 Gestion centralisée des styles et thèmes de l'application
 """
 
-
 class StyleManager:
     """Gestionnaire centralisé des styles CSS modernes"""
     

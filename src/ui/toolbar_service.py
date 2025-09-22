@@ -12,7 +12,6 @@ from PyQt5.QtWidgets import QToolBar, QAction, QPushButton, QMenu
 from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtGui import QKeySequence
 
-
 class ToolbarService:
     """
     Service spécialisé pour la configuration de la barre d'outils

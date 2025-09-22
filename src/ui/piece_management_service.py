@@ -17,7 +17,6 @@ from PyQt5.QtCore import Qt
 from src.core.config import Config
 from src.core.logger import app_logger
 
-
 class PieceManagementService:
     """
     Service spécialisé pour la gestion des pièces détachées

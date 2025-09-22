@@ -5,7 +5,6 @@ Simple Event Bus for component decoupling - Phase 4
 from typing import Dict, List, Callable, Any
 from collections import defaultdict
 
-
 class EventBus:
     """Système d'événements simple pour découpler les composants"""
     
@@ -31,7 +30,8 @@ class EventBus:
             try:
                 callback(data)
             except Exception as e:
-                print(f"⚠️ Erreur dans callback {event_name}: {e}")
+                from ..core.logger import app_logger
+                app_logger.error(f"Erreur callback {event_name}: {e}")
     
     def disable(self) -> None:
         """Désactiver temporairement le bus d'événements"""
@@ -44,7 +44,6 @@ class EventBus:
     def clear(self) -> None:
         """Vider tous les listeners"""
         self._listeners.clear()
-
 
 # Instance globale du bus d'événements
 event_bus = EventBus()

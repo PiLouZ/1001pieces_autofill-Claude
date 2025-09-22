@@ -18,7 +18,6 @@ from src.core.config import Config
 from src.core.logger import app_logger
 from src.utils.seo_generator import SEOGenerator
 
-
 class SEOService:
     """
     Service spécialisé pour la génération et optimisation SEO

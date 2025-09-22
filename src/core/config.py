@@ -4,7 +4,6 @@ Configuration centralisée pour l'application de gestion d'appareils
 
 import os
 
-
 def pluralize(count, singular, plural=None):
     """
     Fonction globale pour gérer les pluriels correctement
@@ -27,12 +26,11 @@ def pluralize(count, singular, plural=None):
         plural = singular + "s"
     return f"{count} {singular if count <= 1 else plural}"
 
-
 class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.0.0"
+    VERSION = "3.2.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')

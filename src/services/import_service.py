@@ -9,7 +9,6 @@ from ..core.import_manager import ImportManager, ImportConfiguration
 from ..data.database_manager import DatabaseManager
 from .event_bus import event_bus
 
-
 class ImportService:
     """Service dédié aux opérations d'import"""
     

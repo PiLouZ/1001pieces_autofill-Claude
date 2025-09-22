@@ -16,7 +16,6 @@ from datetime import datetime
 
 from src.core.logger import app_logger
 
-
 class CustomReferenceService:
     """
     Service spécialisé pour l'export CSV avec références personnalisées

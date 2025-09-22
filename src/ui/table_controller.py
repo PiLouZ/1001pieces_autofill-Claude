@@ -16,9 +16,6 @@ from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 
-
-
-
 class TableController:
     """Contrôleur pour la gestion du tableau principal"""
     
@@ -230,7 +227,6 @@ class TableController:
                 if parsed_term:  # Si parsing réussi, utiliser le terme parsé
                     effective_search_term = parsed_term
 
-
             # Compter le total avec le terme unifié
             self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
             
@@ -245,7 +241,6 @@ class TableController:
             # Charger les données avec le terme unifié (CONSOLIDATION FIXING)
             records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
                                                self.current_sort_column, self.current_sort_order, incomplete_filter)
-
 
             # Remplir le tableau
             if self.total_rows > 1000:
@@ -270,8 +265,7 @@ class TableController:
         except Exception as e:
             app_logger.error(f"Erreur lors du chargement des données: {e}")
             self.table.setRowCount(0)
-    
-    
+
     def _update_row_numbers(self):
         """Mettre à jour les numéros de lignes après un tri"""
         try:
@@ -370,8 +364,7 @@ class TableController:
             
             # Convertir Qt.SortOrder en string pour la DB
             sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
-            print(f"🔄 Tri appliqué avec recherche: '{search_term}' (colonne {self.current_sort_column}, ordre {sort_order_str})")
-            
+                        
             # Appeler load_data avec les bonnes valeurs
             self._load_data_with_sort(search_term, self.current_sort_column, sort_order_str)
             self._update_sort_indicators()
@@ -406,30 +399,25 @@ class TableController:
             # Ajouter le filtre des lignes incomplètes si activé
             incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
             
-            # Détecter si c'est une recherche avancée parsée (soit dict, soit string contenant 'type': 'or'/'and')
-            is_advanced_search = (isinstance(search_term, dict) or 
-                                (isinstance(search_term, str) and ("'type': 'or'" in search_term or "'type': 'and'" in search_term)))
-            
+            # CORRECTION: Parser le terme de recherche si nécessaire
+            parsed_search_term = search_term
+            if isinstance(search_term, str) and search_term and hasattr(self.parent_window, 'advanced_search_service'):
+                # Essayer de parser la string comme recherche avancée
+                parsed_result = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
+                if parsed_result:
+                    parsed_search_term = parsed_result
+
+            # Détecter si c'est une recherche avancée
+            is_advanced_search = isinstance(parsed_search_term, dict)
+
             if is_advanced_search:
-                # Si c'est une string, on doit la reconvertir en dict pour l'utiliser avec la DB
-                if isinstance(search_term, str):
-                    # Essayer de retrouver le terme parsé original via AdvancedSearchService
-                    if hasattr(self.parent_window, 'advanced_search_service'):
-                        # Retrouver le terme original depuis la string
-                        if "'original':" in search_term:
-                            import re
-                            match = re.search(r"'original': '([^']+)'", search_term)
-                            if match:
-                                original_term = match.group(1)
-                                search_term = self.parent_window.advanced_search_service.parse_advanced_search(original_term)
-                
                 # Désactiver temporairement le cache pour cette requête triée
                 cache_backup = self.db_manager.search_cache
                 self.db_manager.search_cache = None
                 
                 try:
                     records = self.db_manager.load_data(
-                        search_term, column_filters, limit, offset, 
+                        parsed_search_term, column_filters, limit, offset,
                         sort_column, sort_order_str, incomplete_filter
                     )
                 finally:
@@ -438,7 +426,7 @@ class TableController:
             else:
                 # Appel normal avec cache pour les recherches simples
                 records = self.db_manager.load_data(
-                    search_term, column_filters, limit, offset, 
+                    parsed_search_term, column_filters, limit, offset,
                     sort_column, sort_order_str, incomplete_filter
                 )
             
@@ -621,7 +609,7 @@ class TableController:
                     combo_widget.addItem(value.strip())
                     
         except Exception as e:
-            print(f"⚠️ Erreur lors du peuplement du dropdown colonne {column_index}: {e}")
+            app_logger.error(f"Erreur peuplement dropdown colonne {column_index}: {e}")
             # En cas d'erreur, transformer le combo en champ texte basique
             combo_widget.setEditable(True)
     
@@ -798,7 +786,7 @@ class TableController:
                 else:
                     self.incomplete_filter_btn.hide()
         except Exception as e:
-            print(f"Erreur mise à jour bouton incomplètes: {e}")
+            app_logger.error("Erreur", e)
     
     def _on_column_resized(self, logical_index: int, old_size: int, new_size: int):
         """Log des largeurs de colonnes quand elles sont modifiées"""

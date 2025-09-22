@@ -10,7 +10,6 @@ from PyQt5.QtCore import QObject, pyqtSignal, QThread, QTimer
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager
 
-
 def clean_display_text(text: str) -> str:
     """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
     if not text:
@@ -23,7 +22,6 @@ def clean_display_text(text: str) -> str:
         text = "???"
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
-
 
 class DuplicatesAnalysisWorker(QThread):
     """Worker thread pour l'analyse des doublons"""
@@ -294,7 +292,6 @@ class DuplicatesAnalysisWorker(QThread):
             stats['potential_savings_pieces'] += group['count'] - 1
             
         return stats
-
 
 class DuplicatesAnalysisService(QObject):
     """Service d'analyse des doublons"""

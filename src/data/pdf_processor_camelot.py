@@ -198,14 +198,8 @@ def main():
             
             if result['success']:
                 stats = result['stats']
-                print(f"✅ Extraction réussie:")
-                print(f"   - {len(result['data'])} lignes extraites")
-                print(f"   - {stats['total_pages']} pages traitées")
-                print(f"   - Fichier de sortie: {result['output_file']}")
-                print(f"   - Méthode: {stats['extraction_method']}")
-            else:
-                print(f"❌ Échec: {result['error']}")
-                sys.exit(1)
+                                                                                            else:
+                                sys.exit(1)
                 
         elif input_path.is_dir():
             # Traitement d'un répertoire
@@ -228,12 +222,10 @@ def main():
             print(f"\n🎯 Traitement terminé: {successful}/{total} fichiers réussis")
             
         else:
-            print(f"❌ Chemin invalide: {args.input}")
-            sys.exit(1)
+                        sys.exit(1)
             
     except Exception as e:
-        print(f"❌ Erreur: {e}")
-        sys.exit(1)
+                sys.exit(1)
 
 if __name__ == "__main__":
     main()

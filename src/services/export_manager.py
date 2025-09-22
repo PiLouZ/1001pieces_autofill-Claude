@@ -26,13 +26,11 @@ from ..core.config import Config
 from ..core.constants import ExportFormat
 from .html_export_service import HtmlExportService
 
-
 class ExportType(Enum):
     """Types d'export supportés"""
     MAIN = "main"           # Export principal avec dialogue référence
     LEGACY = "legacy"       # Export legacy avec fallbacks
     QUICK = "quick"         # Export rapide sans dialogue
-
 
 class ReferenceSelectionResult:
     """Résultat de sélection de référence"""
@@ -40,7 +38,6 @@ class ReferenceSelectionResult:
         self.reference = reference
         self.search_term = search_term 
         self.cancelled = cancelled
-
 
 class ExportManagerService:
     """

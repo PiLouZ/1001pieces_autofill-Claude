@@ -11,7 +11,6 @@ from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
 from ..core.config import Config
 
-
 class AutoCompletionService:
     """Service dédié à l'autocomplétion des cellules"""
     

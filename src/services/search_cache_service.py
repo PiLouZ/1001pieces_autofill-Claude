@@ -7,7 +7,6 @@ from typing import Set, List, Optional, Callable, Dict, Any
 from ..core.logger import app_logger
 from ..core.config import Config
 
-
 class SearchCacheInvalidationService:
     """Service d'invalidation intelligente du cache de recherche"""
     

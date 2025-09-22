@@ -19,7 +19,6 @@ from ..core.config import Config
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 
-
 class KeyboardShortcutService(BaseService):
     """Service unifié pour la gestion des raccourcis clavier"""
 

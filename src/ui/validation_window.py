@@ -9,8 +9,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-
-
 def clean_display_text(text):
     """
     Nettoie le texte pour l'affichage en supprimant les caractères illisibles
@@ -37,7 +35,6 @@ def clean_display_text(text):
     text = text.strip()
     
     return text
-
 
 class ValidationWindow(QDialog):
     """Fenêtre interactive de validation et détection d'incohérences"""
@@ -272,7 +269,7 @@ class ValidationWindow(QDialog):
                                 })
                         
             except Exception as e:
-                print(f"Erreur lors de la détection des incohérences: {e}")
+                app_logger.error("Erreur", e)
                 self.inconsistency_data = {}
             
             self._update_display()

@@ -17,7 +17,6 @@ from PyQt5.QtCore import QTimer
 from src.core.config import Config
 from src.core.logger import app_logger
 
-
 class UserInteractionService:
     """
     Service spécialisé pour les interactions avec l'utilisateur
@@ -173,7 +172,7 @@ class UserInteractionService:
         body {{ font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }}
         p {{ margin: 1px 0; line-height: 1.0; }}
         p.message-block {{ margin: 1px 0; line-height: 1.0; }}
-        p.separator {{ margin: 4px 0; }}
+        p.separator {{ margin: 10px 0 5px 0; }}
         .timestamp {{ color: {Config.Colors.TEXT_MUTED}; }}
         .message {{ color: {Config.Colors.BLACK}; }}
         .indented {{ margin-left: 20px; }}
@@ -202,9 +201,8 @@ class UserInteractionService:
                 msg_html = self._apply_css_indentation(msg)
                 html_content += f"<p class='message-block'>{msg_html}</p>\n"
             
-            # Ajouter une ligne vide sous chaque entrée d'historique (sauf la dernière)
-            if i < len(self.main_window._history_messages) - 1:
-                html_content += "<br>\n"
+            # CORRECTION: Réduire l'espacement entre entrées (1 ligne au lieu de 2)
+            # Pas de <br> supplémentaire - espacement géré par CSS
         
         html_content += """</body>
 </html>"""
@@ -212,6 +210,8 @@ class UserInteractionService:
 
     def _apply_css_indentation(self, content: str) -> str:
         """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""
+        # CORRECTION: Remplacer les \\n littéraux par de vrais retours à la ligne
+        content = content.replace('\\n', '\n')
         lines = content.split('\n')
         processed_lines = []
         
@@ -283,8 +283,10 @@ class UserInteractionService:
             formatted_content = '\n'.join(formatted_lines)
             return f"[{timestamp}] {formatted_content}"
         
-        # Pour les autres messages, format standard
-        return f"[{timestamp}] {message}"
+        # CORRECTION: Pour les autres messages, traiter les \n littéraux
+        # Remplacer les \n littéraux par de vrais retours à la ligne
+        processed_message = message.replace('\\n', '\n')
+        return f"[{timestamp}] {processed_message}"
 
     def show_status_message(self, message: str, timeout: int = None) -> None:
         """Afficher un message temporaire dans la barre de statut"""

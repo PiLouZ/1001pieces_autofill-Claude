@@ -16,7 +16,6 @@ from PyQt5.QtGui import QColor
 
 from src.core.logger import app_logger
 
-
 class PiecesPanelService:
     """
     Service spécialisé pour la gestion du panneau des pièces

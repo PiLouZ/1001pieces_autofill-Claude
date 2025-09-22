@@ -20,7 +20,6 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-
 class ExportService:
     """Service dédié aux opérations d'export"""
     
@@ -125,8 +124,7 @@ class ExportService:
         }
         
         return html_output
-    
-    
+
     def get_last_export_info(self):
         """Récupérer les informations du dernier export HTML détails"""
         return getattr(self, '_last_export_info', None)

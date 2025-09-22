@@ -27,14 +27,12 @@ from ..utils.error_handler import (
 from ..core.constants import ValidationRules, Messages
 from ..core.logger import app_logger
 
-
 class ValidationLevel(Enum):
     """Niveaux de validation"""
     BASIC = "basic"           # Validation de base (vide, format)
     STANDARD = "standard"     # Validation standard + cohérence
     STRICT = "strict"         # Validation stricte + règles métier
     CRITICAL = "critical"     # Validation critique + sécurité
-
 
 @dataclass
 class ValidationResult:
@@ -61,7 +59,6 @@ class ValidationResult:
             return f"✅ {self.field_name}: Valid"
         else:
             return f"❌ {self.field_name}: {self.error_message}"
-
 
 @dataclass
 class ValidationSummary:
@@ -91,7 +88,6 @@ class ValidationSummary:
     
     def get_warning_messages(self) -> List[str]:
         return [result.warning_message for result in self.results if result.has_warning]
-
 
 class ValidationManagerService:
     """
@@ -612,7 +608,6 @@ class ValidationManagerService:
             }
         }
 
-
 # ===== INSTANCES ET CONFIGURATION =====
 
 # Instance par défaut pour le projet
@@ -620,7 +615,6 @@ default_validator = ValidationManagerService(strict_mode=False)
 
 # Instance stricte pour import/export critiques
 strict_validator = ValidationManagerService(strict_mode=True)
-
 
 # ===== FONCTIONS DE COMPATIBILITÉ =====
 # Pour faciliter la migration depuis les anciens patterns
@@ -642,7 +636,6 @@ def clean_reference(ref: Any) -> str:
     """Fonction de compatibilité pour nettoyage de référence"""
     result = default_validator.clean_reference(ref)
     return result.cleaned_value or ""
-
 
 # Logging du service
 app_logger.info("ValidationManagerService initialisé - PHASE 4 PRIORITÉ 2")

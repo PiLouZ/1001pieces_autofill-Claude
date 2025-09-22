@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Dict, Any
 from enum import Enum
 
-
 class ExportFormat(Enum):
     """Formats d'export supportés - VERSION UNIFIÉE
     
@@ -37,11 +36,9 @@ class ExportFormat(Enum):
         """Retourner la valeur en minuscules (compatibilité data_exporter)"""
         return self.value.lower()
 
-
 class ExportError(Exception):
     """Exception pour les erreurs d'export - CENTRALISÉE"""
     pass
-
 
 class FileExtensions:
     """Extensions de fichiers standardisées"""
@@ -56,7 +53,6 @@ class FileExtensions:
     # Extensions supportées pour l'import
     IMPORT_EXTENSIONS = [CSV_SIMPLE, EXCEL_EXPORT, JSON_EXPORT]
     EXPORT_EXTENSIONS = [CSV_EXPORT, HTML_EXPORT, EXCEL_EXPORT, JSON_EXPORT, XML_EXPORT]
-
 
 class DatabaseConfig:
     """Configuration de base de données"""
@@ -81,7 +77,6 @@ class DatabaseConfig:
     COLUMN_NOTES = "notes"
     COLUMN_CREATED = "date_creation"
     COLUMN_UPDATED = "date_modification"
-
 
 class UIConfig:
     """Configuration de l'interface utilisateur"""
@@ -114,7 +109,6 @@ class UIConfig:
     STYLE_SUCCESS_BUTTON = f"background-color: {COLOR_SUCCESS}; color: white; padding: 5px 10px; border-radius: 3px;"
     STYLE_ERROR_BUTTON = f"background-color: {COLOR_ERROR}; color: white; padding: 5px 10px; border-radius: 3px;"
     STYLE_WARNING_BUTTON = f"background-color: {COLOR_WARNING}; color: black; padding: 5px 10px; border-radius: 3px;"
-
 
 class Messages:
     """Messages utilisateur standardisés"""
@@ -166,7 +160,6 @@ class Messages:
     LOADING = "Chargement..."
     SEARCHING = "Recherche en cours..."
 
-
 class SearchConfig:
     """Configuration des fonctionnalités de recherche"""
     MAX_RESULTS = 1000
@@ -188,7 +181,6 @@ class SearchConfig:
         DatabaseConfig.COLUMN_CATEGORY,
         DatabaseConfig.COLUMN_NOTES
     ]
-
 
 class ValidationRules:
     """Règles de validation des données"""
@@ -214,7 +206,6 @@ class ValidationRules:
     REGEX_REFERENCE = r"^[A-Z0-9_-]+$"
     REGEX_EMAIL = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     REGEX_PHONE = r"^(\+33|0)[1-9](\d{8})$"
-
 
 class Paths:
     """Chemins et répertoires de l'application"""
@@ -254,11 +245,10 @@ class Paths:
         """Obtenir le chemin de la base de données"""
         return Paths.get_data_dir() / DatabaseConfig.DB_NAME
 
-
 class AppInfo:
     """Informations sur l'application"""
     NAME = "1001pieces - Gestionnaire d'appareils"
-    VERSION = "3.1.0"
+    VERSION = "3.2.0"
     DESCRIPTION = "Gestionnaire de pièces & d'appareils électroménagers"
     AUTHOR = "1001pieces.com"
     URL = "https://1001pieces.com"
@@ -266,7 +256,6 @@ class AppInfo:
     # Configuration de logging
     LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
 
 # Fonction utilitaire pour obtenir toutes les constantes d'une classe
 def get_class_constants(cls) -> Dict[str, Any]:

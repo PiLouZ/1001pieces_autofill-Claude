@@ -18,7 +18,6 @@ from ..services.export_service import ExportFormat
 from ..services.export_manager import ExportManagerService, ExportType
 from ..ui.message_helper import show_success, show_error, ask_confirmation
 
-
 class ImportWorker(QThread):
     """Worker thread pour les opérations d'import"""
     
@@ -158,7 +157,6 @@ class ImportWorker(QThread):
             app_logger.error(f"Erreur import PDF: {e}")
             raise Exception(f"Erreur lors de l'import PDF: {str(e)}")
 
-
 class ExportWorker(QThread):
     """Worker thread pour les opérations d'export"""
     
@@ -292,7 +290,6 @@ class ExportWorker(QThread):
         except Exception as e:
             app_logger.error(f"Erreur export HTML: {e}")
             raise Exception(f"Erreur export HTML: {e}")
-
 
 class ImportExportCoordinator(QObject):
     """Coordinateur centralisé pour les opérations d'import et d'export"""

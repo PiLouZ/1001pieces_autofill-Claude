@@ -12,7 +12,6 @@ from ..data.database_manager import DatabaseManager
 from ..data.data_validator import DataValidator
 from ..utils.error_handler import handle_errors
 
-
 class CellEditingService(QObject):
     """Service centralisé pour l'édition des cellules"""
     
@@ -260,8 +259,7 @@ class CellEditingService(QObject):
                 
             # Mettre à jour les statistiques si nécessaire
             self._update_statistics_after_edit(item)
-            
-            
+
         except Exception as e:
             app_logger.error(f"Erreur gestion post mise à jour: {e}")
             

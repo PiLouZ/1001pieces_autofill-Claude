@@ -11,7 +11,6 @@ from ..core.config import Config
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 
-
 class DatabaseOperationsService(BaseService):
     """Service centralisé pour les opérations CRUD de base de données"""
 
@@ -106,7 +105,6 @@ class DatabaseOperationsService(BaseService):
             error_msg = "Erreur lors de l'ajout en base de données"
             self.handle_error(Exception(error_msg), "add_new_device")
             return None
-
 
     # ================================
     # OPÉRATIONS UPDATE
@@ -292,7 +290,6 @@ class DatabaseOperationsService(BaseService):
                     # Ignorer seulement si c'est réellement une colonne ID
                     if col == 0 and column_name.lower() in ['id', 'db_id', 'database_id']:
                         continue
-
 
                     # Obtenir l'item de la cellule
                     item = table.item(row, col)

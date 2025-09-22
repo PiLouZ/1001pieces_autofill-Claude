@@ -14,7 +14,6 @@ from PyQt5.QtWidgets import QDialog
 from src.core.config import Config
 from src.core.logger import app_logger
 
-
 @dataclass
 class FieldCompletionResult:
     """Résultat de l'auto-complétion des champs"""
@@ -25,7 +24,6 @@ class FieldCompletionResult:
     def __post_init__(self):
         if self.errors is None:
             self.errors = []
-
 
 class DataManagementService:
     """

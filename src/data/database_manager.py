@@ -29,11 +29,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core.config import Config
 
-
 class DatabaseError(Exception):
     """Exception personnalisée pour les erreurs de base de données"""
     pass
-
 
 class SearchCache:
     """Cache optimisé pour les recherches - Phase 3"""
@@ -95,7 +93,6 @@ class SearchCache:
             'size': len(self.cache)
         }
 
-
 class DatabaseWorker(QThread):
     """Worker thread pour les opérations de base de données asynchrones"""
     data_loaded = pyqtSignal(list)
@@ -118,7 +115,6 @@ class DatabaseWorker(QThread):
             self.data_loaded.emit(records)
         except Exception as e:
             self.error_occurred.emit(str(e))
-
 
 class DatabaseManager:
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
@@ -438,7 +434,7 @@ class DatabaseManager:
                     self.cursor.execute("ALTER TABLE pieces ADD COLUMN description TEXT")
                     print("Colonne 'description' ajoutée à la table pieces")
                 except sqlite3.OperationalError as e:
-                    print(f"Erreur lors de l'ajout de la colonne description: {e}")
+                    app_logger.error("Erreur", e)
                     
             # Ajouter la colonne created_at si elle n'existe pas
             if 'created_at' not in existing_columns:
@@ -446,7 +442,7 @@ class DatabaseManager:
                     self.cursor.execute("ALTER TABLE pieces ADD COLUMN created_at TEXT")
                     print("Colonne 'created_at' ajoutée à la table pieces")
                 except sqlite3.OperationalError as e:
-                    print(f"Erreur lors de l'ajout de la colonne created_at: {e}")
+                    app_logger.error("Erreur", e)
             
             # Forcer un commit immédiat
             self.conn.commit()
@@ -511,7 +507,7 @@ class DatabaseManager:
                 
         except sqlite3.Error as e:
             self.cursor.execute("ROLLBACK")
-            print(f"Erreur lors de l'ajout de la contrainte unique: {e}")
+            app_logger.error("Erreur", e)
     
     def _create_indexes(self):
         """Créer les index pour optimiser les performances"""
@@ -659,8 +655,7 @@ class DatabaseManager:
             print("✅ Migration terminée avec succès")
             
         except sqlite3.Error as e:
-            print(f"❌ Erreur lors de la migration: {e}")
-            # En cas d'erreur, essayer de restaurer
+                        # En cas d'erreur, essayer de restaurer
             try:
                 self.cursor.execute("DROP TABLE IF EXISTS piece_associations")
                 self.cursor.execute("ROLLBACK")
@@ -763,8 +758,7 @@ class DatabaseManager:
                         if offset:
                             query += f" OFFSET {offset}"
                     
-                    print(f"🚀 Recherche optimisée ({search_condition['query_type']}) pour: '{search_term}'")
-                    return self.execute_query(query, params)
+                                        return self.execute_query(query, params)
             
             # Fallback vers méthode complète pour cas complexes
             return self._load_data_original(search_term, column_filters, limit, offset,
@@ -936,10 +930,10 @@ class DatabaseManager:
             self.cursor.execute(query)
             return self.cursor.fetchone()[0]
         except sqlite3.Error as e:
-            print(f"Erreur lors du comptage des appareils incomplets: {e}")
+            app_logger.error("Erreur", e)
             raise DatabaseError(f"Erreur lors du comptage: {e}")
         except Exception as e:
-            print(f"Erreur lors du comptage des appareils incomplets: {e}")
+            app_logger.error("Erreur", e)
             return 0
     
     def update_cell(self, db_id: int, column: str, value: str) -> bool:
@@ -1591,10 +1585,7 @@ class DatabaseManager:
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des doublons ref_modele: {e}")
-    
-    
-    
-    
+
     def get_devices_by_ref_modele(self, ref_modele: str) -> List[Tuple]:
         """Récupérer tous les appareils ayant exactement la même ref_modele"""
         try:
@@ -1609,7 +1600,6 @@ class DatabaseManager:
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des appareils: {e}")
-    
 
     def get_duplicate_references(self) -> List[Tuple[str, str, str, str, str, int]]:
         """Récupérer les références d'appareils en doublon (colonnes A,B,C,D,E identiques)"""

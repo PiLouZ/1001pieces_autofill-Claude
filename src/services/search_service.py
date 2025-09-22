@@ -7,7 +7,6 @@ from typing import List, Optional, Dict, Any, Tuple
 from ..data.database_manager import DatabaseManager
 from .event_bus import event_bus
 
-
 class SearchService:
     """Service dédié aux opérations de recherche"""
     
@@ -109,7 +108,7 @@ class SearchService:
             return [row[0] for row in results]
             
         except Exception as e:
-            print(f"⚠️ Erreur suggestions: {e}")
+            app_logger.error(f"Erreur suggestions: {e}")
             return []
     
     def parse_advanced_search(self, text: str) -> Optional[Dict[str, Any]]:
@@ -337,7 +336,7 @@ class SearchService:
             return self._get_piece_description_from_reference(search_term) is not None
         
         except Exception as e:
-            print(f"⚠️ Erreur vérification référence pièce: {e}")
+            app_logger.error(f"Erreur vérification référence pièce: {e}")
             return False
     
     def _are_all_terms_piece_references(self, search_term: str) -> bool:
@@ -361,7 +360,7 @@ class SearchService:
                 return all(self._get_piece_description_from_reference(term) is not None for term in terms)
                 
         except Exception as e:
-            print(f"⚠️ Erreur vérification multi-références: {e}")
+            app_logger.error(f"Erreur vérification multi-références: {e}")
             return False
     
     def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
@@ -383,5 +382,5 @@ class SearchService:
             return None
             
         except Exception as e:
-            print(f"⚠️ Erreur récupération description pièce pour '{reference}': {e}")
+            app_logger.error(f"Erreur récupération description pièce '{reference}': {e}")
             return None

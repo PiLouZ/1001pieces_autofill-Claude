@@ -12,7 +12,6 @@ from PyQt5.QtGui import QColor
 
 from src.core.config import Config
 
-
 class TableFillService:
     """Service pour gérer le remplissage des tables et la mise en évidence des recherches"""
     

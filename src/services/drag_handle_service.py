@@ -20,7 +20,6 @@ from PyQt5.QtGui import QPainter, QPen, QColor
 from ..core.config import Config
 from ..core.logger import app_logger
 
-
 class DragHandle(QWidget):
     """Poignée de glisser-déposer pour la recopie de cellules"""
     
@@ -426,7 +425,6 @@ class DragHandle(QWidget):
                     self._handle_drag_fill(delta_y, row_height)
         except Exception as e:
             app_logger.error(f"Erreur continue drag: {e}")
-
 
 class DragHandleService:
     """

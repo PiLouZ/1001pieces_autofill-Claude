@@ -17,7 +17,6 @@ from src.core.config import Config
 from src.core.constants import ExportFormat, ExportError
 from src.services.html_export_service import HtmlExportService
 
-
 class DataExporter:
     """Classe pour gérer tous les exports de données"""
     
@@ -177,8 +176,7 @@ class DataExporter:
     def get_last_export_info(self):
         """Récupérer les informations du dernier export HTML détails"""
         return getattr(self, '_last_export_info', None)
-    
-    
+
     def _export_to_xml(self, data: List[Tuple], filename: str, search_term: str) -> str:
         """Exporter vers XML"""
         try:

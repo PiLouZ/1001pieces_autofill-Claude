@@ -7,7 +7,6 @@ from typing import Any, Dict
 from src.core.logger import app_logger
 from src.core.config import Config
 
-
 class EventHandlersService:
     """Service pour gérer tous les gestionnaires d'événements"""
     

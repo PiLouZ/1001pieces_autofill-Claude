@@ -16,7 +16,6 @@ from PyQt5.QtWidgets import QApplication
 
 from ..core.logger import app_logger
 
-
 class BaseService(QObject):
     """Classe de base abstraite pour tous les services avec patterns communs"""
 
@@ -186,7 +185,6 @@ class BaseService(QObject):
             "user_interaction_service_available": self.user_interaction_service is not None
         }
 
-
 class DebounceTimer(QTimer):
     """
     Timer réutilisable avec pattern debounce pour optimiser les performances
@@ -216,7 +214,6 @@ class DebounceTimer(QTimer):
         self.stop()
         if self.callback:
             self.callback()
-
 
 def service_operation(operation_name: str, emit_signals: bool = True):
     """
@@ -258,7 +255,6 @@ def service_operation(operation_name: str, emit_signals: bool = True):
 
         return wrapper
     return decorator
-
 
 class ServiceFactory:
     """

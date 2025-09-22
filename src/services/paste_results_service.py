@@ -12,7 +12,6 @@ from typing import Optional
 from PyQt5.QtWidgets import QMessageBox
 from ..core.logger import app_logger
 
-
 class PasteResultsService:
     """
     Service de gestion des résultats de collage

@@ -59,17 +59,12 @@ from .piece_management_service import PieceManagementService
 from .seo_service import SEOService
 from .pieces_list_service import PiecesListService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
+from ..services.grouped_history_service import GroupedHistoryService
 from ..services.drag_handle_service import DragHandle, DragHandleService
 from ..services.undo_manager import UndoRedoManager
 # Supprimé: remplacé par DialogManager dans les imports centralisés
 from ..services.event_handlers_service import EventHandlersService
 from ..services.table_fill_service import TableFillService
-
-
-
-
-
-
 
 class MainWindow(QMainWindow):
     """Fenêtre principale refactorisée"""
@@ -140,7 +135,6 @@ class MainWindow(QMainWindow):
             from ..services.database_operations_service import DatabaseOperationsService
             self.database_operations_service = DatabaseOperationsService(self)
             self.database_operations_service.initialize_services()
-            app_logger.debug("DatabaseOperationsService activé via feature flag")
         else:
             self.database_operations_service = None
 
@@ -149,7 +143,6 @@ class MainWindow(QMainWindow):
             from ..services.ui_state_management_service import UIStateManagementService
             self.ui_state_management_service = UIStateManagementService(self)
             self.ui_state_management_service.initialize_services()
-            app_logger.debug("UIStateManagementService activé via feature flag")
         else:
             self.ui_state_management_service = None
 
@@ -158,7 +151,6 @@ class MainWindow(QMainWindow):
             from ..services.keyboard_shortcut_service import KeyboardShortcutService
             self.keyboard_shortcut_service = KeyboardShortcutService(self)
             self.keyboard_shortcut_service.initialize_services()
-            app_logger.debug("KeyboardShortcutService activé via feature flag")
         else:
             self.keyboard_shortcut_service = None
 
@@ -179,6 +171,7 @@ class MainWindow(QMainWindow):
         
         # Services spécialisés
         self.user_interaction_service = UserInteractionService(self)
+        self.grouped_history_service = GroupedHistoryService(self.user_interaction_service)
         self.piece_management_service = PieceManagementService(self)
         self.seo_service = SEOService(self)
         self.pieces_list_service = PiecesListService(self)
@@ -352,7 +345,6 @@ class MainWindow(QMainWindow):
     # PHASE 5: Callbacks pour les événements des services centralisés
     def _on_navigation_page_changed(self, page: int):
         """Callback pour changement de page"""
-        app_logger.debug(f"Page changée vers: {page}")
         # Pas d'action supplémentaire requise, le service gère déjà le rechargement
         
     def _on_navigation_page_size_changed(self, new_size: int):
@@ -383,7 +375,6 @@ class MainWindow(QMainWindow):
         event_bus.on('import.started', self.event_handlers_service.on_import_started)
         event_bus.on('import.completed', self.event_handlers_service.on_import_completed)
         event_bus.on('import.error', self.event_handlers_service.on_import_error)
-    
 
     def _create_table_widget(self) -> QWidget:
         """Créer le widget du tableau via TableController"""
@@ -438,7 +429,6 @@ class MainWindow(QMainWindow):
         self.search_input.textChanged.connect(self.advanced_search_service.search_with_debounce)
         
         return table_widget
-    
 
     def _create_pieces_widget(self) -> QWidget:
         """Créer le widget des pièces"""
@@ -485,7 +475,6 @@ class MainWindow(QMainWindow):
         
         top_layout.addWidget(self.pieces_tabs)
         pieces_splitter.addWidget(top_widget)
-        
 
         # Partie basse - Historique des modifications
         history_widget = QWidget()
@@ -534,8 +523,6 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(pieces_splitter)
         return widget
-
-
 
     def _setup_drag_handle(self):
         """Configurer la poignée de glisser-déposer"""
@@ -774,8 +761,7 @@ class MainWindow(QMainWindow):
         # PHASE 3.1: Déléguer au service de tri
         if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
             self.sorting_filtering_service.on_header_clicked(logical_index)
-    
-    
+
     def _get_modern_style(self) -> str:
         """Retourne le CSS moderne de l'application via StyleManager"""
         return StyleManager.get_modern_style()
@@ -854,8 +840,7 @@ class MainWindow(QMainWindow):
     def _navigate_to_empty_cell(self, direction='down'):
         """Navigation intelligente - PHASE 5: Délégation vers CellEditingService"""
         self.cell_editing_service.navigate_to_empty_cell(direction)
-    
-    
+
     def _show_column_values_list(self):
         """Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D) - Délégation au service"""
         try:
@@ -876,8 +861,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             app_logger.error(f"Erreur affichage valeurs colonne: {e}")
             MessageHelper.show_error(self, f"Impossible de récupérer les valeurs: {e}")
-    
-    
+
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
         # Mapping avec la nouvelle colonne Nb Pièces
@@ -925,7 +909,7 @@ class MainWindow(QMainWindow):
                         key = (row, col)
                         self.previous_values[key] = item.text()
         except Exception as e:
-            print(f"Erreur lors de l'initialisation des valeurs précédentes: {e}")
+            app_logger.error("Erreur", e)
     
     def _on_cell_changed(self, item: QTableWidgetItem):
         """Gérer les modifications de cellules"""
@@ -983,39 +967,22 @@ class MainWindow(QMainWindow):
             'db_id': self.table.verticalHeaderItem(row).text() if self.table.verticalHeaderItem(row) else None
         })
         
-        # Ajouter à l'historique enrichi
+        # CORRECTION: Ajouter à l'historique groupé au lieu de l'ancien système
         try:
             # Obtenir le nom de la colonne
             column_name = self._get_column_display_name(col)
-            
-            # Obtenir la référence de l'appareil
-            appareil_ref = ""
-            try:
-                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                # Logique pour obtenir la référence (comme dans _edit_piece)
-                ref_modele_item = self.table.item(row, 2)
-                if ref_modele_item and ref_modele_item.text().strip():
-                    appareil_ref = ref_modele_item.text().strip()
-                else:
-                    commercial_ref_item = self.table.item(row, 3)
-                    if commercial_ref_item and commercial_ref_item.text().strip():
-                        appareil_ref = commercial_ref_item.text().strip()
-                    else:
-                        appareil_ref = f"ID:{db_id}"
-            except Exception:
-                appareil_ref = f"Ligne {row + 1}"
-            
-            # Formater les valeurs pour affichage
-            old_display = f"'{old_value}'" if old_value else "vide"
-            new_display = f"'{new_value}'" if new_value else "vide"
-            
-            # Ajouter le message à l'historique seulement si auto-save activé
+
+            # Utiliser le service de groupement d'historique
             if getattr(self, 'auto_save_enabled', True):
-                self.user_interaction_service.add_to_history(
-                    f"Modification cellule: {column_name} - Appareil: {appareil_ref} - {old_display} → {new_display}"
-                )
+                try:
+                    db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
+                    self.grouped_history_service.add_modification(db_id, column_name, old_value, new_value)
+                except Exception as e:
+                    # Fallback vers historique normal en cas d'erreur
+                    app_logger.warning(f"Erreur historique groupé dans _on_cell_editing_updated, fallback: {e}")
+                    self.user_interaction_service.add_to_history(f"Modification {column_name}: '{old_value}' → '{new_value}'")
         except Exception as e:
-            print(f"Erreur ajout historique: {e}")
+            app_logger.error("Erreur", e)
         
         # Mettre à jour la valeur précédente
         self.previous_values[key] = new_value
@@ -1157,7 +1124,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes utilitaires ---
 
-
     def _update_toolbar_states(self):
         """Mettre à jour l'état des boutons"""
         self.undo_action.setEnabled(self.undo_manager.can_undo())
@@ -1209,7 +1175,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes d'action (stubs pour les fonctionnalités à implémenter) ---
 
-
     def _populate_dropdown_values(self, combo_widget: QComboBox, column_index: int):
         """Peupler les valeurs du dropdown avec les données uniques de la BDD"""
         try:
@@ -1241,7 +1206,7 @@ class MainWindow(QMainWindow):
                     combo_widget.addItem(value.strip())
                     
         except Exception as e:
-            print(f"⚠️ Erreur lors du peuplement du dropdown colonne {column_index}: {e}")
+            app_logger.error(f"Erreur peuplement dropdown colonne {column_index}: {e}")
             # En cas d'erreur, transformer le combo en champ texte basique
             combo_widget.setEditable(True)
 
@@ -1294,7 +1259,15 @@ class MainWindow(QMainWindow):
         # Actions spécifiques à l'interface principale
         if old_value != new_value and not skip_history:
             column_display_name = self._get_column_display_name(col)
-            self.user_interaction_service.add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
+
+            # NOUVEAU: Utiliser le service de groupement d'historique
+            try:
+                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
+                self.grouped_history_service.add_modification(db_id, column_display_name, old_value, new_value)
+            except Exception as e:
+                # Fallback vers historique normal en cas d'erreur
+                app_logger.warning(f"Erreur historique groupé, fallback: {e}")
+                self.user_interaction_service.add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
         
         self.modified_cells.discard((row, col))
         item.setBackground(QColor(255, 255, 255))  # Blanc
@@ -1349,9 +1322,6 @@ class MainWindow(QMainWindow):
             if cache_service:
                 cache_service.resume_invalidation(force_invalidate=True)
 
-    
-    
-    
     def _apply_css_indentation(self, content: str) -> str:
         """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""
         lines = content.split('\n')
@@ -1428,7 +1398,6 @@ class MainWindow(QMainWindow):
         # Pour les autres messages, format standard
         return f"[{timestamp}] {message}"
 
-
     def _handle_history_link(self, url):
         """Gérer les clics sur les liens dans l'historique"""
         from PyQt5.QtCore import QUrl
@@ -1440,8 +1409,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.user_interaction_service.show_error(f"Erreur lors du traitement du lien: {e}")
 
-    
-
     def _add_piece(self):
         """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService"""
         self.piece_management_service.add_piece()
@@ -1449,8 +1416,7 @@ class MainWindow(QMainWindow):
     def _edit_piece(self, item: QListWidgetItem):
         """Éditer une pièce - Phase 2.14: Délégation vers PieceManagementService"""
         self.piece_management_service.edit_piece(item)
-    
-    
+
     def _delete_piece(self, item: QListWidgetItem):
         """Supprimer une pièce - Phase 2.14: Délégation vers PieceManagementService"""
         self.piece_management_service.delete_piece(item)
@@ -1495,7 +1461,7 @@ class MainWindow(QMainWindow):
                         if field_name:
                             self.db_manager.update_cell(int(action['db_id']), field_name, action['old_value'])
                     except Exception as e:
-                        print(f"Erreur undo: {e}")
+                        app_logger.error("Erreur", e)
                 
                 # Mettre à jour la valeur précédente
                 key = (row, col)
@@ -1519,7 +1485,7 @@ class MainWindow(QMainWindow):
                         if field_name:
                             self.db_manager.update_cell(int(action['db_id']), field_name, action['new_value'])
                     except Exception as e:
-                        print(f"Erreur redo: {e}")
+                        app_logger.error("Erreur", e)
                 
                 # Mettre à jour la valeur précédente
                 key = (row, col)
@@ -1908,8 +1874,7 @@ class MainWindow(QMainWindow):
     def _open_pieces_manager(self):
         """Ouvrir la fenêtre de gestion des pièces - Phase 2.14: Délégation vers PieceManagementService"""
         self.piece_management_service.open_pieces_manager()
-    
-    
+
     def _update_incomplete_button_visibility(self):
         """Mettre à jour la visibilité du bouton incomplètes selon les données"""
         try:
@@ -1921,7 +1886,7 @@ class MainWindow(QMainWindow):
                 # Fallback vers l'ancienne méthode si le service n'est pas encore initialisé
                 self._update_incomplete_button_visibility_legacy()
         except Exception as e:
-            print(f"Erreur lors de la mise à jour du bouton incomplètes: {e}")
+            app_logger.error("Erreur", e)
 
     def _update_incomplete_button_visibility_legacy(self):
         """Ancienne méthode de mise à jour (fallback)"""
@@ -1943,7 +1908,7 @@ class MainWindow(QMainWindow):
                         self.show_incomplete_only = False
                         self.table_controller.load_data()
         except Exception as e:
-            print(f"Erreur lors de la mise à jour legacy du bouton incomplètes: {e}")
+            app_logger.error("Erreur", e)
 
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
@@ -2014,8 +1979,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             app_logger.error(f"Erreur lors du rafraîchissement forcé: {e}")
             self.user_interaction_service.show_error(f"Erreur lors du rafraîchissement: {e}")
-    
-    
+
     def _open_log_viewer(self):
         """Ouvrir le visualiseur de logs"""
         try:
@@ -2216,7 +2180,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
         except Exception as e:
             self.user_interaction_service.show_error(f"Erreur lors de l'application de la configuration: {e}")
-    
 
     # --- Méthodes d'événements ---
 
@@ -2347,7 +2310,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """Importer un ou plusieurs fichiers PDF depuis des chemins donnés - Phase 2.7"""
         # Déléguer au service FileProcessingService
         return self.file_processing_service.import_pdf_files(file_paths)
-    
 
     def _get_import_options_pdf(self, suggested_ref_piece=None):
         """Dialogue pour choisir les options d'import PDF"""
@@ -2580,8 +2542,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             # Le collage n'utilise pas import_type mais on récupère les autres paramètres
             category = ""  # Pas de catégorie dans la fenêtre unifiée pour l'instant
             total_rows = len(rows)
-            
-            
+
             # Créer une barre de progression pour les gros imports (10K+ lignes)
             progress_dialog = None
             if total_rows >= 10000:
@@ -2827,6 +2788,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 self.table_controller.cleanup()
             except Exception:
                 pass  # Ignorer les erreurs de nettoyage
+
+        # Nettoyer le service d'historique groupé
+        if hasattr(self, 'grouped_history_service'):
+            try:
+                self.grouped_history_service.cleanup()
+            except Exception:
+                pass  # Ignorer les erreurs de nettoyage
         
         # Fermer la base de données
         if hasattr(self, 'db_manager'):
@@ -2860,8 +2828,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         except Exception as e:
             app_logger.error(f"Erreur vérification référence pièce: {e}")
             return False
-    
-    
+
     # --- Méthodes de gestion des dispositifs pour le collage (délégation vers DeviceManager) ---
     
     def _find_existing_device_by_refs(self, ref_modele: str, commercial_ref: str, 
@@ -2887,7 +2854,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     
     # Les méthodes _log_paste_results et _show_paste_summary ont été déplacées vers PasteResultsService
 
-
 def main():
     """Point d'entrée de l'application"""
     app = QApplication(sys.argv)
@@ -2903,11 +2869,10 @@ def main():
         window.show()
         sys.exit(app.exec_())
     except Exception as e:
-        print(f"ERREUR CRITIQUE: Impossible de démarrer l'application: {e}")
+        app_logger.error(f"ERREUR CRITIQUE: Impossible de démarrer l'application: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

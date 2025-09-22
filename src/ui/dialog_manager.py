@@ -12,7 +12,6 @@ from .qt_imports import (
 from .message_helper import MessageHelper
 from ..core.constants import Messages, UIConfig
 
-
 class SimpleDialogManager:
     """
     Gestionnaire pour les dialogues simples (remplace l'ancien services/dialog_service.py)
@@ -80,7 +79,6 @@ class SimpleDialogManager:
         item, ok = QInputDialog.getItem(parent, title, label, items, 0, False)
         return item if ok else None
 
-
 class ComplexDialogManager:
     """
     Gestionnaire pour les dialogues complexes (remplace l'ancien ui/dialog_service.py)
@@ -134,7 +132,6 @@ class ComplexDialogManager:
         if dialog.exec_() == QDialog.Accepted:
             return dialog.get_selected_reference()
         return None
-
 
 class ImportOptionsDialog(QDialog):
     """Dialogue complexe pour les options d'import"""
@@ -248,7 +245,6 @@ class ImportOptionsDialog(QDialog):
             'colonnes_detectees': self.detected_columns
         }
 
-
 class AutoCompletionPopup(QDialog):
     """Popup d'autocomplétion avancée"""
     
@@ -291,7 +287,6 @@ class AutoCompletionPopup(QDialog):
         if self.exec_() == QDialog.Accepted:
             return self.selected_suggestion
         return None
-
 
 class ReferenceSelectionDialog(QDialog):
     """Dialogue de sélection de référence avec recherche"""
@@ -376,7 +371,6 @@ class ReferenceSelectionDialog(QDialog):
     def get_selected_reference(self) -> Optional[str]:
         """Obtenir la référence sélectionnée"""
         return self.selected_reference
-
 
 # Factory pour l'accès unifié aux dialogues
 class DialogManager:

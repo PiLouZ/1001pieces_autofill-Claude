@@ -10,10 +10,8 @@ from typing import Callable, Optional, Union, Any, Type, Tuple
 from ..ui.message_helper import MessageHelper
 from ..core.constants import Messages
 
-
 # Configuration du logger pour les erreurs
 error_logger = logging.getLogger('ErrorHandler')
-
 
 class ErrorHandlerConfig:
     """Configuration pour le gestionnaire d'erreurs"""
@@ -21,7 +19,6 @@ class ErrorHandlerConfig:
     LOG_ALL_ERRORS = True
     DEFAULT_ERROR_TITLE = Messages.TITLE_ERROR
     DEFAULT_SUCCESS_TITLE = Messages.TITLE_SUCCESS
-
 
 def handle_errors(
     title: str = ErrorHandlerConfig.DEFAULT_ERROR_TITLE,
@@ -101,7 +98,6 @@ def handle_errors(
         return wrapper
     return decorator
 
-
 def handle_database_errors(title: str = "Erreur de base de données"):
     """
     Décorateur spécialisé pour les erreurs de base de données
@@ -111,7 +107,6 @@ def handle_database_errors(title: str = "Erreur de base de données"):
         exceptions=(Exception,),  # Capture toutes les erreurs DB
         return_on_error=False
     )
-
 
 def handle_file_errors(title: str = "Erreur de fichier"):
     """
@@ -123,7 +118,6 @@ def handle_file_errors(title: str = "Erreur de fichier"):
         return_on_error=None
     )
 
-
 def handle_import_errors(title: str = "Erreur d'import"):
     """
     Décorateur spécialisé pour les erreurs d'import
@@ -133,7 +127,6 @@ def handle_import_errors(title: str = "Erreur d'import"):
         message="Erreur lors de l'import des données. Vérifiez le format du fichier.",
         return_on_error=None
     )
-
 
 def handle_export_errors(title: str = "Erreur d'export"):
     """
@@ -145,7 +138,6 @@ def handle_export_errors(title: str = "Erreur d'export"):
         return_on_error=False
     )
 
-
 def handle_validation_errors(title: str = "Erreur de validation"):
     """
     Décorateur spécialisé pour les erreurs de validation
@@ -155,7 +147,6 @@ def handle_validation_errors(title: str = "Erreur de validation"):
         exceptions=(ValueError, TypeError),
         return_on_error=None
     )
-
 
 def handle_network_errors(title: str = "Erreur réseau"):
     """
@@ -167,7 +158,6 @@ def handle_network_errors(title: str = "Erreur réseau"):
         exceptions=(ConnectionError, TimeoutError),
         return_on_error=None
     )
-
 
 class SafeOperation:
     """
@@ -227,7 +217,6 @@ class SafeOperation:
     def set_result(self, result: Any):
         """Définir le résultat de l'opération"""
         self.result = result
-
 
 class ErrorReporter:
     """
@@ -297,7 +286,6 @@ class ErrorReporter:
         else:
             MessageHelper.show_success(self.parent, summary, title)
 
-
 # Fonctions utilitaires pour les cas d'usage courants
 def safe_execute(operation: Callable, parent=None, error_title: str = "Erreur", 
                 default_return: Any = None, *args, **kwargs) -> Any:
@@ -313,7 +301,6 @@ def safe_execute(operation: Callable, parent=None, error_title: str = "Erreur",
         error_logger.error(f"Erreur dans safe_execute: {str(e)}", exc_info=True)
         MessageHelper.show_error(parent, str(e), error_title)
         return default_return
-
 
 def safe_call_method(obj, method_name: str, *args, **kwargs) -> Any:
     """
@@ -331,7 +318,6 @@ def safe_call_method(obj, method_name: str, *args, **kwargs) -> Any:
     except Exception as e:
         error_logger.error(f"Erreur lors de l'appel de {method_name}: {str(e)}", exc_info=True)
         return None
-
 
 # Exemples d'utilisation dans les commentaires
 """

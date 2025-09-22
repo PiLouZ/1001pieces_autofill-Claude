@@ -12,7 +12,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core.config import Config
 
-
 @dataclass
 class ValidationResult:
     """Résultat d'une validation"""
@@ -20,7 +19,6 @@ class ValidationResult:
     error_message: Optional[str] = None
     warning_message: Optional[str] = None
     suggestions: Optional[List[str]] = None
-
 
 class DataValidator:
     """Classe de validation des données"""

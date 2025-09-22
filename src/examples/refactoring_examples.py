@@ -15,7 +15,6 @@ from utils.error_handler import handle_errors, SafeOperation, ErrorReporter
 # from ui.message_helper import MessageHelper, CommonMessages
 # from ui.dialog_manager import DialogManager
 
-
 class ExampleService:
     """Exemple d'utilisation des modules refactorisés"""
     
@@ -74,7 +73,6 @@ class ExampleService:
             raise ValueError(f"Erreur sur {item}")
         return f"Traité: {item}"
 
-
 def demonstrate_constants():
     """Démonstration de l'utilisation des constantes centralisées"""
     print("=== DÉMONSTRATION CONSTANTES ===")
@@ -84,7 +82,6 @@ def demonstrate_constants():
     print(f"Longueur max référence: {ValidationRules.MAX_REFERENCE_LENGTH}")
     print()
 
-
 def demonstrate_error_handling():
     """Démonstration de la gestion d'erreurs"""
     print("=== DÉMONSTRATION GESTION D'ERREURS ===")
@@ -93,22 +90,17 @@ def demonstrate_error_handling():
     
     print("1. Test décorateur avec succès:")
     result = service.process_data_with_decorator("données_valides")
-    print(f"   Résultat: {result}")
-    
+        
     print("\n2. Test décorateur avec erreur:")
     result = service.process_data_with_decorator("error")
-    print(f"   Résultat: {result}")
-    
+        
     print("\n3. Test context manager avec succès:")
     result = service.process_data_with_context_manager("données_valides")
-    print(f"   Résultat: {result}")
-    
+        
     print("\n4. Test traitement en lot:")
     items = ["item1", "item2", "error", "item3", "error2"]
     results = service.process_multiple_items(items)
-    print(f"   Résultats valides: {len(results)}")
-    print()
-
+        print()
 
 def demonstrate_file_extensions():
     """Démonstration de l'utilisation des extensions de fichiers"""
@@ -126,7 +118,6 @@ def demonstrate_file_extensions():
     print(f"Extensions d'import supportées: {FileExtensions.IMPORT_EXTENSIONS}")
     print()
 
-
 # Exemple de code migré
 class OldStyleClass:
     """Exemple de classe AVANT refactorisation"""
@@ -140,9 +131,7 @@ class OldStyleClass:
             print("Sauvegarde réussie")
         except Exception as e:
             # Code dupliqué dans tout le projet (295 fois!)
-            print(f"❌ Erreur: {e}")
-            # QMessageBox.critical(self, "Erreur", f"Erreur: {e}")
-
+                        # QMessageBox.critical(self, "Erreur", f"Erreur: {e}")
 
 class NewStyleClass:
     """Exemple de classe APRÈS refactorisation"""
@@ -154,7 +143,6 @@ class NewStyleClass:
         if False:  # Simulation d'erreur
             raise Exception("Erreur de sauvegarde")
         print("✅ Sauvegarde réussie")
-
 
 def demonstrate_migration():
     """Démonstration de la migration du code"""
@@ -168,7 +156,6 @@ def demonstrate_migration():
     new_class = NewStyleClass()
     new_class.new_save_method()
     print()
-
 
 if __name__ == "__main__":
     print("🚀 EXEMPLES DE REFACTORISATION - 1001pieces")

@@ -7,7 +7,6 @@ from collections import defaultdict
 from typing import List, Tuple, Dict, Any
 import re
 
-
 class HtmlExportService:
     """Service centralisé pour la génération de contenu HTML d'export
     

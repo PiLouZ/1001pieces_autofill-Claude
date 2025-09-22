@@ -13,7 +13,6 @@ from typing import Optional, Dict, Any
 
 from ..core.config import Config
 
-
 class UndoRedoManager:
     """Gestionnaire simplifié d'annulation/rétablissement"""
     

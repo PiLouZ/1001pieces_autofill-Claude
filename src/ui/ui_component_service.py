@@ -18,7 +18,6 @@ from PyQt5.QtGui import QFont
 from ..services.export_service import ExportFormat
 from src.core.logger import app_logger
 
-
 class UIComponentService:
     """
     Service spécialisé pour la création et gestion des composants UI
@@ -94,8 +93,7 @@ class UIComponentService:
         seo_layout.addWidget(self.main_window.meta_desc_btn, 1)  # stretch factor 1 = 50%
         
         layout.addLayout(seo_layout)
-    
-    
+
     def add_pagination_controls(self, layout: QVBoxLayout) -> None:
         """
         Ajouter les contrôles de pagination modernes
@@ -279,8 +277,7 @@ class UIComponentService:
         for btn in seo_buttons:
             if btn:
                 btn.setEnabled(is_piece_search)
-        
-    
+
     # Méthodes de styles pour les boutons
     def _get_csv_button_style(self) -> str:
         """Style pour le bouton CSV"""
@@ -341,8 +338,7 @@ class UIComponentService:
                 color: #666666; 
             }
         """
-    
-    
+
     def _get_pagination_section_style(self) -> str:
         """Style pour la section pagination"""
         return """

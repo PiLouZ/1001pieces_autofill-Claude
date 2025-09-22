@@ -18,7 +18,6 @@ from ..services.export_service import ExportFormat
 from ..services.export_manager import ExportManagerService, ExportType
 from .base_service import BaseService, service_operation
 
-
 class ImportExportService(BaseService):
     """Service centralisé pour les opérations d'import et d'export"""
 

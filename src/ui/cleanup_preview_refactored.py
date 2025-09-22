@@ -16,7 +16,6 @@ from ..services.duplicates_analysis_service import DuplicatesAnalysisService
 from ..services.cleanup_ui_service import CleanupUIService
 from .message_helper import show_success, show_error, MessageHelper
 
-
 class CleanupPreviewDialog(QDialog):
     """Fenêtre de prévisualisation du nettoyage des doublons - Version refactorisée"""
     

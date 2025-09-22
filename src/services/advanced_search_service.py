@@ -13,7 +13,6 @@ from .search_service import SearchService
 from ..core.logger import app_logger
 from ..core.config import Config
 
-
 class AdvancedSearchService(QObject):
     """Service de recherche avancé avec support opérateurs && et ||, débounce et mise en évidence"""
     
@@ -102,8 +101,7 @@ class AdvancedSearchService(QObject):
         PHASE 6 CONSOLIDÉ - Délègue entièrement à SearchService
         """
         return self.search_service.parse_advanced_search(text)
-    
-    
+
     def apply_search_highlight(self, item: QTableWidgetItem, search_term) -> bool:
         """Appliquer la mise en évidence de recherche sur un item"""
         if not search_term:
@@ -166,9 +164,7 @@ class AdvancedSearchService(QObject):
         except Exception as e:
             app_logger.error(f"Erreur mise en évidence recherche: {e}")
             return False
-    
-    
-    
+
     def get_current_search_term(self):
         """Obtenir le terme de recherche actuellement actif"""
         return self.current_search_term

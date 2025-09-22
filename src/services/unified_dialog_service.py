@@ -27,7 +27,6 @@ from PyQt5.QtGui import QFont
 
 from ..core.logger import app_logger
 
-
 class DialogType(Enum):
     """Types de dialogues disponibles"""
     CATEGORIES = "categories"
@@ -36,7 +35,6 @@ class DialogType(Enum):
     REFERENCE_SELECTION = "reference_selection"
     AUTOCOMPLETION = "autocompletion"
     CONFIRMATION = "confirmation"
-
 
 class SimpleDialogs:
     """
@@ -130,7 +128,6 @@ class SimpleDialogs:
         except Exception as e:
             app_logger.error(f"Erreur dialogue confirmation: {e}")
             return False
-
 
 class ComplexDialogs:
     """
@@ -398,7 +395,6 @@ class ComplexDialogs:
             app_logger.error(f"Erreur popup autocomplétion: {e}")
             return None
 
-
 class UnifiedDialogService:
     """
     Service de dialogues unifié - Interface principale
@@ -473,7 +469,6 @@ class UnifiedDialogService:
             def get_notes(parent, current_notes=""):
                 return SimpleDialogs.get_notes(parent, current_notes)
         return NotesDialogWrapper()
-
 
 # Backward compatibility aliases pour migration facile
 CategoryDialog = SimpleDialogs

@@ -6,7 +6,6 @@
 from typing import Optional, Union
 from .qt_imports import QMessageBox, QWidget
 
-
 class MessageType:
     """Types de messages standardisés"""
     INFO = "Information"
@@ -14,7 +13,6 @@ class MessageType:
     ERROR = "Erreur"
     SUCCESS = "Succès"
     QUESTION = "Question"
-
 
 class MessageHelper:
     """
@@ -109,7 +107,6 @@ class MessageHelper:
         msg_box.setStandardButtons(buttons)
         return msg_box.exec_()
 
-
 class CommonMessages:
     """Messages couramment utilisés dans l'application"""
     
@@ -138,12 +135,10 @@ class CommonMessages:
     OPERATION_CANCELLED = "Opération annulée par l'utilisateur."
     PROCESSING = "Traitement en cours..."
 
-
 # Fonctions de commodité pour l'usage courant
 def show_success(parent: Optional[QWidget], message: str = CommonMessages.SAVE_SUCCESS) -> None:
     """Raccourci pour afficher un message de succès"""
     MessageHelper.show_success(parent, message)
-
 
 def show_error(parent: Optional[QWidget], message: str, details: str = None) -> None:
     """Raccourci pour afficher une erreur (avec détails optionnels)"""
@@ -151,7 +146,6 @@ def show_error(parent: Optional[QWidget], message: str, details: str = None) -> 
         MessageHelper.show_detailed_error(parent, message, details)
     else:
         MessageHelper.show_error(parent, message)
-
 
 def ask_confirmation(parent: Optional[QWidget], message: str = CommonMessages.CONFIRM_DELETE) -> bool:
     """Raccourci pour demander une confirmation"""

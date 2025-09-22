@@ -15,7 +15,6 @@ from PyQt5.QtGui import QFont, QKeyEvent
 from ..core.logger import app_logger
 from .duplicates_analysis_service import clean_display_text
 
-
 class KeyboardTreeWidget(QTreeWidget):
     """QTreeWidget personnalisé avec gestion clavier pour sélection par barre espace"""
 
@@ -62,7 +61,6 @@ class KeyboardTreeWidget(QTreeWidget):
                 clipboard = QApplication.clipboard()
                 clipboard.setText(text)
                 app_logger.info(f"Valeur copiée: {text}")
-
 
 class CleanupStatsWidget(QWidget):
     """Widget pour afficher les statistiques de nettoyage"""
@@ -114,7 +112,6 @@ class CleanupStatsWidget(QWidget):
             
         except Exception as e:
             app_logger.error(f"Erreur mise à jour stats: {e}")
-
 
 class DuplicateDevicesWidget(QWidget):
     """Widget pour gérer les appareils en doublon"""
@@ -417,7 +414,6 @@ class DuplicateDevicesWidget(QWidget):
         except Exception as e:
             app_logger.error(f"Erreur marquage distinct: {e}")
 
-
 class DuplicatePiecesWidget(QWidget):
     """Widget pour gérer les pièces dupliquées"""
     
@@ -503,7 +499,6 @@ class DuplicatePiecesWidget(QWidget):
                     selected.append(ref_item.text())
         return selected
 
-
 class CleanupUIService(QObject):
     """Service d'interface utilisateur pour le nettoyage des doublons"""
     
@@ -568,7 +563,6 @@ class CleanupUIService(QObject):
             widgets['status'].setStyleSheet("color: #dc3545; font-style: italic; padding: 5px;")
         if 'progress_bar' in widgets:
             widgets['progress_bar'].setVisible(False)
-
 
 class DistinctReferencesWidget(QWidget):
     """Widget pour gérer les références marquées comme distinctes"""
@@ -747,7 +741,6 @@ class DistinctReferencesWidget(QWidget):
             app_logger.error(f"Erreur suppression références distinctes: {e}")
             from .message_helper import show_error
             show_error(self, "Erreur", f"Erreur lors de la suppression: {str(e)}")
-
 
 class ActionHistoryWidget(QWidget):
     """Widget pour afficher l'historique des actions de nettoyage"""

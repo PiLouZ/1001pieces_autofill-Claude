@@ -12,7 +12,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 
-
 def clean_display_text(text):
     """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
     if not text:
@@ -25,9 +24,6 @@ def clean_display_text(text):
         text = "???"
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
-
-
-
 
 class CleanupPreviewDialog(QDialog):
     """Fenêtre de prévisualisation du nettoyage des doublons"""
@@ -770,7 +766,7 @@ class CleanupPreviewDialog(QDialog):
                     self._load_item_complete_data(child_item)
                     
         except Exception as e:
-            print(f"Erreur lors du chargement des données complètes: {e}")
+            app_logger.error("Erreur", e)
     
     def _load_item_complete_data(self, item):
         """Charger les données complètes pour un élément"""
@@ -789,7 +785,7 @@ class CleanupPreviewDialog(QDialog):
                     item.setText(8, clean_display_text(notes) if notes else "")
                     
         except Exception as e:
-            print(f"Erreur lors du chargement des données pour l'appareil: {e}")
+            app_logger.error("Erreur", e)
     
     def _on_tree_item_changed(self, item, column):
         """Gérer les changements dans l'arbre (checkbox et édition)"""
@@ -800,7 +796,7 @@ class CleanupPreviewDialog(QDialog):
                 self._handle_cell_edit(item, column)
                 
         except Exception as e:
-            print(f"Erreur lors du traitement du changement: {e}")
+            app_logger.error("Erreur", e)
     
     def _handle_checkbox_change(self, item):
         """Gérer le changement de checkbox"""
@@ -810,8 +806,7 @@ class CleanupPreviewDialog(QDialog):
         
         is_checked = item.checkState(0) == Qt.Checked
         user_data['is_master'] = is_checked
-        
-        
+
         # Si c'est un enfant qui est coché, décocher les autres enfants du même groupe
         parent = item.parent()
         if parent:
@@ -892,13 +887,11 @@ class CleanupPreviewDialog(QDialog):
         
         if column in column_mapping:
             device_data[column_mapping[column]] = new_value
-            print(f"Mise à jour: {column_mapping[column]} = '{new_value}' pour l'appareil ID {device_data['id']}")
     
     def _update_inconsistencies_buttons(self):
         """Cette méthode n'est plus nécessaire avec la nouvelle interface"""
         pass
-    
-    
+
     def _auto_select_oldest_masters(self):
         """Sélectionner automatiquement les appareils les plus anciens comme maîtres"""
         for i in range(self.inconsistencies_tree.topLevelItemCount()):
@@ -1221,7 +1214,7 @@ class CleanupPreviewDialog(QDialog):
                 # Actualiser l'affichage
                 self._refresh_inconsistencies_display()
         except Exception as e:
-            print(f"Erreur lors du marquage: {e}")
+            app_logger.error("Erreur", e)
     
     def _mark_selected_as_merge(self):
         """Marquer le groupe sélectionné pour fusion"""
@@ -1239,7 +1232,7 @@ class CleanupPreviewDialog(QDialog):
                 # Actualiser l'affichage
                 self._refresh_inconsistencies_display()
         except Exception as e:
-            print(f"Erreur lors du marquage: {e}")
+            app_logger.error("Erreur", e)
     
     def _reset_selected_decision(self):
         """Réinitialiser la décision du groupe sélectionné"""
@@ -1255,7 +1248,7 @@ class CleanupPreviewDialog(QDialog):
                 # Actualiser l'affichage
                 self._refresh_inconsistencies_display()
         except Exception as e:
-            print(f"Erreur lors de la réinitialisation: {e}")
+            app_logger.error("Erreur", e)
     
     def _refresh_inconsistencies_display(self):
         """Actualiser l'affichage de l'onglet doublons potentiels"""

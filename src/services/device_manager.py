@@ -13,7 +13,6 @@ Responsabilités:
 from typing import Optional, Dict, List, Any
 from ..core.logger import app_logger
 
-
 class DeviceManager:
     """
     Service de gestion des dispositifs/appareils
@@ -61,8 +60,7 @@ class DeviceManager:
                 params.append(manufacturer.strip())
             
             query += " LIMIT 1"
-            
-            
+
             result = self.db_manager.execute_query(query, params)
             
             if result and len(result) > 0:

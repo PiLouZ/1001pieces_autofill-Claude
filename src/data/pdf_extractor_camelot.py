@@ -11,11 +11,9 @@ import re
 from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
 
-
 class PDFExtractionError(Exception):
     """Exception levée lors d'erreurs d'extraction PDF"""
     pass
-
 
 class CamelotPDFExtractor:
     """Extracteur PDF basé sur Camelot-Py"""
@@ -142,14 +140,12 @@ class CamelotPDFExtractor:
             # Vérifier si c'est une ligne d'en-tête
             if self._is_header_row(cleaned_row):
                 if self.debug_mode:
-                    print(f"    En-tête supprimé: {cleaned_row}")
-                continue
+                                    continue
             
             # Vérifier si c'est une ligne de pagination
             if self._is_pagination_row(cleaned_row):
                 if self.debug_mode:
-                    print(f"    Pagination supprimée: {cleaned_row}")
-                continue
+                                    continue
             
             # Garder les lignes avec du contenu
             if any(cell.strip() for cell in cleaned_row):
