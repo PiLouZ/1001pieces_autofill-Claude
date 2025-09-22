@@ -140,12 +140,14 @@ class CamelotPDFExtractor:
             # Vérifier si c'est une ligne d'en-tête
             if self._is_header_row(cleaned_row):
                 if self.debug_mode:
-                                    continue
-            
+                    print(f"En-tête détecté et ignoré: {cleaned_row}")
+                continue
+
             # Vérifier si c'est une ligne de pagination
             if self._is_pagination_row(cleaned_row):
                 if self.debug_mode:
-                                    continue
+                    print(f"Pagination détectée et ignorée: {cleaned_row}")
+                continue
             
             # Garder les lignes avec du contenu
             if any(cell.strip() for cell in cleaned_row):
@@ -185,11 +187,24 @@ class CamelotPDFExtractor:
         """
         # Joindre la ligne et nettoyer
         row_text = ' '.join(row).strip()
-        
-        # Regex précise pour détecter les vrais en-têtes
-        # Ne supprime que les lignes commençant par "Réf" ou "Page"
-        header_pattern = r'^(Réf.*|Page.*)'
-        
+
+        # Détection spécifique pour lignes d'en-têtes communes
+        header_terms = [
+            'réf. technique', 'réf. commerciale', 'ref technique', 'ref commerciale',
+            'référence technique', 'référence commerciale', 'page',
+            'designation', 'description', 'libellé'
+        ]
+
+        # Vérifier si la ligne contient principalement des termes d'en-têtes
+        row_lower = row_text.lower()
+        if any(term in row_lower for term in header_terms):
+            # Vérifier que ce n'est pas une vraie donnée (pas de chiffres/codes produit)
+            if not re.search(r'\b\d{3,}\b', row_text):  # Pas de codes à 3+ chiffres
+                return True
+
+        # Regex pour détecter les en-têtes de colonnes
+        header_pattern = r'^(Réf\.?\s*(technique|commerciale|Technique|Commerciale)|Page.*|REFERENCE|REF\.|Référence)'
+
         return bool(re.match(header_pattern, row_text, re.IGNORECASE))
     
     def _is_pagination_row(self, row: List[str]) -> bool:

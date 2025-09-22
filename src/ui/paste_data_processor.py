@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from src.core.config import Config
 from src.core.logger import app_logger
 
+
 @dataclass
 class PasteProcessingResult:
     """Résultat du traitement des données collées"""
@@ -24,6 +25,7 @@ class PasteProcessingResult:
     def __post_init__(self):
         if self.duplicates_list is None:
             self.duplicates_list = []
+
 
 class PasteDataProcessor:
     """
@@ -187,8 +189,9 @@ class PasteDataProcessor:
             app_logger.warning(
                 f"Données ligne {row_idx + 1} avec avertissement: {validation_result.error_message}"
             )
-            app_logger.warning(f"Ligne {row_idx + 1}: {validation_result.error_message}")
-                        return False  # Mais on continue l'import
+            print(f"⚠️ Ligne {row_idx + 1}: VALIDATION: {validation_result.error_message} - Continuant l'import...")
+            print(f"    Données concernées: {device_data}")
+            return False  # Mais on continue l'import
         return True
     
     def process_rows_batch(self, rows: List[List[str]], ref_piece: str, third_column_choice: str, 
@@ -210,6 +213,7 @@ class PasteDataProcessor:
         """
         result = PasteProcessingResult()
         
+        print(f"\n🔍 Début du traitement de {len(rows)} lignes d'import par collage")
         
         for row_idx, row_data in enumerate(rows):
             # Parser et mapper les données
@@ -225,12 +229,15 @@ class PasteDataProcessor:
                     clean_row.append('')
             
             num_cols = len(clean_row)
+            print(f"\n🔵 Ligne {row_idx + 1}: {num_cols} colonnes - {clean_row[:4]}{'...' if len(clean_row) > 4 else ''}")
             
             # Mapper les données
             appareil_data = self.map_row_to_device_data(clean_row, third_column_choice)
             
             if appareil_data is None:
-                                                result.ignored_count += 1
+                print(f"❌ REJET #{result.ignored_count + 1} - Ligne {row_idx + 1}: {num_cols} colonne(s) non supportée(s)")
+                print(f"    Données: {clean_row}")
+                result.ignored_count += 1
                 continue
             
             # Ajouter la catégorie si spécifiée
@@ -274,7 +281,8 @@ class PasteDataProcessor:
         if existing_device:
             # Appareil existant - mettre à jour les champs manquants
             appareil_id = existing_device['id']
-                        
+            print(f"🔄 Ligne {row_idx + 1}: Appareil existant trouvé (ID: {appareil_id})")
+            
             # Préparer les mises à jour nécessaires
             updates = {}
             for field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref', 'other_ref', 'category', 'notes']:
@@ -285,6 +293,7 @@ class PasteDataProcessor:
             # Appliquer les mises à jour
             if updates:
                 self.main_window._update_device_info(appareil_id, updates)
+                print(f"  ⚙️ Mis à jour: {list(updates.keys())}")
                 device_result['action'] = 'updated'
             else:
                 device_result['action'] = 'found'
@@ -300,17 +309,21 @@ class PasteDataProcessor:
                 if filtered_data:
                     appareil_id = self.main_window._create_new_device(filtered_data)
                     if appareil_id:
-                                                device_result['action'] = 'created'
+                        print(f"✅ Ligne {row_idx + 1}: Nouvel appareil créé (ID: {appareil_id})")
+                        device_result['action'] = 'created'
                         device_result['device_id'] = appareil_id
                     else:
-                                                device_result['action'] = 'failed'
+                        print(f"❌ Ligne {row_idx + 1}: Échec création appareil")
+                        device_result['action'] = 'failed'
                         return device_result
                 else:
-                                        device_result['action'] = 'failed'
+                    print(f"❌ Ligne {row_idx + 1}: Données appareil vides après filtrage")
+                    device_result['action'] = 'failed'
                     return device_result
                     
             except Exception as e:
-                                device_result['action'] = 'failed'
+                print(f"❌ Ligne {row_idx + 1}: Erreur création appareil: {e}")
+                device_result['action'] = 'failed'
                 return device_result
         
         # Créer l'association pièce si nécessaire
@@ -567,6 +580,7 @@ class PasteDataProcessor:
         # Compter les lignes originales
         result.no_piece_ref_count = len(imported_data)
         
+        print(f"\n🔍 Début du traitement de {len(imported_data)} lignes d'import {import_type}")
         
         for row_idx, row in enumerate(imported_data):
             result.no_piece_ref_count += 1  # Toutes les lignes traitées
@@ -586,7 +600,8 @@ class PasteDataProcessor:
                 device_key = self._make_device_key(device_data)
                 if device_key in seen_device_refs and device_key != "|":
                     result.duplicates_in_file += 1
-                                        continue
+                    print(f"  🔄 Doublon dans le fichier ignoré - Ligne {row_idx + 1}: {device_key}")
+                    continue
                 elif device_key != "|":
                     seen_device_refs.add(device_key)
                 
@@ -600,7 +615,8 @@ class PasteDataProcessor:
                     self._update_import_result_stats(result, device_result)
                     
             except Exception as e:
-                                result.ignored_count += 1
+                print(f"❌ Erreur ligne {row_idx + 1}: {e}")
+                result.ignored_count += 1
                 continue
         
         return result
@@ -689,7 +705,8 @@ class PasteDataProcessor:
         if existing_device:
             # Appareil existant - mettre à jour avec les nouvelles valeurs
             device_id = existing_device['id']
-                        
+            print(f"🔄 Ligne {row_idx + 1}: Appareil existant trouvé (ID: {device_id})")
+            
             # Pour les imports, mettre à jour si nouvelle valeur fournie
             updates = {}
             for field in ['type', 'manufacturer', 'ref_modele', 'commercial_ref', 'other_ref', 'notes']:
@@ -699,6 +716,7 @@ class PasteDataProcessor:
             
             if updates:
                 self.main_window._update_device_info(device_id, updates)
+                print(f"  ⚙️ Mis à jour: {list(updates.keys())}")
                 device_result['action'] = 'updated'
             else:
                 device_result['action'] = 'found'
@@ -709,7 +727,9 @@ class PasteDataProcessor:
             # Nouvel appareil à créer
             if (device_data.get('ref_modele', '').strip() or 
                 device_data.get('commercial_ref', '').strip()):
-
+                
+                print(f"✨ Ligne {row_idx + 1}: Création d'un nouvel appareil")
+                
                 # Essayer l'auto-complétion AVANT création
                 auto_completion_success = False
                 if (not device_data.get('type') or not device_data.get('manufacturer')):
@@ -728,11 +748,13 @@ class PasteDataProcessor:
                 if filtered_data:
                     device_id = self.db_manager.insert_appareil(filtered_data)
                     if device_id:
+                        print(f"  ✅ Nouvel appareil créé (ID: {device_id})")
                         device_result['action'] = 'created'
                         device_result['device_id'] = device_id
                         device_result['needs_completion'] = self.main_window._needs_manual_completion(filtered_data)
                     else:
-                                                device_result['action'] = 'failed'
+                        print(f"❌ Ligne {row_idx + 1}: Échec création appareil")
+                        device_result['action'] = 'failed'
                         return device_result
                 else:
                     device_result['action'] = 'failed'

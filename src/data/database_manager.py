@@ -752,13 +752,13 @@ class DatabaseManager:
                         order_by = f" ORDER BY a.[{Config.DB_HEADERS[sort_column]}] {sort_order or 'ASC'}"
                         query += order_by
                     
-                    # Ajouter LIMIT/OFFSET si nécessaire  
+                    # Ajouter LIMIT/OFFSET si nécessaire
                     if limit:
                         query += f" LIMIT {limit}"
                         if offset:
                             query += f" OFFSET {offset}"
-                    
-                                        return self.execute_query(query, params)
+
+                    return self.execute_query(query, params)
             
             # Fallback vers méthode complète pour cas complexes
             return self._load_data_original(search_term, column_filters, limit, offset,
@@ -1585,6 +1585,34 @@ class DatabaseManager:
             
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des doublons ref_modele: {e}")
+
+    def get_device_info(self, device_id: int) -> Optional[Dict[str, Any]]:
+        """Récupérer les informations d'un appareil par son ID"""
+        try:
+            query = """
+                SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
+                FROM appareils
+                WHERE id = ?
+            """
+            result = self.execute_query(query, [device_id])
+
+            if result:
+                row = result[0]
+                return {
+                    'id': row[0],
+                    'type': row[1],
+                    'manufacturer': row[2],
+                    'ref_modele': row[3],
+                    'commercial_ref': row[4],
+                    'other_ref': row[5],
+                    'category': row[6],
+                    'notes': row[7]
+                }
+            return None
+
+        except sqlite3.Error as e:
+            app_logger.error(f"Erreur lors de la récupération des infos appareil {device_id}: {e}")
+            return None
 
     def get_devices_by_ref_modele(self, ref_modele: str) -> List[Tuple]:
         """Récupérer tous les appareils ayant exactement la même ref_modele"""

@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import QProgressDialog, QApplication
 from PyQt5.QtCore import Qt
 from src.core.logger import app_logger
 
+
 class FileProcessingService:
     """
     Service spécialisé pour le traitement des fichiers et imports
@@ -133,7 +134,7 @@ class FileProcessingService:
         try:
             return self.main_window.import_manager.load_pdf_data(pdf_path, max_rows=3)
         except Exception as e:
-            app_logger.error("Erreur", e)
+            print(f"Erreur lecture aperçu PDF: {e}")
             return []
     
     def _process_pdf_files(self, file_paths: List[str], third_column_choice: str) -> Optional[Tuple[List, List, List]]:
@@ -190,7 +191,8 @@ class FileProcessingService:
                 self.main_window._show_error("Aucune donnée extraite des fichiers PDF")
                 return None
             
-                        return all_converted_data, processed_files, pdf_files_info
+            print(f"📊 Total des lignes converties pour traitement: {len(all_converted_data)}")
+            return all_converted_data, processed_files, pdf_files_info
             
         except Exception as e:
             app_logger.error(f"Erreur traitement fichiers PDF: {e}")

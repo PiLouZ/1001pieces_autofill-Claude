@@ -389,7 +389,7 @@ class DatabaseOperationsService(BaseService):
             for device_id in device_ids:
                 info = self.db_manager.get_device_info(device_id)
                 if info:
-                    devices_info.append(f"{info.get('marque', '')} {info.get('modele', '')}")
+                    devices_info.append(f"{info.get('manufacturer', '')} {info.get('type', '')}")
 
             # Effectuer la suppression
             deleted_count = 0

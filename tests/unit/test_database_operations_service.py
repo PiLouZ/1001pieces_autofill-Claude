@@ -237,7 +237,7 @@ class TestDatabaseOperationsService:
     def _mock_header_item(self, col):
         """Helper pour mock des headers"""
         item = Mock()
-        headers = ['id', 'marque', 'modele', 'reference']
+        headers = ['id', 'manufacturer', 'type', 'reference']
         item.text.return_value = headers[col] if col < len(headers) else f'col_{col}'
         return item
 
@@ -290,9 +290,9 @@ class TestDatabaseOperationsService:
 
         # Mock des infos d'appareils
         database_service.db_manager.get_device_info.side_effect = [
-            {'marque': 'Samsung', 'modele': 'WF80F5E3U4W'},
-            {'marque': 'LG', 'modele': 'F4WV710S2E'},
-            {'marque': 'Bosch', 'modele': 'WAG24060FF'}
+            {'manufacturer': 'Samsung', 'type': 'WF80F5E3U4W'},
+            {'manufacturer': 'LG', 'type': 'F4WV710S2E'},
+            {'manufacturer': 'Bosch', 'type': 'WAG24060FF'}
         ]
 
         database_service.db_manager.delete_device.return_value = True
@@ -330,7 +330,7 @@ class TestDatabaseOperationsService:
         """Test suppression avec échecs partiels"""
         device_ids = [123, 124, 125]
 
-        database_service.db_manager.get_device_info.return_value = {'marque': 'Test', 'modele': 'Test'}
+        database_service.db_manager.get_device_info.return_value = {'manufacturer': 'Test', 'type': 'Test'}
         # Mock: premier réussit, deuxième échoue, troisième réussit
         database_service.db_manager.delete_device.side_effect = [True, False, True]
 
@@ -485,7 +485,7 @@ class TestDatabaseOperationsService:
 
         # Test signal suppression
         database_service.db_manager.delete_device.return_value = True
-        database_service.db_manager.get_device_info.return_value = {'marque': 'Test', 'modele': 'Test'}
+        database_service.db_manager.get_device_info.return_value = {'manufacturer': 'Test', 'type': 'Test'}
         with patch.object(database_service, '_get_selected_device_ids', return_value=[123]):
             with patch.object(database_service, '_confirm_deletion', return_value=True):
                 database_service.delete_selected_devices()
