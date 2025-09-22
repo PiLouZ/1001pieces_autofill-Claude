@@ -295,7 +295,7 @@ class TestDatabaseOperationsService:
             {'manufacturer': 'Bosch', 'type': 'WAG24060FF'}
         ]
 
-        database_service.db_manager.delete_device.return_value = True
+        database_service.db_manager.delete_appareil.return_value = True
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
             with patch.object(database_service, '_confirm_deletion', return_value=True):
@@ -303,7 +303,7 @@ class TestDatabaseOperationsService:
 
         # Vérifications
         assert deleted_count == 3
-        assert database_service.db_manager.delete_device.call_count == 3
+        assert database_service.db_manager.delete_appareil.call_count == 3
         database_service.table_controller.load_data.assert_called_once()
         database_service.cache_service.invalidate_all.assert_called_once()
         database_service.user_interaction_service.show_success.assert_called_once()
@@ -317,7 +317,7 @@ class TestDatabaseOperationsService:
                 deleted_count = database_service.delete_selected_devices()
 
         assert deleted_count == 0
-        database_service.db_manager.delete_device.assert_not_called()
+        database_service.db_manager.delete_appareil.assert_not_called()
 
     def test_delete_selected_devices_no_selection(self, database_service):
         """Test suppression sans sélection"""
@@ -332,7 +332,7 @@ class TestDatabaseOperationsService:
 
         database_service.db_manager.get_device_info.return_value = {'manufacturer': 'Test', 'type': 'Test'}
         # Mock: premier réussit, deuxième échoue, troisième réussit
-        database_service.db_manager.delete_device.side_effect = [True, False, True]
+        database_service.db_manager.delete_appareil.side_effect = [True, False, True]
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
             with patch.object(database_service, '_confirm_deletion', return_value=True):
@@ -484,7 +484,7 @@ class TestDatabaseOperationsService:
         database_service.data_saved.emit.assert_called_once_with(1)
 
         # Test signal suppression
-        database_service.db_manager.delete_device.return_value = True
+        database_service.db_manager.delete_appareil.return_value = True
         database_service.db_manager.get_device_info.return_value = {'manufacturer': 'Test', 'type': 'Test'}
         with patch.object(database_service, '_get_selected_device_ids', return_value=[123]):
             with patch.object(database_service, '_confirm_deletion', return_value=True):

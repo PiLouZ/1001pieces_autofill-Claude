@@ -394,7 +394,7 @@ class DatabaseOperationsService(BaseService):
             # Effectuer la suppression
             deleted_count = 0
             for device_id in device_ids:
-                if self.db_manager.delete_device(device_id):
+                if self.db_manager.delete_appareil(device_id):
                     deleted_count += 1
                 else:
                     app_logger.warning(f"Échec suppression appareil ID: {device_id}")
