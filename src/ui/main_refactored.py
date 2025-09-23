@@ -839,7 +839,7 @@ class MainWindow(QMainWindow):
     
     def _navigate_to_empty_cell(self, direction='down'):
         """Navigation intelligente - PHASE 5: Délégation vers CellEditingService"""
-        self.cell_editing_service.navigate_to_empty_cell(direction)
+        return self.cell_editing_service.navigate_to_empty_cell(direction)
 
     def _show_column_values_list(self):
         """Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D) - Délégation au service"""
@@ -2470,7 +2470,9 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """Supprimer les lignes sélectionnées"""
         # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
         if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
-            self.database_operations_service.delete_selected_devices(selected_rows)
+            # Ne pas passer selected_rows car ce sont des numéros de ligne, pas des IDs d'appareils
+            # Le service va récupérer les vrais IDs via _get_selected_device_ids()
+            self.database_operations_service.delete_selected_devices()
 
     def keyPressEvent(self, event):
         """Gestion des raccourcis clavier - avec délégation conditionnelle au service"""

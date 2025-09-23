@@ -124,7 +124,15 @@ class NavigationService(QObject):
 
                 # Recharger les données avec le terme de recherche courant
                 if hasattr(self.table_controller, 'load_data'):
-                    search_term = getattr(self.table_controller, 'current_search_term', None)
+                    # Utiliser la méthode centralisée pour récupérer le terme de recherche
+                    search_term = None
+                    if (hasattr(self.parent_window, 'advanced_search_service') and
+                        hasattr(self.parent_window.advanced_search_service, 'get_current_search_term_with_fallback')):
+                        search_term = self.parent_window.advanced_search_service.get_current_search_term_with_fallback(self.parent_window)
+                    else:
+                        # Fallback vers current_search_term du table_controller
+                        search_term = getattr(self.table_controller, 'current_search_term', None)
+
                     self.table_controller.load_data(search_term)
                 self.update_pagination_controls()
 

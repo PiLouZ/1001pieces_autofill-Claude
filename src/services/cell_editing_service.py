@@ -266,12 +266,27 @@ class CellEditingService(QObject):
     def _update_statistics_after_edit(self, item: QTableWidgetItem):
         """Mettre à jour les statistiques après édition"""
         try:
-            # Mettre à jour les boutons et compteurs si nécessaire
-            if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
-                self.parent_window._update_incomplete_button_visibility()
-                
-            # Rafraîchir la colonne de comptage si modifiée
+            # Récupérer le nom de la colonne éditée
             column_name = self._get_db_column_name(item.column())
+
+            # Mettre à jour le bouton lignes incomplètes si on édite Type ou Fabricant
+            if column_name in ['type', 'manufacturer']:  # Seulement si on édite les champs critiques
+                # Forcer l'invalidation du cache du service incomplete_button
+                if hasattr(self.parent_window, 'incomplete_button_service'):
+                    self.parent_window.incomplete_button_service._cache_valid = False
+
+                # Utiliser un appel différé pour éviter les problèmes de synchronisation
+                from PyQt5.QtCore import QTimer
+                def update_incomplete_button():
+                    if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
+                        self.parent_window._update_incomplete_button_visibility()
+                QTimer.singleShot(100, update_incomplete_button)
+            else:
+                # Pour les autres colonnes, appel direct
+                if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
+                    self.parent_window._update_incomplete_button_visibility()
+
+            # Rafraîchir la colonne de comptage si modifiée
             if column_name == 'pieces_count' and hasattr(self.parent_window, '_refresh_pieces_count_column'):
                 self.parent_window._refresh_pieces_count_column()
 

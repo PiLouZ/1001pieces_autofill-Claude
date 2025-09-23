@@ -83,8 +83,21 @@ class DatabaseOperationsService(BaseService):
             self.log_operation("add_new_device", f"Nouvel appareil ajouté avec ID: {device_id}", "info")
 
             # Recharger la table
-            if self.table_controller:
-                self.table_controller.load_data()
+            if hasattr(self.parent_window, 'table_controller') and self.parent_window.table_controller:
+                self.parent_window.table_controller.load_data()
+
+            # Mettre à jour le bouton lignes incomplètes après ajout
+            # Forcer l'invalidation du cache du service incomplete_button
+            if hasattr(self.parent_window, 'incomplete_button_service'):
+                self.parent_window.incomplete_button_service._cache_valid = False
+
+            # Utiliser un appel différé pour éviter les problèmes de synchronisation
+            from PyQt5.QtCore import QTimer
+            def update_incomplete_button():
+                if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
+                    self.parent_window._update_incomplete_button_visibility()
+
+            QTimer.singleShot(100, update_incomplete_button)  # 100ms de délai
 
             # Invalider le cache
             cache_service = getattr(self, 'cache_service', None)
@@ -146,14 +159,26 @@ class DatabaseOperationsService(BaseService):
                     cells_saved = sum(len(updates) for updates in updates_by_db_id.values())
                     app_logger.info(f"Sauvegarde batch réussie: {cells_saved} cellules")
 
-                    # Nettoyer les cellules modifiées
+                    # Nettoyer les cellules modifiées du parent window ET du service
                     self.modified_cells.clear()
+                    if hasattr(self.parent_window, 'modified_cells'):
+                        self.parent_window.modified_cells.clear()
 
                     # Mettre à jour les indicateurs UI
                     self._update_save_indicators(True)
 
                     # Émettre le signal
                     self.data_saved.emit(cells_saved)
+
+                    # Mettre à jour le bouton lignes incomplètes après sauvegarde batch
+                    from PyQt5.QtCore import QTimer
+                    def update_incomplete_button_after_batch():
+                        if hasattr(self.parent_window, 'incomplete_button_service'):
+                            self.parent_window.incomplete_button_service.invalidate_cache("sauvegarde batch")
+                        if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
+                            self.parent_window._update_incomplete_button_visibility()
+
+                    QTimer.singleShot(100, update_incomplete_button_after_batch)
 
                     return True
                 else:
@@ -255,6 +280,7 @@ class DatabaseOperationsService(BaseService):
             # Vérifier s'il y a des modifications à sauvegarder
             if not parent_modified_cells:
                 return True
+
 
             # Convertir modified_cells en format attendu
             updates_by_db_id = self._convert_modified_cells_to_updates(parent_modified_cells)
@@ -408,8 +434,21 @@ class DatabaseOperationsService(BaseService):
                 app_logger.info(f"Suppression réussie: {deleted_count} appareils")
 
                 # Recharger la table
-                if self.table_controller:
-                    self.table_controller.load_data()
+                if hasattr(self.parent_window, 'table_controller') and self.parent_window.table_controller:
+                    self.parent_window.table_controller.load_data()
+
+                # Mettre à jour le bouton lignes incomplètes après suppression
+                # Forcer l'invalidation du cache du service incomplete_button
+                if hasattr(self.parent_window, 'incomplete_button_service'):
+                    self.parent_window.incomplete_button_service._cache_valid = False
+
+                # Utiliser un appel différé pour éviter les problèmes de synchronisation
+                from PyQt5.QtCore import QTimer
+                def update_incomplete_button():
+                    if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
+                        self.parent_window._update_incomplete_button_visibility()
+
+                QTimer.singleShot(100, update_incomplete_button)  # 100ms de délai
 
                 # Invalider le cache
                 cache_service = getattr(self, 'cache_service', None)
@@ -611,24 +650,22 @@ class DatabaseOperationsService(BaseService):
             for item in table.selectedItems():
                 selected_rows.add(item.row())
 
-            # Récupérer les IDs depuis Qt.UserRole (pas depuis le texte des colonnes)
-            for row in selected_rows:
-                # Chercher l'ID dans n'importe quelle colonne avec Qt.UserRole
-                device_id = None
-                for col in range(table.columnCount()):
-                    item = table.item(row, col)
-                    if item and item.data(Qt.UserRole) is not None:
-                        try:
-                            device_id = int(item.data(Qt.UserRole))
-                            break
-                        except (ValueError, TypeError):
-                            continue
+            app_logger.debug(f"Lignes sélectionnées détectées: {selected_rows}")
 
-                if device_id is not None:
-                    device_ids.append(device_id)
-                    app_logger.debug(f"ID appareil trouvé pour ligne {row}: {device_id}")
-                else:
-                    app_logger.warning(f"Aucun ID trouvé pour la ligne sélectionnée {row}")
+            # Récupérer les vrais IDs d'appareils via table_fill_service
+            for row in selected_rows:
+                try:
+                    # Utiliser la méthode existante qui connaît la structure de données
+                    device_id = self.parent_window.table_fill_service.get_db_id_from_row(table, row)
+                    if device_id:
+                        device_ids.append(device_id)
+                        app_logger.debug(f"ID appareil trouvé pour ligne {row}: {device_id}")
+                    else:
+                        app_logger.warning(f"Aucun ID trouvé pour la ligne sélectionnée {row}")
+                except Exception as e:
+                    app_logger.error(f"Erreur récupération ID pour ligne {row}: {e}")
+
+            app_logger.info(f"IDs finaux récupérés: {device_ids}")
 
         except Exception as e:
             app_logger.error(f"Erreur récupération IDs sélectionnés: {e}")

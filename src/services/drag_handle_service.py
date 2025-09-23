@@ -205,20 +205,20 @@ class DragHandle(QWidget):
     def mouseReleaseEvent(self, event):
         if not self.dragging:
             return
-            
-        # Sauvegarder et ajouter à l'historique uniquement au relâchement
+
+        # Sauvegarder et ajouter à l'historique uniquement au relâchement (pour drag, pas double-clic)
         if self.history_pending and self.main_window and self.drag_direction:
             direction_text = "vers le bas" if self.drag_direction == "down" else "vers le haut"
             self.main_window.user_interaction_service.add_to_history(f"Duplication {direction_text}")
             # Sauvegarder les modifications dans la base de données
             self.main_window._save_drag_changes()
-            
+
             # Plus besoin de recharger la colonne Nb Pièces (supprimée)
-        
+
         self.dragging = False
         self.history_pending = False
         self.drag_direction = None
-        
+
         # Arrêter le défilement automatique
         self._stop_auto_scroll()
     
@@ -248,9 +248,9 @@ class DragHandle(QWidget):
         """Dupliquer automatiquement vers le bas jusqu'aux cellules vides"""
         if not self.table.selectedRanges():
             return
-            
+
         selection = self.table.selectedRanges()[0]
-        
+
         # Collecter les données source
         source_data = []
         for row in range(selection.topRow(), selection.bottomRow() + 1):
@@ -259,44 +259,90 @@ class DragHandle(QWidget):
                 item = self.table.item(row, col)
                 row_data.append((col, item.text() if item else ""))
             source_data.append(row_data)
-        
+
         if not source_data:
             return
-        
+
         # Chercher jusqu'où dupliquer (s'arrêter aux cellules vides)
         start_row = selection.bottomRow() + 1
         end_row = self._find_fill_end_row(selection, start_row)
-        
+
         if start_row > end_row:
             return  # Aucune ligne à remplir
-        
+
         # Calculer le nombre de lignes à dupliquer
         num_rows = end_row - start_row + 1
         source_row_count = len(source_data)
-        
+
         # Effectuer la duplication
         duplicated_cells = 0
+        modified_rows = []  # Suivre les lignes modifiées
+
         for i in range(num_rows):
             dest_row = start_row + i
             source_row_idx = i % source_row_count  # Répéter le pattern source
-            
+
+            row_modified = False
             for col_idx, source_value in source_data[source_row_idx]:
                 if dest_row < self.table.rowCount():
                     new_item = QTableWidgetItem(source_value)
                     self.table.setItem(dest_row, col_idx, new_item)
                     duplicated_cells += 1
-        
-        # Marquer la modification pour l'historique
-        if duplicated_cells > 0:
+                    row_modified = True
+
+            if row_modified:
+                modified_rows.append(dest_row)
+
+        # Sauvegarder et historique pour le double-clic
+        if duplicated_cells > 0 and self.main_window:
             # Sélectionner la nouvelle plage
             new_selection = QTableWidgetSelectionRange(
                 selection.topRow(), selection.leftColumn(),
                 end_row, selection.rightColumn()
             )
             self.table.setRangeSelected(new_selection, True)
-            
-            # La sauvegarde et l'historique sont gérés par mouseReleaseEvent
+
+            # Ajouter à l'historique
+            self.main_window.user_interaction_service.add_to_history("Duplication automatique vers le bas")
+
+            # Sauvegarder uniquement les lignes modifiées (pas toutes les lignes)
+            self._save_auto_fill_changes(modified_rows, selection.leftColumn(), selection.rightColumn())
     
+    def _save_auto_fill_changes(self, modified_rows, start_col, end_col):
+        """Sauvegarder uniquement les cellules modifiées par auto-fill (double-clic)"""
+        try:
+            # Suspendre les invalidations de cache pendant l'auto-fill
+            if hasattr(self.main_window, 'db_manager'):
+                cache_service = getattr(self.main_window.db_manager, 'cache_invalidation', None)
+                if cache_service:
+                    cache_service.suspend_invalidation("auto-fill double-clic")
+
+            saved_count = 0
+            cells_to_clean = []  # Cellules à nettoyer de modified_cells
+
+            for row in modified_rows:
+                for col in range(start_col, end_col + 1):
+                    item = self.table.item(row, col)
+                    if item and hasattr(self.main_window, 'cell_editing_service'):
+                        # Sauvegarder uniquement les cellules avec ID valide
+                        if self.main_window.cell_editing_service.update_cell_in_db(item, skip_history=True):
+                            saved_count += 1
+                            cells_to_clean.append((row, col))
+
+            # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
+            if hasattr(self.main_window, 'modified_cells') and cells_to_clean:
+                for cell_coords in cells_to_clean:
+                    self.main_window.modified_cells.discard(cell_coords)
+
+        except Exception as e:
+            app_logger.error(f"Erreur sauvegarde auto-fill: {e}")
+        finally:
+            # Reprendre les invalidations avec une invalidation globale
+            if hasattr(self.main_window, 'db_manager'):
+                cache_service = getattr(self.main_window.db_manager, 'cache_invalidation', None)
+                if cache_service:
+                    cache_service.resume_invalidation(force_invalidate=True)
+
     def _find_fill_end_row(self, selection, start_row):
         """Trouver la dernière ligne à remplir (tant que les cellules sont vides dans la sélection)"""
         # Regarder dans toutes les colonnes de la sélection
@@ -308,11 +354,11 @@ class DragHandle(QWidget):
                 if item and item.text().strip():
                     has_non_empty = True
                     break
-            
+
             # Si on trouve une cellule non-vide, s'arrêter avant cette ligne
             if has_non_empty:
                 return row - 1
-        
+
         # Si toutes les lignes jusqu'à la fin sont vides, aller jusqu'à la fin du tableau
         return self.table.rowCount() - 1
     

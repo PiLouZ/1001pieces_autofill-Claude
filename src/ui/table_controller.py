@@ -189,10 +189,13 @@ class TableController:
         start_time = time.time()
         
         try:
+            # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
+            self.current_search_term = search_term
+
             # Réinitialiser le tri seulement si c'est une nouvelle recherche ET qu'on n'est pas en train de faire un tri
             # Ne pas réinitialiser si c'est un appel depuis _apply_database_sort
-            if (is_search and 
-                search_term != getattr(self, 'previous_search_term', None) and 
+            if (is_search and
+                search_term != getattr(self, 'previous_search_term', None) and
                 not getattr(self, '_sorting_in_progress', False)):
                 self.current_sort_column = -1
                 self.current_sort_order = Qt.AscendingOrder
@@ -217,7 +220,12 @@ class TableController:
                         column_filters[col_idx] = filter_text
             
             # Ajouter le filtre des lignes incomplètes si activé
-            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+            # CORRECTION: Utiliser le service de tri/filtrage si disponible
+            if (hasattr(self.parent_window, 'sorting_filtering_service') and
+                self.parent_window.sorting_filtering_service):
+                incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
+            else:
+                incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
             
             # SOLUTION FINALE: Parser avec SearchService directement sans condition (UNIVERSALE)
             effective_search_term = search_term
@@ -397,7 +405,12 @@ class TableController:
                         column_filters[col_idx] = filter_text
             
             # Ajouter le filtre des lignes incomplètes si activé
-            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+            # CORRECTION: Utiliser le service de tri/filtrage si disponible
+            if (hasattr(self.parent_window, 'sorting_filtering_service') and
+                self.parent_window.sorting_filtering_service):
+                incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
+            else:
+                incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
             
             # CORRECTION: Parser le terme de recherche si nécessaire
             parsed_search_term = search_term

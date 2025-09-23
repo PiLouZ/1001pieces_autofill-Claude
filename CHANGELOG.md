@@ -2,6 +2,29 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [3.2.1] - 🔧 HOTFIX: Drag Handle Auto-Save Loop - 2025-09-23
+
+### 🐛 **Corrections Critiques**
+- **FIX**: Correction boucle de sauvegarde infinie lors du double-clic sur poignée de drag
+  - **Problème**: Double-clic provoquait "Sauvegarde batch réussie" toutes les 5 secondes
+  - **Cause**: `modified_cells` du parent window n'étaient pas nettoyées après sauvegarde
+  - **Solution**: Nettoyage correct des deux `modified_cells` (service + parent window)
+
+- **FIX**: Optimisation historique des actions de duplication
+  - **Problème**: Multiples messages d'historique lors du double-clic
+  - **Solution**: Un seul message "Duplication automatique vers le bas" + sauvegarde ciblée
+
+### 🔧 **Améliorations Techniques**
+- Séparation logique drag manuel vs auto-fill double-clic
+- Sauvegarde ciblée uniquement des lignes réellement modifiées
+- Nettoyage des logs de debug temporaires
+
+### 📝 **Fichiers Modifiés**
+- `src/services/drag_handle_service.py` : Nouvelle méthode `_save_auto_fill_changes()`
+- `src/services/database_operations_service.py` : Fix nettoyage `parent_window.modified_cells`
+
+---
+
 ## [3.2.0] - 🏗️ REFACTORING ARCHITECTURAL PHASE 3 - 2025-09-17
 
 ### 🎯 **Extraction Services Architecturaux - 5 Services Créés**

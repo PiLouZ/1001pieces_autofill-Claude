@@ -63,8 +63,8 @@ class KeyboardShortcutService(BaseService):
                 Qt.Key.Key_Z: ("undo", "Annuler"),
                 Qt.Key.Key_Y: ("redo", "Refaire"),
                 Qt.Key.Key_D: ("show_column_values", "Afficher valeurs colonne"),
-                Qt.Key.Key_Up: ("navigate_top", "Aller tout en haut"),
-                Qt.Key.Key_Down: ("navigate_bottom", "Aller tout en bas")
+                Qt.Key.Key_Up: ("smart_navigate_up", "Cellule vide précédente ou tout en haut"),
+                Qt.Key.Key_Down: ("smart_navigate_down", "Cellule vide suivante ou tout en bas")
             }
 
             # Raccourcis standard Qt (utiliser strings au lieu d'enums)
@@ -204,6 +204,8 @@ class KeyboardShortcutService(BaseService):
                 "undo": "_undo",
                 "redo": "_redo",
                 "show_column_values": "_show_column_values_list",
+                "smart_navigate_up": lambda: self._handle_navigation_shortcut('up'),
+                "smart_navigate_down": lambda: self._handle_navigation_shortcut('down'),
                 "navigate_top": lambda: self._handle_extreme_navigation('top'),
                 "navigate_bottom": lambda: self._handle_extreme_navigation('bottom'),
                 "refresh": self._handle_refresh_shortcut,
@@ -274,12 +276,22 @@ class KeyboardShortcutService(BaseService):
             app_logger.error(f"❌ Erreur _handle_extreme_navigation: {e}")
 
     def _handle_navigation_shortcut(self, direction: str):
-        """Traiter les raccourcis de navigation dans les cellules vides (legacy)"""
+        """Navigation intelligente hybride : cellule vide OU extrême selon contexte"""
         try:
             if self.parent_window:
+                # D'abord essayer la navigation vers cellule vide
                 method = getattr(self.parent_window, '_navigate_to_empty_cell', None)
                 if method and callable(method):
-                    method(direction=direction)
+                    # Essayer de naviguer vers une cellule vide
+                    found_empty = method(direction=direction)
+
+                    # Si aucune cellule vide trouvée, faire navigation extrême
+                    if not found_empty:
+                        extreme_direction = 'top' if direction == 'up' else 'bottom'
+                        self._handle_extreme_navigation(extreme_direction)
+                        app_logger.debug(f"🔄 Navigation hybride: aucune cellule vide → navigation extrême {extreme_direction}")
+                    else:
+                        app_logger.debug(f"✅ Navigation hybride: cellule vide trouvée en direction {direction}")
 
         except Exception as e:
             app_logger.error(f"❌ Erreur _handle_navigation_shortcut: {e}")

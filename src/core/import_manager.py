@@ -531,7 +531,7 @@ class ImportDialog(QDialog):
                     detected_columns = len(data[0]) if data else 0
                     
         except Exception as e:
-            print(f"Erreur lors de l'analyse du format: {e}")
+            app_logger.debug("Erreur lors de l'analyse du format: {e}")
             detected_columns = 2  # Valeur par défaut
             sample_data = []
         
@@ -715,7 +715,7 @@ class ImportManager:
         """
         Importer un ou plusieurs fichiers
         """
-        print(f"🎯 MÉTHODE import_files APPELÉE avec {len(file_paths)} fichiers: {file_paths}")
+        app_logger.debug("🎯 MÉTHODE import_files APPELÉE avec {len(file_paths)} fichiers: {file_paths}")
         """
         
         Args:
@@ -854,7 +854,7 @@ class ImportManager:
             return results
             
         except Exception as e:
-            print(f"Erreur import drag&drop: {e}")
+            app_logger.debug("Erreur import drag&drop: {e}")
             return None
     
     def _detect_file_type(self, file_path: str) -> Optional[FileType]:
@@ -878,7 +878,7 @@ class ImportManager:
             elif file_type == FileType.PDF:
                 return self.load_pdf_data(file_path, max_rows=5)
         except Exception as e:
-            print(f"Erreur lors du chargement d'échantillon {file_path}: {e}")
+            app_logger.debug("Erreur lors du chargement d'échantillon {file_path}: {e}")
         
         return None
     
@@ -1015,7 +1015,7 @@ class ImportManager:
         BATCH_THRESHOLD = 50  # lignes - batch dès 50 lignes pour optimisation immédiate
         
         if len(data) >= BATCH_THRESHOLD:
-            print(f"🚀 Mode BATCH activé pour {len(data)} lignes (seuil: {BATCH_THRESHOLD})")
+            app_logger.debug("🚀 Mode BATCH activé pour {len(data)} lignes (seuil: {BATCH_THRESHOLD})")
             return self._process_data_import_batch(
                 data, 
                 references_and_labels,
@@ -1024,7 +1024,7 @@ class ImportManager:
                 file_seen_device_refs
             )
         else:
-            print(f"📝 Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
+            app_logger.debug("📝 Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
             return self._process_data_import(
                 data, 
                 references_and_labels,  # Maintenant liste de tuples (ref, label)
@@ -1037,7 +1037,7 @@ class ImportManager:
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                            config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Traiter l'import des données avec les références et libellés séparés"""
-        print(f"🚀 MÉTHODE _process_data_import APPELÉE avec {len(data)} lignes")
+        app_logger.debug("🚀 MÉTHODE _process_data_import APPELÉE avec {len(data)} lignes")
         results = {
             'total_imported': 0,
             'matches_found': 0,
@@ -1071,28 +1071,28 @@ class ImportManager:
                 if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
                     ref_modele = col2
                     commercial_ref = col3
-                    print(f"🔍 FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
+                    app_logger.debug("🔍 FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
                 else:
                     ref_modele = col0
                     commercial_ref = col1
-                    print(f"🔍 FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
+                    app_logger.debug("🔍 FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
             else:
                 # Format standard 2-3 colonnes
                 ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
                 commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
-                print(f"🔍 FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
+                app_logger.debug("🔍 FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
             
             # Vérifier si c'est un doublon dans le fichier
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
-            print(f"🔍 ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
-            print(f"🔍 SEEN_REFS: {list(seen_device_refs)}")
+            app_logger.debug("🔍 ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
+            app_logger.debug("🔍 SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                print(f"  🔄 Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
+                app_logger.debug("  🔄 Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
                 continue  # Les doublons ne sont PAS comptés dans total_imported
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                print(f"✅ LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+                app_logger.debug("✅ LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
             
             results['total_imported'] += 1
             
@@ -1135,20 +1135,20 @@ class ImportManager:
                                 assoc_id, description_updated, association_created = result
                                 if association_created:
                                     results['associations_created'] += 1
-                                    print(f"  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
+                                    app_logger.debug("  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
                                 else:
                                     results['associations_existing'] += 1
-                                    print(f"  🔍 Association existante: {reference} → {label} pour appareil {device_id}")
+                                    app_logger.debug("  🔍 Association existante: {reference} → {label} pour appareil {device_id}")
                         except Exception as e:
-                            print(f"Erreur association {reference}: {e}")
+                            app_logger.debug("Erreur association {reference}: {e}")
         
         return results
     
     def _process_data_import_batch(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                                  config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Version optimisée avec batch processing pour les gros imports"""
-        print(f"🚀 MÉTHODE _process_data_import_batch APPELÉE avec {len(data)} lignes")
-        print(f"🚀 BATCH MODE: Traitement optimisé de {len(data)} lignes")
+        app_logger.debug("🚀 MÉTHODE _process_data_import_batch APPELÉE avec {len(data)} lignes")
+        app_logger.debug("🚀 BATCH MODE: Traitement optimisé de {len(data)} lignes")
         
         results = {
             'total_imported': 0,
@@ -1182,14 +1182,14 @@ class ImportManager:
         QApplication.processEvents()
         
         existing_devices_cache = self._preload_existing_devices()
-        print(f"📊 BATCH: {len(existing_devices_cache)} appareils en cache")
+        app_logger.debug("📊 BATCH: {len(existing_devices_cache)} appareils en cache")
         
         # Cache pour auto-complétion (Type + Fabricant par référence)
         batch_progress.setLabelText("🧠 Construction cache auto-complétion...")
         QApplication.processEvents()
         
         autocomplete_cache = self._build_autocomplete_cache(existing_devices_cache)
-        print(f"🧠 BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
+        app_logger.debug("🧠 BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
         
         # ÉTAPE 2: Traitement en mémoire de toutes les lignes
         batch_progress.setValue(1)
@@ -1232,27 +1232,27 @@ class ImportManager:
                 if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
                     ref_modele = col2
                     commercial_ref = col3
-                    print(f"🔍 BATCH FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
+                    app_logger.debug("🔍 BATCH FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
                 else:
                     ref_modele = col0
                     commercial_ref = col1
-                    print(f"🔍 BATCH FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
+                    app_logger.debug("🔍 BATCH FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
             else:
                 # Format standard 2-3 colonnes
                 ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
                 commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
-                print(f"🔍 BATCH FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
+                app_logger.debug("🔍 BATCH FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
 
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
-            print(f"🔍 BATCH ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
-            print(f"🔍 BATCH SEEN_REFS: {list(seen_device_refs)}")
+            app_logger.debug("🔍 BATCH ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
+            app_logger.debug("🔍 BATCH SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                print(f"  🔄 BATCH Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
+                app_logger.debug("  🔄 BATCH Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
                 continue
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                print(f"✅ BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+                app_logger.debug("✅ BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
 
             # Parser les données AVANT de compter total_imported
             device_data = self._parse_row_data(row, config)
@@ -1312,11 +1312,11 @@ class ImportManager:
         if len(new_devices_batch) != len(new_device_ids):
             app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
         if len(new_devices_batch) != len(new_device_ids):
-            print(f"❌ PROBLÈME: Discordance entre appareils créés et IDs récupérés!")
-            print(f"   new_devices_batch: {len(new_devices_batch)}")
-            print(f"   new_device_ids: {len(new_device_ids)}")
+            app_logger.debug("❌ PROBLÈME: Discordance entre appareils créés et IDs récupérés!")
+            app_logger.debug("   new_devices_batch: {len(new_devices_batch)}")
+            app_logger.debug("   new_device_ids: {len(new_device_ids)}")
             if new_device_ids:
-                print(f"   Premier ID: {new_device_ids[0]}, Dernier ID: {new_device_ids[-1]}")
+                app_logger.debug("   Premier ID: {new_device_ids[0]}, Dernier ID: {new_device_ids[-1]}")
         
         batch_progress.setLabelText(f"🔄 Mise à jour de {len(existing_updates)} appareils existants...")
         QApplication.processEvents()
@@ -1344,18 +1344,18 @@ class ImportManager:
         
         # ALERTE si discordance entre lignes traitées et associations
         if results['total_imported'] != len(all_unique_indices):
-            print(f"❌ PROBLÈME MAJEUR: {results['total_imported']} lignes traitées mais seulement {len(all_unique_indices)} ont des associations!")
-            print(f"   Différence: {results['total_imported'] - len(all_unique_indices)} lignes sans association")
+            app_logger.debug("❌ PROBLÈME MAJEUR: {results['total_imported']} lignes traitées mais seulement {len(all_unique_indices)} ont des associations!")
+            app_logger.debug("   Différence: {results['total_imported'] - len(all_unique_indices)} lignes sans association")
             # Créer l'ensemble attendu basé sur processed_line_index (0, 1, 2, ..., total_imported-1)
             expected_indices = set(range(results['total_imported']))
             missing_indices = expected_indices - all_unique_indices
             if missing_indices:
-                print(f"   Indices manquants (premières 10): {sorted(list(missing_indices))[:10]}")
+                app_logger.debug("   Indices manquants (premières 10): {sorted(list(missing_indices))[:10]}")
             
             # Debug supplémentaire: vérifier si references_and_labels est vide
             if not any(ref for ref, label in references_and_labels if ref):
-                print(f"   🚨 CAUSE PROBABLE: references_and_labels ne contient aucune référence valide!")
-                print(f"   references_and_labels: {references_and_labels}")
+                app_logger.debug("   🚨 CAUSE PROBABLE: references_and_labels ne contient aucune référence valide!")
+                app_logger.debug("   references_and_labels: {references_and_labels}")
         
         if associations_batch:
             batch_results = self._batch_create_associations(associations_batch, new_device_ids)
@@ -1373,7 +1373,7 @@ class ImportManager:
         if hasattr(self.db_manager, 'cache_invalidation'):
             self.db_manager.cache_invalidation.invalidate_after_import(results)
         
-        print(f"✅ BATCH: Terminé - {results['total_imported']} lignes traitées")
+        app_logger.debug("✅ BATCH: Terminé - {results['total_imported']} lignes traitées")
         return results
     
     def _preload_existing_devices(self) -> Dict[str, Dict]:
@@ -1479,7 +1479,7 @@ class ImportManager:
         query = Config.QUERIES['insert_device_batch']
         chunk_size = Config.BATCH_INSERT_SIZE
         
-        print(f"🚀 BATCH INSERT: {len(devices_batch)} appareils à insérer par chunks de {chunk_size}")
+        app_logger.debug("🚀 BATCH INSERT: {len(devices_batch)} appareils à insérer par chunks de {chunk_size}")
         
         # Utiliser une transaction globale pour l'efficacité
         conn = self.db_manager.get_connection()
@@ -1514,23 +1514,23 @@ class ImportManager:
                     if cursor.lastrowid is not None:
                         chunk_ids.append(cursor.lastrowid)
                     else:
-                        print(f"❌ Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
+                        app_logger.debug("❌ Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
                         conn.rollback()
                         return []
                 
                 all_new_ids.extend(chunk_ids)
-                print(f"✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
+                app_logger.debug("✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
             
             conn.commit()
-            print(f"✅ BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
+            app_logger.debug("✅ BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
             return all_new_ids
             
         except Exception as e:
             conn.rollback()
-            print(f"❌ BATCH: Erreur insertion: {e}")
-            print(f"❌ BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
+            app_logger.debug("❌ BATCH: Erreur insertion: {e}")
+            app_logger.debug("❌ BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
             import traceback
-            print(f"❌ BATCH: Stack trace: {traceback.format_exc()}")
+            app_logger.debug("❌ BATCH: Stack trace: {traceback.format_exc()}")
             return []
     
     def _batch_update_devices(self, updates_batch: List[Tuple[int, Dict[str, Any]]]):
@@ -1561,7 +1561,7 @@ class ImportManager:
             conn.commit()
         except Exception as e:
             conn.rollback()
-            print(f"❌ BATCH: Erreur mise à jour: {e}")
+            app_logger.debug("❌ BATCH: Erreur mise à jour: {e}")
     
     def _batch_create_associations(self, associations_batch: List[Tuple], new_device_ids: List[int]) -> Dict[str, int]:
         """Création en lot des associations pièces-appareils"""
@@ -1593,7 +1593,7 @@ class ImportManager:
                     device_id_mapping[cache_key] = device_id
                     new_device_counter += 1
                 else:
-                    print(f"⚠️ BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
+                    app_logger.debug("⚠️ BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
                     continue
             
             try:
@@ -1620,9 +1620,9 @@ class ImportManager:
                     results['existing'] += 1
                     
             except Exception as e:
-                print(f"❌ BATCH: Erreur association {reference}: {e}")
+                app_logger.debug("❌ BATCH: Erreur association {reference}: {e}")
         
-        print(f"🔗 BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
+        app_logger.debug("🔗 BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
         return results
     
     def _parse_row_data(self, row: List[str], config: ImportConfiguration) -> Optional[Dict[str, Any]]:
@@ -1701,10 +1701,10 @@ class ImportManager:
                 params = list(update_data.values()) + [device_id]
                 
                 self.db_manager.execute_query(update_query, params)
-                print(f"🔄 Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
+                app_logger.debug("🔄 Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
         
         except Exception as e:
-            print(f"Erreur mise à jour appareil {device_id}: {e}")
+            app_logger.debug("Erreur mise à jour appareil {device_id}: {e}")
     
     def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
         """Insérer ou trouver un appareil existant"""
@@ -1750,7 +1750,7 @@ class ImportManager:
             return device_id
             
         except Exception as e:
-            print(f"Erreur insertion appareil: {e}")
+            app_logger.debug("Erreur insertion appareil: {e}")
             return None
     
     def _try_auto_complete(self, appareil_data: dict) -> bool:
@@ -1790,16 +1790,16 @@ class ImportManager:
             if results:
                 found_type, found_manufacturer = results[0]
                 
-                print(f"🔍 Autocomplétion trouvée: Type='{found_type}', Fabricant='{found_manufacturer}'")
+                app_logger.debug("🔍 Autocomplétion trouvée: Type='{found_type}', Fabricant='{found_manufacturer}'")
                 
                 # Compléter seulement les champs vides
                 if type_empty:
                     appareil_data['type'] = found_type
-                    print(f"  ✅ Type complété: '' -> '{found_type}'")
+                    app_logger.debug("  ✅ Type complété: '' -> '{found_type}'")
                 
                 if manufacturer_empty:
                     appareil_data['manufacturer'] = found_manufacturer
-                    print(f"  ✅ Fabricant complété: '' -> '{found_manufacturer}'")
+                    app_logger.debug("  ✅ Fabricant complété: '' -> '{found_manufacturer}'")
                 
                 return True
             
@@ -1807,7 +1807,7 @@ class ImportManager:
             return False
                         
         except Exception as e:
-            print(f"Erreur auto-completion: {e}")
+            app_logger.debug("Erreur auto-completion: {e}")
             return False
 
 

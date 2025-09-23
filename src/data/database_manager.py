@@ -698,7 +698,7 @@ class DatabaseManager:
                         display_term = search_term['original']
                     else:
                         display_term = str(search_term)[:50] + '...'
-                print(f"🎯 CACHE HIT pour '{display_term}' (page {offset//limit+1 if limit and offset is not None else 'all'}) - {len(cached_results)} résultats")
+                app_logger.debug(f"🎯 CACHE HIT pour '{display_term}' (page {offset//limit+1 if limit and offset is not None else 'all'}) - {len(cached_results)} résultats")
                 return cached_results
             
             # Pas en cache - on mettra en cache après la requête
@@ -726,7 +726,7 @@ class DatabaseManager:
                     display_term = search_term['original']
                 else:
                     display_term = str(search_term)[:50] + '...'
-            print(f"💾 CACHE MISS pour '{display_term}'{page_info} - {len(results)} résultats mis en cache")
+            app_logger.debug(f"💾 CACHE MISS pour '{display_term}'{page_info} - {len(results)} résultats mis en cache")
         
         return results
     
@@ -1323,7 +1323,7 @@ class DatabaseManager:
                 if cleaned:
                     clean_description = cleaned
             
-            print(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
+            app_logger.debug(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
             description_updated = False
             
             # Étape 1: Vérifier si la pièce existe déjà

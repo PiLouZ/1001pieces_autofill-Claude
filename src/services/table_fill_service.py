@@ -133,7 +133,7 @@ class TableFillService:
                 item.setToolTip("Aucune pièce associée")
         
         # Stocker le db_id dans chaque cellule via UserRole
-        item.setData(Qt.ItemDataRole.UserRole, db_id)
+        item.setData(Qt.UserRole, db_id)
         
         # Optimisation: Mise en évidence des résultats de recherche (sauf pour la colonne Nb Pièces)
         if search_term and col_idx < len(Config.DB_HEADERS):
@@ -185,8 +185,8 @@ class TableFillService:
         # Chercher dans la première cellule non-vide de la ligne
         for col in range(table.columnCount()):
             item = table.item(row, col)
-            if item and item.data(Qt.ItemDataRole.UserRole) is not None:
-                return int(item.data(Qt.ItemDataRole.UserRole))
+            if item and item.data(Qt.UserRole) is not None:
+                return int(item.data(Qt.UserRole))
         raise ValueError(f"Aucun db_id trouvé pour la ligne {row}")
     
     def _update_progress_with_debounce(self, progress_dialog, value, text=None):
