@@ -160,9 +160,9 @@ class DatabaseOperationsService(BaseService):
                     app_logger.info(f"Sauvegarde batch réussie: {cells_saved} cellules")
 
                     # Nettoyer les cellules modifiées du parent window ET du service
+                    # BUGFIX: Utiliser directement parent_modified_cells pour éviter la désynchronisation
+                    parent_modified_cells.clear()
                     self.modified_cells.clear()
-                    if hasattr(self.parent_window, 'modified_cells'):
-                        self.parent_window.modified_cells.clear()
 
                     # Mettre à jour les indicateurs UI
                     self._update_save_indicators(True)
