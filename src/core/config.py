@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.3.0"
+    VERSION = "3.3.1"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -89,7 +89,7 @@ class Config:
     USE_ASYNC_LOAD_DATA = True  # Phase 2d: Migration pilote load_data_async() - TEST A/B ACTIVÉ
 
     # Feature Flags - Phase 4 Event-Driven Save System
-    ENABLE_EVENT_DRIVEN_SAVE = False  # Phase 4: Migration timer → événements - DÉSACTIVÉ => Erreur dans les logs
+    ENABLE_EVENT_DRIVEN_SAVE = True  # Phase 4: Migration timer → événements - ACTIVÉ (EventDrivenSaveService)
 
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3

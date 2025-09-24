@@ -614,6 +614,7 @@ class ImportManager:
     def __init__(self, db_manager, parent_widget=None):
         self.db_manager = db_manager
         self.parent_widget = parent_widget
+        self.main_window = parent_widget  # Pour accès aux services
     
     def load_csv_data(self, file_path: str, max_rows: Optional[int] = None) -> List[List[str]]:
         """
@@ -973,6 +974,10 @@ class ImportManager:
             # Phase 2.3: Invalider le cache après import complet
             if hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
+
+            # Phase 4: Déclencher sauvegarde événementielle + mise à jour bouton incomplet
+            if hasattr(self, 'main_window') and self.main_window:
+                self._trigger_post_import_updates()
 
             return results
 
@@ -1809,6 +1814,26 @@ class ImportManager:
         except Exception as e:
             app_logger.debug("Erreur auto-completion: {e}")
             return False
+
+    def _trigger_post_import_updates(self):
+        """Déclencher les mises à jour post-import (Phase 4 - EventDrivenSaveService)"""
+        try:
+            from ..core.config import Config
+
+            # Déclencher la sauvegarde événementielle si activée
+            if Config.ENABLE_EVENT_DRIVEN_SAVE:
+                if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
+                    self.main_window.event_driven_save_service.handle_import_completed()
+                    app_logger.debug("EventDrivenSaveService: Sauvegarde événementielle déclenchée après import")
+
+            # Toujours déclencher la mise à jour du bouton "lignes à compléter"
+            if hasattr(self.main_window, '_update_incomplete_button_visibility'):
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(200, self.main_window._update_incomplete_button_visibility)
+                app_logger.debug("Mise à jour bouton 'lignes à compléter' programmée")
+
+        except Exception as e:
+            app_logger.error(f"Erreur mises à jour post-import: {e}")
 
 
 # Fonctions utilitaires pour l'intégration

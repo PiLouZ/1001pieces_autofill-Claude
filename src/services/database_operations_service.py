@@ -469,9 +469,14 @@ class DatabaseOperationsService(BaseService):
                         f"{deleted_count} appareil(s) supprimé(s) avec succès"
                     )
 
-                # Feature Flag: Phase 4 - Sauvegarde événementielle après suppression
+                # Feature Flag: Phase 4 - Sauvegarde événementielle après suppression (délégation service)
                 if Config.ENABLE_EVENT_DRIVEN_SAVE:
-                    self._trigger_event_driven_save_after_deletion(deleted_count)
+                    if hasattr(self.parent_window, 'event_driven_save_service') and self.parent_window.event_driven_save_service:
+                        self.parent_window.event_driven_save_service.handle_deletion_completed(deleted_count)
+                    else:
+                        # Fallback si service pas encore initialisé
+                        app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
+                        self._trigger_event_driven_save_after_deletion(deleted_count)
 
                 # Émettre le signal
                 self.device_deleted.emit(device_ids[:deleted_count])

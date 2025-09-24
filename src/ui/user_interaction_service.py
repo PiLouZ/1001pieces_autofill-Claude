@@ -224,7 +224,7 @@ class UserInteractionService:
                 stripped_line.startswith('À compléter :') or 
                 stripped_line.startswith('Doublon ignoré :') or 
                 stripped_line.startswith('Nouvelles :') or 
-                stripped_line.startswith('Déjà associés :')):
+                stripped_line.startswith('Déjà associées :')):
                 # Utiliser des espaces non-sécables pour l'indentation
                 processed_lines.append(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line.strip()}')
             else:

@@ -2,6 +2,47 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [3.3.1] - 🔧 HOTFIX: Factorisation EventDrivenSaveService + Correction Bouton Incomplet - 2025-09-24
+
+### 🏗️ **Factorisation Architecture - EventDrivenSaveService**
+
+#### ✅ **Refactoring Sévère avec Tests Non-Régression**
+- **FACTORISATION**: Création `EventDrivenSaveService` centralisé
+  - **Migration**: 3 méthodes de `main_refactored.py` → service dédié
+  - **Délégation**: 2 services intégrés (`event_handlers`, `database_operations`)
+  - **Architecture**: SRP + DRY respectés, code centralisé
+  - **Fallbacks**: Méthodes `[DEPRECATED]` conservées pour sécurité
+
+#### 🚨 **Corrections Critiques**
+- **FIX**: Signature incorrecte `_convert_modified_cells_to_updates()`
+  - **Problème**: `takes from 1 to 2 positional arguments but 3 were given`
+  - **Solution**: Correction paramètres dans `EventDrivenSaveService.save_cell_immediately()`
+- **FIX**: Bouton "lignes à compléter" non mis à jour après import
+  - **Problème**: Import via `ImportManager` ne déclenchait pas mise à jour UI
+  - **Solution**: `_trigger_post_import_updates()` dans `ImportManager`
+
+#### ✅ **Tests Sévères Réussis**
+- **Baseline**: Documentation complète AVANT factorisation
+- **Validation**: 7/7 tests post-factorisation passés
+- **Architecture**: 16 méthodes, 5/5 vérifications, héritage `BaseService`
+- **Comportement**: 4 flows conformes, fallbacks préservés
+- **Rollback**: Instantané via flag `ENABLE_EVENT_DRIVEN_SAVE`
+
+### 📝 **Fichiers Modifiés**
+- `src/services/event_driven_save_service.py` : Service centralisé créé
+- `src/ui/main_refactored.py` : Délégation + méthodes DEPRECATED
+- `src/services/event_handlers_service.py` : Délégation vers service
+- `src/services/database_operations_service.py` : Délégation vers service
+- `src/core/import_manager.py` : Mise à jour post-import
+
+### 🎯 **Gains Architecturaux**
+- **Maintenabilité**: Code centralisé au lieu de dispersé (3 → 1 fichier)
+- **Testabilité**: Service isolé, tests unitaires simplifiés
+- **Sécurité**: Fallbacks préservés, rollback instantané
+- **Performance**: Overhead négligeable, gain maintenabilité élevé
+
+---
+
 ## [3.3.0] - 🚀 PHASE 4: Migration Sauvegarde Événementielle - 2025-09-23
 
 ### 🎯 **Migration Timer → Événementiel - Performance & UX**
@@ -829,7 +870,7 @@ Appareils :
      ==> Doublon ignoré : 5
 Associations de pièce :
      ==> Nouvelles : 0
-     ==> Déjà associés : 0
+     ==> Déjà associées : 0
 ```
 
 ### 🔧 **Améliorations Techniques**

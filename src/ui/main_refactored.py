@@ -175,6 +175,10 @@ class MainWindow(QMainWindow):
         self.piece_management_service = PieceManagementService(self)
         self.seo_service = SEOService(self)
         self.pieces_list_service = PiecesListService(self)
+
+        # Service de sauvegarde événementielle (Phase 4 - Factorisation)
+        from ..services.event_driven_save_service import EventDrivenSaveService
+        self.event_driven_save_service = EventDrivenSaveService(self)
     
     def _init_ui_services(self):
         """Initialiser les services d'interface utilisateur"""
@@ -958,8 +962,13 @@ class MainWindow(QMainWindow):
             self.save_indicator.setText(Config.get_message('save_pending'))
             self.save_indicator.setStyleSheet("color: orange;")
         else:
-            # Système événementiel: sauvegarder immédiatement
-            self._save_cell_immediately(row, col, new_value)
+            # Système événementiel: déléguer au service centralisé
+            if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+                self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
+            else:
+                # Fallback si service pas encore initialisé
+                app_logger.warning("EventDrivenSaveService non disponible, fallback vers méthode locale")
+                self._save_cell_immediately(row, col, new_value)
         
         # Enregistrer dans l'historique
         self.undo_manager.add_action({
@@ -1244,7 +1253,13 @@ class MainWindow(QMainWindow):
             self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
 
     def _save_cell_immediately(self, row: int, col: int, new_value: str):
-        """Sauvegarde immédiate d'une cellule (système événementiel)"""
+        """
+        [DEPRECATED - Phase 4 Factorisation] Sauvegarde immédiate d'une cellule
+
+        MIGRATION: Cette méthode a été migrée vers EventDrivenSaveService.save_cell_immediately()
+        UTILISATION: Fallback temporaire uniquement
+        TODO: Supprimer après validation complète du service
+        """
         try:
             # Utiliser le DatabaseOperationsService pour sauvegarde immédiate
             if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service'):
@@ -1271,7 +1286,13 @@ class MainWindow(QMainWindow):
             app_logger.error(f"Erreur sauvegarde immédiate cellule ({row}, {col}): {e}")
 
     def _reset_save_indicator(self):
-        """Remettre l'indicateur de sauvegarde à l'état normal"""
+        """
+        [DEPRECATED - Phase 4 Factorisation] Remettre l'indicateur à l'état normal
+
+        MIGRATION: Cette méthode a été migrée vers EventDrivenSaveService._reset_save_indicator()
+        UTILISATION: Fallback temporaire uniquement
+        TODO: Supprimer après validation complète du service
+        """
         try:
             self.save_indicator.setText(Config.get_message('connected'))
             self.save_indicator.setStyleSheet("color: green;")
@@ -1375,7 +1396,7 @@ class MainWindow(QMainWindow):
                 stripped_line.startswith('À compléter :') or 
                 stripped_line.startswith('Doublon ignoré :') or 
                 stripped_line.startswith('Nouvelles :') or 
-                stripped_line.startswith('Déjà associés :')):
+                stripped_line.startswith('Déjà associées :')):
                 # Utiliser des espaces non-sécables pour l'indentation
                 processed_lines.append(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line.strip()}')
             else:
@@ -1786,7 +1807,7 @@ class MainWindow(QMainWindow):
         associations_created = results.get('associations_created', 0)
         associations_existing = results.get('associations_existing', 0)
         summary += f"==> Nouvelles : {associations_created}\n"
-        summary += f"==> Déjà associés : {associations_existing}"
+        summary += f"==> Déjà associées : {associations_existing}"
         
         return summary
 
@@ -1883,7 +1904,7 @@ class MainWindow(QMainWindow):
             # Section Associations de pièce (format exact)
             summary += "Associations de pièce :\n"
             summary += f"     ==> Nouvelles : {results.get('associations_created', 0)}\n"
-            summary += f"     ==> Déjà associés : {results.get('associations_existing', 0)}"
+            summary += f"     ==> Déjà associées : {results.get('associations_existing', 0)}"
             
             # Ajouter SEULEMENT à l'historique (timestamp ajouté automatiquement)
             self.user_interaction_service.add_to_history(summary)
@@ -2613,9 +2634,14 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 # Recharger les données dans le tableau pour refléter les nouveaux ajouts
                 self.table_controller.load_data()
 
-                # Feature Flag: Phase 4 - Sauvegarde événementielle après collage
+                # Feature Flag: Phase 4 - Sauvegarde événementielle après collage (délégation service)
                 if Config.ENABLE_EVENT_DRIVEN_SAVE:
-                    self._trigger_event_driven_save_after_paste(result)
+                    if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+                        self.event_driven_save_service.handle_paste_completed(result)
+                    else:
+                        # Fallback si service pas encore initialisé
+                        app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
+                        self._trigger_event_driven_save_after_paste(result)
 
                 # Log les résultats dans l'historique et afficher le résumé via le service
                 self.paste_results_service.log_paste_results(
@@ -2898,7 +2924,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         return self.device_manager.update_device_info(device_id, updates)
 
     def _trigger_event_driven_save_after_paste(self, result):
-        """Déclencher sauvegarde événementielle après collage"""
+        """
+        [DEPRECATED - Phase 4 Factorisation] Sauvegarde événementielle après collage
+
+        MIGRATION: Cette méthode a été migrée vers EventDrivenSaveService.save_after_paste()
+        UTILISATION: Fallback temporaire uniquement
+        TODO: Supprimer après validation complète du service
+        """
         try:
             if (hasattr(self, 'database_operations_service') and
                 self.database_operations_service and
