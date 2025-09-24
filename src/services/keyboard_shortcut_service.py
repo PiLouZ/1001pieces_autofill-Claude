@@ -297,7 +297,7 @@ class KeyboardShortcutService(BaseService):
             app_logger.error(f"❌ Erreur _handle_navigation_shortcut: {e}")
 
     def _handle_refresh_shortcut(self):
-        """Traiter le raccourci F5 (Actualiser)"""
+        """Traiter le raccourci F5 (Actualiser) - Phase 2d: Migration async pilote"""
         try:
             if self.parent_window:
                 # Utiliser la recherche parsée actuelle
@@ -306,7 +306,17 @@ class KeyboardShortcutService(BaseService):
 
                 if advanced_search_service and table_controller:
                     search_term = advanced_search_service.get_current_search_term_with_fallback(self.parent_window)
-                    table_controller.load_data(search_term)
+
+                    # Phase 2d: Migration pilote avec flag A/B testing
+                    from ..core.config import Config
+                    if Config.USE_ASYNC_LOAD_DATA:
+                        # NOUVEAU: Version async (Phase 2d test pilote)
+                        app_logger.debug("🚀 F5 refresh: utilisation load_data_async()")
+                        table_controller.load_data_async(search_term)
+                    else:
+                        # ORIGINAL: Version sync (stable, fallback)
+                        app_logger.debug("🔄 F5 refresh: utilisation load_data() sync")
+                        table_controller.load_data(search_term)
 
         except Exception as e:
             app_logger.error(f"❌ Erreur _handle_refresh_shortcut: {e}")

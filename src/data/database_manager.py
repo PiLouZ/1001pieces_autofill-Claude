@@ -433,7 +433,7 @@ class DatabaseManager:
             if 'description' not in existing_columns:
                 try:
                     self.cursor.execute("ALTER TABLE pieces ADD COLUMN description TEXT")
-                    print("Colonne 'description' ajoutée à la table pieces")
+                    app_logger.info("Colonne 'description' ajoutée à la table pieces")
                 except sqlite3.OperationalError as e:
                     app_logger.error("Erreur", e)
                     
@@ -441,7 +441,7 @@ class DatabaseManager:
             if 'created_at' not in existing_columns:
                 try:
                     self.cursor.execute("ALTER TABLE pieces ADD COLUMN created_at TEXT")
-                    print("Colonne 'created_at' ajoutée à la table pieces")
+                    app_logger.info("Colonne 'created_at' ajoutée à la table pieces")
                 except sqlite3.OperationalError as e:
                     app_logger.error("Erreur", e)
             
@@ -504,7 +504,7 @@ class DatabaseManager:
                 self.cursor.execute("ALTER TABLE pieces_temp RENAME TO pieces")
                 
                 self.cursor.execute("COMMIT")
-                print("Contrainte unique ajoutée à la table pieces")
+                app_logger.info("Contrainte unique ajoutée à la table pieces")
                 
         except sqlite3.Error as e:
             self.cursor.execute("ROLLBACK")
@@ -548,7 +548,7 @@ class DatabaseManager:
             assoc_exists = self.cursor.fetchone()
             
             if not pieces_exists or not assoc_exists:
-                print("Tables de migration manquantes, skip")
+                app_logger.debug("Tables de migration manquantes, skip")
                 return
             
             # Vérifier la structure de la table pieces actuelle
@@ -567,16 +567,16 @@ class DatabaseManager:
             assoc_count = self.cursor.fetchone()[0]
             
             if old_pieces_count == 0:
-                print("Pas de données à migrer")
+                app_logger.debug("Pas de données à migrer")
                 return
                 
             if assoc_count > 0:
                 return
             
-            print("🔄 Début de la migration des pièces vers la nouvelle structure...")
+            app_logger.info("🔄 Début de la migration des pièces vers la nouvelle structure...")
             
             # Étape 1: Sauvegarder les anciennes données
-            print("📋 Sauvegarde des anciennes données...")
+            app_logger.info("📋 Sauvegarde des anciennes données...")
             
             # Adapter la requête selon les colonnes disponibles
             if 'description' in pieces_columns:
@@ -591,7 +591,7 @@ class DatabaseManager:
                 self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id) SELECT id, ref_piece, appareil_id FROM pieces")
             
             # Étape 2: Créer les nouvelles pièces uniques
-            print("📦 Création des pièces uniques...")
+            app_logger.info("📦 Création des pièces uniques...")
             pieces_data = {}
             
             # Récupérer toutes les pièces avec leurs données
@@ -635,10 +635,10 @@ class DatabaseManager:
                     self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", 
                                       (ref_piece, data['description']))
             
-            print(f"📦 {len(pieces_data)} pièces uniques créées")
+            app_logger.info(f"📦 {len(pieces_data)} pièces uniques créées")
             
             # Étape 4: Créer les associations dans piece_associations
-            print("🔗 Création des associations...")
+            app_logger.info("🔗 Création des associations...")
             self.cursor.execute("""
                 INSERT INTO piece_associations (piece_id, appareil_id, created_at)
                 SELECT 
@@ -651,9 +651,9 @@ class DatabaseManager:
             """)
             
             associations_migrated = self.cursor.rowcount
-            print(f"🔗 {associations_migrated} associations migrées")
+            app_logger.info(f"🔗 {associations_migrated} associations migrées")
             
-            print("✅ Migration terminée avec succès")
+            app_logger.info("✅ Migration terminée avec succès")
             
         except sqlite3.Error as e:
                         # En cas d'erreur, essayer de restaurer
@@ -671,10 +671,18 @@ class DatabaseManager:
                   sort_column: Optional[int] = None,
                   sort_order: Optional[str] = None,
                   incomplete_filter: bool = False) -> List[Tuple]:
-        """Charger les données avec filtres optionnels - Phase 3 optimisé"""
-        
-        # Phase 3: Cache réactivé avec support pagination
-        if (self.search_cache and search_term and not column_filters and not incomplete_filter):
+        """URGENCE: Fallback vers méthode originale (régression optimisation détectée)"""
+
+        # 🚨 URGENCE: Fallback - l'optimisation cause "too many SQL variables"
+        try:
+            return self._load_data_original(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
+        except Exception as e:
+            app_logger.error(f"Erreur _load_data_original: {e}")
+            # Si même l'original plante, retour vide
+            return []
+
+        # Phase 3: Cache réactivé avec support pagination - DÉSACTIVÉ TEMPORAIREMENT
+        if Config.SMART_CACHE_ENABLED and self._should_use_cache(search_term, column_filters, incomplete_filter, limit):
             # Inclure pagination dans la clé de cache
             cache_key_data = {
                 'term': search_term,
@@ -706,9 +714,9 @@ class DatabaseManager:
         else:
             cache_this_result = None
         
-        # Fallback vers l'ancienne méthode
-        results = self._load_data_original(search_term, column_filters, limit, offset, 
-                                         sort_column, sort_order, incomplete_filter)
+        # Utiliser la méthode optimisée
+        results = self._load_data_optimized(search_term, column_filters, limit, offset,
+                                          sort_column, sort_order, incomplete_filter)
         
         # Mettre en cache si nécessaire
         if cache_this_result and len(results) <= 5000:  # Limiter taille cache
@@ -729,7 +737,35 @@ class DatabaseManager:
             app_logger.debug(f"💾 CACHE MISS pour '{display_term}'{page_info} - {len(results)} résultats mis en cache")
         
         return results
-    
+
+    def _should_use_cache(self, search_term: Optional[str], column_filters: Optional[Dict],
+                         incomplete_filter: bool, limit: Optional[int]) -> bool:
+        """Phase 3: Logique intelligente d'utilisation du cache
+
+        Cache activé si :
+        - Cache search disponible
+        - Recherche simple (pas de filters complexes)
+        - Résultats attendus <= 5000 (éviter surcharge mémoire)
+        - Pas de filter incomplet (trop spécialisé)
+        """
+        if not self.search_cache:
+            return False
+
+        # Pas de cache pour filters complexes
+        if column_filters or incomplete_filter:
+            return False
+
+        # Cache pour recherches avec terme (peu importe la limite)
+        if search_term and limit and limit <= 5000:
+            return True
+
+        # Cache pour recherches simples sans terme si petite pagination
+        if not search_term and limit and limit <= 5000:
+            return True
+
+        # Pas de cache pour gros volumes ou sans limite
+        return False
+
     def _load_data_optimized(self, search_term: Optional[str] = None, 
                            column_filters: Optional[Dict[int, str]] = None, 
                            limit: Optional[int] = None,
@@ -766,7 +802,7 @@ class DatabaseManager:
                                           sort_column, sort_order, incomplete_filter)
             
         except Exception as e:
-            print(f"⚠️ Erreur recherche optimisée, fallback: {e}")
+            app_logger.debug(f"⚠️ Erreur recherche optimisée, fallback: {e}")
             return self._load_data_original(search_term, column_filters, limit, offset,
                                           sort_column, sort_order, incomplete_filter)
     
@@ -1055,9 +1091,9 @@ class DatabaseManager:
             self.conn.commit()
             
             if deleted_count > 0 and associations_deleted > 0:
-                print(f"  ✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
+                app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
             elif deleted_count > 0:
-                print(f"  ✅ {deleted_count} appareil(s) supprimé(s) (aucune association de pièce)")
+                app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) (aucune association de pièce)")
             
             # Phase 2.3: Invalider le cache après suppression d'appareils
             if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
@@ -1259,32 +1295,24 @@ class DatabaseManager:
             
             if piece_result:
                 piece_id, current_desc = piece_result
-                print(f"  📦 Pièce existante trouvée (ID: {piece_id})")
                 
                 # Gérer les conflits de description
                 if clean_description and current_desc and clean_description != current_desc:
                     if confirm_callback:
-                        print(f"  ⚠️ Conflit description: '{current_desc}' vs '{clean_description}'")
                         final_description = confirm_callback(ref_piece, current_desc, clean_description)
                         if final_description != current_desc:
                             self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
                             self.conn.commit()
-                            print(f"  📝 Description mise à jour: '{final_description}'")
-                    else:
-                        print(f"  ⚠️ Conflit description ignoré: garde '{current_desc}'")
                 elif clean_description and not current_desc:
                     # Ajouter description à une pièce sans description
                     self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
                     self.conn.commit()
-                    print(f"  📝 Description ajoutée: '{clean_description}'")
                     
             else:
                 # Créer la nouvelle pièce
-                print(f"  ✨ Nouvelle pièce: {ref_piece}")
                 self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
                 piece_id = self.cursor.lastrowid
                 self.conn.commit()
-                print(f"  📦 Pièce créée (ID: {piece_id})")
             
             # Étape 2: Vérifier si l'association existe déjà
             assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
@@ -1334,7 +1362,6 @@ class DatabaseManager:
                 # Pièce existante
                 piece_id = piece_result[0][0]
                 current_desc = piece_result[0][1]
-                print(f"  📦 Pièce existante trouvée (ID: {piece_id})")
                 
                 # Gérer les conflits de description
                 if clean_description and current_desc and clean_description != current_desc:
@@ -1343,24 +1370,18 @@ class DatabaseManager:
                         if final_description != current_desc:
                             self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
                             self.conn.commit()
-                            print(f"  📝 Description mise à jour: '{final_description}'")
                             description_updated = True
-                    else:
-                        print(f"  ⚠️ Conflit description ignoré: garde '{current_desc}'")
                 elif clean_description and not current_desc:
                     # Ajouter description à une pièce sans description
                     self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
                     self.conn.commit()
-                    print(f"  📝 Description ajoutée: '{clean_description}'")
                     description_updated = True
                     
             else:
                 # Nouvelle pièce
-                print(f"  ✨ Nouvelle pièce: {ref_piece}")
                 self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
                 piece_id = self.cursor.lastrowid
                 self.conn.commit()
-                print(f"  📦 Pièce créée (ID: {piece_id})")
             
             # Étape 2: Vérifier si l'association existe déjà
             assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
@@ -1369,7 +1390,6 @@ class DatabaseManager:
             if assoc_result:
                 # Association existante
                 assoc_id = assoc_result[0][0]
-                print(f"  🔗 Association existante (ID: {assoc_id})")
                 
                 # Invalider le cache si description modifiée
                 if description_updated and hasattr(self, 'cache_invalidation'):
@@ -1381,7 +1401,6 @@ class DatabaseManager:
                 self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
                 assoc_id = self.cursor.lastrowid
                 self.conn.commit()
-                print(f"  🔗 Association créée (ID: {assoc_id})")
                 
                 # Phase 2.3: Invalider le cache après création d'association
                 if hasattr(self, 'cache_invalidation'):
@@ -2054,6 +2073,102 @@ class DatabaseManager:
             self.conn.rollback()
             raise DatabaseError(f"Erreur lors de la suppression de la décision: {e}")
     
+    def _load_data_optimized(self, search_term: Optional[str] = None,
+                          column_filters: Optional[Dict[int, str]] = None,
+                          limit: Optional[int] = None,
+                          offset: Optional[int] = None,
+                          sort_column: Optional[int] = None,
+                          sort_order: Optional[str] = None,
+                          incomplete_filter: bool = False) -> List[Tuple]:
+        """Version optimisée de load_data - sépare requête principale du calcul pieces_count"""
+        try:
+            # ÉTAPE 1: Requête principale RAPIDE (sans LEFT JOIN coûteux)
+            headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS)
+            query = f"SELECT a.id, {headers_str} FROM appareils a"
+            params = []
+            conditions = []
+
+            # Mêmes conditions de recherche que l'original
+            if search_term:
+                search_condition = self._build_search_condition_optimized(search_term)
+                if search_condition:
+                    if search_condition.get('query_type') in ['exact', 'prefix']:
+                        if search_condition['query_type'] == 'exact':
+                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                        else:  # prefix
+                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                        conditions.append(condition)
+                        params.extend(search_condition['params'])
+                    else:
+                        conditions.append(search_condition['condition'])
+                        params.extend(search_condition['params'])
+
+            # Filtres par colonne
+            if column_filters:
+                for col_idx, filter_text in column_filters.items():
+                    if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
+                        conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
+                        params.append(f"%{filter_text}%")
+
+            # Filtre lignes incomplètes
+            if incomplete_filter:
+                incomplete_condition = "(a.type IS NULL OR a.type = '' OR a.manufacturer IS NULL OR a.manufacturer = '')"
+                conditions.append(incomplete_condition)
+
+            # Assemblage WHERE
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+
+            # Tri (même logique que l'original)
+            if sort_column is not None and 0 <= sort_column < len(Config.DB_HEADERS):
+                sort_col = Config.DB_HEADERS[sort_column]
+                order = "DESC" if sort_order == "desc" else "ASC"
+                query += f" ORDER BY a.[{sort_col}] {order}"
+            else:
+                query += " ORDER BY a.id DESC"
+
+            # Pagination
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+                if offset is not None:
+                    query += " OFFSET ?"
+                    params.append(offset)
+
+            # ÉTAPE 2: Exécuter requête principale
+            main_results = self.execute_query(query, params)
+            if not main_results:
+                return []
+
+            # ÉTAPE 3: Calculer pieces_count seulement pour les résultats retournés
+            appareil_ids = [str(row[0]) for row in main_results]
+            pieces_counts = {}
+
+            if appareil_ids:
+                count_query = f"""
+                    SELECT pa.appareil_id, COUNT(*) as pieces_count
+                    FROM piece_associations pa
+                    INNER JOIN pieces p ON pa.piece_id = p.id
+                    WHERE pa.appareil_id IN ({','.join(['?'] * len(appareil_ids))})
+                    GROUP BY pa.appareil_id
+                """
+                count_results = self.execute_query(count_query, appareil_ids)
+                pieces_counts = {row[0]: row[1] for row in count_results}
+
+            # ÉTAPE 4: Assembler résultats finaux avec pieces_count
+            final_results = []
+            for row in main_results:
+                appareil_id = row[0]
+                pieces_count = pieces_counts.get(appareil_id, 0)
+                final_row = row + (pieces_count,)
+                final_results.append(final_row)
+
+            return final_results
+
+        except Exception as e:
+            app_logger.error(f"Erreur _load_data_optimized: {e}")
+            raise
+
     def close(self):
         """Fermer la connexion à la base de données"""
         if self.conn:

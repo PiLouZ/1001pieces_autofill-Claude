@@ -103,9 +103,33 @@ class EventHandlersService:
         """Gestionnaire événement fin d'import"""
         if hasattr(self.main_window, 'statusbar'):
             self.main_window.statusbar.showMessage(
-                f"✅ Import terminé: {data['total_imported']} lignes traitées", 
+                f"✅ Import terminé: {data['total_imported']} lignes traitées",
                 5000
             )
+
+        # Feature Flag: Phase 4 - Sauvegarde événementielle après import
+        if Config.ENABLE_EVENT_DRIVEN_SAVE:
+            self._trigger_event_driven_save("import_completed")
+
+    def _trigger_event_driven_save(self, event_type: str):
+        """Déclencher sauvegarde événementielle"""
+        try:
+            if (hasattr(self.main_window, 'database_operations_service') and
+                self.main_window.database_operations_service and
+                Config.USE_NEW_DATABASE_OPERATIONS_SERVICE):
+
+                app_logger.debug(f"Sauvegarde événementielle déclenchée: {event_type}")
+                # Pour les imports, pas de modified_cells à sauvegarder car déjà commitées
+                # Mais on peut forcer un commit des transactions en attente
+                success = self.main_window.database_operations_service.auto_save()
+
+                if success:
+                    app_logger.debug(f"Sauvegarde événementielle réussie pour {event_type}")
+                else:
+                    app_logger.warning(f"Échec sauvegarde événementielle pour {event_type}")
+
+        except Exception as e:
+            app_logger.error(f"Erreur sauvegarde événementielle {event_type}: {e}")
     
     def on_import_error(self, data: Dict[str, Any]):
         """Gestionnaire événement erreur d'import"""

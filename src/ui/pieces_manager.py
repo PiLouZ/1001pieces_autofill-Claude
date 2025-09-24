@@ -29,8 +29,8 @@ class ActionButtonWidget(QWidget):
         layout.setSpacing(3)
         
         # Bouton éditer
-        edit_btn = QPushButton("✏️")
-        edit_btn.setFixedSize(25, 25)
+        edit_btn = QPushButton("Modifier")
+        edit_btn.setFixedSize(60, 25)
         edit_btn.setToolTip("Modifier cette pièce")
         edit_btn.setStyleSheet(f"""
             QPushButton {{
@@ -48,8 +48,8 @@ class ActionButtonWidget(QWidget):
         layout.addWidget(edit_btn)
         
         # Bouton supprimer 
-        delete_btn = QPushButton("🗑️")
-        delete_btn.setFixedSize(25, 25)
+        delete_btn = QPushButton("Suppr")
+        delete_btn.setFixedSize(50, 25)
         delete_btn.setToolTip("Supprimer cette pièce")
         delete_btn.setStyleSheet(f"""
             QPushButton {{
@@ -69,12 +69,12 @@ class ActionButtonWidget(QWidget):
         layout.addStretch()
 
 class PiecesTableWidget(QTableWidget):
-    """Table widget personnalisé avec boutons d'action au survol"""
+    """Table widget personnalisé (boutons d'action au survol désactivés)"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.action_widgets = {}
-        self.setMouseTracking(True)
+        # self.setMouseTracking(True)  # DÉSACTIVÉ - Boutons de survol supprimés
         
     def enterEvent(self, event):
         """Souris entre dans le widget"""
@@ -88,33 +88,15 @@ class PiecesTableWidget(QTableWidget):
             widget.hide()
     
     def mouseMoveEvent(self, event):
-        """Gérer le survol des lignes"""
+        """Gérer le survol des lignes - DÉSACTIVÉ"""
         super().mouseMoveEvent(event)
-        
-        item = self.itemAt(event.pos())
-        if item is not None:
-            row = item.row()
-            self._show_action_buttons_for_row(row)
-        else:
-            # Masquer tous les boutons
-            for widget in self.action_widgets.values():
-                widget.hide()
+        # BOUTONS DE SURVOL SUPPRIMÉS - Plus d'affichage des boutons d'action
+        return
     
     def _show_action_buttons_for_row(self, row: int):
-        """Afficher les boutons d'action pour une ligne"""
-        # Masquer tous les boutons d'abord
-        for widget in self.action_widgets.values():
-            widget.hide()
-        
-        # Créer ou réutiliser le widget pour cette ligne
-        if row not in self.action_widgets:
-            widget = ActionButtonWidget(row, self)
-            widget.editRequested.connect(self._on_edit_requested)
-            widget.deleteRequested.connect(self._on_delete_requested) 
-            self.action_widgets[row] = widget
-            
-        # Positionner et afficher le widget
-        widget = self.action_widgets[row]
+        """Afficher les boutons d'action pour une ligne - DÉSACTIVÉ"""
+        # BOUTONS DE SURVOL SUPPRIMÉS - Méthode désactivée
+        return
         
         # Calculer la position (colonne des actions - dernière colonne)
         if self.columnCount() > 0:
@@ -149,7 +131,7 @@ class PiecesManagerWindow(QDialog):
     def __init__(self, parent, db_manager):
         super().__init__(parent)
         self.db_manager = db_manager
-        self.setWindowTitle("🔧 Gestionnaire des Pièces - 1001pieces.com")
+        self.setWindowTitle("Gestionnaire des pièces - 1001pieces.com")
         self.setModal(False)
         self.resize(1000, 700)
         
@@ -162,7 +144,7 @@ class PiecesManagerWindow(QDialog):
         
         # Titre et statistiques
         header_layout = QHBoxLayout()
-        title_label = QLabel("🔧 Gestionnaire des Pièces")
+        title_label = QLabel("Gestionnaire des Pièces")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
         header_layout.addWidget(title_label)
         
@@ -175,7 +157,7 @@ class PiecesManagerWindow(QDialog):
         
         # Barre de recherche et filtres
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("🔍 Recherche:"))
+        search_layout.addWidget(QLabel("Recherche:"))
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Rechercher une référence ou un libellé de pièce...")
@@ -195,7 +177,7 @@ class PiecesManagerWindow(QDialog):
         # Splitter principal
         splitter = QSplitter(Qt.Orientation.Vertical)
         
-        # Tableau des pièces avec boutons d'action au survol
+        # Tableau des pièces (boutons de survol désactivés)
         self.pieces_table = PiecesTableWidget()
         self.pieces_table.setColumnCount(4)
         self.pieces_table.setHorizontalHeaderLabels([
@@ -230,17 +212,17 @@ class PiecesManagerWindow(QDialog):
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
         
-        export_btn = QPushButton("📊 Exporter la liste")
+        export_btn = QPushButton("Exporter la liste")
         export_btn.clicked.connect(self._export_pieces)
         buttons_layout.addWidget(export_btn)
         
-        edit_btn = QPushButton("✏️ Modifier pièce")
+        edit_btn = QPushButton("Modifier pièce")
         edit_btn.setToolTip("Modifier la référence et le libellé de la pièce sélectionnée")
         edit_btn.clicked.connect(self._edit_selected_piece)
         edit_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.PRIMARY}; color: white; }}")
         buttons_layout.addWidget(edit_btn)
         
-        delete_btn = QPushButton("🗑️ Supprimer pièce(s)")
+        delete_btn = QPushButton("Supprimer pièce(s)")
         delete_btn.setToolTip("Supprimer les références de pièces sélectionnées (Ctrl+Clic pour sélection multiple)")
         delete_btn.clicked.connect(self._delete_selected_pieces)
         delete_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.DANGER}; color: white; }}")
@@ -280,9 +262,9 @@ class PiecesManagerWindow(QDialog):
             
             from src.core.config import pluralize
             self.stats_label.setText(
-                f"📊 {pluralize(total_pieces, 'référence')} • "
-                f"⚠️ {pluralize(orphan_pieces, 'orpheline')} • "
-                f"🔗 {pluralize(total_associations, 'association')}"
+                f"{pluralize(total_pieces, 'référence')} • "
+                f"ATTENTION: {pluralize(orphan_pieces, 'orpheline')} • "
+                f"{pluralize(total_associations, 'association')}"
             )
             
             # Stocker les données pour le filtrage
@@ -316,7 +298,7 @@ class PiecesManagerWindow(QDialog):
             from src.core.config import pluralize
             if nb_appareils == 0:
                 nb_item.setBackground(QColor(*Config.Colors.ORPHAN_ROW))  # Rouge clair pour orphelines
-                nb_item.setToolTip("⚠️ Pièce orpheline - aucun appareil associé")
+                nb_item.setToolTip("ATTENTION: Pièce orpheline - aucun appareil associé")
             elif nb_appareils == 1:
                 nb_item.setBackground(QColor(*Config.Colors.SINGLE_PIECE))  # Jaune pour 1 seul
                 nb_item.setToolTip("⚡ Pièce associée à un seul appareil")
@@ -395,11 +377,11 @@ class PiecesManagerWindow(QDialog):
             results = self.db_manager.execute_query(query, [ref_piece])
             
             if not results:
-                self.details_text.setText(f"⚠️ Aucun appareil associé à la pièce '{ref_piece}'")
+                self.details_text.setText(f"ATTENTION: Aucun appareil associé à la pièce '{ref_piece}'")
                 return
                 
             from src.core.config import pluralize
-            details = f"🔧 Détails de la pièce '{ref_piece}' ({pluralize(len(results), 'appareil')}):\n\n"
+            details = f"Détails de la pièce '{ref_piece}' ({pluralize(len(results), 'appareil')}):\n\n"
             
             for appareil in results:
                 details += f"• ID {appareil[0]}: {appareil[1] or 'N/A'} | "
@@ -470,12 +452,12 @@ class PiecesManagerWindow(QDialog):
             ref_piece, nb_appareils = pieces_to_delete[0]
             message = f"Supprimer la référence de pièce '{ref_piece}' ?\n\n"
             if nb_appareils > 0:
-                message += f"⚠️ Cette pièce est associée à {pluralize(nb_appareils, 'appareil')}.\n"
+                message += f"ATTENTION: Cette pièce est associée à {pluralize(nb_appareils, 'appareil')}.\n"
                 message += "Toutes les associations seront supprimées.\n\n"
         else:
             message = f"Supprimer {pluralize(len(pieces_to_delete), 'référence')} de pièces ?\n\n"
             if total_associations > 0:
-                message += f"⚠️ Ces pièces sont associées à {pluralize(total_associations, 'appareil')} au total.\n"
+                message += f"ATTENTION: Ces pièces sont associées à {pluralize(total_associations, 'appareil')} au total.\n"
                 message += "Toutes les associations seront supprimées.\n\n"
                 
         message += "Cette action est irréversible. Continuer ?"
@@ -536,7 +518,7 @@ class PiecesManagerWindow(QDialog):
             if hasattr(self.parent(), 'user_interaction_service'):
                 # Ajouter directement à l'historique visible de la fenêtre principale
                 from src.core.config import pluralize
-                summary = f"🗑️ Suppression de la pièce '{ref_piece}' ({pluralize(nb_associations, 'association')})"
+                summary = f"Suppression de la pièce '{ref_piece}' ({pluralize(nb_associations, 'association')})"
                 self.parent().user_interaction_service.add_to_history(summary)
         except Exception as e:
             app_logger.error("Erreur", e)
@@ -591,10 +573,13 @@ class PiecesManagerWindow(QDialog):
                         changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
                     
                     if changes:
-                        summary = f"✏️ Modification de la pièce: {', '.join(changes)}"
+                        # Format harmonisé avec les appareils
+                        summary = f"Modification de la pièce {new_ref}\n     ==> {changes[0]}"
+                        if len(changes) > 1:
+                            for change in changes[1:]:
+                                summary += f"\n     ==> {change}"
                         self.parent().user_interaction_service.add_to_history(summary)
                 
-                QMessageBox.information(self, "Succès", "La pièce a été modifiée avec succès.")
                 
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de la modification: {e}")
@@ -642,10 +627,13 @@ class PiecesManagerWindow(QDialog):
                         changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
                     
                     if changes:
-                        summary = f"✏️ Modification de la pièce: {', '.join(changes)}"
+                        # Format harmonisé avec les appareils
+                        summary = f"Modification de la pièce {new_ref}\n     ==> {changes[0]}"
+                        if len(changes) > 1:
+                            for change in changes[1:]:
+                                summary += f"\n     ==> {change}"
                         self.parent().user_interaction_service.add_to_history(summary)
                 
-                QMessageBox.information(self, "Succès", "La pièce a été modifiée avec succès.")
                 
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de la modification: {e}")
@@ -689,9 +677,7 @@ class PiecesManagerWindow(QDialog):
                 
                 # Ajouter à l'historique
                 if hasattr(self.parent(), 'user_interaction_service'):
-                    self.parent().user_interaction_service.add_to_history(f"🗑️ Suppression de la pièce: {ref_piece}")
-                
-                QMessageBox.information(self, "Succès", f"La pièce '{ref_piece}' a été supprimée avec succès.")
+                    self.parent().user_interaction_service.add_to_history(f"Suppression de la pièce: {ref_piece}")
                 
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression: {e}")

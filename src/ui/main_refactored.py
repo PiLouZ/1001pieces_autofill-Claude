@@ -266,11 +266,12 @@ class MainWindow(QMainWindow):
         # Feature Flag: AutoSaveManager - Phase 1 Refactoring
         if Config.USE_NEW_AUTO_SAVE_MANAGER:
             self.auto_save_manager.setup_auto_save()
-        else:
-            # Ancien système (pour rollback)
+        elif not Config.ENABLE_EVENT_DRIVEN_SAVE:
+            # Ancien système timer-based (pour rollback)
             self.auto_save_timer = QTimer()
             self.auto_save_timer.timeout.connect(self._auto_save)
             self.auto_save_timer.start(Config.AUTO_SAVE_INTERVAL)
+        # Sinon: système événementiel (pas de timer)
 
         # PHASE 2.3: Recherche gérée par AdvancedSearchService
         # Plus besoin de timer local - géré par le service
@@ -949,13 +950,16 @@ class MainWindow(QMainWindow):
         # Feature Flag: AutoSaveManager - Phase 1 Refactoring
         if Config.USE_NEW_AUTO_SAVE_MANAGER:
             self.auto_save_manager.mark_cell_modified(row, col, self.table)
-        else:
-            # Ancien système (pour rollback)
+        elif not Config.ENABLE_EVENT_DRIVEN_SAVE:
+            # Ancien système timer-based (pour rollback)
             self.modified_cells.add((row, col))
 
             # Mettre à jour l'indicateur
             self.save_indicator.setText(Config.get_message('save_pending'))
             self.save_indicator.setStyleSheet("color: orange;")
+        else:
+            # Système événementiel: sauvegarder immédiatement
+            self._save_cell_immediately(row, col, new_value)
         
         # Enregistrer dans l'historique
         self.undo_manager.add_action({
@@ -1238,7 +1242,42 @@ class MainWindow(QMainWindow):
             self._auto_save()
             self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
             self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
-    
+
+    def _save_cell_immediately(self, row: int, col: int, new_value: str):
+        """Sauvegarde immédiate d'une cellule (système événementiel)"""
+        try:
+            # Utiliser le DatabaseOperationsService pour sauvegarde immédiate
+            if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service'):
+                # Créer un set avec la cellule modifiée pour utiliser l'API existante
+                modified_cells = {(row, col)}
+
+                # Convertir vers le format attendu par save_cells_batch
+                updates_by_db_id = self.database_operations_service._convert_modified_cells_to_updates(modified_cells, self.table)
+
+                # Sauvegarder immédiatement
+                success = self.database_operations_service.save_cells_batch(updates_by_db_id)
+
+                if success:
+                    # Mettre à jour l'indicateur de sauvegarde
+                    self.save_indicator.setText(Config.get_message('save_success'))
+                    self.save_indicator.setStyleSheet("color: green;")
+
+                    # Remettre l'indicateur à l'état normal après un délai
+                    QTimer.singleShot(2000, lambda: self._reset_save_indicator())
+                else:
+                    app_logger.warning(f"Échec sauvegarde immédiate cellule ({row}, {col})")
+
+        except Exception as e:
+            app_logger.error(f"Erreur sauvegarde immédiate cellule ({row}, {col}): {e}")
+
+    def _reset_save_indicator(self):
+        """Remettre l'indicateur de sauvegarde à l'état normal"""
+        try:
+            self.save_indicator.setText(Config.get_message('connected'))
+            self.save_indicator.setStyleSheet("color: green;")
+        except Exception as e:
+            app_logger.error(f"Erreur reset indicateur sauvegarde: {e}")
+
     def _get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
         """Récupérer les informations DB d'une cellule - PHASE 5: Délégation vers CellEditingService"""
         return self.cell_editing_service.get_cell_db_info(item)
@@ -1590,7 +1629,7 @@ class MainWindow(QMainWindow):
         """Gérer les catégories"""
         try:
             current_categories = self.db_manager.get_categories()
-            new_categories = UnifiedDialogService.get_categories(self, current_categories)
+            new_categories = self.dialog_service.get_categories(self, current_categories)
             
             if new_categories is not None:
                 self.db_manager.update_categories(new_categories)
@@ -2573,7 +2612,11 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 
                 # Recharger les données dans le tableau pour refléter les nouveaux ajouts
                 self.table_controller.load_data()
-                
+
+                # Feature Flag: Phase 4 - Sauvegarde événementielle après collage
+                if Config.ENABLE_EVENT_DRIVEN_SAVE:
+                    self._trigger_event_driven_save_after_paste(result)
+
                 # Log les résultats dans l'historique et afficher le résumé via le service
                 self.paste_results_service.log_paste_results(
                     result.inserted_count, result.updated_count, result.ignored_count, 
@@ -2853,7 +2896,33 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _update_device_info(self, device_id: int, updates: Dict[str, str]) -> bool:
         """Déléguer vers DeviceManager"""
         return self.device_manager.update_device_info(device_id, updates)
-    
+
+    def _trigger_event_driven_save_after_paste(self, result):
+        """Déclencher sauvegarde événementielle après collage"""
+        try:
+            if (hasattr(self, 'database_operations_service') and
+                self.database_operations_service and
+                Config.USE_NEW_DATABASE_OPERATIONS_SERVICE):
+
+                total_changes = result.inserted_count + result.updated_count
+                app_logger.debug(f"Sauvegarde événementielle après collage: {total_changes} modifications")
+
+                # Après un collage, les données sont déjà commitées en base
+                # On peut forcer un auto_save pour s'assurer que les transactions en attente sont terminées
+                success = self.database_operations_service.auto_save()
+
+                if success:
+                    app_logger.debug(f"Sauvegarde événementielle réussie après collage")
+                    # Mettre à jour l'indicateur de sauvegarde
+                    if hasattr(self, 'save_indicator'):
+                        self.save_indicator.setText(Config.get_message('save_success'))
+                        self.save_indicator.setStyleSheet("color: green;")
+                else:
+                    app_logger.warning(f"Échec sauvegarde événementielle après collage")
+
+        except Exception as e:
+            app_logger.error(f"Erreur sauvegarde événementielle après collage: {e}")
+
     # Les méthodes _log_paste_results et _show_paste_summary ont été déplacées vers PasteResultsService
 
 def main():

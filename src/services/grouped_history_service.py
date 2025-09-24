@@ -92,9 +92,10 @@ class GroupedHistoryService(QObject):
             timestamp = data['timestamp']
 
             if len(modifications) == 1:
-                # Modification unique : utiliser le format simple actuel
+                # Modification unique : utiliser le format harmonisé avec appareil
                 field_name, old_value, new_value = modifications[0]
-                message = f"Modification {field_name}: '{old_value}' → '{new_value}'"
+                appareil_ref = self._get_appareil_reference(db_id)
+                message = f"Modification de l'appareil {appareil_ref}\n     ==> {field_name} : '{old_value}' → '{new_value}'"
                 self.user_interaction_service.add_to_history(message)
                 self.stats['single_modifications'] += 1
 

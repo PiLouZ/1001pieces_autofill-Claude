@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.2.1"
+    VERSION = "3.3.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -41,7 +41,7 @@ class Config:
     WINDOW_HEIGHT = 800
     
     # Timers et intervalles
-    AUTO_SAVE_INTERVAL = 5000  # ms
+    AUTO_SAVE_INTERVAL = 5000  # ms - Sauvegarde automatique toutes les 5 secondes
     STATUS_MESSAGE_TIMEOUT = 2000  # ms
     LONG_STATUS_MESSAGE_TIMEOUT = 3000  # ms
     
@@ -61,6 +61,7 @@ class Config:
     # Optimisations Phase 3 - Recherche
     SEARCH_CACHE_SIZE = 1000  # Nombre de recherches à garder en cache
     FULLTEXT_CACHE_ENABLED = True  # Activer le cache full-text
+    SMART_CACHE_ENABLED = False  # Phase 3: Cache intelligent A/B testing - DÉSACTIVÉ par défaut
     EXACT_SEARCH_THRESHOLD = 10  # Longueur min pour recherche exacte optimisée
     SEARCH_LIMIT = 5000       # Limite pour les recherches
     
@@ -83,7 +84,13 @@ class Config:
     USE_NEW_DATABASE_OPERATIONS_SERVICE = True  # Migration DatabaseOperationsService - PHASE 3.3 ACTIVÉE
     USE_NEW_UI_STATE_MANAGEMENT_SERVICE = True  # Migration UIStateManagementService - PHASE 3.4 ACTIVÉE
     USE_NEW_KEYBOARD_SHORTCUT_SERVICE = True  # Migration KeyboardShortcutService - PHASE 3.5 ACTIVÉE
-    
+
+    # Feature Flags - Phase 2 Async Operations
+    USE_ASYNC_LOAD_DATA = True  # Phase 2d: Migration pilote load_data_async() - TEST A/B ACTIVÉ
+
+    # Feature Flags - Phase 4 Event-Driven Save System
+    ENABLE_EVENT_DRIVEN_SAVE = False  # Phase 4: Migration timer → événements - DÉSACTIVÉ => Erreur dans les logs
+
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3
     # Toutes les couleurs de l'application pour éviter hardcoding dispersé

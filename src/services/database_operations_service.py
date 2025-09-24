@@ -160,9 +160,10 @@ class DatabaseOperationsService(BaseService):
                     app_logger.info(f"Sauvegarde batch réussie: {cells_saved} cellules")
 
                     # Nettoyer les cellules modifiées du parent window ET du service
+                    # BUGFIX: Utiliser getattr pour éviter l'erreur de variable non définie
+                    parent_modified_cells = getattr(self.parent_window, 'modified_cells', set())
+                    parent_modified_cells.clear()
                     self.modified_cells.clear()
-                    if hasattr(self.parent_window, 'modified_cells'):
-                        self.parent_window.modified_cells.clear()
 
                     # Mettre à jour les indicateurs UI
                     self._update_save_indicators(True)
@@ -468,6 +469,10 @@ class DatabaseOperationsService(BaseService):
                         f"{deleted_count} appareil(s) supprimé(s) avec succès"
                     )
 
+                # Feature Flag: Phase 4 - Sauvegarde événementielle après suppression
+                if Config.ENABLE_EVENT_DRIVEN_SAVE:
+                    self._trigger_event_driven_save_after_deletion(deleted_count)
+
                 # Émettre le signal
                 self.device_deleted.emit(device_ids[:deleted_count])
 
@@ -753,3 +758,19 @@ class DatabaseOperationsService(BaseService):
         except Exception as e:
             app_logger.error(f"Erreur gestion transaction: {e}")
             return False
+
+    def _trigger_event_driven_save_after_deletion(self, deleted_count: int):
+        """Déclencher sauvegarde événementielle après suppression"""
+        try:
+            app_logger.debug(f"Sauvegarde événementielle après suppression de {deleted_count} appareil(s)")
+            # Après une suppression, les données sont déjà commitées en base
+            # On peut forcer un auto_save pour s'assurer que les transactions en attente sont terminées
+            success = self.auto_save()
+
+            if success:
+                app_logger.debug(f"Sauvegarde événementielle réussie après suppression")
+            else:
+                app_logger.warning(f"Échec sauvegarde événementielle après suppression")
+
+        except Exception as e:
+            app_logger.error(f"Erreur sauvegarde événementielle après suppression: {e}")

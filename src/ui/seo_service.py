@@ -88,7 +88,7 @@ class SEOService:
             if result['info']['fabricants_count'] > 0:
                 detailed_message += f"\n==> Fabricants inclus: {result['info']['fabricants_count']}"
             if result['info']['truncated']:
-                detailed_message += "\n==> ⚠️ Titre tronqué"
+                detailed_message += "\n==> Titre tronqué"
             
             self.main_window.user_interaction_service.add_to_history(detailed_message)
             
@@ -149,7 +149,7 @@ class SEOService:
             detailed_message += f"\n==> Description: {result['description']}"
             detailed_message += f"\n==> Longueur: {length}/150 caractères"
             if result['info']['truncated']:
-                detailed_message += "\n==> ⚠️ Description tronquée"
+                detailed_message += "\n==> Description tronquée"
             
             self.main_window.user_interaction_service.add_to_history(detailed_message)
             
