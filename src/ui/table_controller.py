@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Tuple, Any
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton,
                             QLabel, QProgressDialog, QApplication, QHeaderView)
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QColor, QBrush
 
 from ..core.config import Config
@@ -15,6 +15,44 @@ from ..core.constants import UIConfig
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
+
+class DatabaseQueryWorker(QThread):
+    """Worker thread pour les requêtes DB async - Phase 2c"""
+
+    # Signaux pour communication avec UI thread
+    data_loaded = pyqtSignal(list)  # Données chargées
+    error_occurred = pyqtSignal(str)  # Erreur survenue
+
+    def __init__(self, db_manager, search_term=None, column_filters=None,
+                 limit=None, offset=None, sort_column=None, sort_order=None,
+                 incomplete_filter=False):
+        super().__init__()
+        self.db_manager = db_manager
+        self.search_term = search_term
+        self.column_filters = column_filters
+        self.limit = limit
+        self.offset = offset
+        self.sort_column = sort_column
+        self.sort_order = sort_order
+        self.incomplete_filter = incomplete_filter
+
+    def run(self):
+        """Exécuter la requête DB dans le thread séparé"""
+        try:
+            # IDENTIQUE à load_data() - même appel DB
+            records = self.db_manager.load_data(
+                self.search_term,
+                self.column_filters,
+                self.limit,
+                self.offset,
+                self.sort_column,
+                self.sort_order,
+                self.incomplete_filter
+            )
+            self.data_loaded.emit(records)
+        except Exception as e:
+            app_logger.error(f"Erreur DatabaseQueryWorker: {e}")
+            self.error_occurred.emit(str(e))
 
 class TableController:
     """Contrôleur pour la gestion du tableau principal"""
@@ -48,6 +86,10 @@ class TableController:
         self.search_timer.timeout.connect(self._perform_delayed_search)
         self.pending_search_term = None
         self.current_search_term = None  # Terme de recherche persistant pour pagination
+
+        # Phase 2c: Worker thread pour async operations
+        self.query_worker = None
+        self.loading_in_progress = False
         
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
@@ -273,6 +315,161 @@ class TableController:
         except Exception as e:
             app_logger.error(f"Erreur lors du chargement des données: {e}")
             self.table.setRowCount(0)
+
+    def load_data_async(self, search_term: str = None, is_search: bool = False):
+        """Version asynchrone de load_data() - Phase 2c
+
+        ATTENTION: Même logique que load_data() mais avec requête DB en arrière-plan
+        pour éviter le gel de l'UI. Résultats identiques garantis.
+        """
+        import time
+        start_time = time.time()
+
+        # Empêcher les requêtes multiples simultanées
+        if self.loading_in_progress:
+            app_logger.debug("Requête async déjà en cours, ignorée")
+            return
+
+        try:
+            # IDENTIQUE à load_data() - même logique de préparation
+            self.current_search_term = search_term
+
+            # Réinitialiser le tri pour nouvelle recherche (même logique)
+            if (is_search and
+                search_term != getattr(self, 'previous_search_term', None) and
+                not getattr(self, '_sorting_in_progress', False)):
+                self.current_sort_column = -1
+                self.current_sort_order = Qt.AscendingOrder
+                self.previous_search_term = search_term
+
+            # Calculer pagination (même logique)
+            if self.page_size == -1:
+                limit = None
+                offset = None
+            else:
+                limit = self.page_size
+                offset = (self.current_page - 1) * self.page_size
+
+            # Obtenir filtres colonnes (même logique)
+            column_filters = {}
+            for col_idx, filter_widget in self.filter_widgets.items():
+                if filter_widget is not None:
+                    if isinstance(filter_widget, QComboBox):
+                        filter_text = filter_widget.currentText().strip()
+                    else:
+                        filter_text = filter_widget.text().strip()
+                    if filter_text:
+                        column_filters[col_idx] = filter_text
+
+            # Filtre lignes incomplètes (même logique)
+            if (hasattr(self.parent_window, 'sorting_filtering_service') and
+                self.parent_window.sorting_filtering_service):
+                incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
+            else:
+                incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+
+            # DIFFÉRENCE: Nettoyer thread précédent s'il existe
+            if self.query_worker is not None:
+                self.query_worker.quit()
+                self.query_worker.wait()
+                self.query_worker = None
+
+            # Créer et configurer le worker thread
+            self.query_worker = DatabaseQueryWorker(
+                self.db_manager,
+                search_term,
+                column_filters,
+                limit,
+                offset,
+                self.current_sort_column,
+                self.current_sort_order,
+                incomplete_filter
+            )
+
+            # Connecter les signaux
+            self.query_worker.data_loaded.connect(self._on_async_data_loaded)
+            self.query_worker.error_occurred.connect(self._on_async_error)
+
+            # Marquer comme en cours et démarrer
+            self.loading_in_progress = True
+
+            # Optionnel: Indicateur visuel de chargement
+            if hasattr(self.parent_window, 'statusbar'):
+                self.parent_window.statusbar.showMessage("🔄 Chargement des données...")
+
+            self.query_worker.start()
+
+            # Log de performance pour comparaison
+            prep_time = (time.time() - start_time) * 1000
+            app_logger.debug(f"load_data_async préparé en {prep_time:.1f}ms (worker démarré)")
+
+        except Exception as e:
+            app_logger.error(f"Erreur lors du démarrage load_data_async: {e}")
+            self.loading_in_progress = False
+            if hasattr(self.parent_window, 'statusbar'):
+                self.parent_window.statusbar.showMessage(f"❌ Erreur: {e}", Config.STATUS_MESSAGE_TIMEOUT)
+
+    def _on_async_data_loaded(self, records):
+        """Callback quand les données async sont chargées"""
+        try:
+            # IDENTIQUE à load_data() - même logique de remplissage
+            if records is None:
+                records = []
+
+            # Compter total pour pagination (même logique que sync)
+            if not hasattr(self, '_counting_in_progress'):
+                try:
+                    self.total_rows = self.db_manager.count_data(
+                        self.current_search_term,
+                        self.filter_widgets,
+                        getattr(self.parent_window, 'show_incomplete_only', False)
+                    )
+                except:
+                    self.total_rows = len(records)
+
+            # Calculer pagination (même logique)
+            if self.page_size == -1:
+                self.total_pages = 1
+                self.current_page = 1
+            else:
+                self.total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
+                if self.current_page > self.total_pages:
+                    self.current_page = self.total_pages
+
+            # Remplir tableau (même logique que sync)
+            if self.total_rows > 1000:
+                self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, self.current_search_term)
+            else:
+                self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, self.current_search_term)
+
+            # Mettre à jour contrôles (même logique)
+            self._update_pagination_controls()
+            self._update_sort_indicators()
+
+            # Init valeurs précédentes (même logique)
+            if hasattr(self.parent_window, '_init_previous_values'):
+                self.parent_window._init_previous_values()
+
+            # Nettoyer et finaliser
+            self.loading_in_progress = False
+            if hasattr(self.parent_window, 'statusbar'):
+                self.parent_window.statusbar.showMessage(f"✅ {len(records)} lignes chargées", Config.STATUS_MESSAGE_TIMEOUT)
+
+            app_logger.debug(f"load_data_async terminé: {len(records)} résultats")
+
+        except Exception as e:
+            app_logger.error(f"Erreur _on_async_data_loaded: {e}")
+            self.loading_in_progress = False
+            if hasattr(self.parent_window, 'statusbar'):
+                self.parent_window.statusbar.showMessage(f"❌ Erreur UI: {e}", Config.STATUS_MESSAGE_TIMEOUT)
+
+    def _on_async_error(self, error_msg):
+        """Callback en cas d'erreur async"""
+        app_logger.error(f"Erreur requête async: {error_msg}")
+        self.loading_in_progress = False
+        self.table.setRowCount(0)
+        if hasattr(self.parent_window, 'statusbar'):
+            self.parent_window.statusbar.showMessage(f"❌ Erreur DB: {error_msg}", Config.STATUS_MESSAGE_TIMEOUT)
 
     def _update_row_numbers(self):
         """Mettre à jour les numéros de lignes après un tri"""

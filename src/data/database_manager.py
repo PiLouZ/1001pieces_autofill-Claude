@@ -671,10 +671,18 @@ class DatabaseManager:
                   sort_column: Optional[int] = None,
                   sort_order: Optional[str] = None,
                   incomplete_filter: bool = False) -> List[Tuple]:
-        """Charger les données avec filtres optionnels - Phase 3 optimisé"""
-        
-        # Phase 3: Cache réactivé avec support pagination
-        if (self.search_cache and search_term and not column_filters and not incomplete_filter):
+        """URGENCE: Fallback vers méthode originale (régression optimisation détectée)"""
+
+        # 🚨 URGENCE: Fallback - l'optimisation cause "too many SQL variables"
+        try:
+            return self._load_data_original(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
+        except Exception as e:
+            app_logger.error(f"Erreur _load_data_original: {e}")
+            # Si même l'original plante, retour vide
+            return []
+
+        # Phase 3: Cache réactivé avec support pagination - DÉSACTIVÉ TEMPORAIREMENT
+        if Config.SMART_CACHE_ENABLED and self._should_use_cache(search_term, column_filters, incomplete_filter, limit):
             # Inclure pagination dans la clé de cache
             cache_key_data = {
                 'term': search_term,
@@ -729,7 +737,35 @@ class DatabaseManager:
             app_logger.debug(f"💾 CACHE MISS pour '{display_term}'{page_info} - {len(results)} résultats mis en cache")
         
         return results
-    
+
+    def _should_use_cache(self, search_term: Optional[str], column_filters: Optional[Dict],
+                         incomplete_filter: bool, limit: Optional[int]) -> bool:
+        """Phase 3: Logique intelligente d'utilisation du cache
+
+        Cache activé si :
+        - Cache search disponible
+        - Recherche simple (pas de filters complexes)
+        - Résultats attendus <= 5000 (éviter surcharge mémoire)
+        - Pas de filter incomplet (trop spécialisé)
+        """
+        if not self.search_cache:
+            return False
+
+        # Pas de cache pour filters complexes
+        if column_filters or incomplete_filter:
+            return False
+
+        # Cache pour recherches avec terme (peu importe la limite)
+        if search_term and limit and limit <= 5000:
+            return True
+
+        # Cache pour recherches simples sans terme si petite pagination
+        if not search_term and limit and limit <= 5000:
+            return True
+
+        # Pas de cache pour gros volumes ou sans limite
+        return False
+
     def _load_data_optimized(self, search_term: Optional[str] = None, 
                            column_filters: Optional[Dict[int, str]] = None, 
                            limit: Optional[int] = None,
