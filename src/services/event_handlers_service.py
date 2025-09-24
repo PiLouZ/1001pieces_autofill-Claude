@@ -107,9 +107,14 @@ class EventHandlersService:
                 5000
             )
 
-        # Feature Flag: Phase 4 - Sauvegarde événementielle après import
+        # Feature Flag: Phase 4 - Sauvegarde événementielle après import (délégation service)
         if Config.ENABLE_EVENT_DRIVEN_SAVE:
-            self._trigger_event_driven_save("import_completed")
+            if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
+                self.main_window.event_driven_save_service.handle_import_completed()
+            else:
+                # Fallback si service pas encore initialisé
+                app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
+                self._trigger_event_driven_save("import_completed")
 
     def _trigger_event_driven_save(self, event_type: str):
         """Déclencher sauvegarde événementielle"""
