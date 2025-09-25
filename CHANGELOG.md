@@ -1331,7 +1331,7 @@ Cette version introduit une approche complètement nouvelle pour la gestion des 
 
 ---
 
-**📅 Dernière mise à jour :** 26 août 2025  
-**👨‍💻 Développé par :** Claude (Anthropic) en collaboration avec l'utilisateur  
-**🏷️ Version stable :** 2.7.0  
-**🚀 Dernière version :** Nouveau système d'importation et corrections finales
+**📅 Dernière mise à jour :** 25 septembre 2025
+**👨‍💻 Développé par :** Claude (Anthropic) en collaboration avec l'utilisateur
+**🏷️ Version stable :** 3.4.0
+**🚀 Dernière version :** Détection visuelle des doublons + CMD+N + Auto-désactivation filtres
