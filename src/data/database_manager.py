@@ -1066,10 +1066,14 @@ class DatabaseManager:
                 self.cache_invalidation.invalidate_after_device_modification("ajout", 1)
             
             return self.cursor.lastrowid
-            
+
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'insertion: {e}")
-    
+
+    def add_device(self, device_data: Dict[str, Any]) -> int:
+        """Alias pour insert_appareil - pour compatibilité avec DatabaseOperationsService"""
+        return self.insert_appareil(device_data)
+
     def delete_appareils(self, ids: List[int]) -> int:
         """Supprimer des appareils par ID et toutes leurs associations de pièces"""
         try:

@@ -25,6 +25,10 @@ class ToolbarService:
     
     def __init__(self, main_window):
         self.main_window = main_window
+
+        # Références des boutons pour les services externes
+        self.action_button = None
+        self.clean_duplicates_action = None
         
     def setup_toolbar(self):
         """Configurer la barre d'outils moderne (reproduction exacte de l'original)"""
@@ -132,23 +136,27 @@ class ToolbarService:
         action_btn = QPushButton("Action")
         action_btn.setObjectName("menuButton")
         action_menu = QMenu()
-        
+
         import_action = QAction("📈 Import", self.main_window)
         import_action.triggered.connect(self.main_window._import_file)
         action_menu.addAction(import_action)
-        
+
         action_menu.addSeparator()
-        
+
         autocomplete_action = QAction("🗯️ Autocomplétion", self.main_window)
         autocomplete_action.triggered.connect(self.main_window._fill_empty_fields)
         action_menu.addAction(autocomplete_action)
-        
+
         clean_action = QAction("🧹 Nettoyer les doublons", self.main_window)
         clean_action.triggered.connect(self.main_window._clean_data)
         action_menu.addAction(clean_action)
-        
+
         action_btn.setMenu(action_menu)
         toolbar.addWidget(action_btn)
+
+        # Stocker les références pour les services externes
+        self.action_button = action_btn
+        self.clean_duplicates_action = clean_action
     
     def _setup_tools_actions(self, toolbar):
         """Groupe Outils"""

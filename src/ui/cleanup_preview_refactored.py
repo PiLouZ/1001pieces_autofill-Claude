@@ -230,7 +230,7 @@ class CleanupPreviewDialog(QDialog):
                         preview_text += f"  • ... et {len(selected_pieces) - 10} autres\n"
                     preview_text += "\n"
                     
-            preview_text += "⚠️ ATTENTION: Ces opérations sont irréversibles!\n"
+            preview_text += "ATTENTION: Ces opérations sont irréversibles!\n"
             preview_text += "Assurez-vous d'avoir une sauvegarde de votre base de données."
             
             # Afficher dans une boîte de dialogue

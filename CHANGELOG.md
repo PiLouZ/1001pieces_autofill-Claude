@@ -2,6 +2,48 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [3.4.0] - 🔴 STABLE: Détection Visuelle des Doublons + CMD+N + Auto-Désactivation Filtres - 2025-09-25
+
+### 🔴 **Détection Visuelle Intelligente des Doublons**
+
+#### ✨ **Nouveautés Majeures**
+- **Service dédié**: Création `DuplicateIndicatorService` avec cache intelligent
+- **Indicateur visuel**: Bouton Action rouge + texte menu personnalisé quand doublons détectés
+- **Cache performant**: Système 5 secondes avec invalidation automatique après modifications
+- **Exclusion DISTINCT**: SQL complexe excluant les appareils marqués comme distincts
+- **Architecture robuste**: Signaux PyQt5 + intégration complète avec tous les services
+
+#### 🛠️ **Implémentation Technique**
+- **Fichier**: `src/services/duplicate_indicator_service.py` (nouveau)
+- **Intégration**: `toolbar_service.py` + `main_refactored.py`
+- **Signalisation**: `duplicates_count_changed` → mise à jour UI automatique
+- **Requête SQL**: JOIN avec `reference_decisions` pour exclure items DISTINCT
+- **Cache**: Invalidation après import, ajout, modification, suppression
+
+### 🆕 **CMD+N Nouvelle Ligne + Auto-Désactivation Filtres**
+
+#### ✅ **Corrections Critiques**
+- **CMD+N réparé**: Ajout méthode `add_device()` dans `DatabaseManager`
+  - **Problème**: `self.db_manager.add_device()` n'existait pas
+  - **Solution**: Alias vers `insert_appareil()` pour compatibilité
+- **Validation intelligente**: Bypass validation pour nouvelles lignes vides
+- **Auto-désactivation**: Filtre "lignes incomplètes" se désactive quand tableau vide
+  - **Signal**: `filter_auto_disabled` → rechargement automatique
+  - **Préservation**: Recherche conservée lors des rechargements
+
+#### 🏗️ **Architecture Améliorée**
+- **Services impliqués**: `IncompleteButtonService`, `DatabaseOperationsService`, `ImportManager`
+- **Cache synchronisé**: Invalidation doublons + lignes incomplètes après toutes modifications
+- **Gestion d'erreurs**: Logs propres sans verbosité excessive
+
+### 🧹 **Nettoyage & Stabilisation**
+
+#### ✨ **Code Quality**
+- **Logs optimisés**: Suppression logs debug verbeux (cache utilisé, invalidations)
+- **Syntaxe vérifiée**: Tous fichiers modifiés compilent sans erreur
+- **Version unifiée**: `3.4.0` dans `config.py` et `constants.py`
+- **Tests non-régression**: Fonctionnement complet vérifié
+
 ## [3.3.1] - 🔧 HOTFIX: Factorisation EventDrivenSaveService + Correction Bouton Incomplet - 2025-09-24
 
 ### 🏗️ **Factorisation Architecture - EventDrivenSaveService**
