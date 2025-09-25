@@ -716,7 +716,6 @@ class ImportManager:
         """
         Importer un ou plusieurs fichiers
         """
-        app_logger.debug("🎯 MÉTHODE import_files APPELÉE avec {len(file_paths)} fichiers: {file_paths}")
         """
         
         Args:
@@ -938,7 +937,6 @@ class ImportManager:
                 QApplication.processEvents()
 
                 try:
-                    app_logger.debug(f"📁 Traitement fichier {i+1}/{len(config.files)}: {file.filename}")
 
                     # MODIFICATION: Utilisation du set GLOBAL pour détecter doublons inter-fichiers
                     file_results = self._import_single_file(file, config, global_seen_device_refs)
@@ -1020,7 +1018,6 @@ class ImportManager:
         BATCH_THRESHOLD = 50  # lignes - batch dès 50 lignes pour optimisation immédiate
         
         if len(data) >= BATCH_THRESHOLD:
-            app_logger.debug("🚀 Mode BATCH activé pour {len(data)} lignes (seuil: {BATCH_THRESHOLD})")
             return self._process_data_import_batch(
                 data, 
                 references_and_labels,
@@ -1042,7 +1039,6 @@ class ImportManager:
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                            config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Traiter l'import des données avec les références et libellés séparés"""
-        app_logger.debug("🚀 MÉTHODE _process_data_import APPELÉE avec {len(data)} lignes")
         results = {
             'total_imported': 0,
             'matches_found': 0,
@@ -1076,21 +1072,16 @@ class ImportManager:
                 if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
                     ref_modele = col2
                     commercial_ref = col3
-                    app_logger.debug("🔍 FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
                 else:
                     ref_modele = col0
                     commercial_ref = col1
-                    app_logger.debug("🔍 FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
             else:
                 # Format standard 2-3 colonnes
                 ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
                 commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
-                app_logger.debug("🔍 FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
             
             # Vérifier si c'est un doublon dans le fichier
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
-            app_logger.debug("🔍 ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
-            app_logger.debug("🔍 SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
                 app_logger.debug("  🔄 Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
@@ -1143,7 +1134,6 @@ class ImportManager:
                                     app_logger.debug("  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
                                 else:
                                     results['associations_existing'] += 1
-                                    app_logger.debug("  🔍 Association existante: {reference} → {label} pour appareil {device_id}")
                         except Exception as e:
                             app_logger.debug("Erreur association {reference}: {e}")
         
@@ -1152,8 +1142,6 @@ class ImportManager:
     def _process_data_import_batch(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                                  config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Version optimisée avec batch processing pour les gros imports"""
-        app_logger.debug("🚀 MÉTHODE _process_data_import_batch APPELÉE avec {len(data)} lignes")
-        app_logger.debug("🚀 BATCH MODE: Traitement optimisé de {len(data)} lignes")
         
         results = {
             'total_imported': 0,
@@ -1237,20 +1225,15 @@ class ImportManager:
                 if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
                     ref_modele = col2
                     commercial_ref = col3
-                    app_logger.debug("🔍 BATCH FORMAT 4 COLONNES: Utilisation col2|col3 pour déduplication: {col2}|{col3}")
                 else:
                     ref_modele = col0
                     commercial_ref = col1
-                    app_logger.debug("🔍 BATCH FORMAT 4 COLONNES: Utilisation col0|col1 pour déduplication: {col0}|{col1}")
             else:
                 # Format standard 2-3 colonnes
                 ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
                 commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
-                app_logger.debug("🔍 BATCH FORMAT STANDARD: Utilisation col0|col1 pour déduplication: {ref_modele}|{commercial_ref}")
 
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
-            app_logger.debug("🔍 BATCH ANALYSE LIGNE: ref_modele='{ref_modele}', commercial_ref='{commercial_ref}', device_key='{device_key}'")
-            app_logger.debug("🔍 BATCH SEEN_REFS: {list(seen_device_refs)}")
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
                 app_logger.debug("  🔄 BATCH Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
@@ -1484,7 +1467,6 @@ class ImportManager:
         query = Config.QUERIES['insert_device_batch']
         chunk_size = Config.BATCH_INSERT_SIZE
         
-        app_logger.debug("🚀 BATCH INSERT: {len(devices_batch)} appareils à insérer par chunks de {chunk_size}")
         
         # Utiliser une transaction globale pour l'efficacité
         conn = self.db_manager.get_connection()
@@ -1795,7 +1777,6 @@ class ImportManager:
             if results:
                 found_type, found_manufacturer = results[0]
                 
-                app_logger.debug("🔍 Autocomplétion trouvée: Type='{found_type}', Fabricant='{found_manufacturer}'")
                 
                 # Compléter seulement les champs vides
                 if type_empty:
