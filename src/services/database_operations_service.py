@@ -67,14 +67,16 @@ class DatabaseOperationsService(BaseService):
                 'notes': ''
             }
 
-        # Validation des données
-        is_valid, errors = self.validate_device_data(device_data)
-        if not is_valid:
-            error_msg = "Erreurs de validation:\n" + "\n".join(errors)
-            if self.user_interaction_service:
-                self.user_interaction_service.show_error(error_msg)
-            self.validation_failed.emit(error_msg)
-            return None
+        # Validation des données (sauf pour les nouvelles lignes vides)
+        is_new_empty_row = all(not str(value).strip() for value in device_data.values() if value != '0.00' and value != '0')
+        if not is_new_empty_row:
+            is_valid, errors = self.validate_device_data(device_data)
+            if not is_valid:
+                error_msg = "Erreurs de validation:\n" + "\n".join(errors)
+                if self.user_interaction_service:
+                    self.user_interaction_service.show_error(error_msg)
+                self.validation_failed.emit(error_msg)
+                return None
 
         # Ajouter en base
         device_id = self.db_manager.add_device(device_data)
@@ -90,6 +92,10 @@ class DatabaseOperationsService(BaseService):
             # Forcer l'invalidation du cache du service incomplete_button
             if hasattr(self.parent_window, 'incomplete_button_service'):
                 self.parent_window.incomplete_button_service._cache_valid = False
+
+            # Invalider le cache des doublons après ajout
+            if hasattr(self.parent_window, 'duplicate_indicator_service'):
+                self.parent_window.duplicate_indicator_service.invalidate_cache("nouvel appareil ajouté")
 
             # Utiliser un appel différé pour éviter les problèmes de synchronisation
             from PyQt5.QtCore import QTimer

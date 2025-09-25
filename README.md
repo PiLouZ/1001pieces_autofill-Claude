@@ -59,6 +59,19 @@ python3 -m src.ui.main_refactored
 
 ## ✨ Nouvelles Fonctionnalités Majeures
 
+### 🔴 **Détection Visuelle des Doublons (v3.4.0)**
+- **Indicateur visuel intelligent** - Bouton Action rouge quand doublons détectés
+- **Cache performant** - Système intelligent avec invalidation automatique
+- **Exclusion DISTINCT** - Ne compte pas les appareils marqués comme distincts
+- **Synchronisation import** - Détection automatique après imports de fichiers
+- **Service dédié** - DuplicateIndicatorService avec signaux PyQt5 optimisés
+
+### 🆕 **CMD+N Nouvelle Ligne & Auto-Désactivation Filtres (v3.4.0)**
+- **CMD+N fonctionnel** - Création de lignes vides avec validation intelligente
+- **Auto-désactivation filtres** - Filtre "lignes incomplètes" se désactive automatiquement quand tableau vide
+- **Rechargement intelligent** - Préservation de la recherche lors des rechargements
+- **Architecture robuste** - Intégration DatabaseOperationsService avec gestion d'erreurs
+
 ### ⚡ **EventDrivenSaveService - Sauvegarde Événementielle (v3.3.1)**
 - **Architecture événementielle** - Sauvegarde automatique déclenchée par les actions utilisateur
 - **Performance optimisée** - Latence sub-100ms vs 5000ms du système timer précédent

@@ -1832,6 +1832,11 @@ class ImportManager:
                 QTimer.singleShot(200, self.main_window._update_incomplete_button_visibility)
                 app_logger.debug("Mise à jour bouton 'lignes à compléter' programmée")
 
+            # Invalider le cache des doublons après import
+            if hasattr(self.main_window, 'duplicate_indicator_service') and self.main_window.duplicate_indicator_service:
+                self.main_window.duplicate_indicator_service.invalidate_cache("import")
+                app_logger.debug("Cache doublons invalidé après import")
+
         except Exception as e:
             app_logger.error(f"Erreur mises à jour post-import: {e}")
 

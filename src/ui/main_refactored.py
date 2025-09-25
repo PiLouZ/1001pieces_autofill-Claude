@@ -84,8 +84,12 @@ class MainWindow(QMainWindow):
         # Chargement initial des données
         self.table_controller.load_data()
 
-        # S'assurer que le bouton "lignes à compléter" est mis à jour après l'initialisation
+        # S'assurer que les services d'indication sont mis à jour après l'initialisation
         self._update_incomplete_button_visibility()
+
+        # Déclencher la détection initiale des doublons
+        if hasattr(self, 'duplicate_indicator_service'):
+            self.duplicate_indicator_service.schedule_update()
 
     @handle_database_errors("Erreur d'initialisation des composants")
     def _init_components(self):
@@ -193,7 +197,11 @@ class MainWindow(QMainWindow):
         # Service optimisé pour le bouton des lignes incomplètes
         from ..services.incomplete_button_service import IncompleteButtonService
         self.incomplete_button_service = IncompleteButtonService(self.db_manager, self)
-        
+
+        # Service optimisé pour l'indication des doublons
+        from ..services.duplicate_indicator_service import DuplicateIndicatorService
+        self.duplicate_indicator_service = DuplicateIndicatorService(self.db_manager, self)
+
         from .custom_reference_service import CustomReferenceService
         self.custom_reference_service = CustomReferenceService(self)
 
@@ -226,7 +234,12 @@ class MainWindow(QMainWindow):
         
         # Contrôleur principal de table
         self.table_controller = TableController(self, self.db_manager)
-        
+
+        # Connecter le signal d'auto-désactivation du filtre après initialisation du table_controller
+        if hasattr(self, 'incomplete_button_service'):
+            self.incomplete_button_service.filter_auto_disabled.connect(self._on_incomplete_filter_auto_disabled)
+            app_logger.info("✅ Signal filter_auto_disabled connecté après initialisation table_controller")
+
         # PHASE 5: Initialisation des services centralisés
         self.navigation_service = NavigationService(self.table_controller, self)
         self.cell_editing_service = CellEditingService(
@@ -542,6 +555,16 @@ class MainWindow(QMainWindow):
         """Configurer la barre d'outils moderne - Phase 2.5d"""
         # Déléguer la configuration au service spécialisé
         self.toolbar = self.toolbar_service.setup_toolbar()
+
+        # Connecter le service d'indication des doublons aux boutons
+        if hasattr(self, 'duplicate_indicator_service') and hasattr(self.toolbar_service, 'action_button'):
+            self.duplicate_indicator_service.set_buttons(
+                self.toolbar_service.action_button,
+                self.toolbar_service.clean_duplicates_action
+            )
+            from ..core.logger import app_logger
+            app_logger.info("✅ Service d'indication des doublons connecté aux boutons")
+
         self._update_toolbar_states()
 
     def _setup_statusbar(self):
@@ -999,8 +1022,15 @@ class MainWindow(QMainWindow):
         
         # Mettre à jour la valeur précédente
         self.previous_values[key] = new_value
-        
+
         self._update_toolbar_states()
+
+        # Mettre à jour les services après modification
+        self._update_incomplete_button_visibility()
+
+        # Mettre à jour l'indicateur de doublons après modification
+        if hasattr(self, 'duplicate_indicator_service'):
+            self.duplicate_indicator_service.schedule_update()
 
     def _on_selection_changed(self):
         """Gérer le changement de sélection"""
@@ -1643,6 +1673,10 @@ class MainWindow(QMainWindow):
                 # Rafraîchir l'affichage après nettoyage
                 self._force_refresh_display()
 
+                # Invalider le cache des doublons après nettoyage
+                if hasattr(self, 'duplicate_indicator_service'):
+                    self.duplicate_indicator_service.invalidate_cache("nettoyage doublons")
+
         except Exception as e:
             self.user_interaction_service.show_error(f"Erreur lors du nettoyage: {e}")
     
@@ -1974,6 +2008,11 @@ class MainWindow(QMainWindow):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
         # PHASE 3.1: Déléguer au service de tri/filtrage si activé
         if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
+            # Synchroniser l'état du filtre avec IncompleteButtonService
+            if hasattr(self, 'incomplete_button_service'):
+                self.incomplete_button_service.set_filter_active(checked)
+                app_logger.info(f"🔄 Synchronisation incomplete_button_service: filtre {'activé' if checked else 'désactivé'}")
+
             self.sorting_filtering_service.toggle_incomplete_filter()
             return
 
@@ -1985,7 +2024,40 @@ class MainWindow(QMainWindow):
             self.search_input.clear()
         search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
         self.table_controller.load_data(search_term)
-    
+
+    def _on_incomplete_filter_auto_disabled(self):
+        """Gérer la désactivation automatique du filtre lignes incomplètes"""
+        try:
+            app_logger.info("🔄 SIGNAL REÇU: Rechargement des données après désactivation auto du filtre")
+
+            # Désactiver le filtre dans tous les systèmes
+            self.show_incomplete_only = False
+
+            # Désactiver le bouton dans l'interface
+            if (hasattr(self, 'table_controller') and
+                hasattr(self.table_controller, 'incomplete_filter_btn')):
+                self.table_controller.incomplete_filter_btn.setChecked(False)
+                app_logger.info("✅ Bouton désactivé dans l'interface")
+            else:
+                app_logger.warning("⚠️ Bouton incomplete_filter_btn non trouvé")
+
+            # Désactiver dans le service de tri/filtrage si disponible
+            if (Config.USE_NEW_SORTING_FILTERING_SERVICE and
+                hasattr(self, 'sorting_filtering_service') and
+                self.sorting_filtering_service):
+                self.sorting_filtering_service.incomplete_filter_active = False
+                app_logger.info("✅ Filtre désactivé dans sorting_filtering_service")
+
+            # Forcer un rechargement complet en supprimant tous les filtres
+            app_logger.info("🔄 Rechargement complet avec clear_filters=True")
+            self._force_refresh_display(reset_page=False, clear_filters=True)
+            app_logger.info("✅ Rechargement terminé via _force_refresh_display")
+
+        except Exception as e:
+            app_logger.error(f"❌ Erreur lors du rechargement après désactivation auto du filtre: {e}")
+            import traceback
+            app_logger.error(f"Stack trace: {traceback.format_exc()}")
+
     def _force_refresh_display(self, reset_page=False, clear_filters=False):
         """Forcer le rafraîchissement complet de l'affichage du tableau"""
         try:
@@ -2057,7 +2129,7 @@ class MainWindow(QMainWindow):
         """Ouvrir le guide d'utilisation"""
         try:
             # URL du guide d'utilisation (vous pouvez la modifier selon vos besoins)
-            guide_url = "https://github.com/username/repository/wiki/Guide-Utilisation"
+            guide_url = "https://github.com/PiLouZ/1001pieces_autofill-Claude/blob/main/README.md"
             
             # Message informatif avec options
             from PyQt5.QtWidgets import QMessageBox
@@ -2547,9 +2619,17 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _add_new_row(self):
         """Ajouter une nouvelle ligne"""
-        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
-        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
-            self.database_operations_service.add_new_device()
+        try:
+            # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
+            if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+                device_id = self.database_operations_service.add_new_device()
+                if not device_id:
+                    app_logger.error("Échec de l'ajout de nouvelle ligne")
+            else:
+                app_logger.warning("DatabaseOperationsService non disponible")
+
+        except Exception as e:
+            app_logger.error(f"Erreur lors de l'ajout de nouvelle ligne: {e}")
 
     def _handle_paste(self):
         """Gestion du collage de données depuis le presse-papiers - Version refactorisée Phase 2.5"""

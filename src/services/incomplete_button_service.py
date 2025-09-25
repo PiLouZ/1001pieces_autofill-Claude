@@ -14,6 +14,8 @@ class IncompleteButtonService(QObject):
 
     # Signal émis quand le compteur change
     count_changed = pyqtSignal(int)
+    # Signal émis quand le filtre se désactive automatiquement
+    filter_auto_disabled = pyqtSignal()
 
     def __init__(self, db_manager, parent=None):
         super().__init__(parent)
@@ -39,6 +41,7 @@ class IncompleteButtonService(QObject):
         self.button = button
         if button:
             self.count_changed.connect(self._update_button_display)
+            app_logger.info("✅ Signal count_changed connecté à _update_button_display")
 
     def invalidate_cache(self, reason: str = "modification"):
         """Invalider le cache (à appeler lors des modifications de données)"""
@@ -76,6 +79,7 @@ class IncompleteButtonService(QObject):
         # Recalculer depuis la base de données
         try:
             new_count = self.db_manager.count_incomplete_devices()
+            app_logger.info(f"📊 Comptage DB: {new_count} lignes incomplètes (filtre actif: {self.show_incomplete_only})")
 
             # Mettre à jour le cache
             old_count = self._cached_count
@@ -85,6 +89,7 @@ class IncompleteButtonService(QObject):
 
             # Émettre le signal si le compteur a changé
             if old_count != new_count:
+                app_logger.info(f"📈 Changement détecté: {old_count} → {new_count}, émission count_changed")
                 self.count_changed.emit(new_count)
 
             return new_count
@@ -115,9 +120,10 @@ class IncompleteButtonService(QObject):
                 self.button.hide()
                 # Auto-désactiver le filtre si plus de lignes incomplètes
                 if self.show_incomplete_only:
-                    self.show_incomplete_only = False
-                    # Signal pour recharger les données si nécessaire
                     app_logger.info("🔄 Plus de lignes incomplètes - désactivation auto du filtre")
+                    self.show_incomplete_only = False
+                    # Émettre le signal pour déclencher le rechargement des données
+                    self.filter_auto_disabled.emit()
 
         except Exception as e:
             app_logger.error(f"Erreur mise à jour affichage bouton: {e}")
