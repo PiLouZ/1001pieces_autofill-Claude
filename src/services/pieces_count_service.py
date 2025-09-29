@@ -8,11 +8,13 @@ from ..ui.qt_imports import QTableWidget, QTableWidgetItem, QApplication, Qt, QC
 
 from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
+from .base_service import BaseService
 
-class PiecesCountService:
+class PiecesCountService(BaseService):
     """Service dédié à la gestion du comptage et affichage des pièces associées"""
     
     def __init__(self, db_manager: DatabaseManager):
+        super().__init__()
         self.db_manager = db_manager
         
     def update_pieces_count_for_rows(self, table: QTableWidget, rows: Set[int]):
@@ -38,7 +40,7 @@ class PiecesCountService:
                         app_logger.warning(f"Échec mise à jour Nb Pièces ligne {row}")
                         
             except Exception as e:
-                app_logger.error(f"Erreur mise à jour Nb Pièces ligne {row}: {e}")
+                self.handle_error(e, f"mise à jour Nb Pièces ligne {row}")
         
         if updated_count > 0:
             # Forcer le rafraîchissement global après toutes les mises à jour
@@ -104,8 +106,7 @@ class PiecesCountService:
             return True
             
         except Exception as e:
-            app_logger.error(f"Erreur lors de la mise à jour de la cellule [{row}, 7]: {e}")
-            return False
+            return self.handle_error_with_return(e, f"mise à jour cellule [{row}, 7]", False)
         finally:
             # Rétablir les signaux dans tous les cas
             table.blockSignals(old_signals_blocked)
@@ -128,7 +129,7 @@ class PiecesCountService:
                 table.viewport().update(column_rect)
                 
         except Exception as e:
-            app_logger.error(f"Erreur lors du rafraîchissement du tableau: {e}")
+            self.handle_error(e, "rafraîchissement tableau")
     
     def _get_db_id_from_row(self, table: QTableWidget, row: int) -> Optional[int]:
         """Récupérer l'ID de l'appareil depuis une ligne du tableau"""

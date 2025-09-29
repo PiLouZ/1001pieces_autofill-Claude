@@ -6,11 +6,13 @@ Sépare la logique de recherche de l'interface utilisateur
 from typing import List, Optional, Dict, Any, Tuple
 from ..data.database_manager import DatabaseManager
 from .event_bus import event_bus
+from .base_service import BaseService
 
-class SearchService:
+class SearchService(BaseService):
     """Service dédié aux opérations de recherche"""
     
     def __init__(self, db_manager: DatabaseManager):
+        super().__init__()
         self.db_manager = db_manager
         self._current_search = None
         self._last_results = []
@@ -108,8 +110,7 @@ class SearchService:
             return [row[0] for row in results]
             
         except Exception as e:
-            app_logger.error(f"Erreur suggestions: {e}")
-            return []
+            return self.handle_error_with_return(e, "suggestions de recherche", [])
     
     def parse_advanced_search(self, text: str) -> Optional[Dict[str, Any]]:
         """
@@ -160,7 +161,7 @@ class SearchService:
                 }
                 
         except Exception as e:
-            app_logger.error(f"Erreur parsing recherche avancée '{text}': {e}")
+            self.handle_error(e, f"parsing recherche avancée '{text}'")
             # Fallback vers recherche simple pour garantir robustesse
             return {
                 'type': 'simple',
@@ -336,8 +337,7 @@ class SearchService:
             return self._get_piece_description_from_reference(search_term) is not None
         
         except Exception as e:
-            app_logger.error(f"Erreur vérification référence pièce: {e}")
-            return False
+            return self.handle_error_with_return(e, "vérification référence pièce", False)
     
     def _are_all_terms_piece_references(self, search_term: str) -> bool:
         """Vérifier si tous les termes d'une recherche multi-références sont des références de pièce"""
@@ -360,8 +360,7 @@ class SearchService:
                 return all(self._get_piece_description_from_reference(term) is not None for term in terms)
                 
         except Exception as e:
-            app_logger.error(f"Erreur vérification multi-références: {e}")
-            return False
+            return self.handle_error_with_return(e, "vérification multi-références", False)
     
     def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
         """Récupérer la description d'une pièce depuis sa référence"""
@@ -382,5 +381,4 @@ class SearchService:
             return None
             
         except Exception as e:
-            app_logger.error(f"Erreur récupération description pièce '{reference}': {e}")
-            return None
+            return self.handle_error_with_return(e, f"récupération description pièce '{reference}'")

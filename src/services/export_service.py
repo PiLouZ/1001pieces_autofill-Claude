@@ -13,6 +13,7 @@ from ..core.logger import app_logger
 from ..core.constants import ExportFormat, ExportError
 from .event_bus import event_bus
 from .html_export_service import HtmlExportService
+from .base_service import BaseService
 
 try:
     from openpyxl import Workbook
@@ -20,10 +21,11 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-class ExportService:
+class ExportService(BaseService):
     """Service dédié aux opérations d'export"""
     
     def __init__(self, db_manager: DatabaseManager):
+        super().__init__()
         self.db_manager = db_manager
     
     def export_search_results(self, search_term: str, 
@@ -73,12 +75,7 @@ class ExportService:
             return result
             
         except Exception as e:
-            error_result = {
-                'success': False,
-                'error': str(e),
-                'count': 0
-            }
-            
+            error_result = self.handle_error_with_result(e, "export des résultats de recherche")
             event_bus.emit('export.error', error_result)
             return error_result
     
@@ -103,7 +100,7 @@ class ExportService:
                 raise ValueError(f"Format d'export HTML non supporté: {export_format}")
                 
         except Exception as e:
-            app_logger.error(f"Erreur export HTML: {e}")
+            self.handle_error(e, "export HTML")
             raise
     
     def _generate_html_brands(self, data: List[Tuple]) -> str:
@@ -158,7 +155,7 @@ class ExportService:
                     row_data['pieces'] = pieces
                     row_data['pieces_count'] = len(pieces)
                 except Exception as e:
-                    app_logger.error(f"Erreur récupération pièces pour appareil {row[0]}: {e}")
+                    self.handle_error(e, f"récupération pièces pour appareil {row[0]}")
                     row_data['pieces'] = []
                     row_data['pieces_count'] = 0
             

@@ -9,11 +9,13 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdi
 from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
 from ..core.config import Config
+from .base_service import BaseService
 
-class AutoCompletionService:
+class AutoCompletionService(BaseService):
     """Service dédié à l'autocomplétion des cellules"""
     
     def __init__(self, db_manager: DatabaseManager, parent_widget: QWidget = None):
+        super().__init__(parent_window=parent_widget)
         self.db_manager = db_manager
         self.parent_widget = parent_widget
     
@@ -58,10 +60,7 @@ class AutoCompletionService:
             return self._show_autocompletion_dialog(dialog_title, dialog_label, db_field, current_value)
                     
         except Exception as e:
-            app_logger.error(f"Erreur affichage valeurs colonne: {e}")
-            if self.parent_widget:
-                QMessageBox.warning(self.parent_widget, "Erreur", f"Impossible de récupérer les valeurs: {e}")
-            return None
+            return self.handle_error_with_return(e, "affichage valeurs colonne", show_dialog=True)
     
     def _get_current_cell_edit_value(self, table_widget, current_item, current_col):
         """Récupérer la valeur actuelle d'une cellule, même si elle est en cours d'édition"""
@@ -93,8 +92,7 @@ class AutoCompletionService:
             return current_item.text() if current_item else ""
             
         except Exception as e:
-            app_logger.debug(f"Erreur récupération valeur cellule: {e}")
-            return current_item.text() if current_item else ""
+            return self.handle_error_with_return(e, "récupération valeur cellule", current_item.text() if current_item else "")
     
     def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "") -> Optional[str]:
         """Afficher une fenêtre d'auto-complétion dédiée avec navigation clavier"""
@@ -238,7 +236,7 @@ class AutoCompletionService:
             update_list()
             
         except Exception as e:
-            QMessageBox.warning(dialog, "Erreur", f"Impossible de charger les valeurs: {e}")
+            self.handle_error(e, "chargement valeurs autocomplétion", show_dialog=True)
         
         # Boutons
         buttons_layout = QHBoxLayout()

@@ -121,6 +121,42 @@ class BaseService(QObject):
             # Erreur dans la gestion d'erreur - log seulement
             app_logger.critical(f"💥 Erreur critique dans handle_error de {self._service_name}: {meta_error}")
 
+    def handle_error_with_return(self, error: Exception, context: str, return_value=None, show_dialog: bool = False):
+        """
+        Gestion d'erreurs avec retour de valeur (pattern fréquent)
+
+        Args:
+            error: Exception capturée
+            context: Contexte de l'erreur
+            return_value: Valeur à retourner (par défaut None)
+            show_dialog: Afficher une boîte de dialogue
+
+        Returns:
+            return_value (généralement None)
+        """
+        self.handle_error(error, context, show_dialog)
+        return return_value
+
+    def handle_error_with_result(self, error: Exception, context: str, success: bool = False, count: int = 0):
+        """
+        Gestion d'erreurs avec retour d'objet résultat (pattern export/import)
+
+        Args:
+            error: Exception capturée
+            context: Contexte de l'erreur
+            success: État de succès (False par défaut)
+            count: Nombre d'éléments traités
+
+        Returns:
+            Dict: Objet résultat standardisé
+        """
+        self.handle_error(error, context)
+        return {
+            'success': success,
+            'error': str(error),
+            'count': count
+        }
+
     def log_operation(self, operation: str, message: str, level: str = "debug") -> None:
         """
         Logging standardisé avec préfixe de service
