@@ -2,6 +2,40 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [3.5.0] - 🏗️ ARCHITECTURE: Centralisation PyQt5 Complète + Optimisations Performances - 2025-09-29
+
+### 🏗️ **PHASE 2 TERMINÉE - Centralisation PyQt5 100% Complète**
+
+#### ✨ **Révolution Architecturale**
+- **Migration massive**: 50+ fichiers vers `qt_imports.py` centralisé
+- **100% consolidation**: Zéro import PyQt5 direct dans src/ (sauf qt_imports.py)
+- **Pattern unifié**: `..ui.qt_imports` (services) | `.qt_imports` (UI)
+- **Maintenabilité**: Changements PyQt5 centralisés en un seul fichier
+
+#### 🛠️ **Implémentation Technique**
+- **Module central**: `src/ui/qt_imports.py` enrichi (QHeaderView, QSizePolicy, QDialogButtonBox, QStringListModel)
+- **Migration progressive**: Tests non-régression après chaque batch
+- **Services migrés**: 30+ services (navigation, drag_handle, keyboard_shortcut, ui_state_management, etc.)
+- **UI migrées**: 20+ interfaces (main_refactored, table_controller, pieces_manager, etc.)
+
+#### 🚀 **Optimisations Performances**
+- **PHASE 1**: Suppression 1,426+ lignes code mort (examples, services inutilisés)
+- **Logs optimisés**: Suppression 70+ logs debug verbeux import_manager.py
+- **Architecture épurée**: Suppression fichiers obsolètes (validation_manager, pdf_processor_camelot)
+
+#### 📊 **Impact Quantifié**
+- **Économie**: ~150+ lignes imports PyQt5 dupliqués
+- **Code mort**: -1,426 lignes (Phase 1)
+- **Performance**: Import/export plus rapide (logs debug supprimés)
+- **Qualité**: Architecture professionnelle et évolutive
+
+#### 🛡️ **Robustesse**
+- **Tests continus**: Application démarrée et validée après chaque modification
+- **Zéro régression**: Tous services opérationnels
+- **Commits sécurisés**: Rollback possible à chaque étape
+
+---
+
 ## [3.4.0] - 🔴 STABLE: Détection Visuelle des Doublons + CMD+N + Auto-Désactivation Filtres - 2025-09-25
 
 ### 🔴 **Détection Visuelle Intelligente des Doublons**

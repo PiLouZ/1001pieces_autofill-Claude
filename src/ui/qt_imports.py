@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QLabel, QPushButton, QLineEdit, QTextEdit, QTextBrowser,
     QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QHeaderView,
     QListWidget, QListWidgetItem, QComboBox, QCheckBox,
-    QInputDialog, QMessageBox, QFileDialog, QProgressDialog,
+    QInputDialog, QMessageBox, QFileDialog, QProgressDialog, QDialogButtonBox,
     QToolBar, QAction, QStatusBar, QSplitter, QTabWidget,
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
