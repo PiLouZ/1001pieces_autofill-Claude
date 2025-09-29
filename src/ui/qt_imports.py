@@ -8,14 +8,14 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QDialog,
     QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
     QLabel, QPushButton, QLineEdit, QTextEdit, QTextBrowser,
-    QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange,
+    QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QHeaderView,
     QListWidget, QListWidgetItem, QComboBox, QCheckBox,
     QInputDialog, QMessageBox, QFileDialog, QProgressDialog,
     QToolBar, QAction, QStatusBar, QSplitter, QTabWidget,
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
     QDoubleSpinBox, QSlider, QProgressBar, QDateEdit,
-    QTimeEdit, QDateTimeEdit, QCalendarWidget
+    QTimeEdit, QDateTimeEdit, QCalendarWidget, QSizePolicy
 )
 
 # Core Qt
@@ -49,11 +49,11 @@ __all__ = [
     'QApplication', 'QMainWindow', 'QWidget', 'QDialog',
     'QVBoxLayout', 'QHBoxLayout', 'QGridLayout', 'QFormLayout',
     'QLabel', 'QPushButton', 'QLineEdit', 'QTextEdit', 'QTextBrowser',
-    'QTableWidget', 'QTableWidgetItem', 'QTableWidgetSelectionRange',
+    'QTableWidget', 'QTableWidgetItem', 'QTableWidgetSelectionRange', 'QHeaderView',
     'QListWidget', 'QListWidgetItem', 'QComboBox', 'QCheckBox',
     'QInputDialog', 'QMessageBox', 'QFileDialog', 'QProgressDialog',
     'QToolBar', 'QAction', 'QStatusBar', 'QSplitter', 'QTabWidget',
-    'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea',
+    'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy',
     
     # Core
     'Qt', 'QTimer', 'QSettings', 'QEvent', 'QSize', 'QRect', 'QPoint',

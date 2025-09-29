@@ -4,8 +4,7 @@ Centralise toute la logique de navigation entre pages et gestion de la paginatio
 """
 
 from typing import Optional, Callable, Dict, Any
-from PyQt5.QtWidgets import QWidget, QLabel, QPushButton, QComboBox
-from PyQt5.QtCore import QObject, pyqtSignal
+from ..ui.qt_imports import QWidget, QLabel, QPushButton, QComboBox, QObject, pyqtSignal
 
 from ..core.logger import app_logger
 from ..core.constants import UIConfig

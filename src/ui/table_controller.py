@@ -3,11 +3,10 @@ Gestion centralisée du tableau, filtres, pagination et tri
 """
 
 from typing import List, Dict, Optional, Tuple, Any
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
+from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton,
-                            QLabel, QProgressDialog, QApplication, QHeaderView)
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QObject
-from PyQt5.QtGui import QColor, QBrush
+                            QLabel, QProgressDialog, QApplication, QHeaderView,
+                            Qt, QTimer, QThread, pyqtSignal, QObject, QColor, QBrush)
 
 from ..core.config import Config
 from ..core.logger import app_logger

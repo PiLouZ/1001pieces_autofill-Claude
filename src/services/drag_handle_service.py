@@ -13,9 +13,8 @@ Responsabilités:
 import time
 from typing import Optional
 
-from PyQt5.QtWidgets import (QWidget, QTableWidgetItem, QTableWidgetSelectionRange)
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QPainter, QPen, QColor
+from ..ui.qt_imports import (QWidget, QTableWidgetItem, QTableWidgetSelectionRange,
+                            Qt, QTimer, QPainter, QPen, QColor)
 
 from ..core.config import Config
 from ..core.logger import app_logger

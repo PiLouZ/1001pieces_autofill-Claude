@@ -10,10 +10,9 @@ Responsabilités:
 """
 
 from typing import Optional, Dict, Any
-from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QPushButton, QWidget, 
-                             QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy)
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont
+from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QWidget,
+                             QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
+                             Qt, QTimer, QFont)
 
 from ..services.export_service import ExportFormat
 from src.core.logger import app_logger

@@ -4,8 +4,7 @@ Centralise toute la logique d'édition, validation et sauvegarde des cellules de
 """
 
 from typing import Optional, Tuple, Dict, Any, List
-from PyQt5.QtWidgets import QTableWidgetItem, QTableWidget
-from PyQt5.QtCore import QObject, pyqtSignal
+from ..ui.qt_imports import QTableWidgetItem, QTableWidget, QObject, pyqtSignal
 
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager
@@ -39,7 +38,7 @@ class CellEditingService(QObject):
     def get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
         """Récupérer les informations DB d'une cellule (db_id, column_name)"""
         try:
-            from PyQt5.QtCore import Qt
+            from ..ui.qt_imports import Qt
             row, col = item.row(), item.column()
 
             # L'ID est stocké dans UserRole de chaque cellule

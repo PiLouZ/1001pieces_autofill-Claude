@@ -17,7 +17,7 @@ Responsabilités consolidées :
 import csv
 import os
 from typing import Dict, Any, Optional, List, Union, Tuple
-from PyQt5.QtWidgets import QApplication, QMessageBox
+from ..ui.qt_imports import QApplication, QMessageBox
 from enum import Enum
 
 from ..core.logger import app_logger
@@ -247,7 +247,7 @@ class ExportManagerService:
             )
         else:
             # Fallback avec QInputDialog
-            from PyQt5.QtWidgets import QInputDialog
+            from ..ui.qt_imports import QInputDialog
             selected_reference, ok = QInputDialog.getText(
                 self.main_window, title, message, text=default_reference
             )
@@ -496,7 +496,7 @@ class ExportManagerService:
     
     def _get_active_column_filters(self) -> Dict[int, str]:
         """Récupérer les filtres de colonnes actifs"""
-        from PyQt5.QtWidgets import QComboBox
+        from ..ui.qt_imports import QComboBox
         
         column_filters = {}
         

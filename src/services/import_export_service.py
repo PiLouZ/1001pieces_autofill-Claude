@@ -8,10 +8,9 @@ import os
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 
-from PyQt5.QtWidgets import (QFileDialog, QApplication, QProgressDialog, QMessageBox,
+from ..ui.qt_imports import (QFileDialog, QApplication, QProgressDialog, QMessageBox,
                             QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                            QPushButton, QComboBox)
-from PyQt5.QtCore import Qt, pyqtSignal
+                            QPushButton, QComboBox, Qt, pyqtSignal)
 
 from ..core.logger import app_logger
 from ..services.export_service import ExportFormat
@@ -232,7 +231,7 @@ class ImportExportService(BaseService):
     def _get_custom_reference_dialog(self) -> Tuple[str, bool]:
         """Dialogue pour saisie de référence personnalisée"""
         try:
-            from PyQt5.QtWidgets import QInputDialog
+            from ..ui.qt_imports import QInputDialog
 
             text, ok = QInputDialog.getText(
                 self.parent_window,
@@ -267,7 +266,7 @@ class ImportExportService(BaseService):
     def _get_export_format_dialog(self) -> str:
         """Dialogue de sélection du format d'export"""
         try:
-            from PyQt5.QtWidgets import QInputDialog
+            from ..ui.qt_imports import QInputDialog
 
             formats = ["CSV", "HTML"]
             format_choice, ok = QInputDialog.getItem(

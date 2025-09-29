@@ -4,8 +4,7 @@ Extrait de main_refactored.py pour centraliser la logique de tri et filtrage
 """
 
 from typing import Optional, Dict, Any
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QTableWidget
+from ..ui.qt_imports import Qt, pyqtSignal, QTableWidget
 
 from ..core.config import Config
 from .base_service import BaseService, DebounceTimer, service_operation

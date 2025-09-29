@@ -2,12 +2,11 @@
 Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 """
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, 
+from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QTableWidgetItem, QLabel, QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
-                           QCheckBox, QApplication, QWidget, QMenu, QAction)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter
+                           QCheckBox, QApplication, QWidget, QMenu, QAction,
+                           Qt, QTimer, pyqtSignal, QColor, QPainter)
 import sqlite3
 from typing import List, Tuple, Dict
 
