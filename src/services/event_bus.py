@@ -11,6 +11,8 @@ class EventBus:
     def __init__(self):
         self._listeners: Dict[str, List[Callable]] = defaultdict(list)
         self._enabled = True
+        # Import tardif pour éviter les dépendances circulaires
+        self._base_service = None
     
     def on(self, event_name: str, callback: Callable) -> None:
         """Écouter un événement"""
@@ -30,8 +32,10 @@ class EventBus:
             try:
                 callback(data)
             except Exception as e:
-                from ..core.logger import app_logger
-                app_logger.error(f"Erreur callback {event_name}: {e}")
+                if self._base_service is None:
+                    from .base_service import BaseService
+                    self._base_service = BaseService()
+                self._base_service.handle_error(e, f"callback {event_name}")
     
     def disable(self) -> None:
         """Désactiver temporairement le bus d'événements"""

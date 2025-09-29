@@ -12,6 +12,7 @@ from ..ui.qt_imports import QColor
 from .search_service import SearchService
 from ..core.logger import app_logger
 from ..core.config import Config
+from .base_service import BaseService
 
 class AdvancedSearchService(QObject):
     """Service de recherche avancé avec support opérateurs && et ||, débounce et mise en évidence"""
@@ -25,6 +26,7 @@ class AdvancedSearchService(QObject):
     def __init__(self, search_service: SearchService, parent=None):
         super().__init__(parent)
         self.search_service = search_service
+        self._base_service = BaseService(parent_window=parent)
         
         # Timer pour débounce (500ms)
         self.search_timer = QTimer()
@@ -91,7 +93,7 @@ class AdvancedSearchService(QObject):
             
         except Exception as e:
             error_msg = f"Erreur recherche: {e}"
-            app_logger.error(error_msg)
+            self._base_service.handle_error(e, "recherche avancée")
             self.search_error.emit(error_msg)
     
     def parse_advanced_search(self, text: str) -> Optional[Dict[str, Any]]:
@@ -162,8 +164,7 @@ class AdvancedSearchService(QObject):
                 return False
                 
         except Exception as e:
-            app_logger.error(f"Erreur mise en évidence recherche: {e}")
-            return False
+            return self._base_service.handle_error_with_return(e, "mise en évidence recherche", False)
 
     def get_current_search_term(self):
         """Obtenir le terme de recherche actuellement actif"""
