@@ -6,7 +6,7 @@ Architecture modulaire avec séparation des responsabilités
 import sys
 from typing import Optional, Dict, Any, List, Tuple
 
-from PyQt5.QtWidgets import (
+from .qt_imports import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, 
     QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
     QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
@@ -14,8 +14,8 @@ from PyQt5.QtWidgets import (
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
     QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser
 )
-from PyQt5.QtGui import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont
-from PyQt5.QtCore import Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel
+from .qt_imports import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont
+from .qt_imports import Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel
 
 # Imports Python standard consolidés
 import os
@@ -596,9 +596,9 @@ class MainWindow(QMainWindow):
     
     def _setup_paste_cleanup_for_search_input(self):
         """Configure l'interception du collage pour le champ de recherche"""
-        from PyQt5.QtWidgets import QLineEdit
-        from PyQt5.QtCore import QEvent
-        from PyQt5.QtGui import QClipboard
+        from .qt_imports import QLineEdit
+        from .qt_imports import QEvent
+        from .qt_imports import QClipboard
         
         class PasteInterceptor(QLineEdit):
             def __init__(self, parent_window, paste_service):
@@ -627,7 +627,7 @@ class MainWindow(QMainWindow):
                     
                     if cleaned_text != original_text:
                         # Créer un nouveau MimeData avec le texte nettoyé
-                        from PyQt5.QtCore import QMimeData
+                        from .qt_imports import QMimeData
                         clean_mime = QMimeData()
                         clean_mime.setText(cleaned_text)
                         super().insertFromMimeData(clean_mime)
@@ -637,7 +637,7 @@ class MainWindow(QMainWindow):
                 
             def _handle_paste_event(self):
                 """Gère l'événement de collage avec nettoyage"""
-                from PyQt5.QtWidgets import QApplication
+                from .qt_imports import QApplication
                 clipboard = QApplication.clipboard()
                 original_text = clipboard.text()
                 
@@ -1153,7 +1153,7 @@ class MainWindow(QMainWindow):
             result = self.export_manager._base_export_service.export_to_html(data, export_format)
             
             # Copier dans le presse-papiers
-            from PyQt5.QtWidgets import QApplication
+            from .qt_imports import QApplication
             QApplication.clipboard().setText(result)
             
             return True
@@ -1490,7 +1490,7 @@ class MainWindow(QMainWindow):
 
     def _handle_history_link(self, url):
         """Gérer les clics sur les liens dans l'historique"""
-        from PyQt5.QtCore import QUrl
+        from .qt_imports import QUrl
         
         url_str = url.toString() if isinstance(url, QUrl) else str(url)
         
@@ -1703,7 +1703,7 @@ class MainWindow(QMainWindow):
             return
 
         # Ancien système (pour compatibilité/rollback)
-        from PyQt5.QtWidgets import QFileDialog
+        from .qt_imports import QFileDialog
         filenames, _ = QFileDialog.getOpenFileNames(
             self, "Importer fichier(s)", "",
             "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
@@ -2132,7 +2132,7 @@ class MainWindow(QMainWindow):
             guide_url = "https://github.com/PiLouZ/1001pieces_autofill-Claude/blob/main/README.md"
             
             # Message informatif avec options
-            from PyQt5.QtWidgets import QMessageBox
+            from .qt_imports import QMessageBox
             reply = QMessageBox.question(
                 self, 
                 "Guide d'utilisation",
@@ -2158,7 +2158,7 @@ class MainWindow(QMainWindow):
     def _show_local_guide(self):
         """Afficher un guide d'utilisation local en cas d'erreur"""
         try:
-            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
+            from .qt_imports import QDialog, QVBoxLayout, QTextEdit, QPushButton
             
             dialog = QDialog(self)
             dialog.setWindowTitle("📖 Guide d'utilisation - 1001pieces.com")
@@ -2238,7 +2238,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _configure_columns(self):
         """Ouvrir la boîte de dialogue de configuration des colonnes"""
         try:
-            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel
+            from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel
             
             dialog = QDialog(self)
             dialog.setWindowTitle("⚙️ Configuration des colonnes")
@@ -2445,7 +2445,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _get_import_options_pdf(self, suggested_ref_piece=None):
         """Dialogue pour choisir les options d'import PDF"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Options d'import PDF")

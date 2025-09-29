@@ -3,13 +3,13 @@ Gestionnaire des références en doublon avec interface de fusion et correction
 """
 
 import re
-from PyQt5.QtWidgets import (
+from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, 
     QTableWidgetItem, QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
     QGroupBox, QComboBox, QLineEdit, QCheckBox, QMessageBox, QProgressBar
 )
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont
+from .qt_imports import Qt, QTimer
+from .qt_imports import QFont
 
 def clean_display_text(text):
     """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""

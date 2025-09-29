@@ -5,7 +5,7 @@ Centralise toute la logique d'analyse et de détection des doublons
 
 import re
 from typing import Dict, List, Any, Optional, Tuple, Set
-from PyQt5.QtCore import QObject, pyqtSignal, QThread, QTimer
+from ..ui.qt_imports import QObject, pyqtSignal, QThread, QTimer
 
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager

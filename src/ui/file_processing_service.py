@@ -11,8 +11,7 @@ Responsabilités:
 
 import os
 from typing import List, Optional, Dict, Any, Tuple
-from PyQt5.QtWidgets import QProgressDialog, QApplication
-from PyQt5.QtCore import Qt
+from .qt_imports import QProgressDialog, QApplication, Qt
 from src.core.logger import app_logger
 
 

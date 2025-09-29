@@ -5,7 +5,7 @@ Groupe les modifications multiples d'un même appareil en une seule entrée
 
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
-from PyQt5.QtCore import QTimer, QObject, pyqtSignal
+from ..ui.qt_imports import QTimer, QObject, pyqtSignal
 from ..core.logger import app_logger
 
 class GroupedHistoryService(QObject):

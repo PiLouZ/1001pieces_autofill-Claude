@@ -4,7 +4,7 @@ Centralise la logique de sauvegarde immédiate dispersée dans l'application
 """
 
 from typing import Any, Dict, Optional, Set, Tuple
-from PyQt5.QtCore import QTimer
+from ..ui.qt_imports import QTimer
 from ..core.logger import app_logger
 from ..core.config import Config
 from .base_service import BaseService
@@ -270,7 +270,7 @@ class EventDrivenSaveService(BaseService):
     def _update_incomplete_button_after_operation(self):
         """Mettre à jour le bouton 'lignes à compléter' après une opération"""
         try:
-            from PyQt5.QtCore import QTimer
+            from ..ui.qt_imports import QTimer
 
             def update_incomplete_button():
                 if hasattr(self.parent_window, '_update_incomplete_button_visibility'):

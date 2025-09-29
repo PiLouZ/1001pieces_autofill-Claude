@@ -8,9 +8,9 @@ Responsabilités:
 - Séparation UI/logique pour une architecture plus propre
 """
 
-from PyQt5.QtWidgets import QToolBar, QAction, QPushButton, QMenu
-from PyQt5.QtCore import QSize, Qt
-from PyQt5.QtGui import QKeySequence
+from .qt_imports import QToolBar, QAction, QPushButton, QMenu
+from .qt_imports import QSize, Qt
+from .qt_imports import QKeySequence
 
 class ToolbarService:
     """
@@ -176,7 +176,7 @@ class ToolbarService:
     
     def _configure_paste_cleanup(self):
         """Configurer le service de nettoyage du collage"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton
         
         class PasteConfigDialog(QDialog):
             def __init__(self, parent=None):
@@ -266,7 +266,7 @@ class ToolbarService:
                 
             def clear_memory(self):
                 self.parent().paste_cleanup_service.clear_memory()
-                from PyQt5.QtWidgets import QMessageBox
+                from .qt_imports import QMessageBox
                 QMessageBox.information(self, "Mémoire effacée", "Tous les choix mémorisés ont été supprimés.")
                 
             def get_config(self):

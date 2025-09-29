@@ -11,8 +11,8 @@ Responsabilités:
 """
 
 from typing import Optional, List, Dict, Any, Set
-from PyQt5.QtWidgets import QListWidgetItem, QMessageBox
-from PyQt5.QtCore import Qt
+from .qt_imports import QListWidgetItem, QMessageBox
+from .qt_imports import Qt
 
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -158,7 +158,7 @@ class PieceManagementService:
             current_ref, current_libelle = current_data
             
             # Dialog pour éditer la référence et le libellé
-            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton
+            from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton
             
             dialog = QDialog(self.main_window)
             dialog.setWindowTitle("Éditer la pièce")
@@ -312,7 +312,7 @@ class PieceManagementService:
         """Copier la référence d'une pièce dans le presse-papier"""
         ref_piece = item.data(Qt.UserRole)
         if ref_piece:
-            from PyQt5.QtWidgets import QApplication
+            from .qt_imports import QApplication
             clipboard = QApplication.clipboard()
             clipboard.setText(ref_piece)
             self.main_window.user_interaction_service.show_status_message(

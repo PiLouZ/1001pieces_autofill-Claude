@@ -135,7 +135,7 @@ class CustomReferenceService:
             
             for col_idx, filter_widget in self.main_window.table_controller.filter_widgets.items():
                 if filter_widget is not None:  # Skip removed filters
-                    from PyQt5.QtWidgets import QComboBox
+                    from .qt_imports import QComboBox
                     if isinstance(filter_widget, QComboBox):
                         filter_text = filter_widget.currentText().strip()
                     else:  # QLineEdit

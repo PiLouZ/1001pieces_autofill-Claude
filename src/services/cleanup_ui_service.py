@@ -4,13 +4,13 @@ Centralise la logique d'affichage et d'interaction pour la prévisualisation de 
 """
 
 from typing import Dict, List, Any, Optional
-from PyQt5.QtWidgets import (
+from ..ui.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QGroupBox, QTabWidget,
     QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication
 )
-from PyQt5.QtCore import Qt, QObject, pyqtSignal
-from PyQt5.QtGui import QFont, QKeyEvent
+from ..ui.qt_imports import Qt, QObject, pyqtSignal
+from ..ui.qt_imports import QFont, QKeyEvent
 
 from ..core.logger import app_logger
 from .duplicates_analysis_service import clean_display_text
@@ -39,9 +39,9 @@ class KeyboardTreeWidget(QTreeWidget):
         """Gérer le menu contextuel pour copier une cellule"""
         item = self.itemAt(event.pos())
         if item and item.parent() is not None:  # C'est un appareil (pas un groupe)
-            from PyQt5.QtWidgets import QMenu, QAction
-            from PyQt5.QtGui import QClipboard
-            from PyQt5.QtWidgets import QApplication
+            from ..ui.qt_imports import QMenu, QAction
+            from ..ui.qt_imports import QClipboard
+            from ..ui.qt_imports import QApplication
 
             menu = QMenu(self)
 
@@ -57,7 +57,7 @@ class KeyboardTreeWidget(QTreeWidget):
         if item and 0 <= column < item.columnCount():
             text = item.text(column)
             if text:
-                from PyQt5.QtWidgets import QApplication
+                from ..ui.qt_imports import QApplication
                 clipboard = QApplication.clipboard()
                 clipboard.setText(text)
                 app_logger.info(f"Valeur copiée: {text}")
@@ -938,7 +938,7 @@ class ActionHistoryWidget(QWidget):
     def _export_history(self):
         """Exporter l'historique en CSV"""
         try:
-            from PyQt5.QtWidgets import QFileDialog
+            from ..ui.qt_imports import QFileDialog
             import csv
             from datetime import datetime
 

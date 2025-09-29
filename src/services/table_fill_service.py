@@ -6,9 +6,9 @@ Extrait des méthodes de remplissage de main_refactored.py
 import time
 import re
 from typing import List, Any, Optional
-from PyQt5.QtWidgets import QTableWidgetItem, QApplication
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
+from ..ui.qt_imports import QTableWidgetItem, QApplication
+from ..ui.qt_imports import Qt
+from ..ui.qt_imports import QColor
 
 from src.core.config import Config
 

@@ -10,10 +10,8 @@ Responsabilités:
 """
 
 from typing import List, Optional
-from PyQt5.QtWidgets import (QTableWidget, QApplication, QDialog, QVBoxLayout, 
-                           QLineEdit, QListWidget, QListWidgetItem)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QKeyEvent
+from ..ui.qt_imports import (QTableWidget, QApplication, QDialog, QVBoxLayout,
+                           QLineEdit, QListWidget, QListWidgetItem, Qt, QKeyEvent)
 
 from ..core.logger import app_logger
 from ..core.config import Config

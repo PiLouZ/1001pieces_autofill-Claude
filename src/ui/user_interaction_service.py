@@ -11,8 +11,8 @@ Responsabilités:
 
 from typing import Optional, List
 from datetime import datetime
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QTimer
+from .qt_imports import QMessageBox
+from .qt_imports import QTimer
 
 from src.core.config import Config
 from src.core.logger import app_logger

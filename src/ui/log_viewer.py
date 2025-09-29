@@ -3,13 +3,13 @@ Interface de visualisation des logs pour l'application 1001pieces
 Permet d'analyser les logs en temps réel et de diagnostiquer les problèmes
 """
 
-from PyQt5.QtWidgets import (
+from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QComboBox, 
     QPushButton, QLabel, QSpinBox, QTabWidget, QWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
 )
-from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QFont, QTextCharFormat, QColor
+from .qt_imports import QTimer, Qt
+from .qt_imports import QFont, QTextCharFormat, QColor
 import json
 import os
 from datetime import datetime

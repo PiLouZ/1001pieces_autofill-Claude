@@ -67,7 +67,7 @@ def handle_errors(
                 elif args:
                     # Si c'est une méthode d'instance d'un QWidget, utiliser self comme parent
                     try:
-                        from PyQt5.QtWidgets import QWidget
+                        from ..ui.qt_imports import QWidget
                         if isinstance(args[0], QWidget):
                             parent = args[0]
                         else:

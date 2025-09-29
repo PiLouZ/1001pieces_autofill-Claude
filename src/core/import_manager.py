@@ -10,11 +10,10 @@ import os
 import warnings
 from datetime import datetime
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QLineEdit, QPushButton, QComboBox, QCheckBox, 
+from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                             QLineEdit, QPushButton, QComboBox, QCheckBox,
                              QTextEdit, QGroupBox, QProgressDialog, QApplication,
-                             QScrollArea, QWidget, QGridLayout)
-from PyQt5.QtCore import Qt
+                             QScrollArea, QWidget, QGridLayout, Qt)
 
 from .logger import app_logger
 
@@ -1155,7 +1154,7 @@ class ImportManager:
         }
         
         # Progress indicator spécialisé pour le mode batch
-        from PyQt5.QtWidgets import QProgressDialog, QApplication
+        from ..ui.qt_imports import QProgressDialog, QApplication
         from PyQt5.QtCore import Qt
         
         # OPTIMISATION: Progress dialog NON-MODAL pour responsivité

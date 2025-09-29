@@ -3,11 +3,10 @@ Fenêtre interactive de validation et détection d'incohérences
 """
 
 import re
-from PyQt5.QtWidgets import (
+from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
-    QTextEdit, QWidget, QTabWidget, QTreeWidget, QTreeWidgetItem
+    QTextEdit, QWidget, QTabWidget, QTreeWidget, QTreeWidgetItem, Qt
 )
-from PyQt5.QtCore import Qt
 
 def clean_display_text(text):
     """

@@ -3,14 +3,14 @@ Fenêtre de prévisualisation du nettoyage des doublons
 """
 
 import re
-from PyQt5.QtWidgets import (
+from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, 
     QTableWidgetItem, QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
     QGroupBox, QTabWidget, QWidget, QProgressBar, QCheckBox, QTreeWidget,
     QTreeWidgetItem, QApplication
 )
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont
+from .qt_imports import Qt, QTimer
+from .qt_imports import QFont
 
 def clean_display_text(text):
     """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
@@ -572,7 +572,7 @@ class CleanupPreviewDialog(QDialog):
     
     def _force_update(self):
         """Forcer la mise à jour de l'interface pendant l'analyse"""
-        from PyQt5.QtWidgets import QApplication
+        from .qt_imports import QApplication
         QApplication.processEvents()
     
     def _on_analysis_completed(self, analysis_data):

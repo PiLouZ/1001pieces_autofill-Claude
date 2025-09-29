@@ -4,8 +4,8 @@ Extrait de main_refactored.py pour centraliser la logique métier critique
 """
 
 from typing import Optional, Dict, List, Any, Tuple, Callable
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import pyqtSignal, Qt
+from ..ui.qt_imports import QMessageBox
+from ..ui.qt_imports import pyqtSignal, Qt
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -98,7 +98,7 @@ class DatabaseOperationsService(BaseService):
                 self.parent_window.duplicate_indicator_service.invalidate_cache("nouvel appareil ajouté")
 
             # Utiliser un appel différé pour éviter les problèmes de synchronisation
-            from PyQt5.QtCore import QTimer
+            from ..ui.qt_imports import QTimer
             def update_incomplete_button():
                 if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
                     self.parent_window._update_incomplete_button_visibility()
@@ -178,7 +178,7 @@ class DatabaseOperationsService(BaseService):
                     self.data_saved.emit(cells_saved)
 
                     # Mettre à jour le bouton lignes incomplètes après sauvegarde batch
-                    from PyQt5.QtCore import QTimer
+                    from ..ui.qt_imports import QTimer
                     def update_incomplete_button_after_batch():
                         if hasattr(self.parent_window, 'incomplete_button_service'):
                             self.parent_window.incomplete_button_service.invalidate_cache("sauvegarde batch")
@@ -450,7 +450,7 @@ class DatabaseOperationsService(BaseService):
                     self.parent_window.incomplete_button_service._cache_valid = False
 
                 # Utiliser un appel différé pour éviter les problèmes de synchronisation
-                from PyQt5.QtCore import QTimer
+                from ..ui.qt_imports import QTimer
                 def update_incomplete_button():
                     if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
                         self.parent_window._update_incomplete_button_visibility()

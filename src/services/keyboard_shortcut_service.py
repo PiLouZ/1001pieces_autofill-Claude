@@ -11,9 +11,7 @@ Responsabilités:
 
 import sys
 from typing import Optional, Callable, Dict
-from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtGui import QKeySequence, QKeyEvent
-from PyQt5.QtWidgets import QWidget
+from ..ui.qt_imports import pyqtSignal, Qt, QKeySequence, QKeyEvent, QWidget
 
 from ..core.config import Config
 from ..core.logger import app_logger

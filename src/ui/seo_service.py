@@ -11,8 +11,8 @@ Responsabilités:
 """
 
 from typing import Optional, Dict, Any, List, Tuple
-from PyQt5.QtWidgets import QInputDialog, QApplication
-from PyQt5.QtCore import QTimer
+from .qt_imports import QInputDialog, QApplication
+from .qt_imports import QTimer
 
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -70,7 +70,7 @@ class SEOService:
             )
             
             # Copier dans le presse-papiers
-            from PyQt5.QtWidgets import QApplication
+            from .qt_imports import QApplication
             QApplication.clipboard().setText(result['title'])
             
             # Message de statut avec informations détaillées
@@ -135,7 +135,7 @@ class SEOService:
             )
             
             # Copier dans le presse-papiers
-            from PyQt5.QtWidgets import QApplication
+            from .qt_imports import QApplication
             QApplication.clipboard().setText(result['description'])
             
             # Message de statut avec informations détaillées
@@ -574,7 +574,7 @@ class SEOService:
     
     def _show_reference_selection_dialog(self, title: str, message: str, default_reference: str) -> Optional[str]:
         """Afficher une fenêtre de sélection de référence pour les exports multi-références"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
+        from .qt_imports import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
         
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle(title)

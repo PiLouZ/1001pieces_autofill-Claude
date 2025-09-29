@@ -10,9 +10,9 @@ Responsabilités:
 """
 
 from typing import Set, List, Tuple, Optional
-from PyQt5.QtWidgets import QListWidgetItem
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
+from .qt_imports import QListWidgetItem
+from .qt_imports import Qt
+from .qt_imports import QColor
 
 from src.core.logger import app_logger
 

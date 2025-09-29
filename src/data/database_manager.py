@@ -12,7 +12,7 @@ from ..core.config import Config
 from ..core.logger import app_logger
 
 try:
-    from PyQt5.QtCore import QThread, pyqtSignal
+    from ..ui.qt_imports import QThread, pyqtSignal
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False

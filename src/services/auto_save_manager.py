@@ -6,9 +6,9 @@ Extraction sécurisée de main_refactored.py - ZÉRO RÉGRESSION
 """
 
 from typing import Set, Tuple, Optional, Dict, Any
-from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtWidgets import QTableWidgetItem, QStatusBar
-from PyQt5.QtGui import QColor
+from ..ui.qt_imports import QTimer, Qt
+from ..ui.qt_imports import QTableWidgetItem, QStatusBar
+from ..ui.qt_imports import QColor
 
 from ..core.config import Config
 from ..core.logger import app_logger

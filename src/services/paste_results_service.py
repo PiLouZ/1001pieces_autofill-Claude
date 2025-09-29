@@ -9,7 +9,7 @@ Responsabilités:
 """
 
 from typing import Optional
-from PyQt5.QtWidgets import QMessageBox
+from ..ui.qt_imports import QMessageBox
 from ..core.logger import app_logger
 
 class PasteResultsService:

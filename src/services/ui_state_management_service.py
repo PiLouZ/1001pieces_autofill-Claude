@@ -11,9 +11,8 @@ Responsabilités:
 """
 
 from typing import Optional, Any
-from PyQt5.QtCore import pyqtSignal, QTimer, Qt
-from PyQt5.QtWidgets import QApplication, QProgressBar, QLabel, QTableWidget
-from PyQt5.QtGui import QFont, QPixmap, QPainter, QIcon, QPalette
+from ..ui.qt_imports import (pyqtSignal, QTimer, Qt, QApplication, QProgressBar,
+                            QLabel, QTableWidget, QFont, QPixmap, QPainter, QIcon, QPalette)
 
 from ..core.config import Config
 from ..core.logger import app_logger

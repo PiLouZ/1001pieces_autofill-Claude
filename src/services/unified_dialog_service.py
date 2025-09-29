@@ -17,13 +17,13 @@ ARCHITECTURE :
 
 from typing import Optional, Dict, Any, List, Union
 from enum import Enum
-from PyQt5.QtWidgets import (
+from ..ui.qt_imports import (
     QInputDialog, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit, 
     QListWidget, QListWidgetItem, QMessageBox, QDialogButtonBox
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from ..ui.qt_imports import Qt
+from ..ui.qt_imports import QFont
 
 from ..core.logger import app_logger
 
