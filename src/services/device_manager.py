@@ -12,8 +12,9 @@ Responsabilités:
 
 from typing import Optional, Dict, List, Any
 from ..core.logger import app_logger
+from .base_service import BaseService
 
-class DeviceManager:
+class DeviceManager(BaseService):
     """
     Service de gestion des dispositifs/appareils
     
@@ -25,6 +26,7 @@ class DeviceManager:
     """
     
     def __init__(self, db_manager):
+        super().__init__()
         self.db_manager = db_manager
     
     def find_existing_device_by_refs(self, ref_modele: str, commercial_ref: str, 
