@@ -10,7 +10,7 @@ Responsabilités:
 
 from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
-from PyQt5.QtWidgets import QDialog
+from .qt_imports import QDialog
 from src.core.config import Config
 from src.core.logger import app_logger
 

@@ -4,8 +4,7 @@ Utilise un cache intelligent pour éviter les requêtes SQL répétées
 """
 
 from typing import Optional, Callable
-from PyQt5.QtCore import QObject, pyqtSignal, QTimer
-from PyQt5.QtWidgets import QPushButton
+from ..ui.qt_imports import QObject, pyqtSignal, QTimer, QPushButton
 
 from ..core.logger import app_logger
 

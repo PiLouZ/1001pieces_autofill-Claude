@@ -4,9 +4,7 @@ Centralise la logique de mise à jour des compteurs de pièces dans l'interface
 """
 
 from typing import Set, Optional, Dict
-from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QApplication
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
+from ..ui.qt_imports import QTableWidget, QTableWidgetItem, QApplication, Qt, QColor
 
 from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger

@@ -4,9 +4,8 @@ Gère les fenêtres d'autocomplétion et la récupération des valeurs
 """
 
 from typing import List, Optional
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-                            QPushButton, QListWidget, QListWidgetItem, QMessageBox, QWidget)
-from PyQt5.QtCore import Qt
+from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+                            QPushButton, QListWidget, QListWidgetItem, QMessageBox, QWidget, Qt)
 from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
 from ..core.config import Config

@@ -5,8 +5,7 @@ Basé sur le modèle d'IncompleteButtonService
 """
 
 from typing import Optional, List, Tuple
-from PyQt5.QtCore import QObject, pyqtSignal, QTimer
-from PyQt5.QtWidgets import QPushButton, QAction
+from ..ui.qt_imports import QObject, pyqtSignal, QTimer, QPushButton, QAction
 
 from ..core.logger import app_logger
 

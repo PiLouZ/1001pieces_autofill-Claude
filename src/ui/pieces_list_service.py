@@ -10,9 +10,8 @@ Responsabilités:
 """
 
 from typing import Optional
-from PyQt5.QtWidgets import (QWidget, QHBoxLayout, QPushButton, QListWidget, 
-                           QListWidgetItem, QMenu)
-from PyQt5.QtCore import Qt
+from .qt_imports import (QWidget, QHBoxLayout, QPushButton, QListWidget,
+                           QListWidgetItem, QMenu, Qt)
 from src.core.logger import app_logger
 
 class PieceActionButtonWidget(QWidget):
