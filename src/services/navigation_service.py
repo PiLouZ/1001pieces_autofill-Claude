@@ -8,6 +8,7 @@ from ..ui.qt_imports import QWidget, QLabel, QPushButton, QComboBox, QObject, py
 
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
+from .base_service import BaseService
 
 class NavigationService(QObject):
     """Service centralisé pour la gestion de la navigation et pagination"""
@@ -19,6 +20,7 @@ class NavigationService(QObject):
     
     def __init__(self, table_controller, parent=None):
         super().__init__(parent)
+        self._base_service = BaseService(parent_window=parent)
         self.table_controller = table_controller
         self.parent_window = parent
         
@@ -171,7 +173,7 @@ class NavigationService(QObject):
             app_logger.debug(f"Contrôles pagination mis à jour: {current_page}/{total_pages}")
 
         except Exception as e:
-            app_logger.error(f"Erreur mise à jour contrôles pagination: {e}")
+            self._base_service.handle_error(e, "mise à jour contrôles pagination")
             
     def get_current_page_info(self) -> Dict[str, Any]:
         """Obtenir les informations de la page courante"""
