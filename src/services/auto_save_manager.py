@@ -12,8 +12,9 @@ from ..ui.qt_imports import QColor
 
 from ..core.config import Config
 from ..core.logger import app_logger
+from .base_service import BaseService
 
-class AutoSaveManager:
+class AutoSaveManager(BaseService):
     """
     Gestionnaire de sauvegarde automatique et manuelle des modifications cellules
 
