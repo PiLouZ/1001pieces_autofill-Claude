@@ -8,11 +8,13 @@ import os
 from ..core.import_manager import ImportManager, ImportConfiguration
 from ..data.database_manager import DatabaseManager
 from .event_bus import event_bus
+from .base_service import BaseService
 
-class ImportService:
+class ImportService(BaseService):
     """Service dédié aux opérations d'import"""
     
     def __init__(self, db_manager: DatabaseManager):
+        super().__init__()
         self.db_manager = db_manager
         self.import_manager = ImportManager(db_manager)
     
@@ -42,11 +44,7 @@ class ImportService:
             return results
             
         except Exception as e:
-            error_result = {
-                'success': False,
-                'error': str(e),
-                'file_count': len(files)
-            }
+            error_result = self.handle_error_with_result(e, "import de fichiers", extra_fields={'file_count': len(files)})
             event_bus.emit('import.error', error_result)
             return error_result
     
@@ -132,10 +130,7 @@ class ImportService:
             }
             
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            return self.handle_error_with_result(e, "construction configuration import")
     
     def validate_files(self, files: List[str]) -> Dict[str, Any]:
         """Valider une liste de fichiers avant import"""
@@ -183,6 +178,7 @@ class ImportService:
                 })
                 
             except Exception as e:
+                self.handle_error(e, f"validation fichier {file_path}")
                 validation_results['invalid_files'].append({
                     'file': file_path,
                     'error': str(e)

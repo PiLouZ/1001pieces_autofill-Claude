@@ -137,7 +137,7 @@ class BaseService(QObject):
         self.handle_error(error, context, show_dialog)
         return return_value
 
-    def handle_error_with_result(self, error: Exception, context: str, success: bool = False, count: int = 0):
+    def handle_error_with_result(self, error: Exception, context: str, success: bool = False, count: int = 0, extra_fields: dict = None):
         """
         Gestion d'erreurs avec retour d'objet résultat (pattern export/import)
 
@@ -146,16 +146,20 @@ class BaseService(QObject):
             context: Contexte de l'erreur
             success: État de succès (False par défaut)
             count: Nombre d'éléments traités
+            extra_fields: Champs additionnels pour le résultat
 
         Returns:
             Dict: Objet résultat standardisé
         """
         self.handle_error(error, context)
-        return {
+        result = {
             'success': success,
             'error': str(error),
             'count': count
         }
+        if extra_fields:
+            result.update(extra_fields)
+        return result
 
     def log_operation(self, operation: str, message: str, level: str = "debug") -> None:
         """
