@@ -119,7 +119,7 @@ class CellEditingService(QObject):
                     id_item = self.table.item(row, 0)
                     if not id_item:
                         # Créer l'item ID s'il n'existe pas
-                        from PyQt5.QtWidgets import QTableWidgetItem
+                        from ..ui.qt_imports import QTableWidgetItem
                         id_item = QTableWidgetItem(str(db_id))
                         self.table.setItem(row, 0, id_item)
                     else:
@@ -275,7 +275,7 @@ class CellEditingService(QObject):
                     self.parent_window.incomplete_button_service._cache_valid = False
 
                 # Utiliser un appel différé pour éviter les problèmes de synchronisation
-                from PyQt5.QtCore import QTimer
+                from ..ui.qt_imports import QTimer
                 def update_incomplete_button():
                     if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
                         self.parent_window._update_incomplete_button_visibility()

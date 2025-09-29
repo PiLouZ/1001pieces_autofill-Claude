@@ -7,15 +7,15 @@ import sys
 from typing import Optional, Dict, Any, List, Tuple
 
 from .qt_imports import (
-    QApplication, QMainWindow, QTableWidget, QTableWidgetItem, 
+    QApplication, QMainWindow, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
     QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
-    QToolBar, QAction, QStatusBar, QSplitter, QTabWidget, 
+    QToolBar, QAction, QStatusBar, QSplitter, QTabWidget,
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
-    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser
+    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser,
+    QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont,
+    Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel
 )
-from .qt_imports import QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont
-from .qt_imports import Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel
 
 # Imports Python standard consolidés
 import os

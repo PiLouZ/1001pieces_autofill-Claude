@@ -1155,7 +1155,7 @@ class ImportManager:
         
         # Progress indicator spécialisé pour le mode batch
         from ..ui.qt_imports import QProgressDialog, QApplication
-        from PyQt5.QtCore import Qt
+        from ..ui.qt_imports import Qt
         
         # OPTIMISATION: Progress dialog NON-MODAL pour responsivité
         batch_progress = QProgressDialog(
@@ -1808,7 +1808,7 @@ class ImportManager:
 
             # Toujours déclencher la mise à jour du bouton "lignes à compléter"
             if hasattr(self.main_window, '_update_incomplete_button_visibility'):
-                from PyQt5.QtCore import QTimer
+                from ..ui.qt_imports import QTimer
                 QTimer.singleShot(200, self.main_window._update_incomplete_button_visibility)
                 app_logger.debug("Mise à jour bouton 'lignes à compléter' programmée")
 

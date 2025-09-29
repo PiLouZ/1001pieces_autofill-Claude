@@ -23,7 +23,7 @@ from PyQt5.QtCore import (
     Qt, QTimer, QSettings, QEvent, QSize, QRect, QPoint,
     QMimeData, QUrl, QThread, QRunnable, QThreadPool,
     QObject, pyqtSignal, pyqtSlot, QVariant, QModelIndex,
-    QAbstractTableModel, QSortFilterProxyModel, QByteArray,
+    QAbstractTableModel, QSortFilterProxyModel, QStringListModel, QByteArray,
     QIODevice, QTextStream, QFile, QDir, QFileInfo,
     QStandardPaths, QCoreApplication, QPropertyAnimation,
     QEasingCurve, QParallelAnimationGroup

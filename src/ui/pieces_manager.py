@@ -399,7 +399,7 @@ class PiecesManagerWindow(QDialog):
     def _export_pieces(self):
         """Exporter la liste des pièces"""
         try:
-            from PyQt5.QtWidgets import QFileDialog
+            from .qt_imports import QFileDialog
             
             filename, _ = QFileDialog.getSaveFileName(
                 self, "Exporter les pièces", "pieces_everyParts.csv",

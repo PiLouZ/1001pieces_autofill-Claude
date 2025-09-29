@@ -925,7 +925,7 @@ class TableController:
     
     def _add_incomplete_filter_button(self, layout):
         """Ajouter le bouton de filtre pour les lignes incomplètes"""
-        from PyQt5.QtWidgets import QPushButton, QHBoxLayout
+        from .qt_imports import QPushButton, QHBoxLayout
         from ..core.config import pluralize
         
         # Layout centré pour le bouton
