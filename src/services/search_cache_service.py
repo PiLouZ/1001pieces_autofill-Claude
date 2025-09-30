@@ -6,6 +6,7 @@ Gère l'invalidation intelligente du cache lors des modifications de données
 from typing import Set, List, Optional, Callable, Dict, Any
 from ..core.logger import app_logger
 from ..core.config import Config
+from ..utils.error_handler import handle_cache_callback_errors
 
 class SearchCacheInvalidationService:
     """Service d'invalidation intelligente du cache de recherche"""
@@ -33,6 +34,11 @@ class SearchCacheInvalidationService:
     def register_invalidation_callback(self, callback: Callable):
         """Enregistrer un callback à appeler lors d'invalidation"""
         self.invalidation_callbacks.append(callback)
+
+    @handle_cache_callback_errors()
+    def _safe_call_invalidation_callback(self, callback: Callable, reason: str) -> None:
+        """Appeler un callback d'invalidation de manière sécurisée"""
+        callback(reason)
 
     def suspend_invalidation(self, reason: str = "import en cours"):
         """Suspendre temporairement les invalidations de cache (utile pendant les imports)"""
@@ -67,10 +73,7 @@ class SearchCacheInvalidationService:
 
             # Notifier les callbacks
             for callback in self.invalidation_callbacks:
-                try:
-                    callback(reason)
-                except Exception as e:
-                    app_logger.error(f"Erreur callback invalidation {callback.__name__}: {e}")
+                self._safe_call_invalidation_callback(callback, reason)
 
             return old_size
         return 0

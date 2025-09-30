@@ -60,18 +60,31 @@ def handle_errors(
             except exceptions as e:
                 # Récupérer le parent pour afficher les messages
                 parent = None
-                if args and hasattr(args[0], parent_attr):
-                    parent = getattr(args[0], parent_attr)
-                elif args and hasattr(args[0], 'parent'):
-                    parent = getattr(args[0], 'parent', None)
-                elif args:
+                if args:
                     # Si c'est une méthode d'instance d'un QWidget, utiliser self comme parent
                     try:
                         from ..ui.qt_imports import QWidget
                         if isinstance(args[0], QWidget):
                             parent = args[0]
                         else:
-                            parent = None
+                            # Sinon, chercher l'attribut parent_attr
+                            if hasattr(args[0], parent_attr):
+                                potential_parent = getattr(args[0], parent_attr)
+                                # Vérifier que c'est un widget et pas une fonction
+                                if callable(potential_parent):
+                                    parent = None  # Éviter les fonctions
+                                elif isinstance(potential_parent, QWidget):
+                                    parent = potential_parent
+                                else:
+                                    parent = None
+                            elif hasattr(args[0], 'parent'):
+                                potential_parent = getattr(args[0], 'parent', None)
+                                if isinstance(potential_parent, QWidget):
+                                    parent = potential_parent
+                                else:
+                                    parent = None
+                            else:
+                                parent = None
                     except ImportError:
                         parent = None
                 
@@ -107,6 +120,168 @@ def handle_database_errors(title: str = "Erreur de base de données"):
         exceptions=(Exception,),  # Capture toutes les erreurs DB
         return_on_error=False
     )
+
+def handle_db_query_errors(return_value=None, log_prefix="Erreur DB query"):
+    """
+    Décorateur spécialisé pour les requêtes DB retournant une valeur par défaut
+    Usage: @handle_db_query_errors(return_value=[], log_prefix="Erreur load_data")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"{log_prefix}: {e}")
+                return return_value
+        return wrapper
+    return decorator
+
+def handle_db_signal_errors(error_signal_name="error_occurred"):
+    """
+    Décorateur spécialisé pour les méthodes émettant des signaux en cas d'erreur
+    Usage: @handle_db_signal_errors(error_signal_name="error_occurred")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"Erreur {func.__name__}: {e}")
+
+                # Émettre le signal d'erreur si l'objet l'a
+                if args and hasattr(args[0], error_signal_name):
+                    error_signal = getattr(args[0], error_signal_name)
+                    if hasattr(error_signal, 'emit'):
+                        error_signal.emit(str(e))
+                return None
+        return wrapper
+    return decorator
+
+def handle_sqlite_column_errors(log_message="Erreur ajout colonne"):
+    """
+    Décorateur spécialisé pour les opérations SQLite (ALTER TABLE, etc.)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:  # Inclut sqlite3.OperationalError
+                from ..core.logger import app_logger
+                app_logger.error(f"{log_message}: {e}")
+                return False
+        return wrapper
+    return decorator
+
+def handle_ui_errors(log_prefix="Erreur UI", show_message=True, return_value=None):
+    """
+    Décorateur spécialisé pour les erreurs d'interface utilisateur
+    Usage: @handle_ui_errors(log_prefix="Erreur mise à jour pagination", show_message=False)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"{log_prefix}: {e}")
+
+                # Afficher message utilisateur si demandé
+                if show_message and args:
+                    try:
+                        from ..ui.qt_imports import QWidget
+                        from ..ui.message_helper import MessageHelper
+
+                        # Trouver le widget parent pour afficher l'erreur
+                        parent = None
+                        if isinstance(args[0], QWidget):
+                            parent = args[0]
+
+                        MessageHelper.show_error(parent, f"Erreur: {e}")
+                    except Exception:
+                        pass  # Éviter erreur en cascade
+
+                return return_value
+        return wrapper
+    return decorator
+
+def handle_ui_column_errors(return_value="Colonne inconnue"):
+    """
+    Décorateur spécialisé pour les erreurs de colonnes UI
+    Usage: @handle_ui_column_errors(return_value="Colonne par défaut")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"Erreur colonne UI: {e}")
+                return return_value
+        return wrapper
+    return decorator
+
+def handle_table_operations_errors(log_prefix="Erreur opération table", show_message=False):
+    """
+    Décorateur spécialisé pour les erreurs d'opérations sur les tables
+    Usage: @handle_table_operations_errors(log_prefix="Erreur mise à jour colonnes")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"{log_prefix}: {e}")
+
+                # Optionnel: afficher message si demandé
+                if show_message and args:
+                    try:
+                        from ..ui.qt_imports import QWidget
+                        from ..ui.message_helper import MessageHelper
+
+                        parent = None
+                        if isinstance(args[0], QWidget):
+                            parent = args[0]
+
+                        MessageHelper.show_error(parent, f"Erreur table: {e}")
+                    except Exception:
+                        pass
+
+                return None
+        return wrapper
+    return decorator
+
+def handle_async_worker_errors(log_prefix="Erreur worker asynchrone", emit_signal=True):
+    """
+    Décorateur spécialisé pour les erreurs de workers asynchrones
+    Usage: @handle_async_worker_errors(log_prefix="Erreur DatabaseQueryWorker")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"{log_prefix}: {e}")
+
+                # Émettre signal d'erreur si l'objet l'a
+                if emit_signal and args and hasattr(args[0], 'error_occurred'):
+                    error_signal = getattr(args[0], 'error_occurred')
+                    if hasattr(error_signal, 'emit'):
+                        error_signal.emit(str(e))
+
+                return None
+        return wrapper
+    return decorator
 
 def handle_file_errors(title: str = "Erreur de fichier"):
     """
@@ -157,6 +332,138 @@ def handle_network_errors(title: str = "Erreur réseau"):
         message="Problème de connexion réseau. Vérifiez votre connexion.",
         exceptions=(ConnectionError, TimeoutError),
         return_on_error=None
+    )
+
+def handle_seo_generation_errors(title: str = "Erreur génération SEO"):
+    """
+    Décorateur spécialisé pour les erreurs de génération SEO (title/description)
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la génération du contenu SEO. Vérifiez les données de recherche.",
+        show_message=True,
+        return_on_error=None
+    )
+
+def handle_seo_data_errors(return_value=None, title: str = "Erreur données SEO"):
+    """
+    Décorateur spécialisé pour les erreurs d'extraction de données SEO
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'extraction des données pour le SEO.",
+        show_message=False,  # Pas de popup, juste logs
+        return_on_error=return_value
+    )
+
+def handle_seo_dialog_errors(return_value=None, title: str = "Erreur dialogue SEO"):
+    """
+    Décorateur spécialisé pour les erreurs des dialogues SEO
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'affichage du dialogue de sélection.",
+        show_message=True,
+        return_on_error=return_value
+    )
+
+def handle_export_operation_errors(return_value=None, title: str = "Erreur d'export"):
+    """
+    Décorateur spécialisé pour les opérations d'export de données
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'export des données. Vérifiez les paramètres et les permissions.",
+        show_message=False,  # Les exports affichent déjà leurs messages
+        return_on_error=return_value
+    )
+
+def handle_save_service_errors(return_value=None, title: str = "Erreur service sauvegarde"):
+    """
+    Décorateur spécialisé pour les services de sauvegarde événementielle
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la sauvegarde. L'opération sera réessayée automatiquement.",
+        show_message=False,  # Logging seulement, pas de popup pour les saves
+        return_on_error=return_value
+    )
+
+def handle_logger_errors(return_value=None, title: str = "Erreur logger"):
+    """
+    Décorateur spécialisé pour les opérations de logger
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la lecture des logs.",
+        show_message=False,  # Logging seulement pour éviter récursion
+        return_on_error=return_value
+    )
+
+def handle_auto_save_errors(return_value=None, title: str = "Erreur sauvegarde automatique"):
+    """
+    Décorateur spécialisé pour les opérations d'auto-sauvegarde
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la sauvegarde automatique. Les modifications seront sauvegardées au prochain cycle.",
+        show_message=True,  # Afficher à l'utilisateur pour les erreurs d'auto-save
+        return_on_error=return_value
+    )
+
+def handle_event_bus_errors(return_value=None, title: str = "Erreur bus d'événements"):
+    """
+    Décorateur spécialisé pour les opérations du bus d'événements
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'émission d'événement. Les autres listeners continueront.",
+        show_message=False,  # Logging seulement pour éviter spam
+        return_on_error=return_value
+    )
+
+def handle_cache_callback_errors(return_value=None, title: str = "Erreur callback cache"):
+    """
+    Décorateur spécialisé pour les callbacks d'invalidation de cache
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'exécution d'un callback d'invalidation de cache.",
+        show_message=False,  # Logging seulement pour éviter spam
+        return_on_error=return_value
+    )
+
+def handle_autocompletion_errors(return_value=None, title: str = "Erreur auto-complétion"):
+    """
+    Décorateur spécialisé pour les opérations d'auto-complétion
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la récupération des données d'auto-complétion.",
+        show_message=False,  # Logging seulement pour ne pas gêner l'utilisateur
+        return_on_error=return_value if return_value is not None else []
+    )
+
+def handle_search_errors(return_value=None, title: str = "Erreur recherche"):
+    """
+    Décorateur spécialisé pour les opérations de recherche
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'exécution de la recherche.",
+        show_message=False,  # Utilise les signaux pour notifier l'UI
+        return_on_error=return_value
+    )
+
+def handle_highlight_errors(return_value=False, title: str = "Erreur mise en évidence"):
+    """
+    Décorateur spécialisé pour les opérations de mise en évidence de recherche
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la mise en évidence de recherche.",
+        show_message=False,  # Logging seulement pour ne pas gêner l'utilisateur
+        return_on_error=return_value
     )
 
 class SafeOperation:

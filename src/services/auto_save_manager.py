@@ -13,6 +13,7 @@ from ..ui.qt_imports import QColor
 from ..core.config import Config
 from ..core.logger import app_logger
 from .base_service import BaseService
+from ..utils.error_handler import handle_auto_save_errors
 
 class AutoSaveManager(BaseService):
     """
@@ -143,6 +144,7 @@ class AutoSaveManager(BaseService):
         self.modified_cells.clear()
         self.previous_values.clear()
 
+    @handle_auto_save_errors()
     def perform_auto_save(self, table_widget) -> None:
         """
         Effectuer une sauvegarde automatique avec accès à la table
@@ -153,51 +155,46 @@ class AutoSaveManager(BaseService):
         if not self.modified_cells or not self.auto_save_enabled:
             return
 
-        try:
-            # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
-            updates_by_db_id = {}
+        # Regrouper les modifications par ligne (db_id) pour optimiser les transactions
+        updates_by_db_id = {}
 
-            modifications_to_save = list(self.modified_cells)
-            app_logger.debug(f"Auto-sauvegarde de {len(modifications_to_save)} cellules modifiées")
+        modifications_to_save = list(self.modified_cells)
+        app_logger.debug(f"Auto-sauvegarde de {len(modifications_to_save)} cellules modifiées")
 
+        for row, col in modifications_to_save:
+            item = table_widget.item(row, col)
+            if item:
+                db_id = item.data(Qt.ItemDataRole.UserRole)
+                if db_id:
+                    # Obtenir le nom de colonne (compatible avec l'existant)
+                    if db_id is None:
+                        # Fallback: utiliser table_fill_service si disponible
+                        # Note: ceci nécessitera une interface vers main_window
+                        continue
+                    else:
+                        db_id = int(db_id)
+
+                    if db_id not in updates_by_db_id:
+                        updates_by_db_id[db_id] = {}
+
+                    column_name = self._get_column_name_for_ui_column(col)
+                    if column_name:
+                        updates_by_db_id[db_id][column_name] = item.text()
+
+        # Sauvegarder en batch
+        if updates_by_db_id:
+            self.db_manager.update_multiple_cells_batch(updates_by_db_id)
+
+            # Mettre à jour les valeurs précédentes et nettoyer modified_cells
             for row, col in modifications_to_save:
                 item = table_widget.item(row, col)
                 if item:
-                    db_id = item.data(Qt.ItemDataRole.UserRole)
-                    if db_id:
-                        # Obtenir le nom de colonne (compatible avec l'existant)
-                        if db_id is None:
-                            # Fallback: utiliser table_fill_service si disponible
-                            # Note: ceci nécessitera une interface vers main_window
-                            continue
-                        else:
-                            db_id = int(db_id)
+                    self.previous_values[(row, col)] = item.text()
 
-                        if db_id not in updates_by_db_id:
-                            updates_by_db_id[db_id] = {}
+            self.modified_cells.clear()
 
-                        column_name = self._get_column_name_for_ui_column(col)
-                        if column_name:
-                            updates_by_db_id[db_id][column_name] = item.text()
-
-            # Sauvegarder en batch
-            if updates_by_db_id:
-                self.db_manager.update_multiple_cells_batch(updates_by_db_id)
-
-                # Mettre à jour les valeurs précédentes et nettoyer modified_cells
-                for row, col in modifications_to_save:
-                    item = table_widget.item(row, col)
-                    if item:
-                        self.previous_values[(row, col)] = item.text()
-
-                self.modified_cells.clear()
-
-                # Mettre à jour l'indicateur
-                self._update_save_indicator(Config.get_message('auto_save_done'))
-
-        except Exception as e:
-            app_logger.error(f"Erreur lors de la sauvegarde automatique: {e}")
-            self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde automatique: {e}")
+            # Mettre à jour l'indicateur
+            self._update_save_indicator(Config.get_message('auto_save_done'))
 
     def _auto_save(self) -> None:
         """Méthode appelée par le timer - délègue vers perform_auto_save"""

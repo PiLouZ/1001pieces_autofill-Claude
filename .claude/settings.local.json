@@ -68,7 +68,9 @@
       "Bash(do echo \"=== src/$dir ===\")",
       "Read(//tmp/**)",
       "Bash(awk:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(paste:*)",
+      "Bash(sort:*)"
     ],
     "deny": [],
     "additionalDirectories": [

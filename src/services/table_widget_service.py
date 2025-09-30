@@ -16,6 +16,7 @@ from ..ui.qt_imports import (QTableWidget, QApplication, QDialog, QVBoxLayout,
 from ..core.logger import app_logger
 from ..core.config import Config
 from ..data.database_manager import DatabaseManager
+from ..utils.error_handler import handle_autocompletion_errors
 
 class CustomTableWidget(QTableWidget):
     """Table personnalisée avec gestion des touches Delete/Backspace et auto-complétion"""
@@ -183,30 +184,27 @@ class CustomTableWidget(QTableWidget):
         
         dialog.exec_()
 
+    @handle_autocompletion_errors(return_value=[])
     def _execute_autocomplete_query(self, query_key: str, params: tuple = (), error_context: str = "récupération données") -> List[str]:
         """
         Méthode générique pour exécuter les requêtes d'auto-complétion
-        
+
         Args:
             query_key: Clé de la requête dans Config.QUERIES
             params: Paramètres pour la requête (tuple)
             error_context: Contexte d'erreur pour le logging
-            
+
         Returns:
             List[str]: Liste des valeurs récupérées
         """
         if not self.db_manager:
             return []
-        
-        try:
-            result = self.db_manager.execute_query(
-                Config.get_query(query_key), 
-                params
-            )
-            return [row[0] for row in result]
-        except Exception as e:
-            app_logger.error(f"Erreur {error_context}: {e}")
-            return []
+
+        result = self.db_manager.execute_query(
+            Config.get_query(query_key),
+            params
+        )
+        return [row[0] for row in result]
     
     def _get_type_suggestions(self, partial_text: str) -> List[str]:
         """Obtenir des suggestions pour la colonne Type"""

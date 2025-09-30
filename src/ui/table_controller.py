@@ -11,6 +11,9 @@ from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
 from ..core.config import Config
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
+from ..utils.error_handler import (
+    handle_table_operations_errors, handle_async_worker_errors
+)
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
@@ -35,23 +38,20 @@ class DatabaseQueryWorker(QThread):
         self.sort_order = sort_order
         self.incomplete_filter = incomplete_filter
 
+    @handle_async_worker_errors(log_prefix="Erreur DatabaseQueryWorker")
     def run(self):
         """Exécuter la requête DB dans le thread séparé"""
-        try:
-            # IDENTIQUE à load_data() - même appel DB
-            records = self.db_manager.load_data(
-                self.search_term,
-                self.column_filters,
-                self.limit,
-                self.offset,
-                self.sort_column,
-                self.sort_order,
-                self.incomplete_filter
-            )
-            self.data_loaded.emit(records)
-        except Exception as e:
-            app_logger.error(f"Erreur DatabaseQueryWorker: {e}")
-            self.error_occurred.emit(str(e))
+        # IDENTIQUE à load_data() - même appel DB
+        records = self.db_manager.load_data(
+            self.search_term,
+            self.column_filters,
+            self.limit,
+            self.offset,
+            self.sort_column,
+            self.sort_order,
+            self.incomplete_filter
+        )
+        self.data_loaded.emit(records)
 
 class TableController:
     """Contrôleur pour la gestion du tableau principal"""
@@ -470,54 +470,45 @@ class TableController:
         if hasattr(self.parent_window, 'statusbar'):
             self.parent_window.statusbar.showMessage(f"❌ Erreur DB: {error_msg}", Config.STATUS_MESSAGE_TIMEOUT)
 
+    @handle_table_operations_errors(log_prefix="Erreur mise à jour numéros de lignes")
     def _update_row_numbers(self):
         """Mettre à jour les numéros de lignes après un tri"""
-        try:
-            for row in range(self.table.rowCount()):
-                self.table.setVerticalHeaderItem(row, QTableWidgetItem(str(row + 1)))
-            app_logger.debug(f"Numéros de lignes mis à jour pour {self.table.rowCount()} lignes")
-        except Exception as e:
-            app_logger.error(f"Erreur lors de la mise à jour des numéros de lignes: {e}")
+        for row in range(self.table.rowCount()):
+            self.table.setVerticalHeaderItem(row, QTableWidgetItem(str(row + 1)))
+        app_logger.debug(f"Numéros de lignes mis à jour pour {self.table.rowCount()} lignes")
     
+    @handle_table_operations_errors(log_prefix="Erreur application visibilité colonnes")
     def _apply_column_visibility(self):
         """Appliquer la visibilité des colonnes selon la configuration"""
-        try:
-            for col_config in Config.COLUMN_CONFIG:
-                col_idx = col_config["index"]
-                is_visible = col_config["visible"]
-                if col_idx < self.table.columnCount():
-                    if is_visible:
-                        self.table.showColumn(col_idx)
-                    else:
-                        self.table.hideColumn(col_idx)
-        except Exception as e:
-            app_logger.error(f"Erreur application visibilité colonnes: {e}")
+        for col_config in Config.COLUMN_CONFIG:
+            col_idx = col_config["index"]
+            is_visible = col_config["visible"]
+            if col_idx < self.table.columnCount():
+                if is_visible:
+                    self.table.showColumn(col_idx)
+                else:
+                    self.table.hideColumn(col_idx)
     
+    @handle_table_operations_errors(log_prefix="Erreur définition largeurs par défaut")
     def _set_default_column_widths(self):
         """Définir les largeurs par défaut des colonnes"""
-        try:
-            # Largeurs optimisées selon les préférences utilisateur
-            # Basé sur les ajustements manuels : 2025-09-01 09:01:21
-            default_widths = {
-                0: 120,  # Type
-                1: 124,  # Fabricant
-                2: 150,  # Référence Modèle
-                3: 214,  # Référence Commerciale
-                4: 166,  # Autre Référence
-                5: 100,  # Catégorie (peut être cachée)
-                6: 200,  # Notes (peut être cachée)
-                7: 52,   # Nb Pièces
-            }
-            
-            
-            # Appliquer les largeurs
-            for col_index, width in default_widths.items():
-                if col_index < self.table.columnCount():
-                    self.table.setColumnWidth(col_index, width)
-            
-            
-        except Exception as e:
-            app_logger.error(f"Erreur définition largeurs par défaut: {e}")
+        # Largeurs optimisées selon les préférences utilisateur
+        # Basé sur les ajustements manuels : 2025-09-01 09:01:21
+        default_widths = {
+            0: 120,  # Type
+            1: 124,  # Fabricant
+            2: 150,  # Référence Modèle
+            3: 214,  # Référence Commerciale
+            4: 166,  # Autre Référence
+            5: 100,  # Catégorie (peut être cachée)
+            6: 200,  # Notes (peut être cachée)
+            7: 52,   # Nb Pièces
+        }
+
+        # Appliquer les largeurs
+        for col_index, width in default_widths.items():
+            if col_index < self.table.columnCount():
+                self.table.setColumnWidth(col_index, width)
     
     def _on_header_click(self, logical_index: int):
         """Gestionnaire de clic sur les en-têtes pour le tri"""

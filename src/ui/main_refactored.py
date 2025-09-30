@@ -26,7 +26,10 @@ from datetime import datetime
 # Helpers et utilitaires refactorisés
 from .message_helper import MessageHelper, CommonMessages, show_success, show_error, ask_confirmation
 from .dialog_manager import DialogManager
-from ..utils.error_handler import handle_errors, handle_database_errors, SafeOperation
+from ..utils.error_handler import (
+    handle_errors, handle_database_errors, SafeOperation,
+    handle_ui_errors, handle_ui_column_errors
+)
 from ..core.constants import UIConfig, Messages, DatabaseConfig, FileExtensions
 
 from ..services import SearchService, ImportService
@@ -794,26 +797,22 @@ class MainWindow(QMainWindow):
         """Retourne le CSS moderne de l'application via StyleManager"""
         return StyleManager.get_modern_style()
     
+    @handle_ui_errors(log_prefix="Erreur mise à jour numéros de lignes", show_message=False)
     def _update_row_numbers(self):
         """Mettre à jour les numéros de lignes après un tri"""
-        try:
-            for row in range(self.table.rowCount()):
-                self.table.setVerticalHeaderItem(row, QTableWidgetItem(str(row + 1)))
-            app_logger.debug(f"Numéros de lignes mis à jour pour {self.table.rowCount()} lignes")
-        except Exception as e:
-            app_logger.error(f"Erreur lors de la mise à jour des numéros de lignes: {e}")
+        for row in range(self.table.rowCount()):
+            self.table.setVerticalHeaderItem(row, QTableWidgetItem(str(row + 1)))
+        app_logger.debug(f"Numéros de lignes mis à jour pour {self.table.rowCount()} lignes")
     
+    @handle_ui_errors(log_prefix="Erreur mise à jour pagination", show_message=False)
     def _update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination - PHASE 5: Délégation vers NavigationService"""
-        try:
-            if hasattr(self, 'navigation_service'):
-                # Mettre à jour le total des lignes dans le service
-                self.navigation_service.update_total_rows(getattr(self, 'total_rows', 0))
-                # Le service gère automatiquement la mise à jour des contrôles
-            else:
-                app_logger.warning("NavigationService non disponible, pagination manuelle non implémentée")
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour pagination: {e}")
+        if hasattr(self, 'navigation_service'):
+            # Mettre à jour le total des lignes dans le service
+            self.navigation_service.update_total_rows(getattr(self, 'total_rows', 0))
+            # Le service gère automatiquement la mise à jour des contrôles
+        else:
+            app_logger.warning("NavigationService non disponible, pagination manuelle non implémentée")
     
     def _reload_current_search(self):
         """Recharger les données avec la recherche et filtres actuels (factorisation pagination)"""
@@ -869,26 +868,22 @@ class MainWindow(QMainWindow):
         """Navigation intelligente - PHASE 5: Délégation vers CellEditingService"""
         return self.cell_editing_service.navigate_to_empty_cell(direction)
 
+    @handle_ui_errors(log_prefix="Erreur affichage valeurs colonne", show_message=True)
     def _show_column_values_list(self):
         """Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D) - Délégation au service"""
-        try:
-            current_item = self.table.currentItem()
-            current_col = self.table.currentColumn()
-            
-            selected_value = self.autocompletion_service.show_column_values_dialog(
-                self.table, current_item, current_col
-            )
-            
-            if selected_value is not None:
-                # Appliquer la valeur sélectionnée
-                current_item.setText(selected_value)
-                
-                # Déclencher la sauvegarde
-                self._on_cell_changed(current_item)
-                    
-        except Exception as e:
-            app_logger.error(f"Erreur affichage valeurs colonne: {e}")
-            MessageHelper.show_error(self, f"Impossible de récupérer les valeurs: {e}")
+        current_item = self.table.currentItem()
+        current_col = self.table.currentColumn()
+
+        selected_value = self.autocompletion_service.show_column_values_dialog(
+            self.table, current_item, current_col
+        )
+
+        if selected_value is not None:
+            # Appliquer la valeur sélectionnée
+            current_item.setText(selected_value)
+
+            # Déclencher la sauvegarde
+            self._on_cell_changed(current_item)
 
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
@@ -1039,22 +1034,20 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes utilitaires ---
 
+    @handle_ui_column_errors(return_value="Colonne inconnue")
     def _get_column_display_name(self, col_index):
         """
         Récupère le nom d'affichage d'une colonne basé sur son index
-        
+
         Args:
             col_index (int): Index de la colonne (0-based)
-            
+
         Returns:
             str: Nom d'affichage de la colonne
         """
-        try:
-            if 0 <= col_index < len(Config.UI_HEADERS):
-                return Config.UI_HEADERS[col_index]
-            else:
-                return f"Colonne {col_index + 1}"
-        except Exception as e:
+        if 0 <= col_index < len(Config.UI_HEADERS):
+            return Config.UI_HEADERS[col_index]
+        else:
             return f"Colonne {col_index + 1}"
 
     # --- Méthodes d'export ---

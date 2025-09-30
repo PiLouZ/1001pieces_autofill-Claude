@@ -7,6 +7,7 @@ from typing import Optional, Callable
 from ..ui.qt_imports import QObject, pyqtSignal, QTimer, QPushButton
 
 from ..core.logger import app_logger
+from .base_service import BaseService
 
 class IncompleteButtonService(QObject):
     """Service optimisé pour le bouton des lignes incomplètes"""
@@ -18,6 +19,7 @@ class IncompleteButtonService(QObject):
 
     def __init__(self, db_manager, parent=None):
         super().__init__(parent)
+        self._base_service = BaseService(parent_window=parent)
         self.db_manager = db_manager
         self.button = None
         self.show_incomplete_only = False

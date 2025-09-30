@@ -17,6 +17,7 @@ from .qt_imports import QTimer
 from src.core.config import Config
 from src.core.logger import app_logger
 from src.utils.seo_generator import SEOGenerator
+from src.utils.error_handler import handle_seo_generation_errors, handle_seo_data_errors, handle_seo_dialog_errors
 
 class SEOService:
     """
@@ -34,70 +35,68 @@ class SEOService:
         self.main_window = main_window
         self.seo_generator = SEOGenerator()
     
+    @handle_seo_generation_errors()
     def generate_meta_title(self) -> None:
         """Générer et copier un méta titre SEO optimisé - Logique originale restaurée"""
-        try:
-            # Gérer les recherches multi-références
-            multi_terms = self._get_multi_reference_terms()
-            if multi_terms:
-                # Demander à l'utilisateur de choisir la référence pour la génération SEO
-                selected_reference = self._show_reference_selection_dialog(
-                    "Référence pour Méta Title",
-                    f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                    f"Choisissez la référence à utiliser pour la génération SEO :",
-                    multi_terms[0]  # Premier terme par défaut
-                )
-                
-                if not selected_reference:
-                    return  # Annulé par l'utilisateur
-                
-                # Récupérer les données pour la référence sélectionnée
-                search_data = self._get_current_search_data_for_reference(selected_reference)
-            else:
-                # Récupérer les données de recherche actuelles (comportement normal)
-                search_data = self._get_current_search_data()
-            
-            if not search_data:
-                self.main_window.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
-                return
-            
-            # Générer le méta titre avec la logique originale
-            result = self.seo_generator.generate_meta_title(
-                reference=search_data['reference'],
-                description=search_data['description'], 
-                type_appareil=search_data['type_appareil'],
-                fabricants=search_data['fabricants']
+        # Gérer les recherches multi-références
+        multi_terms = self._get_multi_reference_terms()
+        if multi_terms:
+            # Demander à l'utilisateur de choisir la référence pour la génération SEO
+            selected_reference = self._show_reference_selection_dialog(
+                "Référence pour Méta Title",
+                f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
+                f"Choisissez la référence à utiliser pour la génération SEO :",
+                multi_terms[0]  # Premier terme par défaut
             )
             
-            # Copier dans le presse-papiers
-            from .qt_imports import QApplication
-            QApplication.clipboard().setText(result['title'])
+            if not selected_reference:
+                return  # Annulé par l'utilisateur
             
-            # Message de statut avec informations détaillées
-            length = result['length']
-            fabricants_info = f"({result['info']['fabricants_count']} fabricants)" if result['info']['fabricants_count'] > 0 else ""
+            # Récupérer les données pour la référence sélectionnée
+            search_data = self._get_current_search_data_for_reference(selected_reference)
+        else:
+            # Récupérer les données de recherche actuelles (comportement normal)
+            search_data = self._get_current_search_data()
+        
+        if not search_data:
+            self.main_window.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
+            return
+        
+        # Générer le méta titre avec la logique originale
+        result = self.seo_generator.generate_meta_title(
+            reference=search_data['reference'],
+            description=search_data['description'], 
+            type_appareil=search_data['type_appareil'],
+            fabricants=search_data['fabricants']
+        )
+        
+        # Copier dans le presse-papiers
+        from .qt_imports import QApplication
+        QApplication.clipboard().setText(result['title'])
+        
+        # Message de statut avec informations détaillées
+        length = result['length']
+        fabricants_info = f"({result['info']['fabricants_count']} fabricants)" if result['info']['fabricants_count'] > 0 else ""
+        
+        status_msg = f"Méta titre copié ({length}/60 caractères) {fabricants_info}"
+        if result['info']['truncated']:
+            status_msg += " [Tronqué]"
+        
+        # Reporter dans l'historique
+        detailed_message = f"SEO: Méta titre généré pour '{search_data['reference']}'"
+        detailed_message += f"\n==> Titre: {result['title']}"
+        detailed_message += f"\n==> Longueur: {length}/60 caractères"
+        if result['info']['fabricants_count'] > 0:
+            detailed_message += f"\n==> Fabricants inclus: {result['info']['fabricants_count']}"
+        if result['info']['truncated']:
+            detailed_message += "\n==> Titre tronqué"
+        
+        self.main_window.user_interaction_service.add_to_history(detailed_message)
+        
+        # Message statusbar
+        self.main_window.statusbar.showMessage(status_msg, 3000)
             
-            status_msg = f"Méta titre copié ({length}/60 caractères) {fabricants_info}"
-            if result['info']['truncated']:
-                status_msg += " [Tronqué]"
-            
-            # Reporter dans l'historique
-            detailed_message = f"SEO: Méta titre généré pour '{search_data['reference']}'"
-            detailed_message += f"\n==> Titre: {result['title']}"
-            detailed_message += f"\n==> Longueur: {length}/60 caractères"
-            if result['info']['fabricants_count'] > 0:
-                detailed_message += f"\n==> Fabricants inclus: {result['info']['fabricants_count']}"
-            if result['info']['truncated']:
-                detailed_message += "\n==> Titre tronqué"
-            
-            self.main_window.user_interaction_service.add_to_history(detailed_message)
-            
-            # Message statusbar
-            self.main_window.statusbar.showMessage(status_msg, 3000)
-                
-        except Exception as e:
-            app_logger.error(f"Erreur génération méta titre: {e}")
-            self.main_window.user_interaction_service.show_error(f"Erreur: {e}")
+        
     
     def generate_meta_description(self) -> None:
         """Générer et copier une méta description SEO aléatoire - Logique originale restaurée"""

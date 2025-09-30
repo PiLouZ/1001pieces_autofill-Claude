@@ -10,6 +10,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from enum import Enum
 
+from ..utils.error_handler import handle_logger_errors
+
 class LogLevel(Enum):
     """Niveaux de logging personnalisés"""
     DEBUG = "DEBUG"
@@ -255,29 +257,27 @@ class AppLogger:
         """Log niveau CRITICAL"""
         self.logger.critical(msg, **kwargs)
     
+    @handle_logger_errors(return_value="Erreur lors de la lecture des logs")
     def get_recent_logs(self, log_type: str = "detailed", lines: int = 100) -> str:
         """
         Récupère les logs récents
-        
+
         Args:
             log_type: Type de log (detailed, errors, data_operations)
             lines: Nombre de lignes à récupérer
-            
+
         Returns:
             Contenu des logs récents
         """
         log_file = os.path.join(self.log_dir, f"{log_type}.log")
-        
+
         if not os.path.exists(log_file):
             return "Aucun log trouvé"
-        
-        try:
-            with open(log_file, 'r', encoding='utf-8') as f:
-                all_lines = f.readlines()
-                recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-                return ''.join(recent_lines)
-        except Exception as e:
-            return f"Erreur lors de la lecture des logs: {e}"
+
+        with open(log_file, 'r', encoding='utf-8') as f:
+            all_lines = f.readlines()
+            recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+            return ''.join(recent_lines)
 
 # Instance globale du logger
 app_logger = AppLogger()

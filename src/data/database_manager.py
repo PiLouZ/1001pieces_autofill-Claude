@@ -10,6 +10,10 @@ import hashlib
 
 from ..core.config import Config
 from ..core.logger import app_logger
+from ..utils.error_handler import (
+    handle_db_query_errors, handle_db_signal_errors,
+    handle_sqlite_column_errors, handle_database_errors
+)
 
 try:
     from ..ui.qt_imports import QThread, pyqtSignal
@@ -105,17 +109,15 @@ class DatabaseWorker(QThread):
         self.query = query
         self.params = params or []
     
+    @handle_db_signal_errors(error_signal_name="error_occurred")
     def run(self):
         """Exécuter la requête de base de données"""
-        try:
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
-            cursor.execute(self.query, self.params)
-            records = cursor.fetchall()
-            conn.close()
-            self.data_loaded.emit(records)
-        except Exception as e:
-            self.error_occurred.emit(str(e))
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute(self.query, self.params)
+        records = cursor.fetchall()
+        conn.close()
+        self.data_loaded.emit(records)
 
 class DatabaseManager:
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
@@ -405,10 +407,7 @@ class DatabaseManager:
             
             for header in Config.DB_HEADERS + ['created_at', 'updated_at']:
                 if header not in existing_columns:
-                    try:
-                        self.cursor.execute(f"ALTER TABLE appareils ADD COLUMN [{header}] TEXT")
-                    except sqlite3.OperationalError:
-                        pass  # Colonne déjà existante
+                    self._add_column_to_appareils(header)
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout des colonnes: {e}")
     
@@ -431,26 +430,32 @@ class DatabaseManager:
             
             # Ajouter la colonne description si elle n'existe pas
             if 'description' not in existing_columns:
-                try:
-                    self.cursor.execute("ALTER TABLE pieces ADD COLUMN description TEXT")
-                    app_logger.info("Colonne 'description' ajoutée à la table pieces")
-                except sqlite3.OperationalError as e:
-                    app_logger.error("Erreur", e)
-                    
+                self._add_column_to_pieces('description')
+
             # Ajouter la colonne created_at si elle n'existe pas
             if 'created_at' not in existing_columns:
-                try:
-                    self.cursor.execute("ALTER TABLE pieces ADD COLUMN created_at TEXT")
-                    app_logger.info("Colonne 'created_at' ajoutée à la table pieces")
-                except sqlite3.OperationalError as e:
-                    app_logger.error("Erreur", e)
+                self._add_column_to_pieces('created_at')
             
             # Forcer un commit immédiat
             self.conn.commit()
                     
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de l'ajout des colonnes pieces: {e}")
-    
+
+    @handle_sqlite_column_errors(log_message="Erreur ajout colonne pieces")
+    def _add_column_to_pieces(self, column_name: str) -> bool:
+        """Ajouter une colonne à la table pieces avec gestion d'erreur factorисée"""
+        self.cursor.execute(f"ALTER TABLE pieces ADD COLUMN {column_name} TEXT")
+        app_logger.info(f"Colonne '{column_name}' ajoutée à la table pieces")
+        return True
+
+    @handle_sqlite_column_errors(log_message="Erreur ajout colonne appareils")
+    def _add_column_to_appareils(self, column_name: str) -> bool:
+        """Ajouter une colonne à la table appareils avec gestion d'erreur factorисée"""
+        self.cursor.execute(f"ALTER TABLE appareils ADD COLUMN [{column_name}] TEXT")
+        app_logger.info(f"Colonne '{column_name}' ajoutée à la table appareils")
+        return True
+
     def _add_unique_constraint_pieces(self):
         """Ajouter la contrainte unique pour prévenir les doublons de pièces"""
         try:
@@ -664,8 +669,9 @@ class DatabaseManager:
                 pass
             raise DatabaseError(f"Erreur lors de la migration des pièces: {e}")
     
-    def load_data(self, search_term: Optional[str] = None, 
-                  column_filters: Optional[Dict[int, str]] = None, 
+    @handle_db_query_errors(return_value=[], log_prefix="Erreur _load_data_original")
+    def load_data(self, search_term: Optional[str] = None,
+                  column_filters: Optional[Dict[int, str]] = None,
                   limit: Optional[int] = None,
                   offset: Optional[int] = None,
                   sort_column: Optional[int] = None,
@@ -674,12 +680,7 @@ class DatabaseManager:
         """URGENCE: Fallback vers méthode originale (régression optimisation détectée)"""
 
         # 🚨 URGENCE: Fallback - l'optimisation cause "too many SQL variables"
-        try:
-            return self._load_data_original(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
-        except Exception as e:
-            app_logger.error(f"Erreur _load_data_original: {e}")
-            # Si même l'original plante, retour vide
-            return []
+        return self._load_data_original(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
 
         # Phase 3: Cache réactivé avec support pagination - DÉSACTIVÉ TEMPORAIREMENT
         if Config.SMART_CACHE_ENABLED and self._should_use_cache(search_term, column_filters, incomplete_filter, limit):
@@ -957,21 +958,15 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors du comptage: {e}")
     
+    @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage appareils incomplets")
     def count_incomplete_devices(self) -> int:
         """Compter le nombre d'appareils où colonne A et/ou B est vide"""
-        try:
-            query = """
-            SELECT COUNT(*) FROM appareils a 
-            WHERE (a.type IS NULL OR a.type = '') OR (a.manufacturer IS NULL OR a.manufacturer = '')
-            """
-            self.cursor.execute(query)
-            return self.cursor.fetchone()[0]
-        except sqlite3.Error as e:
-            app_logger.error("Erreur", e)
-            raise DatabaseError(f"Erreur lors du comptage: {e}")
-        except Exception as e:
-            app_logger.error("Erreur", e)
-            return 0
+        query = """
+        SELECT COUNT(*) FROM appareils a
+        WHERE (a.type IS NULL OR a.type = '') OR (a.manufacturer IS NULL OR a.manufacturer = '')
+        """
+        self.cursor.execute(query)
+        return self.cursor.fetchone()[0]
     
     def update_cell(self, db_id: int, column: str, value: str) -> bool:
         """Mettre à jour une cellule spécifique"""
@@ -1267,21 +1262,18 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des pièces: {e}")
     
+    @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage pièces appareil")
     def get_pieces_count_for_appareil(self, appareil_id: int) -> int:
         """Récupérer le nombre de pièces associées à un appareil (seulement celles qui existent)"""
-        try:
-            query = """
-                SELECT COUNT(*) 
-                FROM piece_associations pa
-                INNER JOIN pieces p ON pa.piece_id = p.id
-                WHERE pa.appareil_id = ?
-            """
-            self.cursor.execute(query, (appareil_id,))
-            result = self.cursor.fetchone()
-            return result[0] if result else 0
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors du comptage des pièces: {e}")
+        query = """
+            SELECT COUNT(*)
+            FROM piece_associations pa
+            INNER JOIN pieces p ON pa.piece_id = p.id
+            WHERE pa.appareil_id = ?
+        """
+        self.cursor.execute(query, (appareil_id,))
+        result = self.cursor.fetchone()
+        return result[0] if result else 0
     
     def add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None, confirm_callback=None) -> int:
         """Ajouter une pièce à un appareil (nouvelle structure)"""
@@ -1619,48 +1611,41 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors de la récupération des doublons ref_modele: {e}")
 
+    @handle_db_query_errors(return_value=None, log_prefix="Erreur récupération infos appareil")
     def get_device_info(self, device_id: int) -> Optional[Dict[str, Any]]:
         """Récupérer les informations d'un appareil par son ID"""
-        try:
-            query = """
-                SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
-                FROM appareils
-                WHERE id = ?
-            """
-            result = self.execute_query(query, [device_id])
+        query = """
+            SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
+            FROM appareils
+            WHERE id = ?
+        """
+        result = self.execute_query(query, [device_id])
 
-            if result:
-                row = result[0]
-                return {
-                    'id': row[0],
-                    'type': row[1],
-                    'manufacturer': row[2],
-                    'ref_modele': row[3],
-                    'commercial_ref': row[4],
-                    'other_ref': row[5],
-                    'category': row[6],
-                    'notes': row[7]
-                }
-            return None
+        if result:
+            row = result[0]
+            return {
+                'id': row[0],
+                'type': row[1],
+                'manufacturer': row[2],
+                'ref_modele': row[3],
+                'commercial_ref': row[4],
+                'other_ref': row[5],
+                'category': row[6],
+                'notes': row[7]
+            }
+        return None
 
-        except sqlite3.Error as e:
-            app_logger.error(f"Erreur lors de la récupération des infos appareil {device_id}: {e}")
-            return None
-
+    @handle_db_query_errors(return_value=[], log_prefix="Erreur récupération appareils par ref_modele")
     def get_devices_by_ref_modele(self, ref_modele: str) -> List[Tuple]:
         """Récupérer tous les appareils ayant exactement la même ref_modele"""
-        try:
-            # Récupérer uniquement les appareils avec la référence exacte
-            query = """
-                SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
-                FROM appareils 
-                WHERE ref_modele = ?
-                ORDER BY id
-            """
-            return self.execute_custom_query(query, [ref_modele])
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des appareils: {e}")
+        # Récupérer uniquement les appareils avec la référence exacte
+        query = """
+            SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
+            FROM appareils
+            WHERE ref_modele = ?
+            ORDER BY id
+        """
+        return self.execute_custom_query(query, [ref_modele])
 
     def get_duplicate_references(self) -> List[Tuple[str, str, str, str, str, int]]:
         """Récupérer les références d'appareils en doublon (colonnes A,B,C,D,E identiques)"""
@@ -1786,25 +1771,22 @@ class DatabaseManager:
             self.conn.rollback()
             raise DatabaseError(f"Erreur lors de la suppression des pièces dupliquées: {e}")
     
+    @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage pièces dupliquées")
     def get_duplicate_pieces_count(self) -> int:
         """Compter les références de pièces dupliquées (nouvelle structure)"""
-        try:
-            # Compter les doublons d'associations
-            query = """
-                SELECT COUNT(*) 
-                FROM piece_associations 
-                WHERE id NOT IN (
-                    SELECT MIN(id) 
-                    FROM piece_associations 
-                    GROUP BY piece_id, appareil_id
-                )
-            """
-            self.cursor.execute(query)
-            result = self.cursor.fetchone()
-            return result[0] if result else 0
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors du comptage des pièces dupliquées: {e}")
+        # Compter les doublons d'associations
+        query = """
+            SELECT COUNT(*)
+            FROM piece_associations
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM piece_associations
+                GROUP BY piece_id, appareil_id
+            )
+        """
+        self.cursor.execute(query)
+        result = self.cursor.fetchone()
+        return result[0] if result else 0
     
     def analyze_piece_duplicates(self) -> List[Tuple]:
         """Analyser les doublons de pièces en détail (nouvelle structure)"""
