@@ -7,6 +7,7 @@ from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QTextEdit, QWidget, QTabWidget, QTreeWidget, QTreeWidgetItem, Qt
 )
+from ..utils.error_handler import handle_ui_errors, handle_database_operation_errors
 
 def clean_display_text(text):
     """
@@ -221,61 +222,57 @@ class ValidationWindow(QDialog):
         
         return widget
     
+    @handle_ui_errors(log_prefix="Chargement données validation", show_message=True)
     def _load_data(self):
         """Charger les données de validation et incohérences"""
-        try:
-            # 1. Validation de la base de données
-            issues = self.parent_window.db_manager.validate_database()
-            self.validation_data = issues
-            
-            # 2. Détection des incohérences - requête simplifiée
-            query = """
-            SELECT ref_modele, type, manufacturer, COUNT(*) as count
-            FROM appareils 
-            WHERE ref_modele IS NOT NULL AND ref_modele != ''
-            GROUP BY ref_modele
-            HAVING COUNT(DISTINCT type || '|' || manufacturer) > 1
-            ORDER BY ref_modele
-            """
-            
-            try:
-                inconsistency_results = self.parent_window.db_manager.execute_custom_query(query)
-                self.inconsistency_data = {}
-                
-                if inconsistency_results:
-                    # Pour chaque référence avec incohérences, récupérer les variations
-                    for row in inconsistency_results:
-                        ref_modele = row[0]
-                        clean_ref_modele = clean_display_text(ref_modele)
-                        
-                        # Récupérer toutes les variations pour cette référence
-                        detail_query = """
-                        SELECT DISTINCT type, manufacturer, COUNT(*) as count
-                        FROM appareils 
-                        WHERE ref_modele = ?
-                        GROUP BY type, manufacturer
-                        ORDER BY count DESC
-                        """
-                        variations = self.parent_window.db_manager.execute_custom_query(detail_query, [ref_modele])
-                        
-                        if variations and len(variations) > 1:  # Seulement s'il y a vraiment des variations
-                            self.inconsistency_data[clean_ref_modele] = []
-                            for type_val, manufacturer, count in variations:
-                                self.inconsistency_data[clean_ref_modele].append({
-                                    'type': clean_display_text(type_val) or '(vide)',
-                                    'manufacturer': clean_display_text(manufacturer) or '(vide)',
-                                    'count': count
-                                })
-                        
-            except Exception as e:
-                app_logger.error("Erreur", e)
-                self.inconsistency_data = {}
-            
-            self._update_display()
-            
-        except Exception as e:
-            if hasattr(self.parent_window, '_show_error'):
-                self.parent_window._show_error(f"Erreur lors du chargement des données: {e}")
+        # 1. Validation de la base de données
+        issues = self.parent_window.db_manager.validate_database()
+        self.validation_data = issues
+
+        # 2. Détection des incohérences
+        self._load_inconsistencies()
+
+        self._update_display()
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Requête incohérences")
+    def _load_inconsistencies(self):
+        """Charger les données d'incohérences"""
+        query = """
+        SELECT ref_modele, type, manufacturer, COUNT(*) as count
+        FROM appareils
+        WHERE ref_modele IS NOT NULL AND ref_modele != ''
+        GROUP BY ref_modele
+        HAVING COUNT(DISTINCT type || '|' || manufacturer) > 1
+        ORDER BY ref_modele
+        """
+
+        inconsistency_results = self.parent_window.db_manager.execute_custom_query(query)
+        self.inconsistency_data = {}
+
+        if inconsistency_results:
+            # Pour chaque référence avec incohérences, récupérer les variations
+            for row in inconsistency_results:
+                ref_modele = row[0]
+                clean_ref_modele = clean_display_text(ref_modele)
+
+                # Récupérer toutes les variations pour cette référence
+                detail_query = """
+                SELECT DISTINCT type, manufacturer, COUNT(*) as count
+                FROM appareils
+                WHERE ref_modele = ?
+                GROUP BY type, manufacturer
+                ORDER BY count DESC
+                """
+                variations = self.parent_window.db_manager.execute_custom_query(detail_query, [ref_modele])
+
+                if variations and len(variations) > 1:  # Seulement s'il y a vraiment des variations
+                    self.inconsistency_data[clean_ref_modele] = []
+                    for type_val, manufacturer, count in variations:
+                        self.inconsistency_data[clean_ref_modele].append({
+                            'type': clean_display_text(type_val) or '(vide)',
+                            'manufacturer': clean_display_text(manufacturer) or '(vide)',
+                            'count': count
+                        })
     
     def _update_display(self):
         """Mettre à jour l'affichage"""
@@ -308,19 +305,16 @@ class ValidationWindow(QDialog):
         lines.append("📋 VALIDATION DE LA BASE:")
         if self.validation_data.get('duplicate_refs', 0) > 0:
             lines.append(f"  📋 {self.validation_data['duplicate_refs']} référence(s) en doublon")
-            
+
             # Lister les références en doublon (par ref_modele)
-            try:
-                duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
-                if duplicates:
-                    lines.append("     Références modèle dupliquées :")
-                    for ref_modele, count in duplicates[:10]:  # Limiter à 10
-                        clean_ref = clean_display_text(ref_modele)
-                        lines.append(f"     • '{clean_ref}' ({count} appareils)")
-                    if len(duplicates) > 10:
-                        lines.append(f"     ... et {len(duplicates) - 10} autres références")
-            except Exception as e:
-                lines.append(f"     Erreur lors de la récupération des doublons: {e}")
+            duplicates = self._get_duplicates_for_summary()
+            if duplicates:
+                lines.append("     Références modèle dupliquées :")
+                for ref_modele, count in duplicates[:10]:  # Limiter à 10
+                    clean_ref = clean_display_text(ref_modele)
+                    lines.append(f"     • '{clean_ref}' ({count} appareils)")
+                if len(duplicates) > 10:
+                    lines.append(f"     ... et {len(duplicates) - 10} autres références")
         if self.validation_data.get('empty_critical', 0) > 0:
             lines.append(f"  ❌ {self.validation_data['empty_critical']} appareil(s) sans type ni fabricant")
         
@@ -369,44 +363,34 @@ class ValidationWindow(QDialog):
             
             if show_duplicates and self.validation_data.get('duplicate_refs', 0) > 0:
                 duplicate_item = QTreeWidgetItem([
-                    "📋 Références en doublon", 
-                    f"{self.validation_data['duplicate_refs']} références dupliquées", 
-                    str(self.validation_data['duplicate_refs']), 
+                    "📋 Références en doublon",
+                    f"{self.validation_data['duplicate_refs']} références dupliquées",
+                    str(self.validation_data['duplicate_refs']),
                     "Rechercher"
                 ])
-                
+
                 # Ajouter le détail des références en doublon (par ref_modele)
-                try:
-                    duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
-                    for ref_modele, count in duplicates[:50]:  # Limiter à 50 pour éviter surcharge
-                        clean_ref = clean_display_text(ref_modele)
-                        
-                        duplicate_detail = QTreeWidgetItem([
-                            f"📋 {clean_ref}",
-                            f"{count} appareils avec cette référence",
-                            str(count),
-                            "Rechercher"
-                        ])
-                        duplicate_item.addChild(duplicate_detail)
-                    
-                    if len(duplicates) > 50:
-                        more_item = QTreeWidgetItem([
-                            f"... et {len(duplicates) - 50} autres références",
-                            "",
-                            "",
-                            ""
-                        ])
-                        duplicate_item.addChild(more_item)
-                        
-                except Exception as e:
-                    error_item = QTreeWidgetItem([
-                        "Erreur lors du chargement des détails",
-                        str(e),
+                duplicates = self._get_duplicates_for_details()
+                for ref_modele, count in duplicates[:50]:  # Limiter à 50 pour éviter surcharge
+                    clean_ref = clean_display_text(ref_modele)
+
+                    duplicate_detail = QTreeWidgetItem([
+                        f"📋 {clean_ref}",
+                        f"{count} appareils avec cette référence",
+                        str(count),
+                        "Rechercher"
+                    ])
+                    duplicate_item.addChild(duplicate_detail)
+
+                if len(duplicates) > 50:
+                    more_item = QTreeWidgetItem([
+                        f"... et {len(duplicates) - 50} autres références",
+                        "",
                         "",
                         ""
                     ])
-                    duplicate_item.addChild(error_item)
-                
+                    duplicate_item.addChild(more_item)
+
                 validation_item.addChild(duplicate_item)
             
             if show_empty and self.validation_data.get('empty_critical', 0) > 0:
@@ -454,33 +438,39 @@ class ValidationWindow(QDialog):
         self.current_filter = filter_text
         self._update_details()
     
+    @handle_database_operation_errors(return_value=[], log_prefix="Récupération doublons (summary)")
+    def _get_duplicates_for_summary(self):
+        """Récupérer les doublons pour le résumé"""
+        return self.parent_window.db_manager.get_duplicate_ref_modeles()
+
+    @handle_database_operation_errors(return_value=[], log_prefix="Récupération doublons (details)")
+    def _get_duplicates_for_details(self):
+        """Récupérer les doublons pour les détails"""
+        return self.parent_window.db_manager.get_duplicate_ref_modeles()
+
+    @handle_ui_errors(log_prefix="Recherche rapide", show_message=True)
     def _quick_search(self, search_type):
         """Effectuer une recherche rapide dans la fenêtre principale"""
-        try:
-            if search_type == "duplicates":
-                # Rechercher les doublons - recherche générale
-                self.parent_window.search_input.clear()
-                self.parent_window.statusbar.showMessage("📋 Voir l'onglet Détails pour les références en doublon", 3000)
-                
-            elif search_type == "empty":
-                # Rechercher les champs vides en utilisant le filtre incomplet
-                if hasattr(self.parent_window, 'incomplete_filter_btn'):
-                    self.parent_window.incomplete_filter_btn.click()
-                    self.parent_window.statusbar.showMessage("❌ Filtrage des lignes incomplètes activé", 3000)
-                
-            elif search_type == "inconsistencies":
-                # Afficher la première incohérence trouvée
-                if self.inconsistency_data:
-                    first_ref = list(self.inconsistency_data.keys())[0]
-                    clean_first_ref = clean_display_text(first_ref)
-                    self.parent_window.search_input.setText(clean_first_ref)
-                    self.parent_window.load_data(first_ref)
-                    self.parent_window.statusbar.showMessage(f"🔍 Recherche de '{first_ref}' (première incohérence)", 3000)
-                
-        except Exception as e:
-            if hasattr(self.parent_window, '_show_error'):
-                self.parent_window._show_error(f"Erreur lors de la recherche: {e}")
-    
+        if search_type == "duplicates":
+            # Rechercher les doublons - recherche générale
+            self.parent_window.search_input.clear()
+            self.parent_window.statusbar.showMessage("📋 Voir l'onglet Détails pour les références en doublon", 3000)
+
+        elif search_type == "empty":
+            # Rechercher les champs vides en utilisant le filtre incomplet
+            if hasattr(self.parent_window, 'incomplete_filter_btn'):
+                self.parent_window.incomplete_filter_btn.click()
+                self.parent_window.statusbar.showMessage("❌ Filtrage des lignes incomplètes activé", 3000)
+
+        elif search_type == "inconsistencies":
+            # Afficher la première incohérence trouvée
+            if self.inconsistency_data:
+                first_ref = list(self.inconsistency_data.keys())[0]
+                clean_first_ref = clean_display_text(first_ref)
+                self.parent_window.search_input.setText(clean_first_ref)
+                self.parent_window.load_data(first_ref)
+                self.parent_window.statusbar.showMessage(f"🔍 Recherche de '{first_ref}' (première incohérence)", 3000)
+
     def _on_item_double_clicked(self, item, column):
         """Gérer le double-clic sur un élément"""
         if column == 3 and item.text(3) == "Rechercher":

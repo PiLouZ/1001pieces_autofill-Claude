@@ -61,11 +61,17 @@ class SEOService:
         if not search_data:
             self.main_window.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
             return
-        
+
+        # Vérifier que toutes les clés requises sont présentes
+        required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
+        if not all(key in search_data for key in required_keys):
+            self.main_window.statusbar.showMessage("Données incomplètes pour générer le méta titre", 3000)
+            return
+
         # Générer le méta titre avec la logique originale
         result = self.seo_generator.generate_meta_title(
             reference=search_data['reference'],
-            description=search_data['description'], 
+            description=search_data['description'],
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants']
         )
@@ -125,6 +131,12 @@ class SEOService:
             self.main_window.statusbar.showMessage("Aucune recherche active pour générer la méta description", 3000)
             return
 
+        # Vérifier que toutes les clés requises sont présentes
+        required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
+        if not all(key in search_data for key in required_keys):
+            self.main_window.statusbar.showMessage("Données incomplètes pour générer la méta description", 3000)
+            return
+
         # Générer la méta description avec la logique originale
         result = self.seo_generator.generate_meta_description(
             reference=search_data['reference'],
@@ -155,7 +167,6 @@ class SEOService:
         # Message statusbar
         self.main_window.statusbar.showMessage(status_msg, 5000)
     
-    @handle_seo_data_errors()
     def _get_current_search_data(self) -> Optional[Dict[str, any]]:
         """Extraire les données de la recherche actuelle pour la génération SEO - Logique originale"""
         # Récupérer le terme de recherche actuel
@@ -163,14 +174,18 @@ class SEOService:
         if not search_term:
             return None
 
-        # Pour les recherches multi-références, utiliser le premier terme
+        # Pour les recherches multi-références, récupérer TOUTES les références
+        search_terms = []
         if '||' in search_term:
-            terms = [term.strip() for term in search_term.split('||')]
-            if terms:
-                search_term = terms[0]
+            search_terms = [term.strip() for term in search_term.split('||') if term.strip()]
+        else:
+            search_terms = [search_term]
+
+        # Utiliser la première référence pour la description et le titre
+        primary_reference = search_terms[0]
 
         # Vérifier si c'est une référence de pièce (recherche dans la table pieces)
-        piece_description = self._get_piece_description_from_reference(search_term)
+        piece_description = self._get_piece_description_from_reference(primary_reference)
         if not piece_description:
             return None  # Ne pas activer les boutons SEO si ce n'est pas une référence de pièce
 
@@ -178,24 +193,27 @@ class SEOService:
         if self.main_window.table.rowCount() == 0:
             return None
 
-        # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
+        # Extraire TOUS les fabricants et types depuis la base de données pour TOUTES les pièces
         # (Pas seulement ceux visibles dans le tableau)
-        types_appareil = set()
+        from collections import Counter
+        types_appareil_list = []  # Liste pour compter les occurrences
         fabricants = set()
 
         # Requête pour récupérer tous les fabricants et types d'appareils pour cette pièce
         fabricants_query = Config.get_query('devices_for_piece')
 
         try:
-            all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [search_term])
-            for type_val, manufacturer in all_data:
-                if type_val and type_val.strip():
-                    types_appareil.add(type_val.strip())
-                if manufacturer and manufacturer.strip():
-                    fabricants.add(manufacturer.strip())
+            # Récupérer les données pour TOUTES les références de la recherche multi-références
+            for ref in search_terms:
+                all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
+                for type_val, manufacturer in all_data:
+                    if type_val and type_val.strip():
+                        types_appareil_list.append(type_val.strip())  # Garder les doublons pour compter
+                    if manufacturer and manufacturer.strip():
+                        fabricants.add(manufacturer.strip())
 
         except Exception as e:
-            app_logger.error(f"Erreur récupération fabricants pour {search_term}: {e}")
+            app_logger.error(f"Erreur récupération fabricants pour {search_terms}: {e}")
 
             # Fallback: utiliser les données visibles du tableau si la requête échoue
             for row in range(min(self.main_window.table.rowCount(), 20)):
@@ -203,19 +221,23 @@ class SEOService:
                     # Type appareil (colonne 0)
                     type_item = self.main_window.table.item(row, 0)
                     if type_item and type_item.text().strip():
-                        types_appareil.add(type_item.text().strip())
+                        types_appareil_list.append(type_item.text().strip())
 
                     # Fabricant (colonne 1)
                     fabricant_item = self.main_window.table.item(row, 1)
                     if fabricant_item and fabricant_item.text().strip():
                         fabricants.add(fabricant_item.text().strip())
 
-        # Utiliser la référence de recherche et la vraie description de la pièce
-        reference = search_term
+        # Utiliser la référence primaire et la vraie description de la pièce
+        reference = primary_reference
         description = piece_description
 
-        # Prendre le type le plus fréquent ou le premier
-        type_appareil = list(types_appareil)[0] if types_appareil else "appareil électroménager"
+        # Prendre le type le plus fréquent (logique métier optimale)
+        if types_appareil_list:
+            type_counter = Counter(types_appareil_list)
+            type_appareil = type_counter.most_common(1)[0][0]  # Le type le plus fréquent
+        else:
+            type_appareil = "appareil électroménager"
 
         # Convertir les sets en listes
         fabricants_list = sorted(list(fabricants)) if fabricants else ["multi-marques"]
@@ -227,12 +249,12 @@ class SEOService:
             'fabricants': fabricants_list
         }
     
-    @handle_seo_data_errors()
     def _get_search_data_from_current_data(self, reference: str, piece_description: str) -> Dict[str, any]:
         """
         Extraire les données SEO depuis current_data (plus efficace)
         """
-        types = set()
+        from collections import Counter
+        types_list = []  # Liste pour compter les occurrences
         manufacturers = set()
 
         # Analyser toutes les lignes du tableau actuel
@@ -243,18 +265,27 @@ class SEOService:
 
                 # Filtrer les types qui sont des nombres
                 if device_type.strip() and not device_type.strip().isdigit():
-                    types.add(device_type.strip())
+                    types_list.append(device_type.strip())  # Garder les doublons pour compter
                 if manufacturer.strip():
                     manufacturers.add(manufacturer.strip())
+
+        # Retourner le format attendu par generate_meta_title/description
+        # Prendre le type le plus fréquent (logique métier optimale)
+        if types_list:
+            type_counter = Counter(types_list)
+            type_appareil = type_counter.most_common(1)[0][0]  # Le type le plus fréquent
+        else:
+            type_appareil = "appareil électroménager"
+
+        fabricants_list = sorted(list(manufacturers)) if manufacturers else ["multi-marques"]
 
         return {
             'reference': reference,
             'description': piece_description,
-            'types': list(types),
-            'manufacturers': list(manufacturers)
+            'type_appareil': type_appareil,
+            'fabricants': fabricants_list
         }
     
-    @handle_seo_data_errors()
     def _get_search_data_for_existing_reference(self, reference: str, piece_description: str) -> Dict[str, any]:
         """
         Récupérer les vraies données SEO pour une référence existante en BDD
@@ -268,7 +299,8 @@ class SEOService:
         if not search_results:
             return self._get_search_data_fallback(reference, piece_description)
 
-        types = set()
+        from collections import Counter
+        types_list = []  # Liste pour compter les occurrences
         manufacturers = set()
 
         # Analyser tous les résultats pour extraire types et fabricants
@@ -279,15 +311,25 @@ class SEOService:
 
                 # Filtrer les types qui sont des nombres (comme 145008)
                 if device_type.strip() and not device_type.strip().isdigit():
-                    types.add(device_type.strip())
+                    types_list.append(device_type.strip())  # Garder les doublons pour compter
                 if manufacturer.strip():
                     manufacturers.add(manufacturer.strip())
+
+        # Retourner le format attendu par generate_meta_title/description
+        # Prendre le type le plus fréquent (logique métier optimale)
+        if types_list:
+            type_counter = Counter(types_list)
+            type_appareil = type_counter.most_common(1)[0][0]  # Le type le plus fréquent
+        else:
+            type_appareil = "appareil électroménager"
+
+        fabricants_list = sorted(list(manufacturers)) if manufacturers else ["multi-marques"]
 
         return {
             'reference': reference,
             'description': piece_description,
-            'types': list(types),
-            'manufacturers': list(manufacturers)
+            'type_appareil': type_appareil,
+            'fabricants': fabricants_list
         }
     
     def _get_search_data_fallback(self, reference: str, piece_description: str) -> Dict[str, any]:
@@ -507,21 +549,50 @@ class SEOService:
 
             app_logger.info(f"Génération méta pour multi-références: {references}")
 
-            # Essayer de trouver une référence qui existe en BDD pour récupérer les vraies données
-            real_reference_data = None
-            for ref in references:
-                piece_description = self._get_piece_description_from_reference(ref)
-                if piece_description:
-                    app_logger.info(f"Utilisation des données de la référence existante: {ref}")
-                    real_reference_data = self._get_search_data_for_existing_reference(ref, piece_description)
-                    break
+            # Récupérer les données agrégées de TOUTES les références
+            from collections import Counter
+            all_types = []
+            all_manufacturers = set()
+            piece_description = None
 
-            if real_reference_data:
-                # Utiliser les vraies données mais avec la référence personnalisée
-                real_reference_data['reference'] = specific_reference
-                return real_reference_data
+            for ref in references:
+                desc = self._get_piece_description_from_reference(ref)
+                if desc and not piece_description:
+                    piece_description = desc  # Utiliser la première description trouvée
+
+                # Récupérer les données pour cette référence
+                fabricants_query = Config.get_query('devices_for_piece')
+                try:
+                    ref_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
+                    for type_val, manufacturer in ref_data:
+                        if type_val and type_val.strip():
+                            all_types.append(type_val.strip())
+                        if manufacturer and manufacturer.strip():
+                            all_manufacturers.add(manufacturer.strip())
+                    app_logger.info(f"Référence {ref}: {len(ref_data)} appareils trouvés")
+                except Exception as e:
+                    app_logger.error(f"Erreur récupération données pour {ref}: {e}")
+
+            if piece_description and (all_types or all_manufacturers):
+                # Prendre le type le plus fréquent parmi TOUTES les références
+                if all_types:
+                    type_counter = Counter(all_types)
+                    type_appareil = type_counter.most_common(1)[0][0]
+                else:
+                    type_appareil = "appareil électroménager"
+
+                fabricants_list = sorted(list(all_manufacturers)) if all_manufacturers else ["multi-marques"]
+
+                app_logger.info(f"Multi-ref agrégé: type={type_appareil}, fabricants={len(fabricants_list)}")
+
+                return {
+                    'reference': specific_reference,
+                    'description': piece_description,
+                    'type_appareil': type_appareil,
+                    'fabricants': fabricants_list
+                }
             else:
-                app_logger.warning("Aucune référence valide trouvée dans la recherche multi-références")
+                app_logger.warning("Aucune donnée valide trouvée dans la recherche multi-références")
 
         # Vérifier si c'est une référence de pièce valide (cas normal)
         piece_description = self._get_piece_description_from_reference(specific_reference)
