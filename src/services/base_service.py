@@ -170,20 +170,18 @@ class BaseService(QObject):
             message: Message à logger
             level: Niveau de log (debug, info, warning, error)
         """
-        try:
-            formatted_msg = f"{self._service_name}.{operation}: {message}"
+        formatted_msg = f"{self._service_name}.{operation}: {message}"
 
-            if level == "debug":
-                app_logger.debug(formatted_msg)
-            elif level == "info":
-                app_logger.info(formatted_msg)
-            elif level == "warning":
-                app_logger.warning(formatted_msg)
-            elif level == "error":
-                app_logger.error(formatted_msg)
+        # Mapping direct - pas de try/except nécessaire pour code basique
+        log_methods = {
+            "debug": app_logger.debug,
+            "info": app_logger.info,
+            "warning": app_logger.warning,
+            "error": app_logger.error
+        }
 
-        except Exception as e:
-            app_logger.error(f"❌ Erreur de logging dans {self._service_name}: {e}")
+        log_method = log_methods.get(level, app_logger.debug)
+        log_method(formatted_msg)
 
     def emit_operation_started(self, operation: str) -> None:
         """Émettre le signal de début d'opération"""

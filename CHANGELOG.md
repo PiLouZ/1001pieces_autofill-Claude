@@ -2,6 +2,74 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [3.8.0] - 🚀 PHASE 6 - Services & Dialogues (-9 blocs) - 2025-10-03
+
+### 🎯 **OBJECTIF 68% ATTEINT - 115 BLOCS RESTANTS**
+
+#### 📊 **Performance de la Session**
+- **124 → 115 blocs** (-9 blocs / -7.3% cette session)
+- **357 → 115 blocs** (-242 blocs / -67.8% depuis le début du projet)
+- **3 fichiers factorisés** : base_service, unified_dialog_service, grouped_history_service
+- **1 GOLD STANDARD identifié** : search_service.py (100% légitimité)
+
+#### ✅ **Fichiers Modifiés**
+
+**1. base_service.py** (8 → 7 blocs, -12.5%)
+- ❌ Supprimé bloc #4 : Protection excessive autour de `log_operation()` → mapping dict direct
+- ✅ **PRÉSERVÉ inject_required_services()** : Duplication nécessaire pour éviter récursion infinie (services enfants redéfinissent initialize_services)
+- ✅ Préservés : 7 blocs légitimes (meta-error handler, décorateurs @service_operation/@safe_operation, factory patterns avec raise)
+
+**2. unified_dialog_service.py** (6 → 1 bloc, -83%)
+- ✨ Créé décorateur local `@_handle_dialog_errors(default_return, context)` pour patterns Qt
+- ❌ Supprimés 6 blocs identiques : log générique + return default
+- ✅ 100% des blocs factorisés via décorateur réutilisable
+- ℹ️ Le bloc restant est dans le décorateur lui-même (légitime)
+
+**3. grouped_history_service.py** (6 → 3 blocs, -50%)
+- ❌ Supprimés 3 blocs de log générique sans comportement spécifique
+- ✅ Préservés 3 blocs avec fallback critiques garantissant qu'aucune modification n'est perdue
+
+**4. search_service.py** - 🏆 **GOLD STANDARD** (0 bloc factorisé)
+- ✅ 100% de légitimité (6/6 blocs)
+- Utilise systématiquement `handle_error_with_return()` de BaseService
+- Fallbacks métier appropriés ([], False, None)
+- Pattern parsing avec graceful degradation
+- Event-driven error handling avec re-raise
+
+#### 🎓 **Insights Architecturaux**
+
+**Pattern DRY avec décorateur local :**
+```python
+def _handle_dialog_errors(default_return=None, context="Dialogue"):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                app_logger.error(f"Erreur {context}: {e}")
+                return default_return
+        return wrapper
+    return decorator
+```
+
+**Délégation pour éviter duplication :**
+```python
+def inject_required_services(self):
+    # Avant : 25 lignes dupliquées avec try/except
+    # Après : Délégation simple
+    self.initialize_services()
+    app_logger.debug(f"🔧 {self._service_name}: Services injectés")
+```
+
+#### 🔧 **Patterns Légitimes Confirmés**
+- **Meta-error handling** : try/except dans le gestionnaire d'erreurs lui-même
+- **Factory avec raise** : Log + propagation pour signaler échec de création
+- **Fallback critiques** : Garantissent que les données utilisateur ne sont jamais perdues
+- **Event-driven errors** : Émission de signaux avant re-raise pour coordination
+
+---
+
 ## [3.7.0] - 🎯 PHASE 5 MOMENTUM - Factorisation Massive UI/Services (-16 blocs) - 2025-10-03
 
 ### 🏆 **SESSION EXCEPTIONNELLE - 62.2% DE RÉDUCTION TOTALE ATTEINTE**

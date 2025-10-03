@@ -71,19 +71,15 @@ class GroupedHistoryService(QObject):
 
     def flush_all_pending_modifications(self):
         """Flusher toutes les modifications en attente vers l'historique"""
-        try:
-            if not self.pending_modifications:
-                return
+        if not self.pending_modifications:
+            return
 
-            # Traiter chaque appareil
-            for db_id, data in self.pending_modifications.items():
-                self._flush_device_modifications(db_id, data)
+        # Traiter chaque appareil
+        for db_id, data in self.pending_modifications.items():
+            self._flush_device_modifications(db_id, data)
 
-            # Vider le buffer
-            self.pending_modifications.clear()
-
-        except Exception as e:
-            app_logger.error(f"Erreur flush modifications: {e}")
+        # Vider le buffer
+        self.pending_modifications.clear()
 
     def _flush_device_modifications(self, db_id: int, data: Dict):
         """Flusher les modifications d'un appareil spécifique"""
@@ -192,11 +188,8 @@ class GroupedHistoryService(QObject):
 
     def _fallback_to_normal_history(self, field_name: str, old_value: str, new_value: str):
         """Fallback vers l'historique normal en cas d'erreur"""
-        try:
-            message = f"Modification {field_name}: '{old_value}' → '{new_value}'"
-            self.user_interaction_service.add_to_history(message)
-        except Exception as e:
-            app_logger.error(f"Erreur fallback historique: {e}")
+        message = f"Modification {field_name}: '{old_value}' → '{new_value}'"
+        self.user_interaction_service.add_to_history(message)
 
     def force_flush_device(self, db_id: int):
         """
@@ -204,11 +197,8 @@ class GroupedHistoryService(QObject):
         Utile quand on commence à modifier un autre appareil
         """
         if db_id in self.pending_modifications:
-            try:
-                data = self.pending_modifications.pop(db_id)
-                self._flush_device_modifications(db_id, data)
-            except Exception as e:
-                app_logger.error(f"Erreur flush forcé appareil {db_id}: {e}")
+            data = self.pending_modifications.pop(db_id)
+            self._flush_device_modifications(db_id, data)
 
     def get_stats(self) -> Dict:
         """Obtenir les statistiques d'utilisation"""
