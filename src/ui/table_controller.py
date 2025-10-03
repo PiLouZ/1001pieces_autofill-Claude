@@ -409,14 +409,13 @@ class TableController:
 
         # Compter total pour pagination (même logique que sync)
         if not hasattr(self, '_counting_in_progress'):
-            try:
-                self.total_rows = self.db_manager.count_data(
-                    self.current_search_term,
-                    self.filter_widgets,
-                    getattr(self.parent_window, 'show_incomplete_only', False)
-                )
-            except:
-                self.total_rows = len(records)
+            # Utiliser count_data avec fallback sur len(records) si échec
+            count_result = self.db_manager.count_data(
+                self.current_search_term,
+                self.filter_widgets,
+                getattr(self.parent_window, 'show_incomplete_only', False)
+            )
+            self.total_rows = count_result if count_result is not None else len(records)
 
         # Calculer pagination (même logique)
         if self.page_size == -1:
