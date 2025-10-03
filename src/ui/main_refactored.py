@@ -28,7 +28,13 @@ from .message_helper import MessageHelper, CommonMessages, show_success, show_er
 from .dialog_manager import DialogManager
 from ..utils.error_handler import (
     handle_errors, handle_database_errors, SafeOperation,
-    handle_ui_errors, handle_ui_column_errors
+    handle_ui_errors, handle_ui_column_errors,
+    handle_database_operation_errors, handle_ui_operation_errors,
+    handle_table_operations_errors, handle_navigation_errors,
+    handle_export_errors, handle_import_errors, handle_validation_errors,
+    handle_file_errors, handle_log_viewer_errors, handle_export_operation_errors,
+    handle_data_management_errors, handle_drag_operation_errors,
+    handle_event_handler_errors, handle_ui_update_errors
 )
 from ..core.constants import UIConfig, Messages, DatabaseConfig, FileExtensions
 
@@ -685,10 +691,7 @@ class MainWindow(QMainWindow):
                 for i in range(layout.count()):
                     if layout.itemAt(i).widget() == self.search_input:
                         # Déconnecter les anciens signaux
-                        try:
-                            self.search_input.textChanged.disconnect()
-                        except:
-                            pass
+                        self._safe_disconnect_search_signals()
                         
                         # Supprimer l'ancien widget
                         layout.removeWidget(self.search_input)
@@ -712,10 +715,7 @@ class MainWindow(QMainWindow):
                             item = layout_to_search.itemAt(i)
                             if item.widget() == self.search_input:
                                 # Déconnecter signaux
-                                try:
-                                    self.search_input.textChanged.disconnect()
-                                except:
-                                    pass
+                                self._safe_disconnect_search_signals()
                                 
                                 # Remplacer dans ce layout
                                 layout_to_search.removeWidget(self.search_input)
@@ -748,42 +748,42 @@ class MainWindow(QMainWindow):
                     if find_and_replace_in_layout(layout):
                         search_found = True
                     
-                # Tentative 3: Fallback setParent si toujours pas trouvé    
+                # Tentative 3: Fallback setParent si toujours pas trouvé
                 if not search_found:
-                    try:
-                        # Déconnecter les anciens signaux
-                        try:
-                            self.search_input.textChanged.disconnect()
-                        except:
-                            pass
-                        
-                        # Garder les propriétés originales
-                        size_hint = self.search_input.sizeHint()
-                        min_size = self.search_input.minimumSize()
-                        max_size = self.search_input.maximumSize()
-                        
-                        # Configurer le nouveau avec les mêmes propriétés
-                        new_input.setParent(parent)
-                        new_input.setMinimumSize(min_size)
-                        new_input.setMaximumSize(max_size)
-                        new_input.resize(size_hint)
-                        
-                        # Supprimer l'ancien et montrer le nouveau
-                        self.search_input.hide()
-                        self.search_input.deleteLater()
-                        new_input.show()
-                        
-                        # Remplacer la référence
-                        self.search_input = new_input
-                        
-                        # Reconnecter les signaux
-                        self.search_input.textChanged.connect(
-                            self.advanced_search_service.search_with_debounce
-                        )
-                        
-                    except Exception as e:
-                        from ..core.logger import app_logger
-                        app_logger.error(f"Erreur remplacement search_input: {e}")
+                    self._safe_fallback_replace_search_input(new_input, parent)
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur remplacement fallback search_input")
+    def _safe_fallback_replace_search_input(self, new_input, parent):
+        """Helper sécurisé pour remplacement fallback du search_input"""
+        # Déconnecter les anciens signaux
+        try:
+            self.search_input.textChanged.disconnect()
+        except:
+            pass
+
+        # Garder les propriétés originales
+        size_hint = self.search_input.sizeHint()
+        min_size = self.search_input.minimumSize()
+        max_size = self.search_input.maximumSize()
+
+        # Configurer le nouveau avec les mêmes propriétés
+        new_input.setParent(parent)
+        new_input.setMinimumSize(min_size)
+        new_input.setMaximumSize(max_size)
+        new_input.resize(size_hint)
+
+        # Supprimer l'ancien et montrer le nouveau
+        self.search_input.hide()
+        self.search_input.deleteLater()
+        new_input.show()
+
+        # Remplacer la référence
+        self.search_input = new_input
+
+        # Reconnecter les signaux
+        self.search_input.textChanged.connect(
+            self.advanced_search_service.search_with_debounce
+        )
 
     # --- Méthodes de gestion des données ---
 
@@ -841,28 +841,29 @@ class MainWindow(QMainWindow):
     
     def _toggle_show_all(self):
         """Basculer entre affichage paginé et affichage de toutes les lignes"""
-        try:
-            if self.use_pagination:
-                # Passer en mode "Toutes les lignes"
-                message = (f"Voulez-vous afficher toutes les {self.total_rows} lignes?\n\n"
-                          "⚠️ Cela peut être lent si vous avez beaucoup de données.")
-                
-                if MessageHelper.ask_question(self, message, "Afficher toutes les lignes"):
-                    self.use_pagination = False
-                    self.show_all_btn.setText("📄 Pagination")
-                    self.show_all_btn.setToolTip("Revenir à l'affichage paginé")
-                    self.table_controller.load_data()
-            else:
-                # Revenir en mode pagination
-                self.use_pagination = True
-                self.show_all_btn.setText("📋 Toutes les lignes")
-                self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
-                if hasattr(self.table_controller, 'current_page'):
-                    self.table_controller.current_page = 0
+        return self._safe_toggle_show_all()
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur basculement affichage")
+    def _safe_toggle_show_all(self):
+        """Helper sécurisé pour basculer entre affichage paginé et affichage de toutes les lignes"""
+        if self.use_pagination:
+            # Passer en mode "Toutes les lignes"
+            message = (f"Voulez-vous afficher toutes les {self.total_rows} lignes?\n\n"
+                      "⚠️ Cela peut être lent si vous avez beaucoup de données.")
+
+            if MessageHelper.ask_question(self, message, "Afficher toutes les lignes"):
+                self.use_pagination = False
+                self.show_all_btn.setText("📄 Pagination")
+                self.show_all_btn.setToolTip("Revenir à l'affichage paginé")
                 self.table_controller.load_data()
-                
-        except Exception as e:
-            app_logger.error(f"Erreur basculement affichage: {e}")
+        else:
+            # Revenir en mode pagination
+            self.use_pagination = True
+            self.show_all_btn.setText("📋 Toutes les lignes")
+            self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
+            if hasattr(self.table_controller, 'current_page'):
+                self.table_controller.current_page = 0
+            self.table_controller.load_data()
     
     def _navigate_to_empty_cell(self, direction='down'):
         """Navigation intelligente - PHASE 5: Délégation vers CellEditingService"""
@@ -924,15 +925,17 @@ class MainWindow(QMainWindow):
     
     def _init_previous_values(self):
         """Initialiser les valeurs précédentes pour toutes les cellules après le chargement"""
-        try:
-            for row in range(self.table.rowCount()):
-                for col in range(self.table.columnCount()):
-                    item = self.table.item(row, col)
-                    if item:
-                        key = (row, col)
-                        self.previous_values[key] = item.text()
-        except Exception as e:
-            app_logger.error("Erreur", e)
+        return self._safe_init_previous_values()
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur initialisation valeurs précédentes")
+    def _safe_init_previous_values(self):
+        """Helper sécurisé pour initialiser les valeurs précédentes"""
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item:
+                    key = (row, col)
+                    self.previous_values[key] = item.text()
     
     def _on_cell_changed(self, item: QTableWidgetItem):
         """Gérer les modifications de cellules"""
@@ -999,21 +1002,7 @@ class MainWindow(QMainWindow):
         })
         
         # CORRECTION: Ajouter à l'historique groupé au lieu de l'ancien système
-        try:
-            # Obtenir le nom de la colonne
-            column_name = self._get_column_display_name(col)
-
-            # Utiliser le service de groupement d'historique
-            if getattr(self, 'auto_save_enabled', True):
-                try:
-                    db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                    self.grouped_history_service.add_modification(db_id, column_name, old_value, new_value)
-                except Exception as e:
-                    # Fallback vers historique normal en cas d'erreur
-                    app_logger.warning(f"Erreur historique groupé dans _on_cell_editing_updated, fallback: {e}")
-                    self.user_interaction_service.add_to_history(f"Modification {column_name}: '{old_value}' → '{new_value}'")
-        except Exception as e:
-            app_logger.error("Erreur", e)
+        self._safe_add_to_grouped_history(row, col, old_value, new_value)
         
         # Mettre à jour la valeur précédente
         self.previous_values[key] = new_value
@@ -1062,97 +1051,100 @@ class MainWindow(QMainWindow):
 
     def _export_with_custom_reference(self, search_data_term, reference_for_file: str, export_format: ExportFormat, results_count: int) -> bool:
         """Exporter avec tous les résultats mais utiliser une référence spécifique pour le nom et la première colonne"""
-        try:
-            # Récupérer toutes les données avec la recherche complète
-            if isinstance(search_data_term, dict):
-                # Recherche complexe - utiliser get_export_data avec fallback
-                data = self.db_manager.get_export_data(search_data_term)
-            else:
-                # Recherche simple
-                data = self.db_manager.get_export_data(search_data_term)
-            
-            if not data:
-                raise Exception(f"Aucune donnée trouvée pour la recherche")
-            
-            # Créer un filename personnalisé avec la référence sélectionnée
-            if export_format == ExportFormat.CSV:
-                filename = f"{reference_for_file}_everyParts.csv"
-                success = self._export_csv_with_reference(data, filename, reference_for_file)
-                if success:
-                    self.user_interaction_service.add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
-                return success
-            elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
-                success = self._export_html_with_reference(data, reference_for_file, export_format)
-                if success:
-                    format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
-                    self.user_interaction_service.add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
-                return success
-            else:
-                # Autres formats non supportés pour export avec référence personnalisée
-                raise Exception(f"Format d'export {export_format} non supporté avec référence personnalisée")
-                
-        except Exception as e:
-            raise Exception(f"Erreur lors de l'export personnalisé: {e}")
+        return self._safe_export_with_custom_reference(search_data_term, reference_for_file, export_format, results_count)
+
+    @handle_export_errors(title="Erreur export personnalisé")
+    def _safe_export_with_custom_reference(self, search_data_term, reference_for_file: str, export_format: ExportFormat, results_count: int) -> bool:
+        """Helper sécurisé pour export avec référence personnalisée"""
+        # Récupérer toutes les données avec la recherche complète
+        if isinstance(search_data_term, dict):
+            # Recherche complexe - utiliser get_export_data avec fallback
+            data = self.db_manager.get_export_data(search_data_term)
+        else:
+            # Recherche simple
+            data = self.db_manager.get_export_data(search_data_term)
+
+        if not data:
+            raise Exception(f"Aucune donnée trouvée pour la recherche")
+
+        # Créer un filename personnalisé avec la référence sélectionnée
+        if export_format == ExportFormat.CSV:
+            filename = f"{reference_for_file}_everyParts.csv"
+            success = self._export_csv_with_reference(data, filename, reference_for_file)
+            if success:
+                self.user_interaction_service.add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
+            return success
+        elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
+            success = self._export_html_with_reference(data, reference_for_file, export_format)
+            if success:
+                format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
+                self.user_interaction_service.add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
+            return success
+        else:
+            # Autres formats non supportés pour export avec référence personnalisée
+            raise Exception(f"Format d'export {export_format} non supporté avec référence personnalisée")
     
     def _export_csv_with_reference(self, data, filename: str, reference: str) -> bool:
         """Exporter en CSV avec format exact spécifié"""
-        try:
-            import csv
-            import os
-            
-            # Chemin vers le Bureau
-            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-            full_path = os.path.join(desktop_path, filename)
-            
-            with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                # En-têtes exacts selon spécification
-                headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
-                writer.writerow(headers)
-                
-                # Données selon le format spécifié
-                for row in data:
-                    # get_export_data structure: [type, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece]
-                    # Indexes:                     0     1            2           3               4          5
-                    
-                    type_val = row[0] if len(row) > 0 else ''
-                    manufacturer_val = row[1] if len(row) > 1 else ''
-                    ref_modele_val = row[2] if len(row) > 2 else ''
-                    commercial_ref_val = row[3] if len(row) > 3 else ''
-                    
-                    # modele_name = "Référence Modèle - Référence Commerciale"
-                    modele_name = f"{ref_modele_val} - {commercial_ref_val}".strip(' -')
-                    
-                    csv_row = [
-                        reference,                    # product: Référence confirmée
-                        type_val,                     # type: Type  
-                        manufacturer_val,             # manufacturer: Fabricant
-                        modele_name,                  # modele_name: "Référence Modèle - Référence Commerciale"
-                        ref_modele_val,               # reference_modele: Référence Modèle
-                        commercial_ref_val            # commercial_reference: Référence Commerciale
-                    ]
-                    writer.writerow(csv_row)
-            
-            return True
-            
-        except Exception as e:
-            raise Exception(f"Erreur export CSV: {e}")
+        return self._safe_export_csv_with_reference(data, filename, reference)
+
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur export CSV")
+    def _safe_export_csv_with_reference(self, data, filename: str, reference: str) -> bool:
+        """Helper sécurisé pour export CSV"""
+        import csv
+        import os
+
+        # Chemin vers le Bureau
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+        full_path = os.path.join(desktop_path, filename)
+
+        with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile, delimiter=';')
+
+            # En-têtes exacts selon spécification
+            headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
+            writer.writerow(headers)
+
+            # Données selon le format spécifié
+            for row in data:
+                # get_export_data structure: [type, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece]
+                # Indexes:                     0     1            2           3               4          5
+
+                type_val = row[0] if len(row) > 0 else ''
+                manufacturer_val = row[1] if len(row) > 1 else ''
+                ref_modele_val = row[2] if len(row) > 2 else ''
+                commercial_ref_val = row[3] if len(row) > 3 else ''
+
+                # modele_name = "Référence Modèle - Référence Commerciale"
+                modele_name = f"{ref_modele_val} - {commercial_ref_val}".strip(' -')
+
+                csv_row = [
+                    reference,                    # product: Référence confirmée
+                    type_val,                     # type: Type
+                    manufacturer_val,             # manufacturer: Fabricant
+                    modele_name,                  # modele_name: "Référence Modèle - Référence Commerciale"
+                    ref_modele_val,               # reference_modele: Référence Modèle
+                    commercial_ref_val            # commercial_reference: Référence Commerciale
+                ]
+                writer.writerow(csv_row)
+
+        return True
     
     def _export_html_with_reference(self, data, reference: str, export_format: ExportFormat) -> bool:
         """Exporter en HTML avec référence personnalisée"""
-        try:
-            # Utiliser le service d'export unifié (export_manager)
-            result = self.export_manager._base_export_service.export_to_html(data, export_format)
-            
-            # Copier dans le presse-papiers
-            from .qt_imports import QApplication
-            QApplication.clipboard().setText(result)
-            
-            return True
-            
-        except Exception as e:
-            raise Exception(f"Erreur export HTML: {e}")
+        return self._safe_export_html_with_reference(data, reference, export_format)
+
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur export HTML")
+    def _safe_export_html_with_reference(self, data, reference: str, export_format: ExportFormat) -> bool:
+        """Helper sécurisé pour export HTML"""
+        # Utiliser le service d'export unifié (export_manager)
+        result = self.export_manager._base_export_service.export_to_html(data, export_format)
+
+        # Copier dans le presse-papiers
+        from .qt_imports import QApplication
+        QApplication.clipboard().setText(result)
+
+        return True
     
     def _export_data_legacy(self, export_format: ExportFormat):
         """Export legacy - PHASE 4 : Service unifié avec fallbacks"""
@@ -1160,91 +1152,111 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes utilitaires ---
 
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur ajout historique groupé")
+    def _safe_add_to_grouped_history(self, row: int, col: int, old_value: str, new_value: str):
+        """Helper sécurisé pour ajouter à l'historique groupé avec fallback"""
+        # Obtenir le nom de la colonne
+        column_name = self._get_column_display_name(col)
+
+        # Utiliser le service de groupement d'historique
+        if getattr(self, 'auto_save_enabled', True):
+            try:
+                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
+                self.grouped_history_service.add_modification(db_id, column_name, old_value, new_value)
+            except Exception as e:
+                # Fallback vers historique normal en cas d'erreur
+                app_logger.warning(f"Erreur historique groupé dans _on_cell_editing_updated, fallback: {e}")
+                self.user_interaction_service.add_to_history(f"Modification {column_name}: '{old_value}' → '{new_value}'")
+
     def _update_toolbar_states(self):
         """Mettre à jour l'état des boutons"""
         self.undo_action.setEnabled(self.undo_manager.can_undo())
         self.redo_action.setEnabled(self.undo_manager.can_redo())
+
+    @handle_drag_operation_errors(return_value=None, title="Erreur vérification sélection")
+    def _safe_check_selection(self):
+        """Vérifier la sélection et cacher le drag handle si vide"""
+        selected = self.table.selectedRanges()
+        if not selected:
+            self.drag_handle.hide()
+            return None
+        return selected
+
+    @handle_drag_operation_errors(return_value=None, title="Erreur positionnement drag handle")
+    def _safe_position_drag_handle_at_selection(self, selected):
+        """Positionner le drag handle à la sélection"""
+        sel_range = selected[0]
+        bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
+
+        if bottom_right_item:
+            rect = self.table.visualItemRect(bottom_right_item)
+            if rect.isValid():
+                handle_x = rect.right() - self.drag_handle.width() + 1
+                handle_y = rect.bottom() - self.drag_handle.height() + 1
+
+                viewport_rect = self.table.viewport().rect()
+                if (handle_x >= 0 and handle_y >= 0 and
+                    handle_x < viewport_rect.width() and
+                    handle_y < viewport_rect.height()):
+                    self.drag_handle.move(handle_x, handle_y)
+                    self.drag_handle.show()
+                else:
+                    self.drag_handle.hide()
+            else:
+                self.drag_handle.hide()
+        else:
+            self.drag_handle.hide()
 
     def _position_drag_handle(self):
         """Positionner la poignée de glisser-déposer"""
         # Vérifier si tous les objets existent encore
         if not hasattr(self, 'table') or self.table is None:
             return
-        
+
         if not hasattr(self, 'drag_handle') or self.drag_handle is None:
             return
-        
-        try:
-            selected = self.table.selectedRanges()
-            if not selected:
-                self.drag_handle.hide()
-                return
-        except RuntimeError:
-            # L'objet table a été détruit
+
+        selected = self._safe_check_selection()
+        if selected is None:
             return
-        
-        try:
-            sel_range = selected[0]
-            bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
-            
-            if bottom_right_item:
-                rect = self.table.visualItemRect(bottom_right_item)
-                if rect.isValid():
-                    handle_x = rect.right() - self.drag_handle.width() + 1
-                    handle_y = rect.bottom() - self.drag_handle.height() + 1
-                    
-                    viewport_rect = self.table.viewport().rect()
-                    if (handle_x >= 0 and handle_y >= 0 and 
-                        handle_x < viewport_rect.width() and 
-                        handle_y < viewport_rect.height()):
-                        self.drag_handle.move(handle_x, handle_y)
-                        self.drag_handle.show()
-                    else:
-                        self.drag_handle.hide()
-                else:
-                    self.drag_handle.hide()
-            else:
-                self.drag_handle.hide()
-        except RuntimeError:
-            # L'objet table ou drag_handle a été détruit
-            return
+
+        self._safe_position_drag_handle_at_selection(selected)
 
     # --- Méthodes d'action (stubs pour les fonctionnalités à implémenter) ---
 
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur peuplement dropdown")
+    def _safe_populate_dropdown_values(self, combo_widget: QComboBox, column_index: int, db_field: str):
+        """Peupler les valeurs du dropdown avec les données uniques (version protégée)"""
+        # Requête pour obtenir les valeurs distinctes, non vides, triées
+        query = f"""
+            SELECT DISTINCT {db_field}
+            FROM appareils
+            WHERE {db_field} IS NOT NULL AND {db_field} != ''
+            ORDER BY {db_field}
+        """
+
+        results = self.db_manager.execute_query(query)
+
+        # Ajouter une option vide en premier
+        combo_widget.addItem("")
+
+        # Ajouter les valeurs uniques
+        for row in results:
+            value = row[0]
+            if value and value.strip():  # S'assurer que la valeur n'est pas vide
+                combo_widget.addItem(value.strip())
+
     def _populate_dropdown_values(self, combo_widget: QComboBox, column_index: int):
         """Peupler les valeurs du dropdown avec les données uniques de la BDD"""
-        try:
-            # Déterminer le champ de base de données selon l'index de colonne
-            if column_index == 0:  # Type
-                db_field = "type"
-            elif column_index == 1:  # Fabricant
-                db_field = "manufacturer"
-            else:
-                return  # Ne pas traiter d'autres colonnes
-            
-            # Requête pour obtenir les valeurs distinctes, non vides, triées
-            query = f"""
-                SELECT DISTINCT {db_field} 
-                FROM appareils 
-                WHERE {db_field} IS NOT NULL AND {db_field} != '' 
-                ORDER BY {db_field}
-            """
-            
-            results = self.db_manager.execute_query(query)
-            
-            # Ajouter une option vide en premier
-            combo_widget.addItem("")
-            
-            # Ajouter les valeurs uniques
-            for row in results:
-                value = row[0]
-                if value and value.strip():  # S'assurer que la valeur n'est pas vide
-                    combo_widget.addItem(value.strip())
-                    
-        except Exception as e:
-            app_logger.error(f"Erreur peuplement dropdown colonne {column_index}: {e}")
-            # En cas d'erreur, transformer le combo en champ texte basique
-            combo_widget.setEditable(True)
+        # Déterminer le champ de base de données selon l'index de colonne
+        if column_index == 0:  # Type
+            db_field = "type"
+        elif column_index == 1:  # Fabricant
+            db_field = "manufacturer"
+        else:
+            return  # Ne pas traiter d'autres colonnes
+
+        self._safe_populate_dropdown_values(combo_widget, column_index, db_field)
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
@@ -1283,30 +1295,31 @@ class MainWindow(QMainWindow):
         UTILISATION: Fallback temporaire uniquement
         TODO: Supprimer après validation complète du service
         """
-        try:
-            # Utiliser le DatabaseOperationsService pour sauvegarde immédiate
-            if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service'):
-                # Créer un set avec la cellule modifiée pour utiliser l'API existante
-                modified_cells = {(row, col)}
+        return self._safe_save_cell_immediately(row, col, new_value)
 
-                # Convertir vers le format attendu par save_cells_batch
-                updates_by_db_id = self.database_operations_service._convert_modified_cells_to_updates(modified_cells, self.table)
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur sauvegarde cellule")
+    def _safe_save_cell_immediately(self, row: int, col: int, new_value: str):
+        """Helper sécurisé pour la sauvegarde immédiate d'une cellule"""
+        # Utiliser le DatabaseOperationsService pour sauvegarde immédiate
+        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service'):
+            # Créer un set avec la cellule modifiée pour utiliser l'API existante
+            modified_cells = {(row, col)}
 
-                # Sauvegarder immédiatement
-                success = self.database_operations_service.save_cells_batch(updates_by_db_id)
+            # Convertir vers le format attendu par save_cells_batch
+            updates_by_db_id = self.database_operations_service._convert_modified_cells_to_updates(modified_cells, self.table)
 
-                if success:
-                    # Mettre à jour l'indicateur de sauvegarde
-                    self.save_indicator.setText(Config.get_message('save_success'))
-                    self.save_indicator.setStyleSheet("color: green;")
+            # Sauvegarder immédiatement
+            success = self.database_operations_service.save_cells_batch(updates_by_db_id)
 
-                    # Remettre l'indicateur à l'état normal après un délai
-                    QTimer.singleShot(2000, lambda: self._reset_save_indicator())
-                else:
-                    app_logger.warning(f"Échec sauvegarde immédiate cellule ({row}, {col})")
+            if success:
+                # Mettre à jour l'indicateur de sauvegarde
+                self.save_indicator.setText(Config.get_message('save_success'))
+                self.save_indicator.setStyleSheet("color: green;")
 
-        except Exception as e:
-            app_logger.error(f"Erreur sauvegarde immédiate cellule ({row}, {col}): {e}")
+                # Remettre l'indicateur à l'état normal après un délai
+                QTimer.singleShot(2000, lambda: self._reset_save_indicator())
+            else:
+                app_logger.warning(f"Échec sauvegarde immédiate cellule ({row}, {col})")
 
     def _reset_save_indicator(self):
         """
@@ -1316,11 +1329,13 @@ class MainWindow(QMainWindow):
         UTILISATION: Fallback temporaire uniquement
         TODO: Supprimer après validation complète du service
         """
-        try:
-            self.save_indicator.setText(Config.get_message('connected'))
-            self.save_indicator.setStyleSheet("color: green;")
-        except Exception as e:
-            app_logger.error(f"Erreur reset indicateur sauvegarde: {e}")
+        return self._safe_reset_save_indicator()
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur réinitialisation indicateur sauvegarde")
+    def _safe_reset_save_indicator(self):
+        """Helper sécurisé pour remettre l'indicateur à l'état normal"""
+        self.save_indicator.setText(Config.get_message('connected'))
+        self.save_indicator.setStyleSheet("color: green;")
 
     def _get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
         """Récupérer les informations DB d'une cellule - PHASE 5: Délégation vers CellEditingService"""
@@ -1337,20 +1352,17 @@ class MainWindow(QMainWindow):
     
     def _handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
         """Gérer les actions post mise à jour - PHASE 5: Appel délégué + actions spécifiques"""
+        return self._safe_handle_successful_cell_update(item, old_value, new_value, skip_history)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur traitement mise à jour cellule")
+    def _safe_handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
+        """Helper sécurisé pour gérer les actions post mise à jour"""
         row, col = item.row(), item.column()
-        
+
         # Actions spécifiques à l'interface principale
         if old_value != new_value and not skip_history:
-            column_display_name = self._get_column_display_name(col)
-
-            # NOUVEAU: Utiliser le service de groupement d'historique
-            try:
-                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                self.grouped_history_service.add_modification(db_id, column_display_name, old_value, new_value)
-            except Exception as e:
-                # Fallback vers historique normal en cas d'erreur
-                app_logger.warning(f"Erreur historique groupé, fallback: {e}")
-                self.user_interaction_service.add_to_history(f"Modification {column_display_name}: '{old_value}' → '{new_value}'")
+            # NOUVEAU: Utiliser le service de groupement d'historique (helper factorisé)
+            self._safe_add_to_grouped_history(row, col, old_value, new_value)
         
         self.modified_cells.discard((row, col))
         item.setBackground(QColor(255, 255, 255))  # Blanc
@@ -1362,21 +1374,22 @@ class MainWindow(QMainWindow):
 
     def _save_drag_changes(self):
         """Sauvegarder les modifications du glisser-déposer"""
-        try:
-            if not (hasattr(self, 'drag_handle') and self.drag_handle.orig_selection):
-                return
-                
-            selection = self.drag_handle.orig_selection
-            direction = self.drag_handle.drag_direction
-            
-            # Déterminer la plage de cellules à sauvegarder
-            rows_to_save = self._get_drag_rows_to_save(selection, direction)
-            
-            # Sauvegarder les cellules
-            self._save_cells_in_range(rows_to_save, selection.leftColumn(), selection.rightColumn())
-                                
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de la sauvegarde du glisser-déposer: {e}")
+        return self._safe_save_drag_changes()
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur sauvegarde changements drag")
+    def _safe_save_drag_changes(self):
+        """Helper sécurisé pour sauvegarder les modifications du glisser-déposer"""
+        if not (hasattr(self, 'drag_handle') and self.drag_handle.orig_selection):
+            return
+
+        selection = self.drag_handle.orig_selection
+        direction = self.drag_handle.drag_direction
+
+        # Déterminer la plage de cellules à sauvegarder
+        rows_to_save = self._get_drag_rows_to_save(selection, direction)
+
+        # Sauvegarder les cellules
+        self._save_cells_in_range(rows_to_save, selection.leftColumn(), selection.rightColumn())
     
     def _get_drag_rows_to_save(self, selection, direction: str) -> range:
         """Obtenir la plage de lignes à sauvegarder pour le drag"""
@@ -1388,6 +1401,11 @@ class MainWindow(QMainWindow):
     
     def _save_cells_in_range(self, rows: range, start_col: int, end_col: int):
         """Sauvegarder les cellules dans une plage donnée (drag & drop)"""
+        return self._safe_save_cells_in_range(rows, start_col, end_col)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur sauvegarde cellules drag & drop")
+    def _safe_save_cells_in_range(self, rows: range, start_col: int, end_col: int):
+        """Helper sécurisé pour sauvegarder cellules avec cache suspension"""
         # Suspendre les invalidations de cache pendant le drag & drop
         cache_service = getattr(self.db_manager, 'cache_invalidation', None)
         if cache_service:
@@ -1481,16 +1499,16 @@ class MainWindow(QMainWindow):
         # Pour les autres messages, format standard
         return f"[{timestamp}] {message}"
 
+    @handle_navigation_errors(return_value=None, title="Erreur traitement lien historique")
+    def _safe_handle_history_link(self, url_str: str):
+        """Gérer les clics sur les liens dans l'historique - Version sécurisée"""
+        self.user_interaction_service.show_error(f"Lien non reconnu: {url_str}")
+
     def _handle_history_link(self, url):
         """Gérer les clics sur les liens dans l'historique"""
         from .qt_imports import QUrl
-        
         url_str = url.toString() if isinstance(url, QUrl) else str(url)
-        
-        try:
-            self.user_interaction_service.show_error(f"Lien non reconnu: {url_str}")
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors du traitement du lien: {e}")
+        self._safe_handle_history_link(url_str)
 
     def _add_piece(self):
         """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService"""
@@ -1526,6 +1544,22 @@ class MainWindow(QMainWindow):
             self._apply_redo_action(action)
             self._update_toolbar_states()
 
+    @handle_navigation_errors(return_value=False, title="Erreur mise à jour DB lors du undo")
+    def _safe_update_db_for_undo(self, db_id: str, col: int, old_value: str) -> bool:
+        """Mettre à jour la DB lors d'un undo - Version sécurisée"""
+        field_name = self._get_db_field_name(col)
+        if field_name:
+            self.db_manager.update_cell(int(db_id), field_name, old_value)
+        return True
+
+    @handle_navigation_errors(return_value=False, title="Erreur mise à jour DB lors du redo")
+    def _safe_update_db_for_redo(self, db_id: str, col: int, new_value: str) -> bool:
+        """Mettre à jour la DB lors d'un redo - Version sécurisée"""
+        field_name = self._get_db_field_name(col)
+        if field_name:
+            self.db_manager.update_cell(int(db_id), field_name, new_value)
+        return True
+
     def _apply_undo_action(self, action: Dict[str, Any]):
         """Appliquer une action d'annulation"""
         if action['type'] == 'cell_edit':
@@ -1536,16 +1570,11 @@ class MainWindow(QMainWindow):
                 self.table.blockSignals(True)
                 item.setText(action['old_value'])
                 self.table.blockSignals(False)
-                
+
                 # Mettre à jour dans la base si on a l'ID
                 if action.get('db_id'):
-                    try:
-                        field_name = self._get_db_field_name(col)
-                        if field_name:
-                            self.db_manager.update_cell(int(action['db_id']), field_name, action['old_value'])
-                    except Exception as e:
-                        app_logger.error("Erreur", e)
-                
+                    self._safe_update_db_for_undo(action['db_id'], col, action['old_value'])
+
                 # Mettre à jour la valeur précédente
                 key = (row, col)
                 self.previous_values[key] = action['old_value']
@@ -1560,133 +1589,126 @@ class MainWindow(QMainWindow):
                 self.table.blockSignals(True)
                 item.setText(action['new_value'])
                 self.table.blockSignals(False)
-                
+
                 # Mettre à jour dans la base si on a l'ID
                 if action.get('db_id'):
-                    try:
-                        field_name = self._get_db_field_name(col)
-                        if field_name:
-                            self.db_manager.update_cell(int(action['db_id']), field_name, action['new_value'])
-                    except Exception as e:
-                        app_logger.error("Erreur", e)
-                
+                    self._safe_update_db_for_redo(action['db_id'], col, action['new_value'])
+
                 # Mettre à jour la valeur précédente
                 key = (row, col)
                 self.previous_values[key] = action['new_value']
 
     def _fill_empty_fields(self):
         """Compléter les champs vides - Version refactorisée Phase 2.5c"""
-        try:
-            total_rows = self.table.rowCount()
-            
-            if total_rows == 0:
-                self.user_interaction_service.show_info("Aucune donnée à compléter")
-                return
-            
-            # Préparer les données pour le service
-            table_data = []
-            
-            # Bloquer les signaux pendant la complétion
-            self.table.blockSignals(True)
-            
-            # Collecter les données de toutes les lignes
-            for row in range(total_rows):
-                header_item = self.table.verticalHeaderItem(row)
-                if not header_item:
-                    continue
-                
-                try:
-                    db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                    
-                    # Récupérer les données actuelles de la ligne
-                    appareil_data = {}
-                    for ui_col_idx in range(self.table.columnCount()):
-                        db_field = self._get_db_field_name(ui_col_idx)
-                        if db_field:  # Ignorer pieces_count
-                            item = self.table.item(row, ui_col_idx)
-                            cell_value = item.text() if item else ""
-                            appareil_data[db_field] = cell_value
-                    
-                    table_data.append({
-                        'id': db_id,
-                        'row': row,
-                        'data': appareil_data
-                    })
-                    
-                except Exception as e:
-                    app_logger.error(f"Erreur récupération ligne {row}: {e}")
-            
-            result = self.data_management_service.auto_complete_empty_fields(table_data)
-            
-            # Débloquer les signaux
-            self.table.blockSignals(False)
-            
-            # Recharger les données pour refléter les changements
-            self.table_controller.load_data()
-            
-            # Afficher le résultat
-            if result.errors:
-                error_msg = f"Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
-                if len(result.errors) > 5:
-                    error_msg += f"\n... et {len(result.errors) - 5} autres erreurs"
-                self.user_interaction_service.show_error(error_msg)
-            
-            if result.completed_count > 0:
-                self.user_interaction_service.show_info(f"✅ Auto-complétion réussie !\n\n"
-                               f"🎯 {result.completed_count} ligne(s) complétée(s)\n"
-                               f"📊 {result.total_rows_processed} ligne(s) traitée(s)")
-            else:
-                self.user_interaction_service.show_info("ℹ️ Aucun champ à compléter automatiquement.\n\n"
-                               "Tous les appareils ont déjà un Type et un Fabricant, "
-                               "ou aucune référence similaire n'a été trouvée.")
-            
-        except DatabaseError as e:
-            self.table.blockSignals(False)
-            self.user_interaction_service.show_error(f"Erreur de base de données lors de l'auto-complétion: {e}")
-        except Exception as e:
-            self.table.blockSignals(False)
-            self.user_interaction_service.show_error(f"Erreur lors de l'auto-complétion: {e}")
-            self.table.blockSignals(False)  # S'assurer que les signaux sont réactivés
-            self.user_interaction_service.show_error(f"Erreur lors de la complétion: {e}")
+        return self._safe_fill_empty_fields()
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur complétion champs vides")
+    def _safe_fill_empty_fields(self):
+        """Helper sécurisé pour compléter les champs vides"""
+        total_rows = self.table.rowCount()
+
+        if total_rows == 0:
+            self.user_interaction_service.show_info("Aucune donnée à compléter")
+            return
+
+        # Préparer les données pour le service
+        table_data = []
+
+        # Bloquer les signaux pendant la complétion
+        self.table.blockSignals(True)
+
+        # Collecter les données de toutes les lignes
+        for row in range(total_rows):
+            header_item = self.table.verticalHeaderItem(row)
+            if not header_item:
+                continue
+
+            try:
+                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
+
+                # Récupérer les données actuelles de la ligne
+                appareil_data = {}
+                for ui_col_idx in range(self.table.columnCount()):
+                    db_field = self._get_db_field_name(ui_col_idx)
+                    if db_field:  # Ignorer pieces_count
+                        item = self.table.item(row, ui_col_idx)
+                        cell_value = item.text() if item else ""
+                        appareil_data[db_field] = cell_value
+
+                table_data.append({
+                    'id': db_id,
+                    'row': row,
+                    'data': appareil_data
+                })
+
+            except Exception as e:
+                app_logger.error(f"Erreur récupération ligne {row}: {e}")
+
+        result = self.data_management_service.auto_complete_empty_fields(table_data)
+
+        # Débloquer les signaux
+        self.table.blockSignals(False)
+
+        # Recharger les données pour refléter les changements
+        self.table_controller.load_data()
+
+        # Afficher le résultat
+        if result.errors:
+            error_msg = f"Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
+            if len(result.errors) > 5:
+                error_msg += f"\n... et {len(result.errors) - 5} autres erreurs"
+            self.user_interaction_service.show_error(error_msg)
+
+        if result.completed_count > 0:
+            self.user_interaction_service.show_info(f"✅ Auto-complétion réussie !\n\n"
+                           f"🎯 {result.completed_count} ligne(s) complétée(s)\n"
+                           f"📊 {result.total_rows_processed} ligne(s) traitée(s)")
+        else:
+            self.user_interaction_service.show_info("ℹ️ Aucun champ à compléter automatiquement.\n\n"
+                           "Tous les appareils ont déjà un Type et un Fabricant, "
+                           "ou aucune référence similaire n'a été trouvée.")
 
     def _clean_data(self):
         """Nettoyer les données avec prévisualisation détaillée - Version refactorisée Phase 2.5c"""
-        try:
-            # Ouvrir la fenêtre de nettoyage refactorisée qui gère tout
-            result = self.data_management_service.prepare_data_cleaning()
+        return self._safe_clean_data()
 
-            if result is None:
-                # L'utilisateur a annulé ou il y a eu une erreur
-                return
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage données")
+    def _safe_clean_data(self):
+        """Helper sécurisé pour nettoyer les données"""
+        # Ouvrir la fenêtre de nettoyage refactorisée qui gère tout
+        result = self.data_management_service.prepare_data_cleaning()
 
-            # La fenêtre refactorisée gère tout le processus
-            # Si on arrive ici, le nettoyage a été effectué avec succès
+        if result is None:
+            # L'utilisateur a annulé ou il y a eu une erreur
+            return
 
-            if result.get('user_choice') == 'applied':
-                # Rafraîchir l'affichage après nettoyage
-                self._force_refresh_display()
+        # La fenêtre refactorisée gère tout le processus
+        # Si on arrive ici, le nettoyage a été effectué avec succès
 
-                # Invalider le cache des doublons après nettoyage
-                if hasattr(self, 'duplicate_indicator_service'):
-                    self.duplicate_indicator_service.invalidate_cache("nettoyage doublons")
+        if result.get('user_choice') == 'applied':
+            # Rafraîchir l'affichage après nettoyage
+            self._force_refresh_display()
 
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors du nettoyage: {e}")
+            # Invalider le cache des doublons après nettoyage
+            if hasattr(self, 'duplicate_indicator_service'):
+                self.duplicate_indicator_service.invalidate_cache("nettoyage doublons")
     
     def _manage_categories(self):
         """Gérer les catégories"""
-        try:
-            current_categories = self.db_manager.get_categories()
-            new_categories = self.dialog_service.get_categories(self, current_categories)
-            
-            if new_categories is not None:
-                self.db_manager.update_categories(new_categories)
-                self.statusbar.showMessage(
-                    Config.get_message('categories_updated'), 
-                    Config.STATUS_MESSAGE_TIMEOUT
-                )
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de la gestion des catégories: {e}")
+        return self._safe_manage_categories()
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur gestion catégories")
+    def _safe_manage_categories(self):
+        """Helper sécurisé pour gérer les catégories"""
+        current_categories = self.db_manager.get_categories()
+        new_categories = self.dialog_service.get_categories(self, current_categories)
+
+        if new_categories is not None:
+            self.db_manager.update_categories(new_categories)
+            self.statusbar.showMessage(
+                Config.get_message('categories_updated'),
+                Config.STATUS_MESSAGE_TIMEOUT
+            )
     
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""
@@ -1874,89 +1896,85 @@ class MainWindow(QMainWindow):
     
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
-        try:
-            # Vérifier les erreurs - les afficher si critique
-            if results.get('errors'):
-                error_msg = "Erreurs lors de l'import:\n" + "\n".join(results['errors'])
-                QMessageBox.warning(self, "Erreurs d'import", error_msg)
-            
-            # Créer un résumé détaillé EXACTEMENT comme l'ancien format
-            # Note: _add_to_history ajoute automatiquement le timestamp, pas besoin de le faire ici
-            
-            # Déterminer le type d'import et ajouter le nom de fichier
-            if results.get('total_files', 0) > 1:
-                import_type = f"📊 Import Multi-fichiers ({results['total_files']} fichiers)"
-            else:
-                # Pour l'import simple, récupérer le nom du fichier
-                file_details = results.get('file_details', [])
-                if file_details:
-                    first_file = file_details[0]
-                    filename = first_file.get('filename', 'fichier')
-                    import_type = f"📊 Import {filename}"
-                else:
-                    import_type = "📊 Import"
-            
-            # Commencer le résumé
-            summary = f"{import_type}:\n"
-            
-            # Si c'est multi-fichiers, lister les fichiers avec leurs détails
-            if results.get('total_files', 0) > 1:
-                file_details = results.get('file_details', [])
-                for detail in file_details:
-                    summary += f"📄 Fichier {detail['type']} {detail['filename']}: {detail['lines_processed']} lignes extraites\n"
-            else:
-                # Pour l'import simple, afficher aussi le détail du fichier
-                file_details = results.get('file_details', [])
-                if file_details:
-                    detail = file_details[0]
-                    summary += f"📄 Fichier {detail['type']}: {detail['lines_processed']} lignes extraites\n"
-            
-            # Calculer le total des lignes extraites de tous les fichiers
+        return self._safe_show_import_results_new(results)
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage résultats import")
+    def _safe_show_import_results_new(self, results):
+        """Helper sécurisé pour afficher les résultats d'import"""
+        # Vérifier les erreurs - les afficher si critique
+        if results.get('errors'):
+            error_msg = "Erreurs lors de l'import:\n" + "\n".join(results['errors'])
+            QMessageBox.warning(self, "Erreurs d'import", error_msg)
+
+        # Créer un résumé détaillé EXACTEMENT comme l'ancien format
+        # Note: _add_to_history ajoute automatiquement le timestamp, pas besoin de le faire ici
+
+        # Déterminer le type d'import et ajouter le nom de fichier
+        if results.get('total_files', 0) > 1:
+            import_type = f"📊 Import Multi-fichiers ({results['total_files']} fichiers)"
+        else:
+            # Pour l'import simple, récupérer le nom du fichier
             file_details = results.get('file_details', [])
-            total_lines_extracted = sum(detail['lines_processed'] for detail in file_details)
-            
-            # Si pas de détails de fichiers (import simple), utiliser total_imported + duplicates
-            if not file_details:
-                total_lines_extracted = results.get('total_imported', 0) + results.get('duplicates_in_file', 0)
-            
-            summary += f"     ==> Lignes traitées : {total_lines_extracted}\n\n"
-            
-            # Section Appareils (format exact)
-            summary += "Appareils :\n"
-            summary += f"     ==> Créés : {results.get('new_entries', 0)}\n"
-            summary += f"     ==> Complétion automatique : {results.get('matches_found', 0)}\n"
-            summary += f"     ==> À compléter : {results.get('manual_completion', 0)}\n"
-            summary += f"     ==> Doublon ignoré : {results.get('duplicates_in_file', 0)}\n"
-            
-            # Section Associations de pièce (format exact)
-            summary += "Associations de pièce :\n"
-            summary += f"     ==> Nouvelles : {results.get('associations_created', 0)}\n"
-            summary += f"     ==> Déjà associées : {results.get('associations_existing', 0)}"
-            
-            # Ajouter SEULEMENT à l'historique (timestamp ajouté automatiquement)
-            self.user_interaction_service.add_to_history(summary)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur d'affichage", f"Impossible de traiter les résultats: {e}")
-            # En cas d'erreur, au moins ajouter un message basique à l'historique
-            try:
-                basic_msg = f"📥 Import effectué (erreur d'affichage des détails)"
-                self.user_interaction_service.add_to_history(basic_msg)
-            except:
-                pass  # Si même l'historique échoue, on ne peut rien faire
+            if file_details:
+                first_file = file_details[0]
+                filename = first_file.get('filename', 'fichier')
+                import_type = f"📊 Import {filename}"
+            else:
+                import_type = "📊 Import"
+
+        # Commencer le résumé
+        summary = f"{import_type}:\n"
+
+        # Si c'est multi-fichiers, lister les fichiers avec leurs détails
+        if results.get('total_files', 0) > 1:
+            file_details = results.get('file_details', [])
+            for detail in file_details:
+                summary += f"📄 Fichier {detail['type']} {detail['filename']}: {detail['lines_processed']} lignes extraites\n"
+        else:
+            # Pour l'import simple, afficher aussi le détail du fichier
+            file_details = results.get('file_details', [])
+            if file_details:
+                detail = file_details[0]
+                summary += f"📄 Fichier {detail['type']}: {detail['lines_processed']} lignes extraites\n"
+
+        # Calculer le total des lignes extraites de tous les fichiers
+        file_details = results.get('file_details', [])
+        total_lines_extracted = sum(detail['lines_processed'] for detail in file_details)
+
+        # Si pas de détails de fichiers (import simple), utiliser total_imported + duplicates
+        if not file_details:
+            total_lines_extracted = results.get('total_imported', 0) + results.get('duplicates_in_file', 0)
+
+        summary += f"     ==> Lignes traitées : {total_lines_extracted}\n\n"
+
+        # Section Appareils (format exact)
+        summary += "Appareils :\n"
+        summary += f"     ==> Créés : {results.get('new_entries', 0)}\n"
+        summary += f"     ==> Complétion automatique : {results.get('matches_found', 0)}\n"
+        summary += f"     ==> À compléter : {results.get('manual_completion', 0)}\n"
+        summary += f"     ==> Doublon ignoré : {results.get('duplicates_in_file', 0)}\n"
+
+        # Section Associations de pièce (format exact)
+        summary += "Associations de pièce :\n"
+        summary += f"     ==> Nouvelles : {results.get('associations_created', 0)}\n"
+        summary += f"     ==> Déjà associées : {results.get('associations_existing', 0)}"
+
+        # Ajouter SEULEMENT à l'historique (timestamp ajouté automatiquement)
+        self.user_interaction_service.add_to_history(summary)
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
-        try:
-            if not hasattr(self, 'validation_window') or not self.validation_window:
-                self.validation_window = ValidationWindow(self)
-            
-            self.validation_window.show()
-            self.validation_window.raise_()
-            self.validation_window.activateWindow()
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de l'ouverture de la validation: {e}")
+        return self._safe_validate_and_detect_inconsistencies()
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur ouverture validation")
+    def _safe_validate_and_detect_inconsistencies(self):
+        """Helper sécurisé pour ouvrir la fenêtre de validation"""
+        if not hasattr(self, 'validation_window') or not self.validation_window:
+            self.validation_window = ValidationWindow(self)
+
+        self.validation_window.show()
+        self.validation_window.raise_()
+        self.validation_window.activateWindow()
     
     def _open_pieces_manager(self):
         """Ouvrir la fenêtre de gestion des pièces - Phase 2.14: Délégation vers PieceManagementService"""
@@ -1964,38 +1982,42 @@ class MainWindow(QMainWindow):
 
     def _update_incomplete_button_visibility(self):
         """Mettre à jour la visibilité du bouton incomplètes selon les données"""
-        try:
-            # Utiliser le service optimisé au lieu de l'ancienne méthode
-            if hasattr(self, 'incomplete_button_service'):
-                # Programmer une mise à jour différée pour éviter les appels répétés
-                self.incomplete_button_service.schedule_update()
-            else:
-                # Fallback vers l'ancienne méthode si le service n'est pas encore initialisé
-                self._update_incomplete_button_visibility_legacy()
-        except Exception as e:
-            app_logger.error("Erreur", e)
+        return self._safe_update_incomplete_button_visibility()
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour bouton incomplètes")
+    def _safe_update_incomplete_button_visibility(self):
+        """Helper sécurisé pour mise à jour visibilité bouton incomplètes"""
+        # Utiliser le service optimisé au lieu de l'ancienne méthode
+        if hasattr(self, 'incomplete_button_service'):
+            # Programmer une mise à jour différée pour éviter les appels répétés
+            self.incomplete_button_service.schedule_update()
+        else:
+            # Fallback vers l'ancienne méthode si le service n'est pas encore initialisé
+            self._update_incomplete_button_visibility_legacy()
 
     def _update_incomplete_button_visibility_legacy(self):
         """Ancienne méthode de mise à jour (fallback)"""
-        try:
-            incomplete_count = self.db_manager.count_incomplete_devices()
-            if hasattr(self, 'incomplete_filter_btn'):
-                if incomplete_count > 0:
-                    self.incomplete_filter_btn.show()
-                    from src.core.config import pluralize
-                    if self.show_incomplete_only:
-                        self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
-                        self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
-                    else:
-                        self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
-                        self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+        return self._safe_update_incomplete_button_visibility_legacy()
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour bouton incomplètes (legacy)")
+    def _safe_update_incomplete_button_visibility_legacy(self):
+        """Helper sécurisé pour mise à jour legacy du bouton incomplètes"""
+        incomplete_count = self.db_manager.count_incomplete_devices()
+        if hasattr(self, 'incomplete_filter_btn'):
+            if incomplete_count > 0:
+                self.incomplete_filter_btn.show()
+                from src.core.config import pluralize
+                if self.show_incomplete_only:
+                    self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
+                    self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
                 else:
-                    self.incomplete_filter_btn.hide()
-                    if self.show_incomplete_only:
-                        self.show_incomplete_only = False
-                        self.table_controller.load_data()
-        except Exception as e:
-            app_logger.error("Erreur", e)
+                    self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
+                    self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+            else:
+                self.incomplete_filter_btn.hide()
+                if self.show_incomplete_only:
+                    self.show_incomplete_only = False
+                    self.table_controller.load_data()
 
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
@@ -2020,149 +2042,149 @@ class MainWindow(QMainWindow):
 
     def _on_incomplete_filter_auto_disabled(self):
         """Gérer la désactivation automatique du filtre lignes incomplètes"""
-        try:
-            app_logger.info("🔄 SIGNAL REÇU: Rechargement des données après désactivation auto du filtre")
+        return self._safe_on_incomplete_filter_auto_disabled()
 
-            # Désactiver le filtre dans tous les systèmes
-            self.show_incomplete_only = False
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur rechargement après désactivation filtre")
+    def _safe_on_incomplete_filter_auto_disabled(self):
+        """Helper sécurisé pour désactivation automatique du filtre"""
+        app_logger.info("🔄 SIGNAL REÇU: Rechargement des données après désactivation auto du filtre")
 
-            # Désactiver le bouton dans l'interface
-            if (hasattr(self, 'table_controller') and
-                hasattr(self.table_controller, 'incomplete_filter_btn')):
-                self.table_controller.incomplete_filter_btn.setChecked(False)
-                app_logger.info("✅ Bouton désactivé dans l'interface")
-            else:
-                app_logger.warning("⚠️ Bouton incomplete_filter_btn non trouvé")
+        # Désactiver le filtre dans tous les systèmes
+        self.show_incomplete_only = False
 
-            # Désactiver dans le service de tri/filtrage si disponible
-            if (Config.USE_NEW_SORTING_FILTERING_SERVICE and
-                hasattr(self, 'sorting_filtering_service') and
-                self.sorting_filtering_service):
-                self.sorting_filtering_service.incomplete_filter_active = False
-                app_logger.info("✅ Filtre désactivé dans sorting_filtering_service")
+        # Désactiver le bouton dans l'interface
+        if (hasattr(self, 'table_controller') and
+            hasattr(self.table_controller, 'incomplete_filter_btn')):
+            self.table_controller.incomplete_filter_btn.setChecked(False)
+            app_logger.info("✅ Bouton désactivé dans l'interface")
+        else:
+            app_logger.warning("⚠️ Bouton incomplete_filter_btn non trouvé")
 
-            # Forcer un rechargement complet en supprimant tous les filtres
-            app_logger.info("🔄 Rechargement complet avec clear_filters=True")
-            self._force_refresh_display(reset_page=False, clear_filters=True)
-            app_logger.info("✅ Rechargement terminé via _force_refresh_display")
+        # Désactiver dans le service de tri/filtrage si disponible
+        if (Config.USE_NEW_SORTING_FILTERING_SERVICE and
+            hasattr(self, 'sorting_filtering_service') and
+            self.sorting_filtering_service):
+            self.sorting_filtering_service.incomplete_filter_active = False
+            app_logger.info("✅ Filtre désactivé dans sorting_filtering_service")
 
-        except Exception as e:
-            app_logger.error(f"❌ Erreur lors du rechargement après désactivation auto du filtre: {e}")
-            import traceback
-            app_logger.error(f"Stack trace: {traceback.format_exc()}")
+        # Forcer un rechargement complet en supprimant tous les filtres
+        app_logger.info("🔄 Rechargement complet avec clear_filters=True")
+        self._force_refresh_display(reset_page=False, clear_filters=True)
+        app_logger.info("✅ Rechargement terminé via _force_refresh_display")
 
     def _force_refresh_display(self, reset_page=False, clear_filters=False):
         """Forcer le rafraîchissement complet de l'affichage du tableau"""
-        try:
-            # Sauvegarder l'état de recherche actuel - prioriser table_controller.pending_search_term
-            temp_search = None
-            if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'pending_search_term'):
-                temp_search = self.table_controller.pending_search_term
-            elif hasattr(self, 'pending_search_term'):
-                temp_search = self.pending_search_term
-            
-            # Si pas de recherche dans pending_search_term, essayer de récupérer depuis search_input
-            if not temp_search and hasattr(self, 'search_input') and self.search_input.text().strip():
-                temp_search = self.search_input.text().strip()
-            
-            # Retourner à la première page si demandé (après modifications globales)
-            if reset_page:
-                if hasattr(self.table_controller, 'current_page'):
-                    self.table_controller.current_page = 0
-            
-            # Nettoyer les filtres de colonnes si demandé
-            if clear_filters and Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
-                self.sorting_filtering_service.clear_column_filters()
-            
-            # Débloquer les signaux si nécessaire pour éviter les blocages
-            was_blocked = self.table.signalsBlocked()
-            if was_blocked:
-                self.table.blockSignals(False)
-            
-            # Recharger avec les critères appropriés
-            self.table_controller.load_data(temp_search)
-            
-            # Forcer la mise à jour de l'interface
-            self.table.viewport().update()
-            self.table.update()
-            
-            # Redimensionner les colonnes
-            self.table.resizeColumnsToContents()
-            
-            # Mettre à jour le compteur
-            self.user_interaction_service.update_counter()
-            
-            # Mettre à jour la visibilité du bouton incomplètes après rafraîchissement
-            self._update_incomplete_button_visibility()
-            
-            # Repositionner la poignée de drag
-            self._position_drag_handle()
-            
-            current_page = getattr(self.table_controller, 'current_page', 0) if hasattr(self, 'table_controller') else 0
-            app_logger.debug(f"Rafraîchissement forcé terminé - Page: {current_page} - Critères: '{temp_search}' - Lignes affichées: {self.table.rowCount()}")
-            
-        except Exception as e:
-            app_logger.error(f"Erreur lors du rafraîchissement forcé: {e}")
-            self.user_interaction_service.show_error(f"Erreur lors du rafraîchissement: {e}")
+        return self._safe_force_refresh_display(reset_page, clear_filters)
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur rafraîchissement forcé")
+    def _safe_force_refresh_display(self, reset_page=False, clear_filters=False):
+        """Helper sécurisé pour rafraîchissement complet de l'affichage"""
+        # Sauvegarder l'état de recherche actuel - prioriser table_controller.pending_search_term
+        temp_search = None
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'pending_search_term'):
+            temp_search = self.table_controller.pending_search_term
+        elif hasattr(self, 'pending_search_term'):
+            temp_search = self.pending_search_term
+
+        # Si pas de recherche dans pending_search_term, essayer de récupérer depuis search_input
+        if not temp_search and hasattr(self, 'search_input') and self.search_input.text().strip():
+            temp_search = self.search_input.text().strip()
+
+        # Retourner à la première page si demandé (après modifications globales)
+        if reset_page:
+            if hasattr(self.table_controller, 'current_page'):
+                self.table_controller.current_page = 0
+
+        # Nettoyer les filtres de colonnes si demandé
+        if clear_filters and Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
+            self.sorting_filtering_service.clear_column_filters()
+
+        # Débloquer les signaux si nécessaire pour éviter les blocages
+        was_blocked = self.table.signalsBlocked()
+        if was_blocked:
+            self.table.blockSignals(False)
+
+        # Recharger avec les critères appropriés
+        self.table_controller.load_data(temp_search)
+
+        # Forcer la mise à jour de l'interface
+        self.table.viewport().update()
+        self.table.update()
+
+        # Redimensionner les colonnes
+        self.table.resizeColumnsToContents()
+
+        # Mettre à jour le compteur
+        self.user_interaction_service.update_counter()
+
+        # Mettre à jour la visibilité du bouton incomplètes après rafraîchissement
+        self._update_incomplete_button_visibility()
+
+        # Repositionner la poignée de drag
+        self._position_drag_handle()
+
+        current_page = getattr(self.table_controller, 'current_page', 0) if hasattr(self, 'table_controller') else 0
+        app_logger.debug(f"Rafraîchissement forcé terminé - Page: {current_page} - Critères: '{temp_search}' - Lignes affichées: {self.table.rowCount()}")
+
+    @handle_log_viewer_errors(return_value=None, title="Erreur ouverture visualiseur logs")
+    def _safe_open_log_viewer(self):
+        """Ouvrir le visualiseur de logs (version protégée)"""
+        if not hasattr(self, 'log_viewer') or not self.log_viewer:
+            self.log_viewer = LogViewer(self)
+
+        self.log_viewer.show()
+        self.log_viewer.raise_()
+        self.log_viewer.activateWindow()
 
     def _open_log_viewer(self):
         """Ouvrir le visualiseur de logs"""
-        try:
-            if not hasattr(self, 'log_viewer') or not self.log_viewer:
-                self.log_viewer = LogViewer(self)
-            
-            self.log_viewer.show()
-            self.log_viewer.raise_()
-            self.log_viewer.activateWindow()
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de l'ouverture du visualiseur de logs: {e}")
+        self._safe_open_log_viewer()
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur ouverture guide utilisateur")
+    def _safe_open_user_guide(self):
+        """Ouvrir le guide d'utilisation (version protégée)"""
+        # URL du guide d'utilisation (vous pouvez la modifier selon vos besoins)
+        guide_url = "https://github.com/PiLouZ/1001pieces_autofill-Claude/blob/main/README.md"
+
+        # Message informatif avec options
+        from .qt_imports import QMessageBox
+        reply = QMessageBox.question(
+            self,
+            "Guide d'utilisation",
+            "Le guide d'utilisation sera ouvert dans votre navigateur web.\n\n"
+            "📖 Contenu du guide :\n"
+            "• Import de fichiers CSV et collage de données\n"
+            "• Gestion des pièces et associations\n"
+            "• Fonctionnalités avancées et raccourcis\n"
+            "• Résolution des problèmes courants\n\n"
+            "Souhaitez-vous continuer ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            import webbrowser
+            webbrowser.open(guide_url)
+
     def _open_user_guide(self):
         """Ouvrir le guide d'utilisation"""
-        try:
-            # URL du guide d'utilisation (vous pouvez la modifier selon vos besoins)
-            guide_url = "https://github.com/PiLouZ/1001pieces_autofill-Claude/blob/main/README.md"
-            
-            # Message informatif avec options
-            from .qt_imports import QMessageBox
-            reply = QMessageBox.question(
-                self, 
-                "Guide d'utilisation",
-                "Le guide d'utilisation sera ouvert dans votre navigateur web.\n\n"
-                "📖 Contenu du guide :\n"
-                "• Import de fichiers CSV et collage de données\n"
-                "• Gestion des pièces et associations\n"
-                "• Fonctionnalités avancées et raccourcis\n"
-                "• Résolution des problèmes courants\n\n"
-                "Souhaitez-vous continuer ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                import webbrowser
-                webbrowser.open(guide_url)
-                
-        except Exception as e:
-            # En cas d'erreur, afficher un guide local simple
-            self._show_local_guide()
+        self._safe_open_user_guide()
     
-    def _show_local_guide(self):
-        """Afficher un guide d'utilisation local en cas d'erreur"""
-        try:
-            from .qt_imports import QDialog, QVBoxLayout, QTextEdit, QPushButton
-            
-            dialog = QDialog(self)
-            dialog.setWindowTitle("📖 Guide d'utilisation - 1001pieces.com")
-            dialog.resize(800, 600)
-            
-            layout = QVBoxLayout()
-            
-            # Contenu du guide
-            guide_text = QTextEdit()
-            guide_text.setReadOnly(True)
-            guide_content = """
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage guide local")
+    def _safe_show_local_guide(self):
+        """Afficher un guide d'utilisation local (version protégée)"""
+        from .qt_imports import QDialog, QVBoxLayout, QTextEdit, QPushButton
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("📖 Guide d'utilisation - 1001pieces.com")
+        dialog.resize(800, 600)
+
+        layout = QVBoxLayout()
+
+        # Contenu du guide
+        guide_text = QTextEdit()
+        guide_text.setReadOnly(True)
+        guide_content = """
 # Guide d'utilisation - 1001pieces.com
 
 ## 🚀 Démarrage rapide
@@ -2204,20 +2226,21 @@ class MainWindow(QMainWindow):
 
 ## 📞 Support
 En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outils.
-            """
-            guide_text.setMarkdown(guide_content)
-            layout.addWidget(guide_text)
-            
-            # Bouton de fermeture
-            close_button = QPushButton("Fermer")
-            close_button.clicked.connect(dialog.close)
-            layout.addWidget(close_button)
-            
-            dialog.setLayout(layout)
-            dialog.exec_()
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de l'affichage du guide local: {e}")
+        """
+        guide_text.setMarkdown(guide_content)
+        layout.addWidget(guide_text)
+
+        # Bouton de fermeture
+        close_button = QPushButton("Fermer")
+        close_button.clicked.connect(dialog.close)
+        layout.addWidget(close_button)
+
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+    def _show_local_guide(self):
+        """Afficher un guide d'utilisation local en cas d'erreur"""
+        self._safe_show_local_guide()
     
     def _apply_column_visibility(self):
         """Appliquer la visibilité des colonnes au tableau"""
@@ -2230,55 +2253,56 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     
     def _configure_columns(self):
         """Ouvrir la boîte de dialogue de configuration des colonnes"""
-        try:
-            from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel
-            
-            dialog = QDialog(self)
-            dialog.setWindowTitle("⚙️ Configuration des colonnes")
-            dialog.resize(400, 300)
-            
-            layout = QVBoxLayout(dialog)
-            
-            # Titre
-            title_label = QLabel("Choisissez les colonnes à afficher :")
-            title_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 10px;")
-            layout.addWidget(title_label)
-            
-            # Checkboxes pour chaque colonne
-            checkboxes = {}
-            for col in Config.COLUMN_CONFIG:
-                checkbox = QCheckBox(col['name'])
-                checkbox.setChecked(self.visible_columns[col['index']])
-                checkbox.setEnabled(not col['mandatory'])  # Les colonnes obligatoires ne peuvent pas être cachées
-                if col['mandatory']:
-                    checkbox.setToolTip("Cette colonne est obligatoire et ne peut pas être cachée")
-                checkboxes[col['index']] = checkbox
-                layout.addWidget(checkbox)
-            
-            # Boutons
-            button_layout = QHBoxLayout()
-            
-            reset_btn = QPushButton("Réinitialiser")
-            reset_btn.clicked.connect(lambda: self._reset_column_defaults(checkboxes))
-            button_layout.addWidget(reset_btn)
-            
-            button_layout.addStretch()
-            
-            cancel_btn = QPushButton("Annuler")
-            cancel_btn.clicked.connect(dialog.reject)
-            button_layout.addWidget(cancel_btn)
-            
-            apply_btn = QPushButton("Appliquer")
-            apply_btn.setObjectName("primaryBtn")
-            apply_btn.clicked.connect(lambda: self._apply_column_config(checkboxes, dialog))
-            button_layout.addWidget(apply_btn)
-            
-            layout.addLayout(button_layout)
-            
-            dialog.exec_()
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de la configuration des colonnes: {e}")
+        return self._safe_configure_columns()
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur configuration colonnes")
+    def _safe_configure_columns(self):
+        """Helper sécurisé pour configurer les colonnes"""
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("⚙️ Configuration des colonnes")
+        dialog.resize(400, 300)
+
+        layout = QVBoxLayout(dialog)
+
+        # Titre
+        title_label = QLabel("Choisissez les colonnes à afficher :")
+        title_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+
+        # Checkboxes pour chaque colonne
+        checkboxes = {}
+        for col in Config.COLUMN_CONFIG:
+            checkbox = QCheckBox(col['name'])
+            checkbox.setChecked(self.visible_columns[col['index']])
+            checkbox.setEnabled(not col['mandatory'])  # Les colonnes obligatoires ne peuvent pas être cachées
+            if col['mandatory']:
+                checkbox.setToolTip("Cette colonne est obligatoire et ne peut pas être cachée")
+            checkboxes[col['index']] = checkbox
+            layout.addWidget(checkbox)
+
+        # Boutons
+        button_layout = QHBoxLayout()
+
+        reset_btn = QPushButton("Réinitialiser")
+        reset_btn.clicked.connect(lambda: self._reset_column_defaults(checkboxes))
+        button_layout.addWidget(reset_btn)
+
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Annuler")
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Appliquer")
+        apply_btn.setObjectName("primaryBtn")
+        apply_btn.clicked.connect(lambda: self._apply_column_config(checkboxes, dialog))
+        button_layout.addWidget(apply_btn)
+
+        layout.addLayout(button_layout)
+
+        dialog.exec_()
     
     def _reset_column_defaults(self, checkboxes):
         """Réinitialiser les colonnes aux valeurs par défaut"""
@@ -2288,41 +2312,46 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     
     def _apply_column_config(self, checkboxes, dialog):
         """Appliquer la nouvelle configuration des colonnes"""
-        try:
-            # Sauvegarder les nouveaux paramètres
-            for col_idx, checkbox in checkboxes.items():
-                self.visible_columns[col_idx] = checkbox.isChecked()
-                self.settings.setValue(f"column_{col_idx}_visible", checkbox.isChecked())
-            
-            # Appliquer au tableau
-            self._apply_column_visibility()
-            
-            # Fermer la boîte de dialogue
-            dialog.accept()
-            
-            # Rafraîchir l'affichage
-            self.statusbar.showMessage("Configuration des colonnes mise à jour", Config.STATUS_MESSAGE_TIMEOUT)
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de l'application de la configuration: {e}")
+        return self._safe_apply_column_config(checkboxes, dialog)
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur application config colonnes")
+    def _safe_apply_column_config(self, checkboxes, dialog):
+        """Helper sécurisé pour appliquer la configuration des colonnes"""
+        # Sauvegarder les nouveaux paramètres
+        for col_idx, checkbox in checkboxes.items():
+            self.visible_columns[col_idx] = checkbox.isChecked()
+            self.settings.setValue(f"column_{col_idx}_visible", checkbox.isChecked())
+
+        # Appliquer au tableau
+        self._apply_column_visibility()
+
+        # Fermer la boîte de dialogue
+        dialog.accept()
+
+        # Rafraîchir l'affichage
+        self.statusbar.showMessage("Configuration des colonnes mise à jour", Config.STATUS_MESSAGE_TIMEOUT)
 
     # --- Méthodes d'événements ---
+
+    @handle_event_handler_errors(return_value=False, title="Erreur récupération viewport")
+    def _safe_get_viewport(self):
+        """Récupérer le viewport de la table (version protégée)"""
+        viewport = self.table.viewport()
+        if viewport is None:
+            return None
+        return viewport
 
     def eventFilter(self, source, event):
         """Filtrer les événements pour la gestion du drag handle"""
         # Vérifier si l'objet table existe encore
         if not hasattr(self, 'table') or self.table is None:
             return super().eventFilter(source, event)
-        
+
         # Vérifier si l'objet viewport existe encore
-        try:
-            viewport = self.table.viewport()
-            if viewport is None:
-                return super().eventFilter(source, event)
-        except RuntimeError:
-            # L'objet C++ a été détruit
+        viewport = self._safe_get_viewport()
+        if viewport is None:
             return super().eventFilter(source, event)
-        
+
         if source is viewport:
             if event.type() in [QEvent.Type.Resize, QEvent.Type.Paint]:
                 self._position_drag_handle()
@@ -2612,165 +2641,172 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
 
     def _add_new_row(self):
         """Ajouter une nouvelle ligne"""
-        try:
-            # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
-            if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
-                device_id = self.database_operations_service.add_new_device()
-                if not device_id:
-                    app_logger.error("Échec de l'ajout de nouvelle ligne")
-            else:
-                app_logger.warning("DatabaseOperationsService non disponible")
+        return self._safe_add_new_row()
 
-        except Exception as e:
-            app_logger.error(f"Erreur lors de l'ajout de nouvelle ligne: {e}")
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur ajout nouvelle ligne")
+    def _safe_add_new_row(self):
+        """Helper sécurisé pour ajouter une nouvelle ligne"""
+        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
+        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+            device_id = self.database_operations_service.add_new_device()
+            if not device_id:
+                app_logger.error("Échec de l'ajout de nouvelle ligne")
+        else:
+            app_logger.warning("DatabaseOperationsService non disponible")
 
     def _handle_paste(self):
         """Gestion du collage de données depuis le presse-papiers - Version refactorisée Phase 2.5"""
-        try:
-            # Vider le cache des décisions de description au début de chaque import
-            self._piece_description_decisions.clear()
-            
-            clipboard_text = QApplication.clipboard().text()
-            if not clipboard_text.strip():
-                QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
-                return
-            
-            # Optimisation pour gros volumes - détection limitée sur échantillon
-            text_length = len(clipboard_text)
-            if text_length > 100000:  # > 100KB de données collées
-                app_logger.info(f"🚀 Gros volume de données collées ({text_length} chars), optimisation activée")
-                # Détecter sur échantillon pour éviter freeze
-                sample_text = clipboard_text[:10000]  # Premier 10KB
-                detected_columns = self.paste_processor.detect_columns_count(sample_text)
-            else:
-                detected_columns = self.paste_processor.detect_columns_count(clipboard_text)
-            
-            # Vérifier si on a au moins 1 colonne
-            if detected_columns < 1:
-                QMessageBox.warning(
-                    self, 
-                    "Format de données invalide", 
-                    "❌ Format de collage invalide !\n\n"
-                    "Le collage nécessite au minimum 1 colonne :\n"
-                    "• 1 colonne : Référence modèle\n"
-                    "• 2 colonnes : Référence modèle + Référence commerciale\n"
-                    "• 3 colonnes : Référence modèle + Référence commerciale + Description/Autre\n\n"
-                    f"Détecté : {detected_columns} colonne(s)\n\n"
-                    "💡 Astuce : Copiez les données depuis un tableur (Excel, Calc, etc.) "
-                    "pour conserver la séparation par tabulations."
-                )
-                return
-            
-            # Parser les données avec le nouveau processeur
-            rows = self.paste_processor.parse_clipboard_data(clipboard_text)
-            if not rows:
-                return
-            
-            # Préparer les données d'exemple pour l'aperçu
-            sample_data = self.paste_processor.prepare_sample_data(rows)
-            
-            # Demander les options d'import avec la fenêtre unifiée et aperçu
-            import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, None, "COLLAGE", sample_data)
-            if import_type is None:
-                return
-                
-            # Le collage n'utilise pas import_type mais on récupère les autres paramètres
-            category = ""  # Pas de catégorie dans la fenêtre unifiée pour l'instant
-            total_rows = len(rows)
+        return self._safe_handle_paste()
 
-            # Créer une barre de progression pour les gros imports (10K+ lignes)
-            progress_dialog = None
-            if total_rows >= 10000:
-                progress_dialog = QProgressDialog(
-                    f"Import en cours... 0 / {total_rows} lignes",
-                    "Annuler",
-                    0, total_rows,
-                    self
-                )
-                progress_dialog.setWindowTitle("Import de données")
-                progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-                progress_dialog.show()
-                QApplication.processEvents()
-            
-            # Traitement des données via le processeur spécialisé
-            try:
-                result = self.paste_processor.process_rows_batch(
-                    rows, ref_piece, third_column_choice, 
-                    libelle_piece, category, 
-                    self._piece_description_decisions
-                )
-                
-                # Fermer la barre de progression si elle existe
-                if progress_dialog:
-                    progress_dialog.close()
-                
-                # Recharger les données dans le tableau pour refléter les nouveaux ajouts
-                self.table_controller.load_data()
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur collage données")
+    def _safe_handle_paste(self):
+        """Helper sécurisé pour gestion du collage"""
+        # Vider le cache des décisions de description au début de chaque import
+        self._piece_description_decisions.clear()
 
-                # Feature Flag: Phase 4 - Sauvegarde événementielle après collage (délégation service)
-                if Config.ENABLE_EVENT_DRIVEN_SAVE:
-                    if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
-                        self.event_driven_save_service.handle_paste_completed(result)
-                    else:
-                        # Fallback si service pas encore initialisé
-                        app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
-                        self._trigger_event_driven_save_after_paste(result)
+        clipboard_text = QApplication.clipboard().text()
+        if not clipboard_text.strip():
+            QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
+            return
 
-                # Log les résultats dans l'historique et afficher le résumé via le service
-                self.paste_results_service.log_paste_results(
-                    result.inserted_count, result.updated_count, result.ignored_count, 
-                    result.associations_created, result.duplicates_skipped, 
-                    result.manual_completion_count, result.descriptions_updated, 
-                    total_rows, ref_piece
-                )
-                
-                # Afficher le résumé
-                self.paste_results_service.show_paste_summary(
-                    result.inserted_count, result.updated_count, result.ignored_count, 
-                    result.associations_created, result.duplicates_skipped, 
-                    result.manual_completion_count, result.descriptions_updated, 
-                    total_rows
-                )
-                
-            except Exception as e:
-                if progress_dialog:
-                    progress_dialog.close()
-                raise e
-            
-        except DatabaseError as e:
-            self.user_interaction_service.show_error(f"Erreur lors du collage: {e}")
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur inattendue lors du collage: {e}")
+        # Optimisation pour gros volumes - détection limitée sur échantillon
+        text_length = len(clipboard_text)
+        if text_length > 100000:  # > 100KB de données collées
+            app_logger.info(f"🚀 Gros volume de données collées ({text_length} chars), optimisation activée")
+            # Détecter sur échantillon pour éviter freeze
+            sample_text = clipboard_text[:10000]  # Premier 10KB
+            detected_columns = self.paste_processor.detect_columns_count(sample_text)
+        else:
+            detected_columns = self.paste_processor.detect_columns_count(clipboard_text)
+
+        # Vérifier si on a au moins 1 colonne
+        if detected_columns < 1:
+            QMessageBox.warning(
+                self,
+                "Format de données invalide",
+                "❌ Format de collage invalide !\n\n"
+                "Le collage nécessite au minimum 1 colonne :\n"
+                "• 1 colonne : Référence modèle\n"
+                "• 2 colonnes : Référence modèle + Référence commerciale\n"
+                "• 3 colonnes : Référence modèle + Référence commerciale + Description/Autre\n\n"
+                f"Détecté : {detected_columns} colonne(s)\n\n"
+                "💡 Astuce : Copiez les données depuis un tableur (Excel, Calc, etc.) "
+                "pour conserver la séparation par tabulations."
+            )
+            return
+
+        # Parser les données avec le nouveau processeur
+        rows = self.paste_processor.parse_clipboard_data(clipboard_text)
+        if not rows:
+            return
+
+        # Préparer les données d'exemple pour l'aperçu
+        sample_data = self.paste_processor.prepare_sample_data(rows)
+
+        # Demander les options d'import avec la fenêtre unifiée et aperçu
+        import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, None, "COLLAGE", sample_data)
+        if import_type is None:
+            return
+
+        # Le collage n'utilise pas import_type mais on récupère les autres paramètres
+        category = ""  # Pas de catégorie dans la fenêtre unifiée pour l'instant
+        total_rows = len(rows)
+
+        # Créer une barre de progression pour les gros imports (10K+ lignes)
+        progress_dialog = None
+        if total_rows >= 10000:
+            progress_dialog = QProgressDialog(
+                f"Import en cours... 0 / {total_rows} lignes",
+                "Annuler",
+                0, total_rows,
+                self
+            )
+            progress_dialog.setWindowTitle("Import de données")
+            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            progress_dialog.show()
+            QApplication.processEvents()
+
+        # Traitement des données via le processeur spécialisé
+        self._safe_process_paste_batch(rows, ref_piece, third_column_choice, libelle_piece, category, total_rows, progress_dialog)
 
     def _detect_paste_columns(self, clipboard_text: str) -> int:
         """Méthode de compatibilité - délègue au processeur"""
         return self.paste_processor.detect_columns_count(clipboard_text)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur traitement batch collage")
+    def _safe_process_paste_batch(self, rows, ref_piece, third_column_choice, libelle_piece, category, total_rows, progress_dialog):
+        """Helper sécurisé pour le traitement batch du collage"""
+        try:
+            result = self.paste_processor.process_rows_batch(
+                rows, ref_piece, third_column_choice,
+                libelle_piece, category,
+                self._piece_description_decisions
+            )
+
+            # Fermer la barre de progression si elle existe
+            if progress_dialog:
+                progress_dialog.close()
+
+            # Recharger les données dans le tableau pour refléter les nouveaux ajouts
+            self.table_controller.load_data()
+
+            # Feature Flag: Phase 4 - Sauvegarde événementielle après collage (délégation service)
+            if Config.ENABLE_EVENT_DRIVEN_SAVE:
+                if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+                    self.event_driven_save_service.handle_paste_completed(result)
+                else:
+                    # Fallback si service pas encore initialisé
+                    app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
+                    self._trigger_event_driven_save_after_paste(result)
+
+            # Log les résultats dans l'historique et afficher le résumé via le service
+            self.paste_results_service.log_paste_results(
+                result.inserted_count, result.updated_count, result.ignored_count,
+                result.associations_created, result.duplicates_skipped,
+                result.manual_completion_count, result.descriptions_updated,
+                total_rows, ref_piece
+            )
+
+            # Afficher le résumé
+            self.paste_results_service.show_paste_summary(
+                result.inserted_count, result.updated_count, result.ignored_count,
+                result.associations_created, result.duplicates_skipped,
+                result.manual_completion_count, result.descriptions_updated,
+                total_rows
+            )
+
+        except Exception as e:
+            if progress_dialog:
+                progress_dialog.close()
+            raise e
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur copie de données")
+    def _safe_copy_selected_data(self, selected):
+        """Copier les données sélectionnées vers le presse-papier"""
+        clipboard_data = []
+        for r in range(selected[0].topRow(), selected[0].bottomRow() + 1):
+            row_data = []
+            for c in range(selected[0].leftColumn(), selected[0].rightColumn() + 1):
+                item = self.table.item(r, c)
+                row_data.append(item.text() if item else "")
+            clipboard_data.append("\t".join(row_data))
+
+        clipboard_string = "\n".join(clipboard_data)
+        QApplication.clipboard().setText(clipboard_string)
+
+        self.statusbar.showMessage(
+            f"📋 Copié: {len(clipboard_data)} ligne(s)",
+            Config.STATUS_MESSAGE_TIMEOUT
+        )
+
     def _handle_copy(self):
         """Gestion de la copie des données sélectionnées"""
         selected = self.table.selectedRanges()
         if not selected:
             QMessageBox.information(self, "Copie", "Aucune cellule sélectionnée")
             return
-        
-        try:
-            clipboard_data = []
-            for r in range(selected[0].topRow(), selected[0].bottomRow() + 1):
-                row_data = []
-                for c in range(selected[0].leftColumn(), selected[0].rightColumn() + 1):
-                    item = self.table.item(r, c)
-                    row_data.append(item.text() if item else "")
-                clipboard_data.append("\t".join(row_data))
-            
-            clipboard_string = "\n".join(clipboard_data)
-            QApplication.clipboard().setText(clipboard_string)
-            
-            self.statusbar.showMessage(
-                f"📋 Copié: {len(clipboard_data)} ligne(s)", 
-                Config.STATUS_MESSAGE_TIMEOUT
-            )
-            
-        except Exception as e:
-            self.user_interaction_service.show_error(f"Erreur lors de la copie: {e}")
+
+        self._safe_copy_selected_data(selected)
 
     def _needs_manual_completion(self, appareil_data: dict) -> bool:
         """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""
@@ -2780,109 +2816,98 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         manufacturer_empty = not str(manufacturer_val).strip()
         return type_empty and manufacturer_empty
 
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur auto-completion")
+    def _safe_try_auto_complete(self, appareil_data: dict, original_data: dict):
+        """Essayer de compléter automatiquement Type et Fabricant (version protégée)"""
+        # Log du début de l'opération
+        app_logger.debug(f"Début auto-complétion pour: {appareil_data}")
+
+        # Vérifier d'abord si les champs sont vides
+        type_empty = not appareil_data.get('type', '').strip()
+        manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
+
+        # Si les deux champs sont remplis, pas besoin d'auto-complétion
+        if not type_empty and not manufacturer_empty:
+            app_logger.debug("Auto-complétion ignorée: type et manufacturer déjà remplis")
+            return False
+
+        # Ordre de priorité des références à vérifier (colonne C puis D)
+        refs_to_check = []
+
+        # 1. D'abord la référence modèle (colonne C)
+        ref_modele = appareil_data.get('ref_modele', '').strip()
+        if ref_modele:
+            refs_to_check.append(ref_modele)
+
+        # 2. Ensuite la référence commerciale (colonne D)
+        commercial_ref = appareil_data.get('commercial_ref', '').strip()
+        if commercial_ref:
+            refs_to_check.append(commercial_ref)
+
+        if not refs_to_check:
+            app_logger.warning("Auto-complétion: aucune référence disponible pour la recherche")
+            return False  # Aucune référence pour faire la recherche
+
+        app_logger.debug(f"Références à vérifier: {refs_to_check}")
+
+        # Chercher dans la base des appareils existants avec ces références
+        total_matches = 0
+        for ref in refs_to_check:
+            query = """
+                SELECT type, manufacturer
+                FROM appareils
+                WHERE (ref_modele = ? OR commercial_ref = ?)
+                AND type IS NOT NULL AND type != ''
+                AND manufacturer IS NOT NULL AND manufacturer != ''
+                LIMIT 1
+            """
+
+            app_logger.debug(f"Recherche avec référence: {ref}")
+            self.db_manager.cursor.execute(query, (ref, ref))
+            result = self.db_manager.cursor.fetchone()
+
+            if result:
+                total_matches += 1
+                found_type, found_manufacturer = result
+
+                app_logger.debug(f"Correspondance trouvée: Type='{found_type}', Fabricant='{found_manufacturer}'")
+
+                # Compléter seulement les champs vides
+                if type_empty:
+                    appareil_data['type'] = found_type
+                    app_logger.info(f"Type complété: '' -> '{found_type}'")
+
+                if manufacturer_empty:
+                    appareil_data['manufacturer'] = found_manufacturer
+                    app_logger.info(f"Fabricant complété: '' -> '{found_manufacturer}'")
+
+                # Arrêter après la première correspondance trouvée
+                app_logger.debug("Auto-complétion terminée: correspondance trouvée")
+                break
+            else:
+                app_logger.debug(f"Aucune correspondance pour la référence: {ref}")
+
+        # Log final de l'opération
+        app_logger.log_auto_complete(
+            row_id=appareil_data.get('id', 'unknown'),
+            original_data=original_data,
+            completed_data=appareil_data,
+            search_criteria={'references': refs_to_check},
+            matches_found=total_matches,
+            success=True
+        )
+
+        # Retourner True si au moins un champ a été complété avec succès
+        return total_matches > 0
+
     def _try_auto_complete(self, appareil_data: dict):
         """Essayer de compléter automatiquement Type et Fabricant à partir des références
-        
+
         Returns:
             bool: True si l'auto-complétion a réussi, False sinon
         """
         original_data = appareil_data.copy()
-        
-        try:
-            # Log du début de l'opération
-            app_logger.debug(f"Début auto-complétion pour: {appareil_data}")
-            
-            # Vérifier d'abord si les champs sont vides
-            type_empty = not appareil_data.get('type', '').strip()
-            manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
-            
-            # Si les deux champs sont remplis, pas besoin d'auto-complétion
-            if not type_empty and not manufacturer_empty:
-                app_logger.debug("Auto-complétion ignorée: type et manufacturer déjà remplis")
-                return False
-            
-            # Ordre de priorité des références à vérifier (colonne C puis D)
-            refs_to_check = []
-            
-            # 1. D'abord la référence modèle (colonne C)
-            ref_modele = appareil_data.get('ref_modele', '').strip()
-            if ref_modele:
-                refs_to_check.append(ref_modele)
-            
-            # 2. Ensuite la référence commerciale (colonne D)
-            commercial_ref = appareil_data.get('commercial_ref', '').strip()
-            if commercial_ref:
-                refs_to_check.append(commercial_ref)
-            
-            if not refs_to_check:
-                app_logger.warning("Auto-complétion: aucune référence disponible pour la recherche")
-                return False  # Aucune référence pour faire la recherche
-            
-            app_logger.debug(f"Références à vérifier: {refs_to_check}")
-            
-            # Chercher dans la base des appareils existants avec ces références
-            total_matches = 0
-            for ref in refs_to_check:
-                query = """
-                    SELECT type, manufacturer 
-                    FROM appareils 
-                    WHERE (ref_modele = ? OR commercial_ref = ?)
-                    AND type IS NOT NULL AND type != '' 
-                    AND manufacturer IS NOT NULL AND manufacturer != ''
-                    LIMIT 1
-                """
-                
-                app_logger.debug(f"Recherche avec référence: {ref}")
-                self.db_manager.cursor.execute(query, (ref, ref))
-                result = self.db_manager.cursor.fetchone()
-                
-                if result:
-                    total_matches += 1
-                    found_type, found_manufacturer = result
-                    
-                    app_logger.debug(f"Correspondance trouvée: Type='{found_type}', Fabricant='{found_manufacturer}'")
-                    
-                    # Compléter seulement les champs vides
-                    if type_empty:
-                        appareil_data['type'] = found_type
-                        app_logger.info(f"Type complété: '' -> '{found_type}'")
-                    
-                    if manufacturer_empty:
-                        appareil_data['manufacturer'] = found_manufacturer
-                        app_logger.info(f"Fabricant complété: '' -> '{found_manufacturer}'")
-                    
-                    # Arrêter après la première correspondance trouvée
-                    app_logger.debug("Auto-complétion terminée: correspondance trouvée")
-                    break
-                else:
-                    app_logger.debug(f"Aucune correspondance pour la référence: {ref}")
-            
-            # Log final de l'opération
-            app_logger.log_auto_complete(
-                row_id=appareil_data.get('id', 'unknown'),
-                original_data=original_data,
-                completed_data=appareil_data,
-                search_criteria={'references': refs_to_check},
-                matches_found=total_matches,
-                success=True
-            )
-            
-            # Retourner True si au moins un champ a été complété avec succès
-            return total_matches > 0
-                        
-        except Exception as e:
-            # En cas d'erreur, continuer sans auto-completion
-            app_logger.error(f"Erreur auto-completion: {e}")
-            app_logger.log_auto_complete(
-                row_id=appareil_data.get('id', 'unknown'),
-                original_data=original_data,
-                completed_data=appareil_data,
-                search_criteria={'references': refs_to_check if 'refs_to_check' in locals() else []},
-                matches_found=0,
-                success=False,
-                error_msg=str(e)
-            )
-            return False
+        return self._safe_try_auto_complete(appareil_data, original_data)
 
     def _refresh_application(self):
         """Rafraîchir l'application - CORRECTION: utiliser la même logique que F5"""
@@ -2899,6 +2924,24 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _refresh_pieces_count_column(self):
         """Rafraîchir la colonne Nb Pièces pour toutes les lignes visibles"""
         self.table_controller.refresh_pieces_count_column()
+
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur nettoyage eventFilter")
+    def _safe_remove_event_filter(self) -> bool:
+        """Retirer l'eventFilter de manière sécurisée"""
+        self.table.viewport().removeEventFilter(self)
+        return True
+
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur nettoyage table_controller")
+    def _safe_cleanup_table_controller(self) -> bool:
+        """Nettoyer le table_controller de manière sécurisée"""
+        self.table_controller.cleanup()
+        return True
+
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur nettoyage grouped_history_service")
+    def _safe_cleanup_grouped_history(self) -> bool:
+        """Nettoyer le grouped_history_service de manière sécurisée"""
+        self.grouped_history_service.cleanup()
+        return True
 
     def closeEvent(self, event):
         """Gestion de la fermeture"""
@@ -2918,32 +2961,23 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         # Sauvegarder les paramètres
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
-        
+
         # Désinstaller l'eventFilter pour éviter les erreurs lors de la fermeture
         if hasattr(self, 'table') and self.table is not None:
-            try:
-                self.table.viewport().removeEventFilter(self)
-            except (RuntimeError, AttributeError):
-                pass  # L'objet est peut-être déjà détruit
-        
+            self._safe_remove_event_filter()
+
         # Nettoyer le TableController
         if hasattr(self, 'table_controller'):
-            try:
-                self.table_controller.cleanup()
-            except Exception:
-                pass  # Ignorer les erreurs de nettoyage
+            self._safe_cleanup_table_controller()
 
         # Nettoyer le service d'historique groupé
         if hasattr(self, 'grouped_history_service'):
-            try:
-                self.grouped_history_service.cleanup()
-            except Exception:
-                pass  # Ignorer les erreurs de nettoyage
-        
+            self._safe_cleanup_grouped_history()
+
         # Fermer la base de données
         if hasattr(self, 'db_manager'):
             self.db_manager.close()
-        
+
         event.accept()
 
     # Méthodes SEO - Phase 2.15: Délégation vers SEOService
@@ -2957,21 +2991,21 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     
     def _is_piece_reference_search(self) -> bool:
         """Vérifier si la recherche actuelle est une référence de pièce - Support multi-références"""
-        try:
-            search_term = self.search_input.text().strip()
-            if not search_term:
-                return False
-            
-            # Détecter les recherches multi-références avec || ou &&
-            if '||' in search_term or '&&' in search_term:
-                return self.advanced_search_service._are_all_terms_piece_references(search_term)
-            
-            # Recherche simple - vérifier si c'est une référence de pièce
-            return self.advanced_search_service._get_piece_description_from_reference(search_term) is not None
-        
-        except Exception as e:
-            app_logger.error(f"Erreur vérification référence pièce: {e}")
+        return self._safe_is_piece_reference_search()
+
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur vérification référence pièce")
+    def _safe_is_piece_reference_search(self) -> bool:
+        """Helper sécurisé pour vérifier référence pièce"""
+        search_term = self.search_input.text().strip()
+        if not search_term:
             return False
+
+        # Détecter les recherches multi-références avec || ou &&
+        if '||' in search_term or '&&' in search_term:
+            return self.advanced_search_service._are_all_terms_piece_references(search_term)
+
+        # Recherche simple - vérifier si c'est une référence de pièce
+        return self.advanced_search_service._get_piece_description_from_reference(search_term) is not None
 
     # --- Méthodes de gestion des dispositifs pour le collage (délégation vers DeviceManager) ---
     
@@ -3004,51 +3038,57 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         UTILISATION: Fallback temporaire uniquement
         TODO: Supprimer après validation complète du service
         """
-        try:
-            if (hasattr(self, 'database_operations_service') and
-                self.database_operations_service and
-                Config.USE_NEW_DATABASE_OPERATIONS_SERVICE):
+        return self._safe_trigger_event_driven_save_after_paste(result)
 
-                total_changes = result.inserted_count + result.updated_count
-                app_logger.debug(f"Sauvegarde événementielle après collage: {total_changes} modifications")
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur sauvegarde événementielle")
+    def _safe_trigger_event_driven_save_after_paste(self, result):
+        """Helper sécurisé pour sauvegarde événementielle"""
+        if (hasattr(self, 'database_operations_service') and
+            self.database_operations_service and
+            Config.USE_NEW_DATABASE_OPERATIONS_SERVICE):
 
-                # Après un collage, les données sont déjà commitées en base
-                # On peut forcer un auto_save pour s'assurer que les transactions en attente sont terminées
-                success = self.database_operations_service.auto_save()
+            total_changes = result.inserted_count + result.updated_count
+            app_logger.debug(f"Sauvegarde événementielle après collage: {total_changes} modifications")
 
-                if success:
-                    app_logger.debug(f"Sauvegarde événementielle réussie après collage")
-                    # Mettre à jour l'indicateur de sauvegarde
-                    if hasattr(self, 'save_indicator'):
-                        self.save_indicator.setText(Config.get_message('save_success'))
-                        self.save_indicator.setStyleSheet("color: green;")
-                else:
-                    app_logger.warning(f"Échec sauvegarde événementielle après collage")
+            # Après un collage, les données sont déjà commitées en base
+            # On peut forcer un auto_save pour s'assurer que les transactions en attente sont terminées
+            success = self.database_operations_service.auto_save()
 
-        except Exception as e:
-            app_logger.error(f"Erreur sauvegarde événementielle après collage: {e}")
+            if success:
+                app_logger.debug(f"Sauvegarde événementielle réussie après collage")
+                # Mettre à jour l'indicateur de sauvegarde
+                if hasattr(self, 'save_indicator'):
+                    self.save_indicator.setText(Config.get_message('save_success'))
+                    self.save_indicator.setStyleSheet("color: green;")
+            else:
+                app_logger.warning(f"Échec sauvegarde événementielle après collage")
 
     # Les méthodes _log_paste_results et _show_paste_summary ont été déplacées vers PasteResultsService
+
+    @handle_ui_operation_errors(return_value=None)
+    def _safe_disconnect_search_signals(self):
+        """Déconnecter les signaux de search_input en toute sécurité"""
+        if hasattr(self, 'search_input') and self.search_input:
+            self.search_input.textChanged.disconnect()
 
 def main():
     """Point d'entrée de l'application"""
     app = QApplication(sys.argv)
-    
+
     # Supprimer les warnings macOS inutiles
     app.setAttribute(Qt.AA_DontShowIconsInMenus, False)
     app.setQuitOnLastWindowClosed(True)
-    
-    try:
-        window = MainWindow()
-        # Appliquer les styles CSS globalement pour toutes les fenêtres
-        app.setStyleSheet(window._get_modern_style())
-        window.show()
-        sys.exit(app.exec_())
-    except Exception as e:
-        app_logger.error(f"ERREUR CRITIQUE: Impossible de démarrer l'application: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+
+    _safe_launch_main_window(app)
+
+@handle_ui_operation_errors(return_value=None, log_prefix="ERREUR CRITIQUE: Démarrage application")
+def _safe_launch_main_window(app):
+    """Helper sécurisé pour lancement de la fenêtre principale"""
+    window = MainWindow()
+    # Appliquer les styles CSS globalement pour toutes les fenêtres
+    app.setStyleSheet(window._get_modern_style())
+    window.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,7 @@ from ..ui.qt_imports import QObject, pyqtSignal, QTimer, QPushButton
 
 from ..core.logger import app_logger
 from .base_service import BaseService
+from ..utils.error_handler import handle_count_operation_errors, handle_ui_update_errors
 
 class IncompleteButtonService(QObject):
     """Service optimisé pour le bouton des lignes incomplètes"""
@@ -36,6 +37,11 @@ class IncompleteButtonService(QObject):
 
         # Compteur pour éviter les calculs inutiles
         self._pending_updates = 0
+
+    @handle_count_operation_errors(return_value=None)
+    def _safe_count_incomplete_devices(self):
+        """Compter les appareils incomplets de manière sécurisée"""
+        return self.db_manager.count_incomplete_devices()
 
     def set_button(self, button: QPushButton):
         """Associer le bouton à gérer"""
@@ -77,9 +83,10 @@ class IncompleteButtonService(QObject):
             if current_time - self._last_update_time < 5.0:
                 return self._cached_count
 
-        # Recalculer depuis la base de données
-        try:
-            new_count = self.db_manager.count_incomplete_devices()
+        # Recalculer depuis la base de données avec gestion d'erreur centralisée
+        new_count = self._safe_count_incomplete_devices()
+
+        if new_count is not None:
             app_logger.info(f"📊 Comptage DB: {new_count} lignes incomplètes (filtre actif: {self.show_incomplete_only})")
 
             # Mettre à jour le cache
@@ -94,40 +101,36 @@ class IncompleteButtonService(QObject):
                 self.count_changed.emit(new_count)
 
             return new_count
-
-        except Exception as e:
-            app_logger.error(f"Erreur calcul lignes incomplètes: {e}")
+        else:
+            # Erreur gérée par le décorateur, utiliser cache en fallback
             return self._cached_count or 0
 
+    @handle_ui_update_errors()
     def _update_button_display(self, count: int):
         """Mettre à jour l'affichage du bouton"""
         if not self.button:
             return
 
-        try:
-            if count > 0:
-                self.button.show()
-                from ..core.config import pluralize
+        if count > 0:
+            self.button.show()
+            from ..core.config import pluralize
 
-                if self.show_incomplete_only:
-                    # Filtre actif
-                    self.button.setText(f"📋 Filtre actif, plus que {pluralize(count, 'ligne')}")
-                    self.button.setToolTip(f"Filtre actif - {pluralize(count, 'ligne')} avec des champs vides")
-                else:
-                    # Filtre inactif
-                    self.button.setText(f"📋 {pluralize(count, 'incomplète')}")
-                    self.button.setToolTip(f"Afficher uniquement les {pluralize(count, 'ligne')} avec des champs vides")
+            if self.show_incomplete_only:
+                # Filtre actif
+                self.button.setText(f"📋 Filtre actif, plus que {pluralize(count, 'ligne')}")
+                self.button.setToolTip(f"Filtre actif - {pluralize(count, 'ligne')} avec des champs vides")
             else:
-                self.button.hide()
-                # Auto-désactiver le filtre si plus de lignes incomplètes
-                if self.show_incomplete_only:
-                    app_logger.info("🔄 Plus de lignes incomplètes - désactivation auto du filtre")
-                    self.show_incomplete_only = False
-                    # Émettre le signal pour déclencher le rechargement des données
-                    self.filter_auto_disabled.emit()
-
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour affichage bouton: {e}")
+                # Filtre inactif
+                self.button.setText(f"📋 {pluralize(count, 'incomplète')}")
+                self.button.setToolTip(f"Afficher uniquement les {pluralize(count, 'ligne')} avec des champs vides")
+        else:
+            self.button.hide()
+            # Auto-désactiver le filtre si plus de lignes incomplètes
+            if self.show_incomplete_only:
+                app_logger.info("🔄 Plus de lignes incomplètes - désactivation auto du filtre")
+                self.show_incomplete_only = False
+                # Émettre le signal pour déclencher le rechargement des données
+                self.filter_auto_disabled.emit()
 
     def set_filter_active(self, active: bool):
         """Définir l'état du filtre"""

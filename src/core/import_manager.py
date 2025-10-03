@@ -16,6 +16,7 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QScrollArea, QWidget, QGridLayout, Qt)
 
 from .logger import app_logger
+from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
 
 
 
@@ -503,36 +504,37 @@ class ImportDialog(QDialog):
         """Récupérer la configuration résultat"""
         return self.result_config
     
+    @handle_ui_operation_errors(return_value=(2, []), log_prefix="Erreur lors de l'analyse du format")
+    def _safe_analyze_file_format(self, first_file):
+        """Helper pour analyser le format d'un fichier (avec gestion d'erreur)"""
+        detected_columns = 0
+        sample_data = []
+
+        if first_file.data:
+            sample_data = first_file.data[:3]  # 3 premières lignes
+            if sample_data:
+                detected_columns = len(sample_data[0])
+        else:
+            # Charger les données si pas encore fait
+            if first_file.type == FileType.CSV:
+                data = self.load_csv_data(first_file.path, max_rows=5)
+            else:  # PDF
+                data = self.load_pdf_data(first_file.path, max_rows=5)
+
+            if data:
+                sample_data = data[:3]
+                detected_columns = len(data[0]) if data else 0
+
+        return detected_columns, sample_data
+
     def _analyze_formats_and_preview(self):
         """Analyser les formats des fichiers et générer l'aperçu des données"""
         if not self.import_config.files:
             return
-        
+
         # Analyser le premier fichier pour déterminer le format général
         first_file = self.import_config.files[0]
-        detected_columns = 0
-        sample_data = []
-        
-        try:
-            if first_file.data:
-                sample_data = first_file.data[:3]  # 3 premières lignes
-                if sample_data:
-                    detected_columns = len(sample_data[0])
-            else:
-                # Charger les données si pas encore fait
-                if first_file.type == FileType.CSV:
-                    data = self.load_csv_data(first_file.path, max_rows=5)
-                else:  # PDF
-                    data = self.load_pdf_data(first_file.path, max_rows=5)
-                
-                if data:
-                    sample_data = data[:3]
-                    detected_columns = len(data[0]) if data else 0
-                    
-        except Exception as e:
-            app_logger.debug("Erreur lors de l'analyse du format: {e}")
-            detected_columns = 2  # Valeur par défaut
-            sample_data = []
+        detected_columns, sample_data = self._safe_analyze_file_format(first_file)
         
         # Mise à jour de la configuration d'import
         self.import_config.csv_import_mode = detected_columns
@@ -761,100 +763,96 @@ class ImportManager:
         # PHASE 1: Décision intelligente Async vs Sync avec fallback automatique
         return self._execute_import(config)
 
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur import drag&drop")
     def import_from_drag_drop(self, file_paths: List[str]) -> Optional[Dict[str, Any]]:
         """
         Import spécialisé pour drag&drop avec paramètres par défaut intelligents
-        
+
         Args:
             file_paths: Liste des fichiers à importer
-            
+
         Returns:
             Résultats de l'import ou None si annulé/échoué
-            
+
         Notes:
             - Utilise le nom de fichier comme référence par défaut
             - Affiche toujours le dialogue d'options (UX cohérente)
             - Gère les imports multi-fichiers PDF
             - Format d'historique spécialisé pour drag&drop
         """
-        try:
-            if not file_paths:
-                return None
-                
-            # Valider et préparer les fichiers
-            import_files = []
-            for file_path in file_paths:
-                if not os.path.exists(file_path):
-                    continue
-                    
-                file_type = self._detect_file_type(file_path)
-                if not file_type:
-                    continue
-                    
-                # Référence par défaut depuis nom fichier
-                default_reference = self._extract_reference_from_filename(file_path)
-                
-                # Données d'aperçu pour le dialogue
-                sample_data = self._get_sample_data(file_path, file_type)
-                
-                import_files.append({
-                    'path': file_path,
-                    'type': file_type,
-                    'default_reference': default_reference,
-                    'sample_data': sample_data
-                })
-            
-            if not import_files:
-                return None
-                
-            # Déterminer le type d'import
-            import_type = ImportType.SINGLE_FILE if len(import_files) == 1 else ImportType.MULTI_FILE
-            
-            # Configuration avec paramètres par défaut pour drag&drop
-            config = ImportConfiguration(
-                files=import_files,
-                import_type=import_type
-            )
-            
-            # Pour drag&drop, on propose toujours le premier nom de fichier comme référence
-            if import_files:
-                config.reference_piece = import_files[0]['default_reference']
-            
-            # Dialogue adapté pour drag&drop
-            from src.ui.import_dialog import ImportDialog
-            dialog = ImportDialog(self.parent_widget, config)
-            
-            # Titre spécialisé pour drag&drop
-            dialog.setWindowTitle("Import par Glisser-Déposer")
-            
-            if dialog.exec_() != QDialog.Accepted:
-                return None
-            
-            config = dialog.get_configuration()
-            if not config:
-                return None
-            
-            # Effectuer l'import avec la même logique de fallback
-            results = self._execute_import(config)
-            
-            # Marquer les résultats comme provenant du drag&drop
-            if results:
-                results['import_source'] = 'drag_drop'
-                results['source_files'] = [f['path'] for f in import_files]
-                
-                # Format d'historique spécialisé
-                if len(import_files) == 1:
-                    file_name = os.path.basename(import_files[0]['path'])
-                    file_ext = import_files[0]['type'].value.upper()
-                    results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
-                else:
-                    results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
-            
-            return results
-            
-        except Exception as e:
-            app_logger.debug("Erreur import drag&drop: {e}")
+        if not file_paths:
             return None
+
+        # Valider et préparer les fichiers
+        import_files = []
+        for file_path in file_paths:
+            if not os.path.exists(file_path):
+                continue
+
+            file_type = self._detect_file_type(file_path)
+            if not file_type:
+                continue
+
+            # Référence par défaut depuis nom fichier
+            default_reference = self._extract_reference_from_filename(file_path)
+
+            # Données d'aperçu pour le dialogue
+            sample_data = self._get_sample_data(file_path, file_type)
+
+            import_files.append({
+                'path': file_path,
+                'type': file_type,
+                'default_reference': default_reference,
+                'sample_data': sample_data
+            })
+
+        if not import_files:
+            return None
+
+        # Déterminer le type d'import
+        import_type = ImportType.SINGLE_FILE if len(import_files) == 1 else ImportType.MULTI_FILE
+
+        # Configuration avec paramètres par défaut pour drag&drop
+        config = ImportConfiguration(
+            files=import_files,
+            import_type=import_type
+        )
+
+        # Pour drag&drop, on propose toujours le premier nom de fichier comme référence
+        if import_files:
+            config.reference_piece = import_files[0]['default_reference']
+
+        # Dialogue adapté pour drag&drop
+        from src.ui.import_dialog import ImportDialog
+        dialog = ImportDialog(self.parent_widget, config)
+
+        # Titre spécialisé pour drag&drop
+        dialog.setWindowTitle("Import par Glisser-Déposer")
+
+        if dialog.exec_() != QDialog.Accepted:
+            return None
+
+        config = dialog.get_configuration()
+        if not config:
+            return None
+
+        # Effectuer l'import avec la même logique de fallback
+        results = self._execute_import(config)
+
+        # Marquer les résultats comme provenant du drag&drop
+        if results:
+            results['import_source'] = 'drag_drop'
+            results['source_files'] = [f['path'] for f in import_files]
+
+            # Format d'historique spécialisé
+            if len(import_files) == 1:
+                file_name = os.path.basename(import_files[0]['path'])
+                file_ext = import_files[0]['type'].value.upper()
+                results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
+            else:
+                results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
+
+        return results
     
     def _detect_file_type(self, file_path: str) -> Optional[FileType]:
         """Détecter le type de fichier"""
@@ -869,16 +867,13 @@ class ImportManager:
         """Extraire une référence depuis le nom de fichier"""
         return os.path.splitext(os.path.basename(file_path))[0]
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur lors du chargement d'échantillon")
     def _get_sample_data(self, file_path: str, file_type: FileType) -> Optional[List[List[str]]]:
         """Récupérer un échantillon de données pour l'aperçu"""
-        try:
-            if file_type == FileType.CSV:
-                return self.load_csv_data(file_path, max_rows=5)
-            elif file_type == FileType.PDF:
-                return self.load_pdf_data(file_path, max_rows=5)
-        except Exception as e:
-            app_logger.debug("Erreur lors du chargement d'échantillon {file_path}: {e}")
-        
+        if file_type == FileType.CSV:
+            return self.load_csv_data(file_path, max_rows=5)
+        elif file_type == FileType.PDF:
+            return self.load_pdf_data(file_path, max_rows=5)
         return None
     
     
@@ -935,10 +930,10 @@ class ImportManager:
                 # OPTIMISATION: ProcessEvents après chaque update UI
                 QApplication.processEvents()
 
-                try:
+                # Traiter le fichier avec gestion d'erreur
+                file_results = self._safe_import_single_file(file, config, global_seen_device_refs)
 
-                    # MODIFICATION: Utilisation du set GLOBAL pour détecter doublons inter-fichiers
-                    file_results = self._import_single_file(file, config, global_seen_device_refs)
+                if file_results:
                     results['successful_files'] += 1
 
                     # Ajouter les détails du fichier
@@ -957,11 +952,6 @@ class ImportManager:
                     if (i + 1) % 5 == 0:
                         app_logger.info(f"⏳ Progression: {i+1}/{len(config.files)} fichiers traités")
                         QApplication.processEvents()  # Permettre à l'UI de se rafraîchir
-
-                except Exception as e:
-                    error_msg = f"{file.filename}: {str(e)}"
-                    results['errors'].append(error_msg)
-                    app_logger.error(f"❌ Erreur import fichier: {error_msg}")
 
             progress.setValue(len(config.files))
             progress.close()
@@ -983,6 +973,11 @@ class ImportManager:
             if cache_service:
                 cache_service.resume_invalidation(force_invalidate=True)
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur import fichier")
+    def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Optional[Dict[str, Any]]:
+        """Wrapper sécurisé pour _import_single_file avec gestion d'erreur intégrée"""
+        return self._import_single_file(file, config, file_seen_device_refs)
+
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Dict[str, Any]:
         """Importer un fichier unique"""
         # Charger les données du fichier avec les méthodes unifiées
@@ -1035,6 +1030,27 @@ class ImportManager:
             )
     
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur association")
+    def _safe_create_association(self, reference: str, device_id: int, label: str):
+        """Helper pour créer une association avec gestion d'erreur"""
+        # Callback pour gestion intelligente des libellés
+        def smart_label_callback(ref_piece, current_desc, new_desc):
+            # Si nouveau libellé fourni: l'utiliser (remplace l'ancien)
+            if new_desc and new_desc.strip():
+                return new_desc.strip()
+            # Si pas de nouveau libellé: conserver l'ancien
+            else:
+                return current_desc
+
+        # Utiliser le libellé spécifique pour cette référence avec callback
+        result = self.db_manager.add_or_update_piece_with_description(
+            reference, device_id, label, confirm_callback=smart_label_callback
+        )
+        if result:
+            assoc_id, description_updated, association_created = result
+            return {'created': association_created, 'assoc_id': assoc_id}
+        return None
+
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
                            config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Traiter l'import des données avec les références et libellés séparés"""
@@ -1112,29 +1128,13 @@ class ImportManager:
                 # Associer les références (chaque paire référence-libellé)
                 for reference, label in references_and_labels:
                     if reference:
-                        try:
-                            # Callback pour gestion intelligente des libellés
-                            def smart_label_callback(ref_piece, current_desc, new_desc):
-                                # Si nouveau libellé fourni: l'utiliser (remplace l'ancien)
-                                if new_desc and new_desc.strip():
-                                    return new_desc.strip()
-                                # Si pas de nouveau libellé: conserver l'ancien
-                                else:
-                                    return current_desc
-                            
-                            # Utiliser le libellé spécifique pour cette référence avec callback
-                            result = self.db_manager.add_or_update_piece_with_description(
-                                reference, device_id, label, confirm_callback=smart_label_callback
-                            )
-                            if result:
-                                assoc_id, description_updated, association_created = result
-                                if association_created:
-                                    results['associations_created'] += 1
-                                    app_logger.debug("  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
-                                else:
-                                    results['associations_existing'] += 1
-                        except Exception as e:
-                            app_logger.debug("Erreur association {reference}: {e}")
+                        assoc_result = self._safe_create_association(reference, device_id, label)
+                        if assoc_result:
+                            if assoc_result.get('created'):
+                                results['associations_created'] += 1
+                                app_logger.debug("  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
+                            else:
+                                results['associations_existing'] += 1
         
         return results
     
@@ -1582,31 +1582,12 @@ class ImportManager:
                     app_logger.debug("⚠️ BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
                     continue
             
-            try:
-                # Utiliser le callback pour gestion intelligente des libellés
-                def smart_label_callback(ref_piece, current_desc, new_desc):
-                    # Si nouveau libellé fourni: l'utiliser (remplace l'ancien)
-                    if new_desc and new_desc.strip():
-                        return new_desc.strip()
-                    # Si pas de nouveau libellé: conserver l'ancien
-                    else:
-                        return current_desc
-                
-                # Utiliser le libellé spécifique pour cette référence avec callback
-                result = self.db_manager.add_or_update_piece_with_description(
-                    reference, device_id, label, confirm_callback=smart_label_callback
-                )
-                
-                # result = (assoc_id, description_updated, association_created)
-                assoc_id, description_updated, association_created = result
-                
-                if association_created:
+            assoc_result = self._safe_create_association(reference, device_id, label)
+            if assoc_result:
+                if assoc_result.get('created'):
                     results['created'] += 1
                 else:
                     results['existing'] += 1
-                    
-            except Exception as e:
-                app_logger.debug("❌ BATCH: Erreur association {reference}: {e}")
         
         app_logger.debug("🔗 BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
         return results
@@ -1667,158 +1648,144 @@ class ImportManager:
         manufacturer_empty = not str(manufacturer_val).strip()
         return type_empty and manufacturer_empty
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur mise à jour appareil")
     def _update_existing_device(self, device_id: int, device_data: Dict[str, Any]) -> None:
         """Mettre à jour un appareil existant avec les nouvelles données de la 3ème colonne"""
-        try:
-            # Construire les données de mise à jour pour la 3ème colonne uniquement
-            update_data = {}
-            
-            # Si les données contiennent other_ref ou notes (depuis 3ème colonne), les ajouter
-            if 'other_ref' in device_data and device_data['other_ref'].strip():
-                update_data['other_ref'] = device_data['other_ref'].strip()
-            
-            if 'notes' in device_data and device_data['notes'].strip():
-                update_data['notes'] = device_data['notes'].strip()
-            
-            if update_data:
-                # Construire la requête de mise à jour
-                set_clauses = [f"{field} = ?" for field in update_data.keys()]
-                update_query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
-                params = list(update_data.values()) + [device_id]
-                
-                self.db_manager.execute_query(update_query, params)
-                app_logger.debug("🔄 Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
-        
-        except Exception as e:
-            app_logger.debug("Erreur mise à jour appareil {device_id}: {e}")
+        # Construire les données de mise à jour pour la 3ème colonne uniquement
+        update_data = {}
+
+        # Si les données contiennent other_ref ou notes (depuis 3ème colonne), les ajouter
+        if 'other_ref' in device_data and device_data['other_ref'].strip():
+            update_data['other_ref'] = device_data['other_ref'].strip()
+
+        if 'notes' in device_data and device_data['notes'].strip():
+            update_data['notes'] = device_data['notes'].strip()
+
+        if update_data:
+            # Construire la requête de mise à jour
+            set_clauses = [f"{field} = ?" for field in update_data.keys()]
+            update_query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
+            params = list(update_data.values()) + [device_id]
+
+            self.db_manager.execute_query(update_query, params)
+            app_logger.debug("🔄 Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur insertion appareil")
     def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
         """Insérer ou trouver un appareil existant"""
-        try:
-            # Chercher d'abord un appareil existant
-            ref_modele = device_data.get('ref_modele', '')
-            commercial_ref = device_data.get('commercial_ref', '')
-            
-            if ref_modele or commercial_ref:
-                # Recherche stricte : un appareil est identique si TOUTES les références principales correspondent
-                # Cela évite les faux positifs comme 2108002 vs 2108002000 avec même commercial_ref
-                search_query = """
-                    SELECT id FROM appareils 
-                    WHERE ref_modele = ? AND commercial_ref = ?
-                       AND ref_modele != '' AND commercial_ref != ''
+        # Chercher d'abord un appareil existant
+        ref_modele = device_data.get('ref_modele', '')
+        commercial_ref = device_data.get('commercial_ref', '')
+
+        if ref_modele or commercial_ref:
+            # Recherche stricte : un appareil est identique si TOUTES les références principales correspondent
+            # Cela évite les faux positifs comme 2108002 vs 2108002000 avec même commercial_ref
+            search_query = """
+                SELECT id FROM appareils
+                WHERE ref_modele = ? AND commercial_ref = ?
+                   AND ref_modele != '' AND commercial_ref != ''
+                LIMIT 1
+            """
+            results = self.db_manager.execute_query(search_query, [ref_modele, commercial_ref])
+
+            if results:
+                # Appareil trouvé, on le met à jour avec les nouvelles données si nécessaire
+                existing_id = results[0][0]
+                self._update_existing_device(existing_id, device_data)
+                return existing_id
+
+            # Si pas de match exact, vérifier si seule ref_modele correspond (cas spécial)
+            if ref_modele and ref_modele.strip():
+                search_query_ref = """
+                    SELECT id FROM appareils
+                    WHERE ref_modele = ? AND ref_modele != ''
+                       AND (commercial_ref = '' OR commercial_ref IS NULL)
                     LIMIT 1
                 """
-                results = self.db_manager.execute_query(search_query, [ref_modele, commercial_ref])
-                
-                if results:
-                    # Appareil trouvé, on le met à jour avec les nouvelles données si nécessaire
-                    existing_id = results[0][0]
-                    self._update_existing_device(existing_id, device_data)
-                    return existing_id
-                
-                # Si pas de match exact, vérifier si seule ref_modele correspond (cas spécial)
-                if ref_modele and ref_modele.strip():
-                    search_query_ref = """
-                        SELECT id FROM appareils 
-                        WHERE ref_modele = ? AND ref_modele != ''
-                           AND (commercial_ref = '' OR commercial_ref IS NULL)
-                        LIMIT 1
-                    """
-                    results_ref = self.db_manager.execute_query(search_query_ref, [ref_modele])
-                    if results_ref:
-                        return results_ref[0][0]
-            
-            
-            # Créer un nouvel appareil
-            device_id = self.db_manager.insert_appareil(device_data)
-            if device_id:
-                device_data['is_new'] = True
-            return device_id
-            
-        except Exception as e:
-            app_logger.debug("Erreur insertion appareil: {e}")
-            return None
+                results_ref = self.db_manager.execute_query(search_query_ref, [ref_modele])
+                if results_ref:
+                    return results_ref[0][0]
+
+
+        # Créer un nouvel appareil
+        device_id = self.db_manager.insert_appareil(device_data)
+        if device_id:
+            device_data['is_new'] = True
+        return device_id
     
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur auto-completion")
     def _try_auto_complete(self, appareil_data: dict) -> bool:
         """Essayer de compléter automatiquement Type et Fabricant à partir des références
-        
+
         Returns:
             bool: True si l'auto-complétion a réussi, False sinon
         """
-        try:
-            # Vérifier d'abord si les champs sont vides
-            type_empty = not appareil_data.get('type', '').strip()
-            manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
-            
-            # Si les deux champs sont remplis, pas besoin d'auto-complétion
-            if not type_empty and not manufacturer_empty:
-                return False
-            
-            # Récupérer les références principales pour la recherche
-            ref_modele = appareil_data.get('ref_modele', '').strip()
-            commercial_ref = appareil_data.get('commercial_ref', '').strip()
-            
-            if not ref_modele and not commercial_ref:
-                return False  # Aucune référence principale pour faire la recherche
-            
-            # Chercher dans la base des appareils existants avec les références principales
-            query = """
-                SELECT type, manufacturer 
-                FROM appareils 
-                WHERE (ref_modele = ? OR commercial_ref = ?)
-                AND type IS NOT NULL AND type != '' 
-                AND manufacturer IS NOT NULL AND manufacturer != ''
-                LIMIT 1
-            """
-            
-            results = self.db_manager.execute_query(query, [ref_modele, commercial_ref])
-            
-            if results:
-                found_type, found_manufacturer = results[0]
-                
-                
-                # Compléter seulement les champs vides
-                if type_empty:
-                    appareil_data['type'] = found_type
-                    app_logger.debug("  ✅ Type complété: '' -> '{found_type}'")
-                
-                if manufacturer_empty:
-                    appareil_data['manufacturer'] = found_manufacturer
-                    app_logger.debug("  ✅ Fabricant complété: '' -> '{found_manufacturer}'")
-                
-                return True
-            
-            # Aucune correspondance trouvée
-            return False
-                        
-        except Exception as e:
-            app_logger.debug("Erreur auto-completion: {e}")
+        # Vérifier d'abord si les champs sont vides
+        type_empty = not appareil_data.get('type', '').strip()
+        manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
+
+        # Si les deux champs sont remplis, pas besoin d'auto-complétion
+        if not type_empty and not manufacturer_empty:
             return False
 
+        # Récupérer les références principales pour la recherche
+        ref_modele = appareil_data.get('ref_modele', '').strip()
+        commercial_ref = appareil_data.get('commercial_ref', '').strip()
+
+        if not ref_modele and not commercial_ref:
+            return False  # Aucune référence principale pour faire la recherche
+
+        # Chercher dans la base des appareils existants avec les références principales
+        query = """
+            SELECT type, manufacturer
+            FROM appareils
+            WHERE (ref_modele = ? OR commercial_ref = ?)
+            AND type IS NOT NULL AND type != ''
+            AND manufacturer IS NOT NULL AND manufacturer != ''
+            LIMIT 1
+        """
+
+        results = self.db_manager.execute_query(query, [ref_modele, commercial_ref])
+
+        if results:
+            found_type, found_manufacturer = results[0]
+
+
+            # Compléter seulement les champs vides
+            if type_empty:
+                appareil_data['type'] = found_type
+                app_logger.debug("  ✅ Type complété: '' -> '{found_type}'")
+
+            if manufacturer_empty:
+                appareil_data['manufacturer'] = found_manufacturer
+                app_logger.debug("  ✅ Fabricant complété: '' -> '{found_manufacturer}'")
+
+            return True
+
+        # Aucune correspondance trouvée
+        return False
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mises à jour post-import")
     def _trigger_post_import_updates(self):
         """Déclencher les mises à jour post-import (Phase 4 - EventDrivenSaveService)"""
-        try:
-            from ..core.config import Config
+        from ..core.config import Config
 
-            # Déclencher la sauvegarde événementielle si activée
-            if Config.ENABLE_EVENT_DRIVEN_SAVE:
-                if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
-                    self.main_window.event_driven_save_service.handle_import_completed()
-                    app_logger.debug("EventDrivenSaveService: Sauvegarde événementielle déclenchée après import")
+        # Déclencher la sauvegarde événementielle si activée
+        if Config.ENABLE_EVENT_DRIVEN_SAVE:
+            if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
+                self.main_window.event_driven_save_service.handle_import_completed()
+                app_logger.debug("EventDrivenSaveService: Sauvegarde événementielle déclenchée après import")
 
-            # Toujours déclencher la mise à jour du bouton "lignes à compléter"
-            if hasattr(self.main_window, '_update_incomplete_button_visibility'):
-                from ..ui.qt_imports import QTimer
-                QTimer.singleShot(200, self.main_window._update_incomplete_button_visibility)
-                app_logger.debug("Mise à jour bouton 'lignes à compléter' programmée")
+        # Toujours déclencher la mise à jour du bouton "lignes à compléter"
+        if hasattr(self.main_window, '_update_incomplete_button_visibility'):
+            from ..ui.qt_imports import QTimer
+            QTimer.singleShot(200, self.main_window._update_incomplete_button_visibility)
+            app_logger.debug("Mise à jour bouton 'lignes à compléter' programmée")
 
-            # Invalider le cache des doublons après import
-            if hasattr(self.main_window, 'duplicate_indicator_service') and self.main_window.duplicate_indicator_service:
-                self.main_window.duplicate_indicator_service.invalidate_cache("import")
-                app_logger.debug("Cache doublons invalidé après import")
-
-        except Exception as e:
-            app_logger.error(f"Erreur mises à jour post-import: {e}")
+        # Invalider le cache des doublons après import
+        if hasattr(self.main_window, 'duplicate_indicator_service') and self.main_window.duplicate_indicator_service:
+            self.main_window.duplicate_indicator_service.invalidate_cache("import")
+            app_logger.debug("Cache doublons invalidé après import")
 
 
 # Fonctions utilitaires pour l'intégration

@@ -17,6 +17,7 @@ from datetime import datetime
 from ..core.config import Config
 
 from src.core.logger import app_logger
+from ..utils.error_handler import handle_log_viewer_errors
 
 class LogViewer(QDialog):
     """Visualiseur de logs avec filtrage et mise à jour en temps réel"""
@@ -149,27 +150,24 @@ class LogViewer(QDialog):
         """Réagir au changement de type de log"""
         self.load_logs()
     
-    def load_logs(self):
-        """Charger les logs depuis les fichiers"""
-        try:
-            log_type = self.log_type_combo.currentText()
-            lines = self.lines_spinbox.value()
-            
-            # Charger les logs bruts
-            raw_logs = app_logger.get_recent_logs(log_type, lines)
-            
-            # Formatter les logs pour l'affichage dans l'historique
-            formatted_logs = self.format_logs_for_display(raw_logs)
-            self.raw_logs_text.setPlainText(formatted_logs)
-            
-            # Traiter les logs spécialisés
-            if log_type == "data_operations":
-                self.parse_data_operations_logs(raw_logs)
-            
-            self.status_label.setText(f"Logs actualisés: {datetime.now().strftime('%H:%M:%S')}")
-            
-        except Exception as e:
-            self.status_label.setText(f"Erreur lors du chargement: {e}")
+    @handle_log_viewer_errors()
+    def load_logs(self, value=None):
+        """Charger les logs depuis les fichiers - value accepte argument signal Qt"""
+        log_type = self.log_type_combo.currentText()
+        lines = self.lines_spinbox.value()
+
+        # Charger les logs bruts
+        raw_logs = app_logger.get_recent_logs(log_type, lines)
+
+        # Formatter les logs pour l'affichage dans l'historique
+        formatted_logs = self.format_logs_for_display(raw_logs)
+        self.raw_logs_text.setPlainText(formatted_logs)
+
+        # Traiter les logs spécialisés
+        if log_type == "data_operations":
+            self.parse_data_operations_logs(raw_logs)
+
+        self.status_label.setText(f"Logs actualisés: {datetime.now().strftime('%H:%M:%S')}")
     
     def format_logs_for_display(self, raw_logs: str) -> str:
         """Formater les logs pour un affichage optimisé dans l'historique"""
@@ -242,52 +240,36 @@ class LogViewer(QDialog):
         
         return '\n'.join(formatted_lines)
     
+    @handle_log_viewer_errors()
     def parse_data_operations_logs(self, raw_logs):
         """Parser les logs d'opérations sur les données"""
-        try:
-            lines = raw_logs.strip().split('\n')
-            
-            # Réinitialiser les tables
-            self.autocomplete_table.setRowCount(0)
-            self.data_ops_table.setRowCount(0)
-            
-            autocomplete_row = 0
-            data_ops_row = 0
-            
-            for line in lines:
-                if not line.strip():
-                    continue
-                
-                try:
-                    # Extraire le JSON de la ligne de log
-                    if " | AUTO_COMPLETE " in line:
-                        json_start = line.find('{"timestamp"')
-                        if json_start != -1:
-                            json_str = line[json_start:]
-                            data = json.loads(json_str)
-                            self.add_autocomplete_row(data, autocomplete_row)
-                            autocomplete_row += 1
-                    
-                    elif " | DATA_OP " in line:
-                        json_start = line.find('{"timestamp"')
-                        if json_start != -1:
-                            json_str = line[json_start:]
-                            data = json.loads(json_str)
-                            self.add_data_ops_row(data, data_ops_row)
-                            data_ops_row += 1
-                
-                except json.JSONDecodeError:
-                    continue
-                except Exception as e:
-                    app_logger.error("Erreur", e)
-                    continue
-            
-            # Redimensionner les colonnes
-            self.autocomplete_table.resizeColumnsToContents()
-            self.data_ops_table.resizeColumnsToContents()
-            
-        except Exception as e:
-            self.status_label.setText(f"Erreur parsing logs: {e}")
+        lines = raw_logs.strip().split('\n')
+
+        # Réinitialiser les tables
+        self.autocomplete_table.setRowCount(0)
+        self.data_ops_table.setRowCount(0)
+
+        autocomplete_row = 0
+        data_ops_row = 0
+
+        for line in lines:
+            if not line.strip():
+                continue
+
+            # Traitement JSON sécurisé avec méthode dédiée
+            result = self._process_log_line_safely(line)
+            if result:
+                log_type, data = result
+                if log_type == "autocomplete":
+                    self.add_autocomplete_row(data, autocomplete_row)
+                    autocomplete_row += 1
+                elif log_type == "data_ops":
+                    self.add_data_ops_row(data, data_ops_row)
+                    data_ops_row += 1
+
+        # Redimensionner les colonnes
+        self.autocomplete_table.resizeColumnsToContents()
+        self.data_ops_table.resizeColumnsToContents()
     
     def add_autocomplete_row(self, data, row):
         """Ajouter une ligne à la table d'auto-complétion"""
@@ -391,6 +373,26 @@ class LogViewer(QDialog):
         self.data_ops_table.setRowCount(0)
         self.status_label.setText("Logs effacés")
     
+    @handle_log_viewer_errors(return_value=None)
+    def _process_log_line_safely(self, line):
+        """Traiter une ligne de log de manière sécurisée pour extraire les données JSON"""
+        # Extraire le JSON de la ligne de log
+        if " | AUTO_COMPLETE " in line:
+            json_start = line.find('{"timestamp"')
+            if json_start != -1:
+                json_str = line[json_start:]
+                data = json.loads(json_str)
+                return ("autocomplete", data)
+
+        elif " | DATA_OP " in line:
+            json_start = line.find('{"timestamp"')
+            if json_start != -1:
+                json_str = line[json_start:]
+                data = json.loads(json_str)
+                return ("data_ops", data)
+
+        return None
+
     def closeEvent(self, event):
         """Arrêter le timer lors de la fermeture"""
         if self.timer:

@@ -14,6 +14,7 @@ from ..core.constants import ExportFormat, ExportError
 from .event_bus import event_bus
 from .html_export_service import HtmlExportService
 from .base_service import BaseService
+from ..utils.error_handler import handle_export_errors
 
 try:
     from openpyxl import Workbook
@@ -28,80 +29,75 @@ class ExportService(BaseService):
         super().__init__()
         self.db_manager = db_manager
     
-    def export_search_results(self, search_term: str, 
+    def export_search_results(self, search_term: str,
                             export_format: str,
                             output_file: str,
                             include_pieces: bool = True) -> Dict[str, Any]:
         """Exporter les résultats d'une recherche"""
-        
+
         event_bus.emit('export.started', {
             'format': export_format,
             'search_term': search_term,
             'output_file': output_file
         })
-        
-        try:
-            # Charger les données de recherche
-            results = self.db_manager.load_data(search_term=search_term)
-            
-            if not results:
-                return {
-                    'success': False,
-                    'error': 'Aucun résultat trouvé pour cette recherche',
-                    'count': 0
-                }
-            
-            # Préparer les données pour l'export
-            export_data = self._prepare_export_data(results, include_pieces)
-            
-            # Exporter selon le format
-            if export_format == ExportFormat.CSV:
-                self._export_csv(export_data, output_file)
-            elif export_format == ExportFormat.EXCEL:
-                self._export_excel(export_data, output_file)
-            elif export_format == ExportFormat.JSON:
-                self._export_json(export_data, output_file)
-            else:
-                raise ValueError(f"Format non supporté: {export_format}")
-            
-            result = {
-                'success': True,
-                'count': len(results),
-                'format': export_format,
-                'output_file': output_file
+
+        return self._safe_export_search_results_core(search_term, export_format, output_file, include_pieces)
+
+    @handle_export_errors()
+    def _safe_export_search_results_core(self, search_term: str, export_format: str, output_file: str, include_pieces: bool) -> Dict[str, Any]:
+        """Noyau sécurisé pour l'export des résultats de recherche"""
+        # Charger les données de recherche
+        results = self.db_manager.load_data(search_term=search_term)
+
+        if not results:
+            return {
+                'success': False,
+                'error': 'Aucun résultat trouvé pour cette recherche',
+                'count': 0
             }
-            
-            event_bus.emit('export.completed', result)
-            return result
-            
-        except Exception as e:
-            error_result = self.handle_error_with_result(e, "export des résultats de recherche")
-            event_bus.emit('export.error', error_result)
-            return error_result
+
+        # Préparer les données pour l'export
+        export_data = self._prepare_export_data(results, include_pieces)
+
+        # Exporter selon le format
+        if export_format == ExportFormat.CSV:
+            self._export_csv(export_data, output_file)
+        elif export_format == ExportFormat.EXCEL:
+            self._export_excel(export_data, output_file)
+        elif export_format == ExportFormat.JSON:
+            self._export_json(export_data, output_file)
+        else:
+            raise ValueError(f"Format non supporté: {export_format}")
+
+        result = {
+            'success': True,
+            'count': len(results),
+            'format': export_format,
+            'output_file': output_file
+        }
+
+        event_bus.emit('export.completed', result)
+        return result
     
     # Phase 2.3: Ajouter les méthodes HTML factorées ici
+    @handle_export_errors()
     def export_to_html(self, data: List[Tuple], export_format: str) -> str:
         """
         Exporter les données au format HTML
-        
+
         Args:
             data: Liste des données (tuples avec id, manufacturer, ref_modele, commercial_ref...)
             export_format: Format HTML souhaité (HTML_BRANDS ou HTML_DETAILS)
-            
+
         Returns:
             str: Code HTML généré
         """
-        try:
-            if export_format == ExportFormat.HTML_BRANDS:
-                return self._generate_html_brands(data)
-            elif export_format == ExportFormat.HTML_DETAILS:
-                return self._generate_html_details(data)
-            else:
-                raise ValueError(f"Format d'export HTML non supporté: {export_format}")
-                
-        except Exception as e:
-            self.handle_error(e, "export HTML")
-            raise
+        if export_format == ExportFormat.HTML_BRANDS:
+            return self._generate_html_brands(data)
+        elif export_format == ExportFormat.HTML_DETAILS:
+            return self._generate_html_details(data)
+        else:
+            raise ValueError(f"Format d'export HTML non supporté: {export_format}")
     
     def _generate_html_brands(self, data: List[Tuple]) -> str:
         """Générer les liens HTML vers les marques - DÉLÉGUÉ AU SERVICE CENTRALISÉ"""
@@ -150,18 +146,19 @@ class ExportService(BaseService):
             
             # Ajouter les pièces si demandé
             if include_pieces:
-                try:
-                    pieces = self.db_manager.get_pieces_for_device(row[0])
-                    row_data['pieces'] = pieces
-                    row_data['pieces_count'] = len(pieces)
-                except Exception as e:
-                    self.handle_error(e, f"récupération pièces pour appareil {row[0]}")
-                    row_data['pieces'] = []
-                    row_data['pieces_count'] = 0
-            
+                pieces_data = self._safe_get_pieces_for_device(row[0])
+                row_data['pieces'] = pieces_data['pieces']
+                row_data['pieces_count'] = pieces_data['count']
+
             export_data.append(row_data)
-        
+
         return export_data
+
+    @handle_export_errors()
+    def _safe_get_pieces_for_device(self, device_id: int) -> Dict[str, Any]:
+        """Récupérer les pièces pour un appareil de manière sécurisée"""
+        pieces = self.db_manager.get_pieces_for_device(device_id)
+        return {'pieces': pieces, 'count': len(pieces)}
     
     def _export_csv(self, data: List[Dict[str, Any]], output_file: str):
         """Export CSV"""

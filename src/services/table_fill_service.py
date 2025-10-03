@@ -11,6 +11,7 @@ from ..ui.qt_imports import Qt
 from ..ui.qt_imports import QColor
 
 from src.core.config import Config
+from ..utils.error_handler import handle_table_operations_errors, handle_highlight_errors
 
 class TableFillService:
     """Service pour gérer le remplissage des tables et la mise en évidence des recherches"""
@@ -28,40 +29,12 @@ class TableFillService:
         """Remplissage optimisé par chunks pour améliorer la responsivité"""
         chunk_size = Config.CHUNK_SIZE
         total_chunks = (len(records) + chunk_size - 1) // chunk_size
-        
+
         table.blockSignals(True)  # Bloquer les signaux pendant le remplissage
         table.setRowCount(len(records))  # CRUCIAL: Définir le nombre de lignes avant remplissage
-        
+
         try:
-            last_update_time = time.time()
-            
-            for chunk_idx in range(total_chunks):
-                start_idx = chunk_idx * chunk_size
-                end_idx = min(start_idx + chunk_size, len(records))
-                chunk_records = records[start_idx:end_idx]
-                
-                # Traitement du chunk
-                for local_idx, record in enumerate(chunk_records):
-                    row_idx = start_idx + local_idx
-                    self.fill_single_row(table, row_idx, record, search_term)
-                
-                # Mise à jour responsive de l'interface
-                current_time = time.time()
-                if (current_time - last_update_time) * 1000 > Config.RESPONSIVE_UPDATE_INTERVAL:
-                    QApplication.processEvents()  # Maintenir la responsivité
-                    last_update_time = current_time
-                
-                # Progression
-                if progress_dialog:
-                    if progress_dialog.wasCanceled():
-                        break
-                    progress_value = 60 + ((chunk_idx + 1) / total_chunks) * 35  # 60% -> 95%
-                    self._update_progress_with_debounce(
-                        progress_dialog, 
-                        int(progress_value), 
-                        f"Remplissage optimisé... {end_idx}/{len(records)} lignes"
-                    )
-        
+            self._safe_fill_chunked_core(table, records, progress_dialog, search_term, chunk_size, total_chunks)
         finally:
             table.blockSignals(False)  # Réactiver les signaux
     
@@ -69,23 +42,9 @@ class TableFillService:
         """Remplissage standard pour les petites tables"""
         table.blockSignals(True)  # CRITIQUE: Bloquer les signaux pour éviter les modifications DB
         table.setRowCount(len(records))  # CRUCIAL: Définir le nombre de lignes avant remplissage
-        
+
         try:
-            for row_idx, record in enumerate(records):
-                if progress_dialog and progress_dialog.wasCanceled():
-                    break
-                
-                self.fill_single_row(table, row_idx, record, search_term)
-                
-                # Mise à jour de progression moins fréquente pour petites tables
-                if progress_dialog and row_idx % 100 == 0:
-                    progress_value = 60 + (row_idx / len(records)) * 35
-                    self._update_progress_with_debounce(
-                        progress_dialog,
-                        int(progress_value),
-                        f"Remplissage du tableau... {row_idx}/{len(records)} lignes"
-                    )
-        
+            self._safe_fill_standard_core(table, records, progress_dialog, search_term)
         finally:
             table.blockSignals(False)  # CRITIQUE: Réactiver les signaux
     
@@ -163,11 +122,7 @@ class TableFillService:
                     should_highlight = terms[0].lower() in item_text
             elif search_term.get('type') == 'regex':
                 # Recherche par expression régulière
-                try:
-                    pattern = search_term.get('pattern', '')
-                    should_highlight = bool(re.search(pattern, item_text, re.IGNORECASE))
-                except:
-                    pass
+                should_highlight = self._safe_regex_search(search_term.get('pattern', ''), item_text)
             elif search_term.get('type') == 'or':
                 # Recherche avec opérateurs OR
                 for group in search_term.get('groups', []):
@@ -193,3 +148,58 @@ class TableFillService:
         """Déléguer la mise à jour de progression à MainWindow"""
         if hasattr(self.main_window, '_update_progress_with_debounce'):
             self.main_window._update_progress_with_debounce(progress_dialog, value, text)
+
+    @handle_table_operations_errors()
+    def _safe_fill_chunked_core(self, table, records, progress_dialog, search_term, chunk_size, total_chunks):
+        """Remplissage par chunks de manière sécurisée"""
+        last_update_time = time.time()
+
+        for chunk_idx in range(total_chunks):
+            start_idx = chunk_idx * chunk_size
+            end_idx = min(start_idx + chunk_size, len(records))
+            chunk_records = records[start_idx:end_idx]
+
+            # Traitement du chunk
+            for local_idx, record in enumerate(chunk_records):
+                row_idx = start_idx + local_idx
+                self.fill_single_row(table, row_idx, record, search_term)
+
+            # Mise à jour responsive de l'interface
+            current_time = time.time()
+            if (current_time - last_update_time) * 1000 > Config.RESPONSIVE_UPDATE_INTERVAL:
+                QApplication.processEvents()  # Maintenir la responsivité
+                last_update_time = current_time
+
+            # Progression
+            if progress_dialog:
+                if progress_dialog.wasCanceled():
+                    break
+                progress_value = 60 + ((chunk_idx + 1) / total_chunks) * 35  # 60% -> 95%
+                self._update_progress_with_debounce(
+                    progress_dialog,
+                    int(progress_value),
+                    f"Remplissage optimisé... {end_idx}/{len(records)} lignes"
+                )
+
+    @handle_table_operations_errors()
+    def _safe_fill_standard_core(self, table, records, progress_dialog, search_term):
+        """Remplissage standard de manière sécurisée"""
+        for row_idx, record in enumerate(records):
+            if progress_dialog and progress_dialog.wasCanceled():
+                break
+
+            self.fill_single_row(table, row_idx, record, search_term)
+
+            # Mise à jour de progression moins fréquente pour petites tables
+            if progress_dialog and row_idx % 100 == 0:
+                progress_value = 60 + (row_idx / len(records)) * 35
+                self._update_progress_with_debounce(
+                    progress_dialog,
+                    int(progress_value),
+                    f"Remplissage du tableau... {row_idx}/{len(records)} lignes"
+                )
+
+    @handle_highlight_errors(return_value=False)
+    def _safe_regex_search(self, pattern: str, item_text: str) -> bool:
+        """Recherche regex de manière sécurisée"""
+        return bool(re.search(pattern, item_text, re.IGNORECASE))

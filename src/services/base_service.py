@@ -295,6 +295,33 @@ def service_operation(operation_name: str, emit_signals: bool = True):
         return wrapper
     return decorator
 
+def safe_operation(operation_name: str, default_return: Any = None):
+    """
+    Décorateur léger pour helpers internes avec gestion d'erreurs silencieuse
+
+    Args:
+        operation_name: Nom de l'opération pour le logging
+        default_return: Valeur à retourner en cas d'erreur (None par défaut)
+
+    Usage:
+        @safe_operation("parse_data", default_return=[])
+        def _safe_parse_data(self, data):
+            # logique métier
+            return result
+    """
+    def decorator(func: Callable) -> Callable:
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except Exception as e:
+                # Log uniquement, pas d'interaction utilisateur
+                error_msg = f"Erreur {operation_name}: {e}"
+                app_logger.error(f"{self._service_name}.{error_msg}")
+                return default_return
+
+        return wrapper
+    return decorator
+
 class ServiceFactory:
     """
     Factory pour la création et l'injection de dépendances entre services

@@ -25,6 +25,7 @@ from ..core.config import Config
 # PHASE 6 CONSOLIDATION - Communication directe avec HtmlExportService
 from ..core.constants import ExportFormat
 from .html_export_service import HtmlExportService
+from ..utils.error_handler import handle_export_errors
 
 class ExportType(Enum):
     """Types d'export supportés"""
@@ -59,59 +60,51 @@ class ExportManagerService:
         return self._last_export_info
         
     # ===== INTERFACE PUBLIQUE UNIFIÉE =====
-    
+
+    @handle_export_errors(title="Erreur export unifié")
     def export_data(self, export_format: ExportFormat, export_type: ExportType = ExportType.MAIN) -> bool:
         """
         Point d'entrée unifié pour tous les exports
-        
+
         Args:
             export_format: Format d'export (CSV, HTML_BRANDS, HTML_DETAILS)
             export_type: Type d'export (MAIN, LEGACY, QUICK)
-            
+
         Returns:
             bool: True si succès, False sinon
         """
-        try:
-            # Validation initiale commune
-            search_term = self._get_search_term()
-            if not self._validate_search_term(search_term):
-                return False
-            
-            # Traitement selon le type d'export
-            if export_type == ExportType.MAIN:
-                return self._handle_main_export(search_term, export_format)
-            elif export_type == ExportType.LEGACY:
-                return self._handle_legacy_export(search_term, export_format)
-            elif export_type == ExportType.QUICK:
-                return self._handle_quick_export(search_term, export_format)
-            else:
-                raise ValueError(f"Type d'export non supporté: {export_type}")
-                
-        except Exception as e:
-            self._handle_error(f"Erreur export {export_type.value}: {e}")
+        # Validation initiale commune
+        search_term = self._get_search_term()
+        if not self._validate_search_term(search_term):
             return False
+
+        # Traitement selon le type d'export
+        if export_type == ExportType.MAIN:
+            return self._handle_main_export(search_term, export_format)
+        elif export_type == ExportType.LEGACY:
+            return self._handle_legacy_export(search_term, export_format)
+        elif export_type == ExportType.QUICK:
+            return self._handle_quick_export(search_term, export_format)
+        else:
+            raise ValueError(f"Type d'export non supporté: {export_type}")
     
+    @handle_export_errors(title="Erreur export avec référence")
     def export_with_reference(self, export_format: ExportFormat, custom_reference: str) -> bool:
         """
         Export direct avec référence personnalisée (pas de dialogue)
-        
+
         Args:
             export_format: Format d'export
             custom_reference: Référence personnalisée à utiliser
-            
+
         Returns:
             bool: True si succès
         """
-        try:
-            search_term = self._get_search_term()
-            if not self._validate_search_term(search_term):
-                return False
-                
-            return self._execute_export_with_reference(search_term, custom_reference, export_format)
-            
-        except Exception as e:
-            self._handle_error(f"Erreur export avec référence: {e}")
+        search_term = self._get_search_term()
+        if not self._validate_search_term(search_term):
             return False
+
+        return self._execute_export_with_reference(search_term, custom_reference, export_format)
     
     # ===== GESTION DES TYPES D'EXPORT =====
     
@@ -136,24 +129,20 @@ class ExportManagerService:
             export_format
         )
     
+    @handle_export_errors(title="Erreur export legacy")
     def _handle_legacy_export(self, search_term: str, export_format: ExportFormat) -> bool:
         """Gérer l'export legacy avec fallbacks"""
-        try:
-            # Pour CSV, toujours demander confirmation de référence
-            if export_format == ExportFormat.CSV:
-                selection_result = self._handle_csv_reference_selection(search_term)
-                if selection_result.cancelled:
-                    return False
-                    
-                # Export CSV simplifié
-                return self._handle_csv_export_legacy(selection_result.reference)
-            
-            # Pour les autres formats, utiliser l'export standard
-            return self._handle_standard_export(search_term, export_format)
-            
-        except Exception as e:
-            self._handle_error(f"Erreur export legacy: {e}")
-            return False
+        # Pour CSV, toujours demander confirmation de référence
+        if export_format == ExportFormat.CSV:
+            selection_result = self._handle_csv_reference_selection(search_term)
+            if selection_result.cancelled:
+                return False
+
+            # Export CSV simplifié
+            return self._handle_csv_export_legacy(selection_result.reference)
+
+        # Pour les autres formats, utiliser l'export standard
+        return self._handle_standard_export(search_term, export_format)
     
     def _handle_quick_export(self, search_term: str, export_format: ExportFormat) -> bool:
         """Gérer l'export rapide sans dialogue"""
@@ -290,173 +279,148 @@ class ExportManagerService:
             return False
         return True
     
+    @handle_export_errors(title="Erreur validation résultats")
     def _validate_search_results(self, search_term: str) -> bool:
         """Valider que la recherche a des résultats"""
-        try:
-            # Utiliser la même logique que TableController
-            if search_term and ('&&' in search_term or '||' in search_term):
-                # Recherche avancée
-                parsed_search_term = self.main_window.advanced_search_service.parse_advanced_search(search_term)
-                results = self.main_window.db_manager.load_data(
-                    parsed_search_term, {}, None, None, None, None, False
-                )
-            else:
-                # Recherche simple
-                results = self.main_window.db_manager.load_data(
-                    search_term, {}, None, None, None, None, False
-                )
-            
-            if not results:
-                self._add_to_history("⚠️ Export annulé: Aucun résultat trouvé pour cette recherche")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            app_logger.error(f"Erreur validation résultats de recherche: {e}")
+        # Utiliser la même logique que TableController
+        if search_term and ('&&' in search_term or '||' in search_term):
+            # Recherche avancée
+            parsed_search_term = self.main_window.advanced_search_service.parse_advanced_search(search_term)
+            results = self.main_window.db_manager.load_data(
+                parsed_search_term, {}, None, None, None, None, False
+            )
+        else:
+            # Recherche simple
+            results = self.main_window.db_manager.load_data(
+                search_term, {}, None, None, None, None, False
+            )
+
+        if not results:
+            self._add_to_history("⚠️ Export annulé: Aucun résultat trouvé pour cette recherche")
             return False
+
+        return True
     
     # ===== EXECUTION D'EXPORT UNIFIÉE =====
     
-    def _execute_export_with_reference(self, search_data_term: Union[str, Dict], 
+    @handle_export_errors(title="Erreur exécution export")
+    def _execute_export_with_reference(self, search_data_term: Union[str, Dict],
                                      reference: str, export_format: ExportFormat) -> bool:
         """
         Exécuter l'export avec référence personnalisée
-        
+
         Unifie la logique des 3 anciens services
         """
-        try:
-            # Récupérer les données
-            data = self._get_export_data(search_data_term)
-            if not data:
-                raise Exception("Aucune donnée trouvée pour la recherche")
-            
-            # Export selon le format
-            if export_format == ExportFormat.CSV:
-                return self._execute_csv_export(data, reference)
-            elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
-                return self._execute_html_export(data, reference, export_format)
-            else:
-                raise Exception(f"Format d'export {export_format} non supporté")
-                
-        except Exception as e:
-            raise Exception(f"Erreur lors de l'export: {e}")
+        # Récupérer les données
+        data = self._get_export_data(search_data_term)
+        if not data:
+            raise Exception("Aucune donnée trouvée pour la recherche")
+
+        # Export selon le format
+        if export_format == ExportFormat.CSV:
+            return self._execute_csv_export(data, reference)
+        elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
+            return self._execute_html_export(data, reference, export_format)
+        else:
+            raise Exception(f"Format d'export {export_format} non supporté")
     
+    @handle_export_errors(title="Erreur export CSV")
     def _execute_csv_export(self, data: List, reference: str) -> bool:
         """Exécuter l'export CSV avec format standardisé"""
         filename = f"{reference}_everyParts.csv"
-        
-        try:
-            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-            full_path = os.path.join(desktop_path, filename)
-            
-            with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                # En-têtes standardisés
-                headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
-                writer.writerow(headers)
-                
-                # Données formatées
-                for row in data:
-                    type_val = row[0] if len(row) > 0 else ''
-                    manufacturer_val = row[1] if len(row) > 1 else ''
-                    ref_modele_val = row[2] if len(row) > 2 else ''
-                    commercial_ref_val = row[3] if len(row) > 3 else ''
-                    
-                    modele_name = f"{ref_modele_val} - {commercial_ref_val}".strip(' -')
-                    
-                    csv_row = [
-                        reference,                    # product
-                        type_val,                     # type
-                        manufacturer_val,             # manufacturer
-                        modele_name,                  # modele_name
-                        ref_modele_val,               # reference_modele
-                        commercial_ref_val            # commercial_reference
-                    ]
-                    writer.writerow(csv_row)
-            
-            self._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
-            return True
-            
-        except Exception as e:
-            raise Exception(f"Erreur export CSV: {e}")
+
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+        full_path = os.path.join(desktop_path, filename)
+
+        with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile, delimiter=';')
+
+            # En-têtes standardisés
+            headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
+            writer.writerow(headers)
+
+            # Données formatées
+            for row in data:
+                type_val = row[0] if len(row) > 0 else ''
+                manufacturer_val = row[1] if len(row) > 1 else ''
+                ref_modele_val = row[2] if len(row) > 2 else ''
+                commercial_ref_val = row[3] if len(row) > 3 else ''
+
+                modele_name = f"{ref_modele_val} - {commercial_ref_val}".strip(' -')
+
+                csv_row = [
+                    reference,                    # product
+                    type_val,                     # type
+                    manufacturer_val,             # manufacturer
+                    modele_name,                  # modele_name
+                    ref_modele_val,               # reference_modele
+                    commercial_ref_val            # commercial_reference
+                ]
+                writer.writerow(csv_row)
+
+        self._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
+        return True
     
+    @handle_export_errors(title="Erreur export HTML")
     def _execute_html_export(self, data: List, reference: str, export_format: ExportFormat) -> bool:
         """Exécuter l'export HTML via service unifié"""
-        try:
-            # PHASE 6 CONSOLIDATION - Direct vers HtmlExportService
-            if export_format == ExportFormat.HTML_BRANDS:
-                result = HtmlExportService.generate_html_brands(data)
-            elif export_format == ExportFormat.HTML_DETAILS:
-                result = HtmlExportService.generate_html_details(data)
-                # Conserver les infos d'export pour compatibilité
-                char_count = HtmlExportService.count_non_html_chars(result)
-                self._last_export_info = {
-                    'format_used': 'optimisé',
-                    'char_count': char_count,
-                    'char_limit': HtmlExportService.CHAR_LIMIT,
-                    'description': 'Format optimisé automatiquement'
-                }
-            else:
-                raise ValueError(f"Format d'export HTML non supporté: {export_format}")
-            
-            # Copier dans le presse-papiers
-            QApplication.clipboard().setText(result)
-            
-            format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
-            self._add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
-            
-            return True
-            
-        except Exception as e:
-            raise Exception(f"Erreur export HTML: {e}")
+        # PHASE 6 CONSOLIDATION - Direct vers HtmlExportService
+        if export_format == ExportFormat.HTML_BRANDS:
+            result = HtmlExportService.generate_html_brands(data)
+        elif export_format == ExportFormat.HTML_DETAILS:
+            result = HtmlExportService.generate_html_details(data)
+            # Conserver les infos d'export pour compatibilité
+            char_count = HtmlExportService.count_non_html_chars(result)
+            self._last_export_info = {
+                'format_used': 'optimisé',
+                'char_count': char_count,
+                'char_limit': HtmlExportService.CHAR_LIMIT,
+                'description': 'Format optimisé automatiquement'
+            }
+        else:
+            raise ValueError(f"Format d'export HTML non supporté: {export_format}")
+
+        # Copier dans le presse-papiers
+        QApplication.clipboard().setText(result)
+
+        format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
+        self._add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
+
+        return True
     
+    @handle_export_errors(title="Erreur export CSV legacy")
     def _handle_csv_export_legacy(self, reference: str) -> bool:
         """Gérer l'export CSV legacy"""
-        try:
-            result = self.main_window._export_displayed_table_as_csv(reference)
-            if result:
-                self._add_to_history(f"Export CSV: {result}")
-                self.main_window.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-                return True
-            return False
-            
-        except Exception as e:
-            QMessageBox.critical(
-                self.main_window, 
-                "Erreur d'export", 
-                f"Erreur lors de l'export CSV:\n{e}"
-            )
-            return False
+        result = self.main_window._export_displayed_table_as_csv(reference)
+        if result:
+            self._add_to_history(f"Export CSV: {result}")
+            self.main_window.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
+            return True
+        return False
     
+    @handle_export_errors(title="Erreur export standard")
     def _handle_standard_export(self, search_term: str, export_format: ExportFormat) -> bool:
         """Gérer l'export standard (autres formats)"""
-        try:
-            # Récupérer les filtres actifs
-            column_filters = self._get_active_column_filters()
-            incomplete_filter = getattr(self.main_window, 'show_incomplete_only', False)
-            
-            # Export via DataExporter
-            result = self.main_window.exporter.export_search_results(
-                search_term, export_format,
-                column_filters=column_filters,
-                incomplete_filter=incomplete_filter
-            )
-            
-            # Traitement du résultat
-            if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
-                QApplication.clipboard().setText(result)
-                self._show_export_status(export_format, result)
-            else:
-                self.main_window.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-                self._add_to_history(f"Export {export_format.value}: {result}")
-            
-            return True
-            
-        except Exception as e:
-            self._handle_error(f"Erreur export standard: {e}")
-            return False
+        # Récupérer les filtres actifs
+        column_filters = self._get_active_column_filters()
+        incomplete_filter = getattr(self.main_window, 'show_incomplete_only', False)
+
+        # Export via DataExporter
+        result = self.main_window.exporter.export_search_results(
+            search_term, export_format,
+            column_filters=column_filters,
+            incomplete_filter=incomplete_filter
+        )
+
+        # Traitement du résultat
+        if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
+            QApplication.clipboard().setText(result)
+            self._show_export_status(export_format, result)
+        else:
+            self.main_window.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
+            self._add_to_history(f"Export {export_format.value}: {result}")
+
+        return True
     
     # ===== UTILITAIRES =====
     

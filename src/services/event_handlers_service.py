@@ -6,6 +6,7 @@ Extrait des méthodes _on_* de main_refactored.py
 from typing import Any, Dict
 from src.core.logger import app_logger
 from src.core.config import Config
+from src.utils.error_handler import handle_event_handler_errors
 
 class EventHandlersService:
     """Service pour gérer tous les gestionnaires d'événements"""
@@ -47,17 +48,12 @@ class EventHandlersService:
         if hasattr(self.main_window, 'statusbar'):
             self.main_window.statusbar.showMessage(f"🔍 Recherche avancée: '{term}'...")
     
+    @handle_event_handler_errors()
     def on_advanced_search_completed(self, results, search_term: str):
         """Gestionnaire fin recherche avancée - déléguer à table_controller pour pagination"""
-        try:
-            # Déléguer entièrement au table_controller qui sait gérer la pagination
-            # Le parsing a déjà été fait par AdvancedSearchService, on passe le terme
-            self.main_window.table_controller.load_data(search_term, is_search=True)
-
-        except Exception as e:
-            app_logger.error(f"Erreur dans on_advanced_search_completed: {e}")
-            # Fallback vers table_controller.load_data si erreur
-            self.main_window.table_controller.load_data(search_term, is_search=True)
+        # Déléguer entièrement au table_controller qui sait gérer la pagination
+        # Le parsing a déjà été fait par AdvancedSearchService, on passe le terme
+        self.main_window.table_controller.load_data(search_term, is_search=True)
     
     def on_advanced_search_error(self, error_msg: str):
         """Gestionnaire erreur recherche avancée"""
@@ -116,25 +112,22 @@ class EventHandlersService:
                 app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
                 self._trigger_event_driven_save("import_completed")
 
+    @handle_event_handler_errors()
     def _trigger_event_driven_save(self, event_type: str):
         """Déclencher sauvegarde événementielle"""
-        try:
-            if (hasattr(self.main_window, 'database_operations_service') and
-                self.main_window.database_operations_service and
-                Config.USE_NEW_DATABASE_OPERATIONS_SERVICE):
+        if (hasattr(self.main_window, 'database_operations_service') and
+            self.main_window.database_operations_service and
+            Config.USE_NEW_DATABASE_OPERATIONS_SERVICE):
 
-                app_logger.debug(f"Sauvegarde événementielle déclenchée: {event_type}")
-                # Pour les imports, pas de modified_cells à sauvegarder car déjà commitées
-                # Mais on peut forcer un commit des transactions en attente
-                success = self.main_window.database_operations_service.auto_save()
+            app_logger.debug(f"Sauvegarde événementielle déclenchée: {event_type}")
+            # Pour les imports, pas de modified_cells à sauvegarder car déjà commitées
+            # Mais on peut forcer un commit des transactions en attente
+            success = self.main_window.database_operations_service.auto_save()
 
-                if success:
-                    app_logger.debug(f"Sauvegarde événementielle réussie pour {event_type}")
-                else:
-                    app_logger.warning(f"Échec sauvegarde événementielle pour {event_type}")
-
-        except Exception as e:
-            app_logger.error(f"Erreur sauvegarde événementielle {event_type}: {e}")
+            if success:
+                app_logger.debug(f"Sauvegarde événementielle réussie pour {event_type}")
+            else:
+                app_logger.warning(f"Échec sauvegarde événementielle pour {event_type}")
     
     def on_import_error(self, data: Dict[str, Any]):
         """Gestionnaire événement erreur d'import"""

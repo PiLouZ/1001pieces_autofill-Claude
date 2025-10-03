@@ -5,6 +5,7 @@ Inspiré du script.js pour e-commerce pièces détachées électroménager
 
 import random
 from typing import List, Dict, Tuple, Optional
+from .error_handler import handle_seo_generation_errors
 
 class SEOGenerator:
     """Générateur de métadonnées SEO pour pièces détachées électroménager"""
@@ -52,123 +53,109 @@ class SEOGenerator:
     def __init__(self):
         self.last_generation_info = {}
     
-    def generate_meta_title(self, reference: str, description: str, type_appareil: str, 
+    @handle_seo_generation_errors()
+    def generate_meta_title(self, reference: str, description: str, type_appareil: str,
                            fabricants: List[str], max_length: int = 60) -> Dict[str, any]:
         """
         Générer un méta title optimisé avec priorité à l'inclusion d'au moins 1 marque
         Format: [Référence pièce] - [Description pièce] pour [type appareil] [Fabricant]
         """
-        try:
-            # Nettoyer et formater les données
-            reference_clean = reference.strip()
-            description_clean = description.strip().capitalize()
-            type_clean = type_appareil.strip().lower()
-            
-            # Étape 1: Maximiser le nombre de marques pour atteindre ~60 caractères
-            fabricants_optimaux = self._maximize_brands_in_title(fabricants, reference_clean, 
-                                                               description_clean, type_clean, max_length)
-            
-            # Construire le titre de base avec le maximum de fabricants possible
-            base_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
-            
-            # Étape 2: Optimiser si le titre dépasse 60 caractères
-            if len(base_title) > max_length:
-                # Essayer sans " - " (gagne 3 caractères)
-                compact_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricants_optimaux}"
-                if len(compact_title) <= max_length:
-                    base_title = compact_title
-                else:
-                    # Appliquer les optimisations intelligentes tout en gardant les marques
-                    base_title = self._optimize_title_with_brands(compact_title, fabricants_optimaux, max_length)
-            
-            # Informations de génération
-            original_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
-            generation_info = {
-                'original_length': len(original_title),
-                'final_length': len(base_title),
-                'truncated': len(base_title) < len(original_title),
-                'within_limit': len(base_title) <= max_length,
-                'fabricants_used': fabricants_optimaux,
-                'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
-                'total_fabricants_available': len(fabricants),
-                'brand_guaranteed': bool(fabricants_optimaux.strip())
-            }
-            
-            self.last_generation_info['title'] = generation_info
-            
-            return {
-                'title': base_title,
-                'length': len(base_title),
-                'info': generation_info
-            }
-            
-        except Exception as e:
-            return {
-                'title': f"Erreur génération titre: {e}",
-                'length': 0,
-                'info': {'error': str(e)}
-            }
+        # Nettoyer et formater les données
+        reference_clean = reference.strip()
+        description_clean = description.strip().capitalize()
+        type_clean = type_appareil.strip().lower()
+
+        # Étape 1: Maximiser le nombre de marques pour atteindre ~60 caractères
+        fabricants_optimaux = self._maximize_brands_in_title(fabricants, reference_clean,
+                                                           description_clean, type_clean, max_length)
+
+        # Construire le titre de base avec le maximum de fabricants possible
+        base_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
+
+        # Étape 2: Optimiser si le titre dépasse 60 caractères
+        if len(base_title) > max_length:
+            # Essayer sans " - " (gagne 3 caractères)
+            compact_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricants_optimaux}"
+            if len(compact_title) <= max_length:
+                base_title = compact_title
+            else:
+                # Appliquer les optimisations intelligentes tout en gardant les marques
+                base_title = self._optimize_title_with_brands(compact_title, fabricants_optimaux, max_length)
+
+        # Informations de génération
+        original_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
+        generation_info = {
+            'original_length': len(original_title),
+            'final_length': len(base_title),
+            'truncated': len(base_title) < len(original_title),
+            'within_limit': len(base_title) <= max_length,
+            'fabricants_used': fabricants_optimaux,
+            'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
+            'total_fabricants_available': len(fabricants),
+            'brand_guaranteed': bool(fabricants_optimaux.strip())
+        }
+
+        self.last_generation_info['title'] = generation_info
+
+        return {
+            'title': base_title,
+            'length': len(base_title),
+            'info': generation_info
+        }
     
+    @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
                                  fabricants: List[str], max_length: int = 150) -> Dict[str, any]:
         """
         Générer une méta description aléatoire
         Format: [Phrase] {description} {reference} pour {type appareil} {fabricants} [phrase]
         """
-        try:
-            # Nettoyer et formater les données  
-            reference_clean = reference.strip()
-            description_clean = description.strip().lower()
-            type_clean = type_appareil.strip().lower()
-            
-            # Ajouter l'article approprié (votre/vos) devant la description
-            article = self._get_article(description_clean)
-            description_with_article = f"{article} {description_clean}"
-            
-            # Sélectionner un template aléatoire
-            template = random.choice(self.META_DESCRIPTION_TEMPLATES)
-            
-            # Sélectionner les fabricants selon l'espace disponible
-            fabricants_str = self._select_fabricants_for_description(fabricants, template,
-                                                                   reference_clean, description_clean, 
-                                                                   type_clean, max_length)
-            
-            # Construire la description
-            description_text = template.format(
-                description=description_with_article,
-                reference=reference_clean,
-                type_appareil=type_clean,
-                fabricants=fabricants_str
-            )
-            
-            # Appliquer la troncature intelligente si nécessaire
-            final_description = self._smart_truncate_description(description_text, max_length)
-            
-            # Informations de génération
-            generation_info = {
-                'template_used': template,
-                'original_length': len(description_text),
-                'final_length': len(final_description),
-                'truncated': len(final_description) < len(description_text),
-                'within_limit': len(final_description) <= max_length,
-                'fabricants_used': fabricants_str,
-                'fabricants_count': len(fabricants)
-            }
-            
-            self.last_generation_info['description'] = generation_info
-            
-            return {
-                'description': final_description,
-                'length': len(final_description),
-                'info': generation_info
-            }
-            
-        except Exception as e:
-            return {
-                'description': f"Erreur génération description: {e}",
-                'length': 0,
-                'info': {'error': str(e)}
-            }
+        # Nettoyer et formater les données
+        reference_clean = reference.strip()
+        description_clean = description.strip().lower()
+        type_clean = type_appareil.strip().lower()
+
+        # Ajouter l'article approprié (votre/vos) devant la description
+        article = self._get_article(description_clean)
+        description_with_article = f"{article} {description_clean}"
+
+        # Sélectionner un template aléatoire
+        template = random.choice(self.META_DESCRIPTION_TEMPLATES)
+
+        # Sélectionner les fabricants selon l'espace disponible
+        fabricants_str = self._select_fabricants_for_description(fabricants, template,
+                                                               reference_clean, description_clean,
+                                                               type_clean, max_length)
+
+        # Construire la description
+        description_text = template.format(
+            description=description_with_article,
+            reference=reference_clean,
+            type_appareil=type_clean,
+            fabricants=fabricants_str
+        )
+
+        # Appliquer la troncature intelligente si nécessaire
+        final_description = self._smart_truncate_description(description_text, max_length)
+
+        # Informations de génération
+        generation_info = {
+            'template_used': template,
+            'original_length': len(description_text),
+            'final_length': len(final_description),
+            'truncated': len(final_description) < len(description_text),
+            'within_limit': len(final_description) <= max_length,
+            'fabricants_used': fabricants_str,
+            'fabricants_count': len(fabricants)
+        }
+
+        self.last_generation_info['description'] = generation_info
+
+        return {
+            'description': final_description,
+            'length': len(final_description),
+            'info': generation_info
+        }
     
     def _maximize_brands_in_title(self, fabricants: List[str], reference: str, 
                                 description: str, type_appareil: str, max_length: int) -> str:
@@ -274,24 +261,29 @@ class SEOGenerator:
         """Réduire le nombre de marques si le titre est encore trop long"""
         if len(title) <= max_length:
             return title
-            
+
         # Séparer le titre en parties
         parts = title.split()
         if len(parts) < 4:  # Pas assez de parties à optimiser
             return title
-            
+
         # Trouver où commencent les marques (après le type d'appareil)
-        try:
-            # Format: "référence description pour type marque1 marque2 marque3"
-            type_index = parts.index("pour") + 1  # Position du type d'appareil
-            if type_index + 1 < len(parts):  # Il y a des marques après le type
-                # Garder le titre jusqu'au type + une seule marque
-                reduced_title = " ".join(parts[:type_index + 2])  # référence + desc + pour + type + 1 marque
-                return reduced_title
-        except ValueError:
-            pass  # Si structure inattendue, continuer avec la troncature normale
-            
+        reduced_title = self._safe_find_and_reduce_brands(parts)
+        if reduced_title:
+            return reduced_title
+
         return title[:max_length]  # Troncature brute en dernier recours
+
+    @handle_seo_generation_errors()
+    def _safe_find_and_reduce_brands(self, parts: list) -> str:
+        """Trouver l'index 'pour' et réduire les marques de manière sécurisée"""
+        # Format: "référence description pour type marque1 marque2 marque3"
+        type_index = parts.index("pour") + 1  # Position du type d'appareil
+        if type_index + 1 < len(parts):  # Il y a des marques après le type
+            # Garder le titre jusqu'au type + une seule marque
+            reduced_title = " ".join(parts[:type_index + 2])  # référence + desc + pour + type + 1 marque
+            return reduced_title
+        return None
     
     def _smart_truncate_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
         """Troncature intelligente en essayant de garder au moins une marque"""

@@ -9,6 +9,7 @@ from ..ui.qt_imports import QWidget, QLabel, QPushButton, QComboBox, QObject, py
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
 from .base_service import BaseService
+from ..utils.error_handler import handle_navigation_errors
 
 class NavigationService(QObject):
     """Service centralisé pour la gestion de la navigation et pagination"""
@@ -101,79 +102,73 @@ class NavigationService(QObject):
         self.go_to_page(total_pages)
         self.navigation_requested.emit("last")
             
+    @handle_navigation_errors()
     def change_page_size(self, size_text: str):
         """Changer la taille de page"""
-        try:
-            if size_text == "Tout":
-                new_size = -1  # Utiliser -1 comme TableController
-                show_all = True
-            else:
-                new_size = int(size_text)
-                show_all = False
+        if size_text == "Tout":
+            new_size = -1  # Utiliser -1 comme TableController
+            show_all = True
+        else:
+            new_size = int(size_text)
+            show_all = False
 
-            if new_size != self.page_size:
-                self.page_size = new_size
+        if new_size != self.page_size:
+            self.page_size = new_size
 
-                # Mettre à jour le contrôleur de table
-                if hasattr(self.table_controller, 'page_size'):
-                    self.table_controller.page_size = new_size
+            # Mettre à jour le contrôleur de table
+            if hasattr(self.table_controller, 'page_size'):
+                self.table_controller.page_size = new_size
 
-                # Réinitialiser à la première page lors du changement de taille
-                self.current_page = 1
-                if hasattr(self.table_controller, 'current_page'):
-                    self.table_controller.current_page = 1
+            # Réinitialiser à la première page lors du changement de taille
+            self.current_page = 1
+            if hasattr(self.table_controller, 'current_page'):
+                self.table_controller.current_page = 1
 
-                # Recharger les données avec le terme de recherche courant
-                if hasattr(self.table_controller, 'load_data'):
-                    # Utiliser la méthode centralisée pour récupérer le terme de recherche
-                    search_term = None
-                    if (hasattr(self.parent_window, 'advanced_search_service') and
-                        hasattr(self.parent_window.advanced_search_service, 'get_current_search_term_with_fallback')):
-                        search_term = self.parent_window.advanced_search_service.get_current_search_term_with_fallback(self.parent_window)
-                    else:
-                        # Fallback vers current_search_term du table_controller
-                        search_term = getattr(self.table_controller, 'current_search_term', None)
+            # Recharger les données avec le terme de recherche courant
+            if hasattr(self.table_controller, 'load_data'):
+                # Utiliser la méthode centralisée pour récupérer le terme de recherche
+                search_term = None
+                if (hasattr(self.parent_window, 'advanced_search_service') and
+                    hasattr(self.parent_window.advanced_search_service, 'get_current_search_term_with_fallback')):
+                    search_term = self.parent_window.advanced_search_service.get_current_search_term_with_fallback(self.parent_window)
+                else:
+                    # Fallback vers current_search_term du table_controller
+                    search_term = getattr(self.table_controller, 'current_search_term', None)
 
-                    self.table_controller.load_data(search_term)
-                self.update_pagination_controls()
+                self.table_controller.load_data(search_term)
+            self.update_pagination_controls()
 
-                # Émettre le signal
-                self.page_size_changed.emit(new_size)
+            # Émettre le signal
+            self.page_size_changed.emit(new_size)
 
-                # Notifier le parent si nécessaire
-                if hasattr(self.parent_window, 'incomplete_button_service'):
-                    self.parent_window.incomplete_button_service.invalidate_cache("changement pagination")
-                elif hasattr(self.parent_window, '_update_incomplete_button_visibility'):
-                    self.parent_window._update_incomplete_button_visibility()
+            # Notifier le parent si nécessaire
+            if hasattr(self.parent_window, 'incomplete_button_service'):
+                self.parent_window.incomplete_button_service.invalidate_cache("changement pagination")
+            elif hasattr(self.parent_window, '_update_incomplete_button_visibility'):
+                self.parent_window._update_incomplete_button_visibility()
 
-                app_logger.debug(f"Taille de page changée: {new_size} ({'Tout' if show_all else 'Paginé'})")
-
-        except ValueError as e:
-            app_logger.error(f"Erreur changement taille page: {e}")
+            app_logger.debug(f"Taille de page changée: {new_size} ({'Tout' if show_all else 'Paginé'})")
             
+    @handle_navigation_errors()
     def update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination"""
-        try:
-            if not all([self.page_label, self.prev_button, self.next_button]):
-                return
+        if not all([self.page_label, self.prev_button, self.next_button]):
+            return
 
-            current_page = self.current_page
-            total_pages = self.get_total_pages()
+        current_page = self.current_page
+        total_pages = self.get_total_pages()
 
-            # Mise à jour du label de page
-            if self.total_rows == 0:
-                self.page_label.setText("Page 1 sur 1")
-            else:
-                self.page_label.setText(f"Page {current_page} sur {total_pages}")
+        # Mise à jour du label de page
+        if self.total_rows == 0:
+            self.page_label.setText("Page 1 sur 1")
+        else:
+            self.page_label.setText(f"Page {current_page} sur {total_pages}")
 
-            # Activation/désactivation des boutons
-            self.prev_button.setEnabled(current_page > 1)
-            self.next_button.setEnabled(current_page < total_pages)
+        # Activation/désactivation des boutons
+        self.prev_button.setEnabled(current_page > 1)
+        self.next_button.setEnabled(current_page < total_pages)
 
-            app_logger.debug(f"Contrôles pagination mis à jour: {current_page}/{total_pages}")
-
-        except Exception as e:
-            self._base_service.handle_error(e, "mise à jour contrôles pagination")
+        app_logger.debug(f"Contrôles pagination mis à jour: {current_page}/{total_pages}")
             
     def get_current_page_info(self) -> Dict[str, Any]:
         """Obtenir les informations de la page courante"""

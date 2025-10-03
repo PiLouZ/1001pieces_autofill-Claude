@@ -18,6 +18,7 @@ from ..ui.qt_imports import (QWidget, QTableWidgetItem, QTableWidgetSelectionRan
 
 from ..core.config import Config
 from ..core.logger import app_logger
+from ..utils.error_handler import handle_drag_operation_errors
 
 class DragHandle(QWidget):
     """Poignée de glisser-déposer pour la recopie de cellules"""
@@ -307,15 +308,16 @@ class DragHandle(QWidget):
             # Sauvegarder uniquement les lignes modifiées (pas toutes les lignes)
             self._save_auto_fill_changes(modified_rows, selection.leftColumn(), selection.rightColumn())
     
+    @handle_drag_operation_errors()
     def _save_auto_fill_changes(self, modified_rows, start_col, end_col):
         """Sauvegarder uniquement les cellules modifiées par auto-fill (double-clic)"""
-        try:
-            # Suspendre les invalidations de cache pendant l'auto-fill
-            if hasattr(self.main_window, 'db_manager'):
-                cache_service = getattr(self.main_window.db_manager, 'cache_invalidation', None)
-                if cache_service:
-                    cache_service.suspend_invalidation("auto-fill double-clic")
+        # Suspendre les invalidations de cache pendant l'auto-fill
+        if hasattr(self.main_window, 'db_manager'):
+            cache_service = getattr(self.main_window.db_manager, 'cache_invalidation', None)
+            if cache_service:
+                cache_service.suspend_invalidation("auto-fill double-clic")
 
+        try:
             saved_count = 0
             cells_to_clean = []  # Cellules à nettoyer de modified_cells
 
@@ -333,8 +335,6 @@ class DragHandle(QWidget):
                 for cell_coords in cells_to_clean:
                     self.main_window.modified_cells.discard(cell_coords)
 
-        except Exception as e:
-            app_logger.error(f"Erreur sauvegarde auto-fill: {e}")
         finally:
             # Reprendre les invalidations avec une invalidation globale
             if hasattr(self.main_window, 'db_manager'):
@@ -414,12 +414,14 @@ class DragHandle(QWidget):
         """Arrêter le défilement automatique"""
         if self.auto_scroll_timer:
             self.auto_scroll_timer.stop()
-            try:
-                self.auto_scroll_timer.disconnect()
-            except:
-                pass
+            self._safe_disconnect_timer()
             self.auto_scroll_timer.deleteLater()
             self.auto_scroll_timer = None
+
+    @handle_drag_operation_errors()
+    def _safe_disconnect_timer(self):
+        """Déconnecter le timer de manière sécurisée"""
+        self.auto_scroll_timer.disconnect()
         self.auto_scroll_direction = None
         # Forcer le nettoyage
         if hasattr(self, 'current_scroll_speed'):
@@ -457,19 +459,17 @@ class DragHandle(QWidget):
             # Si on ne peut plus défiler, arrêter le défilement automatique
             self._stop_auto_scroll()
     
+    @handle_drag_operation_errors()
     def _continue_drag_fill(self):
         """Continuer la duplication pendant le défilement"""
-        try:
-            # Recalculer la position pour continuer la duplication
-            if hasattr(self, 'last_mouse_pos') and self.start_pos:
-                # Simuler un mouseMoveEvent pour continuer la duplication
-                delta_y = self.last_mouse_pos.y() - self.start_pos.y()
-                row_height = self.table.rowHeight(0) or 24
-                
-                if abs(delta_y) > row_height / 2:
-                    self._handle_drag_fill(delta_y, row_height)
-        except Exception as e:
-            app_logger.error(f"Erreur continue drag: {e}")
+        # Recalculer la position pour continuer la duplication
+        if hasattr(self, 'last_mouse_pos') and self.start_pos:
+            # Simuler un mouseMoveEvent pour continuer la duplication
+            delta_y = self.last_mouse_pos.y() - self.start_pos.y()
+            row_height = self.table.rowHeight(0) or 24
+
+            if abs(delta_y) > row_height / 2:
+                self._handle_drag_fill(delta_y, row_height)
 
 class DragHandleService:
     """

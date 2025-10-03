@@ -14,6 +14,7 @@ from ..ui.qt_imports import QFont, QKeyEvent
 
 from ..core.logger import app_logger
 from .duplicates_analysis_service import clean_display_text
+from .base_service import BaseService, safe_operation, service_operation
 
 class KeyboardTreeWidget(QTreeWidget):
     """QTreeWidget personnalisé avec gestion clavier pour sélection par barre espace"""
@@ -90,28 +91,24 @@ class CleanupStatsWidget(QWidget):
         
     def update_stats(self, statistics: Dict[str, Any]):
         """Mettre à jour les statistiques affichées"""
-        try:
-            self.devices_stats.setText(
-                f"📱 {statistics.get('total_duplicate_devices', 0)} groupes "
-                f"({statistics.get('total_affected_devices', 0)} appareils concernés)"
-            )
-            
-            self.pieces_stats.setText(
-                f"🔧 {statistics.get('total_duplicate_pieces', 0)} pièces dupliquées "
-                f"({statistics.get('total_affected_pieces', 0)} occurrences)"
-            )
-            
-            self.inconsistencies_stats.setText(
-                f"📋 {statistics.get('total_potential_inconsistencies', 0)} incohérences potentielles"
-            )
-            
-            self.savings_stats.setText(
-                f"💾 Économie potentielle: {statistics.get('potential_savings_devices', 0)} appareils, "
-                f"{statistics.get('potential_savings_pieces', 0)} pièces"
-            )
-            
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour stats: {e}")
+        self.devices_stats.setText(
+            f"📱 {statistics.get('total_duplicate_devices', 0)} groupes "
+            f"({statistics.get('total_affected_devices', 0)} appareils concernés)"
+        )
+
+        self.pieces_stats.setText(
+            f"🔧 {statistics.get('total_duplicate_pieces', 0)} pièces dupliquées "
+            f"({statistics.get('total_affected_pieces', 0)} occurrences)"
+        )
+
+        self.inconsistencies_stats.setText(
+            f"📋 {statistics.get('total_potential_inconsistencies', 0)} incohérences potentielles"
+        )
+
+        self.savings_stats.setText(
+            f"💾 Économie potentielle: {statistics.get('potential_savings_devices', 0)} appareils, "
+            f"{statistics.get('potential_savings_pieces', 0)} pièces"
+        )
 
 class DuplicateDevicesWidget(QWidget):
     """Widget pour gérer les appareils en doublon"""
@@ -382,37 +379,33 @@ class DuplicateDevicesWidget(QWidget):
         else:
             ref_modele = group_text
 
-        try:
-            # Utiliser le parent pour accéder au DatabaseManager
-            parent_widget = self.parent()
-            while parent_widget and not hasattr(parent_widget, 'db_manager'):
-                parent_widget = parent_widget.parent()
+        # Utiliser le parent pour accéder au DatabaseManager
+        parent_widget = self.parent()
+        while parent_widget and not hasattr(parent_widget, 'db_manager'):
+            parent_widget = parent_widget.parent()
 
-            if parent_widget and hasattr(parent_widget, 'db_manager'):
-                success = parent_widget.db_manager.save_reference_decision(
-                    ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
-                )
+        if parent_widget and hasattr(parent_widget, 'db_manager'):
+            success = parent_widget.db_manager.save_reference_decision(
+                ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
+            )
 
-                if success:
-                    app_logger.info(f"Groupe {ref_modele} marqué comme distinct")
-                    # Désactiver le groupe dans l'affichage
-                    current_item.setDisabled(True)
-                    current_item.setText(2, f"{ref_modele} (MARQUÉ DISTINCT)")
+            if success:
+                app_logger.info(f"Groupe {ref_modele} marqué comme distinct")
+                # Désactiver le groupe dans l'affichage
+                current_item.setDisabled(True)
+                current_item.setText(2, f"{ref_modele} (MARQUÉ DISTINCT)")
 
-                    # Enregistrer dans l'historique
-                    if self.history_callback:
-                        self.history_callback(
-                            "Marquage distinct",
-                            f"Référence '{ref_modele}' marquée comme distincte",
-                            "Succès"
-                        )
-                else:
-                    app_logger.error(f"Échec marquage distinct pour {ref_modele}")
+                # Enregistrer dans l'historique
+                if self.history_callback:
+                    self.history_callback(
+                        "Marquage distinct",
+                        f"Référence '{ref_modele}' marquée comme distincte",
+                        "Succès"
+                    )
             else:
-                app_logger.error("Impossible d'accéder au DatabaseManager")
-
-        except Exception as e:
-            app_logger.error(f"Erreur marquage distinct: {e}")
+                app_logger.error(f"Échec marquage distinct pour {ref_modele}")
+        else:
+            app_logger.error("Impossible d'accéder au DatabaseManager")
 
 class DuplicatePiecesWidget(QWidget):
     """Widget pour gérer les pièces dupliquées"""
@@ -499,11 +492,11 @@ class DuplicatePiecesWidget(QWidget):
                     selected.append(ref_item.text())
         return selected
 
-class CleanupUIService(QObject):
+class CleanupUIService(BaseService):
     """Service d'interface utilisateur pour le nettoyage des doublons"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
+
+    def __init__(self, parent_window=None, parent=None):
+        super().__init__(parent_window, parent)
         
     def create_stats_widget(self) -> CleanupStatsWidget:
         """Créer le widget des statistiques"""
@@ -623,52 +616,48 @@ class DistinctReferencesWidget(QWidget):
         if not self.db_manager:
             return
 
-        try:
-            # Requête pour récupérer les références distinctes avec comptage des appareils
-            query = """
-                SELECT rd.ref_modele,
-                       COUNT(a.id) as nb_appareils,
-                       rd.created_at,
-                       rd.ref_modele as ref_key
-                FROM reference_decisions rd
-                LEFT JOIN appareils a ON a.ref_modele = rd.ref_modele
-                WHERE rd.decision = 'DISTINCT'
-                GROUP BY rd.ref_modele, rd.created_at
-                ORDER BY rd.created_at DESC
-            """
+        # Requête pour récupérer les références distinctes avec comptage des appareils
+        query = """
+            SELECT rd.ref_modele,
+                   COUNT(a.id) as nb_appareils,
+                   rd.created_at,
+                   rd.ref_modele as ref_key
+            FROM reference_decisions rd
+            LEFT JOIN appareils a ON a.ref_modele = rd.ref_modele
+            WHERE rd.decision = 'DISTINCT'
+            GROUP BY rd.ref_modele, rd.created_at
+            ORDER BY rd.created_at DESC
+        """
 
-            results = self.db_manager.execute_query(query)
-            self.distinct_references = results or []
+        results = self.db_manager.execute_query(query)
+        self.distinct_references = results or []
 
-            # Peupler l'arbre
-            self.references_tree.clear()
+        # Peupler l'arbre
+        self.references_tree.clear()
 
-            for row in self.distinct_references:
-                ref_modele = row[0]
-                nb_appareils = row[1]
-                created_at = row[2]
-                ref_id = row[3]
+        for row in self.distinct_references:
+            ref_modele = row[0]
+            nb_appareils = row[1]
+            created_at = row[2]
+            ref_id = row[3]
 
-                item = QTreeWidgetItem([
-                    "", ref_modele, str(nb_appareils),
-                    created_at or "Date inconnue", "Retirer"
-                ])
+            item = QTreeWidgetItem([
+                "", ref_modele, str(nb_appareils),
+                created_at or "Date inconnue", "Retirer"
+            ])
 
-                # Checkbox pour sélection
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(0, Qt.Unchecked)
-                item.setData(0, Qt.UserRole, ref_modele)  # Utiliser ref_modele comme clé
+            # Checkbox pour sélection
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.Unchecked)
+            item.setData(0, Qt.UserRole, ref_modele)  # Utiliser ref_modele comme clé
 
-                self.references_tree.addTopLevelItem(item)
+            self.references_tree.addTopLevelItem(item)
 
-            # Ajuster les colonnes
-            for i in range(self.references_tree.columnCount()):
-                self.references_tree.resizeColumnToContents(i)
+        # Ajuster les colonnes
+        for i in range(self.references_tree.columnCount()):
+            self.references_tree.resizeColumnToContents(i)
 
-            app_logger.info(f"Chargé {len(self.distinct_references)} références distinctes")
-
-        except Exception as e:
-            app_logger.error(f"Erreur chargement références distinctes: {e}")
+        app_logger.info(f"Chargé {len(self.distinct_references)} références distinctes")
 
     def _update_buttons_state(self):
         """Mettre à jour l'état des boutons selon les sélections"""
@@ -688,59 +677,53 @@ class DistinctReferencesWidget(QWidget):
         if not self.db_manager:
             return
 
-        try:
-            # Récupérer les références sélectionnées
-            selected_refs = []
+        # Récupérer les références sélectionnées
+        selected_refs = []
 
-            root = self.references_tree.invisibleRootItem()
-            for i in range(root.childCount()):
-                item = root.child(i)
-                if item.checkState(0) == Qt.Checked:
-                    ref_modele = item.data(0, Qt.UserRole)  # ref_modele stocké dans UserRole
-                    if ref_modele:
-                        selected_refs.append(ref_modele)
+        root = self.references_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            if item.checkState(0) == Qt.Checked:
+                ref_modele = item.data(0, Qt.UserRole)  # ref_modele stocké dans UserRole
+                if ref_modele:
+                    selected_refs.append(ref_modele)
 
-            if not selected_refs:
-                return
+        if not selected_refs:
+            return
 
-            # Confirmation
+        # Confirmation
+        from .message_helper import MessageHelper
+        if not MessageHelper.ask_question(
+            self,
+            f"Êtes-vous sûr de vouloir retirer {len(selected_refs)} références "
+            f"de la liste des références distinctes?\n\n"
+            f"Ces références pourront à nouveau être proposées comme doublons potentiels.",
+            "Confirmation de suppression"
+        ):
+            return
+
+        # Supprimer de la base de données
+        placeholders = ','.join(['?'] * len(selected_refs))
+        delete_query = f"DELETE FROM reference_decisions WHERE ref_modele IN ({placeholders})"
+
+        result = self.db_manager.execute_custom_query(delete_query, selected_refs)
+        success = True  # execute_custom_query n'a pas d'erreur si ça marche
+
+        if success:
+            # Recharger la liste
+            self.load_distinct_references()
+
+            from .message_helper import show_success
             from .message_helper import MessageHelper
-            if not MessageHelper.ask_question(
+            MessageHelper.show_success(
                 self,
-                f"Êtes-vous sûr de vouloir retirer {len(selected_refs)} références "
-                f"de la liste des références distinctes?\n\n"
-                f"Ces références pourront à nouveau être proposées comme doublons potentiels.",
-                "Confirmation de suppression"
-            ):
-                return
-
-            # Supprimer de la base de données
-            placeholders = ','.join(['?'] * len(selected_refs))
-            delete_query = f"DELETE FROM reference_decisions WHERE ref_modele IN ({placeholders})"
-
-            result = self.db_manager.execute_custom_query(delete_query, selected_refs)
-            success = True  # execute_custom_query n'a pas d'erreur si ça marche
-
-            if success:
-                # Recharger la liste
-                self.load_distinct_references()
-
-                from .message_helper import show_success
-                from .message_helper import MessageHelper
-                MessageHelper.show_success(
-                    self,
-                    f"{len(selected_refs)} références retirées avec succès.\n"
-                    f"Elles pourront à nouveau être détectées comme doublons potentiels.",
-                    "Suppression réussie"
-                )
-            else:
-                from .message_helper import show_error
-                show_error(self, "Erreur", "Erreur lors de la suppression des références.")
-
-        except Exception as e:
-            app_logger.error(f"Erreur suppression références distinctes: {e}")
+                f"{len(selected_refs)} références retirées avec succès.\n"
+                f"Elles pourront à nouveau être détectées comme doublons potentiels.",
+                "Suppression réussie"
+            )
+        else:
             from .message_helper import show_error
-            show_error(self, "Erreur", f"Erreur lors de la suppression: {str(e)}")
+            show_error(self, "Erreur", "Erreur lors de la suppression des références.")
 
 class ActionHistoryWidget(QWidget):
     """Widget pour afficher l'historique des actions de nettoyage"""
@@ -802,175 +785,152 @@ class ActionHistoryWidget(QWidget):
         if not self.db_manager:
             return
 
-        try:
-            from datetime import datetime
-            import getpass
+        from datetime import datetime
+        import getpass
 
-            # Insérer dans la base de données
-            query = """
-                INSERT INTO cleanup_history (timestamp, action_type, details, result, user)
-                VALUES (?, ?, ?, ?, ?)
-            """
-            values = (
-                datetime.now().isoformat(),
-                action_type,
-                details,
-                result,
-                getpass.getuser()
-            )
+        # Insérer dans la base de données
+        query = """
+            INSERT INTO cleanup_history (timestamp, action_type, details, result, user)
+            VALUES (?, ?, ?, ?, ?)
+        """
+        values = (
+            datetime.now().isoformat(),
+            action_type,
+            details,
+            result,
+            getpass.getuser()
+        )
 
-            # Créer la table si elle n'existe pas
-            self._ensure_history_table()
+        # Créer la table si elle n'existe pas
+        self._ensure_history_table()
 
-            result = self.db_manager.execute_insert(query, values)
-            success = result is not None
-            if success:
-                self.load_history()  # Recharger pour afficher la nouvelle entrée
-
-        except Exception as e:
-            app_logger.error(f"Erreur ajout historique: {e}")
+        result = self.db_manager.execute_insert(query, values)
+        success = result is not None
+        if success:
+            self.load_history()  # Recharger pour afficher la nouvelle entrée
 
     def _ensure_history_table(self):
         """Créer la table d'historique si elle n'existe pas"""
-        try:
-            create_table_query = """
-                CREATE TABLE IF NOT EXISTS cleanup_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    action_type TEXT NOT NULL,
-                    details TEXT,
-                    result TEXT,
-                    user TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            self.db_manager.execute_custom_query(create_table_query)
-        except Exception as e:
-            app_logger.error(f"Erreur création table historique: {e}")
+        create_table_query = """
+            CREATE TABLE IF NOT EXISTS cleanup_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                details TEXT,
+                result TEXT,
+                user TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        self.db_manager.execute_custom_query(create_table_query)
 
     def load_history(self):
         """Charger l'historique des actions"""
         if not self.db_manager:
             return
 
-        try:
-            self._ensure_history_table()
+        self._ensure_history_table()
 
-            # Requête pour récupérer l'historique
-            query = """
-                SELECT timestamp, action_type, details, result, user
-                FROM cleanup_history
-                ORDER BY timestamp DESC
-                LIMIT 100
-            """
+        # Requête pour récupérer l'historique
+        query = """
+            SELECT timestamp, action_type, details, result, user
+            FROM cleanup_history
+            ORDER BY timestamp DESC
+            LIMIT 100
+        """
 
-            results = self.db_manager.execute_query(query)
-            self.history_actions = results or []
+        results = self.db_manager.execute_query(query)
+        self.history_actions = results or []
 
-            # Peupler l'arbre
-            self.history_tree.clear()
+        # Peupler l'arbre
+        self.history_tree.clear()
 
-            for row in self.history_actions:
-                timestamp = row[0]
-                action_type = row[1]
-                details = row[2] or ""
-                result = row[3] or ""
-                user = row[4] or ""
+        for row in self.history_actions:
+            timestamp = row[0]
+            action_type = row[1]
+            details = row[2] or ""
+            result = row[3] or ""
+            user = row[4] or ""
 
-                # Formater la date
-                try:
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(timestamp)
-                    formatted_date = dt.strftime("%d/%m/%Y %H:%M:%S")
-                except:
-                    formatted_date = timestamp
+            # Formater la date
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(timestamp)
+                formatted_date = dt.strftime("%d/%m/%Y %H:%M:%S")
+            except:
+                formatted_date = timestamp
 
-                item = QTreeWidgetItem([
-                    formatted_date,
-                    action_type,
-                    details,
-                    result,
-                    user
-                ])
+            item = QTreeWidgetItem([
+                formatted_date,
+                action_type,
+                details,
+                result,
+                user
+            ])
 
-                self.history_tree.addTopLevelItem(item)
+            self.history_tree.addTopLevelItem(item)
 
-            # Ajuster les colonnes
-            for i in range(self.history_tree.columnCount()):
-                self.history_tree.resizeColumnToContents(i)
+        # Ajuster les colonnes
+        for i in range(self.history_tree.columnCount()):
+            self.history_tree.resizeColumnToContents(i)
 
-            app_logger.info(f"Chargé {len(self.history_actions)} entrées d'historique")
-
-        except Exception as e:
-            app_logger.error(f"Erreur chargement historique: {e}")
+        app_logger.info(f"Chargé {len(self.history_actions)} entrées d'historique")
 
     def _clear_history(self):
         """Vider l'historique après confirmation"""
-        try:
+        from .message_helper import MessageHelper
+        if not MessageHelper.ask_question(
+            self,
+            "Êtes-vous sûr de vouloir vider l'historique des actions?\n\n"
+            "Cette action est irréversible.",
+            "Confirmation de suppression"
+        ):
+            return
+
+        # Supprimer de la base de données
+        delete_query = "DELETE FROM cleanup_history"
+        result = self.db_manager.execute_custom_query(delete_query)
+        success = True  # execute_custom_query n'a pas d'erreur si ça marche
+
+        if success:
+            self.load_history()
+            from .message_helper import show_success
             from .message_helper import MessageHelper
-            if not MessageHelper.ask_question(
-                self,
-                "Êtes-vous sûr de vouloir vider l'historique des actions?\n\n"
-                "Cette action est irréversible.",
-                "Confirmation de suppression"
-            ):
-                return
-
-            # Supprimer de la base de données
-            delete_query = "DELETE FROM cleanup_history"
-            result = self.db_manager.execute_custom_query(delete_query)
-            success = True  # execute_custom_query n'a pas d'erreur si ça marche
-
-            if success:
-                self.load_history()
-                from .message_helper import show_success
-                from .message_helper import MessageHelper
-                MessageHelper.show_success(self, "L'historique a été vidé avec succès.", "Historique vidé")
-            else:
-                from .message_helper import show_error
-                show_error(self, "Erreur", "Erreur lors de la suppression de l'historique.")
-
-        except Exception as e:
-            app_logger.error(f"Erreur suppression historique: {e}")
+            MessageHelper.show_success(self, "L'historique a été vidé avec succès.", "Historique vidé")
+        else:
             from .message_helper import show_error
-            show_error(self, "Erreur", f"Erreur lors de la suppression: {str(e)}")
+            show_error(self, "Erreur", "Erreur lors de la suppression de l'historique.")
 
     def _export_history(self):
         """Exporter l'historique en CSV"""
-        try:
-            from ..ui.qt_imports import QFileDialog
-            import csv
-            from datetime import datetime
+        from ..ui.qt_imports import QFileDialog
+        import csv
+        from datetime import datetime
 
-            if not self.history_actions:
-                from .message_helper import show_error
-                show_error(self, "Aucune donnée", "Aucun historique à exporter.")
-                return
-
-            # Demander le nom du fichier
-            filename, _ = QFileDialog.getSaveFileName(
-                self,
-                "Exporter l'historique",
-                f"historique_nettoyage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "Fichiers CSV (*.csv)"
-            )
-
-            if not filename:
-                return
-
-            # Exporter en CSV
-            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(["Date/Heure", "Action", "Détails", "Résultat", "Utilisateur"])
-
-                for row in self.history_actions:
-                    writer.writerow(row)
-
-            from .message_helper import show_success
-            from .message_helper import MessageHelper
-            MessageHelper.show_success(self, f"Historique exporté vers:\n{filename}", "Export réussi")
-
-        except Exception as e:
-            app_logger.error(f"Erreur export historique: {e}")
+        if not self.history_actions:
             from .message_helper import show_error
-            show_error(self, "Erreur", f"Erreur lors de l'export: {str(e)}")
+            show_error(self, "Aucune donnée", "Aucun historique à exporter.")
+            return
+
+        # Demander le nom du fichier
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exporter l'historique",
+            f"historique_nettoyage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            "Fichiers CSV (*.csv)"
+        )
+
+        if not filename:
+            return
+
+        # Exporter en CSV
+        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["Date/Heure", "Action", "Détails", "Résultat", "Utilisateur"])
+
+            for row in self.history_actions:
+                writer.writerow(row)
+
+        from .message_helper import show_success
+        from .message_helper import MessageHelper
+        MessageHelper.show_success(self, f"Historique exporté vers:\n{filename}", "Export réussi")

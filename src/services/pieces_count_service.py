@@ -9,6 +9,7 @@ from ..ui.qt_imports import QTableWidget, QTableWidgetItem, QApplication, Qt, QC
 from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
 from .base_service import BaseService
+from ..utils.error_handler import handle_count_operation_errors
 
 class PiecesCountService(BaseService):
     """Service dédié à la gestion du comptage et affichage des pièces associées"""
@@ -25,22 +26,9 @@ class PiecesCountService(BaseService):
         updated_count = 0
         
         for row in rows:
-            try:
-                db_id = self._get_db_id_from_row(table, row)
-                if db_id:
-                    # Récupérer le nombre exact de pièces depuis la base
-                    pieces_count = self.db_manager.get_pieces_count_for_appareil(db_id)
-                    
-                    # Mettre à jour la cellule
-                    success = self._update_pieces_cell(table, row, pieces_count, db_id)
-                    if success:
-                        updated_count += 1
-                        app_logger.debug(f"Nb Pièces mis à jour: ligne {row} → {pieces_count} pièces")
-                    else:
-                        app_logger.warning(f"Échec mise à jour Nb Pièces ligne {row}")
-                        
-            except Exception as e:
-                self.handle_error(e, f"mise à jour Nb Pièces ligne {row}")
+            result = self._safe_update_single_row(table, row)
+            if result:
+                updated_count += 1
         
         if updated_count > 0:
             # Forcer le rafraîchissement global après toutes les mises à jour
@@ -68,18 +56,19 @@ class PiecesCountService(BaseService):
                 return row
         return None
     
+    @handle_count_operation_errors(return_value=False)
     def _update_pieces_cell(self, table: QTableWidget, row: int, pieces_count: int, db_id: int) -> bool:
         """Mettre à jour une cellule spécifique de la colonne Nb Pièces"""
+        # SOLUTION: Bloquer temporairement tous les signaux pour éviter les conflits
+        old_signals_blocked = table.blockSignals(True)
         try:
-            # SOLUTION: Bloquer temporairement tous les signaux pour éviter les conflits
-            old_signals_blocked = table.blockSignals(True)
             # Méthode 1: Essayer de modifier l'item existant d'abord
             existing_item = table.item(row, 7)
             if existing_item:
                 # Modifier l'item existant
                 existing_item.setText(str(pieces_count))
                 existing_item.setData(Qt.ItemDataRole.UserRole, db_id)
-                
+
                 # Appliquer le style
                 if pieces_count > 0:
                     existing_item.setBackground(QColor(220, 248, 198))  # Vert clair
@@ -92,7 +81,7 @@ class PiecesCountService(BaseService):
                 pieces_item = QTableWidgetItem(str(pieces_count))
                 pieces_item.setFlags(pieces_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 pieces_item.setData(Qt.ItemDataRole.UserRole, db_id)
-                
+
                 # Style selon le nombre de pièces
                 if pieces_count > 0:
                     pieces_item.setBackground(QColor(220, 248, 198))  # Vert clair
@@ -100,36 +89,30 @@ class PiecesCountService(BaseService):
                 else:
                     pieces_item.setBackground(QColor(248, 248, 248))  # Gris clair
                     pieces_item.setToolTip("Aucune pièce associée")
-                
+
                 table.setItem(row, 7, pieces_item)
-            
+
             return True
-            
-        except Exception as e:
-            return self.handle_error_with_return(e, f"mise à jour cellule [{row}, 7]", False)
         finally:
             # Rétablir les signaux dans tous les cas
             table.blockSignals(old_signals_blocked)
     
+    @handle_count_operation_errors()
     def _force_table_refresh(self, table: QTableWidget):
         """Forcer le rafraîchissement visuel du tableau"""
-        try:
-            # Méthode 1: Rafraîchissement spécifique de la colonne 7
-            table.resizeColumnToContents(7)
-            
-            # Méthode 2: Rafraîchissement du viewport
-            table.viewport().repaint()
-            
-            # Méthode 3: Traitement des événements en attente
-            QApplication.processEvents()
-            
-            # Méthode 4: Invalidation de la région de la colonne
-            column_rect = table.visualRect(table.model().index(0, 7))
-            if not column_rect.isEmpty():
-                table.viewport().update(column_rect)
-                
-        except Exception as e:
-            self.handle_error(e, "rafraîchissement tableau")
+        # Méthode 1: Rafraîchissement spécifique de la colonne 7
+        table.resizeColumnToContents(7)
+
+        # Méthode 2: Rafraîchissement du viewport
+        table.viewport().repaint()
+
+        # Méthode 3: Traitement des événements en attente
+        QApplication.processEvents()
+
+        # Méthode 4: Invalidation de la région de la colonne
+        column_rect = table.visualRect(table.model().index(0, 7))
+        if not column_rect.isEmpty():
+            table.viewport().update(column_rect)
     
     def _get_db_id_from_row(self, table: QTableWidget, row: int) -> Optional[int]:
         """Récupérer l'ID de l'appareil depuis une ligne du tableau"""
@@ -141,7 +124,24 @@ class PiecesCountService(BaseService):
         if first_item:
             return first_item.data(Qt.ItemDataRole.UserRole)
         return None
-    
+
+    @handle_count_operation_errors(return_value=False)
+    def _safe_update_single_row(self, table: QTableWidget, row: int) -> bool:
+        """Mettre à jour une ligne de manière sécurisée"""
+        db_id = self._get_db_id_from_row(table, row)
+        if db_id:
+            # Récupérer le nombre exact de pièces depuis la base
+            pieces_count = self.db_manager.get_pieces_count_for_appareil(db_id)
+
+            # Mettre à jour la cellule
+            success = self._update_pieces_cell(table, row, pieces_count, db_id)
+            if success:
+                app_logger.debug(f"Nb Pièces mis à jour: ligne {row} → {pieces_count} pièces")
+                return True
+            else:
+                app_logger.warning(f"Échec mise à jour Nb Pièces ligne {row}")
+        return False
+
     def get_pieces_count_summary(self, table: QTableWidget) -> Dict[str, int]:
         """Obtenir un résumé du comptage des pièces dans le tableau"""
         if not table:

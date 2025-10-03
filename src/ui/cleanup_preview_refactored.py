@@ -15,6 +15,7 @@ from ..data.data_validator import DataValidator
 from ..services.duplicates_analysis_service import DuplicatesAnalysisService
 from ..services.cleanup_ui_service import CleanupUIService
 from .message_helper import show_success, show_error, MessageHelper
+from ..utils.error_handler import handle_cleanup_preview_errors
 
 class CleanupPreviewDialog(QDialog):
     """Fenêtre de prévisualisation du nettoyage des doublons - Version refactorisée"""
@@ -149,38 +150,34 @@ class CleanupPreviewDialog(QDialog):
         """Gérer la progression de l'analyse"""
         self.ui_service.update_progress(self.progress_widgets, progress, message)
         
+    @handle_cleanup_preview_errors()
     def _on_analysis_completed(self, results: dict):
         """Gérer la fin de l'analyse"""
-        try:
-            self.analysis_results = results
-            
-            # Masquer la progression
-            for widget in self.progress_widgets.values():
-                widget.setVisible(False)
-                
-            # Afficher les résultats
-            self.main_widget.setVisible(True)
-            
-            # Mettre à jour les statistiques
-            if self.stats_widget and 'statistics' in results:
-                self.stats_widget.update_stats(results['statistics'])
-                
-            # Peupler les onglets
-            if self.devices_widget and 'duplicate_devices' in results:
-                self.devices_widget.populate_devices(results['duplicate_devices'])
-                
-            if self.pieces_widget and 'duplicate_pieces' in results:
-                self.pieces_widget.populate_pieces(results['duplicate_pieces'])
-                
-            # Activer les boutons
-            self.preview_btn.setEnabled(True)
-            self._update_buttons_state()
-            
-            app_logger.info("Interface de nettoyage mise à jour avec les résultats d'analyse")
-            
-        except Exception as e:
-            app_logger.error(f"Erreur lors de l'affichage des résultats: {e}")
-            self._on_analysis_error(f"Erreur affichage: {str(e)}")
+        self.analysis_results = results
+
+        # Masquer la progression
+        for widget in self.progress_widgets.values():
+            widget.setVisible(False)
+
+        # Afficher les résultats
+        self.main_widget.setVisible(True)
+
+        # Mettre à jour les statistiques
+        if self.stats_widget and 'statistics' in results:
+            self.stats_widget.update_stats(results['statistics'])
+
+        # Peupler les onglets
+        if self.devices_widget and 'duplicate_devices' in results:
+            self.devices_widget.populate_devices(results['duplicate_devices'])
+
+        if self.pieces_widget and 'duplicate_pieces' in results:
+            self.pieces_widget.populate_pieces(results['duplicate_pieces'])
+
+        # Activer les boutons
+        self.preview_btn.setEnabled(True)
+        self._update_buttons_state()
+
+        app_logger.info("Interface de nettoyage mise à jour avec les résultats d'analyse")
             
     def _on_analysis_error(self, error_message: str):
         """Gérer les erreurs d'analyse"""
@@ -203,118 +200,110 @@ class CleanupPreviewDialog(QDialog):
             
         self.apply_btn.setEnabled(has_selection)
         
-    def _preview_changes(self):
+    @handle_cleanup_preview_errors()
+    def _preview_changes(self, checked=False):
         """Prévisualiser les changements qui seront appliqués"""
-        try:
-            preview_text = "Aperçu des changements qui seront appliqués:\n\n"
+        preview_text = "Aperçu des changements qui seront appliqués:\n\n"
+
+        # Appareils à fusionner
+        if self.devices_widget:
+            merge_groups = self.devices_widget.get_merge_groups()
+            if merge_groups:
+                preview_text += f"📱 APPAREILS À FUSIONNER ({len(merge_groups)} groupes):\n"
+                for group in merge_groups:
+                    master_id = group['master_id']
+                    duplicate_ids = group['duplicate_ids']
+                    preview_text += f"  • Fusionner appareils {duplicate_ids} vers appareil {master_id}\n"
+                preview_text += "\n"
+
+        # Pièces à supprimer
+        if self.pieces_widget:
+            selected_pieces = self.pieces_widget.get_selected_pieces()
+            if selected_pieces:
+                preview_text += f"🔧 PIÈCES DUPLIQUÉES À NETTOYER ({len(selected_pieces)} références):\n"
+                for ref_piece in selected_pieces[:10]:  # Montrer les 10 premières
+                    preview_text += f"  • {ref_piece}\n"
+                if len(selected_pieces) > 10:
+                    preview_text += f"  • ... et {len(selected_pieces) - 10} autres\n"
+                preview_text += "\n"
+
+        preview_text += "ATTENTION: Ces opérations sont irréversibles!\n"
+        preview_text += "Assurez-vous d'avoir une sauvegarde de votre base de données."
+
+        # Afficher dans une boîte de dialogue
+        from .qt_imports import QTextEdit
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Aperçu des changements")
+        dialog.resize(600, 400)
+
+        layout = QVBoxLayout(dialog)
+
+        text_edit = QTextEdit()
+        text_edit.setPlainText(preview_text)
+        text_edit.setReadOnly(True)
+        layout.addWidget(text_edit)
+
+        # Bouton fermer
+        close_btn = QPushButton("Fermer")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+
+        dialog.exec_()
             
-            # Appareils à fusionner
-            if self.devices_widget:
-                merge_groups = self.devices_widget.get_merge_groups()
-                if merge_groups:
-                    preview_text += f"📱 APPAREILS À FUSIONNER ({len(merge_groups)} groupes):\n"
-                    for group in merge_groups:
-                        master_id = group['master_id']
-                        duplicate_ids = group['duplicate_ids']
-                        preview_text += f"  • Fusionner appareils {duplicate_ids} vers appareil {master_id}\n"
-                    preview_text += "\n"
-                    
-            # Pièces à supprimer
-            if self.pieces_widget:
-                selected_pieces = self.pieces_widget.get_selected_pieces()
-                if selected_pieces:
-                    preview_text += f"🔧 PIÈCES DUPLIQUÉES À NETTOYER ({len(selected_pieces)} références):\n"
-                    for ref_piece in selected_pieces[:10]:  # Montrer les 10 premières
-                        preview_text += f"  • {ref_piece}\n"
-                    if len(selected_pieces) > 10:
-                        preview_text += f"  • ... et {len(selected_pieces) - 10} autres\n"
-                    preview_text += "\n"
-                    
-            preview_text += "ATTENTION: Ces opérations sont irréversibles!\n"
-            preview_text += "Assurez-vous d'avoir une sauvegarde de votre base de données."
-            
-            # Afficher dans une boîte de dialogue
-            from .qt_imports import QTextEdit
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Aperçu des changements")
-            dialog.resize(600, 400)
-            
-            layout = QVBoxLayout(dialog)
-            
-            text_edit = QTextEdit()
-            text_edit.setPlainText(preview_text)
-            text_edit.setReadOnly(True)
-            layout.addWidget(text_edit)
-            
-            # Bouton fermer
-            close_btn = QPushButton("Fermer")
-            close_btn.clicked.connect(dialog.accept)
-            layout.addWidget(close_btn)
-            
-            dialog.exec_()
-            
-        except Exception as e:
-            app_logger.error(f"Erreur aperçu changements: {e}")
-            show_error(self, "Erreur", f"Erreur lors de la génération de l'aperçu: {str(e)}")
-            
-    def _apply_cleanup(self):
+    @handle_cleanup_preview_errors()
+    def _apply_cleanup(self, checked=False):
         """Appliquer le nettoyage sélectionné"""
-        try:
-            # Confirmation
-            if not MessageHelper.ask_question(
-                self,
-                "Êtes-vous sûr de vouloir appliquer ces changements?\n\n"
-                "Cette opération est irréversible.\n"
-                "Assurez-vous d'avoir une sauvegarde de votre base de données.",
-                "Confirmation du nettoyage"
-            ):
-                return
-                
-            # Préparer les options de nettoyage
-            cleanup_options = {}
-            
-            # Options pour les appareils
-            if self.devices_widget:
-                merge_groups = self.devices_widget.get_merge_groups()
-                if merge_groups:
-                    cleanup_options['device_merges'] = merge_groups
-                    
-            # Options pour les pièces
-            if self.pieces_widget:
-                selected_pieces = self.pieces_widget.get_selected_pieces()
-                if selected_pieces:
-                    cleanup_options['piece_deletions'] = selected_pieces
-                    
-            # Appliquer le nettoyage
-            if cleanup_options:
-                results = self.analysis_service.apply_cleanup_decisions(cleanup_options)
-                
-                # Afficher les résultats
-                if results.get('errors'):
-                    error_text = "\n".join(results['errors'])
-                    show_error(self, "Erreurs lors du nettoyage", f"Certaines opérations ont échoué:\n{error_text}")
-                else:
-                    success_message = f"Nettoyage terminé avec succès!\n\n"
-                    success_message += f"• {results.get('devices_merged', 0)} appareils fusionnés\n"
-                    success_message += f"• {results.get('devices_deleted', 0)} doublons d'appareils supprimés\n"
-                    success_message += f"• {results.get('pieces_deleted', 0)} pièces dupliquées supprimées"
-                    
-                    MessageHelper.show_success(self, success_message, "Nettoyage terminé")
+        # Confirmation
+        if not MessageHelper.ask_question(
+            self,
+            "Êtes-vous sûr de vouloir appliquer ces changements?\n\n"
+            "Cette opération est irréversible.\n"
+            "Assurez-vous d'avoir une sauvegarde de votre base de données.",
+            "Confirmation du nettoyage"
+        ):
+            return
 
-                    # Enregistrer dans l'historique
-                    if self.history_widget:
-                        details = f"{results.get('devices_merged', 0)} appareils fusionnés, {results.get('devices_deleted', 0)} doublons supprimés, {results.get('pieces_deleted', 0)} pièces nettoyées"
-                        self.history_widget.add_action("Nettoyage automatique", details, "Succès")
+        # Préparer les options de nettoyage
+        cleanup_options = {}
 
-                    # Fermer la boîte de dialogue
-                    self.user_choice = 'applied'
-                    self.accept()
+        # Options pour les appareils
+        if self.devices_widget:
+            merge_groups = self.devices_widget.get_merge_groups()
+            if merge_groups:
+                cleanup_options['device_merges'] = merge_groups
+
+        # Options pour les pièces
+        if self.pieces_widget:
+            selected_pieces = self.pieces_widget.get_selected_pieces()
+            if selected_pieces:
+                cleanup_options['piece_deletions'] = selected_pieces
+
+        # Appliquer le nettoyage
+        if cleanup_options:
+            results = self.analysis_service.apply_cleanup_decisions(cleanup_options)
+
+            # Afficher les résultats
+            if results.get('errors'):
+                error_text = "\n".join(results['errors'])
+                show_error(self, "Erreurs lors du nettoyage", f"Certaines opérations ont échoué:\n{error_text}")
             else:
-                show_error(self, "Aucune sélection", "Aucun élément sélectionné pour le nettoyage.")
-                
-        except Exception as e:
-            app_logger.error(f"Erreur application nettoyage: {e}")
-            show_error(self, "Erreur", f"Erreur lors de l'application du nettoyage: {str(e)}")
+                success_message = f"Nettoyage terminé avec succès!\n\n"
+                success_message += f"• {results.get('devices_merged', 0)} appareils fusionnés\n"
+                success_message += f"• {results.get('devices_deleted', 0)} doublons d'appareils supprimés\n"
+                success_message += f"• {results.get('pieces_deleted', 0)} pièces dupliquées supprimées"
+
+                MessageHelper.show_success(self, success_message, "Nettoyage terminé")
+
+                # Enregistrer dans l'historique
+                if self.history_widget:
+                    details = f"{results.get('devices_merged', 0)} appareils fusionnés, {results.get('devices_deleted', 0)} doublons supprimés, {results.get('pieces_deleted', 0)} pièces nettoyées"
+                    self.history_widget.add_action("Nettoyage automatique", details, "Succès")
+
+                # Fermer la boîte de dialogue
+                self.user_choice = 'applied'
+                self.accept()
+        else:
+            show_error(self, "Aucune sélection", "Aucun élément sélectionné pour le nettoyage.")
             
     def get_user_choice(self):
         """Obtenir le choix de l'utilisateur"""

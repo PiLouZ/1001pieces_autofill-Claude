@@ -12,7 +12,8 @@ from ..core.config import Config
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
 from ..utils.error_handler import (
-    handle_table_operations_errors, handle_async_worker_errors
+    handle_table_operations_errors, handle_async_worker_errors,
+    handle_database_operation_errors, handle_ui_operation_errors
 )
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
@@ -224,97 +225,95 @@ class TableController:
             self.table.itemSelectionChanged.connect(on_selection_changed_callback)
             self.table.currentCellChanged.connect(lambda: on_selection_changed_callback())
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur chargement données tableau")
     def load_data(self, search_term: str = None, is_search: bool = False):
         """Charger les données dans le tableau avec pagination et filtres"""
         import time
         start_time = time.time()
-        
-        try:
-            # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
-            self.current_search_term = search_term
 
-            # Réinitialiser le tri seulement si c'est une nouvelle recherche ET qu'on n'est pas en train de faire un tri
-            # Ne pas réinitialiser si c'est un appel depuis _apply_database_sort
-            if (is_search and
-                search_term != getattr(self, 'previous_search_term', None) and
-                not getattr(self, '_sorting_in_progress', False)):
-                self.current_sort_column = -1
-                self.current_sort_order = Qt.AscendingOrder
-                self.previous_search_term = search_term
-            # Calculer les paramètres de pagination
-            if self.page_size == -1:  # "Tout" sélectionné
-                limit = None
-                offset = None
-            else:
-                limit = self.page_size
-                offset = (self.current_page - 1) * self.page_size
-            
-            # Obtenir les filtres de colonnes
-            column_filters = {}
-            for col_idx, filter_widget in self.filter_widgets.items():
-                if filter_widget is not None:  # Skip removed filters
-                    if isinstance(filter_widget, QComboBox):
-                        filter_text = filter_widget.currentText().strip()
-                    else:  # QLineEdit
-                        filter_text = filter_widget.text().strip()
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
-            
-            # Ajouter le filtre des lignes incomplètes si activé
-            # CORRECTION: Utiliser le service de tri/filtrage si disponible
-            if (hasattr(self.parent_window, 'sorting_filtering_service') and
-                self.parent_window.sorting_filtering_service):
-                incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
-            else:
-                incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
-            
-            # SOLUTION FINALE: Parser avec SearchService directement sans condition (UNIVERSALE)
-            effective_search_term = search_term
-            if search_term and isinstance(search_term, str) and hasattr(self.parent_window, 'search_service'):
-                # Toujours parser avec SearchService pour uniformité && et ||
-                parsed_term = self.parent_window.search_service.parse_advanced_search(search_term)
-                if parsed_term:  # Si parsing réussi, utiliser le terme parsé
-                    effective_search_term = parsed_term
+        # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
+        self.current_search_term = search_term
 
-            # Compter le total avec le terme unifié
-            self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
-            
-            if self.page_size == -1:  # Mode "Tout"
-                self.total_pages = 1
-                self.current_page = 1
-            else:
-                self.total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
-                if self.current_page > self.total_pages:
-                    self.current_page = self.total_pages
-            
-            # Charger les données avec le terme unifié (CONSOLIDATION FIXING)
-            records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
-                                               self.current_sort_column, self.current_sort_order, incomplete_filter)
+        # Réinitialiser le tri seulement si c'est une nouvelle recherche ET qu'on n'est pas en train de faire un tri
+        # Ne pas réinitialiser si c'est un appel depuis _apply_database_sort
+        if (is_search and
+            search_term != getattr(self, 'previous_search_term', None) and
+            not getattr(self, '_sorting_in_progress', False)):
+            self.current_sort_column = -1
+            self.current_sort_order = Qt.AscendingOrder
+            self.previous_search_term = search_term
 
-            # Remplir le tableau
-            if self.total_rows > 1000:
-                self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
-            else:
-                self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
-            
-            # Mettre à jour les contrôles de pagination
-            self._update_pagination_controls()
-            
-            # Mettre à jour les indicateurs de tri pour s'assurer qu'ils sont corrects
-            self._update_sort_indicators()
-            
-            # Initialiser les valeurs précédentes pour le tracking des modifications
-            if hasattr(self.parent_window, '_init_previous_values'):
-                self.parent_window._init_previous_values()
-            
-            # Performance logging
-            elapsed = time.time() - start_time
-            app_logger.debug(f"Table loaded: {len(records) if 'records' in locals() else 0} records in {elapsed:.3f}s")
-            
-        except Exception as e:
-            app_logger.error(f"Erreur lors du chargement des données: {e}")
-            self.table.setRowCount(0)
+        # Calculer les paramètres de pagination
+        if self.page_size == -1:  # "Tout" sélectionné
+            limit = None
+            offset = None
+        else:
+            limit = self.page_size
+            offset = (self.current_page - 1) * self.page_size
 
+        # Obtenir les filtres de colonnes
+        column_filters = {}
+        for col_idx, filter_widget in self.filter_widgets.items():
+            if filter_widget is not None:  # Skip removed filters
+                if isinstance(filter_widget, QComboBox):
+                    filter_text = filter_widget.currentText().strip()
+                else:  # QLineEdit
+                    filter_text = filter_widget.text().strip()
+                if filter_text:
+                    column_filters[col_idx] = filter_text
+
+        # Ajouter le filtre des lignes incomplètes si activé
+        # CORRECTION: Utiliser le service de tri/filtrage si disponible
+        if (hasattr(self.parent_window, 'sorting_filtering_service') and
+            self.parent_window.sorting_filtering_service):
+            incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
+        else:
+            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+
+        # SOLUTION FINALE: Parser avec SearchService directement sans condition (UNIVERSALE)
+        effective_search_term = search_term
+        if search_term and isinstance(search_term, str) and hasattr(self.parent_window, 'search_service'):
+            # Toujours parser avec SearchService pour uniformité && et ||
+            parsed_term = self.parent_window.search_service.parse_advanced_search(search_term)
+            if parsed_term:  # Si parsing réussi, utiliser le terme parsé
+                effective_search_term = parsed_term
+
+        # Compter le total avec le terme unifié
+        self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
+
+        if self.page_size == -1:  # Mode "Tout"
+            self.total_pages = 1
+            self.current_page = 1
+        else:
+            self.total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
+            if self.current_page > self.total_pages:
+                self.current_page = self.total_pages
+
+        # Charger les données avec le terme unifié (CONSOLIDATION FIXING)
+        records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
+                                           self.current_sort_column, self.current_sort_order, incomplete_filter)
+
+        # Remplir le tableau
+        if self.total_rows > 1000:
+            self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
+        else:
+            self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
+
+        # Mettre à jour les contrôles de pagination
+        self._update_pagination_controls()
+
+        # Mettre à jour les indicateurs de tri pour s'assurer qu'ils sont corrects
+        self._update_sort_indicators()
+
+        # Initialiser les valeurs précédentes pour le tracking des modifications
+        if hasattr(self.parent_window, '_init_previous_values'):
+            self.parent_window._init_previous_values()
+
+        # Performance logging
+        elapsed = time.time() - start_time
+        app_logger.debug(f"Table loaded: {len(records) if 'records' in locals() else 0} records in {elapsed:.3f}s")
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur démarrage load_data_async")
     def load_data_async(self, search_term: str = None, is_search: bool = False):
         """Version asynchrone de load_data() - Phase 2c
 
@@ -329,138 +328,125 @@ class TableController:
             app_logger.debug("Requête async déjà en cours, ignorée")
             return
 
-        try:
-            # IDENTIQUE à load_data() - même logique de préparation
-            self.current_search_term = search_term
+        # IDENTIQUE à load_data() - même logique de préparation
+        self.current_search_term = search_term
 
-            # Réinitialiser le tri pour nouvelle recherche (même logique)
-            if (is_search and
-                search_term != getattr(self, 'previous_search_term', None) and
-                not getattr(self, '_sorting_in_progress', False)):
-                self.current_sort_column = -1
-                self.current_sort_order = Qt.AscendingOrder
-                self.previous_search_term = search_term
+        # Réinitialiser le tri pour nouvelle recherche (même logique)
+        if (is_search and
+            search_term != getattr(self, 'previous_search_term', None) and
+            not getattr(self, '_sorting_in_progress', False)):
+            self.current_sort_column = -1
+            self.current_sort_order = Qt.AscendingOrder
+            self.previous_search_term = search_term
 
-            # Calculer pagination (même logique)
-            if self.page_size == -1:
-                limit = None
-                offset = None
-            else:
-                limit = self.page_size
-                offset = (self.current_page - 1) * self.page_size
+        # Calculer pagination (même logique)
+        if self.page_size == -1:
+            limit = None
+            offset = None
+        else:
+            limit = self.page_size
+            offset = (self.current_page - 1) * self.page_size
 
-            # Obtenir filtres colonnes (même logique)
-            column_filters = {}
-            for col_idx, filter_widget in self.filter_widgets.items():
-                if filter_widget is not None:
-                    if isinstance(filter_widget, QComboBox):
-                        filter_text = filter_widget.currentText().strip()
-                    else:
-                        filter_text = filter_widget.text().strip()
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
+        # Obtenir filtres colonnes (même logique)
+        column_filters = {}
+        for col_idx, filter_widget in self.filter_widgets.items():
+            if filter_widget is not None:
+                if isinstance(filter_widget, QComboBox):
+                    filter_text = filter_widget.currentText().strip()
+                else:
+                    filter_text = filter_widget.text().strip()
+                if filter_text:
+                    column_filters[col_idx] = filter_text
 
-            # Filtre lignes incomplètes (même logique)
-            if (hasattr(self.parent_window, 'sorting_filtering_service') and
-                self.parent_window.sorting_filtering_service):
-                incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
-            else:
-                incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+        # Filtre lignes incomplètes (même logique)
+        if (hasattr(self.parent_window, 'sorting_filtering_service') and
+            self.parent_window.sorting_filtering_service):
+            incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
+        else:
+            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
 
-            # DIFFÉRENCE: Nettoyer thread précédent s'il existe
-            if self.query_worker is not None:
-                self.query_worker.quit()
-                self.query_worker.wait()
-                self.query_worker = None
+        # DIFFÉRENCE: Nettoyer thread précédent s'il existe
+        if self.query_worker is not None:
+            self.query_worker.quit()
+            self.query_worker.wait()
+            self.query_worker = None
 
-            # Créer et configurer le worker thread
-            self.query_worker = DatabaseQueryWorker(
-                self.db_manager,
-                search_term,
-                column_filters,
-                limit,
-                offset,
-                self.current_sort_column,
-                self.current_sort_order,
-                incomplete_filter
-            )
+        # Créer et configurer le worker thread
+        self.query_worker = DatabaseQueryWorker(
+            self.db_manager,
+            search_term,
+            column_filters,
+            limit,
+            offset,
+            self.current_sort_column,
+            self.current_sort_order,
+            incomplete_filter
+        )
 
-            # Connecter les signaux
-            self.query_worker.data_loaded.connect(self._on_async_data_loaded)
-            self.query_worker.error_occurred.connect(self._on_async_error)
+        # Connecter les signaux
+        self.query_worker.data_loaded.connect(self._on_async_data_loaded)
+        self.query_worker.error_occurred.connect(self._on_async_error)
 
-            # Marquer comme en cours et démarrer
-            self.loading_in_progress = True
+        # Marquer comme en cours et démarrer
+        self.loading_in_progress = True
 
-            # Optionnel: Indicateur visuel de chargement
-            if hasattr(self.parent_window, 'statusbar'):
-                self.parent_window.statusbar.showMessage("🔄 Chargement des données...")
+        # Optionnel: Indicateur visuel de chargement
+        if hasattr(self.parent_window, 'statusbar'):
+            self.parent_window.statusbar.showMessage("🔄 Chargement des données...")
 
-            self.query_worker.start()
+        self.query_worker.start()
 
-            # Log de performance pour comparaison
-            prep_time = (time.time() - start_time) * 1000
-            app_logger.debug(f"load_data_async préparé en {prep_time:.1f}ms (worker démarré)")
+        # Log de performance pour comparaison
+        prep_time = (time.time() - start_time) * 1000
+        app_logger.debug(f"load_data_async préparé en {prep_time:.1f}ms (worker démarré)")
 
-        except Exception as e:
-            app_logger.error(f"Erreur lors du démarrage load_data_async: {e}")
-            self.loading_in_progress = False
-            if hasattr(self.parent_window, 'statusbar'):
-                self.parent_window.statusbar.showMessage(f"❌ Erreur: {e}", Config.STATUS_MESSAGE_TIMEOUT)
-
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur _on_async_data_loaded")
     def _on_async_data_loaded(self, records):
         """Callback quand les données async sont chargées"""
-        try:
-            # IDENTIQUE à load_data() - même logique de remplissage
-            if records is None:
-                records = []
+        # IDENTIQUE à load_data() - même logique de remplissage
+        if records is None:
+            records = []
 
-            # Compter total pour pagination (même logique que sync)
-            if not hasattr(self, '_counting_in_progress'):
-                try:
-                    self.total_rows = self.db_manager.count_data(
-                        self.current_search_term,
-                        self.filter_widgets,
-                        getattr(self.parent_window, 'show_incomplete_only', False)
-                    )
-                except:
-                    self.total_rows = len(records)
+        # Compter total pour pagination (même logique que sync)
+        if not hasattr(self, '_counting_in_progress'):
+            try:
+                self.total_rows = self.db_manager.count_data(
+                    self.current_search_term,
+                    self.filter_widgets,
+                    getattr(self.parent_window, 'show_incomplete_only', False)
+                )
+            except:
+                self.total_rows = len(records)
 
-            # Calculer pagination (même logique)
-            if self.page_size == -1:
-                self.total_pages = 1
-                self.current_page = 1
-            else:
-                self.total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
-                if self.current_page > self.total_pages:
-                    self.current_page = self.total_pages
+        # Calculer pagination (même logique)
+        if self.page_size == -1:
+            self.total_pages = 1
+            self.current_page = 1
+        else:
+            self.total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
+            if self.current_page > self.total_pages:
+                self.current_page = self.total_pages
 
-            # Remplir tableau (même logique que sync)
-            if self.total_rows > 1000:
-                self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, self.current_search_term)
-            else:
-                self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, self.current_search_term)
+        # Remplir tableau (même logique que sync)
+        if self.total_rows > 1000:
+            self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, self.current_search_term)
+        else:
+            self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, self.current_search_term)
 
-            # Mettre à jour contrôles (même logique)
-            self._update_pagination_controls()
-            self._update_sort_indicators()
+        # Mettre à jour contrôles (même logique)
+        self._update_pagination_controls()
+        self._update_sort_indicators()
 
-            # Init valeurs précédentes (même logique)
-            if hasattr(self.parent_window, '_init_previous_values'):
-                self.parent_window._init_previous_values()
+        # Init valeurs précédentes (même logique)
+        if hasattr(self.parent_window, '_init_previous_values'):
+            self.parent_window._init_previous_values()
 
-            # Nettoyer et finaliser
-            self.loading_in_progress = False
-            if hasattr(self.parent_window, 'statusbar'):
-                self.parent_window.statusbar.showMessage(f"✅ {len(records)} lignes chargées", Config.STATUS_MESSAGE_TIMEOUT)
+        # Nettoyer et finaliser
+        self.loading_in_progress = False
+        if hasattr(self.parent_window, 'statusbar'):
+            self.parent_window.statusbar.showMessage(f"✅ {len(records)} lignes chargées", Config.STATUS_MESSAGE_TIMEOUT)
 
-            app_logger.debug(f"load_data_async terminé: {len(records)} résultats")
-
-        except Exception as e:
-            app_logger.error(f"Erreur _on_async_data_loaded: {e}")
-            self.loading_in_progress = False
-            if hasattr(self.parent_window, 'statusbar'):
-                self.parent_window.statusbar.showMessage(f"❌ Erreur UI: {e}", Config.STATUS_MESSAGE_TIMEOUT)
+        app_logger.debug(f"load_data_async terminé: {len(records)} résultats")
 
     def _on_async_error(self, error_msg):
         """Callback en cas d'erreur async"""
@@ -510,27 +496,26 @@ class TableController:
             if col_index < self.table.columnCount():
                 self.table.setColumnWidth(col_index, width)
     
+    @handle_table_operations_errors(log_prefix="Erreur gestionnaire clic en-tête")
     def _on_header_click(self, logical_index: int):
         """Gestionnaire de clic sur les en-têtes pour le tri"""
-        try:
-            if self.current_sort_column == logical_index:
-                # Inverser l'ordre si même colonne
-                self.current_sort_order = Qt.DescendingOrder if self.current_sort_order == Qt.AscendingOrder else Qt.AscendingOrder
-            else:
-                # Nouvelle colonne, ordre croissant par défaut
-                self.current_sort_column = logical_index
-                self.current_sort_order = Qt.AscendingOrder
-            
-            self._apply_database_sort()
-        except Exception as e:
-            app_logger.error(f"Erreur lors du tri: {e}")
+        if self.current_sort_column == logical_index:
+            # Inverser l'ordre si même colonne
+            self.current_sort_order = Qt.DescendingOrder if self.current_sort_order == Qt.AscendingOrder else Qt.AscendingOrder
+        else:
+            # Nouvelle colonne, ordre croissant par défaut
+            self.current_sort_column = logical_index
+            self.current_sort_order = Qt.AscendingOrder
+
+        self._apply_database_sort()
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur application tri base de données")
     def _apply_database_sort(self):
         """Appliquer le tri au niveau de la base de données"""
+        # Marquer qu'un tri est en cours pour éviter la réinitialisation
+        self._sorting_in_progress = True
+
         try:
-            # Marquer qu'un tri est en cours pour éviter la réinitialisation
-            self._sorting_in_progress = True
-            
             # CORRECTION: Utiliser la même logique que F5 et bouton toolbar
             search_term = None
             if (hasattr(self.parent_window, 'advanced_search_service') and
@@ -545,101 +530,94 @@ class TableController:
                 elif hasattr(self.parent_window, 'search_input') and self.parent_window.search_input:
                     text = self.parent_window.search_input.text().strip()
                     search_term = text if text else None
-            
+
             # Convertir Qt.SortOrder en string pour la DB
             sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
-                        
+
             # Appeler load_data avec les bonnes valeurs
             self._load_data_with_sort(search_term, self.current_sort_column, sort_order_str)
             self._update_sort_indicators()
-        except Exception as e:
-            app_logger.error(f"Erreur lors de l'application du tri: {e}")
         finally:
             # Nettoyer le flag de tri en cours
             self._sorting_in_progress = False
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur chargement avec tri")
     def _load_data_with_sort(self, search_term: str, sort_column: int, sort_order_str: str):
         """Charger les données avec tri spécifique sans passer par load_data standard"""
-        try:
-            # Calculer les paramètres de pagination
-            if self.page_size == -1:  # "Tout" sélectionné
-                limit = None
-                offset = None
-            else:
-                limit = self.page_size
-                offset = (self.current_page - 1) * self.page_size
-            
-            # Obtenir les filtres de colonnes
-            column_filters = {}
-            for col_idx, filter_widget in self.filter_widgets.items():
-                if filter_widget is not None:  # Skip removed filters
-                    if isinstance(filter_widget, QComboBox):
-                        filter_text = filter_widget.currentText().strip()
-                    else:  # QLineEdit
-                        filter_text = filter_widget.text().strip()
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
-            
-            # Ajouter le filtre des lignes incomplètes si activé
-            # CORRECTION: Utiliser le service de tri/filtrage si disponible
-            if (hasattr(self.parent_window, 'sorting_filtering_service') and
-                self.parent_window.sorting_filtering_service):
-                incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
-            else:
-                incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
-            
-            # CORRECTION: Parser le terme de recherche si nécessaire
-            parsed_search_term = search_term
-            if isinstance(search_term, str) and search_term and hasattr(self.parent_window, 'advanced_search_service'):
-                # Essayer de parser la string comme recherche avancée
-                parsed_result = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
-                if parsed_result:
-                    parsed_search_term = parsed_result
+        # Calculer les paramètres de pagination
+        if self.page_size == -1:  # "Tout" sélectionné
+            limit = None
+            offset = None
+        else:
+            limit = self.page_size
+            offset = (self.current_page - 1) * self.page_size
 
-            # Détecter si c'est une recherche avancée
-            is_advanced_search = isinstance(parsed_search_term, dict)
+        # Obtenir les filtres de colonnes
+        column_filters = {}
+        for col_idx, filter_widget in self.filter_widgets.items():
+            if filter_widget is not None:  # Skip removed filters
+                if isinstance(filter_widget, QComboBox):
+                    filter_text = filter_widget.currentText().strip()
+                else:  # QLineEdit
+                    filter_text = filter_widget.text().strip()
+                if filter_text:
+                    column_filters[col_idx] = filter_text
 
-            if is_advanced_search:
-                # Désactiver temporairement le cache pour cette requête triée
-                cache_backup = self.db_manager.search_cache
-                self.db_manager.search_cache = None
-                
-                try:
-                    records = self.db_manager.load_data(
-                        parsed_search_term, column_filters, limit, offset,
-                        sort_column, sort_order_str, incomplete_filter
-                    )
-                finally:
-                    # Restaurer le cache
-                    self.db_manager.search_cache = cache_backup
-            else:
-                # Appel normal avec cache pour les recherches simples
+        # Ajouter le filtre des lignes incomplètes si activé
+        # CORRECTION: Utiliser le service de tri/filtrage si disponible
+        if (hasattr(self.parent_window, 'sorting_filtering_service') and
+            self.parent_window.sorting_filtering_service):
+            incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
+        else:
+            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+
+        # CORRECTION: Parser le terme de recherche si nécessaire
+        parsed_search_term = search_term
+        if isinstance(search_term, str) and search_term and hasattr(self.parent_window, 'advanced_search_service'):
+            # Essayer de parser la string comme recherche avancée
+            parsed_result = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
+            if parsed_result:
+                parsed_search_term = parsed_result
+
+        # Détecter si c'est une recherche avancée
+        is_advanced_search = isinstance(parsed_search_term, dict)
+
+        if is_advanced_search:
+            # Désactiver temporairement le cache pour cette requête triée
+            cache_backup = self.db_manager.search_cache
+            self.db_manager.search_cache = None
+
+            try:
                 records = self.db_manager.load_data(
                     parsed_search_term, column_filters, limit, offset,
                     sort_column, sort_order_str, incomplete_filter
                 )
-            
-            # Remplir le tableau
-            if self.total_rows > 1000:
-                self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
-            else:
-                self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
-            
-            # Mettre à jour les contrôles de pagination
-            self._update_pagination_controls()
-            
-        except Exception as e:
-            app_logger.error(f"Erreur lors du chargement avec tri: {e}")
+            finally:
+                # Restaurer le cache
+                self.db_manager.search_cache = cache_backup
+        else:
+            # Appel normal avec cache pour les recherches simples
+            records = self.db_manager.load_data(
+                parsed_search_term, column_filters, limit, offset,
+                sort_column, sort_order_str, incomplete_filter
+            )
+
+        # Remplir le tableau
+        if self.total_rows > 1000:
+            self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
+        else:
+            self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
+
+        # Mettre à jour les contrôles de pagination
+        self._update_pagination_controls()
     
+    @handle_table_operations_errors(log_prefix="Erreur mise à jour indicateurs tri")
     def _update_sort_indicators(self):
         """Mettre à jour les indicateurs visuels de tri"""
-        try:
-            if self.current_sort_column >= 0:
-                self.table.horizontalHeader().setSortIndicator(
-                    self.current_sort_column, self.current_sort_order
-                )
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour indicateurs tri: {e}")
+        if self.current_sort_column >= 0:
+            self.table.horizontalHeader().setSortIndicator(
+                self.current_sort_column, self.current_sort_order
+            )
 
     # === Gestion des mises à jour de la colonne Nb Pièces ===
     
@@ -695,20 +673,17 @@ class TableController:
         
         layout.addWidget(pagination_widget)
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour pagination")
     def _update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination"""
-        try:
-            if self.page_label:
-                self.page_label.setText(f"Page {self.current_page} sur {self.total_pages}")
-            if self.size_label:
-                self.size_label.setText(f"Total: {self.total_rows} lignes")
-                
-            # Synchroniser avec NavigationService si disponible
-            if self.navigation_service:
-                self.navigation_service.update_total_rows(self.total_rows)
-                
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour pagination: {e}")
+        if self.page_label:
+            self.page_label.setText(f"Page {self.current_page} sur {self.total_pages}")
+        if self.size_label:
+            self.size_label.setText(f"Total: {self.total_rows} lignes")
+
+        # Synchroniser avec NavigationService si disponible
+        if self.navigation_service:
+            self.navigation_service.update_total_rows(self.total_rows)
     
     def _next_page(self):
         """Aller à la page suivante"""
@@ -767,41 +742,37 @@ class TableController:
             # Nettoyer
             self.pending_column_filter = None
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur peuplement dropdown")
     def _populate_dropdown_values(self, combo_widget: QComboBox, column_index: int):
         """Peupler les valeurs du dropdown avec les données uniques de la BDD"""
-        try:
-            # Déterminer le champ de base de données selon l'index de colonne
-            if column_index == 0:  # Type
-                db_field = "type"
-            elif column_index == 1:  # Fabricant
-                db_field = "manufacturer"
-            else:
-                return  # Ne pas traiter d'autres colonnes
-            
-            # Requête pour obtenir les valeurs distinctes, non vides, triées
-            query = f"""
-                SELECT DISTINCT {db_field} 
-                FROM appareils 
-                WHERE {db_field} IS NOT NULL AND {db_field} != '' 
-                ORDER BY {db_field}
-            """
-            
-            results = self.db_manager.execute_query(query)
-            
-            # Ajouter une option vide en premier
-            combo_widget.addItem("")
-            
-            # Ajouter les valeurs uniques
-            for row in results:
-                value = row[0]
-                if value and value.strip():  # S'assurer que la valeur n'est pas vide
-                    combo_widget.addItem(value.strip())
-                    
-        except Exception as e:
-            app_logger.error(f"Erreur peuplement dropdown colonne {column_index}: {e}")
-            # En cas d'erreur, transformer le combo en champ texte basique
-            combo_widget.setEditable(True)
+        # Déterminer le champ de base de données selon l'index de colonne
+        if column_index == 0:  # Type
+            db_field = "type"
+        elif column_index == 1:  # Fabricant
+            db_field = "manufacturer"
+        else:
+            return  # Ne pas traiter d'autres colonnes
+
+        # Requête pour obtenir les valeurs distinctes, non vides, triées
+        query = f"""
+            SELECT DISTINCT {db_field}
+            FROM appareils
+            WHERE {db_field} IS NOT NULL AND {db_field} != ''
+            ORDER BY {db_field}
+        """
+
+        results = self.db_manager.execute_query(query)
+
+        # Ajouter une option vide en premier
+        combo_widget.addItem("")
+
+        # Ajouter les valeurs uniques
+        for row in results:
+            value = row[0]
+            if value and value.strip():  # S'assurer que la valeur n'est pas vide
+                combo_widget.addItem(value.strip())
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage filtres colonnes")
     def clear_column_filters(self):
         """Nettoyer tous les filtres de colonnes"""
         for col_idx, filter_widget in self.filter_widgets.items():
@@ -827,15 +798,13 @@ class TableController:
                     selected_ids.append(db_id)
         return selected_ids
     
+    @handle_table_operations_errors(log_prefix="Erreur récupération ID base de données")
     def get_db_id_from_row(self, row: int) -> int:
         """Récupérer l'ID de base de données d'une ligne"""
-        try:
-            item = self.table.item(row, 0)
-            if item:
-                return item.data(Qt.UserRole) or -1
-            return -1
-        except Exception:
-            return -1
+        item = self.table.item(row, 0)
+        if item:
+            return item.data(Qt.UserRole) or -1
+        return -1
     
     def _on_search_text_changed(self, text: str):
         """Gestionnaire de changement du texte de recherche"""
@@ -847,6 +816,7 @@ class TableController:
         search_term = self.search_input.text().strip()
         self.load_data(search_term, is_search=True)
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur effacement recherche")
     def _clear_search(self):
         """Effacer la recherche - délégué vers AdvancedSearchService"""
         if hasattr(self.parent_window, 'advanced_search_service'):
@@ -891,7 +861,8 @@ class TableController:
             
             self.pending_search_term = None
     
-    def _clear_advanced_search(self):
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur effacement recherche avancée")
+    def _clear_advanced_search(self, checked=False):
         """Effacer la recherche avancée"""
         # Utiliser la référence principale dans MainWindow (compatible avec PasteInterceptor)
         if hasattr(self.parent_window, 'search_input') and self.parent_window.search_input is not None:
@@ -906,10 +877,10 @@ class TableController:
                 self.advanced_search_input.clear()
             except RuntimeError:
                 pass
-        
+
         self.current_search_term = None  # Nettoyer aussi le terme persistant
         self.load_data(None, is_search=False)
-        
+
         # Désactiver les boutons d'export quand on vide la recherche
         if hasattr(self.parent_window, '_update_export_buttons_state'):
             self.parent_window._update_export_buttons_state("")
@@ -954,49 +925,41 @@ class TableController:
             self.load_data(search_term, is_search=bool(search_term and search_term.strip()))
             self._update_incomplete_button_visibility()
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour visibilité bouton incomplètes")
     def _update_incomplete_button_visibility(self):
         """Mettre à jour la visibilité du bouton incomplètes selon les données"""
         from ..core.config import pluralize
-        try:
-            incomplete_count = self.db_manager.count_incomplete_devices() if hasattr(self.db_manager, 'count_incomplete_devices') else 0
-            show_incomplete_only = getattr(self.parent_window, 'show_incomplete_only', False)
-            
-            if hasattr(self, 'incomplete_filter_btn'):
-                if incomplete_count > 0:
-                    self.incomplete_filter_btn.show()
-                    self.incomplete_filter_btn.setChecked(show_incomplete_only)
-                    
-                    if show_incomplete_only:
-                        self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
-                        self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
-                    else:
-                        self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
-                        self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+
+        incomplete_count = self.db_manager.count_incomplete_devices() if hasattr(self.db_manager, 'count_incomplete_devices') else 0
+        show_incomplete_only = getattr(self.parent_window, 'show_incomplete_only', False)
+
+        if hasattr(self, 'incomplete_filter_btn'):
+            if incomplete_count > 0:
+                self.incomplete_filter_btn.show()
+                self.incomplete_filter_btn.setChecked(show_incomplete_only)
+
+                if show_incomplete_only:
+                    self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
+                    self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
                 else:
-                    self.incomplete_filter_btn.hide()
-        except Exception as e:
-            app_logger.error("Erreur", e)
+                    self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
+                    self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
+            else:
+                self.incomplete_filter_btn.hide()
     
+    @handle_table_operations_errors(log_prefix="Erreur log largeur colonne")
     def _on_column_resized(self, logical_index: int, old_size: int, new_size: int):
         """Log des largeurs de colonnes quand elles sont modifiées"""
-        try:
-            # Récupérer le nom de la colonne
-            column_name = Config.UI_HEADERS[logical_index] if logical_index < len(Config.UI_HEADERS) else f"Colonne {logical_index}"
-            
-            
-        except Exception as e:
-            app_logger.error(f"Erreur log largeur colonne: {e}")
+        # Récupérer le nom de la colonne
+        column_name = Config.UI_HEADERS[logical_index] if logical_index < len(Config.UI_HEADERS) else f"Colonne {logical_index}"
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage widgets")
     def cleanup(self):
         """Nettoyage sécurisé des widgets Qt pour éviter les erreurs de destruction"""
-        try:
-            # Nettoyer les références aux widgets qui pourraient être détruits
-            if hasattr(self, 'advanced_search_input'):
-                self.advanced_search_input = None
-            if hasattr(self, 'search_input'):
-                self.search_input = None
-            if hasattr(self, 'filter_widgets'):
-                self.filter_widgets.clear()
-        except Exception as e:
-            # Ignore silencieusement les erreurs de nettoyage
-            pass
+        # Nettoyer les références aux widgets qui pourraient être détruits
+        if hasattr(self, 'advanced_search_input'):
+            self.advanced_search_input = None
+        if hasattr(self, 'search_input'):
+            self.search_input = None
+        if hasattr(self, 'filter_widgets'):
+            self.filter_widgets.clear()

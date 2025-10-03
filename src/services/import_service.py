@@ -9,6 +9,7 @@ from ..core.import_manager import ImportManager, ImportConfiguration
 from ..data.database_manager import DatabaseManager
 from .event_bus import event_bus
 from .base_service import BaseService
+from ..utils.error_handler import handle_import_errors, handle_file_errors, handle_validation_errors
 
 class ImportService(BaseService):
     """Service dédié aux opérations d'import"""
@@ -18,35 +19,34 @@ class ImportService(BaseService):
         self.db_manager = db_manager
         self.import_manager = ImportManager(db_manager)
     
-    def import_files(self, files: List[str], 
+    def import_files(self, files: List[str],
                     config_options: Dict[str, Any]) -> Dict[str, Any]:
         """Importer des fichiers avec configuration"""
-        
+
         event_bus.emit('import.started', {
             'file_count': len(files),
             'options': config_options
         })
-        
-        try:
-            # Créer la configuration d'import
-            config = self._build_import_config(files, config_options)
-            
-            # Exécuter l'import
-            results = self.import_manager._execute_import(config)
-            
-            # Enrichir les résultats
-            results.update({
-                'success': True,
-                'config_used': config_options
-            })
-            
-            event_bus.emit('import.completed', results)
-            return results
-            
-        except Exception as e:
-            error_result = self.handle_error_with_result(e, "import de fichiers", extra_fields={'file_count': len(files)})
-            event_bus.emit('import.error', error_result)
-            return error_result
+
+        return self._safe_import_files_core(files, config_options)
+
+    @handle_import_errors()
+    def _safe_import_files_core(self, files: List[str], config_options: Dict[str, Any]) -> Dict[str, Any]:
+        """Noyau sécurisé pour l'import de fichiers"""
+        # Créer la configuration d'import
+        config = self._build_import_config(files, config_options)
+
+        # Exécuter l'import
+        results = self.import_manager._execute_import(config)
+
+        # Enrichir les résultats
+        results.update({
+            'success': True,
+            'config_used': config_options
+        })
+
+        event_bus.emit('import.completed', results)
+        return results
     
     def _build_import_config(self, files: List[str], 
                            options: Dict[str, Any]) -> ImportConfiguration:
@@ -103,34 +103,31 @@ class ImportService(BaseService):
         
         return reference
     
+    @handle_file_errors()
     def preview_file(self, file_path: str, max_rows: int = 5) -> Dict[str, Any]:
         """Prévisualiser le contenu d'un fichier avant import"""
-        try:
-            # Déterminer le type
-            file_ext = os.path.splitext(file_path)[1].lower()
-            
-            if file_ext == '.pdf':
-                data = self.import_manager.load_pdf_data(file_path, max_rows=max_rows)
-                file_type = 'PDF'
-            elif file_ext == '.csv':
-                data = self.import_manager.load_csv_data(file_path, max_rows=max_rows)
-                file_type = 'CSV'
-            else:
-                return {
-                    'success': False,
-                    'error': f'Type de fichier non supporté: {file_ext}'
-                }
-            
+        # Déterminer le type
+        file_ext = os.path.splitext(file_path)[1].lower()
+
+        if file_ext == '.pdf':
+            data = self.import_manager.load_pdf_data(file_path, max_rows=max_rows)
+            file_type = 'PDF'
+        elif file_ext == '.csv':
+            data = self.import_manager.load_csv_data(file_path, max_rows=max_rows)
+            file_type = 'CSV'
+        else:
             return {
-                'success': True,
-                'file_type': file_type,
-                'sample_data': data,
-                'suggested_reference': self._suggest_reference(file_path),
-                'columns_detected': len(data[0]) if data else 0
+                'success': False,
+                'error': f'Type de fichier non supporté: {file_ext}'
             }
-            
-        except Exception as e:
-            return self.handle_error_with_result(e, "construction configuration import")
+
+        return {
+            'success': True,
+            'file_type': file_type,
+            'sample_data': data,
+            'suggested_reference': self._suggest_reference(file_path),
+            'columns_detected': len(data[0]) if data else 0
+        }
     
     def validate_files(self, files: List[str]) -> Dict[str, Any]:
         """Valider une liste de fichiers avant import"""
@@ -142,47 +139,47 @@ class ImportService(BaseService):
         }
         
         for file_path in files:
-            try:
-                # Vérifier existence
-                if not os.path.exists(file_path):
-                    validation_results['invalid_files'].append({
-                        'file': file_path,
-                        'error': 'Fichier introuvable'
-                    })
-                    continue
-                
-                # Vérifier taille
-                file_size = os.path.getsize(file_path)
-                validation_results['total_size'] += file_size
-                
-                # Vérifier type
-                file_ext = os.path.splitext(file_path)[1].lower()
-                if file_ext not in ['.pdf', '.csv']:
-                    validation_results['invalid_files'].append({
-                        'file': file_path,
-                        'error': f'Type de fichier non supporté: {file_ext}'
-                    })
-                    continue
-                
-                # Estimer le nombre d'enregistrements
-                preview = self.preview_file(file_path, max_rows=10)
-                if preview['success']:
-                    estimated_records = len(preview['sample_data']) * 10  # Estimation grossière
-                    validation_results['estimated_records'] += estimated_records
-                
-                validation_results['valid_files'].append({
-                    'file': file_path,
-                    'type': file_ext[1:].upper(),
-                    'size': file_size,
-                    'estimated_records': estimated_records
-                })
-                
-            except Exception as e:
-                self.handle_error(e, f"validation fichier {file_path}")
-                validation_results['invalid_files'].append({
-                    'file': file_path,
-                    'error': str(e)
-                })
+            result = self._safe_validate_single_file(file_path, validation_results)
+            if result:
+                validation_results['valid_files'].append(result)
+
+    @handle_validation_errors()
+    def _safe_validate_single_file(self, file_path: str, validation_results: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Valider un fichier de manière sécurisée"""
+        # Vérifier existence
+        if not os.path.exists(file_path):
+            validation_results['invalid_files'].append({
+                'file': file_path,
+                'error': 'Fichier introuvable'
+            })
+            return None
+
+        # Vérifier taille
+        file_size = os.path.getsize(file_path)
+        validation_results['total_size'] += file_size
+
+        # Vérifier type
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext not in ['.pdf', '.csv']:
+            validation_results['invalid_files'].append({
+                'file': file_path,
+                'error': f'Type de fichier non supporté: {file_ext}'
+            })
+            return None
+
+        # Estimer le nombre d'enregistrements
+        preview = self.preview_file(file_path, max_rows=10)
+        estimated_records = 0
+        if preview and preview.get('success'):
+            estimated_records = len(preview['sample_data']) * 10  # Estimation grossière
+            validation_results['estimated_records'] += estimated_records
+
+        return {
+            'file': file_path,
+            'type': file_ext[1:].upper(),
+            'size': file_size,
+            'estimated_records': estimated_records
+        }
         
         return validation_results
     

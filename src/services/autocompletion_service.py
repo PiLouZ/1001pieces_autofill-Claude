@@ -10,6 +10,7 @@ from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
 from ..core.config import Config
 from .base_service import BaseService
+from ..utils.error_handler import handle_autocompletion_errors
 
 class AutoCompletionService(BaseService):
     """Service dédié à l'autocomplétion des cellules"""
@@ -31,68 +32,36 @@ class AutoCompletionService(BaseService):
         Returns:
             str: Valeur sélectionnée ou None si annulé
         """
-        try:
-            if not current_item or current_col < 0:
-                return None
-                
-            # Récupérer le nom du champ DB et de la colonne UI
-            db_field = self._get_db_field_name(current_col)
-            column_name = Config.UI_HEADERS[current_col] if current_col < len(Config.UI_HEADERS) else "Colonne"
-            
-            if not db_field:
-                return None
-                
-            # Créer une fenêtre dédiée selon la colonne
-            if db_field == 'type':
-                dialog_title = "Auto-complétion Type"
-                dialog_label = "Sélectionnez ou saisissez un type d'appareil :"
-            elif db_field == 'manufacturer':
-                dialog_title = "Auto-complétion Fabricant"  
-                dialog_label = "Sélectionnez ou saisissez un fabricant :"
-            else:
-                dialog_title = f"Auto-complétion {column_name}"
-                dialog_label = f"Sélectionnez ou saisissez une valeur pour {column_name} :"
-            
-            # Récupérer la valeur actuelle (même si en cours d'édition)
-            current_value = self._get_current_cell_edit_value(table_widget, current_item, current_col)
-            
-            # Créer la fenêtre d'auto-complétion
-            return self._show_autocompletion_dialog(dialog_title, dialog_label, db_field, current_value)
-                    
-        except Exception as e:
-            return self.handle_error_with_return(e, "affichage valeurs colonne", show_dialog=True)
+        return self._safe_show_column_values_dialog_core(table_widget, current_item, current_col)
     
+    @handle_autocompletion_errors(return_value="")
     def _get_current_cell_edit_value(self, table_widget, current_item, current_col):
         """Récupérer la valeur actuelle d'une cellule, même si elle est en cours d'édition"""
-        try:
-            # Méthode 1: Vérifier si la cellule a un éditeur persistant
-            current_index = table_widget.currentIndex()
-            if current_index.isValid():
-                editor = table_widget.indexWidget(current_index)
-                if editor and hasattr(editor, 'text'):
-                    return editor.text()
-            
-            # Méthode 2: Récupérer l'éditeur du delegate si en cours d'édition
-            delegate = table_widget.itemDelegate(current_index)
-            if hasattr(delegate, 'editor') and delegate.editor and hasattr(delegate.editor, 'text'):
-                return delegate.editor.text()
-            
-            # Méthode 3: Essayer de récupérer depuis l'état d'édition du tableau
-            edit_triggers = table_widget.editTriggers()
-            if edit_triggers != table_widget.NoEditTriggers:
-                state = table_widget.state()
-                if state == table_widget.EditingState:
-                    # La cellule est en cours d'édition, essayer de récupérer la valeur
-                    # depuis le focus widget actuel
-                    focus_widget = table_widget.focusWidget()
-                    if focus_widget and hasattr(focus_widget, 'text'):
-                        return focus_widget.text()
-            
-            # Méthode 4: Valeur par défaut depuis l'item
-            return current_item.text() if current_item else ""
-            
-        except Exception as e:
-            return self.handle_error_with_return(e, "récupération valeur cellule", current_item.text() if current_item else "")
+        # Méthode 1: Vérifier si la cellule a un éditeur persistant
+        current_index = table_widget.currentIndex()
+        if current_index.isValid():
+            editor = table_widget.indexWidget(current_index)
+            if editor and hasattr(editor, 'text'):
+                return editor.text()
+
+        # Méthode 2: Récupérer l'éditeur du delegate si en cours d'édition
+        delegate = table_widget.itemDelegate(current_index)
+        if hasattr(delegate, 'editor') and delegate.editor and hasattr(delegate.editor, 'text'):
+            return delegate.editor.text()
+
+        # Méthode 3: Essayer de récupérer depuis l'état d'édition du tableau
+        edit_triggers = table_widget.editTriggers()
+        if edit_triggers != table_widget.NoEditTriggers:
+            state = table_widget.state()
+            if state == table_widget.EditingState:
+                # La cellule est en cours d'édition, essayer de récupérer la valeur
+                # depuis le focus widget actuel
+                focus_widget = table_widget.focusWidget()
+                if focus_widget and hasattr(focus_widget, 'text'):
+                    return focus_widget.text()
+
+        # Méthode 4: Valeur par défaut depuis l'item
+        return current_item.text() if current_item else ""
     
     def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "") -> Optional[str]:
         """Afficher une fenêtre d'auto-complétion dédiée avec navigation clavier"""
@@ -116,12 +85,15 @@ class AutoCompletionService(BaseService):
         values_list = QListWidget()
         layout.addWidget(values_list)
         
-        # Récupérer les valeurs de la base de données (augmenter limite pour inclure plus d'entrées)
+        # Récupérer les valeurs de la base de données et configurer l'interface
+        return self._safe_configure_dialog_interface(dialog, layout, input_field, values_list, db_field, current_value)
+
+    def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value):
+        """Configurer l'interface du dialogue de manière sécurisée"""
         try:
-            query = f"SELECT DISTINCT [{db_field}] FROM appareils WHERE [{db_field}] IS NOT NULL AND [{db_field}] != '' ORDER BY [{db_field}] LIMIT 1000"
-            results = self.db_manager.execute_custom_query(query)
-            all_values = [row[0] for row in results if row[0] and row[0].strip()]
-            
+            # Récupérer les valeurs de la base de données
+            all_values = self.db_manager.get_column_values(db_field)
+
             def update_list():
                 """Mettre à jour la liste selon le filtre"""
                 filter_text = input_field.text().lower()

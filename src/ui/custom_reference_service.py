@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from src.core.logger import app_logger
+from ..utils.error_handler import handle_export_errors
 
 class CustomReferenceService:
     """
@@ -30,6 +31,7 @@ class CustomReferenceService:
     def __init__(self, main_window):
         self.main_window = main_window
         
+    @handle_export_errors()
     def export_custom_reference_csv_with_current_data(self, custom_reference: str, original_search_term: str = None) -> str:
         """
         Créer un export CSV avec toutes les données de la recherche mais avec une référence personnalisée
@@ -41,51 +43,47 @@ class CustomReferenceService:
         Returns:
             str: Message de confirmation avec le chemin du fichier créé
         """
-        try:
-            # Générer un nom de fichier simplifié
-            filename = f"{custom_reference}_everyParts.csv"
-            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
-            
-            # Utiliser les données actuellement affichées dans le tableau
-            # au lieu de refaire une requête en base de données
-            data = self.main_window._get_displayed_table_data()
-            
-            if not data:
-                raise Exception("Aucune donnée affichée dans le tableau à exporter")
-            
-            # Plus besoin de récupérer les filtres - on utilise directement les données affichées
-            
-            # Récupérer le filtre des lignes incomplètes si activé
-            incomplete_filter = getattr(self.main_window, 'show_incomplete_only', False)
-            
-            # Vérifier que le db_manager existe
-            if not hasattr(self.main_window, 'db_manager') or self.main_window.db_manager is None:
-                raise Exception("Database manager non disponible")
-            
-            # Récupérer les filtres de colonnes pour l'export
-            column_filters = self._get_active_column_filters()
-            
-            # Vérifier si c'est une recherche multi-références
-            if original_search_term and ('||' in original_search_term or '&&' in original_search_term):
-                data = self._handle_multi_reference_search(original_search_term, column_filters, incomplete_filter)
-            else:
-                # Recherche simple - utiliser les données affichées ou faire une requête
-                if original_search_term:
-                    data = self.main_window.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
-                # Sinon utiliser les données déjà récupérées du tableau
-            
-            if not data:
-                raise Exception(f"Aucune donnée trouvée pour la recherche: {original_search_term}")
-            
-            # Créer le fichier CSV
-            self._write_csv_file(filepath, custom_reference, data)
-            
-            return f"Fichier CSV créé: {filepath}"
-            
-        except Exception as e:
-            app_logger.error(f"Erreur export CSV personnalisé: {e}")
-            raise Exception(f"Erreur lors de l'export CSV personnalisé: {e}")
+        # Générer un nom de fichier simplifié
+        filename = f"{custom_reference}_everyParts.csv"
+        filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
+
+        # Utiliser les données actuellement affichées dans le tableau
+        # au lieu de refaire une requête en base de données
+        data = self.main_window._get_displayed_table_data()
+
+        if not data:
+            raise Exception("Aucune donnée affichée dans le tableau à exporter")
+
+        # Plus besoin de récupérer les filtres - on utilise directement les données affichées
+
+        # Récupérer le filtre des lignes incomplètes si activé
+        incomplete_filter = getattr(self.main_window, 'show_incomplete_only', False)
+
+        # Vérifier que le db_manager existe
+        if not hasattr(self.main_window, 'db_manager') or self.main_window.db_manager is None:
+            raise Exception("Database manager non disponible")
+
+        # Récupérer les filtres de colonnes pour l'export
+        column_filters = self._get_active_column_filters()
+
+        # Vérifier si c'est une recherche multi-références
+        if original_search_term and ('||' in original_search_term or '&&' in original_search_term):
+            data = self._handle_multi_reference_search(original_search_term, column_filters, incomplete_filter)
+        else:
+            # Recherche simple - utiliser les données affichées ou faire une requête
+            if original_search_term:
+                data = self.main_window.db_manager.get_export_data(original_search_term, column_filters, incomplete_filter)
+            # Sinon utiliser les données déjà récupérées du tableau
+
+        if not data:
+            raise Exception(f"Aucune donnée trouvée pour la recherche: {original_search_term}")
+
+        # Créer le fichier CSV
+        self._write_csv_file(filepath, custom_reference, data)
+
+        return f"Fichier CSV créé: {filepath}"
     
+    @handle_export_errors()
     def create_minimal_csv_fallback(self, custom_reference: str) -> str:
         """
         Créer un CSV minimal en cas d'erreur avec l'export personnalisé
@@ -96,30 +94,26 @@ class CustomReferenceService:
         Returns:
             str: Message de confirmation avec le chemin du fichier créé
         """
-        try:
-            filename = f"{custom_reference}_everyParts.csv"
-            filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
-            
-            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
-                writer.writerow(headers)
-                
-                # Une seule ligne avec la référence personnalisée
-                writer.writerow([
-                    custom_reference,
-                    'appareil électroménager',
-                    'multi-marques',
-                    f'Modèle compatible {custom_reference}',
-                    custom_reference,
-                    custom_reference
-                ])
-            
-            return f"Fichier CSV de secours créé: {filepath}"
-            
-        except Exception as e:
-            raise Exception(f"Erreur création CSV fallback: {e}")
+        filename = f"{custom_reference}_everyParts.csv"
+        filepath = os.path.join(os.path.expanduser("~/Desktop"), filename)
+
+        with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile, delimiter=';')
+
+            headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
+            writer.writerow(headers)
+
+            # Une seule ligne avec la référence personnalisée
+            writer.writerow([
+                custom_reference,
+                'appareil électroménager',
+                'multi-marques',
+                f'Modèle compatible {custom_reference}',
+                custom_reference,
+                custom_reference
+            ])
+
+        return f"Fichier CSV de secours créé: {filepath}"
     
     def _get_active_column_filters(self) -> Dict[int, str]:
         """

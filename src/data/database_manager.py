@@ -12,7 +12,8 @@ from ..core.config import Config
 from ..core.logger import app_logger
 from ..utils.error_handler import (
     handle_db_query_errors, handle_db_signal_errors,
-    handle_sqlite_column_errors, handle_database_errors
+    handle_sqlite_column_errors, handle_database_errors,
+    handle_database_operation_errors
 )
 
 try:
@@ -134,13 +135,11 @@ class DatabaseManager:
         self._connect()
         self._setup_database()
     
+    @handle_database_errors(title="Erreur de connexion")
     def _connect(self):
         """Établir la connexion à la base de données"""
-        try:
-            self.conn = sqlite3.connect(self.db_file)
-            self.cursor = self.conn.cursor()
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Impossible de se connecter à la base de données: {e}")
+        self.conn = sqlite3.connect(self.db_file)
+        self.cursor = self.conn.cursor()
     
     def get_connection(self):
         """Retourner la connexion pour les opérations batch"""
@@ -312,135 +311,127 @@ class DatabaseManager:
             'groups': parsed_groups
         }
     
+    @handle_database_errors(title="Erreur configuration base de données")
     def _setup_database(self):
         """Configuration et création des tables"""
-        try:
-            # Table appareils
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS appareils (
-                    id INTEGER PRIMARY KEY,
-                    type TEXT,
-                    manufacturer TEXT,
-                    ref_modele TEXT,
-                    commercial_ref TEXT,
-                    other_ref TEXT,
-                    category TEXT,
-                    notes TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Ajouter les colonnes manquantes
-            self._add_missing_columns()
-            
-            # Table pièces (sera créée/recréée par la migration)
-            
-            # Table associations pièce-appareil (nouvelle structure)
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS piece_associations (
-                    id INTEGER PRIMARY KEY,
-                    piece_id INTEGER NOT NULL,
-                    appareil_id INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(piece_id) REFERENCES pieces_new(id) ON DELETE CASCADE,
-                    FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
-                    UNIQUE(piece_id, appareil_id)
-                )
-            """)
-            
-            # Garder l'ancienne table pour migration
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS pieces_old (
-                    id INTEGER PRIMARY KEY,
-                    ref_piece TEXT NOT NULL,
-                    appareil_id INTEGER,
-                    description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
-                    UNIQUE(appareil_id, ref_piece)
-                )
-            """)
-            
-            # Table catégories
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS categories (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT UNIQUE NOT NULL,
-                    description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Table des décisions sur les doublons de références
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS reference_decisions (
-                    ref_modele TEXT PRIMARY KEY,
-                    decision TEXT CHECK(decision IN ('DISTINCT', 'MERGE')) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    notes TEXT
-                )
-            """)
-            
-            # Ajouter les colonnes manquantes pour la table pieces
-            self._add_missing_pieces_columns()
-            
-            # Ajouter la contrainte unique pour prévenir les doublons
-            self._add_unique_constraint_pieces()
-            
-            # Index pour les performances
-            self._create_indexes()
-            
-            # Migration des données vers la nouvelle structure
-            self._migrate_pieces_to_new_structure()
-            
-            self.conn.commit()
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la configuration de la base: {e}")
+        # Table appareils
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS appareils (
+                id INTEGER PRIMARY KEY,
+                type TEXT,
+                manufacturer TEXT,
+                ref_modele TEXT,
+                commercial_ref TEXT,
+                other_ref TEXT,
+                category TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Ajouter les colonnes manquantes
+        self._add_missing_columns()
+
+        # Table pièces (sera créée/recréée par la migration)
+
+        # Table associations pièce-appareil (nouvelle structure)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS piece_associations (
+                id INTEGER PRIMARY KEY,
+                piece_id INTEGER NOT NULL,
+                appareil_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(piece_id) REFERENCES pieces_new(id) ON DELETE CASCADE,
+                FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
+                UNIQUE(piece_id, appareil_id)
+            )
+        """)
+
+        # Garder l'ancienne table pour migration
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pieces_old (
+                id INTEGER PRIMARY KEY,
+                ref_piece TEXT NOT NULL,
+                appareil_id INTEGER,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
+                UNIQUE(appareil_id, ref_piece)
+            )
+        """)
+
+        # Table catégories
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table des décisions sur les doublons de références
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reference_decisions (
+                ref_modele TEXT PRIMARY KEY,
+                decision TEXT CHECK(decision IN ('DISTINCT', 'MERGE')) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT
+            )
+        """)
+
+        # Ajouter les colonnes manquantes pour la table pieces
+        self._add_missing_pieces_columns()
+
+        # Ajouter la contrainte unique pour prévenir les doublons
+        self._add_unique_constraint_pieces()
+
+        # Index pour les performances
+        self._create_indexes()
+
+        # Migration des données vers la nouvelle structure
+        self._migrate_pieces_to_new_structure()
+
+        self.conn.commit()
     
+    @handle_database_errors(title="Erreur ajout colonnes")
     def _add_missing_columns(self):
         """Ajouter les colonnes manquantes à la table appareils"""
-        try:
-            self.cursor.execute("PRAGMA table_info(appareils)")
-            existing_columns = {row[1] for row in self.cursor.fetchall()}
-            
-            for header in Config.DB_HEADERS + ['created_at', 'updated_at']:
-                if header not in existing_columns:
-                    self._add_column_to_appareils(header)
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'ajout des colonnes: {e}")
+        self.cursor.execute("PRAGMA table_info(appareils)")
+        existing_columns = {row[1] for row in self.cursor.fetchall()}
+
+        for header in Config.DB_HEADERS + ['created_at', 'updated_at']:
+            if header not in existing_columns:
+                self._add_column_to_appareils(header)
     
+    @handle_database_errors(title="Erreur ajout colonnes pièces")
     def _add_missing_pieces_columns(self):
         """Ajouter les colonnes manquantes à la table pieces"""
-        try:
-            # Vérifier si la table pieces existe
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
-            if not self.cursor.fetchone():
-                # print("Table pieces n'existe pas, skip ajout colonnes")
-                return
-                
-            self.cursor.execute("PRAGMA table_info(pieces)")
-            existing_columns = {row[1] for row in self.cursor.fetchall()}
-            
-            # Si la table n'a pas de colonne 'appareil_id', elle a déjà la nouvelle structure
-            if 'appareil_id' not in existing_columns:
-                # print("Table pieces déjà avec nouvelle structure, skip ajout colonnes")
-                return
-            
-            # Ajouter la colonne description si elle n'existe pas
-            if 'description' not in existing_columns:
-                self._add_column_to_pieces('description')
+        # Vérifier si la table pieces existe
+        self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
+        if not self.cursor.fetchone():
+            # print("Table pieces n'existe pas, skip ajout colonnes")
+            return
 
-            # Ajouter la colonne created_at si elle n'existe pas
-            if 'created_at' not in existing_columns:
-                self._add_column_to_pieces('created_at')
-            
-            # Forcer un commit immédiat
-            self.conn.commit()
-                    
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'ajout des colonnes pieces: {e}")
+        self.cursor.execute("PRAGMA table_info(pieces)")
+        existing_columns = {row[1] for row in self.cursor.fetchall()}
+
+        # Si la table n'a pas de colonne 'appareil_id', elle a déjà la nouvelle structure
+        if 'appareil_id' not in existing_columns:
+            # print("Table pieces déjà avec nouvelle structure, skip ajout colonnes")
+            return
+
+        # Ajouter la colonne description si elle n'existe pas
+        if 'description' not in existing_columns:
+            self._add_column_to_pieces('description')
+
+        # Ajouter la colonne created_at si elle n'existe pas
+        if 'created_at' not in existing_columns:
+            self._add_column_to_pieces('created_at')
+
+        # Forcer un commit immédiat
+        self.conn.commit()
 
     @handle_sqlite_column_errors(log_message="Erreur ajout colonne pieces")
     def _add_column_to_pieces(self, column_name: str) -> bool:
@@ -891,72 +882,69 @@ class DatabaseManager:
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors du chargement des données: {e}")
     
-    def count_data(self, search_term: Optional[str] = None, 
+    @handle_database_errors(title="Erreur comptage données")
+    def count_data(self, search_term: Optional[str] = None,
                    column_filters: Optional[Dict[int, str]] = None,
                    sort_column: Optional[int] = None,
                    sort_order: Optional[str] = None,
                    incomplete_filter: bool = False) -> int:
         """Compter le nombre total de lignes correspondant aux critères"""
-        try:
-            # Utiliser la même structure FROM que load_data pour cohérence
-            query = """
-                SELECT COUNT(*) FROM appareils a
-                LEFT JOIN (
-                    SELECT pa.appareil_id, COUNT(*) as pieces_count
-                    FROM piece_associations pa
-                    INNER JOIN pieces p ON pa.piece_id = p.id
-                    GROUP BY pa.appareil_id
-                ) p ON a.id = p.appareil_id
-            """
-            params = []
-            conditions = []
-            
-            # Recherche globale pour count_data (avec support recherche avancée)
-            if search_term:
-                search_condition = self._build_search_condition_optimized(search_term)
-                if search_condition:
-                    # Si c'est une recherche regex, on ne peut pas compter précisément avec SQLite
-                    if 'regex_filter' in search_condition:
-                        # Pour les regex, retourner un count approximatif (total)
-                        return self.cursor.execute("SELECT COUNT(*) FROM appareils").fetchone()[0]
-                    
-                    # Phase 3: Gérer les requêtes optimisées (SELECT complets)
-                    elif search_condition.get('query_type') in ['exact', 'prefix']:
-                        # Pour les requêtes optimisées, extraire juste la condition WHERE
-                        if search_condition['query_type'] == 'exact':
-                            condition = "(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
-                        else:  # prefix
-                            condition = "(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
-                        
-                        conditions.append(condition)
-                        params.extend(search_condition['params'])
-                    else:
-                        # Condition WHERE classique
-                        conditions.append(search_condition['condition'])
-                        params.extend(search_condition['params'])
-            
-            # Filtres par colonne pour count_data
-            if column_filters:
-                for col_idx, filter_text in column_filters.items():
-                    if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
-                        conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
-                        params.append(f"%{filter_text}%")
-            
-            # Filtre pour les lignes incomplètes pour count_data
-            if incomplete_filter:
-                incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
-                conditions.append(incomplete_condition)
-            
-            # Ajouter les conditions
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-            
-            # Note: Le tri n'affecte pas le comptage, donc on ignore sort_column et sort_order
-            self.cursor.execute(query, params)
-            return self.cursor.fetchone()[0]
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors du comptage: {e}")
+        # Utiliser la même structure FROM que load_data pour cohérence
+        query = """
+            SELECT COUNT(*) FROM appareils a
+            LEFT JOIN (
+                SELECT pa.appareil_id, COUNT(*) as pieces_count
+                FROM piece_associations pa
+                INNER JOIN pieces p ON pa.piece_id = p.id
+                GROUP BY pa.appareil_id
+            ) p ON a.id = p.appareil_id
+        """
+        params = []
+        conditions = []
+
+        # Recherche globale pour count_data (avec support recherche avancée)
+        if search_term:
+            search_condition = self._build_search_condition_optimized(search_term)
+            if search_condition:
+                # Si c'est une recherche regex, on ne peut pas compter précisément avec SQLite
+                if 'regex_filter' in search_condition:
+                    # Pour les regex, retourner un count approximatif (total)
+                    return self.cursor.execute("SELECT COUNT(*) FROM appareils").fetchone()[0]
+
+                # Phase 3: Gérer les requêtes optimisées (SELECT complets)
+                elif search_condition.get('query_type') in ['exact', 'prefix']:
+                    # Pour les requêtes optimisées, extraire juste la condition WHERE
+                    if search_condition['query_type'] == 'exact':
+                        condition = "(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                    else:  # prefix
+                        condition = "(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+
+                    conditions.append(condition)
+                    params.extend(search_condition['params'])
+                else:
+                    # Condition WHERE classique
+                    conditions.append(search_condition['condition'])
+                    params.extend(search_condition['params'])
+
+        # Filtres par colonne pour count_data
+        if column_filters:
+            for col_idx, filter_text in column_filters.items():
+                if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
+                    conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
+                    params.append(f"%{filter_text}%")
+
+        # Filtre pour les lignes incomplètes pour count_data
+        if incomplete_filter:
+            incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
+            conditions.append(incomplete_condition)
+
+        # Ajouter les conditions
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        # Note: Le tri n'affecte pas le comptage, donc on ignore sort_column et sort_order
+        self.cursor.execute(query, params)
+        return self.cursor.fetchone()[0]
     
     @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage appareils incomplets")
     def count_incomplete_devices(self) -> int:
@@ -970,100 +958,116 @@ class DatabaseManager:
     
     def update_cell(self, db_id: int, column: str, value: str) -> bool:
         """Mettre à jour une cellule spécifique"""
-        try:
-            query = f"""
-                UPDATE appareils 
-                SET [{column}] = ?, updated_at = CURRENT_TIMESTAMP 
-                WHERE id = ?
-            """
-            self.cursor.execute(query, (value, db_id))
-            self.conn.commit()
-            
-            # Phase 2.3: Invalider le cache après mise à jour d'appareil
-            if hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_device_modification("modification", 1)
-            
-            return True
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la mise à jour: {e}")
+        result = self._safe_update_cell(db_id, column, value)
+        if not result:
+            raise DatabaseError(f"Erreur lors de la mise à jour de la cellule {column}")
+        return result
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur mise à jour cellule")
+    def _safe_update_cell(self, db_id: int, column: str, value: str) -> bool:
+        """Helper sécurisé pour mettre à jour une cellule spécifique"""
+        query = f"""
+            UPDATE appareils
+            SET [{column}] = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """
+        self.cursor.execute(query, (value, db_id))
+        self.conn.commit()
+
+        # Phase 2.3: Invalider le cache après mise à jour d'appareil
+        if hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_device_modification("modification", 1)
+
+        return True
     
     def update_multiple_cells_batch(self, updates_by_db_id: Dict[int, Dict[str, str]]) -> bool:
         """Mettre à jour plusieurs cellules en une seule transaction optimisée"""
+        result = self._safe_update_multiple_cells_batch(updates_by_db_id)
+        if not result:
+            raise DatabaseError("Erreur lors de la mise à jour par lots")
+        return result
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur mise à jour par lots")
+    def _safe_update_multiple_cells_batch(self, updates_by_db_id: Dict[int, Dict[str, str]]) -> bool:
+        """Helper sécurisé pour mettre à jour plusieurs cellules en une seule transaction"""
         # Vérifier s'il y a déjà une transaction active pour éviter les transactions imbriquées
         in_transaction = self.conn.in_transaction if hasattr(self.conn, 'in_transaction') else False
-        
+
         try:
             # Commencer une transaction uniquement si pas déjà en cours
             if not in_transaction:
                 self.cursor.execute("BEGIN TRANSACTION")
-            
+
             for db_id, column_updates in updates_by_db_id.items():
                 if column_updates:  # Vérifier qu'il y a des mises à jour
                     # Construire la requête UPDATE avec toutes les colonnes pour cette ligne
                     set_clauses = []
                     values = []
-                    
+
                     for column, value in column_updates.items():
                         set_clauses.append(f"[{column}] = ?")
                         values.append(value)
-                    
+
                     # Ajouter la mise à jour du timestamp
                     set_clauses.append("updated_at = CURRENT_TIMESTAMP")
                     values.append(db_id)  # Pour la clause WHERE
-                    
+
                     query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
                     self.cursor.execute(query, values)
-            
+
             # Valider la transaction seulement si on l'a commencée
             if not in_transaction:
                 self.conn.commit()
-            
+
             # Phase 2.3: Invalider le cache après mise à jour multiple
             if hasattr(self, 'cache_invalidation'):
                 self.cache_invalidation.invalidate_after_device_modification("modification", len(updates_by_db_id))
-            
+
             return True
-            
-        except sqlite3.Error as e:
+
+        except Exception as e:
             # Annuler la transaction en cas d'erreur (seulement si on l'a commencée)
             if not in_transaction:
                 self.conn.rollback()
-            raise DatabaseError(f"Erreur lors de la mise à jour par lots: {e}")
+            raise
     
     def insert_appareil(self, data: Dict[str, Any]) -> int:
         """Insérer un nouvel appareil"""
-        try:
-            # Préparer les données
-            columns = []
-            values = []
-            placeholders = []
-            
-            for header in Config.DB_HEADERS:
-                if header in data:
-                    columns.append(f'[{header}]')
-                    values.append(data[header])
-                    placeholders.append('?')
-            
-            if not columns:
-                raise DatabaseError("Aucune donnée fournie pour l'insertion")
-            
-            query = f"""
-                INSERT INTO appareils ({', '.join(columns)})
-                VALUES ({', '.join(placeholders)})
-            """
-            
-            self.cursor.execute(query, values)
-            self.conn.commit()
-            
-            # Phase 2.3: Invalider le cache après ajout d'appareil
-            if hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_device_modification("ajout", 1)
-            
-            return self.cursor.lastrowid
+        result = self._safe_insert_appareil(data)
+        if result == 0:
+            raise DatabaseError("Erreur lors de l'insertion de l'appareil")
+        return result
 
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'insertion: {e}")
+    @handle_database_operation_errors(return_value=0, log_prefix="Erreur insertion appareil")
+    def _safe_insert_appareil(self, data: Dict[str, Any]) -> int:
+        """Helper sécurisé pour insérer un nouvel appareil"""
+        # Préparer les données
+        columns = []
+        values = []
+        placeholders = []
+
+        for header in Config.DB_HEADERS:
+            if header in data:
+                columns.append(f'[{header}]')
+                values.append(data[header])
+                placeholders.append('?')
+
+        if not columns:
+            raise DatabaseError("Aucune donnée fournie pour l'insertion")
+
+        query = f"""
+            INSERT INTO appareils ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+        """
+
+        self.cursor.execute(query, values)
+        self.conn.commit()
+
+        # Phase 2.3: Invalider le cache après ajout d'appareil
+        if hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_device_modification("ajout", 1)
+
+        return self.cursor.lastrowid
 
     def add_device(self, device_data: Dict[str, Any]) -> int:
         """Alias pour insert_appareil - pour compatibilité avec DatabaseOperationsService"""
@@ -1071,129 +1075,143 @@ class DatabaseManager:
 
     def delete_appareils(self, ids: List[int]) -> int:
         """Supprimer des appareils par ID et toutes leurs associations de pièces"""
-        try:
-            if not ids:
-                return 0
-            
-            placeholders = ','.join('?' for _ in ids)
-            
-            # D'abord supprimer toutes les associations de pièces pour ces appareils
-            assoc_query = f"DELETE FROM piece_associations WHERE appareil_id IN ({placeholders})"
-            self.cursor.execute(assoc_query, ids)
-            associations_deleted = self.cursor.rowcount
-            
-            # Puis supprimer les appareils eux-mêmes
-            device_query = f"DELETE FROM appareils WHERE id IN ({placeholders})"
-            self.cursor.execute(device_query, ids)
-            deleted_count = self.cursor.rowcount
-            
-            self.conn.commit()
-            
-            if deleted_count > 0 and associations_deleted > 0:
-                app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
-            elif deleted_count > 0:
-                app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) (aucune association de pièce)")
-            
-            # Phase 2.3: Invalider le cache après suppression d'appareils
-            if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_device_modification("suppression", deleted_count)
-            
-            return deleted_count
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la suppression: {e}")
+        result = self._safe_delete_appareils(ids)
+        if result == -1:
+            raise DatabaseError("Erreur lors de la suppression des appareils")
+        return result
+
+    @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression appareils")
+    def _safe_delete_appareils(self, ids: List[int]) -> int:
+        """Helper sécurisé pour supprimer des appareils par ID"""
+        if not ids:
+            return 0
+
+        placeholders = ','.join('?' for _ in ids)
+
+        # D'abord supprimer toutes les associations de pièces pour ces appareils
+        assoc_query = f"DELETE FROM piece_associations WHERE appareil_id IN ({placeholders})"
+        self.cursor.execute(assoc_query, ids)
+        associations_deleted = self.cursor.rowcount
+
+        # Puis supprimer les appareils eux-mêmes
+        device_query = f"DELETE FROM appareils WHERE id IN ({placeholders})"
+        self.cursor.execute(device_query, ids)
+        deleted_count = self.cursor.rowcount
+
+        self.conn.commit()
+
+        if deleted_count > 0 and associations_deleted > 0:
+            app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
+        elif deleted_count > 0:
+            app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) (aucune association de pièce)")
+
+        # Phase 2.3: Invalider le cache après suppression d'appareils
+        if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_device_modification("suppression", deleted_count)
+
+        return deleted_count
     
     def delete_appareil(self, appareil_id: int) -> bool:
         """Supprimer un appareil par ID et toutes ses associations de pièces"""
-        try:
-            # Vérifier d'abord si l'appareil existe
-            check_query = "SELECT id FROM appareils WHERE id = ?"
-            result = self.execute_query(check_query, [appareil_id])
-            if not result:
-                app_logger.warning(f"Tentative suppression appareil inexistant ID: {appareil_id}")
-                return False
+        return self._safe_delete_appareil(appareil_id)
 
-            # D'abord supprimer toutes les associations de pièces pour cet appareil
-            assoc_query = "DELETE FROM piece_associations WHERE appareil_id = ?"
-            self.cursor.execute(assoc_query, [appareil_id])
-            associations_deleted = self.cursor.rowcount
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur suppression appareil")
+    def _safe_delete_appareil(self, appareil_id: int) -> bool:
+        """Helper sécurisé pour supprimer un appareil par ID"""
+        # Vérifier d'abord si l'appareil existe
+        check_query = "SELECT id FROM appareils WHERE id = ?"
+        result = self.execute_query(check_query, [appareil_id])
+        if not result:
+            app_logger.warning(f"Tentative suppression appareil inexistant ID: {appareil_id}")
+            return False
 
-            # Puis supprimer l'appareil lui-même
-            device_query = "DELETE FROM appareils WHERE id = ?"
-            self.cursor.execute(device_query, [appareil_id])
-            device_deleted = self.cursor.rowcount > 0
+        # D'abord supprimer toutes les associations de pièces pour cet appareil
+        assoc_query = "DELETE FROM piece_associations WHERE appareil_id = ?"
+        self.cursor.execute(assoc_query, [appareil_id])
+        associations_deleted = self.cursor.rowcount
 
-            self.conn.commit()
+        # Puis supprimer l'appareil lui-même
+        device_query = "DELETE FROM appareils WHERE id = ?"
+        self.cursor.execute(device_query, [appareil_id])
+        device_deleted = self.cursor.rowcount > 0
 
-            # Log pour debug
-            if device_deleted and associations_deleted > 0:
-                app_logger.info(f"Appareil {appareil_id} supprimé avec {associations_deleted} association(s)")
-            elif device_deleted:
-                app_logger.info(f"Appareil {appareil_id} supprimé (aucune association)")
-            else:
-                app_logger.error(f"Échec suppression appareil {appareil_id} - rowcount: {self.cursor.rowcount}")
+        self.conn.commit()
 
-            success = device_deleted
-            
-            # Phase 2.3: Invalider le cache après suppression d'appareil
-            if success and hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_device_modification("suppression", 1)
-            
-            return success
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la suppression: {e}")
+        # Log pour debug
+        if device_deleted and associations_deleted > 0:
+            app_logger.info(f"Appareil {appareil_id} supprimé avec {associations_deleted} association(s)")
+        elif device_deleted:
+            app_logger.info(f"Appareil {appareil_id} supprimé (aucune association)")
+        else:
+            app_logger.error(f"Échec suppression appareil {appareil_id} - rowcount: {self.cursor.rowcount}")
+
+        success = device_deleted
+
+        # Phase 2.3: Invalider le cache après suppression d'appareil
+        if success and hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_device_modification("suppression", 1)
+
+        return success
     
     def check_duplicate_reference(self, ref: str, exclude_id: Optional[int] = None) -> bool:
         """Vérifier si une référence existe déjà"""
-        try:
-            query = """
-                SELECT COUNT(*) FROM appareils 
-                WHERE (ref_modele = ? OR commercial_ref = ? OR other_ref = ?)
-            """
-            params = [ref, ref, ref]
-            
-            if exclude_id:
-                query += " AND id != ?"
-                params.append(exclude_id)
-            
-            self.cursor.execute(query, params)
-            count = self.cursor.fetchone()[0]
-            return count > 0
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la vérification des doublons: {e}")
+        return self._safe_check_duplicate_reference(ref, exclude_id)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur vérification doublons")
+    def _safe_check_duplicate_reference(self, ref: str, exclude_id: Optional[int] = None) -> bool:
+        """Helper sécurisé pour vérifier si une référence existe déjà"""
+        query = """
+            SELECT COUNT(*) FROM appareils
+            WHERE (ref_modele = ? OR commercial_ref = ? OR other_ref = ?)
+        """
+        params = [ref, ref, ref]
+
+        if exclude_id:
+            query += " AND id != ?"
+            params.append(exclude_id)
+
+        self.cursor.execute(query, params)
+        count = self.cursor.fetchone()[0]
+        return count > 0
     
     def clean_data(self) -> Dict[str, int]:
         """Nettoyer les données (supprimer vides et doublons)"""
+        result = self._safe_clean_data()
+        if not result:
+            raise DatabaseError("Erreur lors du nettoyage des données")
+        return result
+
+    @handle_database_operation_errors(return_value={}, log_prefix="Erreur nettoyage données")
+    def _safe_clean_data(self) -> Dict[str, int]:
+        """Helper sécurisé pour nettoyer les données"""
         try:
             # Supprimer les lignes vides (vérifier les 4 champs principaux)
             condition_vide = " AND ".join(f"([{h}] IS NULL OR [{h}] = '')" for h in Config.DB_HEADERS[:4])
             self.cursor.execute(f"DELETE FROM appareils WHERE {condition_vide}")
             deleted_empty = self.cursor.rowcount
-            
+
             # Identifier les doublons - colonnes A, B, C, D, E identiques
             # Considérer comme doublons: même type, manufacturer, ref_modele, commercial_ref, other_ref
             duplicates_query = """
                 SELECT GROUP_CONCAT(id) as ids, MIN(id) as keep_id
                 FROM appareils
-                GROUP BY COALESCE([type],''), COALESCE([manufacturer],''), 
+                GROUP BY COALESCE([type],''), COALESCE([manufacturer],''),
                          COALESCE([ref_modele],''), COALESCE([commercial_ref],''),
                          COALESCE([other_ref],'')
                 HAVING COUNT(*) > 1
             """
-            
+
             self.cursor.execute(duplicates_query)
             duplicate_groups = self.cursor.fetchall()
-            
+
             deleted_duplicates = 0
             merged_data = 0
-            
+
             # Traiter chaque groupe de doublons
             for ids_str, keep_id in duplicate_groups:
                 all_ids = [int(x) for x in ids_str.split(',')]
                 ids_to_delete = [x for x in all_ids if x != keep_id]
-                
+
                 if ids_to_delete:
                     # ÉTAPE 1: Fusionner les notes des doublons
                     notes_query = "SELECT [notes] FROM appareils WHERE id IN ({})".format(
@@ -1201,14 +1219,14 @@ class DatabaseManager:
                     )
                     self.cursor.execute(notes_query, all_ids)
                     all_notes = [row[0] for row in self.cursor.fetchall() if row[0] and row[0].strip()]
-                    
+
                     if all_notes:
                         # Combiner les notes uniques
                         unique_notes = []
                         for note in all_notes:
                             if note.strip() and note.strip() not in unique_notes:
                                 unique_notes.append(note.strip())
-                        
+
                         if unique_notes:
                             combined_notes = " | ".join(unique_notes)
                             self.cursor.execute(
@@ -1216,51 +1234,52 @@ class DatabaseManager:
                                 (combined_notes, keep_id)
                             )
                             merged_data += 1
-                    
+
                     # ÉTAPE 2: Réassigner toutes les pièces vers l'appareil conservé
                     placeholders = ','.join('?' for _ in ids_to_delete)
                     self.cursor.execute(f"""
-                        UPDATE pieces 
-                        SET appareil_id = ? 
+                        UPDATE pieces
+                        SET appareil_id = ?
                         WHERE appareil_id IN ({placeholders})
                     """, [keep_id] + ids_to_delete)
-                    
+
                     # ÉTAPE 3: Supprimer les doublons
                     self.cursor.execute(f"""
-                        DELETE FROM appareils 
+                        DELETE FROM appareils
                         WHERE id IN ({placeholders})
                     """, ids_to_delete)
-                    
+
                     deleted_duplicates += len(ids_to_delete)
-            
+
             self.conn.commit()
-            
+
             return {
                 'deleted_empty': deleted_empty,
                 'deleted_duplicates': deleted_duplicates,
                 'merged_notes': merged_data
             }
-            
-        except sqlite3.Error as e:
+
+        except Exception as e:
             self.conn.rollback()
-            raise DatabaseError(f"Erreur lors du nettoyage: {e}")
+            raise
     
     def get_pieces_for_appareil(self, appareil_id: int) -> List[Tuple]:
         """Récupérer les pièces associées à un appareil (nouvelle structure)"""
-        try:
-            query = """
-                SELECT p.ref_piece, p.description 
-                FROM pieces p
-                JOIN piece_associations pa ON p.id = pa.piece_id
-                WHERE pa.appareil_id = ?
-                ORDER BY p.ref_piece
-            """
-            
-            self.cursor.execute(query, (appareil_id,))
-            return self.cursor.fetchall()
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des pièces: {e}")
+        return self._safe_get_pieces_for_appareil(appareil_id)
+
+    @handle_database_operation_errors(return_value=[], log_prefix="Erreur récupération pièces")
+    def _safe_get_pieces_for_appareil(self, appareil_id: int) -> List[Tuple]:
+        """Helper sécurisé pour récupérer les pièces associées à un appareil"""
+        query = """
+            SELECT p.ref_piece, p.description
+            FROM pieces p
+            JOIN piece_associations pa ON p.id = pa.piece_id
+            WHERE pa.appareil_id = ?
+            ORDER BY p.ref_piece
+        """
+
+        self.cursor.execute(query, (appareil_id,))
+        return self.cursor.fetchall()
     
     @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage pièces appareil")
     def get_pieces_count_for_appareil(self, appareil_id: int) -> int:
@@ -1277,61 +1296,65 @@ class DatabaseManager:
     
     def add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None, confirm_callback=None) -> int:
         """Ajouter une pièce à un appareil (nouvelle structure)"""
-        try:
-            # Nettoyer la description d'entrée
-            clean_description = None
-            if description:
-                cleaned = str(description).strip()
-                if cleaned:
-                    clean_description = cleaned
-            # Étape 1: Vérifier si la pièce existe déjà
-            piece_query = "SELECT id, description FROM pieces WHERE ref_piece = ?"
-            self.cursor.execute(piece_query, (ref_piece,))
-            piece_result = self.cursor.fetchone()
-            
-            if piece_result:
-                piece_id, current_desc = piece_result
-                
-                # Gérer les conflits de description
-                if clean_description and current_desc and clean_description != current_desc:
-                    if confirm_callback:
-                        final_description = confirm_callback(ref_piece, current_desc, clean_description)
-                        if final_description != current_desc:
-                            self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
-                            self.conn.commit()
-                elif clean_description and not current_desc:
-                    # Ajouter description à une pièce sans description
-                    self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
-                    self.conn.commit()
-                    
-            else:
-                # Créer la nouvelle pièce
-                self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
-                piece_id = self.cursor.lastrowid
+        result = self._safe_add_piece(ref_piece, appareil_id, description, confirm_callback)
+        if result == 0:
+            raise DatabaseError(f"Erreur lors de l'ajout de la pièce {ref_piece}")
+        return result
+
+    @handle_database_operation_errors(return_value=0, log_prefix="Erreur ajout pièce")
+    def _safe_add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None, confirm_callback=None) -> int:
+        """Helper sécurisé pour ajouter une pièce à un appareil"""
+        # Nettoyer la description d'entrée
+        clean_description = None
+        if description:
+            cleaned = str(description).strip()
+            if cleaned:
+                clean_description = cleaned
+        # Étape 1: Vérifier si la pièce existe déjà
+        piece_query = "SELECT id, description FROM pieces WHERE ref_piece = ?"
+        self.cursor.execute(piece_query, (ref_piece,))
+        piece_result = self.cursor.fetchone()
+
+        if piece_result:
+            piece_id, current_desc = piece_result
+
+            # Gérer les conflits de description
+            if clean_description and current_desc and clean_description != current_desc:
+                if confirm_callback:
+                    final_description = confirm_callback(ref_piece, current_desc, clean_description)
+                    if final_description != current_desc:
+                        self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
+                        self.conn.commit()
+            elif clean_description and not current_desc:
+                # Ajouter description à une pièce sans description
+                self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
                 self.conn.commit()
-            
-            # Étape 2: Vérifier si l'association existe déjà
-            assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
-            self.cursor.execute(assoc_query, (piece_id, appareil_id))
-            existing_assoc = self.cursor.fetchone()
-            
-            if existing_assoc:
-                return existing_assoc[0]  # Retourner l'ID de l'association existante
-            
-            # Étape 3: Créer l'association
-            self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
-            assoc_id = self.cursor.lastrowid
-            
+
+        else:
+            # Créer la nouvelle pièce
+            self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
+            piece_id = self.cursor.lastrowid
             self.conn.commit()
-            
-            # Phase 2.3: Invalider le cache après ajout de pièce
-            if hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_piece_modification("ajout", ref_piece, 1)
-            
-            return assoc_id
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'ajout de la pièce: {e}")
+
+        # Étape 2: Vérifier si l'association existe déjà
+        assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
+        self.cursor.execute(assoc_query, (piece_id, appareil_id))
+        existing_assoc = self.cursor.fetchone()
+
+        if existing_assoc:
+            return existing_assoc[0]  # Retourner l'ID de l'association existante
+
+        # Étape 3: Créer l'association
+        self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
+        assoc_id = self.cursor.lastrowid
+
+        self.conn.commit()
+
+        # Phase 2.3: Invalider le cache après ajout de pièce
+        if hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_piece_modification("ajout", ref_piece, 1)
+
+        return assoc_id
     
     def add_or_update_piece_with_description(self, ref_piece: str, appareil_id: int, description: str = None, confirm_callback=None) -> tuple:
         """
@@ -1339,98 +1362,111 @@ class DatabaseManager:
         NOUVELLE STRUCTURE: Une pièce = une référence + une description, associations séparées.
         Retourne: (assoc_id, description_updated, association_created)
         """
-        try:
-            # Nettoyer la description d'entrée
-            clean_description = None
-            if description:
-                cleaned = str(description).strip()
-                if cleaned:
-                    clean_description = cleaned
-            
-            app_logger.debug(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
-            description_updated = False
-            
-            # Étape 1: Vérifier si la pièce existe déjà
-            piece_query = "SELECT id, description FROM pieces WHERE ref_piece = ?"
-            piece_result = self.execute_query(piece_query, [ref_piece])
-            
-            if piece_result:
-                # Pièce existante
-                piece_id = piece_result[0][0]
-                current_desc = piece_result[0][1]
-                
-                # Gérer les conflits de description
-                if clean_description and current_desc and clean_description != current_desc:
-                    if confirm_callback:
-                        final_description = confirm_callback(ref_piece, current_desc, clean_description)
-                        if final_description != current_desc:
-                            self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
-                            self.conn.commit()
-                            description_updated = True
-                elif clean_description and not current_desc:
-                    # Ajouter description à une pièce sans description
-                    self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
-                    self.conn.commit()
-                    description_updated = True
-                    
-            else:
-                # Nouvelle pièce
-                self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
-                piece_id = self.cursor.lastrowid
+        result = self._safe_add_or_update_piece_with_description(ref_piece, appareil_id, description, confirm_callback)
+        if not result:
+            raise DatabaseError(f"Erreur lors de l'ajout/mise à jour de la pièce {ref_piece}")
+        return result
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur ajout/mise à jour pièce")
+    def _safe_add_or_update_piece_with_description(self, ref_piece: str, appareil_id: int, description: str = None, confirm_callback=None) -> tuple:
+        """Helper sécurisé pour ajouter ou mettre à jour une pièce avec description"""
+        # Nettoyer la description d'entrée
+        clean_description = None
+        if description:
+            cleaned = str(description).strip()
+            if cleaned:
+                clean_description = cleaned
+
+        app_logger.debug(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
+        description_updated = False
+
+        # Étape 1: Vérifier si la pièce existe déjà
+        piece_query = "SELECT id, description FROM pieces WHERE ref_piece = ?"
+        piece_result = self.execute_query(piece_query, [ref_piece])
+
+        if piece_result:
+            # Pièce existante
+            piece_id = piece_result[0][0]
+            current_desc = piece_result[0][1]
+
+            # Gérer les conflits de description
+            if clean_description and current_desc and clean_description != current_desc:
+                if confirm_callback:
+                    final_description = confirm_callback(ref_piece, current_desc, clean_description)
+                    if final_description != current_desc:
+                        self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (final_description, piece_id))
+                        self.conn.commit()
+                        description_updated = True
+            elif clean_description and not current_desc:
+                # Ajouter description à une pièce sans description
+                self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (clean_description, piece_id))
                 self.conn.commit()
-            
-            # Étape 2: Vérifier si l'association existe déjà
-            assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
-            assoc_result = self.execute_query(assoc_query, [piece_id, appareil_id])
-            
-            if assoc_result:
-                # Association existante
-                assoc_id = assoc_result[0][0]
-                
-                # Invalider le cache si description modifiée
-                if description_updated and hasattr(self, 'cache_invalidation'):
-                    self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
-                
-                return (assoc_id, description_updated, False)  # False = pas nouvelle association
-            else:
-                # Nouvelle association
-                self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
-                assoc_id = self.cursor.lastrowid
-                self.conn.commit()
-                
-                # Phase 2.3: Invalider le cache après création d'association
-                if hasattr(self, 'cache_invalidation'):
-                    self.cache_invalidation.invalidate_after_piece_modification("ajout", ref_piece, 1)
-                
-                return (assoc_id, description_updated, True)  # True = nouvelle association
-                
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'ajout/mise à jour de la pièce: {e}")
+                description_updated = True
+
+        else:
+            # Nouvelle pièce
+            self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", (ref_piece, clean_description))
+            piece_id = self.cursor.lastrowid
+            self.conn.commit()
+
+        # Étape 2: Vérifier si l'association existe déjà
+        assoc_query = "SELECT id FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
+        assoc_result = self.execute_query(assoc_query, [piece_id, appareil_id])
+
+        if assoc_result:
+            # Association existante
+            assoc_id = assoc_result[0][0]
+
+            # Invalider le cache si description modifiée
+            if description_updated and hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
+
+            return (assoc_id, description_updated, False)  # False = pas nouvelle association
+        else:
+            # Nouvelle association
+            self.cursor.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (piece_id, appareil_id))
+            assoc_id = self.cursor.lastrowid
+            self.conn.commit()
+
+            # Phase 2.3: Invalider le cache après création d'association
+            if hasattr(self, 'cache_invalidation'):
+                self.cache_invalidation.invalidate_after_piece_modification("ajout", ref_piece, 1)
+
+            return (assoc_id, description_updated, True)  # True = nouvelle association
     
     def update_piece(self, ref_piece: str, description: str) -> bool:
         """Mettre à jour la description d'une pièce (nouvelle structure)"""
-        try:
-            query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
-            self.cursor.execute(query, (description, ref_piece))
-            updated = self.cursor.rowcount > 0
-            self.conn.commit()
-            
-            # Phase 2.3: Invalider le cache après mise à jour de pièce
-            if updated and hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
-            
-            return updated
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la mise à jour de la pièce: {e}")
+        return self._safe_update_piece(ref_piece, description)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur mise à jour pièce")
+    def _safe_update_piece(self, ref_piece: str, description: str) -> bool:
+        """Helper sécurisé pour mettre à jour la description d'une pièce"""
+        query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
+        self.cursor.execute(query, (description, ref_piece))
+        updated = self.cursor.rowcount > 0
+        self.conn.commit()
+
+        # Phase 2.3: Invalider le cache après mise à jour de pièce
+        if updated and hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
+
+        return updated
     
     def update_piece_complete(self, old_ref_piece: str, new_ref_piece: str, description: str, appareil_id: int) -> bool:
         """Mettre à jour complètement une pièce (référence ET description)"""
+        result = self._safe_update_piece_complete(old_ref_piece, new_ref_piece, description, appareil_id)
+        if result is None:
+            raise DatabaseError(f"Erreur lors de la mise à jour complète de la pièce {old_ref_piece}")
+        return result
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur mise à jour complète pièce")
+    def _safe_update_piece_complete(self, old_ref_piece: str, new_ref_piece: str, description: str, appareil_id: int) -> bool:
+        """Helper sécurisé pour mettre à jour complètement une pièce"""
         try:
             # Si la référence ne change pas, utiliser update_piece simple
             if old_ref_piece == new_ref_piece:
                 return self.update_piece(new_ref_piece, description)
-            
+
             # Si la référence change, vérifier que la nouvelle référence n'existe pas déjà
             check_query = "SELECT COUNT(*) FROM pieces WHERE ref_piece = ?"
             self.cursor.execute(check_query, (new_ref_piece,))
@@ -1440,34 +1476,34 @@ class DatabaseManager:
                 piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
                 self.cursor.execute(piece_query, (old_ref_piece,))
                 old_piece_result = self.cursor.fetchone()
-                
+
                 self.cursor.execute(piece_query, (new_ref_piece,))
                 new_piece_result = self.cursor.fetchone()
-                
+
                 if old_piece_result and new_piece_result:
                     old_piece_id, new_piece_id = old_piece_result[0], new_piece_result[0]
-                    
+
                     # Supprimer l'ancienne association
                     delete_assoc = "DELETE FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
                     self.cursor.execute(delete_assoc, (old_piece_id, appareil_id))
-                    
+
                     # Ajouter la nouvelle association si elle n'existe pas
                     check_assoc = "SELECT COUNT(*) FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
                     self.cursor.execute(check_assoc, (new_piece_id, appareil_id))
                     if self.cursor.fetchone()[0] == 0:
                         insert_assoc = "INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)"
                         self.cursor.execute(insert_assoc, (new_piece_id, appareil_id))
-                    
+
                     # Mettre à jour la description si fournie
                     if description:
                         self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (description, new_piece_id))
-                    
+
                     self.conn.commit()
-                    
+
                     # Invalider le cache
                     if hasattr(self, 'cache_invalidation'):
                         self.cache_invalidation.invalidate_after_piece_modification("modification", new_ref_piece, 1)
-                    
+
                     return True
             else:
                 # La nouvelle référence n'existe pas - mise à jour directe
@@ -1475,141 +1511,152 @@ class DatabaseManager:
                 self.cursor.execute(update_query, (new_ref_piece, description, old_ref_piece))
                 updated = self.cursor.rowcount > 0
                 self.conn.commit()
-                
+
                 # Invalider le cache
                 if updated and hasattr(self, 'cache_invalidation'):
                     self.cache_invalidation.invalidate_after_piece_modification("modification", new_ref_piece, 1)
-                
+
                 return updated
-                
-        except sqlite3.Error as e:
+
+        except Exception as e:
             self.conn.rollback()
-            raise DatabaseError(f"Erreur lors de la mise à jour complète de la pièce: {e}")
+            raise
     
     def get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
         """Récupérer les informations d'une pièce spécifique (nouvelle structure)"""
-        try:
-            query = """
-                SELECT p.ref_piece, p.description 
-                FROM pieces p
-                JOIN piece_associations pa ON p.id = pa.piece_id
-                WHERE p.ref_piece = ? AND pa.appareil_id = ?
-            """
-            self.cursor.execute(query, (ref_piece, appareil_id))
-            result = self.cursor.fetchone()
-            return result if result else None
-                
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des informations de la pièce: {e}")
+        return self._safe_get_piece_info(ref_piece, appareil_id)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur récupération info pièce")
+    def _safe_get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
+        """Helper sécurisé pour récupérer les informations d'une pièce spécifique"""
+        query = """
+            SELECT p.ref_piece, p.description
+            FROM pieces p
+            JOIN piece_associations pa ON p.id = pa.piece_id
+            WHERE p.ref_piece = ? AND pa.appareil_id = ?
+        """
+        self.cursor.execute(query, (ref_piece, appareil_id))
+        result = self.cursor.fetchone()
+        return result if result else None
     
     def delete_piece(self, ref_piece: str, appareil_id: int) -> bool:
         """Supprimer une pièce spécifique d'un appareil (nouvelle structure)"""
-        try:
-            # Étape 1: Trouver la pièce et l'association
-            query = """
-                SELECT p.id, pa.id 
-                FROM pieces p
-                JOIN piece_associations pa ON p.id = pa.piece_id
-                WHERE p.ref_piece = ? AND pa.appareil_id = ?
-            """
-            self.cursor.execute(query, (ref_piece, appareil_id))
-            result = self.cursor.fetchone()
-            
-            if not result:
-                return False
-            
-            piece_id, assoc_id = result
-            
-            # Étape 2: Supprimer l'association
-            self.cursor.execute("DELETE FROM piece_associations WHERE id = ?", (assoc_id,))
-            
-            # Étape 3: Vérifier si la pièce a d'autres associations
-            self.cursor.execute("SELECT COUNT(*) FROM piece_associations WHERE piece_id = ?", (piece_id,))
-            remaining_assocs = self.cursor.fetchone()[0]
-            
-            # Si plus d'associations, supprimer la pièce aussi
-            if remaining_assocs == 0:
-                self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
-            
-            self.conn.commit()
-            
-            # Phase 2.3: Invalider le cache après suppression de pièce
-            if hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, 1)
-            
-            return True
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la suppression de la pièce: {e}")
+        return self._safe_delete_piece(ref_piece, appareil_id)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur suppression pièce")
+    def _safe_delete_piece(self, ref_piece: str, appareil_id: int) -> bool:
+        """Helper sécurisé pour supprimer une pièce spécifique d'un appareil"""
+        # Étape 1: Trouver la pièce et l'association
+        query = """
+            SELECT p.id, pa.id
+            FROM pieces p
+            JOIN piece_associations pa ON p.id = pa.piece_id
+            WHERE p.ref_piece = ? AND pa.appareil_id = ?
+        """
+        self.cursor.execute(query, (ref_piece, appareil_id))
+        result = self.cursor.fetchone()
+
+        if not result:
+            return False
+
+        piece_id, assoc_id = result
+
+        # Étape 2: Supprimer l'association
+        self.cursor.execute("DELETE FROM piece_associations WHERE id = ?", (assoc_id,))
+
+        # Étape 3: Vérifier si la pièce a d'autres associations
+        self.cursor.execute("SELECT COUNT(*) FROM piece_associations WHERE piece_id = ?", (piece_id,))
+        remaining_assocs = self.cursor.fetchone()[0]
+
+        # Si plus d'associations, supprimer la pièce aussi
+        if remaining_assocs == 0:
+            self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
+
+        self.conn.commit()
+
+        # Phase 2.3: Invalider le cache après suppression de pièce
+        if hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, 1)
+
+        return True
     
     def delete_pieces_by_appareil(self, appareil_id: int) -> int:
         """Supprimer toutes les pièces d'un appareil (nouvelle structure)"""
-        try:
-            # Étape 1: Récupérer toutes les pièces associées à cet appareil
-            query = """
-                SELECT p.id, p.ref_piece
-                FROM pieces p
-                JOIN piece_associations pa ON p.id = pa.piece_id
-                WHERE pa.appareil_id = ?
-            """
-            self.cursor.execute(query, (appareil_id,))
-            piece_info = self.cursor.fetchall()
-            
-            if not piece_info:
-                return 0
-            
-            # Étape 2: Supprimer toutes les associations pour cet appareil
-            self.cursor.execute("DELETE FROM piece_associations WHERE appareil_id = ?", (appareil_id,))
-            deleted_count = self.cursor.rowcount
-            
-            # Étape 3: Supprimer les pièces qui n'ont plus d'associations
-            for piece_id, ref_piece in piece_info:
-                self.cursor.execute("SELECT COUNT(*) FROM piece_associations WHERE piece_id = ?", (piece_id,))
-                remaining_assocs = self.cursor.fetchone()[0]
-                
-                if remaining_assocs == 0:
-                    self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
-            
-            self.conn.commit()
-            
-            # Phase 2.3: Invalider le cache après suppression de pièces d'appareil
-            if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_device_modification("suppression de pièces", 1)
-            
-            return deleted_count
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la suppression des pièces: {e}")
+        result = self._safe_delete_pieces_by_appareil(appareil_id)
+        if result == -1:
+            raise DatabaseError(f"Erreur lors de la suppression des pièces de l'appareil {appareil_id}")
+        return result
+
+    @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression pièces appareil")
+    def _safe_delete_pieces_by_appareil(self, appareil_id: int) -> int:
+        """Helper sécurisé pour supprimer toutes les pièces d'un appareil"""
+        # Étape 1: Récupérer toutes les pièces associées à cet appareil
+        query = """
+            SELECT p.id, p.ref_piece
+            FROM pieces p
+            JOIN piece_associations pa ON p.id = pa.piece_id
+            WHERE pa.appareil_id = ?
+        """
+        self.cursor.execute(query, (appareil_id,))
+        piece_info = self.cursor.fetchall()
+
+        if not piece_info:
+            return 0
+
+        # Étape 2: Supprimer toutes les associations pour cet appareil
+        self.cursor.execute("DELETE FROM piece_associations WHERE appareil_id = ?", (appareil_id,))
+        deleted_count = self.cursor.rowcount
+
+        # Étape 3: Supprimer les pièces qui n'ont plus d'associations
+        for piece_id, ref_piece in piece_info:
+            self.cursor.execute("SELECT COUNT(*) FROM piece_associations WHERE piece_id = ?", (piece_id,))
+            remaining_assocs = self.cursor.fetchone()[0]
+
+            if remaining_assocs == 0:
+                self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
+
+        self.conn.commit()
+
+        # Phase 2.3: Invalider le cache après suppression de pièces d'appareil
+        if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_device_modification("suppression de pièces", 1)
+
+        return deleted_count
     
     def delete_piece_from_multiple_appareils(self, ref_piece: str, appareil_ids: List[int]) -> int:
         """Supprimer une pièce de plusieurs appareils"""
-        try:
-            deleted_count = 0
-            for appareil_id in appareil_ids:
-                if self.delete_piece(ref_piece, appareil_id):
-                    deleted_count += 1
-            
-            # Phase 2.3: Invalider le cache après suppression multiple
-            if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
-                self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, deleted_count)
-            
-            return deleted_count
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce: {e}")
+        result = self._safe_delete_piece_from_multiple_appareils(ref_piece, appareil_ids)
+        if result == -1:
+            raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce {ref_piece}")
+        return result
+
+    @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression multiple pièce")
+    def _safe_delete_piece_from_multiple_appareils(self, ref_piece: str, appareil_ids: List[int]) -> int:
+        """Helper sécurisé pour supprimer une pièce de plusieurs appareils"""
+        deleted_count = 0
+        for appareil_id in appareil_ids:
+            if self.delete_piece(ref_piece, appareil_id):
+                deleted_count += 1
+
+        # Phase 2.3: Invalider le cache après suppression multiple
+        if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
+            self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, deleted_count)
+
+        return deleted_count
     
     def get_duplicate_ref_modeles(self) -> List[Tuple[str, int]]:
         """Récupérer les ref_modele en doublon avec leur nombre d'occurrences (recherche exacte uniquement)"""
-        try:
-            # Récupérer uniquement les doublons exacts
-            query = Config.get_query('duplicate_refs')
-            exact_duplicates = self.execute_custom_query(query)
-            
-            # Retourner sous forme de liste triée
-            return sorted(exact_duplicates, key=lambda x: x[1], reverse=True)
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des doublons ref_modele: {e}")
+        return self._safe_get_duplicate_ref_modeles()
+
+    @handle_database_operation_errors(return_value=[], log_prefix="Erreur récupération doublons ref_modele")
+    def _safe_get_duplicate_ref_modeles(self) -> List[Tuple[str, int]]:
+        """Helper sécurisé pour récupérer les ref_modele en doublon"""
+        # Récupérer uniquement les doublons exacts
+        query = Config.get_query('duplicate_refs')
+        exact_duplicates = self.execute_custom_query(query)
+
+        # Retourner sous forme de liste triée
+        return sorted(exact_duplicates, key=lambda x: x[1], reverse=True)
 
     @handle_db_query_errors(return_value=None, log_prefix="Erreur récupération infos appareil")
     def get_device_info(self, device_id: int) -> Optional[Dict[str, Any]]:
@@ -1647,19 +1694,17 @@ class DatabaseManager:
         """
         return self.execute_custom_query(query, [ref_modele])
 
+    @handle_database_errors(title="Erreur récupération doublons")
     def get_duplicate_references(self) -> List[Tuple[str, str, str, str, str, int]]:
         """Récupérer les références d'appareils en doublon (colonnes A,B,C,D,E identiques)"""
-        try:
-            query = """
-                SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, COUNT(*) as count 
-                FROM appareils 
-                GROUP BY type, manufacturer, ref_modele, commercial_ref, other_ref 
-                HAVING COUNT(*) > 1
-                ORDER BY count DESC, type, manufacturer, ref_modele, commercial_ref, other_ref
-            """
-            return self.execute_custom_query(query)
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des doublons: {e}")
+        query = """
+            SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, COUNT(*) as count
+            FROM appareils
+            GROUP BY type, manufacturer, ref_modele, commercial_ref, other_ref
+            HAVING COUNT(*) > 1
+            ORDER BY count DESC, type, manufacturer, ref_modele, commercial_ref, other_ref
+        """
+        return self.execute_custom_query(query)
     
     def transfer_pieces(self, from_device_id: int, to_device_id: int):
         """Transférer les pièces d'un appareil vers un autre (nouvelle structure)"""
@@ -1788,276 +1833,278 @@ class DatabaseManager:
         result = self.cursor.fetchone()
         return result[0] if result else 0
     
+    @handle_database_errors(title="Erreur analyse doublons pièces")
     def analyze_piece_duplicates(self) -> List[Tuple]:
         """Analyser les doublons de pièces en détail (nouvelle structure)"""
-        try:
-            # Analyser les doublons d'associations
-            query = """
-                SELECT 
-                    p.ref_piece,
-                    pa.appareil_id,
-                    COUNT(*) as count
-                FROM piece_associations pa
-                JOIN pieces p ON pa.piece_id = p.id
-                WHERE p.ref_piece IS NOT NULL AND p.ref_piece != ''
-                GROUP BY pa.piece_id, pa.appareil_id
-                HAVING COUNT(*) > 1
-                ORDER BY count DESC, p.ref_piece, pa.appareil_id
-            """
-            self.cursor.execute(query)
-            return self.cursor.fetchall()
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'analyse des doublons: {e}")
+        # Analyser les doublons d'associations
+        query = """
+            SELECT
+                p.ref_piece,
+                pa.appareil_id,
+                COUNT(*) as count
+            FROM piece_associations pa
+            JOIN pieces p ON pa.piece_id = p.id
+            WHERE p.ref_piece IS NOT NULL AND p.ref_piece != ''
+            GROUP BY pa.piece_id, pa.appareil_id
+            HAVING COUNT(*) > 1
+            ORDER BY count DESC, p.ref_piece, pa.appareil_id
+        """
+        self.cursor.execute(query)
+        return self.cursor.fetchall()
     
+    @handle_database_errors(title="Erreur récupération catégories")
     def get_categories(self) -> List[str]:
         """Récupérer toutes les catégories"""
-        try:
-            self.cursor.execute("SELECT name FROM categories ORDER BY name")
-            return [row[0] for row in self.cursor.fetchall()]
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des catégories: {e}")
+        self.cursor.execute("SELECT name FROM categories ORDER BY name")
+        return [row[0] for row in self.cursor.fetchall()]
     
+    @handle_database_errors(title="Erreur mise à jour catégories")
     def update_categories(self, categories: List[str]) -> bool:
         """Mettre à jour la liste des catégories"""
-        try:
-            # Supprimer toutes les catégories existantes
-            self.cursor.execute("DELETE FROM categories")
-            
-            # Ajouter les nouvelles catégories
-            for category in categories:
-                self.cursor.execute(
-                    "INSERT INTO categories (name) VALUES (?)", 
-                    (category,)
-                )
-            
-            self.conn.commit()
-            return True
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la mise à jour des catégories: {e}")
+        # Supprimer toutes les catégories existantes
+        self.cursor.execute("DELETE FROM categories")
+
+        # Ajouter les nouvelles catégories
+        for category in categories:
+            self.cursor.execute(
+                "INSERT INTO categories (name) VALUES (?)",
+                (category,)
+            )
+
+        self.conn.commit()
+        return True
     
+    @handle_database_errors(title="Erreur validation base de données")
     def validate_database(self) -> Dict[str, Any]:
         """Valider la cohérence de la base de données"""
-        try:
-            issues = {}
-            
-            # Pièces orphelines
-            self.cursor.execute(Config.get_query('orphaned_pieces'))
-            issues['orphaned_pieces'] = self.cursor.fetchone()[0]
-            
-            # Doublons de références
-            self.cursor.execute(Config.get_query('duplicate_refs'))
-            issues['duplicate_refs'] = len(self.cursor.fetchall())
-            
-            # Champs vides critiques
-            self.cursor.execute(Config.get_query('empty_critical'))
-            issues['empty_critical'] = self.cursor.fetchone()[0]
-            
-            return issues
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la validation: {e}")
+        issues = {}
+
+        # Pièces orphelines
+        self.cursor.execute(Config.get_query('orphaned_pieces'))
+        issues['orphaned_pieces'] = self.cursor.fetchone()[0]
+
+        # Doublons de références
+        self.cursor.execute(Config.get_query('duplicate_refs'))
+        issues['duplicate_refs'] = len(self.cursor.fetchall())
+
+        # Champs vides critiques
+        self.cursor.execute(Config.get_query('empty_critical'))
+        issues['empty_critical'] = self.cursor.fetchone()[0]
+
+        return issues
     
-    def get_export_data(self, search_term: str, 
+    @handle_database_errors(title="Erreur récupération données export")
+    def get_export_data(self, search_term: str,
                        column_filters: Optional[Dict[int, str]] = None,
                        incomplete_filter: bool = False) -> List[Tuple]:
         """Récupérer les données pour l'export - utilise exactement la même logique que load_data()"""
-        try:
-            # Construction de la requête similaire à load_data mais adaptée pour l'export
-            headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS[:5])
-            query = f"""
-                SELECT DISTINCT {headers_str}, ? as ref_piece
-                FROM appareils a
-                LEFT JOIN piece_associations pa ON a.id = pa.appareil_id
-                LEFT JOIN pieces p ON pa.piece_id = p.id
-            """
-            
-            # Paramètre fixe pour la référence de pièce dans le résultat
-            # Si c'est un objet dict, utiliser un terme par défaut pour le paramètre  
-            if isinstance(search_term, dict):
-                display_term = "recherche_multiple"
-            else:
-                display_term = search_term
-            params = [display_term]
-            conditions = []
-            
-            # Recherche globale utilisant la même logique que load_data
-            if search_term:
-                # Parser le terme de recherche s'il contient des opérateurs || ou &&
-                parsed_search = self._parse_search_term_for_export(search_term)
-                search_condition = self._build_search_condition(parsed_search)
-                if search_condition:
-                    # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
-                    if search_condition.get('query_type') in ['exact', 'prefix']:
-                        # Pour les requêtes optimisées, extraire juste la condition WHERE
-                        if search_condition['query_type'] == 'exact':
-                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
-                        else:  # prefix
-                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
-                        
-                        conditions.append(condition)
-                        params.extend(search_condition['params'])
-                    else:
-                        # Condition WHERE classique
-                        conditions.append(search_condition['condition'])
-                        params.extend(search_condition['params'])
-            
-            # Filtres par colonne (comme dans load_data)
-            if column_filters:
-                for col_idx, filter_text in column_filters.items():
-                    if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
-                        conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
-                        params.append(f"%{filter_text}%")
-            
-            # Filtre pour les lignes incomplètes (comme dans load_data)
-            if incomplete_filter:
-                incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
-                conditions.append(incomplete_condition)
-            
-            # Ajouter les conditions WHERE si nécessaire
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-            
-            self.cursor.execute(query, params)
-            return self.cursor.fetchall()
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des données d'export: {e}")
+        # Construction de la requête similaire à load_data mais adaptée pour l'export
+        headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS[:5])
+        query = f"""
+            SELECT DISTINCT {headers_str}, ? as ref_piece
+            FROM appareils a
+            LEFT JOIN piece_associations pa ON a.id = pa.appareil_id
+            LEFT JOIN pieces p ON pa.piece_id = p.id
+        """
+
+        # Paramètre fixe pour la référence de pièce dans le résultat
+        # Si c'est un objet dict, utiliser un terme par défaut pour le paramètre
+        if isinstance(search_term, dict):
+            display_term = "recherche_multiple"
+        else:
+            display_term = search_term
+        params = [display_term]
+        conditions = []
+
+        # Recherche globale utilisant la même logique que load_data
+        if search_term:
+            # Parser le terme de recherche s'il contient des opérateurs || ou &&
+            parsed_search = self._parse_search_term_for_export(search_term)
+            search_condition = self._build_search_condition(parsed_search)
+            if search_condition:
+                # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
+                if search_condition.get('query_type') in ['exact', 'prefix']:
+                    # Pour les requêtes optimisées, extraire juste la condition WHERE
+                    if search_condition['query_type'] == 'exact':
+                        condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                    else:  # prefix
+                        condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+
+                    conditions.append(condition)
+                    params.extend(search_condition['params'])
+                else:
+                    # Condition WHERE classique
+                    conditions.append(search_condition['condition'])
+                    params.extend(search_condition['params'])
+
+        # Filtres par colonne (comme dans load_data)
+        if column_filters:
+            for col_idx, filter_text in column_filters.items():
+                if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
+                    conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
+                    params.append(f"%{filter_text}%")
+
+        # Filtre pour les lignes incomplètes (comme dans load_data)
+        if incomplete_filter:
+            incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
+            conditions.append(incomplete_condition)
+
+        # Ajouter les conditions WHERE si nécessaire
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        self.cursor.execute(query, params)
+        return self.cursor.fetchall()
     
+    @handle_database_errors(title="Erreur requête personnalisée")
     def execute_custom_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
         """Exécuter une requête SQL personnalisée"""
-        try:
-            if params is None:
-                params = []
-            
-            self.cursor.execute(query, params)
-            return self.cursor.fetchall()
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'exécution de la requête personnalisée: {e}")
+        if params is None:
+            params = []
+
+        self.cursor.execute(query, params)
+        return self.cursor.fetchall()
     
     def execute_insert(self, query: str, params: Optional[List] = None) -> Optional[int]:
         """Exécuter une requête INSERT et retourner l'ID de la ligne insérée"""
+        result = self._safe_execute_insert(query, params)
+        if result is None:
+            raise DatabaseError("Erreur lors de l'exécution de la requête INSERT")
+        return result
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur exécution INSERT")
+    def _safe_execute_insert(self, query: str, params: Optional[List] = None) -> Optional[int]:
+        """Helper sécurisé pour exécuter une requête INSERT"""
+        if params is None:
+            params = []
+
         try:
-            if params is None:
-                params = []
-            
             self.cursor.execute(query, params)
             self.conn.commit()
             return self.cursor.lastrowid
-            
-        except sqlite3.Error as e:
+        except Exception as e:
             self.conn.rollback()
-            raise DatabaseError(f"Erreur lors de l'exécution de la requête INSERT: {e}")
+            raise
     
     def execute_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
         """Exécuter une requête SQL de lecture (SELECT)"""
-        try:
-            if params is None:
-                params = []
-            
-            self.cursor.execute(query, params)
-            return self.cursor.fetchall()
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de l'exécution de la requête SELECT: {e}")
+        return self._safe_execute_query(query, params)
+
+    @handle_database_operation_errors(return_value=[], log_prefix="Erreur exécution SELECT")
+    def _safe_execute_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
+        """Helper sécurisé pour exécuter une requête SQL de lecture"""
+        if params is None:
+            params = []
+
+        self.cursor.execute(query, params)
+        return self.cursor.fetchall()
     
     # Méthodes pour gérer les décisions sur les doublons de références
     def save_reference_decision(self, ref_modele: str, decision: str, notes: str = None) -> bool:
         """Sauvegarder une décision sur un doublon de référence"""
+        result = self._safe_save_reference_decision(ref_modele, decision, notes)
+        if not result:
+            raise DatabaseError(f"Erreur lors de la sauvegarde de la décision pour {ref_modele}")
+        return result
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur sauvegarde décision référence")
+    def _safe_save_reference_decision(self, ref_modele: str, decision: str, notes: str = None) -> bool:
+        """Helper sécurisé pour sauvegarder une décision sur un doublon de référence"""
+        if decision not in ('DISTINCT', 'MERGE'):
+            raise ValueError(f"Décision invalide: {decision}")
+
+        query = """
+            INSERT OR REPLACE INTO reference_decisions
+            (ref_modele, decision, notes, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """
+
         try:
-            if decision not in ('DISTINCT', 'MERGE'):
-                raise ValueError(f"Décision invalide: {decision}")
-            
-            query = """
-                INSERT OR REPLACE INTO reference_decisions 
-                (ref_modele, decision, notes, created_at) 
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """
-            
             self.cursor.execute(query, (ref_modele, decision, notes))
             self.conn.commit()
             return True
-            
-        except sqlite3.Error as e:
+        except Exception as e:
             self.conn.rollback()
-            raise DatabaseError(f"Erreur lors de la sauvegarde de la décision: {e}")
+            raise
     
     def get_reference_decision(self, ref_modele: str) -> Optional[Dict[str, Any]]:
         """Récupérer la décision pour une référence"""
-        try:
-            query = """
-                SELECT decision, notes, created_at 
-                FROM reference_decisions 
-                WHERE ref_modele = ?
-            """
-            
-            self.cursor.execute(query, (ref_modele,))
-            result = self.cursor.fetchone()
-            
-            if result:
-                return {
-                    'ref_modele': ref_modele,
-                    'decision': result[0],
-                    'notes': result[1],
-                    'created_at': result[2]
-                }
-            return None
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération de la décision: {e}")
+        return self._safe_get_reference_decision(ref_modele)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur récupération décision référence")
+    def _safe_get_reference_decision(self, ref_modele: str) -> Optional[Dict[str, Any]]:
+        """Helper sécurisé pour récupérer la décision pour une référence"""
+        query = """
+            SELECT decision, notes, created_at
+            FROM reference_decisions
+            WHERE ref_modele = ?
+        """
+
+        self.cursor.execute(query, (ref_modele,))
+        result = self.cursor.fetchone()
+
+        if result:
+            return {
+                'ref_modele': ref_modele,
+                'decision': result[0],
+                'notes': result[1],
+                'created_at': result[2]
+            }
+        return None
     
     def get_references_by_decision(self, decision: str = None) -> List[Dict[str, Any]]:
         """Récupérer toutes les références filtrées par décision (optionnel)"""
-        try:
-            if decision and decision not in ('DISTINCT', 'MERGE'):
-                raise ValueError(f"Décision invalide: {decision}")
-            
-            if decision:
-                query = """
-                    SELECT ref_modele, decision, notes, created_at 
-                    FROM reference_decisions 
-                    WHERE decision = ?
-                    ORDER BY created_at DESC
-                """
-                self.cursor.execute(query, (decision,))
-            else:
-                query = """
-                    SELECT ref_modele, decision, notes, created_at 
-                    FROM reference_decisions 
-                    ORDER BY created_at DESC
-                """
-                self.cursor.execute(query)
-            
-            results = []
-            for row in self.cursor.fetchall():
-                results.append({
-                    'ref_modele': row[0],
-                    'decision': row[1],
-                    'notes': row[2],
-                    'created_at': row[3]
-                })
-            
-            return results
-            
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Erreur lors de la récupération des décisions: {e}")
+        return self._safe_get_references_by_decision(decision)
+
+    @handle_database_operation_errors(return_value=[], log_prefix="Erreur récupération références par décision")
+    def _safe_get_references_by_decision(self, decision: str = None) -> List[Dict[str, Any]]:
+        """Helper sécurisé pour récupérer toutes les références par décision"""
+        if decision and decision not in ('DISTINCT', 'MERGE'):
+            raise ValueError(f"Décision invalide: {decision}")
+
+        if decision:
+            query = """
+                SELECT ref_modele, decision, notes, created_at
+                FROM reference_decisions
+                WHERE decision = ?
+                ORDER BY created_at DESC
+            """
+            self.cursor.execute(query, (decision,))
+        else:
+            query = """
+                SELECT ref_modele, decision, notes, created_at
+                FROM reference_decisions
+                ORDER BY created_at DESC
+            """
+            self.cursor.execute(query)
+
+        results = []
+        for row in self.cursor.fetchall():
+            results.append({
+                'ref_modele': row[0],
+                'decision': row[1],
+                'notes': row[2],
+                'created_at': row[3]
+            })
+
+        return results
     
     def delete_reference_decision(self, ref_modele: str) -> bool:
         """Supprimer une décision (réinitialiser à l'état nouveau)"""
+        return self._safe_delete_reference_decision(ref_modele)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur suppression décision référence")
+    def _safe_delete_reference_decision(self, ref_modele: str) -> bool:
+        """Helper sécurisé pour supprimer une décision de référence"""
+        query = "DELETE FROM reference_decisions WHERE ref_modele = ?"
+
         try:
-            query = "DELETE FROM reference_decisions WHERE ref_modele = ?"
-            
             self.cursor.execute(query, (ref_modele,))
             self.conn.commit()
-            
             return self.cursor.rowcount > 0
-            
-        except sqlite3.Error as e:
+        except Exception as e:
             self.conn.rollback()
-            raise DatabaseError(f"Erreur lors de la suppression de la décision: {e}")
+            raise
     
     def _load_data_optimized(self, search_term: Optional[str] = None,
                           column_filters: Optional[Dict[int, str]] = None,

@@ -16,6 +16,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core.config import Config
 from src.core.constants import ExportFormat, ExportError
 from src.services.html_export_service import HtmlExportService
+from src.utils.error_handler import handle_export_errors
 
 class DataExporter:
     """Classe pour gérer tous les exports de données"""
@@ -29,298 +30,268 @@ class DataExporter:
             'last_export_time': None
         }
     
-    def export_search_results(self, search_term: str, export_format: ExportFormat, 
-                            filename: Optional[str] = None, 
+    @handle_export_errors(title="Erreur export résultats recherche")
+    def export_search_results(self, search_term: str, export_format: ExportFormat,
+                            filename: Optional[str] = None,
                             column_filters: Optional[Dict[int, str]] = None,
                             incomplete_filter: bool = False) -> str:
         """Exporter les résultats de recherche dans le format spécifié"""
         if not self.db_manager:
             raise ExportError("Gestionnaire de base de données non initialisé")
-        
+
         # Vérifier que le terme de recherche n'est pas vide (chaîne ou objet)
         if isinstance(search_term, str) and not search_term.strip():
             raise ExportError("Terme de recherche requis pour l'export")
         elif not search_term:
             raise ExportError("Terme de recherche requis pour l'export")
-        
-        try:
-            # Récupérer les données avec les mêmes filtres que l'affichage
-            data = self.db_manager.get_export_data(search_term, column_filters, incomplete_filter)
-            
-            if not data:
-                raise ExportError(f"Aucune donnée trouvée pour le terme: {search_term}")
-            
-            # Générer le nom de fichier si non fourni
-            if not filename:
-                filename = self._generate_filename(search_term, export_format)
-            
-            # Exporter selon le format
-            if export_format == ExportFormat.CSV:
-                result = self._export_to_csv(data, filename, search_term)
-            elif export_format == ExportFormat.JSON:
-                result = self._export_to_json(data, filename, search_term)
-            elif export_format == ExportFormat.HTML_BRANDS:
-                result = self._export_html_brands(data, search_term)
-            elif export_format == ExportFormat.HTML_DETAILS:
-                result = self._export_html_details(data, search_term)
-            elif export_format == ExportFormat.XML:
-                result = self._export_to_xml(data, filename, search_term)
-            else:
-                raise ExportError(f"Format d'export non supporté: {export_format}")
-            
-            # Mettre à jour les statistiques
-            self._update_export_stats(True)
-            
-            return result
-            
-        except Exception as e:
-            self._update_export_stats(False)
-            raise ExportError(f"Erreur lors de l'export: {e}")
+
+        # Récupérer les données avec les mêmes filtres que l'affichage
+        data = self.db_manager.get_export_data(search_term, column_filters, incomplete_filter)
+
+        if not data:
+            raise ExportError(f"Aucune donnée trouvée pour le terme: {search_term}")
+
+        # Générer le nom de fichier si non fourni
+        if not filename:
+            filename = self._generate_filename(search_term, export_format)
+
+        # Exporter selon le format
+        if export_format == ExportFormat.CSV:
+            result = self._export_to_csv(data, filename, search_term)
+        elif export_format == ExportFormat.JSON:
+            result = self._export_to_json(data, filename, search_term)
+        elif export_format == ExportFormat.HTML_BRANDS:
+            result = self._export_html_brands(data, search_term)
+        elif export_format == ExportFormat.HTML_DETAILS:
+            result = self._export_html_details(data, search_term)
+        elif export_format == ExportFormat.XML:
+            result = self._export_to_xml(data, filename, search_term)
+        else:
+            raise ExportError(f"Format d'export non supporté: {export_format}")
+
+        # Mettre à jour les statistiques
+        self._update_export_stats(True)
+
+        return result
     
+    @handle_export_errors(title="Erreur export CSV")
     def _export_to_csv(self, data: List[Tuple], filename: str, search_term: str) -> str:
         """Exporter vers CSV"""
-        try:
-            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                # En-têtes
-                headers = [
-                    'product',
-                    'type',
-                    'manufacturer',
-                    'modele_name',
-                    'reference_modele',
-                    'commercial_reference'
-                ]
-                writer.writerow(headers)
-                
-                # Données
-                for record in data:
-                    type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-                    modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
-                    
-                    writer.writerow([
-                        ref_piece or search_term,
-                        type_app or '',
-                        manufacturer or '',
-                        modele_complet,
-                        ref_modele or '',
-                        commercial_ref or ''
-                    ])
-            
-            return f"Fichier CSV créé: {filename}"
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export CSV: {e}")
-    
-    def _export_to_json(self, data: List[Tuple], filename: str, search_term: str) -> str:
-        """Exporter vers JSON"""
-        try:
-            json_data = {
-                'export_info': {
-                    'search_term': search_term,
-                    'export_date': datetime.now().isoformat(),
-                    'total_records': len(data)
-                },
-                'appareils': []
-            }
-            
+        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile, delimiter=';')
+
+            # En-têtes
+            headers = [
+                'product',
+                'type',
+                'manufacturer',
+                'modele_name',
+                'reference_modele',
+                'commercial_reference'
+            ]
+            writer.writerow(headers)
+
+            # Données
             for record in data:
                 type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-                
-                appareil = {
-                    'type': type_app or '',
-                    'manufacturer': manufacturer or '',
-                    'ref_modele': ref_modele or '',
-                    'commercial_ref': commercial_ref or '',
-                    'other_ref': other_ref or '',
-                    'pieces': [ref_piece] if ref_piece else []
-                }
-                
-                json_data['appareils'].append(appareil)
-            
-            with open(filename, 'w', encoding='utf-8') as jsonfile:
-                json.dump(json_data, jsonfile, indent=2, ensure_ascii=False)
-            
-            return f"Fichier JSON créé: {filename}"
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export JSON: {e}")
+                modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
+
+                writer.writerow([
+                    ref_piece or search_term,
+                    type_app or '',
+                    manufacturer or '',
+                    modele_complet,
+                    ref_modele or '',
+                    commercial_ref or ''
+                ])
+
+        return f"Fichier CSV créé: {filename}"
     
+    @handle_export_errors(title="Erreur export JSON")
+    def _export_to_json(self, data: List[Tuple], filename: str, search_term: str) -> str:
+        """Exporter vers JSON"""
+        json_data = {
+            'export_info': {
+                'search_term': search_term,
+                'export_date': datetime.now().isoformat(),
+                'total_records': len(data)
+            },
+            'appareils': []
+        }
+
+        for record in data:
+            type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
+
+            appareil = {
+                'type': type_app or '',
+                'manufacturer': manufacturer or '',
+                'ref_modele': ref_modele or '',
+                'commercial_ref': commercial_ref or '',
+                'other_ref': other_ref or '',
+                'pieces': [ref_piece] if ref_piece else []
+            }
+
+            json_data['appareils'].append(appareil)
+
+        with open(filename, 'w', encoding='utf-8') as jsonfile:
+            json.dump(json_data, jsonfile, indent=2, ensure_ascii=False)
+
+        return f"Fichier JSON créé: {filename}"
+    
+    @handle_export_errors(title="Erreur export HTML marques")
     def _export_html_brands(self, data: List[Tuple], search_term: str) -> str:
         """Exporter les marques en HTML - DÉLÉGUÉ AU SERVICE CENTRALISÉ"""
-        try:
-            return HtmlExportService.generate_html_brands(data)
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export HTML marques: {e}")
+        return HtmlExportService.generate_html_brands(data)
     
+    @handle_export_errors(title="Erreur export HTML détails")
     def _export_html_details(self, data: List[Tuple], search_term: str) -> str:
         """Exporter les détails en HTML - DÉLÉGUÉ AU SERVICE CENTRALISÉ"""
-        try:
-            html_output = HtmlExportService.generate_html_details(data)
-            
-            # Conserver la logique _last_export_info pour compatibilité
-            char_count = HtmlExportService.count_non_html_chars(html_output)
-            self._last_export_info = {
-                'format_used': 'optimisé',
-                'char_count': char_count,
-                'char_limit': HtmlExportService.CHAR_LIMIT,
-                'description': 'Format optimisé automatiquement'
-            }
-            
-            return html_output
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export HTML détails: {e}")
+        html_output = HtmlExportService.generate_html_details(data)
+
+        # Conserver la logique _last_export_info pour compatibilité
+        char_count = HtmlExportService.count_non_html_chars(html_output)
+        self._last_export_info = {
+            'format_used': 'optimisé',
+            'char_count': char_count,
+            'char_limit': HtmlExportService.CHAR_LIMIT,
+            'description': 'Format optimisé automatiquement'
+        }
+
+        return html_output
     
     def get_last_export_info(self):
         """Récupérer les informations du dernier export HTML détails"""
         return getattr(self, '_last_export_info', None)
 
+    @handle_export_errors(title="Erreur export XML")
     def _export_to_xml(self, data: List[Tuple], filename: str, search_term: str) -> str:
         """Exporter vers XML"""
-        try:
-            xml_content = ['<?xml version="1.0" encoding="UTF-8"?>']
-            xml_content.append('<export>')
-            xml_content.append(f'  <search_term>{search_term}</search_term>')
-            xml_content.append(f'  <export_date>{datetime.now().isoformat()}</export_date>')
-            xml_content.append(f'  <total_records>{len(data)}</total_records>')
-            xml_content.append('  <appareils>')
-            
-            for record in data:
-                type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-                
-                xml_content.append('    <appareil>')
-                xml_content.append(f'      <type>{self._escape_xml(type_app or "")}</type>')
-                xml_content.append(f'      <manufacturer>{self._escape_xml(manufacturer or "")}</manufacturer>')
-                xml_content.append(f'      <ref_modele>{self._escape_xml(ref_modele or "")}</ref_modele>')
-                xml_content.append(f'      <commercial_ref>{self._escape_xml(commercial_ref or "")}</commercial_ref>')
-                xml_content.append(f'      <other_ref>{self._escape_xml(other_ref or "")}</other_ref>')
-                if ref_piece:
-                    xml_content.append(f'      <ref_piece>{self._escape_xml(ref_piece)}</ref_piece>')
-                xml_content.append('    </appareil>')
-            
-            xml_content.append('  </appareils>')
-            xml_content.append('</export>')
-            
-            with open(filename, 'w', encoding='utf-8') as xmlfile:
-                xmlfile.write('\n'.join(xml_content))
-            
-            return f"Fichier XML créé: {filename}"
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export XML: {e}")
+        xml_content = ['<?xml version="1.0" encoding="UTF-8"?>']
+        xml_content.append('<export>')
+        xml_content.append(f'  <search_term>{search_term}</search_term>')
+        xml_content.append(f'  <export_date>{datetime.now().isoformat()}</export_date>')
+        xml_content.append(f'  <total_records>{len(data)}</total_records>')
+        xml_content.append('  <appareils>')
+
+        for record in data:
+            type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
+
+            xml_content.append('    <appareil>')
+            xml_content.append(f'      <type>{self._escape_xml(type_app or "")}</type>')
+            xml_content.append(f'      <manufacturer>{self._escape_xml(manufacturer or "")}</manufacturer>')
+            xml_content.append(f'      <ref_modele>{self._escape_xml(ref_modele or "")}</ref_modele>')
+            xml_content.append(f'      <commercial_ref>{self._escape_xml(commercial_ref or "")}</commercial_ref>')
+            xml_content.append(f'      <other_ref>{self._escape_xml(other_ref or "")}</other_ref>')
+            if ref_piece:
+                xml_content.append(f'      <ref_piece>{self._escape_xml(ref_piece)}</ref_piece>')
+            xml_content.append('    </appareil>')
+
+        xml_content.append('  </appareils>')
+        xml_content.append('</export>')
+
+        with open(filename, 'w', encoding='utf-8') as xmlfile:
+            xmlfile.write('\n'.join(xml_content))
+
+        return f"Fichier XML créé: {filename}"
     
-    def export_all_data(self, export_format: ExportFormat, 
+    @handle_export_errors(title="Erreur export données complètes")
+    def export_all_data(self, export_format: ExportFormat,
                        filename: Optional[str] = None) -> str:
         """Exporter toutes les données"""
         if not self.db_manager:
             raise ExportError("Gestionnaire de base de données non initialisé")
-        
-        try:
-            # Récupérer toutes les données
-            data = self.db_manager.load_data()
-            
-            if not data:
-                raise ExportError("Aucune donnée à exporter")
-            
-            # Convertir le format des données pour l'export
-            export_data = []
-            for record in data:
-                # record[0] = id, record[1:] = données
-                row_data = record[1:] + (None,)  # Ajouter None pour ref_piece
-                export_data.append(row_data)
-            
-            # Générer le nom de fichier
-            if not filename:
-                filename = self._generate_filename("all_data", export_format)
-            
-            # Exporter selon le format
-            if export_format == ExportFormat.CSV:
-                return self._export_all_to_csv(export_data, filename)
-            elif export_format == ExportFormat.JSON:
-                return self._export_all_to_json(export_data, filename)
-            elif export_format == ExportFormat.XML:
-                return self._export_all_to_xml(export_data, filename)
-            else:
-                raise ExportError(f"Format d'export non supporté pour l'export complet: {export_format}")
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export complet: {e}")
+
+        # Récupérer toutes les données
+        data = self.db_manager.load_data()
+
+        if not data:
+            raise ExportError("Aucune donnée à exporter")
+
+        # Convertir le format des données pour l'export
+        export_data = []
+        for record in data:
+            # record[0] = id, record[1:] = données
+            row_data = record[1:] + (None,)  # Ajouter None pour ref_piece
+            export_data.append(row_data)
+
+        # Générer le nom de fichier
+        if not filename:
+            filename = self._generate_filename("all_data", export_format)
+
+        # Exporter selon le format
+        if export_format == ExportFormat.CSV:
+            return self._export_all_to_csv(export_data, filename)
+        elif export_format == ExportFormat.JSON:
+            return self._export_all_to_json(export_data, filename)
+        elif export_format == ExportFormat.XML:
+            return self._export_all_to_xml(export_data, filename)
+        else:
+            raise ExportError(f"Format d'export non supporté pour l'export complet: {export_format}")
     
+    @handle_export_errors(title="Erreur export CSV complet")
     def _export_all_to_csv(self, data: List[Tuple], filename: str) -> str:
         """Exporter toutes les données vers CSV"""
-        try:
-            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile, delimiter=';')
-                
-                # En-têtes
-                writer.writerow(Config.UI_HEADERS)
-                
-                # Données
-                for record in data:
-                    writer.writerow(record[:len(Config.DB_HEADERS)])
-            
-            return f"Fichier CSV complet créé: {filename}"
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export CSV complet: {e}")
+        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile, delimiter=';')
+
+            # En-têtes
+            writer.writerow(Config.UI_HEADERS)
+
+            # Données
+            for record in data:
+                writer.writerow(record[:len(Config.DB_HEADERS)])
+
+        return f"Fichier CSV complet créé: {filename}"
     
+    @handle_export_errors(title="Erreur export JSON complet")
     def _export_all_to_json(self, data: List[Tuple], filename: str) -> str:
         """Exporter toutes les données vers JSON"""
-        try:
-            json_data = {
-                'export_info': {
-                    'export_date': datetime.now().isoformat(),
-                    'total_records': len(data),
-                    'export_type': 'complete'
-                },
-                'appareils': []
-            }
-            
-            for record in data:
-                appareil = {}
-                for i, header in enumerate(Config.DB_HEADERS):
-                    if i < len(record):
-                        appareil[header] = record[i] or ''
-                
-                json_data['appareils'].append(appareil)
-            
-            with open(filename, 'w', encoding='utf-8') as jsonfile:
-                json.dump(json_data, jsonfile, indent=2, ensure_ascii=False)
-            
-            return f"Fichier JSON complet créé: {filename}"
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export JSON complet: {e}")
+        json_data = {
+            'export_info': {
+                'export_date': datetime.now().isoformat(),
+                'total_records': len(data),
+                'export_type': 'complete'
+            },
+            'appareils': []
+        }
+
+        for record in data:
+            appareil = {}
+            for i, header in enumerate(Config.DB_HEADERS):
+                if i < len(record):
+                    appareil[header] = record[i] or ''
+
+            json_data['appareils'].append(appareil)
+
+        with open(filename, 'w', encoding='utf-8') as jsonfile:
+            json.dump(json_data, jsonfile, indent=2, ensure_ascii=False)
+
+        return f"Fichier JSON complet créé: {filename}"
     
+    @handle_export_errors(title="Erreur export XML complet")
     def _export_all_to_xml(self, data: List[Tuple], filename: str) -> str:
         """Exporter toutes les données vers XML"""
-        try:
-            xml_content = ['<?xml version="1.0" encoding="UTF-8"?>']
-            xml_content.append('<export_complet>')
-            xml_content.append(f'  <export_date>{datetime.now().isoformat()}</export_date>')
-            xml_content.append(f'  <total_records>{len(data)}</total_records>')
-            xml_content.append('  <appareils>')
-            
-            for record in data:
-                xml_content.append('    <appareil>')
-                for i, header in enumerate(Config.DB_HEADERS):
-                    if i < len(record):
-                        value = record[i] or ''
-                        xml_content.append(f'      <{header}>{self._escape_xml(value)}</{header}>')
-                xml_content.append('    </appareil>')
-            
-            xml_content.append('  </appareils>')
-            xml_content.append('</export_complet>')
-            
-            with open(filename, 'w', encoding='utf-8') as xmlfile:
-                xmlfile.write('\n'.join(xml_content))
-            
-            return f"Fichier XML complet créé: {filename}"
-            
-        except Exception as e:
-            raise ExportError(f"Erreur lors de l'export XML complet: {e}")
+        xml_content = ['<?xml version="1.0" encoding="UTF-8"?>']
+        xml_content.append('<export_complet>')
+        xml_content.append(f'  <export_date>{datetime.now().isoformat()}</export_date>')
+        xml_content.append(f'  <total_records>{len(data)}</total_records>')
+        xml_content.append('  <appareils>')
+
+        for record in data:
+            xml_content.append('    <appareil>')
+            for i, header in enumerate(Config.DB_HEADERS):
+                if i < len(record):
+                    value = record[i] or ''
+                    xml_content.append(f'      <{header}>{self._escape_xml(value)}</{header}>')
+            xml_content.append('    </appareil>')
+
+        xml_content.append('  </appareils>')
+        xml_content.append('</export_complet>')
+
+        with open(filename, 'w', encoding='utf-8') as xmlfile:
+            xmlfile.write('\n'.join(xml_content))
+
+        return f"Fichier XML complet créé: {filename}"
     
     def create_export_report(self, data: List[Tuple], search_term: str = None) -> Dict[str, Any]:
         """Créer un rapport d'export"""

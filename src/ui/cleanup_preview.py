@@ -11,6 +11,8 @@ from .qt_imports import (
 )
 from .qt_imports import Qt, QTimer
 from .qt_imports import QFont
+from src.core.logger import app_logger
+from src.utils.error_handler import handle_ui_errors, handle_database_operation_errors
 
 def clean_display_text(text):
     """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
@@ -346,229 +348,226 @@ class CleanupPreviewDialog(QDialog):
         
         return widget
     
+    @handle_ui_errors(log_prefix="Erreur analyse", show_message=True)
     def _start_analysis(self):
         """Démarrer l'analyse des doublons dans le thread principal"""
-        try:
-            self.progress_bar.setValue(5)
-            self.progress_label.setText("🔍 Initialisation de l'analyse des doublons...")
-            self._force_update()
-            
-            # Analyser les doublons directement (thread principal)
-            analysis_result = {
-                'device_groups': [],
-                'piece_duplicates': [],
-                'inconsistencies': [],
-                'statistics': {
-                    'total_devices_to_delete': 0,
-                    'total_pieces_to_transfer': 0,
-                    'total_duplicate_pieces': 0,
-                    'groups_count': 0,
-                    'inconsistencies_count': 0
-                }
+        self.progress_bar.setValue(5)
+        self.progress_label.setText("🔍 Initialisation de l'analyse des doublons...")
+        self._force_update()
+
+        # Analyser les doublons directement (thread principal)
+        analysis_result = {
+            'device_groups': [],
+            'piece_duplicates': [],
+            'inconsistencies': [],
+            'statistics': {
+                'total_devices_to_delete': 0,
+                'total_pieces_to_transfer': 0,
+                'total_duplicate_pieces': 0,
+                'groups_count': 0,
+                'inconsistencies_count': 0
             }
-            
-            # 1. Analyser les doublons d'appareils (exact + fuzzy)
-            self.progress_bar.setValue(10)
-            self.progress_label.setText("📱 Recherche des appareils en doublon (exact)...")
-            self._force_update()
-            
-            # Seulement les appareils strictement identiques (colonnes A, B, C, D)
-            duplicates_query = """
-                SELECT type, manufacturer, ref_modele, commercial_ref, other_ref,
-                       GROUP_CONCAT(id || '|' || COALESCE(notes, '')) as devices_info, 
-                       MIN(id) as keep_id, COUNT(*) as count
-                FROM appareils 
-                WHERE type IS NOT NULL AND type != ''
-                  AND manufacturer IS NOT NULL AND manufacturer != ''
-                  AND ref_modele IS NOT NULL AND ref_modele != '' 
-                  AND commercial_ref IS NOT NULL AND commercial_ref != ''
-                GROUP BY type, manufacturer, ref_modele, commercial_ref 
-                HAVING COUNT(*) > 1
-                ORDER BY count DESC
-            """
-            exact_duplicates = self.parent_window.db_manager.execute_custom_query(duplicates_query)
-            
-            # Utiliser seulement les doublons exacts (pas de fuzzy pour les appareils)
-            device_duplicates = list(exact_duplicates)
-            
-            self.progress_bar.setValue(40)
-            self.progress_label.setText("📊 Calcul des statistiques appareils...")
-            self._force_update()
-            
-            groups_count = 0
-            total_devices_to_delete = 0
-            total_groups = len(device_duplicates)
-            
-            for idx, row in enumerate(device_duplicates):
-                # Mise à jour de la progression pour les gros volumes
-                if idx % 10 == 0 and total_groups > 50:
-                    progress = 40 + int((idx / total_groups) * 10)  # De 40% à 50%
-                    self.progress_bar.setValue(progress)
-                    self.progress_label.setText(f"📊 Traitement groupe {idx+1}/{total_groups}...")
-                    self._force_update()
-                type_val, manufacturer, ref_modele, commercial_ref, other_ref, devices_info, keep_id, count = row
-                
-                # Parser les informations des appareils (format: id|notes)
-                devices_list = []
-                if devices_info:
-                    for device_str in devices_info.split(','):
-                        if '|' in device_str:
-                            device_id, notes = device_str.split('|', 1)
-                            devices_list.append({
-                                'id': int(device_id),
-                                'notes': notes or '',
-                                'will_keep': int(device_id) == keep_id
-                            })
-                
-                # Compter les pièces à transférer pour ce groupe
-                pieces_to_transfer = 0
-                for device in devices_list:
-                    if not device['will_keep']:
-                        pieces_query = "SELECT COUNT(*) FROM piece_associations WHERE appareil_id = ?"
-                        result = self.parent_window.db_manager.execute_custom_query(pieces_query, [device['id']])
-                        if result:
-                            pieces_to_transfer += result[0][0]
-                
-                group_info = {
-                    'type': clean_display_text(type_val),
-                    'manufacturer': clean_display_text(manufacturer),
+        }
+
+        # 1. Analyser les doublons d'appareils (exact + fuzzy)
+        self.progress_bar.setValue(10)
+        self.progress_label.setText("📱 Recherche des appareils en doublon (exact)...")
+        self._force_update()
+
+        # Seulement les appareils strictement identiques (colonnes A, B, C, D)
+        duplicates_query = """
+            SELECT type, manufacturer, ref_modele, commercial_ref, other_ref,
+                   GROUP_CONCAT(id || '|' || COALESCE(notes, '')) as devices_info,
+                   MIN(id) as keep_id, COUNT(*) as count
+            FROM appareils
+            WHERE type IS NOT NULL AND type != ''
+              AND manufacturer IS NOT NULL AND manufacturer != ''
+              AND ref_modele IS NOT NULL AND ref_modele != ''
+              AND commercial_ref IS NOT NULL AND commercial_ref != ''
+            GROUP BY type, manufacturer, ref_modele, commercial_ref
+            HAVING COUNT(*) > 1
+            ORDER BY count DESC
+        """
+        exact_duplicates = self.parent_window.db_manager.execute_custom_query(duplicates_query)
+
+        # Utiliser seulement les doublons exacts (pas de fuzzy pour les appareils)
+        device_duplicates = list(exact_duplicates)
+
+        self.progress_bar.setValue(40)
+        self.progress_label.setText("📊 Calcul des statistiques appareils...")
+        self._force_update()
+
+        groups_count = 0
+        total_devices_to_delete = 0
+        total_groups = len(device_duplicates)
+
+        for idx, row in enumerate(device_duplicates):
+            # Mise à jour de la progression pour les gros volumes
+            if idx % 10 == 0 and total_groups > 50:
+                progress = 40 + int((idx / total_groups) * 10)  # De 40% à 50%
+                self.progress_bar.setValue(progress)
+                self.progress_label.setText(f"📊 Traitement groupe {idx+1}/{total_groups}...")
+                self._force_update()
+            type_val, manufacturer, ref_modele, commercial_ref, other_ref, devices_info, keep_id, count = row
+
+            # Parser les informations des appareils (format: id|notes)
+            devices_list = []
+            if devices_info:
+                for device_str in devices_info.split(','):
+                    if '|' in device_str:
+                        device_id, notes = device_str.split('|', 1)
+                        devices_list.append({
+                            'id': int(device_id),
+                            'notes': notes or '',
+                            'will_keep': int(device_id) == keep_id
+                        })
+
+            # Compter les pièces à transférer pour ce groupe
+            pieces_to_transfer = 0
+            for device in devices_list:
+                if not device['will_keep']:
+                    pieces_query = "SELECT COUNT(*) FROM piece_associations WHERE appareil_id = ?"
+                    result = self.parent_window.db_manager.execute_custom_query(pieces_query, [device['id']])
+                    if result:
+                        pieces_to_transfer += result[0][0]
+
+            group_info = {
+                'type': clean_display_text(type_val),
+                'manufacturer': clean_display_text(manufacturer),
+                'ref_modele': clean_display_text(ref_modele),
+                'commercial_ref': clean_display_text(commercial_ref),
+                'other_ref': clean_display_text(other_ref),
+                'devices': devices_list,
+                'keep_id': keep_id,
+                'pieces_to_transfer': pieces_to_transfer
+            }
+
+            analysis_result['device_groups'].append(group_info)
+            groups_count += 1
+            total_devices_to_delete += count - 1  # Tous sauf celui qu'on garde
+            analysis_result['statistics']['total_pieces_to_transfer'] += pieces_to_transfer
+
+        self.progress_bar.setValue(50)
+        self.progress_label.setText("📋 Recherche des doublons de références modèles...")
+        self._force_update()
+
+        # 2. Analyser les doublons de ref_modele (même logique que la validation)
+        inconsistencies_query = """
+            SELECT ref_modele, COUNT(*) as count,
+                   GROUP_CONCAT(id || '|' || COALESCE(type, '') || '|' || COALESCE(manufacturer, '') || '|' || COALESCE(commercial_ref, '') || '|' || COALESCE(other_ref, '')) as devices_info
+            FROM appareils
+            WHERE ref_modele IS NOT NULL AND ref_modele != ''
+            GROUP BY ref_modele
+            HAVING COUNT(*) > 1
+            ORDER BY count DESC
+        """
+
+        inconsistencies = self.parent_window.db_manager.execute_custom_query(inconsistencies_query)
+        inconsistencies_count = 0
+        total_inconsistencies = len(inconsistencies)
+
+        for idx, row in enumerate(inconsistencies):
+            # Mise à jour pour les gros volumes
+            if idx % 20 == 0 and total_inconsistencies > 100:
+                progress = 50 + int((idx / total_inconsistencies) * 20)  # De 50% à 70%
+                self.progress_bar.setValue(progress)
+                self.progress_label.setText(f"📋 Traitement référence {idx+1}/{total_inconsistencies}...")
+                self._force_update()
+            ref_modele, count, devices_info = row
+
+            # Parser les informations des appareils
+            devices_list = []
+            if devices_info:
+                for device_str in devices_info.split(','):
+                    parts = device_str.split('|')
+                    if len(parts) >= 5:
+                        device_id, type_val, manufacturer, commercial_ref, other_ref = parts[:5]
+                        devices_list.append({
+                            'id': int(device_id),
+                            'type': clean_display_text(type_val),
+                            'manufacturer': clean_display_text(manufacturer),
+                            'commercial_ref': clean_display_text(commercial_ref),
+                            'other_ref': clean_display_text(other_ref),
+                            'is_master': False  # À définir par l'utilisateur
+                        })
+
+            if len(devices_list) > 1:  # Seulement s'il y a vraiment des doublons
+                inconsistency_info = {
                     'ref_modele': clean_display_text(ref_modele),
-                    'commercial_ref': clean_display_text(commercial_ref),
-                    'other_ref': clean_display_text(other_ref),
+                    'variants_count': count,  # Nombre total d'appareils (pas variantes)
                     'devices': devices_list,
-                    'keep_id': keep_id,
-                    'pieces_to_transfer': pieces_to_transfer
+                    'master_id': None  # À définir par l'utilisateur
                 }
-                
-                analysis_result['device_groups'].append(group_info)
-                groups_count += 1
-                total_devices_to_delete += count - 1  # Tous sauf celui qu'on garde
-                analysis_result['statistics']['total_pieces_to_transfer'] += pieces_to_transfer
-            
-            self.progress_bar.setValue(50)
-            self.progress_label.setText("📋 Recherche des doublons de références modèles...")
-            self._force_update()
-            
-            # 2. Analyser les doublons de ref_modele (même logique que la validation)
-            inconsistencies_query = """
-                SELECT ref_modele, COUNT(*) as count,
-                       GROUP_CONCAT(id || '|' || COALESCE(type, '') || '|' || COALESCE(manufacturer, '') || '|' || COALESCE(commercial_ref, '') || '|' || COALESCE(other_ref, '')) as devices_info
-                FROM appareils 
-                WHERE ref_modele IS NOT NULL AND ref_modele != ''
-                GROUP BY ref_modele 
-                HAVING COUNT(*) > 1
-                ORDER BY count DESC
-            """
-            
-            inconsistencies = self.parent_window.db_manager.execute_custom_query(inconsistencies_query)
-            inconsistencies_count = 0
-            total_inconsistencies = len(inconsistencies)
-            
-            for idx, row in enumerate(inconsistencies):
-                # Mise à jour pour les gros volumes
-                if idx % 20 == 0 and total_inconsistencies > 100:
-                    progress = 50 + int((idx / total_inconsistencies) * 20)  # De 50% à 70%
-                    self.progress_bar.setValue(progress)
-                    self.progress_label.setText(f"📋 Traitement référence {idx+1}/{total_inconsistencies}...")
-                    self._force_update()
-                ref_modele, count, devices_info = row
-                
-                # Parser les informations des appareils
-                devices_list = []
-                if devices_info:
-                    for device_str in devices_info.split(','):
-                        parts = device_str.split('|')
-                        if len(parts) >= 5:
-                            device_id, type_val, manufacturer, commercial_ref, other_ref = parts[:5]
-                            devices_list.append({
-                                'id': int(device_id),
-                                'type': clean_display_text(type_val),
-                                'manufacturer': clean_display_text(manufacturer),
-                                'commercial_ref': clean_display_text(commercial_ref),
-                                'other_ref': clean_display_text(other_ref),
-                                'is_master': False  # À définir par l'utilisateur
-                            })
-                
-                if len(devices_list) > 1:  # Seulement s'il y a vraiment des doublons
-                    inconsistency_info = {
-                        'ref_modele': clean_display_text(ref_modele),
-                        'variants_count': count,  # Nombre total d'appareils (pas variantes)
-                        'devices': devices_list,
-                        'master_id': None  # À définir par l'utilisateur
-                    }
-                    
-                    analysis_result['inconsistencies'].append(inconsistency_info)
-                    inconsistencies_count += 1
-            
-            self.progress_bar.setValue(70)
-            self.progress_label.setText("🔧 Recherche des pièces dupliquées...")
-            self._force_update()
-            
-            # 3. Analyser les doublons de pièces
-            piece_duplicates_query = """
-                SELECT pa.appareil_id, p.ref_piece, COUNT(*) as count, GROUP_CONCAT(pa.id) as association_ids
-                FROM piece_associations pa
-                JOIN pieces p ON pa.piece_id = p.id
-                GROUP BY pa.appareil_id, p.ref_piece 
-                HAVING COUNT(*) > 1
-                ORDER BY count DESC
-            """
-            
-            piece_duplicates = self.parent_window.db_manager.execute_custom_query(piece_duplicates_query)
-            total_duplicate_pieces = 0
-            total_piece_groups = len(piece_duplicates)
-            
-            for idx, row in enumerate(piece_duplicates):
-                # Mise à jour pour les gros volumes
-                if idx % 50 == 0 and total_piece_groups > 200:
-                    progress = 70 + int((idx / total_piece_groups) * 20)  # De 70% à 90%
-                    self.progress_bar.setValue(progress)
-                    self.progress_label.setText(f"🔧 Traitement pièce {idx+1}/{total_piece_groups}...")
-                    self._force_update()
-                appareil_id, ref_piece, count, association_ids = row
-                
-                # Récupérer les infos de l'appareil
-                device_query = "SELECT type, manufacturer, ref_modele FROM appareils WHERE id = ?"
-                device_info = self.parent_window.db_manager.execute_custom_query(device_query, [appareil_id])
-                
-                device_type = device_manufacturer = device_ref = ""
-                if device_info:
-                    device_type, device_manufacturer, device_ref = device_info[0]
-                
-                piece_info = {
-                    'appareil_id': appareil_id,
-                    'device_type': clean_display_text(device_type),
-                    'device_manufacturer': clean_display_text(device_manufacturer),
-                    'device_ref': clean_display_text(device_ref),
-                    'ref_piece': clean_display_text(ref_piece),
-                    'count': count,
-                    'pieces_to_delete': count - 1
-                }
-                
-                analysis_result['piece_duplicates'].append(piece_info)
-                total_duplicate_pieces += count - 1  # Tous sauf un
-            
-            self.progress_bar.setValue(90)
-            self.progress_label.setText("✅ Finalisation de l'analyse...")
-            self._force_update()
-            
-            # 4. Finaliser les statistiques
-            analysis_result['statistics'].update({
-                'total_devices_to_delete': total_devices_to_delete,
-                'total_duplicate_pieces': total_duplicate_pieces,
-                'groups_count': groups_count,
-                'inconsistencies_count': inconsistencies_count
-            })
-            
-            self.progress_bar.setValue(100)
-            self.progress_label.setText("🎉 Analyse terminée !")
-            self._force_update()
-            
-            # Petit délai pour que l'utilisateur voie la completion
-            QTimer.singleShot(500, lambda: self._on_analysis_completed(analysis_result))
-            
-        except Exception as e:
-            self._on_analysis_error(f"Erreur lors de l'analyse: {e}")
+
+                analysis_result['inconsistencies'].append(inconsistency_info)
+                inconsistencies_count += 1
+
+        self.progress_bar.setValue(70)
+        self.progress_label.setText("🔧 Recherche des pièces dupliquées...")
+        self._force_update()
+
+        # 3. Analyser les doublons de pièces
+        piece_duplicates_query = """
+            SELECT pa.appareil_id, p.ref_piece, COUNT(*) as count, GROUP_CONCAT(pa.id) as association_ids
+            FROM piece_associations pa
+            JOIN pieces p ON pa.piece_id = p.id
+            GROUP BY pa.appareil_id, p.ref_piece
+            HAVING COUNT(*) > 1
+            ORDER BY count DESC
+        """
+
+        piece_duplicates = self.parent_window.db_manager.execute_custom_query(piece_duplicates_query)
+        total_duplicate_pieces = 0
+        total_piece_groups = len(piece_duplicates)
+
+        for idx, row in enumerate(piece_duplicates):
+            # Mise à jour pour les gros volumes
+            if idx % 50 == 0 and total_piece_groups > 200:
+                progress = 70 + int((idx / total_piece_groups) * 20)  # De 70% à 90%
+                self.progress_bar.setValue(progress)
+                self.progress_label.setText(f"🔧 Traitement pièce {idx+1}/{total_piece_groups}...")
+                self._force_update()
+            appareil_id, ref_piece, count, association_ids = row
+
+            # Récupérer les infos de l'appareil
+            device_query = "SELECT type, manufacturer, ref_modele FROM appareils WHERE id = ?"
+            device_info = self.parent_window.db_manager.execute_custom_query(device_query, [appareil_id])
+
+            device_type = device_manufacturer = device_ref = ""
+            if device_info:
+                device_type, device_manufacturer, device_ref = device_info[0]
+
+            piece_info = {
+                'appareil_id': appareil_id,
+                'device_type': clean_display_text(device_type),
+                'device_manufacturer': clean_display_text(device_manufacturer),
+                'device_ref': clean_display_text(device_ref),
+                'ref_piece': clean_display_text(ref_piece),
+                'count': count,
+                'pieces_to_delete': count - 1
+            }
+
+            analysis_result['piece_duplicates'].append(piece_info)
+            total_duplicate_pieces += count - 1  # Tous sauf un
+
+        self.progress_bar.setValue(90)
+        self.progress_label.setText("✅ Finalisation de l'analyse...")
+        self._force_update()
+
+        # 4. Finaliser les statistiques
+        analysis_result['statistics'].update({
+            'total_devices_to_delete': total_devices_to_delete,
+            'total_duplicate_pieces': total_duplicate_pieces,
+            'groups_count': groups_count,
+            'inconsistencies_count': inconsistencies_count
+        })
+
+        self.progress_bar.setValue(100)
+        self.progress_label.setText("🎉 Analyse terminée !")
+        self._force_update()
+
+        # Petit délai pour que l'utilisateur voie la completion
+        QTimer.singleShot(500, lambda: self._on_analysis_completed(analysis_result))
     
     def _force_update(self):
         """Forcer la mise à jour de l'interface pendant l'analyse"""
@@ -750,53 +749,44 @@ class CleanupPreviewDialog(QDialog):
         # Appliquer les filtres et mettre à jour les statistiques
         self._apply_filters()
     
+    @handle_ui_errors(log_prefix="Erreur chargement données complètes", show_message=False)
     def _load_complete_device_data(self):
         """Charger les données complètes (catégorie, notes) pour tous les appareils"""
-        try:
-            # Parcourir tous les éléments de l'arbre
-            for i in range(self.inconsistencies_tree.topLevelItemCount()):
-                parent_item = self.inconsistencies_tree.topLevelItem(i)
-                
-                # Charger les données du parent
-                self._load_item_complete_data(parent_item)
-                
-                # Charger les données des enfants
-                for j in range(parent_item.childCount()):
-                    child_item = parent_item.child(j)
-                    self._load_item_complete_data(child_item)
-                    
-        except Exception as e:
-            app_logger.error("Erreur", e)
+        # Parcourir tous les éléments de l'arbre
+        for i in range(self.inconsistencies_tree.topLevelItemCount()):
+            parent_item = self.inconsistencies_tree.topLevelItem(i)
+
+            # Charger les données du parent
+            self._load_item_complete_data(parent_item)
+
+            # Charger les données des enfants
+            for j in range(parent_item.childCount()):
+                child_item = parent_item.child(j)
+                self._load_item_complete_data(child_item)
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur chargement item")
     def _load_item_complete_data(self, item):
         """Charger les données complètes pour un élément"""
-        try:
-            user_data = item.data(0, Qt.UserRole)
-            if user_data and 'device_data' in user_data:
-                device_id = user_data['device_data']['id']
-                
-                # Requête pour récupérer toutes les données
-                query = "SELECT category, notes FROM appareils WHERE id = ?"
-                result = self.parent_window.db_manager.execute_custom_query(query, [device_id])
-                
-                if result:
-                    category, notes = result[0]
-                    item.setText(7, clean_display_text(category) if category else "")
-                    item.setText(8, clean_display_text(notes) if notes else "")
-                    
-        except Exception as e:
-            app_logger.error("Erreur", e)
+        user_data = item.data(0, Qt.UserRole)
+        if user_data and 'device_data' in user_data:
+            device_id = user_data['device_data']['id']
+
+            # Requête pour récupérer toutes les données
+            query = "SELECT category, notes FROM appareils WHERE id = ?"
+            result = self.parent_window.db_manager.execute_custom_query(query, [device_id])
+
+            if result:
+                category, notes = result[0]
+                item.setText(7, clean_display_text(category) if category else "")
+                item.setText(8, clean_display_text(notes) if notes else "")
     
+    @handle_ui_errors(log_prefix="Erreur changement item arbre", show_message=False)
     def _on_tree_item_changed(self, item, column):
         """Gérer les changements dans l'arbre (checkbox et édition)"""
-        try:
-            if column == 0:  # Checkbox changée
-                self._handle_checkbox_change(item)
-            else:  # Contenu de cellule modifié
-                self._handle_cell_edit(item, column)
-                
-        except Exception as e:
-            app_logger.error("Erreur", e)
+        if column == 0:  # Checkbox changée
+            self._handle_checkbox_change(item)
+        else:  # Contenu de cellule modifié
+            self._handle_cell_edit(item, column)
     
     def _handle_checkbox_change(self, item):
         """Gérer le changement de checkbox"""
@@ -1198,57 +1188,51 @@ class CleanupPreviewDialog(QDialog):
         
         return current_item.text(4)  # colonne ref_modele
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur marquage distincts")
     def _mark_selected_as_distinct(self):
         """Marquer le groupe sélectionné comme distinct"""
         ref_modele = self._get_selected_ref_modele()
         if not ref_modele:
             return
-        
-        try:
-            # Sauvegarder la décision
-            success = self.parent_window.db_manager.save_reference_decision(
-                ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
-            )
-            
-            if success:
-                # Actualiser l'affichage
-                self._refresh_inconsistencies_display()
-        except Exception as e:
-            app_logger.error("Erreur", e)
+
+        # Sauvegarder la décision
+        success = self.parent_window.db_manager.save_reference_decision(
+            ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
+        )
+
+        if success:
+            # Actualiser l'affichage
+            self._refresh_inconsistencies_display()
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur marquage fusion")
     def _mark_selected_as_merge(self):
         """Marquer le groupe sélectionné pour fusion"""
         ref_modele = self._get_selected_ref_modele()
         if not ref_modele:
             return
-        
-        try:
-            # Sauvegarder la décision
-            success = self.parent_window.db_manager.save_reference_decision(
-                ref_modele, 'MERGE', 'Marqué pour fusion par l\'utilisateur'
-            )
-            
-            if success:
-                # Actualiser l'affichage
-                self._refresh_inconsistencies_display()
-        except Exception as e:
-            app_logger.error("Erreur", e)
+
+        # Sauvegarder la décision
+        success = self.parent_window.db_manager.save_reference_decision(
+            ref_modele, 'MERGE', 'Marqué pour fusion par l\'utilisateur'
+        )
+
+        if success:
+            # Actualiser l'affichage
+            self._refresh_inconsistencies_display()
     
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur réinitialisation décision")
     def _reset_selected_decision(self):
         """Réinitialiser la décision du groupe sélectionné"""
         ref_modele = self._get_selected_ref_modele()
         if not ref_modele:
             return
-        
-        try:
-            # Supprimer la décision
-            success = self.parent_window.db_manager.delete_reference_decision(ref_modele)
-            
-            if success:
-                # Actualiser l'affichage
-                self._refresh_inconsistencies_display()
-        except Exception as e:
-            app_logger.error("Erreur", e)
+
+        # Supprimer la décision
+        success = self.parent_window.db_manager.delete_reference_decision(ref_modele)
+
+        if success:
+            # Actualiser l'affichage
+            self._refresh_inconsistencies_display()
     
     def _refresh_inconsistencies_display(self):
         """Actualiser l'affichage de l'onglet doublons potentiels"""

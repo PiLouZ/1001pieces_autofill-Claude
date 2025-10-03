@@ -16,6 +16,7 @@ from .qt_imports import Qt
 
 from src.core.config import Config
 from src.core.logger import app_logger
+from src.utils.error_handler import handle_ui_errors
 
 class PieceManagementService:
     """
@@ -128,185 +129,177 @@ class PieceManagementService:
         elif error_count > 5:
             self.main_window.user_interaction_service.show_error(f"{error_count} erreurs détectées (trop nombreuses pour être affichées)")
 
+    @handle_ui_errors(log_prefix="Erreur édition pièce", show_message=True)
     def edit_piece(self, item: QListWidgetItem) -> None:
         """Éditer une pièce (référence et libellé)"""
         if not item:
             return
-            
+
         ref_piece = item.data(Qt.UserRole)
         if not ref_piece:
             return
-        
+
         # Obtenir l'ID de l'appareil sélectionné
         current_row = self.main_window.table.currentRow()
         if current_row < 0:
             self.main_window.user_interaction_service.show_error("Aucun appareil sélectionné")
             return
-        
+
         db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, current_row)
         if not db_id:
             self.main_window.user_interaction_service.show_error("Impossible de récupérer l'ID de l'appareil")
             return
-        
-        try:
-            # Récupérer les données actuelles de la pièce
-            current_data = self.main_window.db_manager.get_piece_info(ref_piece, db_id)
-            if not current_data:
-                self.main_window.user_interaction_service.show_error("Pièce non trouvée")
+
+        # Récupérer les données actuelles de la pièce
+        current_data = self.main_window.db_manager.get_piece_info(ref_piece, db_id)
+        if not current_data:
+            self.main_window.user_interaction_service.show_error("Pièce non trouvée")
+            return
+
+        current_ref, current_libelle = current_data
+
+        # Dialog pour éditer la référence et le libellé
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton
+
+        dialog = QDialog(self.main_window)
+        dialog.setWindowTitle("Éditer la pièce")
+        dialog.setModal(True)
+        dialog.resize(400, 150)
+
+        layout = QVBoxLayout(dialog)
+
+        # Référence
+        ref_layout = QHBoxLayout()
+        ref_layout.addWidget(QLabel("Référence:"))
+        ref_input = QLineEdit(ref_piece)
+        ref_layout.addWidget(ref_input)
+        layout.addLayout(ref_layout)
+
+        # Libellé
+        libelle_layout = QHBoxLayout()
+        libelle_layout.addWidget(QLabel("Libellé:"))
+        libelle_input = QLineEdit(current_libelle)
+        libelle_layout.addWidget(libelle_input)
+        layout.addLayout(libelle_layout)
+
+        # Boutons
+        btn_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        cancel_btn = QPushButton("Annuler")
+        btn_layout.addWidget(ok_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        # Connexions
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn.clicked.connect(dialog.reject)
+
+        if dialog.exec_() == QDialog.Accepted:
+            new_ref = ref_input.text().strip()
+            new_libelle = libelle_input.text().strip()
+
+            if not new_ref:
+                self.main_window.user_interaction_service.show_error("La référence ne peut pas être vide")
                 return
-            
-            current_ref, current_libelle = current_data
-            
-            # Dialog pour éditer la référence et le libellé
-            from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton
-            
-            dialog = QDialog(self.main_window)
-            dialog.setWindowTitle("Éditer la pièce")
-            dialog.setModal(True)
-            dialog.resize(400, 150)
-            
-            layout = QVBoxLayout(dialog)
-            
-            # Référence
-            ref_layout = QHBoxLayout()
-            ref_layout.addWidget(QLabel("Référence:"))
-            ref_input = QLineEdit(ref_piece)
-            ref_layout.addWidget(ref_input)
-            layout.addLayout(ref_layout)
-            
-            # Libellé
-            libelle_layout = QHBoxLayout()
-            libelle_layout.addWidget(QLabel("Libellé:"))
-            libelle_input = QLineEdit(current_libelle)
-            libelle_layout.addWidget(libelle_input)
-            layout.addLayout(libelle_layout)
-            
-            # Boutons
-            btn_layout = QHBoxLayout()
-            ok_btn = QPushButton("OK")
-            cancel_btn = QPushButton("Annuler")
-            btn_layout.addWidget(ok_btn)
-            btn_layout.addWidget(cancel_btn)
-            layout.addLayout(btn_layout)
-            
-            # Connexions
-            ok_btn.clicked.connect(dialog.accept)
-            cancel_btn.clicked.connect(dialog.reject)
-            
-            if dialog.exec_() == QDialog.Accepted:
-                new_ref = ref_input.text().strip()
-                new_libelle = libelle_input.text().strip()
-                
-                if not new_ref:
-                    self.main_window.user_interaction_service.show_error("La référence ne peut pas être vide")
-                    return
-                
-                # Validation des caractères spéciaux
-                if any(char in new_ref for char in ['||', '&&']):
-                    self.main_window.user_interaction_service.show_error(
-                        "La référence de pièce ne peut pas contenir les caractères '||' ou '&&'"
-                    )
-                    return
-                
-                # Utiliser la nouvelle méthode update_piece_complete pour une vraie mise à jour
-                try:
-                    success = self.main_window.db_manager.update_piece_complete(
-                        ref_piece, new_ref, new_libelle, db_id
-                    )
-                except AttributeError:
-                    # Fallback vers l'ancienne logique si update_piece_complete n'existe pas
-                    if new_ref != ref_piece:
-                        # Si la référence change, supprimer l'ancienne et créer une nouvelle
+
+            # Validation des caractères spéciaux
+            if any(char in new_ref for char in ['||', '&&']):
+                self.main_window.user_interaction_service.show_error(
+                    "La référence de pièce ne peut pas contenir les caractères '||' ou '&&'"
+                )
+                return
+
+            # Utiliser la nouvelle méthode update_piece_complete pour une vraie mise à jour
+            try:
+                success = self.main_window.db_manager.update_piece_complete(
+                    ref_piece, new_ref, new_libelle, db_id
+                )
+            except AttributeError:
+                # Fallback vers l'ancienne logique si update_piece_complete n'existe pas
+                if new_ref != ref_piece:
+                    # Si la référence change, supprimer l'ancienne et créer une nouvelle
+                    delete_success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
+                    if delete_success:
+                        add_result = self.main_window.db_manager.add_piece(new_ref, db_id, new_libelle)
+                        success = bool(add_result)
+                    else:
+                        success = False
+                else:
+                    # Si seul le libellé change, utiliser update_piece si disponible
+                    try:
+                        success = self.main_window.db_manager.update_piece(new_ref, new_libelle)
+                    except AttributeError:
+                        # Si update_piece n'existe pas, recréer la pièce
                         delete_success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
                         if delete_success:
                             add_result = self.main_window.db_manager.add_piece(new_ref, db_id, new_libelle)
                             success = bool(add_result)
                         else:
                             success = False
-                    else:
-                        # Si seul le libellé change, utiliser update_piece si disponible
-                        try:
-                            success = self.main_window.db_manager.update_piece(new_ref, new_libelle)
-                        except AttributeError:
-                            # Si update_piece n'existe pas, recréer la pièce
-                            delete_success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
-                            if delete_success:
-                                add_result = self.main_window.db_manager.add_piece(new_ref, db_id, new_libelle)
-                                success = bool(add_result)
-                            else:
-                                success = False
-                
-                if success:
-                    self.main_window.pieces_panel_service.update_pieces_panel()
-                    self.main_window._refresh_pieces_count_column()
-                    
-                    # Construire un message d'historique détaillé
-                    changes = []
-                    if ref_piece != new_ref:
-                        changes.append(f"référence: '{ref_piece}' → '{new_ref}'")
-                    if current_libelle != new_libelle:
-                        old_display = f"'{current_libelle}'" if current_libelle else "vide"
-                        new_display = f"'{new_libelle}'" if new_libelle else "vide"
-                        changes.append(f"libellé: {old_display} → {new_display}")
-                    
-                    if changes:
-                        change_text = " | ".join(changes)
-                        self.main_window.user_interaction_service.add_to_history(f"Pièce modifiée: {change_text}")
-                    else:
-                        self.main_window.user_interaction_service.add_to_history("Pièce modifiée (aucun changement détecté)")
-                    
-                    self.main_window.user_interaction_service.show_status_message(
-                        f"Pièce modifiée avec succès", Config.STATUS_MESSAGE_TIMEOUT
-                    )
-                else:
-                    self.main_window.user_interaction_service.show_error("Erreur lors de la modification de la pièce")
-                    
-        except Exception as e:
-            app_logger.error(f"Erreur lors de l'édition de pièce: {e}")
-            self.main_window.user_interaction_service.show_error(f"Erreur: {e}")
 
+            if success:
+                self.main_window.pieces_panel_service.update_pieces_panel()
+                self.main_window._refresh_pieces_count_column()
+
+                # Construire un message d'historique détaillé
+                changes = []
+                if ref_piece != new_ref:
+                    changes.append(f"référence: '{ref_piece}' → '{new_ref}'")
+                if current_libelle != new_libelle:
+                    old_display = f"'{current_libelle}'" if current_libelle else "vide"
+                    new_display = f"'{new_libelle}'" if new_libelle else "vide"
+                    changes.append(f"libellé: {old_display} → {new_display}")
+
+                if changes:
+                    change_text = " | ".join(changes)
+                    self.main_window.user_interaction_service.add_to_history(f"Pièce modifiée: {change_text}")
+                else:
+                    self.main_window.user_interaction_service.add_to_history("Pièce modifiée (aucun changement détecté)")
+
+                self.main_window.user_interaction_service.show_status_message(
+                    f"Pièce modifiée avec succès", Config.STATUS_MESSAGE_TIMEOUT
+                )
+            else:
+                self.main_window.user_interaction_service.show_error("Erreur lors de la modification de la pièce")
+
+    @handle_ui_errors(log_prefix="Erreur suppression pièce", show_message=True)
     def delete_piece(self, item: QListWidgetItem) -> None:
         """Supprimer une pièce avec confirmation"""
         ref_piece = item.data(Qt.UserRole)
         if not ref_piece:
             return
-        
+
         # Demander confirmation avec raccourcis clavier
         confirmed = self.main_window.user_interaction_service.show_confirmation(
             "Confirmer la suppression",
             f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?",
             default_yes=False
         )
-        
+
         if confirmed:
-            try:
-                # Obtenir l'ID de l'appareil sélectionné
-                current_row = self.main_window.table.currentRow()
-                if current_row < 0:
-                    self.main_window.user_interaction_service.show_error("Aucun appareil sélectionné")
-                    return
-                
-                db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, current_row)
-                if not db_id:
-                    self.main_window.user_interaction_service.show_error("Impossible de récupérer l'ID de l'appareil")
-                    return
-                
-                # Supprimer la pièce
-                success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
-                
-                if success:
-                    self.main_window.pieces_panel_service.update_pieces_panel()
-                    self.main_window._refresh_pieces_count_column()
-                    self.main_window.user_interaction_service.add_to_history(f"Pièce '{ref_piece}' supprimée")
-                    self.main_window.user_interaction_service.show_status_message(
-                        f"Pièce supprimée avec succès", Config.STATUS_MESSAGE_TIMEOUT
-                    )
-                else:
-                    self.main_window.user_interaction_service.show_error("Erreur lors de la suppression")
-                    
-            except Exception as e:
-                app_logger.error(f"Erreur lors de la suppression de pièce: {e}")
-                self.main_window.user_interaction_service.show_error(f"Erreur: {e}")
+            # Obtenir l'ID de l'appareil sélectionné
+            current_row = self.main_window.table.currentRow()
+            if current_row < 0:
+                self.main_window.user_interaction_service.show_error("Aucun appareil sélectionné")
+                return
+
+            db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, current_row)
+            if not db_id:
+                self.main_window.user_interaction_service.show_error("Impossible de récupérer l'ID de l'appareil")
+                return
+
+            # Supprimer la pièce
+            success = self.main_window.db_manager.delete_piece(ref_piece, db_id)
+
+            if success:
+                self.main_window.pieces_panel_service.update_pieces_panel()
+                self.main_window._refresh_pieces_count_column()
+                self.main_window.user_interaction_service.add_to_history(f"Pièce '{ref_piece}' supprimée")
+                self.main_window.user_interaction_service.show_status_message(
+                    f"Pièce supprimée avec succès", Config.STATUS_MESSAGE_TIMEOUT
+                )
+            else:
+                self.main_window.user_interaction_service.show_error("Erreur lors de la suppression")
 
     def copy_piece(self, item: QListWidgetItem) -> None:
         """Copier la référence d'une pièce dans le presse-papier"""
@@ -383,19 +376,16 @@ class PieceManagementService:
             else:
                 self.main_window.user_interaction_service.show_error("Aucune suppression effectuée")
 
+    @handle_ui_errors(log_prefix="Erreur ouverture gestionnaire pièces", show_message=True)
     def open_pieces_manager(self) -> None:
         """Ouvrir la fenêtre de gestion des pièces"""
-        try:
-            from .pieces_manager import PiecesManagerWindow
-            if not hasattr(self.main_window, 'pieces_manager') or not self.main_window.pieces_manager:
-                self.main_window.pieces_manager = PiecesManagerWindow(self.main_window, self.main_window.db_manager)
-            
-            self.main_window.pieces_manager.show()
-            self.main_window.pieces_manager.raise_()
-            self.main_window.pieces_manager.activateWindow()
-            
-        except Exception as e:
-            self.main_window.user_interaction_service.show_error(f"Erreur lors de l'ouverture du gestionnaire de pièces: {e}")
+        from .pieces_manager import PiecesManagerWindow
+        if not hasattr(self.main_window, 'pieces_manager') or not self.main_window.pieces_manager:
+            self.main_window.pieces_manager = PiecesManagerWindow(self.main_window, self.main_window.db_manager)
+
+        self.main_window.pieces_manager.show()
+        self.main_window.pieces_manager.raise_()
+        self.main_window.pieces_manager.activateWindow()
 
     def confirm_piece_description_update(self, ref_piece: str, existing_desc: str, new_desc: str) -> str:
         """

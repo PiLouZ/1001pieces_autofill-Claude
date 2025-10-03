@@ -466,6 +466,50 @@ def handle_highlight_errors(return_value=False, title: str = "Erreur mise en év
         return_on_error=return_value
     )
 
+def handle_event_handler_errors(return_value=None, title: str = "Erreur gestionnaire d'événement"):
+    """
+    Décorateur spécialisé pour les gestionnaires d'événements
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'exécution d'un gestionnaire d'événement.",
+        show_message=False,  # Logging seulement pour éviter spam
+        return_on_error=return_value
+    )
+
+def handle_count_operation_errors(return_value=0, title: str = "Erreur comptage"):
+    """
+    Décorateur spécialisé pour les opérations de comptage de base de données
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors du comptage en base de données.",
+        show_message=False,  # Logging seulement pour les opérations de comptage
+        return_on_error=return_value
+    )
+
+def handle_ui_update_errors(return_value=None, title: str = "Erreur mise à jour UI"):
+    """
+    Décorateur spécialisé pour les mises à jour d'interface utilisateur
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la mise à jour de l'interface utilisateur.",
+        show_message=False,  # Logging seulement pour ne pas gêner l'utilisateur
+        return_on_error=return_value
+    )
+
+def handle_navigation_errors(return_value=None, title: str = "Erreur navigation"):
+    """
+    Décorateur spécialisé pour les opérations de navigation et pagination
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la navigation ou pagination.",
+        show_message=False,  # Logging seulement pour les erreurs de navigation
+        return_on_error=return_value
+    )
+
 class SafeOperation:
     """
     Context manager pour les opérations sécurisées
@@ -626,6 +670,83 @@ def safe_call_method(obj, method_name: str, *args, **kwargs) -> Any:
         error_logger.error(f"Erreur lors de l'appel de {method_name}: {str(e)}", exc_info=True)
         return None
 
+def handle_paste_results_errors(return_value=None, title: str = "Erreur résultats collage"):
+    """
+    Décorateur pour gérer les erreurs lors de l'affichage/logging des résultats de collage
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors du traitement des résultats de collage.",
+        show_message=False,
+        return_on_error=return_value
+    )
+
+def handle_log_viewer_errors(return_value=None, title: str = "Erreur visionneur de logs"):
+    """
+    Décorateur pour gérer les erreurs dans le visionneur de logs (lecture, parsing, affichage)
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors du traitement des logs.",
+        show_message=False,
+        return_on_error=return_value
+    )
+
+def handle_cleanup_preview_errors(return_value=None, title: str = "Erreur nettoyage doublons"):
+    """
+    Décorateur pour gérer les erreurs dans la prévisualisation et application du nettoyage des doublons
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors du nettoyage des doublons.",
+        show_message=True,  # Afficher car l'utilisateur doit être informé
+        return_on_error=return_value
+    )
+
+def handle_pieces_panel_errors(return_value=None, title: str = "Erreur panneau des pièces"):
+    """
+    Décorateur pour gérer les erreurs dans la gestion du panneau des pièces
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la mise à jour du panneau des pièces.",
+        show_message=False,
+        return_on_error=return_value
+    )
+
+def handle_drag_operation_errors(return_value=None, title: str = "Erreur glisser-déposer"):
+    """
+    Décorateur spécialisé pour les erreurs de glisser-déposer
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors des opérations de glisser-déposer.",
+        show_message=False,
+        return_on_error=return_value
+    )
+
+def handle_data_management_errors(return_value=None, title: str = "Erreur gestion données"):
+    """
+    Décorateur spécialisé pour les erreurs de gestion des données
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de la gestion des données.",
+        show_message=False,
+        return_on_error=return_value
+    )
+
+def handle_pdf_extraction_errors(return_value=None, title: str = "Erreur extraction PDF"):
+    """
+    Décorateur spécialisé pour les erreurs d'extraction PDF
+    """
+    return handle_errors(
+        title=title,
+        message="Erreur lors de l'extraction des données PDF.",
+        show_message=False,
+        return_on_error=return_value
+    )
+
 # Exemples d'utilisation dans les commentaires
 """
 EXEMPLES D'UTILISATION:
@@ -661,3 +782,57 @@ EXEMPLES D'UTILISATION:
 5. Exécution sécurisée:
     result = safe_execute(fonction_dangereuse, self, "Erreur", valeur_par_defaut, arg1, arg2)
 """
+
+def handle_database_operation_errors(return_value=None, log_prefix="Erreur base de données"):
+    """
+    Décorateur spécialisé pour les erreurs d'opérations de base de données
+    Adapté aux opérations CRUD et transactions.
+
+    Usage:
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur sauvegarde")
+    @handle_database_operation_errors(return_value={}, log_prefix="Erreur récupération")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"{log_prefix}: {e}")
+
+                # Pour les services de base de données, log des détails supplémentaires
+                if args and hasattr(args[0], '__class__'):
+                    class_name = args[0].__class__.__name__
+                    app_logger.debug(f"Erreur dans {class_name}.{func.__name__}: {e}")
+
+                return return_value
+        return wrapper
+    return decorator
+
+def handle_ui_operation_errors(return_value=None, log_prefix="Erreur opération UI"):
+    """
+    Décorateur spécialisé pour les erreurs d'opérations d'interface utilisateur
+    Adapté aux opérations PyQt5 et interactions UI.
+
+    Usage:
+    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur UI")
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur widget")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                from ..core.logger import app_logger
+                app_logger.error(f"{log_prefix}: {e}")
+
+                # Pour les opérations UI, log des détails supplémentaires
+                if args and hasattr(args[0], '__class__'):
+                    class_name = args[0].__class__.__name__
+                    app_logger.debug(f"Erreur UI dans {class_name}.{func.__name__}: {e}")
+
+                return return_value
+        return wrapper
+    return decorator

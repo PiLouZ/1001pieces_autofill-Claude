@@ -4,12 +4,14 @@ Gestionnaire des références en doublon avec interface de fusion et correction
 
 import re
 from .qt_imports import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, 
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
     QGroupBox, QComboBox, QLineEdit, QCheckBox, QMessageBox, QProgressBar
 )
 from .qt_imports import Qt, QTimer
 from .qt_imports import QFont
+from src.core.logger import app_logger
+from src.utils.error_handler import handle_ui_errors, handle_database_operation_errors
 
 def clean_display_text(text):
     """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
@@ -201,19 +203,16 @@ class DuplicatesManager(QDialog):
         
         return group_box
     
+    @handle_ui_errors(log_prefix="Erreur chargement doublons", show_message=True)
     def _load_duplicates(self):
         """Charger les données des doublons"""
-        try:
-            # Récupérer les doublons par ref_modele depuis la base (même logique que validation)
-            duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
-            self.duplicates_data = duplicates
-            
-            # Mettre à jour l'affichage
-            self._update_duplicates_table()
-            self._update_stats()
-            
-        except Exception as e:
-            self._show_error(f"Erreur lors du chargement des doublons: {e}")
+        # Récupérer les doublons par ref_modele depuis la base (même logique que validation)
+        duplicates = self.parent_window.db_manager.get_duplicate_ref_modeles()
+        self.duplicates_data = duplicates
+
+        # Mettre à jour l'affichage
+        self._update_duplicates_table()
+        self._update_stats()
     
     def _update_duplicates_table(self):
         """Mettre à jour le tableau des doublons"""
@@ -295,40 +294,37 @@ class DuplicatesManager(QDialog):
         # Charger les appareils de ce groupe
         self._load_group_devices()
     
+    @handle_ui_errors(log_prefix="Erreur chargement appareils", show_message=True)
     def _load_group_devices(self):
         """Charger les appareils du groupe sélectionné"""
         if not self.selected_group:
             return
-        
+
         ref_modele, count = self.selected_group
-        
-        try:
-            # Utiliser la nouvelle méthode pour récupérer tous les appareils avec cette ref_modele
-            devices = self.parent_window.db_manager.get_devices_by_ref_modele(ref_modele)
-            
-            # Remplir le tableau des appareils
-            self.devices_table.setRowCount(len(devices))
-            
-            for row, device in enumerate(devices):
-                device_id, dev_type, dev_manufacturer, dev_ref_modele, dev_commercial_ref, dev_other_ref, dev_category, dev_notes = device
-                
-                self.devices_table.setItem(row, 0, QTableWidgetItem(str(device_id)))
-                self.devices_table.setItem(row, 1, QTableWidgetItem(clean_display_text(dev_type)))
-                self.devices_table.setItem(row, 2, QTableWidgetItem(clean_display_text(dev_manufacturer)))
-                self.devices_table.setItem(row, 3, QTableWidgetItem(clean_display_text(dev_ref_modele)))
-                self.devices_table.setItem(row, 4, QTableWidgetItem(clean_display_text(dev_commercial_ref)))
-                self.devices_table.setItem(row, 5, QTableWidgetItem(clean_display_text(dev_other_ref)))
-                self.devices_table.setItem(row, 6, QTableWidgetItem(clean_display_text(dev_category)))
-                self.devices_table.setItem(row, 7, QTableWidgetItem(clean_display_text(dev_notes)))
-                
-                # Stocker l'ID pour les actions
-                self.devices_table.item(row, 0).setData(Qt.UserRole, device_id)
-            
-            # Afficher les infos dans la zone de texte
-            self._update_group_info()
-            
-        except Exception as e:
-            self._show_error(f"Erreur lors du chargement des appareils: {e}")
+
+        # Utiliser la nouvelle méthode pour récupérer tous les appareils avec cette ref_modele
+        devices = self.parent_window.db_manager.get_devices_by_ref_modele(ref_modele)
+
+        # Remplir le tableau des appareils
+        self.devices_table.setRowCount(len(devices))
+
+        for row, device in enumerate(devices):
+            device_id, dev_type, dev_manufacturer, dev_ref_modele, dev_commercial_ref, dev_other_ref, dev_category, dev_notes = device
+
+            self.devices_table.setItem(row, 0, QTableWidgetItem(str(device_id)))
+            self.devices_table.setItem(row, 1, QTableWidgetItem(clean_display_text(dev_type)))
+            self.devices_table.setItem(row, 2, QTableWidgetItem(clean_display_text(dev_manufacturer)))
+            self.devices_table.setItem(row, 3, QTableWidgetItem(clean_display_text(dev_ref_modele)))
+            self.devices_table.setItem(row, 4, QTableWidgetItem(clean_display_text(dev_commercial_ref)))
+            self.devices_table.setItem(row, 5, QTableWidgetItem(clean_display_text(dev_other_ref)))
+            self.devices_table.setItem(row, 6, QTableWidgetItem(clean_display_text(dev_category)))
+            self.devices_table.setItem(row, 7, QTableWidgetItem(clean_display_text(dev_notes)))
+
+            # Stocker l'ID pour les actions
+            self.devices_table.item(row, 0).setData(Qt.UserRole, device_id)
+
+        # Afficher les infos dans la zone de texte
+        self._update_group_info()
     
     def _update_group_info(self):
         """Mettre à jour les informations du groupe"""
@@ -383,58 +379,59 @@ class DuplicatesManager(QDialog):
         )
         
         if reply == QMessageBox.Yes:
-            try:
-                # Garder le premier ID, supprimer les autres
-                keep_id = device_ids[0]
-                delete_ids = device_ids[1:]
-                
-                # Transférer les pièces vers l'appareil conservé
-                for delete_id in delete_ids:
-                    self.parent_window.db_manager.transfer_pieces(delete_id, keep_id)
-                    self.parent_window.db_manager.delete_appareil(delete_id)
-                
-                QMessageBox.information(
-                    self, "Succès", 
-                    f"Fusion réussie ! {len(delete_ids)} appareils supprimés, "
-                    f"données consolidées vers l'appareil ID {keep_id}."
-                )
-                
-                # Actualiser les données
-                self._load_duplicates()
-                if hasattr(self.parent_window, 'load_data'):
-                    self.parent_window.load_data()
-                
-            except Exception as e:
-                self._show_error(f"Erreur lors de la fusion: {e}")
-    
+            self._merge_selected(device_ids)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur fusion appareils")
+    def _merge_selected(self, device_ids):
+        """Effectue la fusion des appareils sélectionnés"""
+        # Garder le premier ID, supprimer les autres
+        keep_id = device_ids[0]
+        delete_ids = device_ids[1:]
+
+        # Transférer les pièces vers l'appareil conservé
+        for delete_id in delete_ids:
+            self.parent_window.db_manager.transfer_pieces(delete_id, keep_id)
+            self.parent_window.db_manager.delete_appareil(delete_id)
+
+        QMessageBox.information(
+            self, "Succès",
+            f"Fusion réussie ! {len(delete_ids)} appareils supprimés, "
+            f"données consolidées vers l'appareil ID {keep_id}."
+        )
+
+        # Actualiser les données
+        self._load_duplicates()
+        if hasattr(self.parent_window, 'load_data'):
+            self.parent_window.load_data()
+
     def _view_selected_in_main(self):
         """Voir les appareils sélectionnés dans le tableau principal"""
         selected_rows = self.devices_table.selectionModel().selectedRows()
-        
+
         if not selected_rows:
             return
-        
+
         # Récupérer l'ID du premier appareil sélectionné
         device_id = self.devices_table.item(selected_rows[0].row(), 0).data(Qt.UserRole)
-        
-        try:
-            # Récupérer les données de l'appareil
-            query = "SELECT ref_modele FROM appareils WHERE id = ?"
-            result = self.parent_window.db_manager.execute_custom_query(query, [device_id])
-            
-            if result:
-                ref_modele = result[0][0]
-                # Rechercher dans la fenêtre principale
-                self.parent_window.search_input.setText(clean_display_text(ref_modele))
-                self.parent_window.load_data(ref_modele)
-                
-                # Message de confirmation
-                self.parent_window.statusbar.showMessage(
-                    f"🔍 Recherche de l'appareil ID {device_id} dans le tableau principal", 3000
-                )
-        
-        except Exception as e:
-            self._show_error(f"Erreur lors de la recherche: {e}")
+        self._find_in_main(device_id)
+
+    @handle_ui_errors(log_prefix="Erreur recherche appareil", show_message=True)
+    def _find_in_main(self, device_id):
+        """Recherche un appareil dans le tableau principal"""
+        # Récupérer les données de l'appareil
+        query = "SELECT ref_modele FROM appareils WHERE id = ?"
+        result = self.parent_window.db_manager.execute_custom_query(query, [device_id])
+
+        if result:
+            ref_modele = result[0][0]
+            # Rechercher dans la fenêtre principale
+            self.parent_window.search_input.setText(clean_display_text(ref_modele))
+            self.parent_window.load_data(ref_modele)
+
+            # Message de confirmation
+            self.parent_window.statusbar.showMessage(
+                f"🔍 Recherche de l'appareil ID {device_id} dans le tableau principal", 3000
+            )
     
     def _delete_selected_devices(self):
         """Supprimer les appareils sélectionnés"""
@@ -452,24 +449,25 @@ class DuplicatesManager(QDialog):
         )
         
         if reply == QMessageBox.Yes:
-            try:
-                for row in selected_rows:
-                    device_id = self.devices_table.item(row.row(), 0).data(Qt.UserRole)
-                    self.parent_window.db_manager.delete_appareil(device_id)
-                
-                QMessageBox.information(
-                    self, "Succès", 
-                    f"{len(selected_rows)} appareil(s) supprimé(s) avec succès."
-                )
-                
-                # Actualiser
-                self._load_duplicates()
-                if hasattr(self.parent_window, 'load_data'):
-                    self.parent_window.load_data()
-                
-            except Exception as e:
-                self._show_error(f"Erreur lors de la suppression: {e}")
-    
+            self._delete_selected(selected_rows)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur suppression appareils")
+    def _delete_selected(self, selected_rows):
+        """Effectue la suppression des appareils sélectionnés"""
+        for row in selected_rows:
+            device_id = self.devices_table.item(row.row(), 0).data(Qt.UserRole)
+            self.parent_window.db_manager.delete_appareil(device_id)
+
+        QMessageBox.information(
+            self, "Succès",
+            f"{len(selected_rows)} appareil(s) supprimé(s) avec succès."
+        )
+
+        # Actualiser
+        self._load_duplicates()
+        if hasattr(self.parent_window, 'load_data'):
+            self.parent_window.load_data()
+
     def _auto_merge_identical(self):
         """Fusion automatique des doublons strictement identiques"""
         reply = QMessageBox.question(
@@ -481,24 +479,25 @@ class DuplicatesManager(QDialog):
         )
         
         if reply == QMessageBox.Yes:
-            try:
-                # Utiliser la méthode existante du database_manager
-                deleted_count = self.parent_window.db_manager.remove_duplicate_devices()
-                
-                QMessageBox.information(
-                    self, "Fusion automatique terminée",
-                    f"{deleted_count} appareils dupliqués ont été supprimés.\n"
-                    "Les données ont été consolidées vers les appareils les plus anciens."
-                )
-                
-                # Actualiser
-                self._load_duplicates()
-                if hasattr(self.parent_window, 'load_data'):
-                    self.parent_window.load_data()
-                
-            except Exception as e:
-                self._show_error(f"Erreur lors de la fusion automatique: {e}")
-    
+            self._auto_merge_all()
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur fusion automatique")
+    def _auto_merge_all(self):
+        """Effectue la fusion automatique de tous les doublons identiques"""
+        # Utiliser la méthode existante du database_manager
+        deleted_count = self.parent_window.db_manager.remove_duplicate_devices()
+
+        QMessageBox.information(
+            self, "Fusion automatique terminée",
+            f"{deleted_count} appareils dupliqués ont été supprimés.\n"
+            "Les données ont été consolidées vers les appareils les plus anciens."
+        )
+
+        # Actualiser
+        self._load_duplicates()
+        if hasattr(self.parent_window, 'load_data'):
+            self.parent_window.load_data()
+
     def _show_error(self, message):
         """Afficher un message d'erreur"""
         QMessageBox.critical(self, "Erreur", message)

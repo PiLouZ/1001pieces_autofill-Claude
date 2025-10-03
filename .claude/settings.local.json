@@ -70,11 +70,19 @@
       "Bash(awk:*)",
       "Bash(xargs:*)",
       "Bash(paste:*)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Read(///**)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(if [ 208 -lt 200 ])",
+      "Bash(then echo \"✅ OBJECTIF ATTEINT !\")",
+      "Bash(fi)",
+      "Bash(while read file)"
     ],
     "deny": [],
     "additionalDirectories": [
       "/Users/emg1/Desktop"
     ]
-  }
+  },
+  "outputStyle": "Explanatory"
 }

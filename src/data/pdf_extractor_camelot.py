@@ -10,6 +10,7 @@ import os
 import re
 from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
+from src.utils.error_handler import handle_pdf_extraction_errors
 
 class PDFExtractionError(Exception):
     """Exception levée lors d'erreurs d'extraction PDF"""
@@ -25,23 +26,28 @@ class CamelotPDFExtractor:
     def extract_data(self, pdf_path: str) -> List[List[str]]:
         """
         Extraire les données d'un PDF avec Camelot-Py
-        
+
         Args:
             pdf_path: Chemin vers le fichier PDF
-            
+
         Returns:
             Liste de listes contenant les données extraites [ref_technique, ref_commerciale, description]
         """
+        return self._safe_extract_data_core(pdf_path)
+
+    @handle_pdf_extraction_errors(return_value=[])
+    def _safe_extract_data_core(self, pdf_path: str) -> List[List[str]]:
+        """Noyau sécurisé pour l'extraction de données PDF"""
         try:
             pdf_path = Path(pdf_path)
             if not pdf_path.exists():
                 raise PDFExtractionError(f"Fichier non trouvé: {pdf_path}")
-            
+
             if not pdf_path.suffix.lower() == '.pdf':
                 raise PDFExtractionError(f"Le fichier doit être un PDF: {pdf_path}")
-            
+
             return self._extract_with_camelot(pdf_path)
-            
+
         except Exception as e:
             if "camelot" in str(e).lower():
                 raise PDFExtractionError(f"Erreur Camelot: {e}")
@@ -62,62 +68,65 @@ class CamelotPDFExtractor:
             'extraction_method': 'camelot'
         }
         
+        return self._safe_extract_with_camelot_core(pdf_path, all_data, extraction_stats)
+
+    @handle_pdf_extraction_errors(return_value=[])
+    def _safe_extract_with_camelot_core(self, pdf_path: Path, all_data: List, extraction_stats: Dict) -> List[List[str]]:
+        """Noyau sécurisé pour l'extraction avec Camelot"""
         try:
             # Essayer d'abord avec la méthode 'stream' optimisée (basée sur les espaces)
             # edge_tol=500 permet de capturer les lignes avec caractères spéciaux
             tables = camelot.read_pdf(str(pdf_path), flavor='stream', pages='all', edge_tol=500)
-            
+
             if len(tables) == 0:
                 # Fallback vers stream standard
                 tables = camelot.read_pdf(str(pdf_path), flavor='stream', pages='all')
-            
+
             if len(tables) == 0:
                 # Fallback final vers 'lattice' si stream ne trouve rien
                 tables = camelot.read_pdf(str(pdf_path), flavor='lattice', pages='all')
-            
+
             if len(tables) == 0:
                 raise PDFExtractionError("Aucun tableau détecté dans le PDF")
-            
+
             extraction_stats['total_pages'] = len(tables)
-            
+
             if self.debug_mode:
                 print(f"🐪 Camelot: {len(tables)} tableaux détectés")
-            
+
             # Traiter chaque tableau (page)
             for i, table in enumerate(tables):
                 page_num = i + 1
-                
-                try:
-                    # Convertir en DataFrame pandas
-                    df = table.df
-                    
-                    if df.empty:
-                        extraction_stats['invalid_pages'] += 1
-                        continue
-                    
-                    # Nettoyer les données de cette page
-                    page_data = self._clean_page_data(df, page_num)
-                    
-                    if page_data:
-                        all_data.extend(page_data)
-                        extraction_stats['valid_pages'] += 1
-                        extraction_stats['total_rows'] += len(page_data)
-                        
-                        if self.debug_mode:
-                            print(f"  Page {page_num}: {len(page_data)} lignes extraites")
-                    else:
-                        extraction_stats['invalid_pages'] += 1
-                        
-                except Exception as e:
-                    extraction_stats['invalid_pages'] += 1
-                    if self.debug_mode:
-                        print(f"  Erreur page {page_num}: {e}")
-            
+                self._safe_process_table_page(table, page_num, all_data, extraction_stats)
+
             self.last_extraction_info = extraction_stats
             return all_data
-            
+
         except Exception as e:
             raise PDFExtractionError(f"Erreur Camelot: {e}")
+
+    @handle_pdf_extraction_errors()
+    def _safe_process_table_page(self, table, page_num: int, all_data: List, extraction_stats: Dict) -> None:
+        """Traiter une page de tableau de manière sécurisée"""
+        # Convertir en DataFrame pandas
+        df = table.df
+
+        if df.empty:
+            extraction_stats['invalid_pages'] += 1
+            return
+
+        # Nettoyer les données de cette page
+        page_data = self._clean_page_data(df, page_num)
+
+        if page_data:
+            all_data.extend(page_data)
+            extraction_stats['valid_pages'] += 1
+            extraction_stats['total_rows'] += len(page_data)
+
+            if self.debug_mode:
+                print(f"  Page {page_num}: {len(page_data)} lignes extraites")
+        else:
+            extraction_stats['invalid_pages'] += 1
     
     def _clean_page_data(self, df: pd.DataFrame, page_num: int) -> List[List[str]]:
         """
@@ -225,25 +234,22 @@ class CamelotPDFExtractor:
         """Récupérer les informations de la dernière extraction"""
         return self.last_extraction_info or {}
     
+    @handle_pdf_extraction_errors(return_value=(False, "Erreur de validation PDF"))
     def validate_pdf_compatibility(self, pdf_path: str) -> Tuple[bool, str]:
         """
         Vérifier rapidement si un PDF est compatible avec Camelot
         """
-        try:
-            # Test rapide avec une seule page
-            tables = camelot.read_pdf(pdf_path, flavor='stream', pages='1')
-            
-            if len(tables) == 0:
-                # Essayer avec lattice
-                tables = camelot.read_pdf(pdf_path, flavor='lattice', pages='1')
-            
-            if len(tables) > 0:
-                return True, f"PDF compatible - {len(tables)} tableau(x) détecté(s)"
-            else:
-                return False, "Aucun tableau détecté - Essayez l'import CSV ou le collage de données"
-                
-        except Exception as e:
-            return False, f"Erreur lors de la validation: {e}"
+        # Test rapide avec une seule page
+        tables = camelot.read_pdf(pdf_path, flavor='stream', pages='1')
+
+        if len(tables) == 0:
+            # Essayer avec lattice
+            tables = camelot.read_pdf(pdf_path, flavor='lattice', pages='1')
+
+        if len(tables) > 0:
+            return True, f"PDF compatible - {len(tables)} tableau(x) détecté(s)"
+        else:
+            return False, "Aucun tableau détecté - Essayez l'import CSV ou le collage de données"
     
     def export_to_csv(self, data: List[List[str]], output_path: str, include_metadata: bool = False) -> None:
         """

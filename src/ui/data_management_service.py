@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from .qt_imports import QDialog
 from src.core.config import Config
 from src.core.logger import app_logger
+from src.utils.error_handler import handle_data_management_errors
 
 @dataclass
 class FieldCompletionResult:
@@ -60,28 +61,30 @@ class DataManagementService:
         app_logger.info(f"Auto-complétion: Traitement de {len(table_data)} lignes")
         
         for row_data in table_data:
-            try:
-                db_id = row_data.get('id')
-                device_data = row_data.get('data', {})
-                
-                if not db_id:
-                    result.errors.append("ID manquant pour une ligne")
-                    continue
-                
-                # Vérifier si Type ou Fabricant manquants
-                current_type = device_data.get('type', '').strip()
-                current_manufacturer = device_data.get('manufacturer', '').strip()
-                
-                if not current_type or not current_manufacturer:
-                    # Tentative d'auto-complétion
-                    completed = self._try_auto_complete_device(db_id, device_data)
-                    if completed:
-                        result.completed_count += 1
-                
-            except Exception as e:
-                error_msg = f"Erreur ligne ID {row_data.get('id', 'inconnu')}: {e}"
-                result.errors.append(error_msg)
-                app_logger.error(error_msg)
+            success = self._safe_process_device_row(row_data, result)
+            if success:
+                result.completed_count += 1
+
+    @handle_data_management_errors(return_value=False)
+    def _safe_process_device_row(self, row_data: Dict[str, Any], result: FieldCompletionResult) -> bool:
+        """Traiter une ligne d'appareil de manière sécurisée"""
+        db_id = row_data.get('id')
+        device_data = row_data.get('data', {})
+
+        if not db_id:
+            result.errors.append("ID manquant pour une ligne")
+            return False
+
+        # Vérifier si Type ou Fabricant manquants
+        current_type = device_data.get('type', '').strip()
+        current_manufacturer = device_data.get('manufacturer', '').strip()
+
+        if not current_type or not current_manufacturer:
+            # Tentative d'auto-complétion
+            completed = self._try_auto_complete_device(db_id, device_data)
+            return completed is not None
+
+        return False
         
         app_logger.info(f"Auto-complétion terminée: {result.completed_count}/{result.total_rows_processed} lignes complétées")
         return result
@@ -146,44 +149,45 @@ class DataManagementService:
         """
         similar_devices = []
         
-        try:
-            # Stratégie 1: Recherche par préfixes de référence
-            search_patterns = []
-            
-            if ref_modele:
-                # Extraire différents patterns de la référence
-                patterns = self._extract_reference_patterns(ref_modele)
-                search_patterns.extend(patterns)
-            
-            if commercial_ref:
-                patterns = self._extract_reference_patterns(commercial_ref)
-                search_patterns.extend(patterns)
-            
-            # Chercher pour chaque pattern
-            for pattern in search_patterns:
-                if len(pattern) >= 3:  # Pattern minimum
-                    query = """
-                        SELECT type, manufacturer, ref_modele, commercial_ref, COUNT(*) as frequency
-                        FROM appareils 
-                        WHERE (type IS NOT NULL AND type != '') 
-                          AND (manufacturer IS NOT NULL AND manufacturer != '')
-                          AND (ref_modele LIKE ? OR commercial_ref LIKE ?)
-                        GROUP BY type, manufacturer
-                        ORDER BY frequency DESC
-                        LIMIT 10
-                    """
-                    pattern_like = f"{pattern}%"
-                    rows = self.db_manager.execute_query(query, (pattern_like, pattern_like))
-                    
-                    for row in rows:
-                        similar_devices.append({
-                            'type': row[0],
-                            'manufacturer': row[1],
-                            'frequency': row[4]
-                        })
-        
-        except Exception as e:
-            app_logger.error(f"Erreur recherche appareils similaires: {e}")
+        return self._safe_search_similar_devices(ref_modele, commercial_ref, similar_devices)
+
+    @handle_data_management_errors(return_value=[])
+    def _safe_search_similar_devices(self, ref_modele: str, commercial_ref: str, similar_devices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Rechercher des appareils similaires de manière sécurisée"""
+        # Stratégie 1: Recherche par préfixes de référence
+        search_patterns = []
+
+        if ref_modele:
+            # Extraire différents patterns de la référence
+            patterns = self._extract_reference_patterns(ref_modele)
+            search_patterns.extend(patterns)
+
+        if commercial_ref:
+            patterns = self._extract_reference_patterns(commercial_ref)
+            search_patterns.extend(patterns)
+
+        # Chercher pour chaque pattern
+        for pattern in search_patterns:
+            if len(pattern) >= 3:  # Pattern minimum
+                query = """
+                    SELECT type, manufacturer, ref_modele, commercial_ref, COUNT(*) as frequency
+                    FROM appareils
+                    WHERE (type IS NOT NULL AND type != '')
+                      AND (manufacturer IS NOT NULL AND manufacturer != '')
+                      AND (ref_modele LIKE ? OR commercial_ref LIKE ?)
+                    GROUP BY type, manufacturer
+                    ORDER BY frequency DESC
+                    LIMIT 10
+                """
+                pattern_like = f"{pattern}%"
+                rows = self.db_manager.execute_query(query, (pattern_like, pattern_like))
+
+                for row in rows:
+                    similar_devices.append({
+                        'type': row[0],
+                        'manufacturer': row[1],
+                        'frequency': row[4]
+                    })
         
         return similar_devices
     
@@ -241,6 +245,7 @@ class DataManagementService:
             'manufacturer': best_combination['manufacturer']
         }
     
+    @handle_data_management_errors()
     def prepare_data_cleaning(self) -> Optional[Dict[str, Any]]:
         """
         Préparer le nettoyage des données avec analyse préalable
@@ -248,30 +253,25 @@ class DataManagementService:
         Returns:
             Dict avec le résultat de la fenêtre ou None si annulé
         """
-        try:
-            # Importer et utiliser CleanupPreviewDialog
-            from .cleanup_preview_refactored import CleanupPreviewDialog
+        # Importer et utiliser CleanupPreviewDialog
+        from .cleanup_preview_refactored import CleanupPreviewDialog
 
-            if not self.main_window:
-                app_logger.error("MainWindow nécessaire pour CleanupPreviewDialog")
-                return None
-
-            # Ouvrir la fenêtre de prévisualisation
-            preview_dialog = CleanupPreviewDialog(self.main_window)
-
-            result = preview_dialog.exec_()
-            user_choice = preview_dialog.get_user_choice()
-
-            # Si l'utilisateur a annulé ou fermé la fenêtre
-            if result != QDialog.Accepted and user_choice != 'applied':
-                return None
-
-            # Retourner un dict indiquant que la fenêtre a été utilisée avec succès
-            return {'dialog_completed': True, 'user_choice': user_choice}
-
-        except Exception as e:
-            app_logger.error(f"Erreur préparation nettoyage: {e}")
+        if not self.main_window:
+            app_logger.error("MainWindow nécessaire pour CleanupPreviewDialog")
             return None
+
+        # Ouvrir la fenêtre de prévisualisation
+        preview_dialog = CleanupPreviewDialog(self.main_window)
+
+        result = preview_dialog.exec_()
+        user_choice = preview_dialog.get_user_choice()
+
+        # Si l'utilisateur a annulé ou fermé la fenêtre
+        if result != QDialog.Accepted and user_choice != 'applied':
+            return None
+
+        # Retourner un dict indiquant que la fenêtre a été utilisée avec succès
+        return {'dialog_completed': True, 'user_choice': user_choice}
     
     def execute_data_cleaning(self, cleanup_options: Dict[str, Any]) -> Dict[str, int]:
         """
@@ -286,23 +286,23 @@ class DataManagementService:
         if not self.main_window:
             return {'error': 'MainWindow requis pour le nettoyage'}
         
-        try:
-            # Exécuter le nettoyage des données selon les options
-            stats = {'devices_deleted': 0, 'pieces_deleted': 0, 'pieces_merged': 0}
-            
-            # Nettoyer les appareils dupliqués si demandé
-            if cleanup_options.get('clean_devices', False):
-                devices_deleted = self.db_manager.remove_duplicate_devices()
-                stats['devices_deleted'] = devices_deleted
-            
-            # Nettoyer les pièces dupliquées si demandé  
-            if cleanup_options.get('clean_pieces', False):
-                pieces_deleted = self.db_manager.remove_duplicate_pieces()
-                stats['pieces_deleted'] = pieces_deleted
-                stats['pieces_merged'] = pieces_deleted  # Les pièces supprimées sont effectivement "fusionnées"
-            
-            return stats
-            
-        except Exception as e:
-            app_logger.error(f"Erreur exécution nettoyage: {e}")
-            return {'error': str(e)}
+        return self._safe_execute_cleanup(cleanup_options)
+
+    @handle_data_management_errors(return_value={'error': 'Erreur lors du nettoyage'})
+    def _safe_execute_cleanup(self, cleanup_options: Dict[str, Any]) -> Dict[str, int]:
+        """Exécuter le nettoyage de manière sécurisée"""
+        # Exécuter le nettoyage des données selon les options
+        stats = {'devices_deleted': 0, 'pieces_deleted': 0, 'pieces_merged': 0}
+
+        # Nettoyer les appareils dupliqués si demandé
+        if cleanup_options.get('clean_devices', False):
+            devices_deleted = self.db_manager.remove_duplicate_devices()
+            stats['devices_deleted'] = devices_deleted
+
+        # Nettoyer les pièces dupliquées si demandé
+        if cleanup_options.get('clean_pieces', False):
+            pieces_deleted = self.db_manager.remove_duplicate_pieces()
+            stats['pieces_deleted'] = pieces_deleted
+            stats['pieces_merged'] = pieces_deleted  # Les pièces supprimées sont effectivement "fusionnées"
+
+        return stats

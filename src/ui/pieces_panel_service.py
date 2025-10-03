@@ -15,6 +15,7 @@ from .qt_imports import Qt
 from .qt_imports import QColor
 
 from src.core.logger import app_logger
+from ..utils.error_handler import handle_pieces_panel_errors
 
 class PiecesPanelService:
     """
@@ -30,6 +31,7 @@ class PiecesPanelService:
     def __init__(self, main_window):
         self.main_window = main_window
         
+    @handle_pieces_panel_errors()
     def update_pieces_panel(self) -> None:
         """
         Mettre à jour le panneau des pièces selon la sélection actuelle
@@ -44,14 +46,10 @@ class PiecesPanelService:
         if not selected_rows:
             return
         
-        try:
-            if len(selected_rows) == 1:
-                self._handle_single_selection(selected_rows)
-            else:
-                self._handle_multiple_selection(selected_rows)
-                
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour panneau des pièces: {e}")
+        if len(selected_rows) == 1:
+            self._handle_single_selection(selected_rows)
+        else:
+            self._handle_multiple_selection(selected_rows)
     
     def _get_selected_rows(self) -> Set[int]:
         """
@@ -128,15 +126,9 @@ class PiecesPanelService:
         all_pieces_sets = []
         
         for row in selected_rows:
-            try:
-                db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
-                pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
-                # Créer un set des références de pièces pour cet appareil
-                piece_refs = {ref_piece for ref_piece, description in pieces}
+            piece_refs = self._safe_get_pieces_for_row(row)
+            if piece_refs is not None:
                 all_pieces_sets.append(piece_refs)
-            except Exception as e:
-                app_logger.warning(f"Erreur récupération pièces pour ligne {row}: {e}")
-                continue
         
         return all_pieces_sets
     
@@ -173,15 +165,9 @@ class PiecesPanelService:
             str: Description de la pièce ou chaîne vide si non trouvée
         """
         for row in selected_rows:
-            try:
-                db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
-                pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
-                for ref, desc in pieces:
-                    if ref == ref_piece and desc:
-                        return desc
-            except Exception as e:
-                app_logger.warning(f"Erreur récupération description pièce {ref_piece} pour ligne {row}: {e}")
-                continue
+            desc = self._safe_get_piece_description_for_row(row, ref_piece)
+            if desc:
+                return desc
         
         return ""
     
@@ -195,3 +181,20 @@ class PiecesPanelService:
         item = QListWidgetItem(f"Aucune pièce commune aux {selected_count} appareils sélectionnés")
         item.setForeground(QColor(108, 117, 125))  # Gris
         self.main_window.pieces_list.addItem(item)
+
+    @handle_pieces_panel_errors(return_value=None)
+    def _safe_get_pieces_for_row(self, row: int) -> Optional[Set[str]]:
+        """Récupérer les pièces pour une ligne de manière sécurisée"""
+        db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
+        pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
+        return {ref_piece for ref_piece, description in pieces}
+
+    @handle_pieces_panel_errors(return_value="")
+    def _safe_get_piece_description_for_row(self, row: int, ref_piece: str) -> str:
+        """Récupérer la description d'une pièce pour une ligne de manière sécurisée"""
+        db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
+        pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
+        for ref, desc in pieces:
+            if ref == ref_piece and desc:
+                return desc
+        return ""
