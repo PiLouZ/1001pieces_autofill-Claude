@@ -339,37 +339,29 @@ class DuplicatesAnalysisService(BaseService):
         # Traiter les fusions d'appareils
         if 'device_merges' in cleanup_options:
             for merge_info in cleanup_options['device_merges']:
-                try:
-                    master_id = merge_info['master_id']
-                    duplicate_ids = merge_info['duplicate_ids']
+                master_id = merge_info['master_id']
+                duplicate_ids = merge_info['duplicate_ids']
 
-                    app_logger.info(f"Tentative de fusion: maître={master_id}, doublons={duplicate_ids}")
+                app_logger.info(f"Tentative de fusion: maître={master_id}, doublons={duplicate_ids}")
 
-                    # Vérifier que les IDs sont valides
-                    if not master_id or not duplicate_ids:
-                        results['errors'].append(f"IDs invalides pour fusion: maître={master_id}, doublons={duplicate_ids}")
-                        continue
+                # Vérifier que les IDs sont valides
+                if not master_id or not duplicate_ids:
+                    results['errors'].append(f"IDs invalides pour fusion: maître={master_id}, doublons={duplicate_ids}")
+                    continue
 
-                    # Fusionner les appareils
-                    if self._merge_devices(master_id, duplicate_ids):
-                        results['devices_merged'] += 1
-                        results['devices_deleted'] += len(duplicate_ids)
-                        app_logger.info(f"Fusion réussie: {len(duplicate_ids)} appareil(s) fusionné(s) vers {master_id}")
-                    else:
-                        results['errors'].append(f"Échec fusion appareil {master_id}")
-
-                except Exception as e:
-                    app_logger.error(f"Exception lors de la fusion: {e}")
-                    results['errors'].append(f"Erreur fusion: {e}")
+                # Fusionner les appareils
+                if self._merge_devices(master_id, duplicate_ids):
+                    results['devices_merged'] += 1
+                    results['devices_deleted'] += len(duplicate_ids)
+                    app_logger.info(f"Fusion réussie: {len(duplicate_ids)} appareil(s) fusionné(s) vers {master_id}")
+                else:
+                    results['errors'].append(f"Échec fusion appareil {master_id}")
 
         # Traiter les suppressions de pièces
         if 'piece_deletions' in cleanup_options:
             for ref_piece in cleanup_options['piece_deletions']:
-                try:
-                    deleted_count = self._delete_duplicate_pieces(ref_piece)
-                    results['pieces_deleted'] += deleted_count
-                except Exception as e:
-                    results['errors'].append(f"Erreur suppression pièce {ref_piece}: {e}")
+                deleted_count = self._delete_duplicate_pieces(ref_piece)
+                results['pieces_deleted'] += deleted_count
 
         return results
             

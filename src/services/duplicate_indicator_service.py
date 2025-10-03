@@ -147,47 +147,36 @@ class DuplicateIndicatorService(QObject):
             app_logger.warning("⚠️ Boutons non définis pour mise à jour indicateurs doublons")
             return
 
-        try:
-            if nb_groups > 0:
-                # Doublons détectés - Affichage en warning
-                app_logger.info(f"🔴 Doublons détectés: {nb_groups} groupes ({nb_total} appareils)")
+        if nb_groups > 0:
+            # Doublons détectés - Affichage en warning
+            app_logger.info(f"🔴 Doublons détectés: {nb_groups} groupes ({nb_total} appareils)")
 
-                # Style du bouton Action
-                self.action_button.setStyleSheet(self._warning_style)
-                self.action_button.setToolTip(f"⚠️ {nb_groups} groupes de doublons détectés ({nb_total} appareils)")
+            # Style du bouton Action
+            self.action_button.setStyleSheet(self._warning_style)
+            self.action_button.setToolTip(f"⚠️ {nb_groups} groupes de doublons détectés ({nb_total} appareils)")
 
-                # Texte de l'action Nettoyer (éviter les emojis problématiques)
-                from ..core.config import pluralize
-                self.clean_action.setText(f"Nettoyer les doublons ({pluralize(nb_groups, 'groupe')})")
-                self.clean_action.setToolTip(f"ATTENTION: {pluralize(nb_groups, 'groupe')} de doublons détectés - {pluralize(nb_total, 'appareil')} concerné")
+            # Texte de l'action Nettoyer (éviter les emojis problématiques)
+            from ..core.config import pluralize
+            self.clean_action.setText(f"Nettoyer les doublons ({pluralize(nb_groups, 'groupe')})")
+            self.clean_action.setToolTip(f"ATTENTION: {pluralize(nb_groups, 'groupe')} de doublons détectés - {pluralize(nb_total, 'appareil')} concerné")
 
-                # Appliquer un style d'alerte à l'action
-                try:
-                    # Pour QAction, on peut utiliser une propriété personnalisée
-                    self.clean_action.setProperty("hasWarning", True)
-                except Exception:
-                    pass  # Si ça échoue, pas grave
+            # Appliquer un style d'alerte à l'action (setProperty est safe)
+            self.clean_action.setProperty("hasWarning", True)
 
-            else:
-                # Aucun doublon - Affichage normal
-                app_logger.info("✅ Aucun doublon détecté")
+        else:
+            # Aucun doublon - Affichage normal
+            app_logger.info("✅ Aucun doublon détecté")
 
-                # Réinitialiser le style du bouton Action
-                self.action_button.setStyleSheet(self._normal_style)
-                self.action_button.setToolTip("Actions sur les données")
+            # Réinitialiser le style du bouton Action
+            self.action_button.setStyleSheet(self._normal_style)
+            self.action_button.setToolTip("Actions sur les données")
 
-                # Réinitialiser le texte de l'action Nettoyer
-                self.clean_action.setText("Nettoyer les doublons")
-                self.clean_action.setToolTip("Rechercher et nettoyer les appareils en doublon")
+            # Réinitialiser le texte de l'action Nettoyer
+            self.clean_action.setText("Nettoyer les doublons")
+            self.clean_action.setToolTip("Rechercher et nettoyer les appareils en doublon")
 
-                # Enlever le style d'alerte
-                try:
-                    self.clean_action.setProperty("hasWarning", False)
-                except Exception:
-                    pass
-
-        except Exception as e:
-            app_logger.error(f"Erreur mise à jour indicateurs visuels doublons: {e}")
+            # Enlever le style d'alerte (setProperty est safe)
+            self.clean_action.setProperty("hasWarning", False)
 
     def _get_real_duplicates(self) -> List[Tuple[str, int]]:
         """Obtenir les vrais doublons en excluant les appareils marqués DISTINCT"""

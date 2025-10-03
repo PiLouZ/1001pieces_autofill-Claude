@@ -117,18 +117,14 @@ class SortingFilteringService(BaseService):
 
     def apply_column_filter(self, column_index: int, filter_text: str):
         """Appliquer un filtre sur une colonne avec debounce"""
-        try:
-            # Sauvegarder le filtre en attente
-            self.pending_column_filter = {
-                'column': column_index,
-                'text': filter_text.strip()
-            }
+        # Sauvegarder le filtre en attente
+        self.pending_column_filter = {
+            'column': column_index,
+            'text': filter_text.strip()
+        }
 
-            # Utiliser le DebounceTimer
-            self.column_filter_timer.start()
-
-        except Exception as e:
-            self.handle_error(e, "application filtre colonne")
+        # Utiliser le DebounceTimer
+        self.column_filter_timer.start()
 
     def _perform_delayed_column_filter(self):
         """Exécuter le filtrage de colonne après délai"""

@@ -120,20 +120,20 @@ class FileProcessingService:
     def _get_pdf_sample_data(self, pdf_path: Optional[str]) -> List[Any]:
         """
         Obtenir un aperçu des données PDF pour la dialogue d'options
-        
+
         Args:
             pdf_path: Chemin du fichier PDF
-            
+
         Returns:
             List: Données d'aperçu ou liste vide en cas d'erreur
         """
         if not pdf_path:
             return []
-            
+
         try:
             return self.main_window.import_manager.load_pdf_data(pdf_path, max_rows=3)
         except Exception as e:
-            print(f"Erreur lecture aperçu PDF: {e}")
+            app_logger.warning(f"Impossible d'obtenir l'aperçu PDF, dialogue sans aperçu: {e}")
             return []
     
     def _process_pdf_files(self, file_paths: List[str], third_column_choice: str) -> Optional[Tuple[List, List, List]]:

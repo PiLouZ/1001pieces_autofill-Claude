@@ -1623,26 +1623,22 @@ class MainWindow(QMainWindow):
             if not header_item:
                 continue
 
-            try:
-                db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
+            db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
 
-                # Récupérer les données actuelles de la ligne
-                appareil_data = {}
-                for ui_col_idx in range(self.table.columnCount()):
-                    db_field = self._get_db_field_name(ui_col_idx)
-                    if db_field:  # Ignorer pieces_count
-                        item = self.table.item(row, ui_col_idx)
-                        cell_value = item.text() if item else ""
-                        appareil_data[db_field] = cell_value
+            # Récupérer les données actuelles de la ligne
+            appareil_data = {}
+            for ui_col_idx in range(self.table.columnCount()):
+                db_field = self._get_db_field_name(ui_col_idx)
+                if db_field:  # Ignorer pieces_count
+                    item = self.table.item(row, ui_col_idx)
+                    cell_value = item.text() if item else ""
+                    appareil_data[db_field] = cell_value
 
-                table_data.append({
-                    'id': db_id,
-                    'row': row,
-                    'data': appareil_data
-                })
-
-            except Exception as e:
-                app_logger.error(f"Erreur récupération ligne {row}: {e}")
+            table_data.append({
+                'id': db_id,
+                'row': row,
+                'data': appareil_data
+            })
 
         result = self.data_management_service.auto_complete_empty_fields(table_data)
 
@@ -2743,10 +2739,6 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 self._piece_description_decisions
             )
 
-            # Fermer la barre de progression si elle existe
-            if progress_dialog:
-                progress_dialog.close()
-
             # Recharger les données dans le tableau pour refléter les nouveaux ajouts
             self.table_controller.load_data()
 
@@ -2775,10 +2767,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 total_rows
             )
 
-        except Exception as e:
+        finally:
+            # Toujours fermer la barre de progression
             if progress_dialog:
                 progress_dialog.close()
-            raise e
 
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur copie de données")
     def _safe_copy_selected_data(self, selected):
