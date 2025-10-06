@@ -113,12 +113,21 @@ class DatabaseWorker(QThread):
     @handle_db_signal_errors(error_signal_name="error_occurred")
     def run(self):
         """Exécuter la requête de base de données"""
-        conn = sqlite3.connect(self.db_file)
-        cursor = conn.cursor()
-        cursor.execute(self.query, self.params)
-        records = cursor.fetchall()
-        conn.close()
-        self.data_loaded.emit(records)
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            cursor.execute(self.query, self.params)
+            records = cursor.fetchall()
+            self.data_loaded.emit(records)
+        finally:
+            # SÉCURITÉ: Garantir fermeture connexion même si exception
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    # Bare except légitime: cleanup ne doit pas masquer erreur principale
+                    pass
 
 class DatabaseManager:
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
