@@ -772,16 +772,22 @@ class ImportManager:
         except Exception as e:
             raise ValueError(f"Erreur lors de l'extraction PDF: {e}")
     
-    def import_files(self, file_paths: List[str], show_dialog: bool = True) -> Optional[Dict[str, Any]]:
+    def import_files(self, file_paths: List[str], show_dialog: bool = True, callback: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
         """
         Importer un ou plusieurs fichiers
 
         Args:
             file_paths: Liste des chemins de fichiers
             show_dialog: Afficher l'interface de configuration
+            callback: Fonction appelée avec les résultats (pour mode non-bloquant)
 
         Returns:
             Résultats d'import ou None si annulé
+            PHASE 2.2: Retourne None immédiatement si callback fourni (mode non-bloquant)
+
+        Notes:
+            PHASE 2.2 OPTIMISATION: Si callback fourni, le dialogue est non-bloquant
+            et les résultats sont passés au callback au lieu d'être retournés.
         """
         # PHASE 2.1 OPTIMISATION: Lazy loading - NE PAS charger les données ici
         # Les données seront chargées en différé dans le dialogue
@@ -815,18 +821,60 @@ class ImportManager:
         if show_dialog:
             # PHASE 2.1: Passer import_manager pour lazy loading
             dialog = ImportDialog(self.parent_widget, config, import_manager=self)
-            if dialog.exec_() != QDialog.Accepted:
-                return None
 
-            config = dialog.get_configuration()
-            if not config:
-                return None
-        
+            # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
+            if callback:
+                # Mode non-bloquant: show() au lieu de exec_()
+                dialog.accepted.connect(lambda: self._on_import_dialog_accepted(dialog, callback))
+                dialog.rejected.connect(lambda: self._on_import_dialog_rejected(dialog, callback))
+                dialog.show()
+                return None  # Retour immédiat, résultat via callback
+            else:
+                # Mode bloquant classique (compatibilité)
+                if dialog.exec_() != QDialog.Accepted:
+                    return None
+
+                config = dialog.get_configuration()
+                if not config:
+                    return None
+
         # PHASE 1: Décision intelligente Async vs Sync avec fallback automatique
         return self._execute_import(config)
 
+    def _on_import_dialog_accepted(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue d'import est accepté (mode non-bloquant)
+
+        PHASE 2.2: Cette méthode permet au dialogue de se fermer sans bloquer le Finder
+        """
+        try:
+            config = dialog.get_configuration()
+            if config:
+                # Exécuter l'import
+                results = self._execute_import(config)
+                # Appeler le callback avec les résultats
+                if callback:
+                    callback(results)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
+
+    def _on_import_dialog_rejected(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue d'import est annulé (mode non-bloquant)
+
+        PHASE 2.2: Permet de gérer l'annulation proprement
+        """
+        try:
+            # Import annulé, appeler le callback avec None
+            if callback:
+                callback(None)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
+
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import drag&drop")
-    def import_from_drag_drop(self, file_paths: List[str]) -> Optional[Dict[str, Any]]:
+    def import_from_drag_drop(self, file_paths: List[str], callback: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
         """
         Import spécialisé pour drag&drop avec paramètres par défaut intelligents
 
@@ -892,30 +940,76 @@ class ImportManager:
         # Titre spécialisé pour drag&drop
         dialog.setWindowTitle("Import par Glisser-Déposer")
 
-        if dialog.exec_() != QDialog.Accepted:
-            return None
+        # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
+        if callback:
+            # Mode non-bloquant pour drag&drop
+            dialog.accepted.connect(lambda: self._on_drag_drop_dialog_accepted(dialog, callback))
+            dialog.rejected.connect(lambda: self._on_drag_drop_dialog_rejected(dialog, callback))
+            dialog.show()
+            return None  # Retour immédiat, résultat via callback
+        else:
+            # Mode bloquant classique (compatibilité)
+            if dialog.exec_() != QDialog.Accepted:
+                return None
 
-        config = dialog.get_configuration()
-        if not config:
-            return None
+            config = dialog.get_configuration()
+            if not config:
+                return None
 
-        # Effectuer l'import avec la même logique de fallback
-        results = self._execute_import(config)
+            # Effectuer l'import avec la même logique de fallback
+            results = self._execute_import(config)
 
-        # Marquer les résultats comme provenant du drag&drop
-        if results:
-            results['import_source'] = 'drag_drop'
-            results['source_files'] = [f['path'] for f in import_files]
+            # Marquer les résultats comme provenant du drag&drop
+            if results:
+                results['import_source'] = 'drag_drop'
+                results['source_files'] = [f.path for f in import_files]
 
-            # Format d'historique spécialisé
-            if len(import_files) == 1:
-                file_name = os.path.basename(import_files[0]['path'])
-                file_ext = import_files[0]['type'].value.upper()
-                results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
-            else:
-                results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
+                # Format d'historique spécialisé
+                if len(import_files) == 1:
+                    file_name = os.path.basename(import_files[0].path)
+                    file_ext = import_files[0].type.value.upper()
+                    results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
+                else:
+                    results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
 
-        return results
+            return results
+
+    def _on_drag_drop_dialog_accepted(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue drag&drop est accepté (mode non-bloquant)
+
+        PHASE 2.2: Permet au drag&drop de ne pas bloquer le Finder
+        """
+        try:
+            config = dialog.get_configuration()
+            if config:
+                # Exécuter l'import
+                results = self._execute_import(config)
+
+                # Marquer comme drag&drop
+                if results:
+                    results['import_source'] = 'drag_drop'
+
+                # Appeler le callback avec les résultats
+                if callback:
+                    callback(results)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
+
+    def _on_drag_drop_dialog_rejected(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue drag&drop est annulé (mode non-bloquant)
+
+        PHASE 2.2: Gestion propre de l'annulation
+        """
+        try:
+            # Import annulé, appeler le callback avec None
+            if callback:
+                callback(None)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
     
     def _detect_file_type(self, file_path: str) -> Optional[FileType]:
         """Détecter le type de fichier"""

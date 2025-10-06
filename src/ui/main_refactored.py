@@ -1726,12 +1726,12 @@ class MainWindow(QMainWindow):
         )
 
         if filenames:
-            # Utiliser le nouveau gestionnaire unifié avec support async
-            results = self.import_manager.import_files(filenames, show_dialog=True)
-
-            if results:
-                self._show_import_results_new(results)
-                self.table_controller.load_data()  # Rafraîchir l'affichage
+            # PHASE 2.2 OPTIMISATION: Utiliser callback pour dialogue non-bloquant
+            self.import_manager.import_files(
+                filenames,
+                show_dialog=True,
+                callback=self._on_import_complete
+            )
     
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
         """Dialogue unifié pour choisir les options d'import - Phase 2.6"""
@@ -1895,6 +1895,17 @@ class MainWindow(QMainWindow):
         # Ajouter à l'historique visible avec le format console
         self.user_interaction_service.add_to_history(console_summary)
     
+    def _on_import_complete(self, results):
+        """
+        Callback appelé quand l'import est terminé (mode non-bloquant)
+
+        PHASE 2.2: Cette méthode est appelée par ImportManager après validation
+        du dialogue et exécution de l'import.
+        """
+        if results:
+            self._show_import_results_new(results)
+            self.table_controller.load_data()  # Rafraîchir l'affichage
+
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
         return self._safe_show_import_results_new(results)
@@ -2416,13 +2427,13 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                         supported_files.append(file_path)
             
             if supported_files:
-                # Utiliser le nouveau gestionnaire unifié avec support async
-                results = self.import_manager.import_files(supported_files, show_dialog=True)
-                
-                if results:
-                    self._show_import_results_new(results)
-                    self.table_controller.load_data()  # Rafraîchir l'affichage
-                
+                # PHASE 2.2 OPTIMISATION: Utiliser callback pour dialogue non-bloquant
+                self.import_manager.import_files(
+                    supported_files,
+                    show_dialog=True,
+                    callback=self._on_import_complete
+                )
+
                 event.acceptProposedAction()
                 return
         

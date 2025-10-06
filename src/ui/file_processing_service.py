@@ -45,12 +45,12 @@ class FileProcessingService:
             if isinstance(file_paths, str):
                 file_paths = [file_paths]
             
-            # NOUVEAU : Utiliser ImportManager pour drag&drop
-            results = self.main_window.import_manager.import_from_drag_drop(file_paths)
-            if results:
-                self.main_window._show_import_results_new(results)
-                self.main_window.table_controller.load_data()
-                return True
+            # PHASE 2.2 OPTIMISATION: Utiliser callback pour dialogue non-bloquant
+            self.main_window.import_manager.import_from_drag_drop(
+                file_paths,
+                callback=self.main_window._on_import_complete
+            )
+            return True  # Retour immédiat, résultat via callback
         except Exception as e:
             app_logger.warning(f"Échec ImportManager drag&drop PDF, fallback vers ancien système: {e}")
         
