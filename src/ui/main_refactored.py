@@ -1383,45 +1383,50 @@ class MainWindow(QMainWindow):
             return
 
         selection = self.drag_handle.orig_selection
-        direction = self.drag_handle.drag_direction
 
-        # Déterminer la plage de cellules à sauvegarder
-        rows_to_save = self._get_drag_rows_to_save(selection, direction)
+        # CORRECTION: Utiliser uniquement les lignes réellement modifiées (comme double-clic)
+        # Au lieu de sauvegarder TOUTES les lignes dans la direction du drag
+        modified_rows = sorted(list(self.drag_handle.modified_rows_set))
 
-        # Sauvegarder les cellules
-        self._save_cells_in_range(rows_to_save, selection.leftColumn(), selection.rightColumn())
+        if not modified_rows:
+            return
+
+        # Réutiliser la logique du double-clic pour une sauvegarde optimisée
+        self._save_specific_rows(modified_rows, selection.leftColumn(), selection.rightColumn())
     
-    def _get_drag_rows_to_save(self, selection, direction: str) -> range:
-        """Obtenir la plage de lignes à sauvegarder pour le drag"""
-        if direction == "down":
-            return range(selection.bottomRow() + 1, self.table.rowCount())
-        elif direction == "up":
-            return range(0, selection.topRow())
-        return range(0, 0)  # Plage vide si direction inconnue
-    
-    def _save_cells_in_range(self, rows: range, start_col: int, end_col: int):
-        """Sauvegarder les cellules dans une plage donnée (drag & drop)"""
-        return self._safe_save_cells_in_range(rows, start_col, end_col)
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur sauvegarde cellules drag & drop")
-    def _safe_save_cells_in_range(self, rows: range, start_col: int, end_col: int):
-        """Helper sécurisé pour sauvegarder cellules avec cache suspension"""
-        # Suspendre les invalidations de cache pendant le drag & drop
-        cache_service = getattr(self.db_manager, 'cache_invalidation', None)
-        if cache_service:
-            cache_service.suspend_invalidation("drag & drop")
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur sauvegarde lignes spécifiques")
+    def _save_specific_rows(self, modified_rows, start_col, end_col):
+        """Sauvegarder uniquement les lignes modifiées (logique réutilisée du double-clic)"""
+        # Suspendre les invalidations de cache pendant la sauvegarde
+        if hasattr(self, 'db_manager'):
+            cache_service = getattr(self.db_manager, 'cache_invalidation', None)
+            if cache_service:
+                cache_service.suspend_invalidation("drag & drop - lignes modifiées")
 
         try:
-            for row in rows:
+            saved_count = 0
+            cells_to_clean = []  # Cellules à nettoyer de modified_cells
+
+            for row in modified_rows:
                 for col in range(start_col, end_col + 1):
                     item = self.table.item(row, col)
-                    if item:
+                    if item and hasattr(self, 'cell_editing_service'):
                         # Sauvegarder uniquement les cellules avec ID valide
-                        self.cell_editing_service.update_cell_in_db(item, skip_history=True)
+                        if self.cell_editing_service.update_cell_in_db(item, skip_history=True):
+                            saved_count += 1
+                            cells_to_clean.append((row, col))
+
+            # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
+            if hasattr(self, 'modified_cells') and cells_to_clean:
+                for cell_coords in cells_to_clean:
+                    self.modified_cells.discard(cell_coords)
+
         finally:
             # Reprendre les invalidations avec une invalidation globale
-            if cache_service:
-                cache_service.resume_invalidation(force_invalidate=True)
+            if hasattr(self, 'db_manager'):
+                cache_service = getattr(self.db_manager, 'cache_invalidation', None)
+                if cache_service:
+                    cache_service.resume_invalidation(force_invalidate=True)
 
     def _apply_css_indentation(self, content: str) -> str:
         """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""

@@ -35,7 +35,8 @@ class DragHandle(QWidget):
         self.orig_selection = None
         self.drag_direction = None
         self.history_pending = False
-        
+        self.modified_rows_set = set()  # Tracker les lignes réellement modifiées
+
         # Variables pour le défilement automatique
         self.auto_scroll_timer = None
         self.auto_scroll_direction = None
@@ -67,6 +68,7 @@ class DragHandle(QWidget):
             self.start_pos = event.globalPos()
             self.orig_selection = self.table.selectedRanges()[0] if self.table.selectedRanges() else None
             self.drag_direction = None
+            self.modified_rows_set.clear()  # Réinitialiser le tracker de lignes modifiées
             # Ne pas bloquer les signaux pour permettre la capture de l'historique
             # self.table.blockSignals(True)
 
@@ -131,15 +133,21 @@ class DragHandle(QWidget):
         # Remplir les cellules de destination
         for dest_row in range(dest_start_row, dest_end_row + 1):
             source_row_idx = (dest_row - dest_start_row) % source_height
+            row_modified = False
             for dest_col, source_value in source_data[source_row_idx]:
                 if dest_col == 5:  # Ne pas toucher à la colonne Nb Pièces
                     continue
-                    
+
                 # Créer et insérer l'item
                 new_item = QTableWidgetItem(source_value)
                 self.table.setItem(dest_row, dest_col, new_item)
                 duplicated_cells += 1
-        
+                row_modified = True
+
+            # Enregistrer la ligne comme modifiée
+            if row_modified:
+                self.modified_rows_set.add(dest_row)
+
         # Marquer qu'une entrée d'historique est en attente
         if duplicated_cells > 0:
             self.history_pending = True
@@ -181,15 +189,21 @@ class DragHandle(QWidget):
         for dest_row in range(dest_start_row, dest_end_row + 1):
             distance = dest_end_row - dest_row
             source_row_idx = distance % source_height
+            row_modified = False
             for dest_col, source_value in source_data[source_row_idx]:
                 if dest_col == 5:  # Ne pas toucher à la colonne Nb Pièces
                     continue
-                    
+
                 # Créer et insérer l'item
                 new_item = QTableWidgetItem(source_value)
                 self.table.setItem(dest_row, dest_col, new_item)
                 duplicated_cells += 1
-        
+                row_modified = True
+
+            # Enregistrer la ligne comme modifiée
+            if row_modified:
+                self.modified_rows_set.add(dest_row)
+
         # Marquer qu'une entrée d'historique est en attente
         if duplicated_cells > 0:
             self.history_pending = True
@@ -218,6 +232,7 @@ class DragHandle(QWidget):
         self.dragging = False
         self.history_pending = False
         self.drag_direction = None
+        self.modified_rows_set.clear()  # Nettoyer le tracker après sauvegarde
 
         # Arrêter le défilement automatique
         self._stop_auto_scroll()

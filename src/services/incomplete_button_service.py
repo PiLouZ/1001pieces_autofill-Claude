@@ -38,6 +38,20 @@ class IncompleteButtonService(QObject):
         # Compteur pour éviter les calculs inutiles
         self._pending_updates = 0
 
+        # Style CSS pour l'alerte (même style que le bouton Action)
+        self._normal_style = ""
+        self._alert_style = """
+            QPushButton {
+                background-color: #ff6b35;
+                color: white;
+                font-weight: bold;
+                border: 2px solid #e55a2b;
+            }
+            QPushButton:hover {
+                background-color: #e55a2b;
+            }
+        """
+
     @handle_count_operation_errors(return_value=None)
     def _safe_count_incomplete_devices(self):
         """Compter les appareils incomplets de manière sécurisée"""
@@ -115,6 +129,9 @@ class IncompleteButtonService(QObject):
             self.button.show()
             from ..core.config import pluralize
 
+            # Appliquer le style rouge d'alerte (comme le bouton Action)
+            self.button.setStyleSheet(self._alert_style)
+
             if self.show_incomplete_only:
                 # Filtre actif
                 self.button.setText(f"📋 Filtre actif, plus que {pluralize(count, 'ligne')}")
@@ -124,6 +141,8 @@ class IncompleteButtonService(QObject):
                 self.button.setText(f"📋 {pluralize(count, 'incomplète')}")
                 self.button.setToolTip(f"Afficher uniquement les {pluralize(count, 'ligne')} avec des champs vides")
         else:
+            # Réinitialiser le style normal
+            self.button.setStyleSheet(self._normal_style)
             self.button.hide()
             # Auto-désactiver le filtre si plus de lignes incomplètes
             if self.show_incomplete_only:
