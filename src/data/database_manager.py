@@ -758,46 +758,6 @@ class DatabaseManager:
         # Pas de cache pour gros volumes ou sans limite
         return False
 
-    def _load_data_optimized(self, search_term: Optional[str] = None, 
-                           column_filters: Optional[Dict[int, str]] = None, 
-                           limit: Optional[int] = None,
-                           offset: Optional[int] = None,
-                           sort_column: Optional[int] = None,
-                           sort_order: Optional[str] = None,
-                           incomplete_filter: bool = False) -> List[Tuple]:
-        """Phase 3: Version optimisée avec requêtes spécialisées"""
-        try:
-            # Recherche optimisée si possible
-            if search_term and not column_filters and not incomplete_filter:
-                search_condition = self._build_search_condition_optimized(search_term)
-                
-                if search_condition and search_condition.get('query_type') in ['exact', 'prefix']:
-                    # Utiliser les requêtes optimisées pré-compilées
-                    query = search_condition['condition']
-                    params = search_condition['params']
-                    
-                    # Ajouter tri si nécessaire
-                    if sort_column is not None and sort_column < len(Config.DB_HEADERS):
-                        order_by = f" ORDER BY a.[{Config.DB_HEADERS[sort_column]}] {sort_order or 'ASC'}"
-                        query += order_by
-                    
-                    # Ajouter LIMIT/OFFSET si nécessaire
-                    if limit:
-                        query += f" LIMIT {limit}"
-                        if offset:
-                            query += f" OFFSET {offset}"
-
-                    return self.execute_query(query, params)
-            
-            # Fallback vers méthode complète pour cas complexes
-            return self._load_data_original(search_term, column_filters, limit, offset,
-                                          sort_column, sort_order, incomplete_filter)
-            
-        except Exception as e:
-            app_logger.debug(f"⚠️ Erreur recherche optimisée, fallback: {e}")
-            return self._load_data_original(search_term, column_filters, limit, offset,
-                                          sort_column, sort_order, incomplete_filter)
-    
     def _load_data_original(self, search_term: Optional[str] = None, 
                           column_filters: Optional[Dict[int, str]] = None, 
                           limit: Optional[int] = None,

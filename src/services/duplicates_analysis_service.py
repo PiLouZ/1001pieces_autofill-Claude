@@ -3,26 +3,13 @@ Service d'analyse des doublons
 Centralise toute la logique d'analyse et de détection des doublons
 """
 
-import re
 from typing import Dict, List, Any, Optional, Tuple, Set
 from ..ui.qt_imports import QObject, pyqtSignal, QThread, QTimer
 
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager
 from .base_service import BaseService, safe_operation
-
-def clean_display_text(text: str) -> str:
-    """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
-    if not text:
-        return ""
-    text = str(text)
-    text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]', '', text)
-    try:
-        text = text.encode('utf-8', errors='replace').decode('utf-8')
-    except:
-        text = "???"
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+from ..utils.text_utils import clean_display_text
 
 class DuplicatesAnalysisWorker(QThread):
     """Worker thread pour l'analyse des doublons"""

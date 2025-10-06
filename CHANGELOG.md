@@ -2,6 +2,91 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [3.10.0] - ✨ PHASE 8 - Quick Wins UTF-8 & Bug Fix Critique (-5 blocs) - 2025-10-06
+
+### 🎯 **OBJECTIF 72% ATTEINT - 101 BLOCS RESTANTS**
+
+#### 📊 **Performance de la Session**
+- **106 → 101 blocs** (-5 blocs / -4.7% cette session)
+- **357 → 101 blocs** (-256 blocs / -71.7% depuis le début du projet)
+- **5 fichiers modifiés** + **1 fichier créé** : text_utils, validation_window, duplicates_manager, cleanup_preview, duplicates_analysis_service, database_manager
+- **Pathologies éliminées** : Code duplication (clean_display_text), Dead code (méthode dupliquée)
+
+#### ✅ **Changements Majeurs**
+
+**1. Création src/utils/text_utils.py** (+1 fichier, centralisation)
+- ✨ **Nouveau module** : Utilitaires de traitement de texte centralisés
+- 🎯 **Fonction** : `clean_display_text()` - Nettoyage et normalisation UTF-8
+- 🔬 **Insight** : `encode('utf-8', errors='replace')` ne lève **jamais** d'exception → try/except était redondant
+- 📚 **Documentation** : Docstring complète avec détail des opérations
+
+**2. Pattern UTF-8 - 4 fichiers refactorisés** (-4 blocs)
+- ❌ **Suppression duplication** : Fonction `clean_display_text()` copiée 4x identiquement
+- 🔄 **Migration** : validation_window.py, duplicates_manager.py, cleanup_preview.py, duplicates_analysis_service.py
+- ✅ **Importation** : `from ..utils.text_utils import clean_display_text`
+- 💡 **Bénéfice** : Point unique de maintenance + élimination 4 blocs try/except redondants
+
+**3. Bug Critique - database_manager.py** (-1 bloc, dead code)
+- 🐛 **Bug détecté** : Méthode `_load_data_optimized` définie **DEUX FOIS** (lignes 761 et 2109)
+- 🔍 **Analyse** : Python utilise toujours la dernière définition → version ligne 761 = **dead code**
+- ❌ **Suppression** : Version 761 (dispatcher simple vers fallback)
+- ✅ **Conservée** : Version 2109 (optimisation ÉTAPE 1-4 avec séparation requête principale + pieces_count)
+- 🎯 **Impact** : -1 bloc try/except + clarification du code
+
+#### 🏆 **Découvertes Architecturales**
+
+**1. UTF-8 Encoding Pattern - Try/Except Inutile**
+```python
+# AVANT - Try/Except redondant (4x dupliqué)
+try:
+    text = text.encode('utf-8', errors='replace').decode('utf-8')
+except:
+    text = "???"
+
+# APRÈS - Pas d'exception possible
+text = text.encode('utf-8', errors='replace').decode('utf-8')
+```
+📚 **Leçon** : `errors='replace'` garantit que l'opération ne lève jamais d'exception
+
+**2. Dead Code Detection - Méthodes Dupliquées**
+```python
+# Python utilise TOUJOURS la dernière définition
+class DatabaseManager:
+    def _load_data_optimized(self):  # ❌ DEAD CODE (jamais appelée)
+        pass
+
+    def _load_data_optimized(self):  # ✅ Version utilisée
+        pass
+```
+📚 **Leçon** : Méthodes dupliquées = bug silencieux, Python ne lève pas d'erreur
+
+#### 📈 **Statistiques Détaillées**
+
+| Métrique | Valeur | Évolution |
+|----------|--------|-----------|
+| Blocs restants | 101 | -5 (-4.7%) |
+| Blocs éliminés (total) | 256 | +5 |
+| Progress global | 71.7% | +1.4% |
+| database_manager.py | 16 blocs | -1 (-5.9%) |
+| Fichiers avec pattern UTF-8 | 0 | -4 |
+| Modules utils/ | 4 | +1 |
+
+#### 🎯 **Tests Non-Régression**
+
+✅ **Compilation** : Tous les fichiers modifiés compilent sans erreur
+✅ **Imports** : `clean_display_text` fonctionne dans tous les modules
+✅ **Application** : Lancement réussi avec initialisation complète des services
+✅ **Database** : `_load_data_optimized` unique fonctionnelle
+
+#### 🚀 **Roadmap Phase 9**
+
+**Cibles identifiées** (~95 blocs visés):
+- Services 1-2 blocs simples (10 fichiers)
+- Services 2-3 blocs moyens (4 fichiers)
+- Infrastructure critique (database_manager 16 blocs, error_handler 16 blocs) - **À préserver**
+
+---
+
 ## [3.9.0] - 🎯 PHASE 7 - Services métier & UI (-9 blocs) - 2025-10-03
 
 ### 🎯 **OBJECTIF 70% ATTEINT - 106 BLOCS RESTANTS**

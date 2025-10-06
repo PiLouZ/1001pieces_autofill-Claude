@@ -2,7 +2,6 @@
 Gestionnaire des références en doublon avec interface de fusion et correction
 """
 
-import re
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
@@ -12,19 +11,7 @@ from .qt_imports import Qt, QTimer
 from .qt_imports import QFont
 from src.core.logger import app_logger
 from src.utils.error_handler import handle_ui_errors, handle_database_operation_errors
-
-def clean_display_text(text):
-    """Nettoie le texte pour l'affichage en supprimant les caractères illisibles"""
-    if not text:
-        return ""
-    text = str(text)
-    text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]', '', text)
-    try:
-        text = text.encode('utf-8', errors='replace').decode('utf-8')
-    except:
-        text = "???"
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+from src.utils.text_utils import clean_display_text
 
 class DuplicatesManager(QDialog):
     """Gestionnaire des références en doublon avec interface de fusion"""

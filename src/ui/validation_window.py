@@ -2,39 +2,12 @@
 Fenêtre interactive de validation et détection d'incohérences
 """
 
-import re
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QTextEdit, QWidget, QTabWidget, QTreeWidget, QTreeWidgetItem, Qt
 )
 from ..utils.error_handler import handle_ui_errors, handle_database_operation_errors
-
-def clean_display_text(text):
-    """
-    Nettoie le texte pour l'affichage en supprimant les caractères illisibles
-    """
-    if not text:
-        return ""
-    
-    # Convertir en string si nécessaire
-    text = str(text)
-    
-    # Supprimer les caractères de contrôle (sauf retour à la ligne et tabulation)
-    text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]', '', text)
-    
-    # Remplacer les caractères non-UTF8 par un caractère de substitution
-    try:
-        text = text.encode('utf-8', errors='replace').decode('utf-8')
-    except:
-        text = "???"
-    
-    # Supprimer les espaces multiples
-    text = re.sub(r'\s+', ' ', text)
-    
-    # Nettoyer les caractères invisibles ou problématiques
-    text = text.strip()
-    
-    return text
+from ..utils.text_utils import clean_display_text
 
 class ValidationWindow(QDialog):
     """Fenêtre interactive de validation et détection d'incohérences"""
