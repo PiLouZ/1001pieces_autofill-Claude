@@ -317,6 +317,7 @@ class DragHandle(QWidget):
             if cache_service:
                 cache_service.suspend_invalidation("auto-fill double-clic")
 
+        # Note: try/finally nécessaire pour garantir la reprise des invalidations
         try:
             saved_count = 0
             cells_to_clean = []  # Cellules à nettoyer de modified_cells

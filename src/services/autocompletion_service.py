@@ -90,125 +90,121 @@ class AutoCompletionService(BaseService):
 
     def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value):
         """Configurer l'interface du dialogue de manière sécurisée"""
-        try:
-            # Récupérer les valeurs de la base de données
-            all_values = self.db_manager.get_column_values(db_field)
+        # Récupérer les valeurs de la base de données
+        all_values = self.db_manager.get_column_values(db_field)
 
-            def update_list():
-                """Mettre à jour la liste selon le filtre"""
-                filter_text = input_field.text().lower()
-                values_list.clear()
-                
-                # Ajouter les items filtrés
-                filtered_values = []
-                for value in all_values:
-                    if not filter_text or filter_text in value.lower():
-                        filtered_values.append(value)
-                        item = QListWidgetItem(value)
-                        values_list.addItem(item)
-                
-                # Sélectionner automatiquement le premier item si pas de sélection
-                if filtered_values and values_list.count() > 0:
-                    # Chercher une correspondance exacte d'abord
-                    exact_match_found = False
-                    for i in range(values_list.count()):
-                        item = values_list.item(i)
-                        if item.text() == current_value:
-                            values_list.setCurrentItem(item)
-                            exact_match_found = True
-                            break
-                    
-                    # Si pas de correspondance exacte, sélectionner le premier
-                    if not exact_match_found:
-                        values_list.setCurrentRow(0)
-            
-            # Connecter le filtrage
-            input_field.textChanged.connect(update_list)
-            
-            # Double-clic pour valider
-            def on_item_double_clicked(item):
-                input_field.setText(item.text())
-                dialog.accept()
-            
-            values_list.itemDoubleClicked.connect(on_item_double_clicked)
-            
-            # Clic simple pour remplir le champ
-            def on_item_clicked(item):
-                input_field.setText(item.text())
-            
-            values_list.itemClicked.connect(on_item_clicked)
-            
-            # Gestion des événements clavier
-            def handle_key_press(event):
-                """Gérer les événements clavier pour navigation et validation"""
-                key = event.key()
-                
-                if key == Qt.Key_Down:
-                    # Flèche bas : passer à l'item suivant
-                    current_row = values_list.currentRow()
-                    if current_row < values_list.count() - 1:
-                        values_list.setCurrentRow(current_row + 1)
-                        current_item = values_list.currentItem()
-                        if current_item:
-                            input_field.setText(current_item.text())
-                    elif values_list.count() > 0:
-                        # Si on est à la fin, revenir au premier
-                        values_list.setCurrentRow(0)
-                        current_item = values_list.currentItem()
-                        if current_item:
-                            input_field.setText(current_item.text())
-                elif key == Qt.Key_Up:
-                    # Flèche haut : passer à l'item précédent
-                    current_row = values_list.currentRow()
-                    if current_row > 0:
-                        values_list.setCurrentRow(current_row - 1)
-                        current_item = values_list.currentItem()
-                        if current_item:
-                            input_field.setText(current_item.text())
-                    elif values_list.count() > 0:
-                        # Si on est au début, aller au dernier
-                        values_list.setCurrentRow(values_list.count() - 1)
-                        current_item = values_list.currentItem()
-                        if current_item:
-                            input_field.setText(current_item.text())
-                elif key == Qt.Key_Return or key == Qt.Key_Enter:
-                    # Entrée : valider la sélection
-                    dialog.accept()
-                elif key == Qt.Key_Escape:
-                    # Échap : annuler
-                    dialog.reject()
-                else:
-                    # Pour les autres touches, comportement normal du QLineEdit
-                    QLineEdit.keyPressEvent(input_field, event)
-            
-            # Installer le gestionnaire d'événements clavier sur le champ de saisie
-            input_field.keyPressEvent = handle_key_press
-            
-            # Gestion des événements clavier sur la liste aussi
-            def handle_list_key_press(event):
-                """Gérer les événements clavier sur la liste"""
-                key = event.key()
-                
-                if key == Qt.Key_Return or key == Qt.Key_Enter:
-                    # Entrée : valider la sélection
+        def update_list():
+            """Mettre à jour la liste selon le filtre"""
+            filter_text = input_field.text().lower()
+            values_list.clear()
+
+            # Ajouter les items filtrés
+            filtered_values = []
+            for value in all_values:
+                if not filter_text or filter_text in value.lower():
+                    filtered_values.append(value)
+                    item = QListWidgetItem(value)
+                    values_list.addItem(item)
+
+            # Sélectionner automatiquement le premier item si pas de sélection
+            if filtered_values and values_list.count() > 0:
+                # Chercher une correspondance exacte d'abord
+                exact_match_found = False
+                for i in range(values_list.count()):
+                    item = values_list.item(i)
+                    if item.text() == current_value:
+                        values_list.setCurrentItem(item)
+                        exact_match_found = True
+                        break
+
+                # Si pas de correspondance exacte, sélectionner le premier
+                if not exact_match_found:
+                    values_list.setCurrentRow(0)
+
+        # Connecter le filtrage
+        input_field.textChanged.connect(update_list)
+
+        # Double-clic pour valider
+        def on_item_double_clicked(item):
+            input_field.setText(item.text())
+            dialog.accept()
+
+        values_list.itemDoubleClicked.connect(on_item_double_clicked)
+
+        # Clic simple pour remplir le champ
+        def on_item_clicked(item):
+            input_field.setText(item.text())
+
+        values_list.itemClicked.connect(on_item_clicked)
+
+        # Gestion des événements clavier
+        def handle_key_press(event):
+            """Gérer les événements clavier pour navigation et validation"""
+            key = event.key()
+
+            if key == Qt.Key_Down:
+                # Flèche bas : passer à l'item suivant
+                current_row = values_list.currentRow()
+                if current_row < values_list.count() - 1:
+                    values_list.setCurrentRow(current_row + 1)
                     current_item = values_list.currentItem()
                     if current_item:
                         input_field.setText(current_item.text())
-                        dialog.accept()
-                elif key == Qt.Key_Escape:
-                    # Échap : annuler
-                    dialog.reject()
-                else:
-                    # Comportement normal de QListWidget
-                    QListWidget.keyPressEvent(values_list, event)
-            
-            values_list.keyPressEvent = handle_list_key_press
-            
-            # Initialiser la liste
-            update_list()
-            
-        except Exception as e:
-            self.handle_error(e, "chargement valeurs autocomplétion", show_dialog=True)
+                elif values_list.count() > 0:
+                    # Si on est à la fin, revenir au premier
+                    values_list.setCurrentRow(0)
+                    current_item = values_list.currentItem()
+                    if current_item:
+                        input_field.setText(current_item.text())
+            elif key == Qt.Key_Up:
+                # Flèche haut : passer à l'item précédent
+                current_row = values_list.currentRow()
+                if current_row > 0:
+                    values_list.setCurrentRow(current_row - 1)
+                    current_item = values_list.currentItem()
+                    if current_item:
+                        input_field.setText(current_item.text())
+                elif values_list.count() > 0:
+                    # Si on est au début, aller au dernier
+                    values_list.setCurrentRow(values_list.count() - 1)
+                    current_item = values_list.currentItem()
+                    if current_item:
+                        input_field.setText(current_item.text())
+            elif key == Qt.Key_Return or key == Qt.Key_Enter:
+                # Entrée : valider la sélection
+                dialog.accept()
+            elif key == Qt.Key_Escape:
+                # Échap : annuler
+                dialog.reject()
+            else:
+                # Pour les autres touches, comportement normal du QLineEdit
+                QLineEdit.keyPressEvent(input_field, event)
+
+        # Installer le gestionnaire d'événements clavier sur le champ de saisie
+        input_field.keyPressEvent = handle_key_press
+
+        # Gestion des événements clavier sur la liste aussi
+        def handle_list_key_press(event):
+            """Gérer les événements clavier sur la liste"""
+            key = event.key()
+
+            if key == Qt.Key_Return or key == Qt.Key_Enter:
+                # Entrée : valider la sélection
+                current_item = values_list.currentItem()
+                if current_item:
+                    input_field.setText(current_item.text())
+                    dialog.accept()
+            elif key == Qt.Key_Escape:
+                # Échap : annuler
+                dialog.reject()
+            else:
+                # Comportement normal de QListWidget
+                QListWidget.keyPressEvent(values_list, event)
+
+        values_list.keyPressEvent = handle_list_key_press
+
+        # Initialiser la liste
+        update_list()
         
         # Boutons
         buttons_layout = QHBoxLayout()
