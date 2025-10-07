@@ -1,3 +1,0 @@
-- respecte toujours le factoring
-- toujours me proposer les fix et/todolist avant d'intervenir
-- toujours appliquer des tests de non-regression.

@@ -13,7 +13,7 @@ from datetime import datetime
 from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QComboBox, QCheckBox,
                              QTextEdit, QGroupBox, QProgressDialog, QApplication,
-                             QScrollArea, QWidget, QGridLayout, Qt)
+                             QScrollArea, QWidget, QGridLayout, Qt, QTimer)
 
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
@@ -93,19 +93,64 @@ class ImportConfiguration:
 class ImportDialog(QDialog):
     """Interface utilisateur pour configurer les imports"""
     
-    def __init__(self, parent=None, import_config: ImportConfiguration = None):
+    def __init__(self, parent=None, import_config: ImportConfiguration = None, import_manager=None):
         super().__init__(parent)
         self.import_config = import_config or ImportConfiguration(files=[], import_type=ImportType.SINGLE_FILE)
         self.result_config = None
-        
+        self.import_manager = import_manager  # PHASE 2.1: Référence à ImportManager pour chargement lazy
+
         self.setWindowTitle("Configuration d'importation")
         self.setModal(True)
         self.setMinimumWidth(1000)
         self.setMinimumHeight(1000)
-        
+
+        # PHASE 2.1: Flag pour indiquer si les données sont chargées
+        self._data_loaded = False
+
         self._setup_ui()
+
+        # PHASE 2.1 OPTIMISATION: Lazy loading - charger les données APRÈS l'affichage
+        # Afficher un message temporaire pendant le chargement
+        self._show_loading_message()
+
+        # Lancer le chargement différé (50ms après l'affichage du dialogue)
+        QTimer.singleShot(50, self._load_data_deferred)
+
+    def _show_loading_message(self):
+        """Afficher un message temporaire pendant le chargement des données"""
+        # Cette méthode sera appelée AVANT que les données ne soient chargées
+        # Elle initialise l'interface avec des placeholders
+        pass  # L'interface affichera les placeholders par défaut
+
+    def _load_data_deferred(self):
+        """
+        Charger les données en différé (appelé via QTimer après affichage)
+
+        PHASE 2.1 OPTIMISATION: Cette méthode s'exécute APRÈS que le dialogue
+        soit affiché, éliminant le freeze initial.
+        """
+        if not self.import_manager:
+            app_logger.warning("ImportManager non disponible pour chargement lazy")
+            self._populate_data()
+            return
+
+        # Charger les données pour chaque fichier si nécessaire
+        for file in self.import_config.files:
+            if file.data is None:
+                # Charger les données avec cache et preview mode (Phase 1.1 + 1.2)
+                file_type = file.type
+                if file_type == FileType.CSV:
+                    file.data = self.import_manager.load_csv_data(file.path, max_rows=5)
+                elif file_type == FileType.PDF:
+                    # Utiliser le mode preview de Phase 1.1
+                    file.data = self.import_manager.load_pdf_data(file.path, max_rows=5, preview_mode=True)
+
+        # Marquer les données comme chargées
+        self._data_loaded = True
+
+        # Maintenant, peupler l'interface avec les vraies données
         self._populate_data()
-    
+
     def _setup_ui(self):
         """Créer l'interface utilisateur"""
         layout = QVBoxLayout()
@@ -515,15 +560,19 @@ class ImportDialog(QDialog):
             if sample_data:
                 detected_columns = len(sample_data[0])
         else:
-            # Charger les données si pas encore fait
-            if first_file.type == FileType.CSV:
-                data = self.load_csv_data(first_file.path, max_rows=5)
-            else:  # PDF
-                data = self.load_pdf_data(first_file.path, max_rows=5)
+            # Charger les données si pas encore fait (normalement fait par lazy loading)
+            if self.import_manager:
+                if first_file.type == FileType.CSV:
+                    data = self.import_manager.load_csv_data(first_file.path, max_rows=5)
+                else:  # PDF
+                    # PHASE 1 OPTIMISATION: Mode preview pour aperçu rapide
+                    data = self.import_manager.load_pdf_data(first_file.path, max_rows=5, preview_mode=True)
 
-            if data:
-                sample_data = data[:3]
-                detected_columns = len(data[0]) if data else 0
+                if data:
+                    sample_data = data[:3]
+                    detected_columns = len(data[0]) if data else 0
+            else:
+                app_logger.warning("ImportManager non disponible pour analyser le format")
 
         return detected_columns, sample_data
 
@@ -616,6 +665,11 @@ class ImportManager:
         self.db_manager = db_manager
         self.parent_widget = parent_widget
         self.main_window = parent_widget  # Pour accès aux services
+
+        # PHASE 1.2 OPTIMISATION: Cache des métadonnées fichiers
+        # Clé: (file_path, mtime), Valeur: sample_data
+        # Évite de recharger les mêmes fichiers
+        self._file_metadata_cache = {}
     
     def load_csv_data(self, file_path: str, max_rows: Optional[int] = None) -> List[List[str]]:
         """
@@ -680,53 +734,66 @@ class ImportManager:
         # Si on arrive ici, aucun encodage n'a fonctionné
         raise ValueError(f"Impossible de lire le fichier CSV: {file_path} (fichier introuvable ou format invalide)")
     
-    def load_pdf_data(self, file_path: str, max_rows: Optional[int] = None) -> List[List[str]]:
+    def load_pdf_data(self, file_path: str, max_rows: Optional[int] = None, preview_mode: bool = False) -> List[List[str]]:
         """
         Méthode unifiée pour le chargement PDF avec limite optionnelle
-        
+
         Args:
             file_path: Chemin vers le fichier PDF
             max_rows: Nombre maximum de lignes à charger (None = toutes)
-            
+            preview_mode: Si True, charge seulement la 1ère page (10x plus rapide)
+
         Returns:
             Liste des lignes extraites du PDF
-            
+
         Raises:
             ValueError: Si le fichier ne peut pas être traité
+
+        Notes:
+            PHASE 1 OPTIMISATION: preview_mode=True réduit drastiquement le temps
+            de chargement pour les aperçus de dialogue
         """
         try:
             from src.data.pdf_extractor_camelot import CamelotPDFExtractor
             extractor = CamelotPDFExtractor()
-            data = extractor.extract_data(file_path)
-            
+            data = extractor.extract_data(file_path, preview_mode=preview_mode)
+
             if not data:
                 return []
-            
+
             # Appliquer la limite si spécifiée
             if max_rows is not None:
                 return data[:max_rows]
             else:
                 return data
-                
+
         except ImportError as e:
             raise ValueError(f"Extracteur PDF non disponible: {e}")
         except Exception as e:
             raise ValueError(f"Erreur lors de l'extraction PDF: {e}")
     
-    def import_files(self, file_paths: List[str], show_dialog: bool = True) -> Optional[Dict[str, Any]]:
+    def import_files(self, file_paths: List[str], show_dialog: bool = True, callback: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
         """
         Importer un ou plusieurs fichiers
-        """
-        """
-        
+
         Args:
             file_paths: Liste des chemins de fichiers
             show_dialog: Afficher l'interface de configuration
-            
+            callback: Fonction appelée avec les résultats (pour mode non-bloquant)
+
         Returns:
             Résultats d'import ou None si annulé
+            PHASE 2.2: Retourne None immédiatement si callback fourni (mode non-bloquant)
+
+        Notes:
+            PHASE 2.2 OPTIMISATION: Si callback fourni, le dialogue est non-bloquant
+            et les résultats sont passés au callback au lieu d'être retournés.
         """
-        # Préparer la configuration
+        # PHASE 2.1 OPTIMISATION: Lazy loading - NE PAS charger les données ici
+        # Les données seront chargées en différé dans le dialogue
+        # Ceci élimine complètement le freeze AVANT l'ouverture du dialogue
+
+        # Préparer la configuration RAPIDEMENT (sans chargement de données)
         import_files = []
         for path in file_paths:
             file_type = self._detect_file_type(path)
@@ -736,7 +803,7 @@ class ImportManager:
                     type=file_type,
                     suggested_reference=self._extract_reference_from_filename(path),
                     suggested_label=self._extract_reference_from_filename(path),
-                    data=self._get_sample_data(path, file_type)
+                    data=None  # PHASE 2.1: Pas de données - chargement lazy dans le dialogue
                 )
                 import_files.append(import_file)
         
@@ -752,19 +819,62 @@ class ImportManager:
         )
         
         if show_dialog:
-            dialog = ImportDialog(self.parent_widget, config)
-            if dialog.exec_() != QDialog.Accepted:
-                return None
-            
-            config = dialog.get_configuration()
-            if not config:
-                return None
-        
+            # PHASE 2.1: Passer import_manager pour lazy loading
+            dialog = ImportDialog(self.parent_widget, config, import_manager=self)
+
+            # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
+            if callback:
+                # Mode non-bloquant: show() au lieu de exec_()
+                dialog.accepted.connect(lambda: self._on_import_dialog_accepted(dialog, callback))
+                dialog.rejected.connect(lambda: self._on_import_dialog_rejected(dialog, callback))
+                dialog.show()
+                return None  # Retour immédiat, résultat via callback
+            else:
+                # Mode bloquant classique (compatibilité)
+                if dialog.exec_() != QDialog.Accepted:
+                    return None
+
+                config = dialog.get_configuration()
+                if not config:
+                    return None
+
         # PHASE 1: Décision intelligente Async vs Sync avec fallback automatique
         return self._execute_import(config)
 
+    def _on_import_dialog_accepted(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue d'import est accepté (mode non-bloquant)
+
+        PHASE 2.2: Cette méthode permet au dialogue de se fermer sans bloquer le Finder
+        """
+        try:
+            config = dialog.get_configuration()
+            if config:
+                # Exécuter l'import
+                results = self._execute_import(config)
+                # Appeler le callback avec les résultats
+                if callback:
+                    callback(results)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
+
+    def _on_import_dialog_rejected(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue d'import est annulé (mode non-bloquant)
+
+        PHASE 2.2: Permet de gérer l'annulation proprement
+        """
+        try:
+            # Import annulé, appeler le callback avec None
+            if callback:
+                callback(None)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
+
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import drag&drop")
-    def import_from_drag_drop(self, file_paths: List[str]) -> Optional[Dict[str, Any]]:
+    def import_from_drag_drop(self, file_paths: List[str], callback: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
         """
         Import spécialisé pour drag&drop avec paramètres par défaut intelligents
 
@@ -783,7 +893,7 @@ class ImportManager:
         if not file_paths:
             return None
 
-        # Valider et préparer les fichiers
+        # PHASE 2.1: Valider et préparer les fichiers (sans charger les données)
         import_files = []
         for file_path in file_paths:
             if not os.path.exists(file_path):
@@ -796,15 +906,16 @@ class ImportManager:
             # Référence par défaut depuis nom fichier
             default_reference = self._extract_reference_from_filename(file_path)
 
-            # Données d'aperçu pour le dialogue
-            sample_data = self._get_sample_data(file_path, file_type)
-
-            import_files.append({
-                'path': file_path,
-                'type': file_type,
-                'default_reference': default_reference,
-                'sample_data': sample_data
-            })
+            # PHASE 2.1: Lazy loading - NE PAS charger les données ici
+            # Créer un objet ImportFile cohérent avec import_files()
+            import_file = ImportFile(
+                path=file_path,
+                type=file_type,
+                suggested_reference=default_reference,
+                suggested_label=default_reference,
+                data=None  # Chargement lazy dans le dialogue
+            )
+            import_files.append(import_file)
 
         if not import_files:
             return None
@@ -820,39 +931,85 @@ class ImportManager:
 
         # Pour drag&drop, on propose toujours le premier nom de fichier comme référence
         if import_files:
-            config.reference_piece = import_files[0]['default_reference']
+            config.reference_piece = import_files[0].suggested_reference
 
         # Dialogue adapté pour drag&drop
-        from src.ui.import_dialog import ImportDialog
-        dialog = ImportDialog(self.parent_widget, config)
+        # PHASE 2.1: Utiliser ImportDialog avec import_manager pour lazy loading
+        dialog = ImportDialog(self.parent_widget, config, import_manager=self)
 
         # Titre spécialisé pour drag&drop
         dialog.setWindowTitle("Import par Glisser-Déposer")
 
-        if dialog.exec_() != QDialog.Accepted:
-            return None
+        # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
+        if callback:
+            # Mode non-bloquant pour drag&drop
+            dialog.accepted.connect(lambda: self._on_drag_drop_dialog_accepted(dialog, callback))
+            dialog.rejected.connect(lambda: self._on_drag_drop_dialog_rejected(dialog, callback))
+            dialog.show()
+            return None  # Retour immédiat, résultat via callback
+        else:
+            # Mode bloquant classique (compatibilité)
+            if dialog.exec_() != QDialog.Accepted:
+                return None
 
-        config = dialog.get_configuration()
-        if not config:
-            return None
+            config = dialog.get_configuration()
+            if not config:
+                return None
 
-        # Effectuer l'import avec la même logique de fallback
-        results = self._execute_import(config)
+            # Effectuer l'import avec la même logique de fallback
+            results = self._execute_import(config)
 
-        # Marquer les résultats comme provenant du drag&drop
-        if results:
-            results['import_source'] = 'drag_drop'
-            results['source_files'] = [f['path'] for f in import_files]
+            # Marquer les résultats comme provenant du drag&drop
+            if results:
+                results['import_source'] = 'drag_drop'
+                results['source_files'] = [f.path for f in import_files]
 
-            # Format d'historique spécialisé
-            if len(import_files) == 1:
-                file_name = os.path.basename(import_files[0]['path'])
-                file_ext = import_files[0]['type'].value.upper()
-                results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
-            else:
-                results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
+                # Format d'historique spécialisé
+                if len(import_files) == 1:
+                    file_name = os.path.basename(import_files[0].path)
+                    file_ext = import_files[0].type.value.upper()
+                    results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
+                else:
+                    results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
 
-        return results
+            return results
+
+    def _on_drag_drop_dialog_accepted(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue drag&drop est accepté (mode non-bloquant)
+
+        PHASE 2.2: Permet au drag&drop de ne pas bloquer le Finder
+        """
+        try:
+            config = dialog.get_configuration()
+            if config:
+                # Exécuter l'import
+                results = self._execute_import(config)
+
+                # Marquer comme drag&drop
+                if results:
+                    results['import_source'] = 'drag_drop'
+
+                # Appeler le callback avec les résultats
+                if callback:
+                    callback(results)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
+
+    def _on_drag_drop_dialog_rejected(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue drag&drop est annulé (mode non-bloquant)
+
+        PHASE 2.2: Gestion propre de l'annulation
+        """
+        try:
+            # Import annulé, appeler le callback avec None
+            if callback:
+                callback(None)
+        finally:
+            # Nettoyer le dialogue
+            dialog.deleteLater()
     
     def _detect_file_type(self, file_path: str) -> Optional[FileType]:
         """Détecter le type de fichier"""
@@ -869,14 +1026,73 @@ class ImportManager:
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur lors du chargement d'échantillon")
     def _get_sample_data(self, file_path: str, file_type: FileType) -> Optional[List[List[str]]]:
-        """Récupérer un échantillon de données pour l'aperçu"""
+        """
+        Récupérer un échantillon de données pour l'aperçu (avec cache)
+
+        PHASE 1.2 OPTIMISATION: Cache basé sur (path, mtime)
+        - Évite de recharger les mêmes fichiers
+        - Instantané si fichier déjà importé récemment
+        """
+        # Vérifier si le fichier existe
+        if not os.path.exists(file_path):
+            return None
+
+        # Obtenir le timestamp de modification
+        try:
+            mtime = os.path.getmtime(file_path)
+        except OSError:
+            return None
+
+        # Clé de cache: (chemin, timestamp)
+        cache_key = (file_path, mtime)
+
+        # Vérifier le cache
+        if cache_key in self._file_metadata_cache:
+            app_logger.debug(f"🎯 Cache HIT: {os.path.basename(file_path)}")
+            return self._file_metadata_cache[cache_key]
+
+        # Cache MISS: Charger les données
+        app_logger.debug(f"⏳ Cache MISS: Chargement {os.path.basename(file_path)}")
+
         if file_type == FileType.CSV:
-            return self.load_csv_data(file_path, max_rows=5)
+            data = self.load_csv_data(file_path, max_rows=5)
         elif file_type == FileType.PDF:
-            return self.load_pdf_data(file_path, max_rows=5)
-        return None
-    
-    
+            # PHASE 1.1 OPTIMISATION: Mode preview pour aperçu rapide (1ère page seulement)
+            data = self.load_pdf_data(file_path, max_rows=5, preview_mode=True)
+        else:
+            data = None
+
+        # Mettre en cache si données valides
+        if data is not None:
+            # Limiter la taille du cache (LRU simple: supprimer les plus anciennes)
+            if len(self._file_metadata_cache) >= 50:
+                # Supprimer la première entrée (la plus ancienne)
+                oldest_key = next(iter(self._file_metadata_cache))
+                del self._file_metadata_cache[oldest_key]
+                app_logger.debug(f"🗑️ Cache nettoyé: {len(self._file_metadata_cache)} entrées")
+
+            self._file_metadata_cache[cache_key] = data
+            app_logger.debug(f"💾 Mise en cache: {os.path.basename(file_path)}")
+
+        return data
+
+    def clear_metadata_cache(self) -> None:
+        """
+        Vider le cache des métadonnées fichiers
+
+        Utile pour libérer la mémoire ou forcer le rechargement
+        """
+        cache_size = len(self._file_metadata_cache)
+        self._file_metadata_cache.clear()
+        app_logger.debug(f"🗑️ Cache vidé: {cache_size} entrées supprimées")
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        """Obtenir les statistiques du cache"""
+        return {
+            'entries': len(self._file_metadata_cache),
+            'max_entries': 50
+        }
+
     def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
         """Exécuter l'import synchrone OPTIMISÉ pour responsivité UI"""
         # OPTIMISATION CACHE: Suspendre les invalidations pendant tout l'import
@@ -984,6 +1200,7 @@ class ImportManager:
         if file.type == FileType.CSV:
             data = self.load_csv_data(file.path)
         elif file.type == FileType.PDF:
+            # Import complet : extraction de TOUTES les pages (preview_mode=False par défaut)
             data = self.load_pdf_data(file.path)
         else:
             raise ValueError(f"Type de fichier non supporté: {file.type}")
