@@ -383,8 +383,20 @@ class ExportManagerService:
         # Copier dans le presse-papiers
         QApplication.clipboard().setText(result)
 
-        format_name = "HTML Marques" if export_format == ExportFormat.HTML_BRANDS else "HTML Détails"
-        self._add_to_history(f"Export {format_name}: {len(data)} résultats copiés")
+        if export_format == ExportFormat.HTML_BRANDS:
+            # Compter les marques distinctes (col 1 = Fabricant)
+            nb_marques = len(set(row[1] for row in data if len(row) > 1 and row[1]))
+            self._add_to_history(f"HTML Marques: {nb_marques} marques exportées dans le presse-papier")
+        else:
+            # Détecter complet vs partiel (filtres col 2 = Réf Modèle, col 3 = Réf Commerciale)
+            active_filters = self._get_active_column_filters()
+            if 2 in active_filters:
+                scope = "[partiel - Référence Modèle]"
+            elif 3 in active_filters:
+                scope = "[partiel - Référence Commerciale]"
+            else:
+                scope = "[complet]"
+            self._add_to_history(f"HTML Détails: {len(data)} résultats exportés dans le presse-papier {scope}")
 
         return True
     

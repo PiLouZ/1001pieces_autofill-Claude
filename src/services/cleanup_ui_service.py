@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional
 from ..ui.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QGroupBox, QTabWidget,
-    QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication
+    QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication, QMessageBox
 )
 from ..ui.qt_imports import Qt, QObject, pyqtSignal
 from ..ui.qt_imports import QFont, QKeyEvent
@@ -692,14 +692,16 @@ class DistinctReferencesWidget(QWidget):
             return
 
         # Confirmation
-        from .message_helper import MessageHelper
-        if not MessageHelper.ask_question(
+        reply = QMessageBox.question(
             self,
+            "Confirmation de suppression",
             f"Êtes-vous sûr de vouloir retirer {len(selected_refs)} références "
             f"de la liste des références distinctes?\n\n"
             f"Ces références pourront à nouveau être proposées comme doublons potentiels.",
-            "Confirmation de suppression"
-        ):
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
             return
 
         # Supprimer de la base de données
@@ -710,20 +712,15 @@ class DistinctReferencesWidget(QWidget):
         success = True  # execute_custom_query n'a pas d'erreur si ça marche
 
         if success:
-            # Recharger la liste
             self.load_distinct_references()
-
-            from .message_helper import show_success
-            from .message_helper import MessageHelper
-            MessageHelper.show_success(
+            QMessageBox.information(
                 self,
+                "Suppression réussie",
                 f"{len(selected_refs)} références retirées avec succès.\n"
-                f"Elles pourront à nouveau être détectées comme doublons potentiels.",
-                "Suppression réussie"
+                f"Elles pourront à nouveau être détectées comme doublons potentiels."
             )
         else:
-            from .message_helper import show_error
-            show_error(self, "Erreur", "Erreur lors de la suppression des références.")
+            QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression des références.")
 
 class ActionHistoryWidget(QWidget):
     """Widget pour afficher l'historique des actions de nettoyage"""
@@ -878,13 +875,15 @@ class ActionHistoryWidget(QWidget):
 
     def _clear_history(self):
         """Vider l'historique après confirmation"""
-        from .message_helper import MessageHelper
-        if not MessageHelper.ask_question(
+        reply = QMessageBox.question(
             self,
+            "Confirmation de suppression",
             "Êtes-vous sûr de vouloir vider l'historique des actions?\n\n"
             "Cette action est irréversible.",
-            "Confirmation de suppression"
-        ):
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
             return
 
         # Supprimer de la base de données
@@ -894,12 +893,9 @@ class ActionHistoryWidget(QWidget):
 
         if success:
             self.load_history()
-            from .message_helper import show_success
-            from .message_helper import MessageHelper
-            MessageHelper.show_success(self, "L'historique a été vidé avec succès.", "Historique vidé")
+            QMessageBox.information(self, "Historique vidé", "L'historique a été vidé avec succès.")
         else:
-            from .message_helper import show_error
-            show_error(self, "Erreur", "Erreur lors de la suppression de l'historique.")
+            QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression de l'historique.")
 
     def _export_history(self):
         """Exporter l'historique en CSV"""
@@ -908,8 +904,7 @@ class ActionHistoryWidget(QWidget):
         from datetime import datetime
 
         if not self.history_actions:
-            from .message_helper import show_error
-            show_error(self, "Aucune donnée", "Aucun historique à exporter.")
+            QMessageBox.warning(self, "Aucune donnée", "Aucun historique à exporter.")
             return
 
         # Demander le nom du fichier
@@ -931,6 +926,4 @@ class ActionHistoryWidget(QWidget):
             for row in self.history_actions:
                 writer.writerow(row)
 
-        from .message_helper import show_success
-        from .message_helper import MessageHelper
-        MessageHelper.show_success(self, f"Historique exporté vers:\n{filename}", "Export réussi")
+        QMessageBox.information(self, "Export réussi", f"Historique exporté vers:\n{filename}")

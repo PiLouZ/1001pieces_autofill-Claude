@@ -6,7 +6,8 @@ from typing import List, Dict, Optional, Tuple, Any
 from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton,
                             QLabel, QProgressDialog, QApplication, QHeaderView,
-                            Qt, QTimer, QThread, pyqtSignal, QObject, QColor, QBrush)
+                            Qt, QTimer, QThread, pyqtSignal, QObject, QColor, QBrush,
+                            QSizePolicy)
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -135,6 +136,17 @@ class TableController:
                 filter_combo = QComboBox()
                 filter_combo.setEditable(True)
                 filter_combo.lineEdit().setPlaceholderText(f"{header}...")
+                filter_combo.setStyleSheet("""
+                    QComboBox {
+                        padding: 2px 8px;
+                        border: 1px solid #ccc;
+                        border-radius: 3px;
+                        background-color: white;
+                    }
+                    QComboBox:focus {
+                        border-color: #0078d4;
+                    }
+                """)
                 filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 self.filter_widgets[i] = filter_combo
                 self._populate_dropdown_values(filter_combo, i)
@@ -144,14 +156,12 @@ class TableController:
                 filter_input = QLineEdit()
                 filter_input.setPlaceholderText(f"{header}...")
                 filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
-                # Appliquer le même style visuel que les QComboBox
                 filter_input.setStyleSheet("""
                     QLineEdit {
-                        padding: 4px 8px;
+                        padding: 2px 8px;
                         border: 1px solid #ccc;
                         border-radius: 3px;
                         background-color: white;
-                        min-height: 20px;
                     }
                     QLineEdit:focus {
                         border-color: #0078d4;
@@ -160,7 +170,33 @@ class TableController:
                 """)
                 self.filter_widgets[i] = filter_input
                 filter_layout.addWidget(filter_input, 1)  # stretch factor 1
-        
+
+        # Bouton RAZ pour vider tous les filtres colonne
+        raz_btn = QPushButton("×")
+        raz_btn.setFixedWidth(32)
+        raz_btn.setToolTip("Réinitialiser tous les filtres")
+        raz_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e53935;
+                color: white;
+                border: 1px solid #c62828;
+                border-radius: 3px;
+                font-weight: bold;
+                font-size: 16px;
+                min-height: 0px;
+                max-height: 22px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #c62828;
+            }
+            QPushButton:pressed {
+                background-color: #b71c1c;
+            }
+        """)
+        raz_btn.clicked.connect(self._clear_all_column_filters)
+        filter_layout.addWidget(raz_btn)
+
         layout.addWidget(filter_widget)
         
         # Sauvegarder les références pour la visibilité
@@ -193,17 +229,38 @@ class TableController:
         # Barre de recherche SOUS le tableau (position correcte)
         search_layout2 = QHBoxLayout()
         search_label2 = QLabel("🔍 Recherche par pièce:")
-        search_layout2.addWidget(search_label2)
+        search_layout2.addWidget(search_label2, 0, Qt.AlignVCenter)
 
         self.advanced_search_input = QLineEdit()
         self.advanced_search_input.setPlaceholderText("Référence pièce (ex: AS6015830, ou plusieurs: ref1 || ref2)...")
-        # Sera connecté par MainWindow à AdvancedSearchService  
+        # Sera connecté par MainWindow à AdvancedSearchService
         # self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
-        search_layout2.addWidget(self.advanced_search_input)
-        
-        clear_search_btn = QPushButton("Effacer")
+        search_layout2.addWidget(self.advanced_search_input, 1, Qt.AlignVCenter)
+
+        clear_search_btn = QPushButton("×")
+        clear_search_btn.setFixedWidth(32)
+        # Expanding vertical: le bouton s'aligne automatiquement sur la hauteur de l'input
+        clear_search_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        clear_search_btn.setToolTip("Effacer la recherche par pièce")
+        clear_search_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e53935;
+                color: white;
+                border: 1px solid #c62828;
+                border-radius: 3px;
+                font-weight: bold;
+                font-size: 16px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #c62828;
+            }
+            QPushButton:pressed {
+                background-color: #b71c1c;
+            }
+        """)
         clear_search_btn.clicked.connect(self._clear_advanced_search)
-        search_layout2.addWidget(clear_search_btn)
+        search_layout2.addWidget(clear_search_btn, 0, Qt.AlignVCenter)
         
         layout.addLayout(search_layout2)
         
@@ -834,6 +891,27 @@ class TableController:
                     pass
             self.load_data(None, is_search=False)
     
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur RAZ filtres colonne")
+    def _clear_all_column_filters(self, checked=False):
+        """Vider tous les filtres par colonne et recharger les données"""
+        # Bloquer les signaux pour éviter N rechargements consécutifs
+        for widget in self.filter_widgets.values():
+            if widget is None:
+                continue
+            widget.blockSignals(True)
+            try:
+                if isinstance(widget, QComboBox):
+                    widget.setCurrentIndex(0)
+                else:
+                    widget.clear()
+            except RuntimeError:
+                pass
+            finally:
+                widget.blockSignals(False)
+
+        # Un seul rechargement après RAZ de tous les champs
+        self.load_data(self.current_search_term, is_search=bool(self.current_search_term))
+
     def _add_export_buttons(self, layout):
         """Ajouter les boutons d'export - délégué vers MainWindow"""
         if hasattr(self.parent_window, '_add_export_buttons'):

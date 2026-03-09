@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.1] - 2026-03-09
+
+### 🐛 Corrections & 🧹 Nettoyage
+
+#### Corrections de bugs
+- **Bouton "Retirer sélection"** (`cleanup_ui_service.py`) : plantait au clic — import `message_helper` inexistant remplacé par `QMessageBox` direct (idem `_clear_history`, `_export_history`)
+- **`PiecesManagerWindow`** : `_edit_selected_piece`, `_load_pieces_data`, `_export_pieces`, `_delete_selected_pieces` — ajout de `checked=False` pour compatibilité signal `clicked`
+
+#### Améliorations UI
+- **Barre de filtres colonne** : hauteur harmonisée, bouton RAZ `×` rouge ajouté en bout de ligne
+- **Bouton effacer recherche pièce** : rendu rouge `×` pour cohérence visuelle
+
+#### Amélioration historique exports
+- Format enrichi : `HTML Détails: N résultats exportés dans le presse-papier [complet|partiel - Référence Modèle|partiel - Référence Commerciale]`
+- `HTML Marques` : affiche désormais le nombre de **marques distinctes** exportées
+
+#### Nettoyage code mort
+- Suppression de 6 méthodes inutilisées dans `main_refactored.py` : `_export_with_custom_reference`, `_safe_export_with_custom_reference`, `_export_csv_with_reference`, `_safe_export_csv_with_reference`, `_export_html_with_reference`, `_safe_export_html_with_reference` (-96 lignes)
+
+---
+
 ## [3.15.0] - 2026-03-06
 
 ### 🔍 Optimisation recherche principale — pièces uniquement

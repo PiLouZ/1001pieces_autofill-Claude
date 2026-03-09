@@ -238,7 +238,7 @@ class PiecesManagerWindow(QDialog):
         self.setLayout(layout)
         
     @handle_ui_errors(log_prefix="Erreur chargement pièces", show_message=True)
-    def _load_pieces_data(self):
+    def _load_pieces_data(self, checked=False):
         """Charger les données des pièces"""
         # Requête pour obtenir les statistiques des pièces (nouvelle structure)
         query = """
@@ -393,7 +393,7 @@ class PiecesManagerWindow(QDialog):
         self.details_text.setText(details)
             
     @handle_ui_errors(log_prefix="Erreur export pièces", show_message=True)
-    def _export_pieces(self):
+    def _export_pieces(self, checked=False):
         """Exporter la liste des pièces"""
         from .qt_imports import QFileDialog
 
@@ -415,7 +415,7 @@ class PiecesManagerWindow(QDialog):
             QMessageBox.information(self, "Export réussi", f"Liste exportée vers:\n{filename}")
     
     @handle_ui_errors(log_prefix="Erreur suppression pièces", show_message=True)
-    def _delete_selected_pieces(self):
+    def _delete_selected_pieces(self, checked=False):
         """Supprimer les références de pièces sélectionnées"""
         selected_rows = list(set([item.row() for item in self.pieces_table.selectedItems()]))
 
@@ -511,7 +511,7 @@ class PiecesManagerWindow(QDialog):
             self.parent().user_interaction_service.add_to_history(summary)
     
     @handle_ui_errors(log_prefix="Erreur modification pièce", show_message=True)
-    def _edit_selected_piece(self):
+    def _edit_selected_piece(self, checked=False):
         """Modifier la pièce sélectionnée"""
         current_row = self.pieces_table.currentRow()
         if current_row < 0:
