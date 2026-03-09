@@ -214,13 +214,14 @@ class AdvancedSearchService(QObject):
             main_window.search_input.clear()
             
         # Effacer aussi tous les filtres de colonnes via TableController
-        if hasattr(main_window, 'table_controller') and hasattr(main_window.table_controller, 'filter_widgets'):
-            for filter_widget in main_window.table_controller.filter_widgets.values():
-                if filter_widget is not None:
-                    filter_widget.clear()
-                    
-        # Recharger les données
+        # Déléguer à _clear_all_column_filters qui gère correctement QComboBox (setCurrentIndex(0))
+        # et QLineEdit (clear()) — évite le bug QComboBox.clear() qui détruit tous les items
         if hasattr(main_window, 'table_controller'):
+            tc = main_window.table_controller
+            if hasattr(tc, '_clear_all_column_filters'):
+                tc._clear_all_column_filters()
+                return  # _clear_all_column_filters appelle déjà load_data()
+            # Fallback si méthode absente
             main_window.table_controller.load_data()
     
     def force_search(self, search_term=None):

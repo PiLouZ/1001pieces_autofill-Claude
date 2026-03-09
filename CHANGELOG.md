@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.4] - 2026-03-09
+
+### 🐛 Correction bug Échap — filtres colonnes QComboBox détruits
+
+**Problème résolu** : Appuyer sur Échap appelait `filter_widget.clear()` sur tous les filtres, y compris les `QComboBox`. Or `QComboBox.clear()` **supprime tous les items** de la liste déroulante (Type, Fabricant…), rendant ces filtres inutilisables jusqu'au prochain redémarrage.
+
+**Solution** : `clear_search_ui()` délègue désormais à `table_controller._clear_all_column_filters()` qui distingue correctement les types :
+- `QComboBox` → `setCurrentIndex(0)` (reset à "Tous")
+- `QLineEdit` → `clear()` (efface le texte)
+
+**Fichier modifié** :
+- `src/services/advanced_search_service.py` : correction `clear_search_ui()`
+
+**Raccourcis clavier fonctionnels** (déjà implémentés via `KeyboardShortcutService`) :
+- Cmd+F / Ctrl+F → focus + sélection champ recherche
+- Échap → vide recherche + filtres colonnes + reload
+- Cmd+S / Ctrl+S → sauvegarde manuelle
+
+---
+
 ## [3.15.3] - 2026-03-09
 
 ### ⚡ Optimisation SQLite — Requêtes pièces et index
