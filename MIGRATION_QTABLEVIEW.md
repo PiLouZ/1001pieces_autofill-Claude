@@ -13,7 +13,7 @@
 |-------|--------|---------|-------|
 | 0 — Préparation (feature flag + tests) | ⬜ À faire | — | |
 | 1 — `AppareillsTableModel` isolé | ✅ Fait | `src/data/appareils_table_model.py` | 13/13 tests verts |
-| 2 — `CustomTableView` isolé | ⬜ À faire | — | |
+| 2 — `CustomTableView` isolé | ✅ Fait | `src/ui/custom_table_view.py` | Import OK, zéro régression |
 | 3 — Swap dans `table_controller` | ⬜ À faire | — | |
 | 4a — `cell_editing_service` | ⬜ À faire | — | |
 | 4b — Signaux `main_refactored` | ⬜ À faire | — | |
@@ -233,7 +233,7 @@ python3 -c "from src.data.appareils_table_model import AppareillsTableModel; pri
 
 ## Phase 2 — `CustomTableView`
 
-**Statut** : ⬜ À faire · **Durée estimée** : 30 min · **Risque** : Zéro (fichier additionnel)
+**Statut** : ✅ Fait · **Durée estimée** : 30 min · **Risque** : Zéro (fichier additionnel)
 
 ### Fichier à créer : `src/ui/custom_table_view.py`
 
