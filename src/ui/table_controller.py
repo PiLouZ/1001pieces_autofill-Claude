@@ -95,6 +95,14 @@ class TableController:
         # Historique des recherches (max 10, le plus récent en premier)
         self.search_history = []
         self.history_btn = None
+
+        # Préchargement page suivante
+        self.prefetch_cache = {}  # {cache_key: records}
+        self.prefetch_worker = None  # Worker distinct de query_worker pour ne pas bloquer load_data_async
+        self._pending_prefetch_params = None
+        self.prefetch_timer = QTimer()
+        self.prefetch_timer.setSingleShot(True)
+        self.prefetch_timer.timeout.connect(self._execute_prefetch)
         
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
@@ -384,9 +392,15 @@ class TableController:
             if self.current_page > self.total_pages:
                 self.current_page = self.total_pages
 
-        # Charger les données avec le terme unifié (CONSOLIDATION FIXING)
-        records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
-                                           self.current_sort_column, self.current_sort_order, incomplete_filter)
+        # Charger les données — vérifier le cache de préchargement d'abord
+        cache_key = (str(effective_search_term), str(column_filters), limit, offset,
+                     self.current_sort_column, int(self.current_sort_order), incomplete_filter)
+        if cache_key in self.prefetch_cache:
+            records = self.prefetch_cache.pop(cache_key)
+            app_logger.debug(f"[Prefetch] Cache HIT page {self.current_page} ({len(records)} lignes)")
+        else:
+            records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
+                                               self.current_sort_column, self.current_sort_order, incomplete_filter)
 
         # Remplir le tableau
         if self.total_rows > 1000:
@@ -403,6 +417,18 @@ class TableController:
         # Initialiser les valeurs précédentes pour le tracking des modifications
         if hasattr(self.parent_window, '_init_previous_values'):
             self.parent_window._init_previous_values()
+
+        # Planifier le préchargement de la page suivante (100ms après le rendu)
+        if self.page_size != -1 and self.current_page < self.total_pages:
+            next_offset = self.current_page * self.page_size
+            self._pending_prefetch_params = (
+                effective_search_term, column_filters, limit, next_offset,
+                self.current_sort_column, self.current_sort_order, incomplete_filter
+            )
+            self.prefetch_timer.start(100)
+        else:
+            self._pending_prefetch_params = None
+            self.prefetch_timer.stop()
 
         # Performance logging
         elapsed = time.time() - start_time
@@ -1003,6 +1029,40 @@ class TableController:
         # Désactiver les boutons d'export quand on vide la recherche
         if hasattr(self.parent_window, '_update_export_buttons_state'):
             self.parent_window._update_export_buttons_state("")
+
+    def _execute_prefetch(self):
+        """Lancer le préchargement de la page suivante en arrière-plan"""
+        if not self._pending_prefetch_params:
+            return
+        # Ne pas lancer si un prefetch est déjà en cours
+        if self.prefetch_worker and self.prefetch_worker.isRunning():
+            return
+
+        effective_search_term, column_filters, limit, next_offset, sort_col, sort_order, incomplete_filter = self._pending_prefetch_params
+        cache_key = (str(effective_search_term), str(column_filters), limit, next_offset,
+                     sort_col, int(sort_order), incomplete_filter)
+
+        if cache_key in self.prefetch_cache:
+            return  # Déjà en cache, rien à faire
+
+        self.prefetch_worker = DatabaseQueryWorker(
+            self.db_manager, effective_search_term, column_filters,
+            limit, next_offset, sort_col, sort_order, incomplete_filter
+        )
+        self.prefetch_worker.data_loaded.connect(
+            lambda records, key=cache_key: self._on_prefetch_done(records, key)
+        )
+        self.prefetch_worker.start()
+        app_logger.debug(f"[Prefetch] Démarré pour offset={next_offset}")
+
+    def _on_prefetch_done(self, records: list, cache_key: tuple):
+        """Stocker les données préchargées dans le cache (max 5 entrées)"""
+        if len(self.prefetch_cache) >= 5:
+            # Supprimer l'entrée la plus ancienne
+            oldest = next(iter(self.prefetch_cache))
+            del self.prefetch_cache[oldest]
+        self.prefetch_cache[cache_key] = records
+        app_logger.debug(f"[Prefetch] Stocké: {len(records)} lignes (cache size={len(self.prefetch_cache)})")
 
     def _add_to_search_history(self, term: str):
         """Ajouter un terme à l'historique des recherches (max 10, FIFO, sans doublons)"""

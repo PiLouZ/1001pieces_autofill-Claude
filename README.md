@@ -1,6 +1,6 @@
 # 🔧 1001pieces_autofill - Gestionnaire d'Appareils
 
-Application moderne de gestion d'appareils avec interface PyQt5 avancée, gestion de 523 000+ enregistrements et outils de validation interactifs avec EventDrivenSaveService. **v3.15.5**
+Application moderne de gestion d'appareils avec interface PyQt5 avancée, gestion de 523 000+ enregistrements et outils de validation interactifs avec EventDrivenSaveService. **v3.15.6**
 
 ## 🚀 Lancement Rapide
 

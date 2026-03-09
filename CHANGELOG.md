@@ -4,6 +4,30 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.6] - 2026-03-09
+
+### ⚡ Préchargement de la page suivante en arrière-plan
+
+**Fonctionnalité** : Dès qu'une page est affichée, la page suivante est chargée silencieusement en arrière-plan via un `DatabaseQueryWorker` dédié (100ms après le rendu). À la navigation "Page suivante", les données sont déjà disponibles → affichage quasi-instantané.
+
+**Implémentation** :
+- `prefetch_cache: Dict[tuple, List]` — cache keyed par tuple de TOUS les paramètres de requête (terme, filtres, offset, tri, taille de page, filtre incomplet)
+- `prefetch_timer` (100ms) déclenche `_execute_prefetch()` après le rendu de la page courante
+- `_execute_prefetch()` : lance un `prefetch_worker` (QThread distinct de `query_worker`) si la page N+1 n'est pas déjà en cache
+- `_on_prefetch_done()` : stocke le résultat (max 5 entrées, éviction FIFO)
+- Dans `load_data()` : cache hit → `prefetch_cache.pop(key)` au lieu de requête DB
+- Invalidation automatique : toute modification de paramètre (recherche, filtre, tri, taille page) génère une clé différente → l'ancienne entrée n'est jamais servie
+
+**Garanties ZERO REGRESSION** :
+- Si le cache est vide (cas normal, 1ère page, changement de filtre) → comportement identique à avant
+- `prefetch_worker` séparé → ne bloque pas `query_worker` utilisé par `load_data_async()`
+- Mode "Tout" (page_size=-1) → pas de prefetch (une seule page)
+
+**Fichier modifié** :
+- `src/ui/table_controller.py`
+
+---
+
 ## [3.15.5] - 2026-03-09
 
 ### ✨ Historique des recherches — bouton ▾ sur le champ de recherche
