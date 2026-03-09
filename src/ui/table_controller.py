@@ -99,6 +99,7 @@ class TableController:
         # Préchargement page suivante
         self.prefetch_cache = {}  # {cache_key: records}
         self.prefetch_worker = None  # Worker distinct de query_worker pour ne pas bloquer load_data_async
+        self._prefetch_db_manager = None  # Connexion SQLite dédiée au prefetch (évite partage de connexion)
         self._pending_prefetch_params = None
         self.prefetch_timer = QTimer()
         self.prefetch_timer.setSingleShot(True)
@@ -333,13 +334,9 @@ class TableController:
         # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
         self.current_search_term = search_term
 
-        # Annuler le prefetch en cours pour éviter les conflits SQLite multi-thread
-        # (prefetch_worker et load_data() partagent la même connexion db_manager.conn)
+        # Annuler tout prefetch planifié (le worker en cours finira sur sa propre connexion)
         self.prefetch_timer.stop()
         self._pending_prefetch_params = None
-        if self.prefetch_worker and self.prefetch_worker.isRunning():
-            self.prefetch_worker.terminate()
-            self.prefetch_worker.wait()
 
         # Enregistrer dans l'historique si c'est une vraie recherche (terme non vide)
         if is_search and search_term:
@@ -1058,8 +1055,14 @@ class TableController:
         if cache_key in self.prefetch_cache:
             return  # Déjà en cache, rien à faire
 
+        # Utiliser une connexion SQLite dédiée au prefetch pour éviter tout partage
+        # avec le thread principal (db_manager.conn) → plus de freeze, plus de lock
+        if self._prefetch_db_manager is None:
+            from ..data.database_manager import DatabaseManager
+            self._prefetch_db_manager = DatabaseManager()
+
         self.prefetch_worker = DatabaseQueryWorker(
-            self.db_manager, effective_search_term, column_filters,
+            self._prefetch_db_manager, effective_search_term, column_filters,
             limit, next_offset, sort_col, sort_order, incomplete_filter
         )
         self.prefetch_worker.data_loaded.connect(
