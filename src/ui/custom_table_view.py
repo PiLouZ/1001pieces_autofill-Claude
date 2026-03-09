@@ -153,8 +153,38 @@ class CustomTableView(QTableView):
         return widget_item
 
     def visualItemRect(self, item):
-        """Compat QTableWidget.visualItemRect() — délègue à visualRect() via UserRole."""
-        # item est un QTableWidgetItem simulé ; on retrouve la cellule via la sélection courante
-        # Fallback : retourner un QRect invalide (drag handle se cachera)
+        """Compat QTableWidget.visualItemRect() — stub, retourne QRect invalide.
+        Le code qui en dépend (drag handle) a déjà une branche USE_TABLE_VIEW
+        qui utilise visualRect(model_index) directement.
+        """
         from PyQt5.QtCore import QRect
         return QRect()
+
+    def setItem(self, row: int, col: int, item) -> None:
+        """Compat QTableWidget.setItem() — écrit dans le modèle via setData()."""
+        model = self.model()
+        if not model:
+            return
+        idx = model.index(row, col)
+        if idx.isValid():
+            model.setData(idx, item.text() if item else "", Qt.EditRole)
+            # Propager le UserRole (db_id) si présent
+            if item and item.data(Qt.UserRole) is not None:
+                model.setData(idx, item.data(Qt.UserRole), Qt.UserRole)
+
+    def verticalHeaderItem(self, row: int):
+        """Compat QTableWidget.verticalHeaderItem() — retourne un item avec numéro 1-indexé."""
+        model = self.model()
+        if model and 0 <= row < model.rowCount():
+            return QTableWidgetItem(str(row + 1))
+        return None
+
+    def currentItem(self):
+        """Compat QTableWidget.currentItem() — retourne un QTableWidgetItem simulé."""
+        return self.item(self.currentRow(), self.currentColumn())
+
+    def setCurrentCell(self, row: int, col: int) -> None:
+        """Compat QTableWidget.setCurrentCell()."""
+        model = self.model()
+        if model:
+            self.setCurrentIndex(model.index(row, col))
