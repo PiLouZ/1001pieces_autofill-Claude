@@ -1316,8 +1316,21 @@ class ImportManager:
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                app_logger.debug("  🔄 Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
-                continue  # Les doublons ne sont PAS comptés dans total_imported
+                app_logger.debug(f"  🔄 Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
+                # Trouver l'appareil existant et créer l'association même pour les doublons
+                device_data_dup = self._parse_row_data(row, config)
+                if device_data_dup:
+                    device_id_dup = self._insert_or_find_device(device_data_dup)
+                    if device_id_dup:
+                        for reference, label in references_and_labels:
+                            if reference:
+                                assoc_result = self._safe_create_association(reference, device_id_dup, label)
+                                if assoc_result:
+                                    if assoc_result.get('created'):
+                                        results['associations_created'] += 1
+                                    else:
+                                        results['associations_existing'] += 1
+                continue  # L'appareil n'est pas recompté dans total_imported
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
                 app_logger.debug("✅ LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
@@ -1452,11 +1465,19 @@ class ImportManager:
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                app_logger.debug("  🔄 BATCH Doublon inter-fichiers ignoré: {ref_modele} | {commercial_ref}")
+                app_logger.debug(f"  🔄 BATCH Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
+                # Trouver l'appareil dans le cache et préparer l'association
+                device_data_dup = self._parse_row_data(row, config)
+                if device_data_dup:
+                    dup_existing_id = self._find_in_cache(device_data_dup, existing_devices_cache)
+                    if dup_existing_id:
+                        for reference, label in references_and_labels:
+                            if reference:
+                                associations_batch.append((reference, label, processed_line_index, dup_existing_id))
                 continue
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                app_logger.debug("✅ BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+                app_logger.debug(f"✅ BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
 
             # Parser les données AVANT de compter total_imported
             device_data = self._parse_row_data(row, config)

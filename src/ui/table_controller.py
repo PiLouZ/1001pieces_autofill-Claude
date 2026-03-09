@@ -192,11 +192,11 @@ class TableController:
         
         # Barre de recherche SOUS le tableau (position correcte)
         search_layout2 = QHBoxLayout()
-        search_label2 = QLabel("🔍 Recherche avancée:")
+        search_label2 = QLabel("🔍 Recherche par pièce:")
         search_layout2.addWidget(search_label2)
-        
+
         self.advanced_search_input = QLineEdit()
-        self.advanced_search_input.setPlaceholderText("Recherche avancée: 'terme1 && terme2' ou 'terme1 || terme2'...")
+        self.advanced_search_input.setPlaceholderText("Référence pièce (ex: AS6015830, ou plusieurs: ref1 || ref2)...")
         # Sera connecté par MainWindow à AdvancedSearchService  
         # self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
         search_layout2.addWidget(self.advanced_search_input)
@@ -609,7 +609,11 @@ class TableController:
 
         # Mettre à jour les contrôles de pagination
         self._update_pagination_controls()
-    
+
+        # Réinitialiser les valeurs précédentes après tri (comme load_data le fait)
+        if hasattr(self.parent_window, '_init_previous_values'):
+            self.parent_window._init_previous_values()
+
     @handle_table_operations_errors(log_prefix="Erreur mise à jour indicateurs tri")
     def _update_sort_indicators(self):
         """Mettre à jour les indicateurs visuels de tri"""

@@ -1846,9 +1846,9 @@ class MainWindow(QMainWindow):
         manual_completion = results.get('manual_completion', 0)
         summary += f"==> À compléter : {manual_completion}\n"
         
-        # Doublons ignorés dans le fichier
+        # Doublons traités dans le fichier
         if duplicates_ignored > 0:
-            summary += f"==> Doublon ignoré : {duplicates_ignored}\n"
+            summary += f"==> Doublons traités : {duplicates_ignored}\n"
         
         # Section Associations de pièce
         summary += "Associations de pièce :\n"
@@ -1904,7 +1904,17 @@ class MainWindow(QMainWindow):
         """
         if results:
             self._show_import_results_new(results)
-            self.table_controller.load_data()  # Rafraîchir l'affichage
+
+            # Réinitialiser tous les champs de recherche après import
+            if hasattr(self, 'search_input') and self.search_input:
+                self.search_input.blockSignals(True)
+                self.search_input.clear()
+                self.search_input.blockSignals(False)
+            if hasattr(self, 'advanced_search_service'):
+                self.advanced_search_service.clear_search()
+            self.table_controller.clear_column_filters()
+
+            self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
 
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
@@ -1964,7 +1974,7 @@ class MainWindow(QMainWindow):
         summary += f"     ==> Créés : {results.get('new_entries', 0)}\n"
         summary += f"     ==> Complétion automatique : {results.get('matches_found', 0)}\n"
         summary += f"     ==> À compléter : {results.get('manual_completion', 0)}\n"
-        summary += f"     ==> Doublon ignoré : {results.get('duplicates_in_file', 0)}\n"
+        summary += f"     ==> Doublons traités : {results.get('duplicates_in_file', 0)}\n"
 
         # Section Associations de pièce (format exact)
         summary += "Associations de pièce :\n"

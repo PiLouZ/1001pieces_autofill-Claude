@@ -167,12 +167,20 @@ class DatabaseManager:
         if isinstance(search_term, str):
             if not search_term.strip():
                 return None
-            
+
             term = search_term.strip()
-            
+
+            # Phase 5: Recherche uniquement dans les pièces associées
+            if Config.SEARCH_PIECES_ONLY:
+                return {
+                    'query_type': 'pieces_only',
+                    'condition': "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)",
+                    'params': [f"%{term}%"]
+                }
+
             # DÉSACTIVÉ TEMPORAIREMENT: Recherches optimisées à cause de problèmes de paramètres
             # Utiliser toujours la recherche LIKE classique pour garantir la stabilité
-            
+
             # Recherche LIKE classique (plus lente)
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
             search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
@@ -194,8 +202,17 @@ class DatabaseManager:
             terms = search_term.get('terms', [])
             if not terms:
                 return None
-            
+
             term = terms[0]
+
+            # Phase 5: Recherche uniquement dans les pièces associées
+            if Config.SEARCH_PIECES_ONLY:
+                return {
+                    'query_type': 'pieces_only',
+                    'condition': "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)",
+                    'params': [f"%{term}%"]
+                }
+
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
             search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
             return {
@@ -208,6 +225,18 @@ class DatabaseManager:
             terms = search_term.get('terms', [])
             if not terms:
                 return None
+
+            # Phase 5: Recherche uniquement dans les pièces associées
+            if Config.SEARCH_PIECES_ONLY:
+                pieces_conditions = [
+                    "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                    for _ in terms
+                ]
+                return {
+                    'query_type': 'pieces_only',
+                    'condition': f"({' AND '.join(pieces_conditions)})",
+                    'params': [f"%{t}%" for t in terms]
+                }
 
             and_conditions = []
             all_params = []
@@ -230,6 +259,32 @@ class DatabaseManager:
             # Recherche avec groupes OR
             groups = search_term.get('groups', [])
             if not groups:
+                return None
+
+            # Phase 5: Recherche uniquement dans les pièces associées
+            if Config.SEARCH_PIECES_ONLY:
+                group_conditions = []
+                all_params = []
+                for group in groups:
+                    g_terms = group.get('terms', [])
+                    if not g_terms:
+                        continue
+                    if group['type'] == 'and':
+                        and_conds = [
+                            "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                            for _ in g_terms
+                        ]
+                        group_conditions.append(f"({' AND '.join(and_conds)})")
+                        all_params.extend([f"%{t}%" for t in g_terms])
+                    else:  # simple
+                        group_conditions.append("a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+                        all_params.append(f"%{g_terms[0]}%")
+                if group_conditions:
+                    return {
+                        'query_type': 'pieces_only',
+                        'condition': f"({' OR '.join(group_conditions)})",
+                        'params': all_params
+                    }
                 return None
 
             group_conditions = []

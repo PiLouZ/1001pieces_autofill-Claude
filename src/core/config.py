@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.13.0"
+    VERSION = "3.15.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -90,6 +90,9 @@ class Config:
 
     # Feature Flags - Phase 4 Event-Driven Save System
     ENABLE_EVENT_DRIVEN_SAVE = True  # Phase 4: Migration timer → événements - ACTIVÉ (EventDrivenSaveService)
+
+    # Feature Flags - Phase 5 Search Optimization
+    SEARCH_PIECES_ONLY = True  # Phase 5: Recherche principale → pièces uniquement (désactivé = comportement actuel)
 
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3

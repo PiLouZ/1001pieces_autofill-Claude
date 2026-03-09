@@ -4,6 +4,38 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.0] - 2026-03-06
+
+### 🔍 Optimisation recherche principale — pièces uniquement
+
+#### Recherche principale recentrée sur les références de pièces
+
+**Problème résolu** : La recherche principale scannait toutes les colonnes (7-8 LIKE simultanés sur 523 000 lignes), alors que des filtres par colonne existent déjà pour Type, Fabricant, Ref modèle, etc.
+
+**Solution implémentée** :
+- **Feature flag** `SEARCH_PIECES_ONLY = True` dans `Config`
+- Recherche principale filtre désormais uniquement sur `pieces.ref_piece` via `JOIN piece_associations`
+- Support complet des opérateurs `||` (OR) et `&&` (AND) sur les références pièces
+- Placeholder UI mis à jour pour guider l'utilisateur
+
+**Fichiers modifiés** :
+- `src/core/config.py` : Feature flag `SEARCH_PIECES_ONLY` + version 3.15.0
+- `src/core/constants.py` : Version 3.15.0
+- `src/data/database_manager.py` : 4 branches couvertes dans `_build_search_condition_optimized()` (string + dict simple/and/or)
+- `src/ui/table_controller.py` : Label et placeholder du champ de recherche
+
+**Résultats** :
+- ✅ Performance : 7-8 LIKE multi-colonnes → 1 JOIN ciblé sur `pieces`
+- ✅ Clarté UX : rôle du champ principal explicite (référence pièce)
+- ✅ Rétrocompatibilité : `SEARCH_PIECES_ONLY = False` restaure l'ancien comportement
+- ✅ Opérateurs `||` et `&&` fonctionnels sur les références pièces
+
+#### Harmonisation des versions
+- `Config.VERSION` harmonisé de 3.13.0 → 3.15.0
+- `AppInfo.VERSION` harmonisé de 3.14.0 → 3.15.0
+
+---
+
 ## [3.14.0] - 2025-10-06
 
 ### 🚀 Optimisations majeures - Import de fichiers
