@@ -14,7 +14,7 @@
 | 0 — Préparation (feature flag + tests) | ⬜ À faire | — | |
 | 1 — `AppareillsTableModel` isolé | ✅ Fait | `src/data/appareils_table_model.py` | 13/13 tests verts |
 | 2 — `CustomTableView` isolé | ✅ Fait | `src/ui/custom_table_view.py` | Import OK, zéro régression |
-| 3 — Swap dans `table_controller` | ⬜ À faire | — | |
+| 3 — Swap dans `table_controller` | ✅ Fait | `table_controller.py` + `table_fill_service.py` | USE_TABLE_VIEW=False en prod |
 | 4a — `cell_editing_service` | ⬜ À faire | — | |
 | 4b — Signaux `main_refactored` | ⬜ À faire | — | |
 | 4c — Données `main_refactored` | ⬜ À faire | — | |
@@ -293,7 +293,7 @@ python3 -c "from src.ui.custom_table_view import CustomTableView; print('OK')"
 
 ## Phase 3 — Swap dans `table_controller` (derrière le feature flag)
 
-**Statut** : ⬜ À faire · **Durée estimée** : 1-2h · **Risque** : Moyen (encapsulé, réversible)
+**Statut** : ✅ Fait · **Durée estimée** : 1-2h · **Risque** : Moyen (encapsulé, réversible)
 
 ### `src/ui/table_controller.py` — `create_table_widget()`
 

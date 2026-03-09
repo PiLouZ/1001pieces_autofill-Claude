@@ -27,6 +27,14 @@ class TableFillService:
     
     def fill_table_chunked(self, table, records: List, progress_dialog, search_term):
         """Remplissage optimisé par chunks pour améliorer la responsivité"""
+        # QTableView : une seule ligne remplace tout le remplissage cellule par cellule
+        if Config.USE_TABLE_VIEW:
+            tc = self.main_window.table_controller
+            if tc.model is not None:
+                tc.model.set_search_term(search_term)
+                tc.model.load_records(records)
+            return
+
         chunk_size = Config.CHUNK_SIZE
         total_chunks = (len(records) + chunk_size - 1) // chunk_size
 
@@ -43,6 +51,14 @@ class TableFillService:
 
     def fill_table_standard(self, table, records: List, progress_dialog, search_term):
         """Remplissage standard pour les petites tables"""
+        # QTableView : délégue au modèle (même chemin que fill_table_chunked)
+        if Config.USE_TABLE_VIEW:
+            tc = self.main_window.table_controller
+            if tc.model is not None:
+                tc.model.set_search_term(search_term)
+                tc.model.load_records(records)
+            return
+
         table.blockSignals(True)       # CRITIQUE: Bloquer les signaux pour éviter les modifications DB
         table.setUpdatesEnabled(False)  # Bloquer les repaints pendant le fill
         table.setRowCount(len(records))  # CRUCIAL: Définir le nombre de lignes avant remplissage
