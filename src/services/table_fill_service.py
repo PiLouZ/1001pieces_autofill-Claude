@@ -30,42 +30,44 @@ class TableFillService:
         chunk_size = Config.CHUNK_SIZE
         total_chunks = (len(records) + chunk_size - 1) // chunk_size
 
-        table.blockSignals(True)  # Bloquer les signaux pendant le remplissage
+        table.blockSignals(True)       # Bloquer les signaux (évite itemChanged → DB)
+        table.setUpdatesEnabled(False)  # Bloquer les repaints pendant le fill (1 repaint final au lieu de N)
         table.setRowCount(len(records))  # CRUCIAL: Définir le nombre de lignes avant remplissage
 
         try:
             self._safe_fill_chunked_core(table, records, progress_dialog, search_term, chunk_size, total_chunks)
         finally:
-            table.blockSignals(False)  # Réactiver les signaux
-    
+            table.setUpdatesEnabled(True)  # Réactiver les repaints
+            table.viewport().update()       # Forcer un unique repaint complet
+            table.blockSignals(False)       # Réactiver les signaux
+
     def fill_table_standard(self, table, records: List, progress_dialog, search_term):
         """Remplissage standard pour les petites tables"""
-        table.blockSignals(True)  # CRITIQUE: Bloquer les signaux pour éviter les modifications DB
+        table.blockSignals(True)       # CRITIQUE: Bloquer les signaux pour éviter les modifications DB
+        table.setUpdatesEnabled(False)  # Bloquer les repaints pendant le fill
         table.setRowCount(len(records))  # CRUCIAL: Définir le nombre de lignes avant remplissage
 
         try:
             self._safe_fill_standard_core(table, records, progress_dialog, search_term)
         finally:
-            table.blockSignals(False)  # CRITIQUE: Réactiver les signaux
+            table.setUpdatesEnabled(True)  # Réactiver les repaints
+            table.viewport().update()       # Forcer un unique repaint complet
+            table.blockSignals(False)       # CRITIQUE: Réactiver les signaux
     
     def fill_single_row(self, table, row_idx: int, record, search_term):
         """Remplir une seule ligne de manière optimisée"""
         db_id = record[0]
-        
-        # En-tête vertical optimisé 
+
+        # En-tête vertical optimisé
         table.setVerticalHeaderItem(row_idx, QTableWidgetItem(str(row_idx + 1)))
-        
-        # Traitement optimisé des colonnes par batch
-        items_to_set = []  # Liste des (row, col, item) à traiter ensemble
-        
-        # Traiter toutes les colonnes UI (8 colonnes maintenant, AVEC Nb Pièces)
+
+        # Pré-calculer une fois si le highlight est applicable (évite le test dans chaque cellule)
+        do_highlight = bool(search_term)
+
+        # Remplir toutes les colonnes UI directement (sans liste intermédiaire)
         for col_idx in range(len(Config.UI_HEADERS)):
-            item = self.create_table_item(record, col_idx, db_id, search_term)
-            items_to_set.append((row_idx, col_idx, item))
-        
-        # Appel groupé de setItem pour cette ligne (plus efficace)
-        for row, col, item in items_to_set:
-            table.setItem(row, col, item)
+            item = self.create_table_item(record, col_idx, db_id, search_term if do_highlight else None)
+            table.setItem(row_idx, col_idx, item)
     
     def create_table_item(self, record, col_idx: int, db_id: int, search_term) -> QTableWidgetItem:
         """Créer un item de table optimisé"""

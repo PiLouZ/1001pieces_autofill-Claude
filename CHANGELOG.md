@@ -4,6 +4,31 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.8] - 2026-03-09
+
+### ⚡ Optimisation rendu tableau — 3 améliorations ciblées dans TableFillService
+
+**Alternative à la migration QTableView** (risque trop élevé — 115 accès dans 5 fichiers critiques).
+
+#### 1. `setUpdatesEnabled(False)` pendant le fill
+- Avant : `blockSignals(True)` bloquait les signaux mais **chaque `setItem()` pouvait déclencher un repaint**
+- Après : `setUpdatesEnabled(False)` suspend le moteur de peinture pendant tout le fill → un seul `viewport().update()` redessine tout en fin de méthode
+- Impact : N repaints → 1 repaint pour N lignes × 8 colonnes (×3-5 sur grands tableaux)
+- Appliqué dans `fill_table_chunked()` et `fill_table_standard()`
+
+#### 2. Suppression de la liste intermédiaire dans `fill_single_row`
+- Avant : construction d'une liste `items_to_set = [(row, col, item), ...]` puis 2ème boucle pour `setItem()`
+- Après : `setItem()` appelé directement dans la boucle `create_table_item` (1 passe au lieu de 2)
+
+#### 3. Pré-calcul du flag highlight hors de la boucle colonnes
+- `do_highlight = bool(search_term)` calculé **une fois par ligne** au lieu d'être réévalué dans chaque `create_table_item()` pour chaque colonne
+- Évite `if search_term and col_idx < ...` sur 8 colonnes × N lignes
+
+**Fichier modifié** :
+- `src/services/table_fill_service.py`
+
+---
+
 ## [3.15.7] - 2026-03-09
 
 ### 🐛 Correction tri — ordre perdu au changement de page
