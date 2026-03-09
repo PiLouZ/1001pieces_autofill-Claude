@@ -1567,6 +1567,11 @@ class MainWindow(QMainWindow):
             self.user_interaction_service.show_info(f"✅ Auto-complétion réussie !\n\n"
                            f"🎯 {result.completed_count} ligne(s) complétée(s)\n"
                            f"📊 {result.total_rows_processed} ligne(s) traitée(s)")
+            self.user_interaction_service.add_to_history(
+                f"Autocomplétion: {result.completed_count} appareil(s) complété(s) "
+                f"sur {result.total_rows_processed} traité(s)"
+            )
+            self._auto_save()
         else:
             self.user_interaction_service.show_info("ℹ️ Aucun champ à compléter automatiquement.\n\n"
                            "Tous les appareils ont déjà un Type et un Fabricant, "

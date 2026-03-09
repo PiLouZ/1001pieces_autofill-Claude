@@ -4,6 +4,21 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.2] - 2026-03-09
+
+### 🐛 Correction autocomplétion
+
+#### Bug silencieux corrigé dans `DataManagementService`
+- `auto_complete_empty_fields()` ne retournait jamais `result` (retour `None` implicite)
+- Les lignes `app_logger.info` + `return result` étaient du code mort coincé après un `return False` dans `_safe_process_device_row`
+- Conséquence : `AttributeError` silencieusement avalée par `@handle_ui_operation_errors` → dialogues de résultat jamais affichés
+
+#### Améliorations `_safe_fill_empty_fields`
+- Ajout d'une entrée dans l'historique : `Autocomplétion: N appareil(s) complété(s) sur N traité(s)`
+- Déclenchement de `_auto_save()` après une complétion réussie
+
+---
+
 ## [3.15.1] - 2026-03-09
 
 ### 🐛 Corrections & 🧹 Nettoyage

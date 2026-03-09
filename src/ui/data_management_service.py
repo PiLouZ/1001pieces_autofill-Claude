@@ -65,6 +65,9 @@ class DataManagementService:
             if success:
                 result.completed_count += 1
 
+        app_logger.info(f"Auto-complétion terminée: {result.completed_count}/{result.total_rows_processed} lignes complétées")
+        return result
+
     @handle_data_management_errors(return_value=False)
     def _safe_process_device_row(self, row_data: Dict[str, Any], result: FieldCompletionResult) -> bool:
         """Traiter une ligne d'appareil de manière sécurisée"""
@@ -85,9 +88,6 @@ class DataManagementService:
             return completed is not None
 
         return False
-        
-        app_logger.info(f"Auto-complétion terminée: {result.completed_count}/{result.total_rows_processed} lignes complétées")
-        return result
     
     def _try_auto_complete_device(self, db_id: int, device_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
