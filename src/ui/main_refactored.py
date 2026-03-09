@@ -442,8 +442,14 @@ class MainWindow(QMainWindow):
         self.table_controller.connect_selection_signals(self._on_selection_changed)
         
         # CRUCIAL: Reconnecter les signaux de modification des cellules
-        self.table.itemChanged.connect(self._on_cell_changed)
-        self.table.currentItemChanged.connect(self._on_current_item_changed)
+        if Config.USE_TABLE_VIEW:
+            # QTableView : itemChanged → model.cell_edited (signal custom AppareillsTableModel)
+            # currentItemChanged → selectionModel().currentChanged (déjà connecté via connect_selection_signals)
+            if self.table_controller.model is not None:
+                self.table_controller.model.cell_edited.connect(self._on_cell_changed_model)
+        else:
+            self.table.itemChanged.connect(self._on_cell_changed)
+            self.table.currentItemChanged.connect(self._on_current_item_changed)
         
         # Configurer la poignée de duplication après création du tableau
         self._setup_drag_handle()
@@ -1016,6 +1022,22 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'duplicate_indicator_service'):
             self.duplicate_indicator_service.schedule_update()
 
+    def _on_cell_changed_model(self, row: int, col: int, old_value: str, new_value: str):
+        """Équivalent de _on_cell_changed pour QTableView (signal cell_edited du modèle).
+        Phase 3 : stub minimal — implémentation complète en Phase 4a.
+        Reçoit (row, col, old_value, new_value) depuis AppareillsTableModel.cell_edited.
+        """
+        if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+            self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
+
+        key = (row, col)
+        self.previous_values[key] = new_value
+
+        self._update_toolbar_states()
+        self._update_incomplete_button_visibility()
+        if hasattr(self, 'duplicate_indicator_service'):
+            self.duplicate_indicator_service.schedule_update()
+
     def _on_selection_changed(self):
         """Gérer le changement de sélection"""
         self._position_drag_handle()
@@ -1079,32 +1101,46 @@ class MainWindow(QMainWindow):
     @handle_drag_operation_errors(return_value=None, title="Erreur vérification sélection")
     def _safe_check_selection(self):
         """Vérifier la sélection et cacher le drag handle si vide"""
-        selected = self.table.selectedRanges()
-        if not selected:
-            self.drag_handle.hide()
-            return None
-        return selected
+        if Config.USE_TABLE_VIEW:
+            sm = self.table.selectionModel()
+            if not sm or not sm.hasSelection():
+                self.drag_handle.hide()
+                return None
+            return sm.selectedIndexes()
+        else:
+            selected = self.table.selectedRanges()
+            if not selected:
+                self.drag_handle.hide()
+                return None
+            return selected
 
     @handle_drag_operation_errors(return_value=None, title="Erreur positionnement drag handle")
     def _safe_position_drag_handle_at_selection(self, selected):
         """Positionner le drag handle à la sélection"""
-        sel_range = selected[0]
-        bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
-
-        if bottom_right_item:
+        if Config.USE_TABLE_VIEW:
+            # selected = liste de QModelIndex
+            bottom_row = max(idx.row() for idx in selected)
+            right_col = max(idx.column() for idx in selected)
+            model_idx = self.table.model().index(bottom_row, right_col)
+            rect = self.table.visualRect(model_idx)
+        else:
+            sel_range = selected[0]
+            bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
+            if not bottom_right_item:
+                self.drag_handle.hide()
+                return
             rect = self.table.visualItemRect(bottom_right_item)
-            if rect.isValid():
-                handle_x = rect.right() - self.drag_handle.width() + 1
-                handle_y = rect.bottom() - self.drag_handle.height() + 1
 
-                viewport_rect = self.table.viewport().rect()
-                if (handle_x >= 0 and handle_y >= 0 and
-                    handle_x < viewport_rect.width() and
-                    handle_y < viewport_rect.height()):
-                    self.drag_handle.move(handle_x, handle_y)
-                    self.drag_handle.show()
-                else:
-                    self.drag_handle.hide()
+        if rect.isValid():
+            handle_x = rect.right() - self.drag_handle.width() + 1
+            handle_y = rect.bottom() - self.drag_handle.height() + 1
+
+            viewport_rect = self.table.viewport().rect()
+            if (handle_x >= 0 and handle_y >= 0 and
+                handle_x < viewport_rect.width() and
+                handle_y < viewport_rect.height()):
+                self.drag_handle.move(handle_x, handle_y)
+                self.drag_handle.show()
             else:
                 self.drag_handle.hide()
         else:
