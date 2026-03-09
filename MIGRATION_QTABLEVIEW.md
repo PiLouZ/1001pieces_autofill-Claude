@@ -12,7 +12,7 @@
 | Phase | Statut | Version | Notes |
 |-------|--------|---------|-------|
 | 0 — Préparation (feature flag + tests) | ⬜ À faire | — | |
-| 1 — `AppareillsTableModel` isolé | ⬜ À faire | — | |
+| 1 — `AppareillsTableModel` isolé | ✅ Fait | `src/data/appareils_table_model.py` | 13/13 tests verts |
 | 2 — `CustomTableView` isolé | ⬜ À faire | — | |
 | 3 — Swap dans `table_controller` | ⬜ À faire | — | |
 | 4a — `cell_editing_service` | ⬜ À faire | — | |
@@ -116,7 +116,7 @@ python3 -m pytest tests/test_table_model.py  # Tous les tests doivent ÉCHOUER (
 
 ## Phase 1 — `AppareillsTableModel`
 
-**Statut** : ⬜ À faire · **Durée estimée** : 1h · **Risque** : Zéro (fichier additionnel)
+**Statut** : ✅ Fait · **Durée estimée** : 1h · **Risque** : Zéro (fichier additionnel)
 
 ### Fichier à créer : `src/data/appareils_table_model.py`
 
