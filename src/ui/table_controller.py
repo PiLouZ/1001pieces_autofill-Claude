@@ -7,7 +7,7 @@ from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton,
                             QLabel, QProgressDialog, QApplication, QHeaderView,
                             Qt, QTimer, QThread, pyqtSignal, QObject, QColor, QBrush,
-                            QSizePolicy)
+                            QSizePolicy, QMenu, QAction, QPoint)
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -91,6 +91,10 @@ class TableController:
         # Phase 2c: Worker thread pour async operations
         self.query_worker = None
         self.loading_in_progress = False
+
+        # Historique des recherches (max 10, le plus récent en premier)
+        self.search_history = []
+        self.history_btn = None
         
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
@@ -237,6 +241,36 @@ class TableController:
         # self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
         search_layout2.addWidget(self.advanced_search_input, 1, Qt.AlignVCenter)
 
+        # Bouton historique des recherches
+        self.history_btn = QPushButton("▾")
+        self.history_btn.setFixedWidth(28)
+        self.history_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.history_btn.setToolTip("Historique des recherches")
+        self.history_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #546e7a;
+                color: white;
+                border: 1px solid #37474f;
+                border-radius: 3px;
+                font-weight: bold;
+                font-size: 13px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #37474f;
+            }
+            QPushButton:pressed {
+                background-color: #263238;
+            }
+            QPushButton:disabled {
+                background-color: #b0bec5;
+                border-color: #90a4ae;
+            }
+        """)
+        self.history_btn.setEnabled(False)  # Désactivé jusqu'à ce qu'il y ait un historique
+        self.history_btn.clicked.connect(self._show_search_history)
+        search_layout2.addWidget(self.history_btn, 0, Qt.AlignVCenter)
+
         clear_search_btn = QPushButton("×")
         clear_search_btn.setFixedWidth(32)
         # Expanding vertical: le bouton s'aligne automatiquement sur la hauteur de l'input
@@ -290,6 +324,10 @@ class TableController:
 
         # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
         self.current_search_term = search_term
+
+        # Enregistrer dans l'historique si c'est une vraie recherche (terme non vide)
+        if is_search and search_term:
+            self._add_to_search_history(search_term)
 
         # Réinitialiser le tri seulement si c'est une nouvelle recherche ET qu'on n'est pas en train de faire un tri
         # Ne pas réinitialiser si c'est un appel depuis _apply_database_sort
@@ -965,7 +1003,61 @@ class TableController:
         # Désactiver les boutons d'export quand on vide la recherche
         if hasattr(self.parent_window, '_update_export_buttons_state'):
             self.parent_window._update_export_buttons_state("")
-    
+
+    def _add_to_search_history(self, term: str):
+        """Ajouter un terme à l'historique des recherches (max 10, FIFO, sans doublons)"""
+        if not term or not term.strip():
+            return
+        term = term.strip()
+        # Retirer les doublons existants (comparaison insensible à la casse)
+        self.search_history = [h for h in self.search_history if h.lower() != term.lower()]
+        # Insérer en tête (plus récent en premier)
+        self.search_history.insert(0, term)
+        # Limiter à 10 entrées
+        self.search_history = self.search_history[:10]
+        # Activer le bouton historique
+        if self.history_btn:
+            self.history_btn.setEnabled(True)
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage historique recherche")
+    def _show_search_history(self, checked=False):
+        """Afficher le menu déroulant de l'historique des recherches"""
+        if not self.search_history:
+            return
+
+        menu = QMenu(self.history_btn)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                padding: 2px;
+            }
+            QMenu::item {
+                padding: 5px 16px;
+                border-radius: 2px;
+            }
+            QMenu::item:selected {
+                background-color: #e3f2fd;
+                color: #1565c0;
+            }
+        """)
+
+        for term in self.search_history:
+            display = term if len(term) <= 60 else term[:57] + "…"
+            action = QAction(display, menu)
+            action.setData(term)
+            menu.addAction(action)
+
+        chosen = menu.exec(self.history_btn.mapToGlobal(QPoint(0, self.history_btn.height())))
+        if chosen:
+            selected_term = chosen.data()
+            # Remplir le champ de recherche (utiliser la référence principale)
+            search_input = getattr(self.parent_window, 'search_input', None) or self.advanced_search_input
+            if search_input:
+                search_input.setText(selected_term)
+                search_input.setFocus()
+
     def _add_incomplete_filter_button(self, layout):
         """Ajouter le bouton de filtre pour les lignes incomplètes"""
         from .qt_imports import QPushButton, QHBoxLayout

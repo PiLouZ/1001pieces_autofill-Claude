@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.5] - 2026-03-09
+
+### ✨ Historique des recherches — bouton ▾ sur le champ de recherche
+
+**Fonctionnalité ajoutée** : Un bouton **▾** (gris) apparaît à droite du champ "Recherche par pièce". Il s'active automatiquement dès la première recherche effectuée.
+
+**Comportement** :
+- Clic sur ▾ → menu déroulant avec les 10 dernières recherches (plus récente en premier)
+- Clic sur un terme → remplit automatiquement le champ et déclenche la recherche
+- Déduplication : un même terme (insensible à la casse) n'apparaît qu'une seule fois
+- Termes tronqués à 60 caractères dans le menu (terme complet utilisé en sélection)
+
+**Implémentation** :
+- `search_history: List[str]` dans `TableController.__init__` (max 10 FIFO)
+- `_add_to_search_history()` : appelée dans `load_data()` quand `is_search=True`
+- `_show_search_history()` : `QMenu.exec()` positionné sous le bouton via `mapToGlobal`
+- Bouton désactivé tant qu'il n'y a pas d'historique
+
+**Fichier modifié** :
+- `src/ui/table_controller.py`
+
+---
+
 ## [3.15.4] - 2026-03-09
 
 ### 🐛 Correction bug Échap — filtres colonnes QComboBox détruits
