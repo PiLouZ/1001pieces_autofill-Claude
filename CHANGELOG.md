@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.7] - 2026-03-09
+
+### 🐛 Correction tri — ordre perdu au changement de page
+
+**Problème résolu** : L'ordre de tri sautait à chaque changement de page (tri ascendant devenait descendant, tri descendant restait descendant).
+
+**Cause racine** : `load_data()` passait `self.current_sort_order` (enum `Qt.AscendingOrder`/`Qt.DescendingOrder`) à `db_manager.load_data()` qui attend une string `"ASC"`/`"DESC"`. La comparaison `Qt.AscendingOrder == "ASC"` est **toujours False** → ORDER BY toujours `DESC`.
+
+La méthode `_apply_database_sort()` (clic sur en-tête) faisait la conversion correctement, d'où le comportement cohérent sur la page courante mais cassé à la navigation.
+
+**Correction** : Conversion explicite `sort_order_str = "ASC" if ... == Qt.AscendingOrder else "DESC"` en 3 endroits :
+- `load_data()` : DB call + cache_key prefetch + params prefetch
+- `load_data_async()` : DatabaseQueryWorker
+- `_execute_prefetch()` : cohérence de la cache_key (string au lieu de int)
+
+**Fichier modifié** :
+- `src/ui/table_controller.py`
+
+---
+
 ## [3.15.6] - 2026-03-09
 
 ### ⚡ Préchargement de la page suivante en arrière-plan

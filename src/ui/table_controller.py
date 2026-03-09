@@ -392,15 +392,18 @@ class TableController:
             if self.current_page > self.total_pages:
                 self.current_page = self.total_pages
 
+        # Convertir l'enum Qt en string attendue par db_manager ("ASC"/"DESC")
+        sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
+
         # Charger les données — vérifier le cache de préchargement d'abord
         cache_key = (str(effective_search_term), str(column_filters), limit, offset,
-                     self.current_sort_column, int(self.current_sort_order), incomplete_filter)
+                     self.current_sort_column, sort_order_str, incomplete_filter)
         if cache_key in self.prefetch_cache:
             records = self.prefetch_cache.pop(cache_key)
             app_logger.debug(f"[Prefetch] Cache HIT page {self.current_page} ({len(records)} lignes)")
         else:
             records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
-                                               self.current_sort_column, self.current_sort_order, incomplete_filter)
+                                               self.current_sort_column, sort_order_str, incomplete_filter)
 
         # Remplir le tableau
         if self.total_rows > 1000:
@@ -423,7 +426,7 @@ class TableController:
             next_offset = self.current_page * self.page_size
             self._pending_prefetch_params = (
                 effective_search_term, column_filters, limit, next_offset,
-                self.current_sort_column, self.current_sort_order, incomplete_filter
+                self.current_sort_column, sort_order_str, incomplete_filter  # sort_order_str = "ASC"/"DESC"
             )
             self.prefetch_timer.start(100)
         else:
@@ -493,6 +496,7 @@ class TableController:
             self.query_worker = None
 
         # Créer et configurer le worker thread
+        sort_order_str_async = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
         self.query_worker = DatabaseQueryWorker(
             self.db_manager,
             search_term,
@@ -500,7 +504,7 @@ class TableController:
             limit,
             offset,
             self.current_sort_column,
-            self.current_sort_order,
+            sort_order_str_async,
             incomplete_filter
         )
 
@@ -1039,8 +1043,9 @@ class TableController:
             return
 
         effective_search_term, column_filters, limit, next_offset, sort_col, sort_order, incomplete_filter = self._pending_prefetch_params
+        # sort_order est déjà une string "ASC"/"DESC" (stocké ainsi dans _pending_prefetch_params)
         cache_key = (str(effective_search_term), str(column_filters), limit, next_offset,
-                     sort_col, int(sort_order), incomplete_filter)
+                     sort_col, sort_order, incomplete_filter)
 
         if cache_key in self.prefetch_cache:
             return  # Déjà en cache, rien à faire
