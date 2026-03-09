@@ -80,7 +80,7 @@ class Config:
 
     # Feature Flag - Migration QTableView (Phase 5)
     # NE PAS PASSER À True EN PRODUCTION — migration progressive, voir MIGRATION_QTABLEVIEW.md
-    USE_TABLE_VIEW = False
+    USE_TABLE_VIEW = False  # Migration QTableView — Phase 3 validée, activer pour Phase 4
 
     # Feature Flags - Refactoring Phase 3
     USE_NEW_SORTING_FILTERING_SERVICE = True  # Migration SortingFilteringService - PHASE 3.1 ACTIVÉE

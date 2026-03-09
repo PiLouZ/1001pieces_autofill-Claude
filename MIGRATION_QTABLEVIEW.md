@@ -324,12 +324,17 @@ else:
 ```
 
 ### Critères de validation (avec `USE_TABLE_VIEW = True`)
-- [ ] Données affichées correctement toutes pages
-- [ ] Pagination fonctionnelle (Précédent / Suivant)
-- [ ] F5 actualise
-- [ ] Tri par colonne fonctionnel
-- [ ] Aucun crash au démarrage
-- [ ] Repasser `USE_TABLE_VIEW = False` avant de committer
+- [x] Données affichées correctement toutes pages
+- [x] Pagination fonctionnelle (Précédent / Suivant)
+- [x] F5 actualise
+- [x] Tri par colonne fonctionnel
+- [x] Aucun crash au démarrage, aucune erreur console
+- [x] Repasser `USE_TABLE_VIEW = False` avant de committer
+
+### Méthodes compat ajoutées à `CustomTableView` (Adapter pattern)
+`columnCount`, `selectedRanges` → `_SelectionRangeCompat`, `horizontalHeaderItem`,
+`item`, `setItem`, `verticalHeaderItem`, `currentItem`, `setCurrentCell`,
+`setRangeSelected`, `visualItemRect`
 
 ---
 
