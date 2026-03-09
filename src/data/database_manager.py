@@ -131,11 +131,15 @@ class DatabaseWorker(QThread):
 
 class DatabaseManager:
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
-    
+
     def __init__(self, db_file: str = None):
+        import threading
         self.db_file = db_file or Config.DB_FILE
         self.conn = None
         self.cursor = None
+        # Verrou pour serialiser les requêtes load_data() entre threads
+        # (prefetch_worker + thread principal partagent la même connexion SQLite)
+        self._query_lock = threading.Lock()
         # Phase 3: Initialiser le cache de recherche optimisé
         self.search_cache = SearchCache(Config.SEARCH_CACHE_SIZE) if Config.FULLTEXT_CACHE_ENABLED else None
         # Phase 2.3: Initialiser le service d'invalidation de cache (import local pour éviter cycle)
@@ -147,7 +151,9 @@ class DatabaseManager:
     @handle_database_errors(title="Erreur de connexion")
     def _connect(self):
         """Établir la connexion à la base de données"""
-        self.conn = sqlite3.connect(self.db_file)
+        # check_same_thread=False : autorise l'usage depuis plusieurs threads.
+        # La sécurité est assurée par _query_lock dans load_data() (accès sérialisé).
+        self.conn = sqlite3.connect(self.db_file, check_same_thread=False)
         self.cursor = self.conn.cursor()
     
     def get_connection(self):
@@ -745,8 +751,10 @@ class DatabaseManager:
                   incomplete_filter: bool = False) -> List[Tuple]:
         """URGENCE: Fallback vers méthode originale (régression optimisation détectée)"""
 
-        # 🚨 URGENCE: Fallback - l'optimisation cause "too many SQL variables"
-        return self._load_data_original(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
+        # Verrou : sérialise les accès concurrents (prefetch_worker vs thread principal)
+        # SQLite interdit l'utilisation d'une même connexion depuis plusieurs threads
+        with self._query_lock:
+            return self._load_data_original(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
 
         # Phase 3: Cache réactivé avec support pagination - DÉSACTIVÉ TEMPORAIREMENT
         if Config.SMART_CACHE_ENABLED and self._should_use_cache(search_term, column_filters, incomplete_filter, limit):
