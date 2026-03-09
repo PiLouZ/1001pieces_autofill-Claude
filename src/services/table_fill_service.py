@@ -38,7 +38,7 @@ class TableFillService:
             self._safe_fill_chunked_core(table, records, progress_dialog, search_term, chunk_size, total_chunks)
         finally:
             table.setUpdatesEnabled(True)  # Réactiver les repaints
-            table.viewport().update()       # Forcer un unique repaint complet
+            table.viewport().repaint()      # Repaint synchrone immédiat (évite les états blancs)
             table.blockSignals(False)       # Réactiver les signaux
 
     def fill_table_standard(self, table, records: List, progress_dialog, search_term):
@@ -51,7 +51,7 @@ class TableFillService:
             self._safe_fill_standard_core(table, records, progress_dialog, search_term)
         finally:
             table.setUpdatesEnabled(True)  # Réactiver les repaints
-            table.viewport().update()       # Forcer un unique repaint complet
+            table.viewport().repaint()      # Repaint synchrone immédiat (évite les états blancs)
             table.blockSignals(False)       # CRITIQUE: Réactiver les signaux
     
     def fill_single_row(self, table, row_idx: int, record, search_term):

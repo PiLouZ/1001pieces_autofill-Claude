@@ -333,6 +333,14 @@ class TableController:
         # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
         self.current_search_term = search_term
 
+        # Annuler le prefetch en cours pour éviter les conflits SQLite multi-thread
+        # (prefetch_worker et load_data() partagent la même connexion db_manager.conn)
+        self.prefetch_timer.stop()
+        self._pending_prefetch_params = None
+        if self.prefetch_worker and self.prefetch_worker.isRunning():
+            self.prefetch_worker.terminate()
+            self.prefetch_worker.wait()
+
         # Enregistrer dans l'historique si c'est une vraie recherche (terme non vide)
         if is_search and search_term:
             self._add_to_search_history(search_term)
