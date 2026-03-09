@@ -188,3 +188,24 @@ class CustomTableView(QTableView):
         model = self.model()
         if model:
             self.setCurrentIndex(model.index(row, col))
+
+    def setRangeSelected(self, selection_range, select: bool) -> None:
+        """Compat QTableWidget.setRangeSelected() — traduit en QItemSelection pour QTableView.
+
+        selection_range peut être un QTableWidgetSelectionRange ou un _SelectionRangeCompat,
+        les deux exposent topRow/bottomRow/leftColumn/rightColumn.
+        """
+        from PyQt5.QtCore import QItemSelection
+        from PyQt5.QtWidgets import QAbstractItemView
+        model = self.model()
+        sm = self.selectionModel()
+        if not model or not sm:
+            return
+        top_left = model.index(selection_range.topRow(), selection_range.leftColumn())
+        bottom_right = model.index(selection_range.bottomRow(), selection_range.rightColumn())
+        if not top_left.isValid() or not bottom_right.isValid():
+            return
+        item_selection = QItemSelection(top_left, bottom_right)
+        from PyQt5.QtCore import QItemSelectionModel
+        flag = QItemSelectionModel.Select if select else QItemSelectionModel.Deselect
+        sm.select(item_selection, flag)
