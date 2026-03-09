@@ -4,6 +4,47 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.15.3] - 2026-03-09
+
+### ⚡ Optimisation SQLite — Requêtes pièces et index
+
+#### Remplacement JOIN → sous-requête (×350 plus rapide sur LIKE)
+
+**Problème résolu** : Les recherches par référence de pièce utilisaient un `JOIN` entre `piece_associations` et `pieces`, générant un scan complet non-optimal (~813ms sur 523k enregistrements).
+
+**Solution implémentée** :
+- Toutes les conditions de recherche pièce migrent vers une sous-requête IN :
+  ```sql
+  -- Avant (813ms) :
+  SELECT DISTINCT pa.appareil_id FROM piece_associations pa
+  JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?
+  -- Après (2.3ms) :
+  SELECT pa.appareil_id FROM piece_associations pa
+  WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)
+  ```
+- Appliqué à toutes les variantes : LIKE avec DISTINCT, LIKE sans DISTINCT, égalité exacte (=)
+
+#### Ajout des index composites manquants dans `_create_indexes()`
+
+Les index ci-dessous existaient déjà dans la DB mais n'étaient pas recréés au démarrage :
+- `idx_appareils_search_composite` : `(ref_modele, commercial_ref, other_ref)`
+- `idx_appareils_type_manufacturer` : `(type, manufacturer)`
+- `idx_appareils_search_performance` : `(type, manufacturer, ref_modele)`
+- `idx_pieces_ref_description` : `(ref_piece, description)`
+- `idx_piece_assoc_composite` : `(appareil_id, piece_id)`
+- `idx_piece_assoc_reverse` : `(piece_id, appareil_id)` ← **critique pour les sous-requêtes**
+- `idx_piece_assoc_performance` : `(appareil_id, piece_id)`
+
+**Résultats** :
+- ✅ Recherche LIKE pièce : 813ms → 2.3ms (**×350 plus rapide**)
+- ✅ Recherche exacte pièce : 5ms → 1ms (**×5 plus rapide**)
+- ✅ Index critiques garantis présents après chaque démarrage
+
+**Fichier modifié** :
+- `src/data/database_manager.py` : sous-requêtes + `_create_indexes()` complété
+
+---
+
 ## [3.15.2] - 2026-03-09
 
 ### 🐛 Correction autocomplétion

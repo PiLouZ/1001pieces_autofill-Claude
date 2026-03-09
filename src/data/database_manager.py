@@ -174,7 +174,7 @@ class DatabaseManager:
             if Config.SEARCH_PIECES_ONLY:
                 return {
                     'query_type': 'pieces_only',
-                    'condition': "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)",
+                    'condition': "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))",
                     'params': [f"%{term}%"]
                 }
 
@@ -183,7 +183,7 @@ class DatabaseManager:
 
             # Recherche LIKE classique (plus lente)
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
             return {
                 'query_type': 'like',
                 'condition': f"({' OR '.join(search_conditions)})",
@@ -209,12 +209,12 @@ class DatabaseManager:
             if Config.SEARCH_PIECES_ONLY:
                 return {
                     'query_type': 'pieces_only',
-                    'condition': "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)",
+                    'condition': "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))",
                     'params': [f"%{term}%"]
                 }
 
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
             return {
                 'condition': f"({' OR '.join(search_conditions)})",
                 'params': [f"%{term}%"] * (len(Config.DB_HEADERS) + 1)
@@ -229,7 +229,7 @@ class DatabaseManager:
             # Phase 5: Recherche uniquement dans les pièces associées
             if Config.SEARCH_PIECES_ONLY:
                 pieces_conditions = [
-                    "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                    "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
                     for _ in terms
                 ]
                 return {
@@ -244,7 +244,7 @@ class DatabaseManager:
             for term in terms:
                 # Chaque terme doit être trouvé dans au moins une colonne
                 term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+                term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
 
                 and_conditions.append(f"({' OR '.join(term_conditions)})")
                 all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
@@ -271,13 +271,13 @@ class DatabaseManager:
                         continue
                     if group['type'] == 'and':
                         and_conds = [
-                            "a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                            "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
                             for _ in g_terms
                         ]
                         group_conditions.append(f"({' AND '.join(and_conds)})")
                         all_params.extend([f"%{t}%" for t in g_terms])
                     else:  # simple
-                        group_conditions.append("a.id IN (SELECT DISTINCT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+                        group_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
                         all_params.append(f"%{g_terms[0]}%")
                 if group_conditions:
                     return {
@@ -301,7 +301,7 @@ class DatabaseManager:
                     for term in terms:
                         # Chaque terme doit être trouvé dans au moins une colonne
                         term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                        term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+                        term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
 
                         and_conditions.append(f"({' OR '.join(term_conditions)})")
                         all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
@@ -318,7 +318,7 @@ class DatabaseManager:
                     term = terms[0]  # Premier terme du groupe simple
                     # Chercher le terme dans toutes les colonnes
                     term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                    term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)")
+                    term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
 
                     group_conditions.append(f"({' OR '.join(term_conditions)})")
                     all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
@@ -573,16 +573,27 @@ class DatabaseManager:
     def _create_indexes(self):
         """Créer les index pour optimiser les performances"""
         indexes = [
+            # Index simples appareils
             "CREATE INDEX IF NOT EXISTS idx_appareils_type ON appareils(type)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_manufacturer ON appareils(manufacturer)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_ref_modele ON appareils(ref_modele)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_commercial_ref ON appareils(commercial_ref)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_other_ref ON appareils(other_ref)",
             "CREATE INDEX IF NOT EXISTS idx_appareils_category ON appareils(category)",
-            "CREATE INDEX IF NOT EXISTS idx_appareils_id_desc ON appareils(id DESC)",  # Pour ORDER BY id DESC
+            "CREATE INDEX IF NOT EXISTS idx_appareils_id_desc ON appareils(id DESC)",
+            # Index composites appareils (exports et filtres multi-colonnes)
+            "CREATE INDEX IF NOT EXISTS idx_appareils_search_composite ON appareils (ref_modele, commercial_ref, other_ref)",
+            "CREATE INDEX IF NOT EXISTS idx_appareils_type_manufacturer ON appareils (type, manufacturer)",
+            "CREATE INDEX IF NOT EXISTS idx_appareils_search_performance ON appareils(type, manufacturer, ref_modele)",
+            # Index pièces
             "CREATE INDEX IF NOT EXISTS idx_pieces_ref ON pieces(ref_piece)",
+            "CREATE INDEX IF NOT EXISTS idx_pieces_ref_description ON pieces (ref_piece, description)",
+            # Index piece_associations — idx_piece_assoc_reverse est critique pour les sous-requêtes de recherche
             "CREATE INDEX IF NOT EXISTS idx_piece_associations_piece ON piece_associations(piece_id)",
-            "CREATE INDEX IF NOT EXISTS idx_piece_associations_appareil ON piece_associations(appareil_id)"
+            "CREATE INDEX IF NOT EXISTS idx_piece_associations_appareil ON piece_associations(appareil_id)",
+            "CREATE INDEX IF NOT EXISTS idx_piece_assoc_composite ON piece_associations (appareil_id, piece_id)",
+            "CREATE INDEX IF NOT EXISTS idx_piece_assoc_reverse ON piece_associations (piece_id, appareil_id)",
+            "CREATE INDEX IF NOT EXISTS idx_piece_assoc_performance ON piece_associations(appareil_id, piece_id)",
         ]
         
         for index_query in indexes:
@@ -855,9 +866,9 @@ class DatabaseManager:
                     if search_condition.get('query_type') in ['exact', 'prefix']:
                         # Pour les requêtes optimisées, extraire juste la condition WHERE
                         if search_condition['query_type'] == 'exact':
-                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
                         else:  # prefix
-                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
                         
                         conditions.append(condition)
                         params.extend(search_condition['params'])
@@ -939,9 +950,9 @@ class DatabaseManager:
                 elif search_condition.get('query_type') in ['exact', 'prefix']:
                     # Pour les requêtes optimisées, extraire juste la condition WHERE
                     if search_condition['query_type'] == 'exact':
-                        condition = "(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                        condition = "(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
                     else:  # prefix
-                        condition = "(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                        condition = "(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
 
                     conditions.append(condition)
                     params.extend(search_condition['params'])
@@ -1950,9 +1961,9 @@ class DatabaseManager:
                 if search_condition.get('query_type') in ['exact', 'prefix']:
                     # Pour les requêtes optimisées, extraire juste la condition WHERE
                     if search_condition['query_type'] == 'exact':
-                        condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                        condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
                     else:  # prefix
-                        condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                        condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
 
                     conditions.append(condition)
                     params.extend(search_condition['params'])
@@ -2151,9 +2162,9 @@ class DatabaseManager:
                 if search_condition:
                     if search_condition.get('query_type') in ['exact', 'prefix']:
                         if search_condition['query_type'] == 'exact':
-                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece = ?)"
+                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
                         else:  # prefix
-                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id WHERE p.ref_piece LIKE ?)"
+                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
                         conditions.append(condition)
                         params.extend(search_condition['params'])
                     else:
