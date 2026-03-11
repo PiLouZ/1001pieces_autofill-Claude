@@ -15,7 +15,7 @@ Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 | 2 | Perf | `processEvents()` dans une boucle | Faible | Élevé | ✅ |
 | 3 | Perf | Recherche linéaire `find_row_by_db_id()` | Faible | Moyen | ✅ |
 | 4 | Perf | `load_data()` + `count_data()` séquentiels | Moyen | Moyen | ✅ |
-| 5 | Perf | Requêtes LIKE `%terme%` sans index | Élevé | Moyen | ⬜ |
+| 5 | Perf | Requêtes LIKE `%terme%` sans index | Élevé | Moyen | ✅ |
 | 6 | Perf | Pas de virtual scrolling (fetchMore) | Élevé | Moyen | ⬜ |
 | 7 | UX | Message "aucun résultat" | Faible | Moyen | ✅ |
 | 8 | UX | Masquer la pagination si inutile | Faible | Faible | ✅ |
@@ -100,7 +100,7 @@ Option B : exécuter les deux requêtes en parallèle via deux workers.
 
 ---
 
-### 5 — Requêtes LIKE `%terme%` sans index ⬜
+### 5 — Requêtes LIKE `%terme%` sans index ✅
 
 **Catégorie** : Performance
 **Effort** : Moyen · **Impact** : Moyen
