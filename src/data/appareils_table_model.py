@@ -25,6 +25,12 @@ class AppareillsTableModel(QAbstractTableModel):
     Signaux :
         cell_edited(row, col, old_value, new_value) — émis par setData(),
         remplace le signal itemChanged de QTableWidget.
+
+    Virtual scrolling (USE_VIRTUAL_SCROLL) :
+        _display_count : nombre de lignes actuellement exposées à la vue.
+        rowCount() retourne _display_count (pas len(_records)).
+        canFetchMore() / fetchMore() révèlent FETCH_CHUNK lignes supplémentaires
+        quand l'utilisateur approche du bas de liste — sans requête DB.
     """
 
     # Signal custom — remplace itemChanged de QTableWidget
@@ -33,6 +39,7 @@ class AppareillsTableModel(QAbstractTableModel):
     def __init__(self, main_window=None, parent=None):
         super().__init__(parent)
         self._records = []            # List[Tuple]: (db_id, col1..colN, pieces_count)
+        self._display_count = 0       # Lignes actuellement visibles (virtual scroll)
         self._headers = Config.UI_HEADERS
         self._main_window = main_window
         self._search_term = None
@@ -40,13 +47,34 @@ class AppareillsTableModel(QAbstractTableModel):
     # ── API Qt obligatoire ───────────────────────────────────────────────────
 
     def rowCount(self, parent=QModelIndex()) -> int:
-        return len(self._records)
+        if parent.isValid():
+            return 0
+        return self._display_count
 
     def columnCount(self, parent=QModelIndex()) -> int:
         return len(self._headers)
 
+    def canFetchMore(self, parent=QModelIndex()) -> bool:
+        if parent.isValid():
+            return False
+        if not Config.USE_VIRTUAL_SCROLL:
+            return False
+        return self._display_count < len(self._records)
+
+    def fetchMore(self, parent=QModelIndex()):
+        """Révèle FETCH_CHUNK lignes supplémentaires depuis _records (déjà en mémoire)."""
+        if parent.isValid():
+            return
+        remaining = len(self._records) - self._display_count
+        to_fetch = min(Config.FETCH_CHUNK, remaining)
+        if to_fetch <= 0:
+            return
+        self.beginInsertRows(QModelIndex(), self._display_count, self._display_count + to_fetch - 1)
+        self._display_count += to_fetch
+        self.endInsertRows()
+
     def data(self, index, role=Qt.DisplayRole):
-        if not index.isValid() or index.row() >= len(self._records):
+        if not index.isValid() or index.row() >= self._display_count:
             return None
         row, col = index.row(), index.column()
         record = self._records[row]
@@ -82,6 +110,8 @@ class AppareillsTableModel(QAbstractTableModel):
         if not index.isValid() or role != Qt.EditRole:
             return False
         row, col = index.row(), index.column()
+        if row >= self._display_count:
+            return False
         old_value = self.data(index, Qt.DisplayRole) or ""
         new_value = str(value)
         record = list(self._records[row])
@@ -93,7 +123,7 @@ class AppareillsTableModel(QAbstractTableModel):
         return True
 
     def flags(self, index) -> Qt.ItemFlags:
-        if not index.isValid():
+        if not index.isValid() or index.row() >= self._display_count:
             return Qt.NoItemFlags
         if index.column() == len(Config.DB_HEADERS):    # Nb Pièces — lecture seule
             return Qt.ItemIsEnabled | Qt.ItemIsSelectable
@@ -112,11 +142,16 @@ class AppareillsTableModel(QAbstractTableModel):
     def load_records(self, records: list):
         """Charge un lot d'enregistrements et réinitialise le modèle.
 
-        Remplace setRowCount(n) + boucle setItem(). Une seule ligne d'appel.
-        Émet modelReset pour forcer le rafraîchissement de la vue.
+        Avec USE_VIRTUAL_SCROLL, expose seulement FETCH_INITIAL lignes
+        initialement ; fetchMore() révèle la suite au fur et à mesure.
+        Sans virtual scroll, toutes les lignes sont exposées immédiatement.
         """
         self.beginResetModel()
         self._records = list(records)
+        if Config.USE_VIRTUAL_SCROLL:
+            self._display_count = min(Config.FETCH_INITIAL, len(self._records))
+        else:
+            self._display_count = len(self._records)
         self.endResetModel()
 
     def get_db_id(self, row: int):
@@ -154,14 +189,18 @@ class AppareillsTableModel(QAbstractTableModel):
 
         Utilisé exclusivement par PiecesCountService après association/suppression
         de pièce. N'est pas une édition utilisateur → pas de sauvegarde déclenchée.
+        Si la ligne n'est pas encore visible (virtual scroll), met à jour _records
+        silencieusement — elle affichera la bonne valeur quand elle deviendra visible.
         """
         if not (0 <= row < len(self._records)):
             return
         record = list(self._records[row])
         record[-1] = count
         self._records[row] = tuple(record)
-        idx = self.index(row, len(self._headers) - 1)
-        self.dataChanged.emit(idx, idx, [Qt.DisplayRole, Qt.BackgroundRole, Qt.ToolTipRole])
+        # Émettre dataChanged uniquement si la ligne est visible
+        if row < self._display_count:
+            idx = self.index(row, len(self._headers) - 1)
+            self.dataChanged.emit(idx, idx, [Qt.DisplayRole, Qt.BackgroundRole, Qt.ToolTipRole])
 
     def find_row_by_db_id(self, db_id: int):
         """Retourne l'index de ligne pour un db_id donné, ou None si absent."""
@@ -177,9 +216,9 @@ class AppareillsTableModel(QAbstractTableModel):
         des BackgroundRole sur toutes les cellules.
         """
         self._search_term = term
-        if self._records:
+        if self._display_count > 0:
             self.dataChanged.emit(
                 self.index(0, 0),
-                self.index(len(self._records) - 1, len(self._headers) - 1),
+                self.index(self._display_count - 1, len(self._headers) - 1),
                 [Qt.BackgroundRole]
             )
