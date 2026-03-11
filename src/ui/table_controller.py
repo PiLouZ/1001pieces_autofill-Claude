@@ -107,7 +107,7 @@ class TableController:
         
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
-        self.model = None  # AppareillsTableModel — uniquement si USE_TABLE_VIEW = True
+        self.model = None  # AppareillsTableModel — initialisé par create_table_widget()
         self.filter_widget = None
         self.filter_layout = None
         
@@ -217,20 +217,15 @@ class TableController:
         self.filter_widget = filter_widget
         self.filter_layout = filter_layout
         
-        # Tableau principal — deux chemins selon le feature flag USE_TABLE_VIEW
-        if Config.USE_TABLE_VIEW:
-            from ..data.appareils_table_model import AppareillsTableModel
-            from .custom_table_view import CustomTableView
-            self.model = AppareillsTableModel(self.parent_window)
-            self.table = CustomTableView()
-            self.table.setModel(self.model)
-            # Headers gérés par model.headerData() — pas de setHorizontalHeaderLabels()
-        else:
-            self.table = self.table_widget_service.create_custom_table()
-            self.table.setColumnCount(len(Config.UI_HEADERS))
-            self.table.setHorizontalHeaderLabels(Config.UI_HEADERS)
+        # Tableau principal — QTableView + AppareillsTableModel
+        from ..data.appareils_table_model import AppareillsTableModel
+        from .custom_table_view import CustomTableView
+        self.model = AppareillsTableModel(self.parent_window)
+        self.table = CustomTableView()
+        self.table.setModel(self.model)
+        # Headers gérés par model.headerData() — pas de setHorizontalHeaderLabels()
 
-        # Configuration commune QTableWidget / QTableView
+        # Configuration QTableView
         self.table.setAcceptDrops(True)
         self.table.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
 
@@ -334,17 +329,13 @@ class TableController:
         """Connecter les signaux de sélection du tableau à un callback"""
         if not self.table:
             return
-        if Config.USE_TABLE_VIEW:
-            # QTableView : signaux via selectionModel()
-            self.table.selectionModel().selectionChanged.connect(
-                lambda selected, deselected: on_selection_changed_callback()
-            )
-            self.table.selectionModel().currentChanged.connect(
-                lambda current, previous: on_selection_changed_callback()
-            )
-        else:
-            self.table.itemSelectionChanged.connect(on_selection_changed_callback)
-            self.table.currentCellChanged.connect(lambda: on_selection_changed_callback())
+        # QTableView : signaux via selectionModel()
+        self.table.selectionModel().selectionChanged.connect(
+            lambda selected, deselected: on_selection_changed_callback()
+        )
+        self.table.selectionModel().currentChanged.connect(
+            lambda current, previous: on_selection_changed_callback()
+        )
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur chargement données tableau")
     def load_data(self, search_term: str = None, is_search: bool = False):

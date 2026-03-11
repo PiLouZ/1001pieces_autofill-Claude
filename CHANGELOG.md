@@ -4,6 +4,50 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.17.0] - 2026-03-11
+
+### 🧹 Migration QTableView — Phase 5 (nettoyage final)
+
+Suppression de tout le code QTableWidget mort suite à la migration. Le flag `USE_TABLE_VIEW` est retiré — l'architecture QTableView est désormais permanente et exclusive.
+
+#### Suppressions
+
+**`table_fill_service.py`** — réduit de 223 à 38 lignes :
+- Supprimé : `fill_single_row`, `create_table_item`, `apply_search_highlight`, `_safe_fill_chunked_core`, `_safe_fill_standard_core`, `_safe_regex_search`, `_update_progress_with_debounce`
+- `fill_table_chunked` / `fill_table_standard` → délèguent directement à `model.load_records()`
+- `get_db_id_from_row` → lit depuis `model.get_db_id(row)` (plus de compat `table.item()`)
+
+**`table_controller.py`** :
+- Supprimé : branche `else` QTableWidget dans `create_table_widget()`
+- Supprimé : branche `else` QTableWidget dans `connect_selection_signals()`
+
+**`cell_editing_service.py`** :
+- Supprimé : branche QTableWidget dans `_try_auto_create_row` (mise à jour ID)
+- Supprimé : branche QTableWidget dans `_commit_batch` (lot d'éditions)
+
+**`drag_handle_service.py`** :
+- 4 helpers simplifiés (suppression `else`) : `_read_cell`, `_write_cell`, `_get_current_selection`, `_apply_selection`
+- Supprimé : branche QTableWidget dans `_save_auto_fill_changes`
+- Import nettoyé : `QTableWidgetItem`, `QTableWidgetSelectionRange` retirés
+
+**`main_refactored.py`** :
+- Supprimé : 7 branches `else` QTableWidget dispersées
+- `_get_cell_text`, `_set_cell_value_in_table`, `_safe_check_selection`, `_safe_position_drag_handle_at_selection` simplifiés
+- `_fill_empty_fields` et `_refresh_data` : `blockSignals` direct sur le modèle sans condition
+
+**`config.py`** :
+- Supprimé : `USE_TABLE_VIEW = True` — flag de migration devenu inutile
+
+**Fichiers modifiés** :
+- `src/core/config.py` (version, suppression USE_TABLE_VIEW)
+- `src/services/table_fill_service.py`
+- `src/services/cell_editing_service.py`
+- `src/services/drag_handle_service.py`
+- `src/ui/table_controller.py`
+- `src/ui/main_refactored.py`
+
+---
+
 ## [3.16.0] - 2026-03-11
 
 ### 🏗️ Migration QTableView — Phases 4a/4b/4c activées en production

@@ -14,8 +14,7 @@ import time
 from typing import Optional
 
 from PyQt5.QtCore import QItemSelection, QItemSelectionModel
-from ..ui.qt_imports import (QWidget, QTableWidgetItem, QTableWidgetSelectionRange,
-                            Qt, QTimer, QPainter, QPen, QColor)
+from ..ui.qt_imports import (QWidget, Qt, QTimer, QPainter, QPen, QColor)
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -56,60 +55,43 @@ class DragHandle(QWidget):
     # ── Helpers d'accès table unifiés (QTableWidget / QTableView) ───────────
 
     def _read_cell(self, row: int, col: int) -> str:
-        """Lire la valeur d'une cellule — fonctionne en mode QTableWidget et QTableView."""
-        if Config.USE_TABLE_VIEW:
-            model = self.table.model()
-            return (model.data(model.index(row, col), Qt.DisplayRole) or "") if model else ""
-        item = self.table.item(row, col)
-        return item.text() if item else ""
+        """Lire la valeur d'une cellule depuis le modèle."""
+        model = self.table.model()
+        return (model.data(model.index(row, col), Qt.DisplayRole) or "") if model else ""
 
     def _write_cell(self, row: int, col: int, value: str) -> bool:
-        """Écrire une valeur dans une cellule. Retourne True si succès.
-
-        Mode QTableView : model.setData() → émet cell_edited → sauvegarde auto.
-        Mode QTableWidget : table.setItem() → émet itemChanged → même pipeline.
-        """
-        if Config.USE_TABLE_VIEW:
-            model = self.table.model()
-            if not model:
-                return False
-            idx = model.index(row, col)
-            return bool(
-                idx.isValid()
-                and (model.flags(idx) & Qt.ItemIsEditable)
-                and model.setData(idx, value, Qt.EditRole)
-            )
-        self.table.setItem(row, col, QTableWidgetItem(value))
-        return True
+        """Écrire une valeur dans une cellule via model.setData() → émet cell_edited → sauvegarde auto."""
+        model = self.table.model()
+        if not model:
+            return False
+        idx = model.index(row, col)
+        return bool(
+            idx.isValid()
+            and (model.flags(idx) & Qt.ItemIsEditable)
+            and model.setData(idx, value, Qt.EditRole)
+        )
 
     def _get_current_selection(self):
         """Retourne la sélection courante (objet avec topRow/bottomRow/leftColumn/rightColumn), ou None."""
-        if Config.USE_TABLE_VIEW:
-            sm = self.table.selectionModel()
-            if not sm or not sm.hasSelection():
-                return None
-            indexes = sm.selectedIndexes()
-            if not indexes:
-                return None
-            rows = [idx.row() for idx in indexes]
-            cols = [idx.column() for idx in indexes]
-            # _SelectionRangeCompat expose la même interface que QTableWidgetSelectionRange
-            from ..ui.custom_table_view import _SelectionRangeCompat
-            return _SelectionRangeCompat(min(rows), min(cols), max(rows), max(cols))
-        ranges = self.table.selectedRanges()
-        return ranges[0] if ranges else None
+        sm = self.table.selectionModel()
+        if not sm or not sm.hasSelection():
+            return None
+        indexes = sm.selectedIndexes()
+        if not indexes:
+            return None
+        rows = [idx.row() for idx in indexes]
+        cols = [idx.column() for idx in indexes]
+        from ..ui.custom_table_view import _SelectionRangeCompat
+        return _SelectionRangeCompat(min(rows), min(cols), max(rows), max(cols))
 
     def _apply_selection(self, top: int, left: int, bottom: int, right: int) -> None:
-        """Sélectionner une plage de cellules."""
-        if Config.USE_TABLE_VIEW:
-            model = self.table.model()
-            sm = self.table.selectionModel()
-            if not model or not sm:
-                return
-            sel = QItemSelection(model.index(top, left), model.index(bottom, right))
-            sm.select(sel, QItemSelectionModel.ClearAndSelect)
-        else:
-            self.table.setRangeSelected(QTableWidgetSelectionRange(top, left, bottom, right), True)
+        """Sélectionner une plage de cellules via QItemSelection."""
+        model = self.table.model()
+        sm = self.table.selectionModel()
+        if not model or not sm:
+            return
+        sel = QItemSelection(model.index(top, left), model.index(bottom, right))
+        sm.select(sel, QItemSelectionModel.ClearAndSelect)
 
     # ────────────────────────────────────────────────────────────────────────
 
@@ -352,19 +334,11 @@ class DragHandle(QWidget):
 
             for row in modified_rows:
                 for col in range(start_col, end_col + 1):
-                    if Config.USE_TABLE_VIEW:
-                        # Mode QTableView : item.row()==-1 sur les items compat → passer par EventDrivenSaveService
-                        if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
-                            new_value = self.main_window._get_cell_text(row, col)
-                            self.main_window.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
-                            saved_count += 1
-                            cells_to_clean.append((row, col))
-                    else:
-                        item = self.table.item(row, col)
-                        if item and hasattr(self.main_window, 'cell_editing_service'):
-                            if self.main_window.cell_editing_service.update_cell_in_db(item, skip_history=True):
-                                saved_count += 1
-                                cells_to_clean.append((row, col))
+                    if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
+                        new_value = self.main_window._get_cell_text(row, col)
+                        self.main_window.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
+                        saved_count += 1
+                        cells_to_clean.append((row, col))
 
             # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
             if hasattr(self.main_window, 'modified_cells') and cells_to_clean:

@@ -111,20 +111,9 @@ class CellEditingService(QObject):
                 db_id = self.db_manager.insert_appareil(empty_data)
 
                 if db_id:
-                    # Mettre à jour le db_id dans le modèle / la table
-                    from ..core.config import Config
-                    if Config.USE_TABLE_VIEW and hasattr(self.table, 'model') and self.table.model():
-                        # Mode QTableView : mettre à jour le record[0] via le modèle
+                    # Propager le nouvel ID dans le modèle
+                    if hasattr(self.table, 'model') and self.table.model():
                         self.table.model().update_record_db_id(row, db_id)
-                    else:
-                        # Mode QTableWidget : mettre à jour l'item de la colonne 0
-                        id_item = self.table.item(row, 0)
-                        if not id_item:
-                            from ..ui.qt_imports import QTableWidgetItem
-                            id_item = QTableWidgetItem(str(db_id))
-                            self.table.setItem(row, 0, id_item)
-                        else:
-                            id_item.setText(str(db_id))
 
                     app_logger.info(f"Auto-création ligne réussie - ID: {db_id} pour cellule ({row}, {col})")
                     return True
@@ -301,22 +290,15 @@ class CellEditingService(QObject):
 
         success_count = 0
 
-        from ..core.config import Config
         from ..ui.qt_imports import Qt
 
         for (row, col), (old_value, new_value) in self.pending_changes.items():
-            if Config.USE_TABLE_VIEW and hasattr(self.table, 'model') and self.table.model():
-                # Mode QTableView : setData() déclenche cell_edited → EventDrivenSaveService
-                model = self.table.model()
+            # model.setData() déclenche cell_edited → EventDrivenSaveService
+            model = self.table.model()
+            if model:
                 idx = model.index(row, col)
                 if idx.isValid() and model.flags(idx) & Qt.ItemIsEditable:
                     if model.setData(idx, new_value, Qt.EditRole):
-                        success_count += 1
-            else:
-                item = self.table.item(row, col)
-                if item:
-                    item.setText(new_value)
-                    if self.update_cell_in_db(item, skip_history=True):
                         success_count += 1
 
         # Nettoyer l'état du lot

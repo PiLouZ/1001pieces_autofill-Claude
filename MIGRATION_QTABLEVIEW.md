@@ -18,8 +18,8 @@
 | 4a — `cell_editing_service` | ✅ Fait | `src/services/cell_editing_service.py` | update_record_db_id + batch editing |
 | 4b — Signaux `main_refactored` | ✅ Fait | `src/ui/main_refactored.py` | _on_cell_changed_model complet, troncs communs extraits |
 | 4c — Données `main_refactored` | ✅ Fait | `src/ui/main_refactored.py` | _get_cell_text + _set_cell_value_in_table |
-| 4d — `drag_handle_service` | ⬜ À faire | — | Les helpers compat tiennent pour l'instant |
-| 5 — Nettoyage final | ⬜ À faire | — | |
+| 4d — `drag_handle_service` | ✅ Fait | `src/services/drag_handle_service.py` | 4 helpers mode-agnostiques (_read_cell, _write_cell, _get_current_selection, _apply_selection) |
+| 5 — Nettoyage final | ✅ Fait | v3.17.0 | USE_TABLE_VIEW supprimé, code QTableWidget mort retiré, architecture QTableView permanente |
 
 Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 
@@ -27,7 +27,7 @@ Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 
 ## Principes directeurs
 
-1. **Feature flag `USE_TABLE_VIEW = False`** dans `config.py` — bascule instantanément réversible
+1. ~~**Feature flag `USE_TABLE_VIEW`**~~ — supprimé en v3.17.0, migration terminée
 2. **Strangler Fig** — les deux implémentations coexistent, on migre service par service
 3. **Tests avant code** — chaque phase commence par les tests qui valident ce qui précède
 4. **Jamais de big bang** — une seule sous-phase par session de travail

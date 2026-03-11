@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.16.0"
+    VERSION = "3.17.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -77,10 +77,6 @@ class Config:
 
     # Feature Flags - Refactoring Phase 1
     USE_NEW_AUTO_SAVE_MANAGER = False  # Migration AutoSaveManager - REPORTÉE (cycle init complexe)
-
-    # Feature Flag - Migration QTableView (Phase 5)
-    # NE PAS PASSER À True EN PRODUCTION — migration progressive, voir MIGRATION_QTABLEVIEW.md
-    USE_TABLE_VIEW = True   # Migration QTableView — Phase 4 en cours de validation
 
     # Feature Flags - Refactoring Phase 3
     USE_NEW_SORTING_FILTERING_SERVICE = True  # Migration SortingFilteringService - PHASE 3.1 ACTIVÉE

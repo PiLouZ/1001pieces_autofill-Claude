@@ -441,15 +441,9 @@ class MainWindow(QMainWindow):
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
         
-        # CRUCIAL: Reconnecter les signaux de modification des cellules
-        if Config.USE_TABLE_VIEW:
-            # QTableView : itemChanged → model.cell_edited (signal custom AppareillsTableModel)
-            # currentItemChanged → selectionModel().currentChanged (déjà connecté via connect_selection_signals)
-            if self.table_controller.model is not None:
-                self.table_controller.model.cell_edited.connect(self._on_cell_changed_model)
-        else:
-            self.table.itemChanged.connect(self._on_cell_changed)
-            self.table.currentItemChanged.connect(self._on_current_item_changed)
+        # Connecter cell_edited du modèle → handler de modification
+        if self.table_controller.model is not None:
+            self.table_controller.model.cell_edited.connect(self._on_cell_changed_model)
         
         # Configurer la poignée de duplication après création du tableau
         self._setup_drag_handle()
@@ -886,16 +880,11 @@ class MainWindow(QMainWindow):
         )
 
         if selected_value is not None:
-            if Config.USE_TABLE_VIEW:
-                # Mode QTableView : écrire dans le modèle → cell_edited → pipeline complet
-                row = self.table.currentRow()
-                model = self.table_controller.model
-                if model:
-                    model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
-            else:
-                # Mode QTableWidget : mettre à jour l'item et déclencher la sauvegarde
-                current_item.setText(selected_value)
-                self._on_cell_changed(current_item)
+            # Écrire dans le modèle → cell_edited → pipeline complet (save, undo, etc.)
+            row = self.table.currentRow()
+            model = self.table_controller.model
+            if model:
+                model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
 
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
@@ -921,39 +910,25 @@ class MainWindow(QMainWindow):
 
     def _get_cell_text(self, row: int, col: int) -> str:
         """Lire le texte d'une cellule — fonctionne en mode QTableWidget et QTableView."""
-        if Config.USE_TABLE_VIEW:
-            model = self.table_controller.model
-            if model:
-                return model.data(model.index(row, col), Qt.DisplayRole) or ""
-            return ""
-        item = self.table.item(row, col)
-        return item.text() if item else ""
+        model = self.table_controller.model
+        if model:
+            return model.data(model.index(row, col), Qt.DisplayRole) or ""
+        return ""
 
     def _set_cell_value_in_table(self, row: int, col: int, value: str) -> None:
         """Écrire une valeur dans la table sans déclencher les signaux d'édition.
 
-        Bloque les signaux sur le bon objet selon le mode actif :
-        - QTableView : model.blockSignals() + model.setData() + dataChanged manuel
-        - QTableWidget : table.blockSignals() + item.setText()
-
-        Note QTableView : blockSignals() bloque aussi dataChanged, donc la vue ne
-        se rafraîchirait pas sans l'émission manuelle de dataChanged après déblocage.
+        Bloque les signaux du modèle pour éviter le déclenchement de cell_edited
+        (undo/redo silencieux). Émet dataChanged manuellement pour rafraîchir la vue.
         """
-        if Config.USE_TABLE_VIEW:
-            model = self.table_controller.model
-            if model:
-                model.blockSignals(True)
-                model.setData(model.index(row, col), value)
-                model.blockSignals(False)
-                # Notifier la vue manuellement (dataChanged était bloqué)
-                idx = model.index(row, col)
-                model.dataChanged.emit(idx, idx, [Qt.DisplayRole])
-        else:
-            item = self.table.item(row, col)
-            if item:
-                self.table.blockSignals(True)
-                item.setText(value)
-                self.table.blockSignals(False)
+        model = self.table_controller.model
+        if model:
+            model.blockSignals(True)
+            model.setData(model.index(row, col), value)
+            model.blockSignals(False)
+            # Notifier la vue manuellement (dataChanged était bloqué)
+            idx = model.index(row, col)
+            model.dataChanged.emit(idx, idx, [Qt.DisplayRole])
 
     # ────────────────────────────────────────────────────────────────────────
 
@@ -1143,35 +1118,20 @@ class MainWindow(QMainWindow):
     @handle_drag_operation_errors(return_value=None, title="Erreur vérification sélection")
     def _safe_check_selection(self):
         """Vérifier la sélection et cacher le drag handle si vide"""
-        if Config.USE_TABLE_VIEW:
-            sm = self.table.selectionModel()
-            if not sm or not sm.hasSelection():
-                self.drag_handle.hide()
-                return None
-            return sm.selectedIndexes()
-        else:
-            selected = self.table.selectedRanges()
-            if not selected:
-                self.drag_handle.hide()
-                return None
-            return selected
+        sm = self.table.selectionModel()
+        if not sm or not sm.hasSelection():
+            self.drag_handle.hide()
+            return None
+        return sm.selectedIndexes()
 
     @handle_drag_operation_errors(return_value=None, title="Erreur positionnement drag handle")
     def _safe_position_drag_handle_at_selection(self, selected):
         """Positionner le drag handle à la sélection"""
-        if Config.USE_TABLE_VIEW:
-            # selected = liste de QModelIndex
-            bottom_row = max(idx.row() for idx in selected)
-            right_col = max(idx.column() for idx in selected)
-            model_idx = self.table.model().index(bottom_row, right_col)
-            rect = self.table.visualRect(model_idx)
-        else:
-            sel_range = selected[0]
-            bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
-            if not bottom_right_item:
-                self.drag_handle.hide()
-                return
-            rect = self.table.visualItemRect(bottom_right_item)
+        # selected = liste de QModelIndex (depuis selectionModel().selectedIndexes())
+        bottom_row = max(idx.row() for idx in selected)
+        right_col = max(idx.column() for idx in selected)
+        model_idx = self.table.model().index(bottom_row, right_col)
+        rect = self.table.visualRect(model_idx)
 
         if rect.isValid():
             handle_x = rect.right() - self.drag_handle.width() + 1
@@ -1390,20 +1350,11 @@ class MainWindow(QMainWindow):
 
             for row in modified_rows:
                 for col in range(start_col, end_col + 1):
-                    if Config.USE_TABLE_VIEW:
-                        # Mode QTableView : passer directement par EventDrivenSaveService
-                        # (item.row()==-1 sur les items compat → update_cell_in_db échouerait)
-                        if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
-                            new_value = self._get_cell_text(row, col)
-                            self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
-                            saved_count += 1
-                            cells_to_clean.append((row, col))
-                    else:
-                        item = self.table.item(row, col)
-                        if item and hasattr(self, 'cell_editing_service'):
-                            if self.cell_editing_service.update_cell_in_db(item, skip_history=True):
-                                saved_count += 1
-                                cells_to_clean.append((row, col))
+                    if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+                        new_value = self._get_cell_text(row, col)
+                        self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
+                        saved_count += 1
+                        cells_to_clean.append((row, col))
 
             # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
             if hasattr(self, 'modified_cells') and cells_to_clean:
@@ -1595,11 +1546,9 @@ class MainWindow(QMainWindow):
         # Préparer les données pour le service
         table_data = []
 
-        # Bloquer les signaux pendant la complétion
-        if Config.USE_TABLE_VIEW and hasattr(self.table_controller, 'model') and self.table_controller.model:
+        # Bloquer les signaux du modèle pendant la complétion
+        if self.table_controller.model:
             self.table_controller.model.blockSignals(True)
-        else:
-            self.table.blockSignals(True)
 
         # Collecter les données de toutes les lignes
         for row in range(total_rows):
@@ -1624,11 +1573,9 @@ class MainWindow(QMainWindow):
 
         result = self.data_management_service.auto_complete_empty_fields(table_data)
 
-        # Débloquer les signaux
-        if Config.USE_TABLE_VIEW and hasattr(self.table_controller, 'model') and self.table_controller.model:
+        # Débloquer les signaux du modèle
+        if self.table_controller.model:
             self.table_controller.model.blockSignals(False)
-        else:
-            self.table.blockSignals(False)
 
         # Recharger les données pour refléter les changements
         self.table_controller.load_data()
@@ -2106,13 +2053,9 @@ class MainWindow(QMainWindow):
         if clear_filters and Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
             self.sorting_filtering_service.clear_column_filters()
 
-        # Débloquer les signaux si nécessaire pour éviter les blocages
-        if Config.USE_TABLE_VIEW and hasattr(self.table_controller, 'model') and self.table_controller.model:
-            if self.table_controller.model.signalsBlocked():
-                self.table_controller.model.blockSignals(False)
-        else:
-            if self.table.signalsBlocked():
-                self.table.blockSignals(False)
+        # Débloquer les signaux du modèle si nécessaire pour éviter les blocages
+        if self.table_controller.model and self.table_controller.model.signalsBlocked():
+            self.table_controller.model.blockSignals(False)
 
         # Recharger avec les critères appropriés
         self.table_controller.load_data(temp_search)
