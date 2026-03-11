@@ -710,8 +710,11 @@ class DatabaseManager:
         import time
         t0 = time.time()
 
-        # Vider l'index existant
-        self.cursor.execute("DELETE FROM appareils_fts")
+        # Vider l'index existant via la commande spéciale FTS5
+        # Note : DELETE FROM ne fonctionne pas sur une external content table —
+        # FTS5 doit lire les anciennes valeurs depuis la source pour mettre à jour
+        # l'index, ce qui échoue si l'index est vide ou partiel.
+        self.cursor.execute("INSERT INTO appareils_fts(appareils_fts) VALUES('delete-all')")
 
         col_names  = ', '.join(f'[{h}]' for h in Config.DB_HEADERS)
         select_cols = ', '.join(f'[{h}]' for h in Config.DB_HEADERS)
@@ -740,7 +743,7 @@ class DatabaseManager:
             if progress_callback:
                 progress_callback(total)
 
-        self.connection.commit()
+        self.conn.commit()
         elapsed = time.time() - t0
         app_logger.info(f"FTS5 rebuild : {total} enregistrements indexés en {elapsed:.1f}s")
         return total
