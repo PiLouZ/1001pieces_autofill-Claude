@@ -16,7 +16,7 @@ Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 | 3 | Perf | Recherche linéaire `find_row_by_db_id()` | Faible | Moyen | ✅ |
 | 4 | Perf | `load_data()` + `count_data()` séquentiels | Moyen | Moyen | ✅ |
 | 5 | Perf | Requêtes LIKE `%terme%` sans index | Élevé | Moyen | ✅ |
-| 6 | Perf | Pas de virtual scrolling (fetchMore) | Élevé | Moyen | ⬜ |
+| 6 | Perf | Pas de virtual scrolling (fetchMore) | Élevé | Moyen | ✅ |
 | 7 | UX | Message "aucun résultat" | Faible | Moyen | ✅ |
 | 8 | UX | Masquer la pagination si inutile | Faible | Faible | ✅ |
 | 9 | UX | Notification filtre incomplets désactivé | Faible | Faible | ✅ |
@@ -119,7 +119,7 @@ Une tentative de recherche optimisée (`terme%`) a déjà été désactivée (li
 
 ---
 
-### 6 — Pas de virtual scrolling (fetchMore) ⬜
+### 6 — Pas de virtual scrolling (fetchMore) ✅
 
 **Catégorie** : Performance
 **Effort** : Élevé · **Impact** : Moyen

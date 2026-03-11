@@ -4,6 +4,28 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.19.0] - 2026-03-11
+
+### ⚡ Virtual scrolling — Affichage progressif du tableau
+
+Chargement progressif dans `AppareillsTableModel` via `canFetchMore` / `fetchMore` de Qt. La DB charge toujours son lot complet (1000 lignes), mais le modèle n'en expose que 200 initialement et révèle les suivantes au scroll — sans requête supplémentaire.
+
+#### Modifications
+
+**`src/data/appareils_table_model.py`** :
+- `_display_count` : compteur de lignes visibles (nouveau)
+- `rowCount()` retourne `_display_count` au lieu de `len(_records)`
+- `canFetchMore()` / `fetchMore()` : révèle `FETCH_CHUNK` lignes via `beginInsertRows` / `endInsertRows`
+- `setData()`, `flags()` : guards sur `_display_count`
+- `update_pieces_count()` : `dataChanged` silencieux si ligne non encore visible
+- `set_search_term()` : `dataChanged` limité aux lignes visibles
+
+**`src/core/config.py`** :
+- `USE_VIRTUAL_SCROLL = True`, `FETCH_INITIAL = 200`, `FETCH_CHUNK = 200`
+- Fallback : `USE_VIRTUAL_SCROLL = False` → comportement identique à v3.18.0
+
+---
+
 ## [3.18.0] - 2026-03-11
 
 ### ⚡ FTS5 — Index de recherche plein texte (trigrammes)
