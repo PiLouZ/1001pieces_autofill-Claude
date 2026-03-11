@@ -61,7 +61,7 @@ class Config:
     # Optimisations Phase 3 - Recherche
     SEARCH_CACHE_SIZE = 1000  # Nombre de recherches à garder en cache
     FULLTEXT_CACHE_ENABLED = True  # Activer le cache full-text
-    SMART_CACHE_ENABLED = False  # Phase 3: Cache intelligent A/B testing - DÉSACTIVÉ par défaut
+    SMART_CACHE_ENABLED = True   # Cache LRU pour load_data — invalidé après chaque écriture
     EXACT_SEARCH_THRESHOLD = 10  # Longueur min pour recherche exacte optimisée
     SEARCH_LIMIT = 5000       # Limite pour les recherches
     
