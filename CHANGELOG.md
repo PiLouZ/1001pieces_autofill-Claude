@@ -4,6 +4,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.22.0] - 2026-03-11
+
+### ⚡ Perf — Cache COUNT(*) sans filtre (_total_count_cache)
+
+Effacer le champ de recherche déclenchait un `SELECT COUNT(*) FROM appareils` complet (598 000+ lignes, ~70ms). Ce résultat est désormais mis en cache après le premier calcul.
+
+- `_total_count_cache: Optional[int]` ajouté dans `DatabaseManager.__init__`
+- `_count_data_core()` : fast-path immédiat si aucun filtre actif et cache valide
+- `invalidate_search_cache(invalidate_total_count=True)` : purge le cache count sur insert et delete (pas sur update, le total ne change pas)
+- Résultat : 2ème appel count sans filtre → 0ms (lecture mémoire)
+
+---
+
 ## [3.21.0] - 2026-03-11
 
 ### ⚡ Perf — Cache LRU réactivé pour load_data (SMART_CACHE)
