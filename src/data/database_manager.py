@@ -985,7 +985,7 @@ class DatabaseManager:
                 pass
             raise DatabaseError(f"Erreur lors de la migration des pièces: {e}")
     
-    @handle_db_query_errors(return_value=[], log_prefix="Erreur _load_data_original")
+    @handle_db_query_errors(return_value=[], log_prefix="Erreur load_data")
     def load_data(self, search_term: Optional[str] = None,
                   column_filters: Optional[Dict[int, str]] = None,
                   limit: Optional[int] = None,
@@ -993,69 +993,61 @@ class DatabaseManager:
                   sort_column: Optional[int] = None,
                   sort_order: Optional[str] = None,
                   incomplete_filter: bool = False) -> List[Tuple]:
-        """URGENCE: Fallback vers méthode originale (régression optimisation détectée)"""
+        """Charger les données avec cache LRU optionnel (SMART_CACHE_ENABLED).
 
-        # Verrou : sérialise les accès concurrents (prefetch_worker vs thread principal)
-        # SQLite interdit l'utilisation d'une même connexion depuis plusieurs threads
+        Le cache est actif uniquement pour les requêtes sans filtres complexes
+        (column_filters, incomplete_filter). Il est invalidé après chaque écriture
+        via invalidate_search_cache().
+        """
         with self._query_lock:
-            return self._load_data_original(search_term, column_filters, limit, offset, sort_column, sort_order, incomplete_filter)
+            use_cache = (
+                Config.SMART_CACHE_ENABLED
+                and self.search_cache is not None
+                and self._should_use_cache(search_term, column_filters, incomplete_filter, limit)
+            )
 
-        # Phase 3: Cache réactivé avec support pagination - DÉSACTIVÉ TEMPORAIREMENT
-        if Config.SMART_CACHE_ENABLED and self._should_use_cache(search_term, column_filters, incomplete_filter, limit):
-            # Inclure pagination dans la clé de cache
-            cache_key_data = {
-                'term': search_term,
-                'sort': (sort_column, sort_order),
-                'pagination': (limit, offset)
-            }
-            
-            # Utiliser la méthode interne du cache avec clé complexe
-            import hashlib
-            cache_key = hashlib.md5(str(cache_key_data).encode()).hexdigest()
-            
-            if cache_key in self.search_cache.cache:
-                cached_results = self.search_cache.cache[cache_key]
-                # Déplacer vers la fin (LRU)
-                self.search_cache.cache.move_to_end(cache_key)
-                self.search_cache.hits += 1
-                # Nettoyer l'affichage des termes de recherche complexes pour le log
-                display_term = str(search_term)
-                if isinstance(search_term, dict):
-                    if 'original' in search_term:
-                        display_term = search_term['original']
-                    else:
-                        display_term = str(search_term)[:50] + '...'
-                app_logger.debug(f"🎯 CACHE HIT pour '{display_term}' (page {offset//limit+1 if limit and offset is not None else 'all'}) - {len(cached_results)} résultats")
-                return cached_results
-            
-            # Pas en cache - on mettra en cache après la requête
-            cache_this_result = cache_key
-        else:
-            cache_this_result = None
-        
-        # Utiliser la méthode optimisée
-        results = self._load_data_optimized(search_term, column_filters, limit, offset,
-                                          sort_column, sort_order, incomplete_filter)
-        
-        # Mettre en cache si nécessaire
-        if cache_this_result and len(results) <= 5000:  # Limiter taille cache
-            # Limiter la taille du cache
-            if len(self.search_cache.cache) >= self.search_cache.max_size:
-                self.search_cache.cache.popitem(last=False)  # Supprimer le plus ancien
-            
-            self.search_cache.cache[cache_this_result] = results
-            self.search_cache.misses += 1
-            page_info = f" (page {offset//limit+1})" if limit and offset is not None else " (all)"
-            # Nettoyer l'affichage des termes de recherche complexes pour le log
-            display_term = str(search_term)
-            if isinstance(search_term, dict):
-                if 'original' in search_term:
-                    display_term = search_term['original']
-                else:
-                    display_term = str(search_term)[:50] + '...'
-            app_logger.debug(f"💾 CACHE MISS pour '{display_term}'{page_info} - {len(results)} résultats mis en cache")
-        
-        return results
+            if use_cache:
+                cache_key = self._make_load_cache_key(
+                    search_term, column_filters, limit, offset,
+                    sort_column, sort_order, incomplete_filter
+                )
+                if cache_key in self.search_cache.cache:
+                    self.search_cache.cache.move_to_end(cache_key)
+                    self.search_cache.hits += 1
+                    return list(self.search_cache.cache[cache_key])
+
+            result = self._load_data_original(
+                search_term, column_filters, limit, offset,
+                sort_column, sort_order, incomplete_filter
+            )
+
+            if use_cache:
+                if len(self.search_cache.cache) >= self.search_cache.max_size:
+                    self.search_cache.cache.popitem(last=False)
+                self.search_cache.cache[cache_key] = result
+                self.search_cache.misses += 1
+
+            return result
+
+    def _make_load_cache_key(self, search_term, column_filters, limit, offset,
+                             sort_column, sort_order, incomplete_filter) -> str:
+        """Clé de cache unique pour load_data — hash MD5 de tous les paramètres."""
+        import hashlib
+        key = (
+            str(search_term),
+            str(sorted(column_filters.items()) if column_filters else []),
+            limit, offset, sort_column, sort_order, incomplete_filter
+        )
+        return hashlib.md5(str(key).encode()).hexdigest()
+
+    def invalidate_search_cache(self):
+        """Vider le cache de recherche après toute modification de données.
+
+        À appeler systématiquement après chaque écriture (update, insert, delete)
+        pour garantir que load_data ne retourne jamais de données périmées.
+        """
+        if self.search_cache:
+            self.search_cache.clear()
 
     def _should_use_cache(self, search_term: Optional[str], column_filters: Optional[Dict],
                          incomplete_filter: bool, limit: Optional[int]) -> bool:
@@ -1261,6 +1253,7 @@ class DatabaseManager:
         """
         self.cursor.execute(query, (value, db_id))
         self.conn.commit()
+        self.invalidate_search_cache()
 
         # Phase 2.3: Invalider le cache après mise à jour d'appareil
         if hasattr(self, 'cache_invalidation'):
@@ -1306,6 +1299,7 @@ class DatabaseManager:
             # Valider la transaction seulement si on l'a commencée
             if not in_transaction:
                 self.conn.commit()
+            self.invalidate_search_cache()
 
             # Phase 2.3: Invalider le cache après mise à jour multiple
             if hasattr(self, 'cache_invalidation'):
@@ -1350,6 +1344,7 @@ class DatabaseManager:
 
         self.cursor.execute(query, values)
         self.conn.commit()
+        self.invalidate_search_cache()
 
         # Phase 2.3: Invalider le cache après ajout d'appareil
         if hasattr(self, 'cache_invalidation'):
@@ -1387,6 +1382,7 @@ class DatabaseManager:
         deleted_count = self.cursor.rowcount
 
         self.conn.commit()
+        self.invalidate_search_cache()
 
         if deleted_count > 0 and associations_deleted > 0:
             app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
@@ -1424,6 +1420,7 @@ class DatabaseManager:
         device_deleted = self.cursor.rowcount > 0
 
         self.conn.commit()
+        self.invalidate_search_cache()
 
         # Log pour debug
         if device_deleted and associations_deleted > 0:
