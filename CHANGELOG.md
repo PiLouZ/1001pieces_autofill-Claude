@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.20.0] - 2026-03-11
+
+### ⚡ Perf — Suppression du LEFT JOIN matérialisé (×470)
+
+`load_data` et `count_data` contenaient un `LEFT JOIN` sur une sous-requête `GROUP BY pa.appareil_id` sur `piece_associations` (1,86M lignes). SQLite matérialisait cette sous-requête en entier avant d'appliquer le filtre WHERE — même pour 3 résultats.
+
+**`load_data`** : remplacé par une sous-requête corrélée avec `INNER JOIN pieces` (filtre les associations orphelines, utilise l'index `idx_piece_associations_appareil`).
+
+**`count_data`** : JOIN supprimé entièrement (`pieces_count` n'était pas utilisé dans le `COUNT(*)`).
+
+Benchmark sur terme retournant 3 résultats :
+- Avant : load=715ms + count=1276ms = **~1 400ms**
+- Après : load=3ms + count=1ms = **~3ms** (×470)
+
+---
+
 ## [3.19.0] - 2026-03-11
 
 ### ⚡ Virtual scrolling — Affichage progressif du tableau
