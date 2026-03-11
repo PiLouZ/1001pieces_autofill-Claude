@@ -13,6 +13,7 @@ Responsabilités:
 import time
 from typing import Optional
 
+from PyQt5.QtCore import QItemSelection, QItemSelectionModel
 from ..ui.qt_imports import (QWidget, QTableWidgetItem, QTableWidgetSelectionRange,
                             Qt, QTimer, QPainter, QPen, QColor)
 
@@ -52,21 +53,79 @@ class DragHandle(QWidget):
         painter.setBrush(QColor(*Config.DRAG_HANDLE_COLOR))
         painter.drawRect(0, 0, Config.DRAG_HANDLE_SIZE - 1, Config.DRAG_HANDLE_SIZE - 1)
 
+    # ── Helpers d'accès table unifiés (QTableWidget / QTableView) ───────────
+
+    def _read_cell(self, row: int, col: int) -> str:
+        """Lire la valeur d'une cellule — fonctionne en mode QTableWidget et QTableView."""
+        if Config.USE_TABLE_VIEW:
+            model = self.table.model()
+            return (model.data(model.index(row, col), Qt.DisplayRole) or "") if model else ""
+        item = self.table.item(row, col)
+        return item.text() if item else ""
+
+    def _write_cell(self, row: int, col: int, value: str) -> bool:
+        """Écrire une valeur dans une cellule. Retourne True si succès.
+
+        Mode QTableView : model.setData() → émet cell_edited → sauvegarde auto.
+        Mode QTableWidget : table.setItem() → émet itemChanged → même pipeline.
+        """
+        if Config.USE_TABLE_VIEW:
+            model = self.table.model()
+            if not model:
+                return False
+            idx = model.index(row, col)
+            return bool(
+                idx.isValid()
+                and (model.flags(idx) & Qt.ItemIsEditable)
+                and model.setData(idx, value, Qt.EditRole)
+            )
+        self.table.setItem(row, col, QTableWidgetItem(value))
+        return True
+
+    def _get_current_selection(self):
+        """Retourne la sélection courante (objet avec topRow/bottomRow/leftColumn/rightColumn), ou None."""
+        if Config.USE_TABLE_VIEW:
+            sm = self.table.selectionModel()
+            if not sm or not sm.hasSelection():
+                return None
+            indexes = sm.selectedIndexes()
+            if not indexes:
+                return None
+            rows = [idx.row() for idx in indexes]
+            cols = [idx.column() for idx in indexes]
+            # _SelectionRangeCompat expose la même interface que QTableWidgetSelectionRange
+            from ..ui.custom_table_view import _SelectionRangeCompat
+            return _SelectionRangeCompat(min(rows), min(cols), max(rows), max(cols))
+        ranges = self.table.selectedRanges()
+        return ranges[0] if ranges else None
+
+    def _apply_selection(self, top: int, left: int, bottom: int, right: int) -> None:
+        """Sélectionner une plage de cellules."""
+        if Config.USE_TABLE_VIEW:
+            model = self.table.model()
+            sm = self.table.selectionModel()
+            if not model or not sm:
+                return
+            sel = QItemSelection(model.index(top, left), model.index(bottom, right))
+            sm.select(sel, QItemSelectionModel.ClearAndSelect)
+        else:
+            self.table.setRangeSelected(QTableWidgetSelectionRange(top, left, bottom, right), True)
+
+    # ────────────────────────────────────────────────────────────────────────
+
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             # Vérifier si la sélection contient des colonnes interdites (C=2, D=3)
-            if self.table.selectedRanges():
-                selection = self.table.selectedRanges()[0]
+            current_sel = self._get_current_selection()
+            if current_sel:
                 forbidden_cols = {2, 3, 4}  # Colonnes C, D et E (références importantes)
-                selected_cols = set(range(selection.leftColumn(), selection.rightColumn() + 1))
-                
+                selected_cols = set(range(current_sel.leftColumn(), current_sel.rightColumn() + 1))
                 if forbidden_cols.intersection(selected_cols):
-                    # Ne pas activer le drag sur les colonnes interdites
                     return
-            
+
             self.dragging = True
             self.start_pos = event.globalPos()
-            self.orig_selection = self.table.selectedRanges()[0] if self.table.selectedRanges() else None
+            self.orig_selection = self._get_current_selection()
             self.drag_direction = None
             self.modified_rows_set.clear()  # Réinitialiser le tracker de lignes modifiées
             # Ne pas bloquer les signaux pour permettre la capture de l'historique
@@ -109,112 +168,86 @@ class DragHandle(QWidget):
         """Remplir les cellules vers le bas"""
         if num_rows <= 0 or not self.orig_selection:
             return
-        
-        # Récupérer les valeurs source une seule fois (en excluant la colonne Nb Pièces)
+
+        # Récupérer les valeurs source (en excluant la colonne Nb Pièces)
         source_data = []
         for row in range(self.orig_selection.topRow(), self.orig_selection.bottomRow() + 1):
             row_data = []
             for col in range(self.orig_selection.leftColumn(), self.orig_selection.rightColumn() + 1):
                 if col == 5:  # Colonne Nb Pièces - ne pas copier
                     continue
-                item = self.table.item(row, col)
-                row_data.append((col, item.text() if item else ""))
+                row_data.append((col, self._read_cell(row, col)))
             source_data.append(row_data)
-        
+
         source_height = len(source_data)
-        
-        # Calculer la plage de destination
         dest_start_row = self.orig_selection.bottomRow() + 1
         dest_end_row = min(dest_start_row + num_rows - 1, self.table.rowCount() - 1)
-        
-        # Compter les cellules dupliquées
+
         duplicated_cells = 0
-        
-        # Remplir les cellules de destination
+
         for dest_row in range(dest_start_row, dest_end_row + 1):
             source_row_idx = (dest_row - dest_start_row) % source_height
             row_modified = False
             for dest_col, source_value in source_data[source_row_idx]:
-                if dest_col == 5:  # Ne pas toucher à la colonne Nb Pièces
+                if dest_col == 5:
                     continue
-
-                # Créer et insérer l'item
-                new_item = QTableWidgetItem(source_value)
-                self.table.setItem(dest_row, dest_col, new_item)
-                duplicated_cells += 1
-                row_modified = True
-
-            # Enregistrer la ligne comme modifiée
+                if self._write_cell(dest_row, dest_col, source_value):
+                    duplicated_cells += 1
+                    row_modified = True
             if row_modified:
                 self.modified_rows_set.add(dest_row)
 
-        # Marquer qu'une entrée d'historique est en attente
         if duplicated_cells > 0:
             self.history_pending = True
-        
-        # Mettre à jour la sélection
+
         if dest_end_row >= dest_start_row:
-            new_selection = QTableWidgetSelectionRange(
+            self._apply_selection(
                 self.orig_selection.topRow(), self.orig_selection.leftColumn(),
                 dest_end_row, self.orig_selection.rightColumn()
             )
-            self.table.setRangeSelected(new_selection, True)
 
     def _fill_cells_up(self, num_rows: int):
         """Remplir les cellules vers le haut"""
         if num_rows <= 0 or not self.orig_selection:
             return
-        
-        # Récupérer les valeurs source une seule fois (en excluant la colonne Nb Pièces)
+
+        # Récupérer les valeurs source (en excluant la colonne Nb Pièces)
         source_data = []
         for row in range(self.orig_selection.topRow(), self.orig_selection.bottomRow() + 1):
             row_data = []
             for col in range(self.orig_selection.leftColumn(), self.orig_selection.rightColumn() + 1):
                 if col == 5:  # Colonne Nb Pièces - ne pas copier
                     continue
-                item = self.table.item(row, col)
-                row_data.append((col, item.text() if item else ""))
+                row_data.append((col, self._read_cell(row, col)))
             source_data.append(row_data)
-        
+
         source_height = len(source_data)
-        
-        # Calculer la plage de destination
         dest_end_row = self.orig_selection.topRow() - 1
         dest_start_row = max(dest_end_row - num_rows + 1, 0)
-        
-        # Compter les cellules dupliquées
+
         duplicated_cells = 0
-        
-        # Remplir les cellules de destination
+
         for dest_row in range(dest_start_row, dest_end_row + 1):
             distance = dest_end_row - dest_row
             source_row_idx = distance % source_height
             row_modified = False
             for dest_col, source_value in source_data[source_row_idx]:
-                if dest_col == 5:  # Ne pas toucher à la colonne Nb Pièces
+                if dest_col == 5:
                     continue
-
-                # Créer et insérer l'item
-                new_item = QTableWidgetItem(source_value)
-                self.table.setItem(dest_row, dest_col, new_item)
-                duplicated_cells += 1
-                row_modified = True
-
-            # Enregistrer la ligne comme modifiée
+                if self._write_cell(dest_row, dest_col, source_value):
+                    duplicated_cells += 1
+                    row_modified = True
             if row_modified:
                 self.modified_rows_set.add(dest_row)
 
-        # Marquer qu'une entrée d'historique est en attente
         if duplicated_cells > 0:
             self.history_pending = True
-        
-        # Mettre à jour la sélection
+
         if dest_start_row <= dest_end_row:
-            new_selection = QTableWidgetSelectionRange(
+            self._apply_selection(
                 dest_start_row, self.orig_selection.leftColumn(),
                 self.orig_selection.bottomRow(), self.orig_selection.rightColumn()
             )
-            self.table.setRangeSelected(new_selection, True)
 
     def mouseReleaseEvent(self, event):
         if not self.dragging:
@@ -241,86 +274,66 @@ class DragHandle(QWidget):
         """Gérer le double-clic sur la poignée pour duplication automatique vers le bas"""
         if event.button() != Qt.LeftButton:
             return
-            
-        # Vérifier qu'on a une sélection valide
-        if not self.table.selectedRanges():
+
+        selection = self._get_current_selection()
+        if not selection:
             return
-            
-        selection = self.table.selectedRanges()[0]
-        
+
         # Vérifier si la sélection contient des colonnes interdites (C=2, D=3, E=4)
-        forbidden_cols = {2, 3, 4}  # Colonnes C, D et E (références importantes)
+        forbidden_cols = {2, 3, 4}
         selected_cols = set(range(selection.leftColumn(), selection.rightColumn() + 1))
-        
         if forbidden_cols.intersection(selected_cols):
-            # Ne pas permettre la duplication automatique sur les colonnes interdites
             return
-        
-        # Effectuer la duplication automatique vers le bas
+
         self._auto_fill_down()
     
     def _auto_fill_down(self):
         """Dupliquer automatiquement vers le bas jusqu'aux cellules vides"""
-        if not self.table.selectedRanges():
+        selection = self._get_current_selection()
+        if not selection:
             return
-
-        selection = self.table.selectedRanges()[0]
 
         # Collecter les données source
         source_data = []
         for row in range(selection.topRow(), selection.bottomRow() + 1):
             row_data = []
             for col in range(selection.leftColumn(), selection.rightColumn() + 1):
-                item = self.table.item(row, col)
-                row_data.append((col, item.text() if item else ""))
+                row_data.append((col, self._read_cell(row, col)))
             source_data.append(row_data)
 
         if not source_data:
             return
 
-        # Chercher jusqu'où dupliquer (s'arrêter aux cellules vides)
         start_row = selection.bottomRow() + 1
         end_row = self._find_fill_end_row(selection, start_row)
 
         if start_row > end_row:
-            return  # Aucune ligne à remplir
+            return
 
-        # Calculer le nombre de lignes à dupliquer
         num_rows = end_row - start_row + 1
         source_row_count = len(source_data)
 
-        # Effectuer la duplication
         duplicated_cells = 0
-        modified_rows = []  # Suivre les lignes modifiées
+        modified_rows = []
 
         for i in range(num_rows):
             dest_row = start_row + i
-            source_row_idx = i % source_row_count  # Répéter le pattern source
-
+            source_row_idx = i % source_row_count
             row_modified = False
             for col_idx, source_value in source_data[source_row_idx]:
                 if dest_row < self.table.rowCount():
-                    new_item = QTableWidgetItem(source_value)
-                    self.table.setItem(dest_row, col_idx, new_item)
-                    duplicated_cells += 1
-                    row_modified = True
-
+                    if self._write_cell(dest_row, col_idx, source_value):
+                        duplicated_cells += 1
+                        row_modified = True
             if row_modified:
                 modified_rows.append(dest_row)
 
-        # Sauvegarder et historique pour le double-clic
         if duplicated_cells > 0 and self.main_window:
-            # Sélectionner la nouvelle plage
-            new_selection = QTableWidgetSelectionRange(
+            self._apply_selection(
                 selection.topRow(), selection.leftColumn(),
                 end_row, selection.rightColumn()
             )
-            self.table.setRangeSelected(new_selection, True)
-
-            # Ajouter à l'historique
             self.main_window.user_interaction_service.add_to_history("Duplication automatique vers le bas")
-
-            # Sauvegarder uniquement les lignes modifiées (pas toutes les lignes)
             self._save_auto_fill_changes(modified_rows, selection.leftColumn(), selection.rightColumn())
     
     @handle_drag_operation_errors()
@@ -367,21 +380,13 @@ class DragHandle(QWidget):
 
     def _find_fill_end_row(self, selection, start_row):
         """Trouver la dernière ligne à remplir (tant que les cellules sont vides dans la sélection)"""
-        # Regarder dans toutes les colonnes de la sélection
         for row in range(start_row, self.table.rowCount()):
-            # Vérifier si TOUTES les cellules de cette ligne dans la sélection sont vides
-            has_non_empty = False
-            for col in range(selection.leftColumn(), selection.rightColumn() + 1):
-                item = self.table.item(row, col)
-                if item and item.text().strip():
-                    has_non_empty = True
-                    break
-
-            # Si on trouve une cellule non-vide, s'arrêter avant cette ligne
+            has_non_empty = any(
+                self._read_cell(row, col).strip()
+                for col in range(selection.leftColumn(), selection.rightColumn() + 1)
+            )
             if has_non_empty:
                 return row - 1
-
-        # Si toutes les lignes jusqu'à la fin sont vides, aller jusqu'à la fin du tableau
         return self.table.rowCount() - 1
     
     def _check_auto_scroll(self, event):
