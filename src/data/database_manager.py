@@ -1094,18 +1094,18 @@ class DatabaseManager:
                           incomplete_filter: bool = False) -> List[Tuple]:
         """Méthode originale de chargement des données (fallback)"""
         try:
-            # Construction de la requête avec comptage des pièces (seulement celles qui existent)
+            # Construction de la requête avec comptage des pièces.
+            # Sous-requête corrélée au lieu du LEFT JOIN matérialisé :
+            # l'ancienne version faisait GROUP BY sur 1,86M lignes de piece_associations
+            # même pour 3 résultats. La corrélée n'exécute le COUNT que pour les
+            # lignes effectivement retournées, via l'index idx_piece_associations_appareil.
             headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS)
             query = f"""
-                SELECT a.id, {headers_str}, 
-                       COALESCE(p.pieces_count, 0) as pieces_count
+                SELECT a.id, {headers_str},
+                       (SELECT COUNT(*) FROM piece_associations pa
+                        INNER JOIN pieces p ON pa.piece_id = p.id
+                        WHERE pa.appareil_id = a.id) as pieces_count
                 FROM appareils a
-                LEFT JOIN (
-                    SELECT pa.appareil_id, COUNT(*) as pieces_count
-                    FROM piece_associations pa
-                    INNER JOIN pieces p ON pa.piece_id = p.id
-                    GROUP BY pa.appareil_id
-                ) p ON a.id = p.appareil_id
             """
             params = []
             conditions = []
@@ -1183,16 +1183,10 @@ class DatabaseManager:
                          column_filters: Optional[Dict[int, str]] = None,
                          incomplete_filter: bool = False) -> int:
         """Logique interne du comptage — appelée sous _query_lock."""
-        # Utiliser la même structure FROM que load_data pour cohérence
-        query = """
-            SELECT COUNT(*) FROM appareils a
-            LEFT JOIN (
-                SELECT pa.appareil_id, COUNT(*) as pieces_count
-                FROM piece_associations pa
-                INNER JOIN pieces p ON pa.piece_id = p.id
-                GROUP BY pa.appareil_id
-            ) p ON a.id = p.appareil_id
-        """
+        # COUNT simple sur appareils — le LEFT JOIN sur piece_associations
+        # était inutile ici (pieces_count n'est pas utilisé dans un COUNT(*))
+        # et forçait la matérialisation de 1,86M lignes pour rien.
+        query = "SELECT COUNT(*) FROM appareils a"
         params = []
         conditions = []
 
