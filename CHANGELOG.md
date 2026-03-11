@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.23.0] - 2026-03-11
+
+### ⚡ Perf — Effacement recherche instantané (×470 supplémentaire)
+
+Effacer le champ de recherche déclenchait en parallèle :
+1. `advanced_search_service._safe_execute_search(None)` → `search_service.search(term=None)` → `db_manager.load_data()` **sans LIMIT** → 598 328 lignes chargées (~2500ms)
+2. `table_controller.load_data()` → 100 lignes avec LIMIT (~6ms)
+
+Le résultat du chargement complet (1) était **entièrement jeté** par `on_advanced_search_completed` qui ignore le paramètre `results` et rappelle `table_controller.load_data()`.
+
+- `_safe_execute_search(None)` retourne maintenant `[]` immédiatement au lieu de charger toute la DB
+- `on_advanced_search_completed` reçoit `[]` et déclenche le `table_controller.load_data()` normal
+- Effacement : **2500ms → ~6ms** (et 0ms sur 2ème appel grâce au SMART_CACHE)
+
+---
+
 ## [3.22.0] - 2026-03-11
 
 ### ⚡ Perf — Cache COUNT(*) sans filtre (_total_count_cache)

@@ -47,8 +47,10 @@ class AdvancedSearchService(QObject):
         if search_term:
             return self.search_service.search(term=search_term)
         else:
-            # Pas de terme = afficher tout
-            return self.search_service.search(term=None)
+            # Pas de terme : ne pas charger les 598k lignes sans LIMIT.
+            # on_advanced_search_completed ignore les résultats et appelle
+            # table_controller.load_data() qui gère correctement la pagination.
+            return []
     
     def search_with_debounce(self, text: str, debounce_ms: int = 500):
         """Lancer une recherche avec débounce (attendre avant d'exécuter)"""
