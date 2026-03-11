@@ -4,6 +4,53 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.16.0] - 2026-03-11
+
+### 🏗️ Migration QTableView — Phases 4a/4b/4c activées en production
+
+`USE_TABLE_VIEW = True` — le tableau principal tourne désormais sur `QTableView + AppareillsTableModel` en production. Zéro régression observée.
+
+#### Phases complétées
+
+**Phase 4a — `cell_editing_service.py`**
+- Auto-création de ligne : ID généré en DB propagé via `model.update_record_db_id()` (nouveau) au lieu de `table.setItem()`
+- Batch editing : `model.setData()` au lieu de `item.setText()` → déclenche `cell_edited` → pipeline de sauvegarde automatique
+
+**Phase 4b — Signaux `main_refactored.py`**
+- `_on_cell_changed_model(row, col, old, new)` : implémentation complète (validation, historique undo, sauvegarde)
+- `_apply_cell_edit_logic()` : tronc commun extrait — élimine la duplication entre les deux handlers
+- `_apply_undo_redo_cell()` : tronc commun undo/redo via `_set_cell_value_in_table()`
+
+**Phase 4c — Données `main_refactored.py`**
+- `_get_cell_text(row, col)` : helper unifié QTableWidget/QTableView
+- `_set_cell_value_in_table(row, col, value)` : écriture silencieuse (bloque signaux du modèle, pas de la vue)
+- `_fill_empty_fields`, copie clipboard, `_collect_row_data_for_export` : migrés via helpers
+
+#### Correctifs associés
+
+| Fichier | Correction |
+|---------|-----------|
+| `custom_table_view.py` | `setVerticalHeaderItem()` → no-op (headers gérés par `headerData()`) |
+| `custom_table_view.py` | `selectedItems()` → compat avec `.row()` monkey-patché |
+| `main_refactored.py` | `blockSignals` dans `_fill_empty_fields` → sur le **modèle** (pas la vue) |
+| `main_refactored.py` | `blockSignals` dans `_refresh_data` → sur le **modèle** |
+| `autocompletion_service.py` | `show_column_values_dialog` : implémentation directe (méthode `_safe_show_column_values_dialog_core` inexistante supprimée) |
+| `autocompletion_service.py` | Enter valide l'item surligné dans la liste (pas le texte brut du champ) |
+| `main_refactored.py` | `_show_column_values_list` : résultat appliqué via `model.setData()` en mode QTableView |
+| `database_manager.py` | `get_column_values(db_field)` : nouvelle méthode pour l'auto-complétion Cmd+D |
+
+**Fichiers modifiés** :
+- `src/core/config.py` (`USE_TABLE_VIEW = True`, version)
+- `src/data/appareils_table_model.py` (`update_record_db_id`)
+- `src/data/database_manager.py` (`get_column_values`)
+- `src/services/autocompletion_service.py`
+- `src/services/cell_editing_service.py`
+- `src/services/drag_handle_service.py` (sauvegarde post-drag)
+- `src/ui/custom_table_view.py` (`setVerticalHeaderItem`, `selectedItems`)
+- `src/ui/main_refactored.py`
+
+---
+
 ## [3.15.8] - 2026-03-09
 
 ### ⚡ Optimisation rendu tableau — 3 améliorations ciblées dans TableFillService

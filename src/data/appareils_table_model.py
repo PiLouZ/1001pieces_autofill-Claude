@@ -130,6 +130,25 @@ class AppareillsTableModel(QAbstractTableModel):
         """Retourne le tuple complet de la ligne, ou None si hors limites."""
         return self._records[row] if 0 <= row < len(self._records) else None
 
+    def update_record_db_id(self, row: int, db_id: int):
+        """Met à jour le db_id (record[0]) d'une ligne existante.
+
+        Utilisé après auto-création d'une ligne en DB pour propager l'ID
+        généré vers le modèle. Émet dataChanged sur toute la ligne pour
+        rafraîchir le UserRole dans la vue.
+        """
+        if not (0 <= row < len(self._records)):
+            return
+        record = list(self._records[row])
+        record[0] = db_id
+        self._records[row] = tuple(record)
+        # Notifier la vue que le UserRole a changé sur toute la ligne
+        self.dataChanged.emit(
+            self.index(row, 0),
+            self.index(row, len(self._headers) - 1),
+            [Qt.UserRole]
+        )
+
     def set_search_term(self, term):
         """Met à jour le terme de recherche pour le highlight (Phase 3+).
 

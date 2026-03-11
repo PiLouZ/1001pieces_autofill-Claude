@@ -189,6 +189,37 @@ class CustomTableView(QTableView):
         if model:
             self.setCurrentIndex(model.index(row, col))
 
+    def setVerticalHeaderItem(self, row: int, item) -> None:
+        """Compat QTableWidget.setVerticalHeaderItem() — no-op.
+
+        En mode QTableView les headers de ligne sont gérés par
+        AppareillsTableModel.headerData() (Qt.Vertical). Aucune action nécessaire.
+        """
+        pass
+
+    def selectedItems(self) -> list:
+        """Compat QTableWidget.selectedItems() — retourne des QTableWidgetItem simulés.
+
+        Permet à tout code qui itère sur selectedItems() et appelle .row()
+        de continuer à fonctionner sans modification.
+        """
+        sm = self.selectionModel()
+        if not sm:
+            return []
+        result = []
+        for idx in sm.selectedIndexes():
+            item = QTableWidgetItem(self.model().data(idx, Qt.DisplayRole) or "")
+            # Stocker row/column dans l'item via sous-classe serait plus propre,
+            # mais QTableWidgetItem expose row()/column() seulement si attaché à
+            # un QTableWidget. On retourne donc un objet proxy léger.
+            item._compat_row = idx.row()
+            item._compat_col = idx.column()
+            # Monkey-patch row() pour que item.row() fonctionne
+            item.row = lambda r=idx.row(): r
+            item.column = lambda c=idx.column(): c
+            result.append(item)
+        return result
+
     def setRangeSelected(self, selection_range, select: bool) -> None:
         """Compat QTableWidget.setRangeSelected() — traduit en QItemSelection pour QTableView.
 

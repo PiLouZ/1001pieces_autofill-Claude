@@ -339,12 +339,19 @@ class DragHandle(QWidget):
 
             for row in modified_rows:
                 for col in range(start_col, end_col + 1):
-                    item = self.table.item(row, col)
-                    if item and hasattr(self.main_window, 'cell_editing_service'):
-                        # Sauvegarder uniquement les cellules avec ID valide
-                        if self.main_window.cell_editing_service.update_cell_in_db(item, skip_history=True):
+                    if Config.USE_TABLE_VIEW:
+                        # Mode QTableView : item.row()==-1 sur les items compat → passer par EventDrivenSaveService
+                        if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
+                            new_value = self.main_window._get_cell_text(row, col)
+                            self.main_window.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
                             saved_count += 1
                             cells_to_clean.append((row, col))
+                    else:
+                        item = self.table.item(row, col)
+                        if item and hasattr(self.main_window, 'cell_editing_service'):
+                            if self.main_window.cell_editing_service.update_cell_in_db(item, skip_history=True):
+                                saved_count += 1
+                                cells_to_clean.append((row, col))
 
             # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
             if hasattr(self.main_window, 'modified_cells') and cells_to_clean:

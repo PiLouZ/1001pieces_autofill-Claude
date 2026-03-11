@@ -23,16 +23,24 @@ class AutoCompletionService(BaseService):
     def show_column_values_dialog(self, table_widget, current_item, current_col) -> Optional[str]:
         """
         Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D)
-        
+
         Args:
-            table_widget: Widget du tableau
-            current_item: Item actuel sélectionné
+            table_widget: Widget du tableau (QTableWidget ou CustomTableView)
+            current_item: Item actuel sélectionné (QTableWidgetItem ou compat)
             current_col: Colonne actuelle
-            
+
         Returns:
-            str: Valeur sélectionnée ou None si annulé
+            str: Valeur sélectionnée ou None si annulé/colonne sans champ DB
         """
-        return self._safe_show_column_values_dialog_core(table_widget, current_item, current_col)
+        db_field = self._get_db_field_name(current_col)
+        if not db_field:
+            return None
+
+        current_value = self._get_current_cell_edit_value(table_widget, current_item, current_col)
+        col_label = Config.UI_HEADERS[current_col] if current_col < len(Config.UI_HEADERS) else "Colonne"
+        title = f"Valeurs — {col_label}"
+        label = f"Sélectionner ou saisir une valeur pour « {col_label} » :"
+        return self._show_autocompletion_dialog(title, label, db_field, current_value)
     
     @handle_autocompletion_errors(return_value="")
     def _get_current_cell_edit_value(self, table_widget, current_item, current_col):
@@ -171,7 +179,10 @@ class AutoCompletionService(BaseService):
                     if current_item:
                         input_field.setText(current_item.text())
             elif key == Qt.Key_Return or key == Qt.Key_Enter:
-                # Entrée : valider la sélection
+                # Entrée : utiliser l'item surligné dans la liste si disponible
+                selected_list_item = values_list.currentItem()
+                if selected_list_item:
+                    input_field.setText(selected_list_item.text())
                 dialog.accept()
             elif key == Qt.Key_Escape:
                 # Échap : annuler

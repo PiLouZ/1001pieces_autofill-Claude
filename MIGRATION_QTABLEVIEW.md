@@ -11,14 +11,14 @@
 
 | Phase | Statut | Version | Notes |
 |-------|--------|---------|-------|
-| 0 — Préparation (feature flag + tests) | ⬜ À faire | — | |
+| 0 — Préparation (feature flag + tests) | ✅ Fait | — | |
 | 1 — `AppareillsTableModel` isolé | ✅ Fait | `src/data/appareils_table_model.py` | 13/13 tests verts |
 | 2 — `CustomTableView` isolé | ✅ Fait | `src/ui/custom_table_view.py` | Import OK, zéro régression |
-| 3 — Swap dans `table_controller` | ✅ Fait | `table_controller.py` + `table_fill_service.py` | USE_TABLE_VIEW=False en prod |
-| 4a — `cell_editing_service` | ⬜ À faire | — | |
-| 4b — Signaux `main_refactored` | ⬜ À faire | — | |
-| 4c — Données `main_refactored` | ⬜ À faire | — | |
-| 4d — `drag_handle_service` | ⬜ À faire | — | |
+| 3 — Swap dans `table_controller` | ✅ Fait | `table_controller.py` + `table_fill_service.py` | USE_TABLE_VIEW=True en prod (v3.16.0) |
+| 4a — `cell_editing_service` | ✅ Fait | `src/services/cell_editing_service.py` | update_record_db_id + batch editing |
+| 4b — Signaux `main_refactored` | ✅ Fait | `src/ui/main_refactored.py` | _on_cell_changed_model complet, troncs communs extraits |
+| 4c — Données `main_refactored` | ✅ Fait | `src/ui/main_refactored.py` | _get_cell_text + _set_cell_value_in_table |
+| 4d — `drag_handle_service` | ⬜ À faire | — | Les helpers compat tiennent pour l'instant |
 | 5 — Nettoyage final | ⬜ À faire | — | |
 
 Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
@@ -513,4 +513,4 @@ self.table.model().setData(self.table.model().index(dest_row, dest_col), source_
 
 ---
 
-*Dernière mise à jour : 2026-03-09 — Phase 0 non commencée*
+*Dernière mise à jour : 2026-03-11 — Phases 4a/4b/4c terminées, USE_TABLE_VIEW=True en prod (v3.16.0)*

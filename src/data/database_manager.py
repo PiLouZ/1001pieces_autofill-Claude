@@ -1900,6 +1900,17 @@ class DatabaseManager:
         """Récupérer toutes les catégories"""
         self.cursor.execute("SELECT name FROM categories ORDER BY name")
         return [row[0] for row in self.cursor.fetchall()]
+
+    @handle_database_errors(title="Erreur récupération valeurs colonne")
+    def get_column_values(self, db_field: str) -> List[str]:
+        """Récupérer les valeurs distinctes d'un champ de la table appareils.
+
+        db_field doit être un champ validé via _get_db_field_name() —
+        jamais une entrée utilisateur directe (prévient les injections SQL).
+        """
+        query = Config.get_query('autocomplete_field', field=db_field)
+        self.cursor.execute(query)
+        return [row[0] for row in self.cursor.fetchall() if row[0]]
     
     @handle_database_errors(title="Erreur mise à jour catégories")
     def update_categories(self, categories: List[str]) -> bool:
