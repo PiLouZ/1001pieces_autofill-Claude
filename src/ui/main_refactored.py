@@ -2153,26 +2153,57 @@ class MainWindow(QMainWindow):
 
 ### Import de données
 1. **Import de fichiers** : Utilisez le bouton "📈 Import" ou glissez/déposez un fichier CSV ou PDF sur le tableau
-2. **Collage** : Copiez des données depuis Excel/Calc et collez avec Ctrl+V
+2. **Collage** : Copiez des données depuis Excel/Calc et collez avec Cmd+V
 3. **Référence de pièce** : Lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier
 
 ### Navigation et édition
 - **Double-clic** sur une cellule pour l'éditer
-- **Ctrl+N** : Ajouter une nouvelle ligne
-- **Ctrl+S** : Sauvegarder
-- **Ctrl+Z/Y** : Annuler/Refaire
-- **Ctrl+F** : Rechercher
+- **Entrée** : Valider et descendre à la cellule suivante
+- **Suppr / Retour arrière** : Effacer les cellules sélectionnées
 
 ### Gestion des pièces
-- **Gestionnaire de pièces** : Accessible via l'icône 🔧 dans la barre d'outils
-- **Sélection multiple** : Ctrl+Clic pour sélectionner plusieurs pièces à supprimer
-- **Filtrage** : Recherche et filtre des pièces orphelines
+- **Gestionnaire de pièces** : Accessible via Gestion → 🔧 Pièces
+- **Sélection multiple** : Cmd+Clic pour sélectionner plusieurs pièces à supprimer
 
 ### Fonctionnalités avancées
 - **Glisser/Déposer** : Déposez des fichiers CSV directement sur le tableau
-- **Auto-complétion** : Les champs vides sont automatiquement complétés
-- **Historique** : Toutes les modifications sont tracées dans l'historique
-- **Validation** : Détection automatique des doublons et inconsistances
+- **Auto-complétion** : Les champs vides sont automatiquement complétés via Action → Autocomplétion
+- **Recherche avancée** : Utilisez `&&` (ET) et `||` (OU) dans la barre de recherche
+
+---
+
+## ⌨️ Raccourcis clavier
+
+### Édition
+| Raccourci | Action |
+|-----------|--------|
+| Cmd+N | Ajouter une nouvelle ligne |
+| Cmd+Z | Annuler la dernière action |
+| Cmd+Y | Rétablir l'action annulée |
+| Cmd+C | Copier la sélection |
+| Cmd+V | Coller depuis le presse-papiers |
+| Cmd+S | Sauvegarder toutes les modifications |
+| Cmd+D | Afficher les valeurs existantes de la colonne (autocomplétion) |
+
+### Navigation
+| Raccourci | Action |
+|-----------|--------|
+| Cmd+↑ | Aller à la cellule vide précédente (ou tout en haut) |
+| Cmd+↓ | Aller à la cellule vide suivante (ou tout en bas) |
+| Ctrl+→ | Page suivante |
+| Ctrl+← | Page précédente |
+| Ctrl+Début | Première page |
+| Ctrl+Fin | Dernière page |
+
+### Recherche et affichage
+| Raccourci | Action |
+|-----------|--------|
+| Cmd+F | Ouvrir la barre de recherche |
+| Échap | Effacer la recherche |
+| F5 | Actualiser l'affichage |
+| F12 | Ouvrir le visualiseur de logs |
+
+---
 
 ## 🔧 Dépannage
 
@@ -2183,8 +2214,7 @@ class MainWindow(QMainWindow):
 
 ### Performance
 - L'application pagine automatiquement les gros datasets
-- Utilisez les filtres pour réduire l'affichage
-- La recherche est limitée à 5000 résultats
+- Utilisez les filtres de colonnes pour affiner l'affichage
 
 ## 📞 Support
 En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outils.

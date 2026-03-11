@@ -15,12 +15,12 @@ Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 | 2 | Perf | `processEvents()` dans une boucle | Faible | Élevé | ✅ |
 | 3 | Perf | Recherche linéaire `find_row_by_db_id()` | Faible | Moyen | ✅ |
 | 4 | Perf | `load_data()` + `count_data()` séquentiels | Moyen | Moyen | ✅ |
-| 5 | Perf | Requêtes LIKE `%terme%` sans index | Moyen | Moyen | ⬜ |
+| 5 | Perf | Requêtes LIKE `%terme%` sans index | Élevé | Moyen | ⬜ |
 | 6 | Perf | Pas de virtual scrolling (fetchMore) | Élevé | Moyen | ⬜ |
 | 7 | UX | Message "aucun résultat" | Faible | Moyen | ✅ |
 | 8 | UX | Masquer la pagination si inutile | Faible | Faible | ✅ |
 | 9 | UX | Notification filtre incomplets désactivé | Faible | Faible | ✅ |
-| 10 | UX | Raccourcis clavier non documentés | Faible | Faible | ⬜ |
+| 10 | UX | Raccourcis clavier non documentés | Faible | Faible | ✅ |
 
 ---
 
@@ -111,10 +111,11 @@ Toutes les recherches utilisent `LIKE "%terme%"` avec un `%` en préfixe, ce qui
 **Fichiers concernés**
 - `src/data/database_manager.py` — méthodes de construction de requêtes (~lignes 170-338)
 
-**Solution**
-- Pour `ref_piece` (champ principal) : passer en `LIKE "terme%"` (préfixe uniquement)
-- Conserver `LIKE "%terme%"` pour les champs de type/fabricant où la recherche partielle est attendue
-- Ajouter des index SQLite sur les colonnes les plus recherchées si absents
+**Complexité**
+`LIKE "%terme%"` (leading wildcard) ne peut **jamais** utiliser un index B-tree en SQLite.
+Une tentative de recherche optimisée (`terme%`) a déjà été désactivée (ligne 187 database_manager.py) suite à des problèmes. Passer en préfixe uniquement serait un **changement de comportement** : taper "0008" ne trouverait plus "46X0008".
+
+**Solution recommandée** : FTS5 (Full-Text Search virtual table) — chantier significatif à planifier séparément, ou accepter le comportement actuel.
 
 ---
 

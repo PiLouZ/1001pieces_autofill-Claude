@@ -166,8 +166,8 @@ class ToolbarService:
         toolbar.addAction(logs_action)
         
         guide_action = QAction("📖 Guide", self.main_window)
-        guide_action.setToolTip("Ouvrir le guide d'utilisation")
-        guide_action.triggered.connect(getattr(self.main_window, '_open_user_guide', lambda: None))
+        guide_action.setToolTip("Guide d'utilisation et raccourcis clavier")
+        guide_action.triggered.connect(getattr(self.main_window, '_show_local_guide', lambda: None))
         toolbar.addAction(guide_action)
     
     def _add_toolbar_separator(self, toolbar):
