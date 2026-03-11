@@ -371,8 +371,10 @@ class MainWindow(QMainWindow):
     
     # PHASE 5: Callbacks pour les événements des services centralisés
     def _on_navigation_page_changed(self, page: int):
-        """Callback pour changement de page"""
-        # Pas d'action supplémentaire requise, le service gère déjà le rechargement
+        """Callback pour changement de page — remet le scroll en haut du tableau."""
+        table = self.table_controller.table
+        if table is not None:
+            table.scrollToTop()
         
     def _on_navigation_page_size_changed(self, new_size: int):
         """Callback pour changement de taille de page"""
