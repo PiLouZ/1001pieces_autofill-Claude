@@ -278,6 +278,8 @@ class SEOGenerator:
     def _safe_find_and_reduce_brands(self, parts: list) -> str:
         """Trouver l'index 'pour' et réduire les marques de manière sécurisée"""
         # Format: "référence description pour type marque1 marque2 marque3"
+        if "pour" not in parts:
+            return None
         type_index = parts.index("pour") + 1  # Position du type d'appareil
         if type_index + 1 < len(parts):  # Il y a des marques après le type
             # Garder le titre jusqu'au type + une seule marque
