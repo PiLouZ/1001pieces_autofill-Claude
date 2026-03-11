@@ -75,6 +75,13 @@ class Config:
     # Interface
     DRAG_HANDLE_SIZE = 10
 
+    # Feature Flag — Virtual scrolling (canFetchMore / fetchMore)
+    # True  = affichage progressif : FETCH_INITIAL lignes initiales puis +FETCH_CHUNK au scroll
+    # False = comportement classique : toutes les lignes d'un coup (fallback si régression)
+    USE_VIRTUAL_SCROLL = True
+    FETCH_INITIAL = 200   # Lignes affichées au chargement initial
+    FETCH_CHUNK   = 200   # Lignes ajoutées à chaque fetchMore()
+
     # Feature Flag — FTS5 Full-Text Search
     # True  = recherche via index FTS5 trigram (activé depuis v3.18.0)
     # False = fallback LIKE %terme% (si l'index est absent ou corrompu)
