@@ -11,7 +11,7 @@ Production : non activé tant que Config.USE_TABLE_VIEW = False.
 
 from PyQt5.QtWidgets import QTableView, QApplication, QTableWidgetItem
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QKeyEvent
+from PyQt5.QtGui import QKeyEvent, QPainter, QColor, QFont
 
 
 class _SelectionRangeCompat:
@@ -54,6 +54,27 @@ class CustomTableView(QTableView):
     2. Compatibilité QTableWidget — permet aux services Phase 3 non encore
        migrés de continuer à fonctionner. Supprimées progressivement en Phase 4.
     """
+
+    def paintEvent(self, event):
+        """Affiche un message centré quand le modèle est vide."""
+        super().paintEvent(event)
+        if self.model() and self.model().rowCount() == 0:
+            painter = QPainter(self.viewport())
+            painter.save()
+            font = QFont()
+            font.setPointSize(13)
+            painter.setFont(font)
+            painter.setPen(QColor(160, 160, 160))
+            search_term = getattr(self.model(), '_search_term', None)
+            if search_term and isinstance(search_term, str):
+                msg = f"Aucun résultat pour « {search_term} »"
+            elif search_term and isinstance(search_term, dict):
+                original = search_term.get('original', '')
+                msg = f"Aucun résultat pour « {original} »" if original else "Aucun résultat"
+            else:
+                msg = "Aucun résultat"
+            painter.drawText(self.viewport().rect(), Qt.AlignCenter, msg)
+            painter.restore()
 
     def keyPressEvent(self, event: QKeyEvent):
         """Gestion des événements clavier — miroir de CustomTableWidget."""

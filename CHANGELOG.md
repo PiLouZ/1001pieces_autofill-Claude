@@ -4,6 +4,46 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.18.0] - 2026-03-11
+
+### ⚡ FTS5 — Index de recherche plein texte (trigrammes)
+
+Remplacement des requêtes `LIKE '%terme%'` (full table scan) par un index FTS5 trigram SQLite sur la table `appareils`. La recherche est désormais indexée sur 598 324 enregistrements.
+
+#### Nouvelles fonctionnalités
+
+**`database_manager.py`** :
+- `_setup_fts5()` — crée la table virtuelle `appareils_fts` (tokenizer trigram, external content sur `appareils`)
+- `_setup_fts5_triggers()` — 3 triggers (INSERT/UPDATE/DELETE) pour maintenir l'index synchronisé automatiquement
+- `rebuild_fts5()` — peuple l'index par blocs de 5 000 (~5 secondes pour 598k lignes)
+- `build_fts5_condition()` — construit les clauses MATCH pour les types simple / AND (`&&`) / OR (`||`)
+- `is_fts5_populated()` / `get_fts5_row_count()` — détection via `appareils_fts_docsize`
+- Fallback automatique sur LIKE pour : termes < 3 caractères, `SEARCH_PIECES_ONLY=True`, types non supportés
+
+**`toolbar_service.py`** :
+- Entrée "🔍 Index de recherche FTS5" dans le menu Gestion
+
+**`main_refactored.py`** :
+- `_open_fts5_manager()` — dialogue affichant le statut de l'index et bouton de reconstruction
+
+**`config.py`** :
+- `USE_FTS5 = True` — activé définitivement depuis v3.18.0
+
+#### Corrections de bugs
+- `rebuild_fts5` : `self.connection` → `self.conn` (AttributeError silencieux)
+- `rebuild_fts5` : `DELETE FROM appareils_fts` → `INSERT INTO appareils_fts VALUES('delete-all')` (external content table interdit les DELETE directs)
+
+#### Améliorations de performance associées (#1–4, #7–10 IMPROVEMENTS.md)
+- Batch query `get_pieces_count_batch()` — élimine N+1 requêtes sur la colonne Nb Pièces
+- `model.update_pieces_count()` — mise à jour directe sans proxy QTableWidgetItem détaché
+- `_count_data_core()` — extraction thread-safe avec `_query_lock`
+- `scrollToTop()` au changement de page
+- Empty state dans `CustomTableView` (message "Aucun résultat")
+- Pagination masquée si une seule page
+- Notification barre de statut quand filtre "incomplets" se désactive
+
+---
+
 ## [3.17.0] - 2026-03-11
 
 ### 🧹 Migration QTableView — Phase 5 (nettoyage final)

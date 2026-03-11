@@ -371,8 +371,10 @@ class MainWindow(QMainWindow):
     
     # PHASE 5: Callbacks pour les événements des services centralisés
     def _on_navigation_page_changed(self, page: int):
-        """Callback pour changement de page"""
-        # Pas d'action supplémentaire requise, le service gère déjà le rechargement
+        """Callback pour changement de page — remet le scroll en haut du tableau."""
+        table = self.table_controller.table
+        if table is not None:
+            table.scrollToTop()
         
     def _on_navigation_page_size_changed(self, new_size: int):
         """Callback pour changement de taille de page"""
@@ -2021,6 +2023,13 @@ class MainWindow(QMainWindow):
             self.sorting_filtering_service.incomplete_filter_active = False
             app_logger.info("✅ Filtre désactivé dans sorting_filtering_service")
 
+        # Informer l'utilisateur de la désactivation automatique
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(
+                "Tous les appareils sont complets — filtre désactivé",
+                Config.STATUS_MESSAGE_TIMEOUT
+            )
+
         # Forcer un rechargement complet en supprimant tous les filtres
         app_logger.info("🔄 Rechargement complet avec clear_filters=True")
         self._force_refresh_display(reset_page=False, clear_filters=True)
@@ -2144,26 +2153,57 @@ class MainWindow(QMainWindow):
 
 ### Import de données
 1. **Import de fichiers** : Utilisez le bouton "📈 Import" ou glissez/déposez un fichier CSV ou PDF sur le tableau
-2. **Collage** : Copiez des données depuis Excel/Calc et collez avec Ctrl+V
+2. **Collage** : Copiez des données depuis Excel/Calc et collez avec Cmd+V
 3. **Référence de pièce** : Lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier
 
 ### Navigation et édition
 - **Double-clic** sur une cellule pour l'éditer
-- **Ctrl+N** : Ajouter une nouvelle ligne
-- **Ctrl+S** : Sauvegarder
-- **Ctrl+Z/Y** : Annuler/Refaire
-- **Ctrl+F** : Rechercher
+- **Entrée** : Valider et descendre à la cellule suivante
+- **Suppr / Retour arrière** : Effacer les cellules sélectionnées
 
 ### Gestion des pièces
-- **Gestionnaire de pièces** : Accessible via l'icône 🔧 dans la barre d'outils
-- **Sélection multiple** : Ctrl+Clic pour sélectionner plusieurs pièces à supprimer
-- **Filtrage** : Recherche et filtre des pièces orphelines
+- **Gestionnaire de pièces** : Accessible via Gestion → 🔧 Pièces
+- **Sélection multiple** : Cmd+Clic pour sélectionner plusieurs pièces à supprimer
 
 ### Fonctionnalités avancées
 - **Glisser/Déposer** : Déposez des fichiers CSV directement sur le tableau
-- **Auto-complétion** : Les champs vides sont automatiquement complétés
-- **Historique** : Toutes les modifications sont tracées dans l'historique
-- **Validation** : Détection automatique des doublons et inconsistances
+- **Auto-complétion** : Les champs vides sont automatiquement complétés via Action → Autocomplétion
+- **Recherche avancée** : Utilisez `&&` (ET) et `||` (OU) dans la barre de recherche
+
+---
+
+## ⌨️ Raccourcis clavier
+
+### Édition
+| Raccourci | Action |
+|-----------|--------|
+| Cmd+N | Ajouter une nouvelle ligne |
+| Cmd+Z | Annuler la dernière action |
+| Cmd+Y | Rétablir l'action annulée |
+| Cmd+C | Copier la sélection |
+| Cmd+V | Coller depuis le presse-papiers |
+| Cmd+S | Sauvegarder toutes les modifications |
+| Cmd+D | Afficher les valeurs existantes de la colonne (autocomplétion) |
+
+### Navigation
+| Raccourci | Action |
+|-----------|--------|
+| Cmd+↑ | Aller à la cellule vide précédente (ou tout en haut) |
+| Cmd+↓ | Aller à la cellule vide suivante (ou tout en bas) |
+| Ctrl+→ | Page suivante |
+| Ctrl+← | Page précédente |
+| Ctrl+Début | Première page |
+| Ctrl+Fin | Dernière page |
+
+### Recherche et affichage
+| Raccourci | Action |
+|-----------|--------|
+| Cmd+F | Ouvrir la barre de recherche |
+| Échap | Effacer la recherche |
+| F5 | Actualiser l'affichage |
+| F12 | Ouvrir le visualiseur de logs |
+
+---
 
 ## 🔧 Dépannage
 
@@ -2174,8 +2214,7 @@ class MainWindow(QMainWindow):
 
 ### Performance
 - L'application pagine automatiquement les gros datasets
-- Utilisez les filtres pour réduire l'affichage
-- La recherche est limitée à 5000 résultats
+- Utilisez les filtres de colonnes pour affiner l'affichage
 
 ## 📞 Support
 En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outils.
@@ -2194,7 +2233,111 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _show_local_guide(self):
         """Afficher un guide d'utilisation local en cas d'erreur"""
         self._safe_show_local_guide()
-    
+
+    def _open_fts5_manager(self):
+        """Ouvrir le gestionnaire d'index FTS5"""
+        self._safe_open_fts5_manager()
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur gestionnaire FTS5")
+    def _safe_open_fts5_manager(self):
+        """Dialogue de gestion de l'index de recherche FTS5"""
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressDialog
+        from ..core.config import Config
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("🔍 Index de recherche FTS5")
+        dialog.setModal(True)
+        dialog.resize(480, 280)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
+
+        # Titre
+        title_label = QLabel("<b>Gestion de l'index de recherche plein texte (FTS5)</b>")
+        title_label.setStyleSheet("font-size: 14px; margin-bottom: 4px;")
+        layout.addWidget(title_label)
+
+        # Explication
+        info_text = (
+            "L'index FTS5 accélère drastiquement les recherches en remplaçant les\n"
+            "requêtes <code>LIKE '%terme%'</code> (full table scan) par une recherche\n"
+            "indexée par trigrammes. Résultat : ~10× plus rapide sur 600k enregistrements.\n\n"
+            "<b>⚠️ La construction prend ~2 secondes. L'application reste responsive.</b>"
+        )
+        info_label = QLabel(info_text)
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        # Statut de l'index
+        def get_status_text():
+            try:
+                populated = self.db_manager.is_fts5_populated()
+                active = Config.USE_FTS5
+                if populated:
+                    count = self.db_manager.get_fts5_row_count()
+                    active_str = "✅ Actif" if active else "⚠️ Construit mais non activé"
+                    return f"Statut : {active_str} — {count:,} enregistrements indexés".replace(",", " ")
+                else:
+                    return "Statut : ❌ Index non construit"
+            except Exception as e:
+                return f"Statut : Erreur — {e}"
+
+        status_label = QLabel(get_status_text())
+        status_label.setStyleSheet("font-weight: bold; padding: 6px; background: #f0f0f0; border-radius: 4px;")
+        layout.addWidget(status_label)
+
+        layout.addStretch()
+
+        # Boutons
+        buttons_layout = QHBoxLayout()
+
+        rebuild_btn = QPushButton("⚙️ Construire / Reconstruire l'index")
+        rebuild_btn.setToolTip("Lance la construction complète de l'index FTS5 (~2 secondes)")
+
+        def do_rebuild():
+            rebuild_btn.setEnabled(False)
+            rebuild_btn.setText("⏳ Construction en cours…")
+            QApplication.processEvents()
+
+            try:
+                count = self.db_manager.rebuild_fts5()
+                Config.USE_FTS5 = True
+                status_label.setText(
+                    f"Statut : ✅ Actif — {count:,} enregistrements indexés".replace(",", " ")
+                )
+                rebuild_btn.setText("✅ Index construit")
+                if hasattr(self, 'statusBar'):
+                    self.statusBar().showMessage(
+                        f"Index FTS5 construit ({count:,} enregistrements) — Recherche accélérée activée".replace(",", " "),
+                        6000
+                    )
+            except Exception as e:
+                rebuild_btn.setEnabled(True)
+                rebuild_btn.setText("⚙️ Construire / Reconstruire l'index")
+                QMessageBox.critical(dialog, "Erreur FTS5", f"Échec de la construction de l'index :\n{e}")
+
+        rebuild_btn.clicked.connect(do_rebuild)
+        buttons_layout.addWidget(rebuild_btn)
+
+        buttons_layout.addStretch()
+
+        close_btn = QPushButton("Fermer")
+        close_btn.clicked.connect(dialog.accept)
+        buttons_layout.addWidget(close_btn)
+
+        layout.addLayout(buttons_layout)
+
+        # Note persistance
+        persist_note = QLabel(
+            "<i>Note : l'activation est en mémoire pour cette session. "
+            "Pour la rendre permanente, définir <code>USE_FTS5 = True</code> dans <code>src/core/config.py</code>.</i>"
+        )
+        persist_note.setWordWrap(True)
+        persist_note.setStyleSheet("color: #666; font-size: 11px; margin-top: 8px;")
+        layout.addWidget(persist_note)
+
+        dialog.exec_()
+
     def _apply_column_visibility(self):
         """Appliquer la visibilité des colonnes au tableau"""
         for col_idx, visible in self.visible_columns.items():

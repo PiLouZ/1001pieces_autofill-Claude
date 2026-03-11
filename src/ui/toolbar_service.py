@@ -127,7 +127,15 @@ class ToolbarService:
         columns_action.setToolTip("Configurer l'affichage des colonnes")
         columns_action.triggered.connect(getattr(self.main_window, '_configure_columns', lambda: None))
         gestion_menu.addAction(columns_action)
-        
+
+        gestion_menu.addSeparator()
+
+        # Gestionnaire FTS5
+        fts5_action = QAction("🔍 Index de recherche FTS5", self.main_window)
+        fts5_action.setToolTip("Gérer l'index de recherche plein texte (FTS5)")
+        fts5_action.triggered.connect(getattr(self.main_window, '_open_fts5_manager', lambda: None))
+        gestion_menu.addAction(fts5_action)
+
         gestion_btn.setMenu(gestion_menu)
         toolbar.addWidget(gestion_btn)
     
@@ -166,8 +174,8 @@ class ToolbarService:
         toolbar.addAction(logs_action)
         
         guide_action = QAction("📖 Guide", self.main_window)
-        guide_action.setToolTip("Ouvrir le guide d'utilisation")
-        guide_action.triggered.connect(getattr(self.main_window, '_open_user_guide', lambda: None))
+        guide_action.setToolTip("Guide d'utilisation et raccourcis clavier")
+        guide_action.triggered.connect(getattr(self.main_window, '_show_local_guide', lambda: None))
         toolbar.addAction(guide_action)
     
     def _add_toolbar_separator(self, toolbar):
