@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.17.0"
+    VERSION = "3.18.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -76,10 +76,10 @@ class Config:
     DRAG_HANDLE_SIZE = 10
 
     # Feature Flag — FTS5 Full-Text Search
-    # False = comportement actuel LIKE %terme% (stable)
-    # True  = recherche via index FTS5 trigram (rapide, expérimental)
-    # Prérequis : appareils_fts doit être populée (_setup_fts5 dans database_manager)
-    USE_FTS5 = False
+    # True  = recherche via index FTS5 trigram (activé depuis v3.18.0)
+    # False = fallback LIKE %terme% (si l'index est absent ou corrompu)
+    # Note  : désactivé automatiquement si SEARCH_PIECES_ONLY=True (pièces non indexées)
+    USE_FTS5 = True
 
     # Feature Flags - Refactoring Phase 1
     USE_NEW_AUTO_SAVE_MANAGER = False  # Migration AutoSaveManager - REPORTÉE (cycle init complexe)
