@@ -1103,6 +1103,7 @@ class DatabaseManager:
             query = f"""
                 SELECT a.id, {headers_str},
                        (SELECT COUNT(*) FROM piece_associations pa
+                        INNER JOIN pieces p ON pa.piece_id = p.id
                         WHERE pa.appareil_id = a.id) as pieces_count
                 FROM appareils a
             """
