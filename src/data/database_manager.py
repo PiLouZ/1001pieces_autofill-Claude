@@ -142,6 +142,8 @@ class DatabaseManager:
         self._query_lock = threading.Lock()
         # Phase 3: Initialiser le cache de recherche optimisé
         self.search_cache = SearchCache(Config.SEARCH_CACHE_SIZE) if Config.FULLTEXT_CACHE_ENABLED else None
+        # Cache du COUNT total (sans filtre) — invalide uniquement sur insert/delete
+        self._total_count_cache: Optional[int] = None
         # Phase 2.3: Initialiser le service d'invalidation de cache (import local pour éviter cycle)
         from ..services.search_cache_service import SearchCacheInvalidationService
         self.cache_invalidation = SearchCacheInvalidationService(self)
@@ -1040,14 +1042,19 @@ class DatabaseManager:
         )
         return hashlib.md5(str(key).encode()).hexdigest()
 
-    def invalidate_search_cache(self):
+    def invalidate_search_cache(self, invalidate_total_count: bool = False):
         """Vider le cache de recherche après toute modification de données.
 
         À appeler systématiquement après chaque écriture (update, insert, delete)
         pour garantir que load_data ne retourne jamais de données périmées.
+
+        invalidate_total_count=True : réinitialise aussi _total_count_cache.
+        À passer uniquement lors d'un insert ou d'un delete (pas d'un update).
         """
         if self.search_cache:
             self.search_cache.clear()
+        if invalidate_total_count:
+            self._total_count_cache = None
 
     def _should_use_cache(self, search_term: Optional[str], column_filters: Optional[Dict],
                          incomplete_filter: bool, limit: Optional[int]) -> bool:
@@ -1174,7 +1181,20 @@ class DatabaseManager:
     def _count_data_core(self, search_term: Optional[str] = None,
                          column_filters: Optional[Dict[int, str]] = None,
                          incomplete_filter: bool = False) -> int:
-        """Logique interne du comptage — appelée sous _query_lock."""
+        """Logique interne du comptage — appelée sous _query_lock.
+
+        Cas sans filtre : retourne _total_count_cache (calculé une seule fois,
+        invalidé sur insert/delete). Évite un scan complet de 598k lignes à
+        chaque effacement du champ de recherche (~70ms → 0ms).
+        """
+        # Court-circuit : sans filtre, le total ne change qu'à l'insert/delete
+        if not search_term and not column_filters and not incomplete_filter:
+            if self._total_count_cache is not None:
+                return self._total_count_cache
+            result = self.cursor.execute("SELECT COUNT(*) FROM appareils").fetchone()[0]
+            self._total_count_cache = result
+            return result
+
         # COUNT simple sur appareils — le LEFT JOIN sur piece_associations
         # était inutile ici (pieces_count n'est pas utilisé dans un COUNT(*))
         # et forçait la matérialisation de 1,86M lignes pour rien.
@@ -1344,7 +1364,7 @@ class DatabaseManager:
 
         self.cursor.execute(query, values)
         self.conn.commit()
-        self.invalidate_search_cache()
+        self.invalidate_search_cache(invalidate_total_count=True)
 
         # Phase 2.3: Invalider le cache après ajout d'appareil
         if hasattr(self, 'cache_invalidation'):
@@ -1382,7 +1402,7 @@ class DatabaseManager:
         deleted_count = self.cursor.rowcount
 
         self.conn.commit()
-        self.invalidate_search_cache()
+        self.invalidate_search_cache(invalidate_total_count=True)
 
         if deleted_count > 0 and associations_deleted > 0:
             app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
@@ -1420,7 +1440,7 @@ class DatabaseManager:
         device_deleted = self.cursor.rowcount > 0
 
         self.conn.commit()
-        self.invalidate_search_cache()
+        self.invalidate_search_cache(invalidate_total_count=True)
 
         # Log pour debug
         if device_deleted and associations_deleted > 0:
