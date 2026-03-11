@@ -785,6 +785,7 @@ class TableController:
     def _add_pagination_controls(self, layout: QVBoxLayout):
         """Ajouter les contrôles de pagination"""
         pagination_widget = QWidget()
+        self.pagination_widget = pagination_widget
         pagination_layout = QHBoxLayout(pagination_widget)
         
         # Bouton page précédente
@@ -825,6 +826,13 @@ class TableController:
             self.page_label.setText(f"Page {self.current_page} sur {self.total_pages}")
         if self.size_label:
             self.size_label.setText(f"Total: {self.total_rows} lignes")
+
+        # Masquer la zone de navigation page si une seule page
+        if hasattr(self, 'pagination_widget') and self.pagination_widget:
+            single_page = self.total_pages <= 1 and self.page_size != -1
+            self.prev_button.setVisible(not single_page)
+            self.next_button.setVisible(not single_page)
+            self.page_label.setVisible(not single_page)
 
         # Synchroniser avec NavigationService si disponible
         if self.navigation_service:

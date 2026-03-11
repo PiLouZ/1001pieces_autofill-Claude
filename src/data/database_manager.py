@@ -932,6 +932,13 @@ class DatabaseManager:
                    sort_order: Optional[str] = None,
                    incomplete_filter: bool = False) -> int:
         """Compter le nombre total de lignes correspondant aux critères"""
+        with self._query_lock:
+            return self._count_data_core(search_term, column_filters, incomplete_filter)
+
+    def _count_data_core(self, search_term: Optional[str] = None,
+                         column_filters: Optional[Dict[int, str]] = None,
+                         incomplete_filter: bool = False) -> int:
+        """Logique interne du comptage — appelée sous _query_lock."""
         # Utiliser la même structure FROM que load_data pour cohérence
         query = """
             SELECT COUNT(*) FROM appareils a

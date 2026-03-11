@@ -2023,6 +2023,13 @@ class MainWindow(QMainWindow):
             self.sorting_filtering_service.incomplete_filter_active = False
             app_logger.info("✅ Filtre désactivé dans sorting_filtering_service")
 
+        # Informer l'utilisateur de la désactivation automatique
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(
+                "Tous les appareils sont complets — filtre désactivé",
+                Config.STATUS_MESSAGE_TIMEOUT
+            )
+
         # Forcer un rechargement complet en supprimant tous les filtres
         app_logger.info("🔄 Rechargement complet avec clear_filters=True")
         self._force_refresh_display(reset_page=False, clear_filters=True)

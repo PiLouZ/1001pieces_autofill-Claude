@@ -11,15 +11,15 @@ Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 
 | # | Catégorie | Titre | Effort | Impact | Statut |
 |---|-----------|-------|--------|--------|--------|
-| 1 | Perf | N+1 queries dans `pieces_count_service` | Faible | Élevé | ⬜ |
-| 2 | Perf | `processEvents()` dans une boucle | Faible | Élevé | ⬜ |
-| 3 | Perf | Recherche linéaire `find_row_by_db_id()` | Faible | Moyen | ⬜ |
-| 4 | Perf | `load_data()` + `count_data()` séquentiels | Moyen | Moyen | ⬜ |
+| 1 | Perf | N+1 queries dans `pieces_count_service` | Faible | Élevé | ✅ |
+| 2 | Perf | `processEvents()` dans une boucle | Faible | Élevé | ✅ |
+| 3 | Perf | Recherche linéaire `find_row_by_db_id()` | Faible | Moyen | ✅ |
+| 4 | Perf | `load_data()` + `count_data()` séquentiels | Moyen | Moyen | ✅ |
 | 5 | Perf | Requêtes LIKE `%terme%` sans index | Moyen | Moyen | ⬜ |
 | 6 | Perf | Pas de virtual scrolling (fetchMore) | Élevé | Moyen | ⬜ |
-| 7 | UX | Message "aucun résultat" | Faible | Moyen | ⬜ |
-| 8 | UX | Masquer la pagination si inutile | Faible | Faible | ⬜ |
-| 9 | UX | Notification filtre incomplets désactivé | Faible | Faible | ⬜ |
+| 7 | UX | Message "aucun résultat" | Faible | Moyen | ✅ |
+| 8 | UX | Masquer la pagination si inutile | Faible | Faible | ✅ |
+| 9 | UX | Notification filtre incomplets désactivé | Faible | Faible | ✅ |
 | 10 | UX | Raccourcis clavier non documentés | Faible | Faible | ⬜ |
 
 ---
