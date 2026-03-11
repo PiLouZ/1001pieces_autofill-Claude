@@ -75,6 +75,12 @@ class Config:
     # Interface
     DRAG_HANDLE_SIZE = 10
 
+    # Feature Flag — FTS5 Full-Text Search
+    # False = comportement actuel LIKE %terme% (stable)
+    # True  = recherche via index FTS5 trigram (rapide, expérimental)
+    # Prérequis : appareils_fts doit être populée (_setup_fts5 dans database_manager)
+    USE_FTS5 = False
+
     # Feature Flags - Refactoring Phase 1
     USE_NEW_AUTO_SAVE_MANAGER = False  # Migration AutoSaveManager - REPORTÉE (cycle init complexe)
 
