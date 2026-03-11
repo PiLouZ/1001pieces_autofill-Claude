@@ -174,8 +174,10 @@ class DatabaseManager:
         build_fts5_condition(). Fallback automatique sur LIKE si le type de
         recherche n'est pas supporté par FTS5 (regex, groupes imbriqués).
         """
-        # Branche FTS5 — activée uniquement si USE_FTS5=True
-        if Config.USE_FTS5:
+        # Branche FTS5 — activée uniquement si USE_FTS5=True ET SEARCH_PIECES_ONLY=False.
+        # L'index FTS5 couvre les colonnes d'appareils uniquement ; quand on recherche
+        # dans pieces.ref_piece, FTS5 n'est pas applicable → fallback LIKE pièces.
+        if Config.USE_FTS5 and not Config.SEARCH_PIECES_ONLY:
             fts_condition = self.build_fts5_condition(search_term)
             if fts_condition is not None:
                 return fts_condition
@@ -790,12 +792,19 @@ class DatabaseManager:
         if not search_term:
             return None
 
+        # Le tokenizer trigram requiert au moins 3 caractères par terme.
+        # Si un terme est trop court, FTS5 ne trouvera rien → fallback LIKE.
+        def _too_short(t: str) -> bool:
+            return len(t.strip()) < 3
+
         fts_base = "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)"
 
         if isinstance(search_term, str):
             term = search_term.strip()
             if not term:
                 return None
+            if _too_short(term):
+                return None  # Fallback LIKE pour les termes courts (< 3 chars)
             return {
                 'query_type': 'fts5',
                 'condition': fts_base,
@@ -808,6 +817,8 @@ class DatabaseManager:
             terms = search_term.get('terms', [])
             if not terms:
                 return None
+            if _too_short(terms[0]):
+                return None
             return {
                 'query_type': 'fts5',
                 'condition': fts_base,
@@ -818,6 +829,8 @@ class DatabaseManager:
             terms = search_term.get('terms', [])
             if not terms:
                 return None
+            if any(_too_short(t) for t in terms):
+                return None  # Fallback si l'un des termes est trop court
             # FTS5 : espace entre phrases = ET implicite
             match_expr = ' '.join(self._escape_fts5(t) for t in terms)
             return {
@@ -830,6 +843,8 @@ class DatabaseManager:
             terms = search_term.get('terms', [])
             if not terms:
                 return None
+            if any(_too_short(t) for t in terms):
+                return None  # Fallback si l'un des termes est trop court
             # FTS5 : OR explicite
             match_expr = ' OR '.join(self._escape_fts5(t) for t in terms)
             return {
