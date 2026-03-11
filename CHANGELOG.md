@@ -4,6 +4,20 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.21.0] - 2026-03-11
+
+### ⚡ Perf — Cache LRU réactivé pour load_data (SMART_CACHE)
+
+Le cache LRU existait dans le code mais était inaccessible (placé après un `return`) et référençait `_load_data_optimized` qui avait causé une régression. Réécriture propre autour de `_load_data_original`.
+
+- `load_data()` : cache check + store dans le `_query_lock`, sans `_load_data_optimized`
+- `_make_load_cache_key()` : hash MD5 de tous les paramètres de requête
+- `invalidate_search_cache()` : vide le cache après chaque écriture
+- Invalidation dans : `update_cell`, `update_multiple_cells_batch`, `insert_appareil`, `delete_appareils`, `delete_appareil`
+- `SMART_CACHE_ENABLED = True`
+
+---
+
 ## [3.20.0] - 2026-03-11
 
 ### ⚡ Perf — Suppression du LEFT JOIN matérialisé (×470)
