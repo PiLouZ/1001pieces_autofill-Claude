@@ -1336,6 +1336,26 @@ class DatabaseManager:
         self.cursor.execute(query, (appareil_id,))
         result = self.cursor.fetchone()
         return result[0] if result else 0
+
+    @handle_db_query_errors(return_value={}, log_prefix="Erreur comptage pièces batch")
+    def get_pieces_count_batch(self, appareil_ids: List[int]) -> Dict[int, int]:
+        """Récupérer le nombre de pièces pour une liste d'appareils en une seule requête.
+
+        Retourne {appareil_id: count}. Les appareils sans pièces n'apparaissent pas
+        dans le dict (count implicitement 0).
+        """
+        if not appareil_ids:
+            return {}
+        placeholders = ','.join('?' * len(appareil_ids))
+        query = f"""
+            SELECT pa.appareil_id, COUNT(*) as cnt
+            FROM piece_associations pa
+            INNER JOIN pieces p ON pa.piece_id = p.id
+            WHERE pa.appareil_id IN ({placeholders})
+            GROUP BY pa.appareil_id
+        """
+        self.cursor.execute(query, appareil_ids)
+        return {row[0]: row[1] for row in self.cursor.fetchall()}
     
     def add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None, confirm_callback=None) -> int:
         """Ajouter une pièce à un appareil (nouvelle structure)"""

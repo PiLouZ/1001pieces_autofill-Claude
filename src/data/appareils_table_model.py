@@ -149,6 +149,27 @@ class AppareillsTableModel(QAbstractTableModel):
             [Qt.UserRole]
         )
 
+    def update_pieces_count(self, row: int, count: int):
+        """Met à jour pieces_count (record[-1]) sans émettre cell_edited.
+
+        Utilisé exclusivement par PiecesCountService après association/suppression
+        de pièce. N'est pas une édition utilisateur → pas de sauvegarde déclenchée.
+        """
+        if not (0 <= row < len(self._records)):
+            return
+        record = list(self._records[row])
+        record[-1] = count
+        self._records[row] = tuple(record)
+        idx = self.index(row, len(self._headers) - 1)
+        self.dataChanged.emit(idx, idx, [Qt.DisplayRole, Qt.BackgroundRole, Qt.ToolTipRole])
+
+    def find_row_by_db_id(self, db_id: int):
+        """Retourne l'index de ligne pour un db_id donné, ou None si absent."""
+        for i, rec in enumerate(self._records):
+            if rec[0] == db_id:
+                return i
+        return None
+
     def set_search_term(self, term):
         """Met à jour le terme de recherche pour le highlight (Phase 3+).
 
