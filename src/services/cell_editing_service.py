@@ -111,15 +111,9 @@ class CellEditingService(QObject):
                 db_id = self.db_manager.insert_appareil(empty_data)
 
                 if db_id:
-                    # Mettre à jour l'item de la colonne 0 avec le nouvel ID
-                    id_item = self.table.item(row, 0)
-                    if not id_item:
-                        # Créer l'item ID s'il n'existe pas
-                        from ..ui.qt_imports import QTableWidgetItem
-                        id_item = QTableWidgetItem(str(db_id))
-                        self.table.setItem(row, 0, id_item)
-                    else:
-                        id_item.setText(str(db_id))
+                    # Propager le nouvel ID dans le modèle
+                    if hasattr(self.table, 'model') and self.table.model():
+                        self.table.model().update_record_db_id(row, db_id)
 
                     app_logger.info(f"Auto-création ligne réussie - ID: {db_id} pour cellule ({row}, {col})")
                     return True
@@ -296,12 +290,16 @@ class CellEditingService(QObject):
 
         success_count = 0
 
+        from ..ui.qt_imports import Qt
+
         for (row, col), (old_value, new_value) in self.pending_changes.items():
-            item = self.table.item(row, col)
-            if item:
-                item.setText(new_value)
-                if self.update_cell_in_db(item, skip_history=True):
-                    success_count += 1
+            # model.setData() déclenche cell_edited → EventDrivenSaveService
+            model = self.table.model()
+            if model:
+                idx = model.index(row, col)
+                if idx.isValid() and model.flags(idx) & Qt.ItemIsEditable:
+                    if model.setData(idx, new_value, Qt.EditRole):
+                        success_count += 1
 
         # Nettoyer l'état du lot
         self.is_batch_editing = False

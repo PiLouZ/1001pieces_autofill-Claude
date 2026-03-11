@@ -7,7 +7,7 @@ from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton,
                             QLabel, QProgressDialog, QApplication, QHeaderView,
                             Qt, QTimer, QThread, pyqtSignal, QObject, QColor, QBrush,
-                            QSizePolicy, QMenu, QAction, QPoint)
+                            QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView)
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -99,6 +99,7 @@ class TableController:
         # Préchargement page suivante
         self.prefetch_cache = {}  # {cache_key: records}
         self.prefetch_worker = None  # Worker distinct de query_worker pour ne pas bloquer load_data_async
+        self._prefetch_db_manager = None  # Connexion SQLite dédiée au prefetch (évite partage de connexion)
         self._pending_prefetch_params = None
         self.prefetch_timer = QTimer()
         self.prefetch_timer.setSingleShot(True)
@@ -106,6 +107,7 @@ class TableController:
         
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
+        self.model = None  # AppareillsTableModel — initialisé par create_table_widget()
         self.filter_widget = None
         self.filter_layout = None
         
@@ -215,24 +217,29 @@ class TableController:
         self.filter_widget = filter_widget
         self.filter_layout = filter_layout
         
-        # Tableau principal avec gestion des touches
-        self.table = self.table_widget_service.create_custom_table()
-        self.table.setColumnCount(len(Config.UI_HEADERS))
-        self.table.setHorizontalHeaderLabels(Config.UI_HEADERS)
+        # Tableau principal — QTableView + AppareillsTableModel
+        from ..data.appareils_table_model import AppareillsTableModel
+        from .custom_table_view import CustomTableView
+        self.model = AppareillsTableModel(self.parent_window)
+        self.table = CustomTableView()
+        self.table.setModel(self.model)
+        # Headers gérés par model.headerData() — pas de setHorizontalHeaderLabels()
+
+        # Configuration QTableView
         self.table.setAcceptDrops(True)
-        self.table.setDragDropMode(QTableWidget.DragDropMode.DropOnly)
-        
-        # Configurer le tri
+        self.table.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
+
+        # Tri géré manuellement (désactiver le tri automatique Qt)
         self.table.setSortingEnabled(False)
         self.table.horizontalHeader().setSortIndicatorShown(True)
         self.table.horizontalHeader().sectionClicked.connect(self._on_header_click)
-        
+
         # Log des largeurs de colonnes quand elles sont modifiées
         self.table.horizontalHeader().sectionResized.connect(self._on_column_resized)
-        
+
         # Appliquer la visibilité des colonnes
         self._apply_column_visibility()
-        
+
         # Définir les largeurs par défaut des colonnes
         self._set_default_column_widths()
         
@@ -320,9 +327,15 @@ class TableController:
     
     def connect_selection_signals(self, on_selection_changed_callback):
         """Connecter les signaux de sélection du tableau à un callback"""
-        if self.table:
-            self.table.itemSelectionChanged.connect(on_selection_changed_callback)
-            self.table.currentCellChanged.connect(lambda: on_selection_changed_callback())
+        if not self.table:
+            return
+        # QTableView : signaux via selectionModel()
+        self.table.selectionModel().selectionChanged.connect(
+            lambda selected, deselected: on_selection_changed_callback()
+        )
+        self.table.selectionModel().currentChanged.connect(
+            lambda current, previous: on_selection_changed_callback()
+        )
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur chargement données tableau")
     def load_data(self, search_term: str = None, is_search: bool = False):
@@ -332,6 +345,10 @@ class TableController:
 
         # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
         self.current_search_term = search_term
+
+        # Annuler tout prefetch planifié (le worker en cours finira sur sa propre connexion)
+        self.prefetch_timer.stop()
+        self._pending_prefetch_params = None
 
         # Enregistrer dans l'historique si c'est une vraie recherche (terme non vide)
         if is_search and search_term:
@@ -1050,8 +1067,14 @@ class TableController:
         if cache_key in self.prefetch_cache:
             return  # Déjà en cache, rien à faire
 
+        # Utiliser une connexion SQLite dédiée au prefetch pour éviter tout partage
+        # avec le thread principal (db_manager.conn) → plus de freeze, plus de lock
+        if self._prefetch_db_manager is None:
+            from ..data.database_manager import DatabaseManager
+            self._prefetch_db_manager = DatabaseManager()
+
         self.prefetch_worker = DatabaseQueryWorker(
-            self.db_manager, effective_search_term, column_filters,
+            self._prefetch_db_manager, effective_search_term, column_filters,
             limit, next_offset, sort_col, sort_order, incomplete_filter
         )
         self.prefetch_worker.data_loaded.connect(

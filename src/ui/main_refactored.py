@@ -441,9 +441,9 @@ class MainWindow(QMainWindow):
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
         
-        # CRUCIAL: Reconnecter les signaux de modification des cellules
-        self.table.itemChanged.connect(self._on_cell_changed)
-        self.table.currentItemChanged.connect(self._on_current_item_changed)
+        # Connecter cell_edited du modèle → handler de modification
+        if self.table_controller.model is not None:
+            self.table_controller.model.cell_edited.connect(self._on_cell_changed_model)
         
         # Configurer la poignée de duplication après création du tableau
         self._setup_drag_handle()
@@ -880,11 +880,11 @@ class MainWindow(QMainWindow):
         )
 
         if selected_value is not None:
-            # Appliquer la valeur sélectionnée
-            current_item.setText(selected_value)
-
-            # Déclencher la sauvegarde
-            self._on_cell_changed(current_item)
+            # Écrire dans le modèle → cell_edited → pipeline complet (save, undo, etc.)
+            row = self.table.currentRow()
+            model = self.table_controller.model
+            if model:
+                model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
 
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
@@ -905,6 +905,32 @@ class MainWindow(QMainWindow):
         else:
             # Colonne 7 = Nb pièces (lecture seule, pas de champ DB correspondant)
             return None
+
+    # ── Helpers table unifiés (QTableWidget / QTableView) ───────────────────
+
+    def _get_cell_text(self, row: int, col: int) -> str:
+        """Lire le texte d'une cellule — fonctionne en mode QTableWidget et QTableView."""
+        model = self.table_controller.model
+        if model:
+            return model.data(model.index(row, col), Qt.DisplayRole) or ""
+        return ""
+
+    def _set_cell_value_in_table(self, row: int, col: int, value: str) -> None:
+        """Écrire une valeur dans la table sans déclencher les signaux d'édition.
+
+        Bloque les signaux du modèle pour éviter le déclenchement de cell_edited
+        (undo/redo silencieux). Émet dataChanged manuellement pour rafraîchir la vue.
+        """
+        model = self.table_controller.model
+        if model:
+            model.blockSignals(True)
+            model.setData(model.index(row, col), value)
+            model.blockSignals(False)
+            # Notifier la vue manuellement (dataChanged était bloqué)
+            idx = model.index(row, col)
+            model.dataChanged.emit(idx, idx, [Qt.DisplayRole])
+
+    # ────────────────────────────────────────────────────────────────────────
 
     def _on_current_item_changed(self, current, previous):
         """Capturer la valeur précédente avant modification"""
@@ -932,87 +958,100 @@ class MainWindow(QMainWindow):
         """Helper sécurisé pour initialiser les valeurs précédentes"""
         for row in range(self.table.rowCount()):
             for col in range(self.table.columnCount()):
-                item = self.table.item(row, col)
-                if item:
-                    key = (row, col)
-                    self.previous_values[key] = item.text()
+                self.previous_values[(row, col)] = self._get_cell_text(row, col)
     
     def _on_cell_changed(self, item: QTableWidgetItem):
-        """Gérer les modifications de cellules"""
+        """Gérer les modifications de cellules (mode QTableWidget)."""
         if self.table.signalsBlocked():
             return
 
         row, col = item.row(), item.column()
         new_value = item.text()
-        
-        # Auto-complétion désactivée temporairement pour éviter les plantages
-        # if col in [0, 1] and new_value and (row, col) not in getattr(self.table, 'active_combos', {}):  # Colonnes Type (0) et Fabricant (1)
-        #     self.table._activate_autocomplete_cell(row, col)
-        
+
         # Obtenir l'ancienne valeur
         key = (row, col)
         old_value = self.previous_values.get(key, '')
-        
-        # Ne pas traiter si la valeur n'a pas changé
+
         if old_value == new_value:
             return
-        
-        # Validation (en excluant la colonne Nb Pièces)
-        if col == len(Config.DB_HEADERS):  # Dernière colonne "Nb Pièces" - lecture seule
-            item.setText(old_value)  # Restaurer l'ancienne valeur
+
+        # Colonne Nb Pièces — lecture seule : restaurer et ignorer
+        if col == len(Config.DB_HEADERS):
+            item.setText(old_value)
             return
-            
-        # Mapper l'index de colonne vers le nom de champ DB
+
+        # Validation
         field_name = self._get_db_field_name(col)
-        
         if field_name:
             validation_result = self.validator.validate_field(field_name, new_value)
             if not validation_result.is_valid:
                 MessageHelper.show_warning(self, validation_result.error_message, Messages.TITLE_WARNING)
-                item.setText(old_value)  # Restaurer l'ancienne valeur
+                item.setText(old_value)
                 return
-        
-        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
+
+        db_id_str = self.table.verticalHeaderItem(row).text() if self.table.verticalHeaderItem(row) else None
+        self._apply_cell_edit_logic(row, col, old_value, new_value, db_id_str)
+
+    def _on_cell_changed_model(self, row: int, col: int, old_value: str, new_value: str):
+        """Gérer les modifications de cellules (mode QTableView).
+        Reçoit (row, col, old_value, new_value) depuis AppareillsTableModel.cell_edited.
+        """
+        model = self.table_controller.model if hasattr(self.table_controller, 'model') else None
+        if model and model.signalsBlocked():
+            return
+
+        if old_value == new_value:
+            return
+
+        # Validation (les colonnes read-only sont filtrées en amont par flags() du modèle)
+        field_name = self._get_db_field_name(col)
+        if field_name:
+            validation_result = self.validator.validate_field(field_name, new_value)
+            if not validation_result.is_valid:
+                MessageHelper.show_warning(self, validation_result.error_message, Messages.TITLE_WARNING)
+                if model:
+                    model.blockSignals(True)
+                    model.setData(model.index(row, col), old_value)
+                    model.blockSignals(False)
+                    idx = model.index(row, col)
+                    model.dataChanged.emit(idx, idx, [Qt.DisplayRole])
+                return
+
+        db_id = model.get_db_id(row) if model else None
+        self._apply_cell_edit_logic(row, col, old_value, new_value, db_id)
+
+    def _apply_cell_edit_logic(self, row: int, col: int, old_value: str, new_value: str, db_id):
+        """Tronc commun post-validation : sauvegarde, historique et mises à jour UI."""
+        # Sauvegarde
         if Config.USE_NEW_AUTO_SAVE_MANAGER:
             self.auto_save_manager.mark_cell_modified(row, col, self.table)
         elif not Config.ENABLE_EVENT_DRIVEN_SAVE:
-            # Ancien système timer-based (pour rollback)
             self.modified_cells.add((row, col))
-
-            # Mettre à jour l'indicateur
             self.save_indicator.setText(Config.get_message('save_pending'))
             self.save_indicator.setStyleSheet("color: orange;")
         else:
-            # Système événementiel: déléguer au service centralisé
             if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
                 self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
             else:
-                # Fallback si service pas encore initialisé
                 app_logger.warning("EventDrivenSaveService non disponible, fallback vers méthode locale")
                 self._save_cell_immediately(row, col, new_value)
-        
-        # Enregistrer dans l'historique
+
+        # Historique undo
         self.undo_manager.add_action({
             'type': 'cell_edit',
             'row': row,
             'col': col,
             'old_value': old_value,
             'new_value': new_value,
-            'db_id': self.table.verticalHeaderItem(row).text() if self.table.verticalHeaderItem(row) else None
+            'db_id': db_id,
         })
-        
-        # CORRECTION: Ajouter à l'historique groupé au lieu de l'ancien système
         self._safe_add_to_grouped_history(row, col, old_value, new_value)
-        
+
         # Mettre à jour la valeur précédente
-        self.previous_values[key] = new_value
+        self.previous_values[(row, col)] = new_value
 
         self._update_toolbar_states()
-
-        # Mettre à jour les services après modification
         self._update_incomplete_button_visibility()
-
-        # Mettre à jour l'indicateur de doublons après modification
         if hasattr(self, 'duplicate_indicator_service'):
             self.duplicate_indicator_service.schedule_update()
 
@@ -1079,32 +1118,31 @@ class MainWindow(QMainWindow):
     @handle_drag_operation_errors(return_value=None, title="Erreur vérification sélection")
     def _safe_check_selection(self):
         """Vérifier la sélection et cacher le drag handle si vide"""
-        selected = self.table.selectedRanges()
-        if not selected:
+        sm = self.table.selectionModel()
+        if not sm or not sm.hasSelection():
             self.drag_handle.hide()
             return None
-        return selected
+        return sm.selectedIndexes()
 
     @handle_drag_operation_errors(return_value=None, title="Erreur positionnement drag handle")
     def _safe_position_drag_handle_at_selection(self, selected):
         """Positionner le drag handle à la sélection"""
-        sel_range = selected[0]
-        bottom_right_item = self.table.item(sel_range.bottomRow(), sel_range.rightColumn())
+        # selected = liste de QModelIndex (depuis selectionModel().selectedIndexes())
+        bottom_row = max(idx.row() for idx in selected)
+        right_col = max(idx.column() for idx in selected)
+        model_idx = self.table.model().index(bottom_row, right_col)
+        rect = self.table.visualRect(model_idx)
 
-        if bottom_right_item:
-            rect = self.table.visualItemRect(bottom_right_item)
-            if rect.isValid():
-                handle_x = rect.right() - self.drag_handle.width() + 1
-                handle_y = rect.bottom() - self.drag_handle.height() + 1
+        if rect.isValid():
+            handle_x = rect.right() - self.drag_handle.width() + 1
+            handle_y = rect.bottom() - self.drag_handle.height() + 1
 
-                viewport_rect = self.table.viewport().rect()
-                if (handle_x >= 0 and handle_y >= 0 and
-                    handle_x < viewport_rect.width() and
-                    handle_y < viewport_rect.height()):
-                    self.drag_handle.move(handle_x, handle_y)
-                    self.drag_handle.show()
-                else:
-                    self.drag_handle.hide()
+            viewport_rect = self.table.viewport().rect()
+            if (handle_x >= 0 and handle_y >= 0 and
+                handle_x < viewport_rect.width() and
+                handle_y < viewport_rect.height()):
+                self.drag_handle.move(handle_x, handle_y)
+                self.drag_handle.show()
             else:
                 self.drag_handle.hide()
         else:
@@ -1312,12 +1350,11 @@ class MainWindow(QMainWindow):
 
             for row in modified_rows:
                 for col in range(start_col, end_col + 1):
-                    item = self.table.item(row, col)
-                    if item and hasattr(self, 'cell_editing_service'):
-                        # Sauvegarder uniquement les cellules avec ID valide
-                        if self.cell_editing_service.update_cell_in_db(item, skip_history=True):
-                            saved_count += 1
-                            cells_to_clean.append((row, col))
+                    if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+                        new_value = self._get_cell_text(row, col)
+                        self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
+                        saved_count += 1
+                        cells_to_clean.append((row, col))
 
             # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
             if hasattr(self, 'modified_cells') and cells_to_clean:
@@ -1472,39 +1509,26 @@ class MainWindow(QMainWindow):
         """Appliquer une action d'annulation"""
         if action['type'] == 'cell_edit':
             row, col = action['row'], action['col']
-            item = self.table.item(row, col)
-            if item:
-                # Bloquer les signaux pour éviter les boucles
-                self.table.blockSignals(True)
-                item.setText(action['old_value'])
-                self.table.blockSignals(False)
-
-                # Mettre à jour dans la base si on a l'ID
-                if action.get('db_id'):
-                    self._safe_update_db_for_undo(action['db_id'], col, action['old_value'])
-
-                # Mettre à jour la valeur précédente
-                key = (row, col)
-                self.previous_values[key] = action['old_value']
+            self._apply_undo_redo_cell(row, col, action['old_value'], action.get('db_id'),
+                                       self._safe_update_db_for_undo)
 
     def _apply_redo_action(self, action: Dict[str, Any]):
         """Appliquer une action de rétablissement"""
         if action['type'] == 'cell_edit':
             row, col = action['row'], action['col']
-            item = self.table.item(row, col)
-            if item:
-                # Bloquer les signaux pour éviter les boucles
-                self.table.blockSignals(True)
-                item.setText(action['new_value'])
-                self.table.blockSignals(False)
+            self._apply_undo_redo_cell(row, col, action['new_value'], action.get('db_id'),
+                                       self._safe_update_db_for_redo)
 
-                # Mettre à jour dans la base si on a l'ID
-                if action.get('db_id'):
-                    self._safe_update_db_for_redo(action['db_id'], col, action['new_value'])
-
-                # Mettre à jour la valeur précédente
-                key = (row, col)
-                self.previous_values[key] = action['new_value']
+    def _apply_undo_redo_cell(self, row: int, col: int, value: str, db_id, db_updater) -> None:
+        """Tronc commun undo/redo : écriture silencieuse + mise à jour DB + UI."""
+        self._set_cell_value_in_table(row, col, value)
+        if db_id:
+            db_updater(db_id, col, value)
+        self.previous_values[(row, col)] = value
+        self._update_toolbar_states()
+        self._update_incomplete_button_visibility()
+        if hasattr(self, 'duplicate_indicator_service'):
+            self.duplicate_indicator_service.schedule_update()
 
     def _fill_empty_fields(self):
         """Compléter les champs vides - Version refactorisée Phase 2.5c"""
@@ -1522,8 +1546,9 @@ class MainWindow(QMainWindow):
         # Préparer les données pour le service
         table_data = []
 
-        # Bloquer les signaux pendant la complétion
-        self.table.blockSignals(True)
+        # Bloquer les signaux du modèle pendant la complétion
+        if self.table_controller.model:
+            self.table_controller.model.blockSignals(True)
 
         # Collecter les données de toutes les lignes
         for row in range(total_rows):
@@ -1538,9 +1563,7 @@ class MainWindow(QMainWindow):
             for ui_col_idx in range(self.table.columnCount()):
                 db_field = self._get_db_field_name(ui_col_idx)
                 if db_field:  # Ignorer pieces_count
-                    item = self.table.item(row, ui_col_idx)
-                    cell_value = item.text() if item else ""
-                    appareil_data[db_field] = cell_value
+                    appareil_data[db_field] = self._get_cell_text(row, ui_col_idx)
 
             table_data.append({
                 'id': db_id,
@@ -1550,8 +1573,9 @@ class MainWindow(QMainWindow):
 
         result = self.data_management_service.auto_complete_empty_fields(table_data)
 
-        # Débloquer les signaux
-        self.table.blockSignals(False)
+        # Débloquer les signaux du modèle
+        if self.table_controller.model:
+            self.table_controller.model.blockSignals(False)
 
         # Recharger les données pour refléter les changements
         self.table_controller.load_data()
@@ -2029,10 +2053,9 @@ class MainWindow(QMainWindow):
         if clear_filters and Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
             self.sorting_filtering_service.clear_column_filters()
 
-        # Débloquer les signaux si nécessaire pour éviter les blocages
-        was_blocked = self.table.signalsBlocked()
-        if was_blocked:
-            self.table.blockSignals(False)
+        # Débloquer les signaux du modèle si nécessaire pour éviter les blocages
+        if self.table_controller.model and self.table_controller.model.signalsBlocked():
+            self.table_controller.model.blockSignals(False)
 
         # Recharger avec les critères appropriés
         self.table_controller.load_data(temp_search)
@@ -2711,10 +2734,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         """Copier les données sélectionnées vers le presse-papier"""
         clipboard_data = []
         for r in range(selected[0].topRow(), selected[0].bottomRow() + 1):
-            row_data = []
-            for c in range(selected[0].leftColumn(), selected[0].rightColumn() + 1):
-                item = self.table.item(r, c)
-                row_data.append(item.text() if item else "")
+            row_data = [self._get_cell_text(r, c)
+                        for c in range(selected[0].leftColumn(), selected[0].rightColumn() + 1)]
             clipboard_data.append("\t".join(row_data))
 
         clipboard_string = "\n".join(clipboard_data)
