@@ -439,99 +439,141 @@ class PiecesManagerWindow(QDialog):
             
     # ── Succession ──────────────────────────────────────────────────────────
 
-    def _refresh_succession_panel(self, ref_piece):
-        """Mettre à jour le panneau Succession pour la pièce sélectionnée."""
-        no_selection = ref_piece is None
-        self.btn_mark_superseded.setEnabled(not no_selection)
-        self.btn_mark_obsolete.setEnabled(not no_selection)
-        self.btn_cancel_succession.setEnabled(False)
+    def _get_selected_refs(self) -> list:
+        """Retourner la liste des refs de toutes les lignes sélectionnées."""
+        rows = sorted({idx.row() for idx in self.pieces_table.selectedIndexes()})
+        refs = []
+        for row in rows:
+            item = self.pieces_table.item(row, 0)
+            if item:
+                refs.append(item.text())
+        return refs
 
-        if no_selection:
+    def _refresh_succession_panel(self, ref_piece):
+        """Mettre à jour le panneau Succession pour la pièce courante (dernière sélectionnée)."""
+        selected = self._get_selected_refs()
+        n = len(selected)
+        has_selection = n > 0
+
+        self.btn_mark_superseded.setEnabled(has_selection)
+        self.btn_mark_obsolete.setEnabled(has_selection)
+
+        if not has_selection or ref_piece is None:
             self.succession_status_label.setText("Sélectionnez une pièce pour voir son statut.")
             self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.btn_cancel_succession.setEnabled(False)
             return
 
+        if n > 1:
+            self.succession_status_label.setText(f"{n} pièces sélectionnées — les actions s'appliquent à toutes.")
+            self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.btn_cancel_succession.setEnabled(True)
+            return
+
+        # Sélection unique : afficher le statut détaillé
         status_info = self.db_manager.get_piece_status(ref_piece)
         status = status_info['status']
 
         if status == 'current':
-            self.succession_status_label.setText(f"✓ Référence courante")
+            self.succession_status_label.setText("✓ Référence courante")
             self.succession_status_label.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
             self.btn_cancel_succession.setEnabled(False)
-
         elif status == 'superseded':
             chain = self.db_manager.get_supersession_chain(ref_piece)
-            chain_str = " → ".join(chain)
-            self.succession_status_label.setText(f"→ Remplacée : {chain_str}")
+            self.succession_status_label.setText("→ Remplacée : " + " → ".join(chain))
             self.succession_status_label.setStyleSheet("color: #4A9EFF; font-size: 12px;")
             self.btn_cancel_succession.setEnabled(True)
-
         elif status == 'obsolete':
-            self.succession_status_label.setText(f"⚠ Obsolète — aucun remplacement")
+            self.succession_status_label.setText("⚠ Obsolète — aucun remplacement")
             self.succession_status_label.setStyleSheet("color: #E05252; font-size: 12px; font-weight: bold;")
             self.btn_cancel_succession.setEnabled(True)
 
     def _on_mark_superseded(self):
-        """Déclarer que la pièce sélectionnée est remplacée par une autre."""
-        if not self._current_ref_piece:
+        """Déclarer que les pièces sélectionnées sont remplacées par une autre."""
+        refs = self._get_selected_refs()
+        if not refs:
             return
 
+        label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces sélectionnées"
         ref_new, ok = QInputDialog.getText(
             self,
             "Référence de remplacement",
-            f"Référence qui remplace '{self._current_ref_piece}' :",
+            f"Référence qui remplace {label} :",
         )
         if not ok or not ref_new.strip():
             return
 
         ref_new = ref_new.strip()
-        success, error = self.db_manager.add_supersession(self._current_ref_piece, ref_new)
-        if success:
-            self._notify_history(f"Succession : '{self._current_ref_piece}' → '{ref_new}'")
+        errors = []
+        details_lines = []
+        for ref_old in refs:
+            success, error = self.db_manager.add_supersession(ref_old, ref_new)
+            if success:
+                details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
+            else:
+                errors.append(f"{ref_old} : {error}")
+
+        if details_lines:
+            self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
-        else:
-            QMessageBox.warning(self, "Erreur de succession", error)
+        if errors:
+            QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
 
     def _on_mark_obsolete(self):
-        """Marquer la pièce sélectionnée comme obsolète."""
-        if not self._current_ref_piece:
+        """Marquer les pièces sélectionnées comme obsolètes."""
+        refs = self._get_selected_refs()
+        if not refs:
             return
 
+        label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces sélectionnées"
         confirm = QMessageBox.question(
             self,
             "Marquer comme obsolète",
-            f"Marquer '{self._current_ref_piece}' comme obsolète (aucun remplacement) ?",
+            f"Marquer {label} comme obsolète(s) (aucun remplacement) ?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        success, error = self.db_manager.add_supersession(self._current_ref_piece, None)
-        if success:
-            self._notify_history(f"Obsolète : '{self._current_ref_piece}' (aucun remplacement)")
+        details_lines = []
+        errors = []
+        for ref in refs:
+            success, error = self.db_manager.add_supersession(ref, None)
+            if success:
+                details_lines.append(f"==> '{ref}' → obsolète")
+            else:
+                errors.append(f"{ref} : {error}")
+
+        if details_lines:
+            self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
-        else:
-            QMessageBox.warning(self, "Erreur", error)
+        if errors:
+            QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
     def _on_cancel_succession(self):
-        """Annuler la relation de succession pour la pièce sélectionnée."""
-        if not self._current_ref_piece:
+        """Annuler la relation de succession pour les pièces sélectionnées."""
+        refs = self._get_selected_refs()
+        if not refs:
             return
 
+        label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces"
         confirm = QMessageBox.question(
             self,
             "Annuler la succession",
-            f"Supprimer le lien de succession pour '{self._current_ref_piece}' ?",
+            f"Supprimer le lien de succession pour {label} ?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        if self.db_manager.remove_supersession(self._current_ref_piece):
-            self._notify_history(f"Succession annulée pour '{self._current_ref_piece}'")
+        details_lines = []
+        for ref in refs:
+            if self.db_manager.remove_supersession(ref):
+                details_lines.append(f"==> '{ref}' → (annulée)")
+
+        if details_lines:
+            self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
-        else:
-            QMessageBox.warning(self, "Erreur", "Impossible de supprimer la relation de succession.")
 
     def _notify_history(self, message: str):
         """Envoyer un message à l'historique principal si disponible."""
