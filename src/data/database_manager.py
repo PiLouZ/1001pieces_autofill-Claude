@@ -227,7 +227,8 @@ class DatabaseManager:
             # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
             if Config.SEARCH_PIECES_ONLY:
                 bypass = search_term.get('bypass_supersession', False)
-                return self._build_pieces_only_condition(term, bypass=bypass)
+                extra_refs = search_term.get('expand_predecessors', [])
+                return self._build_pieces_only_condition(term, bypass=bypass, extra_refs=extra_refs)
 
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
             search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
@@ -806,10 +807,13 @@ class DatabaseManager:
             app_logger.error(f"Erreur _resolve_refs_via_supersession({term}): {e}")
             return []
 
-    def _build_pieces_only_condition(self, term: str, bypass: bool = False) -> dict:
+    def _build_pieces_only_condition(self, term: str, bypass: bool = False,
+                                     extra_refs: list = None) -> dict:
         """
         Construire la condition SQL pour la recherche par ref_piece (SEARCH_PIECES_ONLY).
-        Si bypass=True, cherche uniquement la ref telle quelle (sans résolution supersession).
+
+        bypass=True  : cherche uniquement la ref telle quelle (sans résolution supersession).
+        extra_refs   : refs supplémentaires à inclure en UNION (ex : prédécesseurs pour expansion).
         """
         if bypass:
             return {
@@ -820,9 +824,19 @@ class DatabaseManager:
                 ),
                 'params': [f"%{term}%"]
             }
+
+        # Résoudre la chaîne forward (term est peut-être une ancienne ref)
         resolved = self._resolve_refs_via_supersession(term)
-        if resolved:
-            placeholders = ",".join("?" * len(resolved))
+
+        # Combiner avec les refs supplémentaires explicites (ex : prédécesseurs)
+        all_extra = list(resolved)
+        if extra_refs:
+            for r in extra_refs:
+                if r not in all_extra:
+                    all_extra.append(r)
+
+        if all_extra:
+            placeholders = ",".join("?" * len(all_extra))
             condition = (
                 f"a.id IN ("
                 f"SELECT pa.appareil_id FROM piece_associations pa "
@@ -831,7 +845,7 @@ class DatabaseManager:
                 f"UNION SELECT id FROM pieces WHERE ref_piece IN ({placeholders})"
                 f"))"
             )
-            params = [f"%{term}%"] + resolved
+            params = [f"%{term}%"] + all_extra
         else:
             condition = (
                 "a.id IN (SELECT pa.appareil_id FROM piece_associations pa "
@@ -865,6 +879,34 @@ class DatabaseManager:
         except Exception as e:
             app_logger.error(f"Erreur resolve_current_ref({ref_piece}): {e}")
             return ref_piece
+
+    def get_all_predecessors(self, ref_piece: str, max_depth: int = 20) -> list:
+        """
+        Retourner toutes les refs qui ont été remplacées (directement ou indirectement)
+        par ref_piece, en remontant la chaîne en sens inverse.
+
+        Ex : si REF_OLD → REF_MID → REF_NEW, alors get_all_predecessors('REF_NEW') = ['REF_MID', 'REF_OLD']
+
+        Returns:
+            Liste des refs prédécesseurs, vide si ref_piece n'en a aucun.
+        """
+        try:
+            query = """
+                WITH RECURSIVE chain(ref, depth) AS (
+                    SELECT ?, 0
+                    UNION ALL
+                    SELECT ps.ref_old, chain.depth + 1
+                    FROM chain
+                    JOIN piece_supersessions ps ON ps.ref_new = chain.ref
+                    WHERE chain.depth < ?
+                )
+                SELECT ref FROM chain WHERE depth > 0 ORDER BY depth ASC
+            """
+            rows = self.execute_query(query, [ref_piece, max_depth])
+            return [r[0] for r in rows] if rows else []
+        except Exception as e:
+            app_logger.error(f"Erreur get_all_predecessors({ref_piece}): {e}")
+            return []
 
     def get_supersession_chain(self, ref_piece: str, max_depth: int = 20) -> list:
         """

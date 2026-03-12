@@ -105,10 +105,14 @@ class TableController:
         self.prefetch_timer.setSingleShot(True)
         self.prefetch_timer.timeout.connect(self._execute_prefetch)
         
-        # Bypass supersession : si True, la recherche ignore la résolution via chaîne
+        # Bypass supersession : si True, la recherche ignore la résolution via chaîne (mode "superseded")
         self._supersession_bypass = False
         self._supersession_term = None
         self._supersession_chain = []
+        # Mode "replacing" : term est une ref courante qui remplace d'autres refs
+        self._supersession_mode = ''          # 'superseded' | 'replacing' | ''
+        self._supersession_predecessors = []  # prédécesseurs dans le mode "replacing"
+        self._supersession_expand = False     # True = inclure les appareils des prédécesseurs
 
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
@@ -435,10 +439,15 @@ class TableController:
             if parsed_term:  # Si parsing réussi, utiliser le terme parsé
                 effective_search_term = parsed_term
 
-        # Injecter le flag bypass supersession si actif
+        # Injecter le flag bypass supersession si actif (mode "superseded")
         if self._supersession_bypass and isinstance(effective_search_term, dict):
             effective_search_term = dict(effective_search_term)
             effective_search_term['bypass_supersession'] = True
+
+        # Injecter les prédécesseurs si expansion active (mode "replacing")
+        if self._supersession_expand and self._supersession_predecessors and isinstance(effective_search_term, dict):
+            effective_search_term = dict(effective_search_term)
+            effective_search_term['expand_predecessors'] = self._supersession_predecessors
 
         # Compter le total avec le terme unifié
         self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
@@ -471,7 +480,7 @@ class TableController:
             self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
 
         # Informer l'utilisateur si la recherche a remonté via une chaîne de supersession
-        if is_search and search_term and isinstance(search_term, str) and Config.SEARCH_PIECES_ONLY:
+        if is_search and search_term and isinstance(search_term, str):
             self._check_supersession_banner(search_term.strip())
 
         # Mettre à jour les contrôles de pagination
@@ -1149,8 +1158,10 @@ class TableController:
 
     def _check_supersession_banner(self, term: str):
         """
-        Afficher le bandeau de supersession si le terme correspond exactement
-        à une ancienne référence, le cacher sinon.
+        Afficher le bandeau selon le rôle du terme dans la chaîne de supersession.
+
+        Mode "superseded" : term est une ancienne réf. → chaîne forward affichée.
+        Mode "replacing"  : term est une réf. courante qui remplace d'autres → prédécesseurs affichés.
         """
         if not hasattr(self, 'supersession_banner'):
             return
@@ -1158,41 +1169,74 @@ class TableController:
             self._hide_supersession_banner()
             return
         try:
+            # Cas A : term est une ancienne réf. (chaîne forward > 1 élément)
             chain = self.db_manager.get_supersession_chain(term)
             if len(chain) > 1:
+                self._supersession_mode = 'superseded'
                 self._supersession_term = term
                 self._supersession_chain = chain
+                self._supersession_predecessors = []
                 self._update_supersession_banner()
                 self.supersession_banner.setVisible(True)
-            else:
-                self._hide_supersession_banner()
+                return
+
+            # Cas B : term est une réf. courante qui remplace d'autres
+            predecessors = self.db_manager.get_all_predecessors(term)
+            if predecessors:
+                self._supersession_mode = 'replacing'
+                self._supersession_term = term
+                self._supersession_chain = []
+                self._supersession_predecessors = predecessors
+                self._update_supersession_banner()
+                self.supersession_banner.setVisible(True)
+                return
+
+            self._hide_supersession_banner()
         except Exception:
             self._hide_supersession_banner()
 
     def _hide_supersession_banner(self):
-        """Cacher le bandeau et réinitialiser le bypass."""
+        """Cacher le bandeau et réinitialiser tous les états de supersession."""
         self._supersession_bypass = False
+        self._supersession_expand = False
+        self._supersession_mode = ''
         self._supersession_term = None
         self._supersession_chain = []
+        self._supersession_predecessors = []
         if hasattr(self, 'supersession_banner'):
             self.supersession_banner.setVisible(False)
 
     def _update_supersession_banner(self):
-        """Mettre à jour le texte et le bouton du bandeau selon l'état du bypass."""
+        """Mettre à jour le texte et le bouton du bandeau selon le mode et l'état."""
         if not hasattr(self, 'supersession_banner_label'):
             return
         term = self._supersession_term or ''
-        chain = self._supersession_chain
-        if self._supersession_bypass:
-            self.supersession_banner_label.setText(f"⚠ Résultats pour '{term}' uniquement (ancienne réf.)")
-            self.supersession_bypass_btn.setText("Voir toute la chaîne →")
-        else:
-            self.supersession_banner_label.setText("⚠ Ancienne réf. : " + " → ".join(chain) + " (courante)")
-            self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
+
+        if self._supersession_mode == 'superseded':
+            chain = self._supersession_chain
+            if self._supersession_bypass:
+                self.supersession_banner_label.setText(f"⚠ Résultats pour '{term}' uniquement (ancienne réf.)")
+                self.supersession_bypass_btn.setText("Voir toute la chaîne →")
+            else:
+                self.supersession_banner_label.setText("⚠ Ancienne réf. : " + " → ".join(chain) + " (courante)")
+                self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
+
+        elif self._supersession_mode == 'replacing':
+            preds = self._supersession_predecessors
+            preds_str = ", ".join(preds)
+            if self._supersession_expand:
+                self.supersession_banner_label.setText(f"⚠ Résultats étendus — '{term}' remplace : {preds_str}")
+                self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
+            else:
+                self.supersession_banner_label.setText(f"⚠ '{term}' remplace : {preds_str}")
+                self.supersession_bypass_btn.setText("Voir aussi les appareils des réfs remplacées")
 
     def _toggle_supersession_bypass(self):
-        """Basculer entre résolution via chaîne et affichage de la ref telle quelle."""
-        self._supersession_bypass = not self._supersession_bypass
+        """Basculer l'état du bouton selon le mode actif."""
+        if self._supersession_mode == 'superseded':
+            self._supersession_bypass = not self._supersession_bypass
+        elif self._supersession_mode == 'replacing':
+            self._supersession_expand = not self._supersession_expand
         self._update_supersession_banner()
         self.load_data(self.current_search_term, is_search=True)
 

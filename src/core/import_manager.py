@@ -14,7 +14,8 @@ from datetime import datetime
 from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QComboBox, QCheckBox,
                              QTextEdit, QGroupBox, QProgressDialog, QApplication,
-                             QScrollArea, QWidget, QGridLayout, Qt, QTimer)
+                             QScrollArea, QWidget, QGridLayout, Qt, QTimer,
+                             QCompleter, QStringListModel, QRadioButton, QButtonGroup)
 
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
@@ -81,6 +82,11 @@ class ImportConfiguration:
     csv_import_mode: int = 2  # 1, 2, 3+ colonnes
     third_column_choice: str = "ignore"
     has_headers: bool = False
+
+    # Succession déclarée lors de l'import (optionnel)
+    succession_replaces: Optional[str] = None       # Réf existante que cette réf remplace (ref_old=existing, ref_new=imported)
+    succession_replaced_by: Optional[str] = None    # Réf existante qui remplace cette réf (ref_old=imported, ref_new=existing)
+    succession_current_ref: Optional[str] = None    # Multi-fichiers : réf désignée comme courante (les autres lui sont successées)
     
     def __post_init__(self):
         if self.label_config is None:
@@ -380,18 +386,58 @@ class ImportDialog(QDialog):
         
         # Section aperçu des données supprimée pour améliorer la lisibilité
         
+        # Section succession (fichier unique uniquement)
+        self.succ_replaces_input = None
+        self.succ_replaced_by_input = None
+        self._succ_button_group = None
+        self._succ_radio_files = []
+
+        if len(self.import_config.files) == 1:
+            succ_group = QGroupBox("Succession (optionnel)")
+            succ_layout = QVBoxLayout()
+
+            succ_info = QLabel("💡 Déclarez ici si cette référence est liée à une succession de pièces déjà en base.")
+            succ_info.setStyleSheet("color: #666; font-style: italic; padding: 6px; background-color: #fffde7; border-radius: 4px;")
+            succ_info.setWordWrap(True)
+            succ_layout.addWidget(succ_info)
+
+            row1 = QHBoxLayout()
+            lbl1 = QLabel("Cette réf. remplace :")
+            lbl1.setStyleSheet("font-weight: bold;")
+            lbl1.setFixedWidth(220)
+            row1.addWidget(lbl1)
+            self.succ_replaces_input = QLineEdit()
+            self.succ_replaces_input.setPlaceholderText("Ancienne réf. remplacée par cette réf. (ex : REF123)")
+            self.succ_replaces_input.setMinimumHeight(30)
+            row1.addWidget(self.succ_replaces_input)
+            succ_layout.addLayout(row1)
+
+            row2 = QHBoxLayout()
+            lbl2 = QLabel("Cette réf. est remplacée par :")
+            lbl2.setStyleSheet("font-weight: bold;")
+            lbl2.setFixedWidth(220)
+            row2.addWidget(lbl2)
+            self.succ_replaced_by_input = QLineEdit()
+            self.succ_replaced_by_input.setPlaceholderText("Nouvelle réf. qui remplace cette réf. (ex : REF456)")
+            self.succ_replaced_by_input.setMinimumHeight(30)
+            row2.addWidget(self.succ_replaced_by_input)
+            succ_layout.addLayout(row2)
+
+            succ_group.setLayout(succ_layout)
+            layout.addWidget(succ_group)
+
         # Boutons
         buttons_layout = QHBoxLayout()
-        
+
         cancel_btn = QPushButton("Annuler")
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
-        
+
         ok_btn = QPushButton("Importer")
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._validate_and_accept)
         buttons_layout.addWidget(ok_btn)
-        
+
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
     
@@ -445,15 +491,48 @@ class ImportDialog(QDialog):
             
             # Stocker la référence du champ pour la duplication automatique
             self.individual_desc_fields.append(desc_input)
-            
+
+            # Radio button "Courante" pour multi-fichiers (succession)
+            if self.import_config.import_type == ImportType.MULTI_FILE:
+                if self._succ_button_group is None:
+                    self._succ_button_group = QButtonGroup(self)
+                    self._succ_button_group.setExclusive(True)
+                radio = QRadioButton("Courante")
+                radio.setToolTip("Désigner cette réf. comme courante — les autres lui seront successées à l'import")
+                radio.setStyleSheet("font-size: 11px; color: #495057;")
+                self._succ_button_group.addButton(radio, i)
+                self._succ_radio_files.append(file)
+                file_layout.addWidget(radio)
+
             # Ajouter le conteneur avec hauteur fixe au lieu du layout directement
             self.individual_refs_widget.addWidget(file_container)
-        
+
         # Initialiser l'affichage des références selon l'état par défaut de la case à cocher
         self._update_references_display()
-        
-        # Aperçu des données supprimé pour améliorer la lisibilité
+
+        # Autocomplétion pour les champs de succession (fichier unique)
+        self._setup_succession_autocomplete()
     
+    def _setup_succession_autocomplete(self):
+        """Configurer l'autocomplétion sur les champs de succession (fichier unique)."""
+        if self.succ_replaces_input is None:
+            return
+        if not self.import_manager or not hasattr(self.import_manager, 'db_manager'):
+            return
+        try:
+            rows = self.import_manager.db_manager.execute_query(
+                "SELECT ref_piece FROM pieces ORDER BY ref_piece LIMIT 5000"
+            ) or []
+            ref_list = [r[0] for r in rows]
+            for field in [self.succ_replaces_input, self.succ_replaced_by_input]:
+                model = QStringListModel(ref_list, field)
+                completer = QCompleter(model, field)
+                completer.setCaseSensitivity(Qt.CaseInsensitive)
+                completer.setFilterMode(Qt.MatchContains)
+                field.setCompleter(completer)
+        except Exception as e:
+            app_logger.warning(f"Autocomplétion succession non disponible : {e}")
+
     def _on_apply_to_individual_changed(self, state):
         """Gère le changement d'état de la case 'Appliquer aux références individuelles'"""
         if state == Qt.Checked:
@@ -542,7 +621,22 @@ class ImportDialog(QDialog):
         
         # Ancienne configuration (pour compatibilité si nécessaire)
         config.label_config = LabelConfiguration()
-        
+
+        # Succession — fichier unique
+        if len(config.files) == 1 and self.succ_replaces_input is not None:
+            config.succession_replaces = self.succ_replaces_input.text().strip() or None
+            config.succession_replaced_by = self.succ_replaced_by_input.text().strip() or None
+
+        # Succession — multi-fichiers (ref courante désignée)
+        if (config.import_type == ImportType.MULTI_FILE
+                and self._succ_button_group is not None
+                and self._succ_button_group.checkedId() >= 0
+                and self._succ_radio_files):
+            checked_id = self._succ_button_group.checkedId()
+            if checked_id < len(self._succ_radio_files):
+                current_file = self._succ_radio_files[checked_id]
+                config.succession_current_ref = config.individual_references.get(current_file.path) or None
+
         self.result_config = config
         self.accept()
     
@@ -1180,6 +1274,9 @@ class ImportManager:
 
             app_logger.info(f"✅ SYNC TERMINÉ: {results['successful_files']}/{len(config.files)} fichiers importés")
 
+            # §6 Succession : appliquer les relations déclarées dans le dialogue
+            self._apply_succession_from_config(config, results)
+
             # Phase 2.3: Invalider le cache après import complet
             if hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
@@ -1195,6 +1292,54 @@ class ImportManager:
             if cache_service:
                 cache_service.resume_invalidation(force_invalidate=True)
     
+    def _apply_succession_from_config(self, config: ImportConfiguration, results: Dict) -> None:
+        """
+        Appliquer les relations de succession déclarées dans le dialogue d'import.
+
+        Fichier unique :
+          - succession_replaces    → (ref_old=existing, ref_new=imported_ref)
+          - succession_replaced_by → (ref_old=imported_ref, ref_new=existing)
+        Multi-fichiers :
+          - succession_current_ref → toutes les autres refs pointent vers la ref courante
+        """
+        if not config.files:
+            return
+
+        # --- Fichier unique ---
+        if len(config.files) == 1:
+            file_ref = config.individual_references.get(config.files[0].path, '') or ''
+            if not file_ref:
+                return
+
+            if config.succession_replaces:
+                ok, msg = self.db_manager.add_supersession(config.succession_replaces, file_ref)
+                if ok:
+                    results['succession_created'] = results.get('succession_created', 0) + 1
+                    app_logger.info(f"Succession import : {config.succession_replaces} → {file_ref}")
+                else:
+                    app_logger.warning(f"Succession import non créée ({config.succession_replaces} → {file_ref}) : {msg}")
+
+            if config.succession_replaced_by:
+                ok, msg = self.db_manager.add_supersession(file_ref, config.succession_replaced_by)
+                if ok:
+                    results['succession_created'] = results.get('succession_created', 0) + 1
+                    app_logger.info(f"Succession import : {file_ref} → {config.succession_replaced_by}")
+                else:
+                    app_logger.warning(f"Succession import non créée ({file_ref} → {config.succession_replaced_by}) : {msg}")
+
+        # --- Multi-fichiers ---
+        elif config.import_type == ImportType.MULTI_FILE and config.succession_current_ref:
+            current = config.succession_current_ref
+            for file in config.files:
+                other_ref = config.individual_references.get(file.path, '') or ''
+                if other_ref and other_ref != current:
+                    ok, msg = self.db_manager.add_supersession(other_ref, current)
+                    if ok:
+                        results['succession_created'] = results.get('succession_created', 0) + 1
+                        app_logger.info(f"Succession import (multi) : {other_ref} → {current}")
+                    else:
+                        app_logger.warning(f"Succession import (multi) non créée ({other_ref} → {current}) : {msg}")
+
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import fichier")
     def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Optional[Dict[str, Any]]:
         """Wrapper sécurisé pour _import_single_file avec gestion d'erreur intégrée"""
