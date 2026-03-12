@@ -1,36 +1,192 @@
 """
-Service d'interaction utilisateur - Phase 2.13
-Extrait de main_refactored.py pour centraliser la logique d'interaction avec l'utilisateur
+Service d'interaction utilisateur — v2
+Historique structuré avec agrégation cross-appareils, code couleur et barres verticales.
 
-Responsabilités:
-- Gestion des dialogues de confirmation, erreur et information
-- Historique des actions utilisateur avec formatage HTML
-- Mise à jour des compteurs et indicateurs
-- Interface standardisée pour toutes les interactions utilisateur
+Changements v2 :
+- Modèle structuré _history_entries (List[dict]) au lieu de chaînes brutes
+- Agrégation : N modifications du même champ → même valeur fusionnées en une entrée ×N
+- Barre verticale colorée par type d'action (border-left CSS)
+- Séparateurs temporels entre blocs distants de plus de 5 minutes
+- API publique add_to_history(message) inchangée — zéro régression
 """
 
-from typing import Optional, List
-from datetime import datetime
-from .qt_imports import QMessageBox
-from .qt_imports import QTimer
+import re
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
+from .qt_imports import QMessageBox, QTimer
 
 from src.core.config import Config
 from src.core.logger import app_logger
 
+
+# ── Styles par type d'action ───────────────────────────────────────────────────
+# label : badge texte court affiché à la place d'une icône emoji (emojis non fiables dans Qt)
+_ACTION_STYLES: Dict[str, Dict[str, str]] = {
+    'edit':   {'color': '#4A9EFF', 'label': 'MOD'},
+    'import': {'color': '#34D058', 'label': 'IMP'},
+    'export': {'color': '#9B59B6', 'label': 'EXP'},
+    'delete': {'color': '#E05252', 'label': 'SUP'},
+    'undo':   {'color': '#F39C12', 'label': 'ANN'},
+    'piece':  {'color': '#1ABC9C', 'label': 'PIC'},
+    'system': {'color': '#95A5A6', 'label': 'SYS'},
+}
+
+_MAX_HISTORY = 100          # Nombre max d'entrées visibles
+_TIME_GAP_MINUTES = 5       # Seuil pour insérer un séparateur temporel
+
+# Regex pour parser une ligne "==> Field : 'old' → 'new'"
+_RE_ARROW = re.compile(r"==>\s*(.+?)\s*:\s*'(.*)'\s*→\s*'(.*)'")
+
+# Regex pour supprimer les emojis du titre (plages Unicode emoji + sélecteurs)
+_RE_EMOJI = re.compile(
+    '['
+    '\U0001F000-\U0001FFFF'   # emoji pictographes
+    '\U00002600-\U000027BF'   # symboles divers, dingbats
+    '\U0000FE00-\U0000FE0F'   # sélecteurs de variation
+    '\U0000200D'              # zero-width joiner
+    ']+',
+    flags=re.UNICODE
+)
+
+
+def _strip_emoji(text: str) -> str:
+    """Supprimer les emojis d'un titre — le badge coloré joue ce rôle."""
+    return _RE_EMOJI.sub('', text).strip()
+
+
+
+def _detect_action_type(message: str) -> str:
+    """Déduire le type d'action à partir du contenu du message."""
+    m = message.lower()
+    if any(k in m for k in ('suppression', 'supprimé', 'supprimée', '❌', 'erreur', 'error', 'échec')):
+        return 'delete'
+    if any(k in m for k in ('export csv', 'html marques', 'html détails', 'export html', 'export {')):
+        return 'export'
+    if 'export' in m and any(k in m for k in ('lignes', 'résultats', 'marques', 'format')):
+        return 'export'
+    if '📊 import' in m or 'lignes extraites' in m or 'appareils créés' in m or 'appareils :' in m:
+        return 'import'
+    if 'import' in m and any(k in m for k in ('csv', 'pdf', 'collage', 'créés', 'traités')):
+        return 'import'
+    if any(k in m for k in ("pièce ajoutée", "pièce modifiée", "pièce supprimée",
+                             "pièce '", "association de pièce")):
+        return 'piece'
+    if any(k in m for k in ('annulation', 'rétabli', 'undo', 'redo', '↩')):
+        return 'undo'
+    if any(k in m for k in ('duplication', 'glisser-déposer')):
+        return 'system'
+    if 'sauvegarde' in m or 'seo' in m or 'fts5' in m:
+        return 'system'
+    if 'modification' in m or '→' in message:
+        return 'edit'
+    return 'system'
+
+
+def _parse_single_edit(message: str):
+    """
+    Tente de parser un message comme une modification simple d'un seul champ.
+    Retourne (device_ref, field, old_value, new_value) ou None si non applicable.
+
+    Formats reconnus :
+      1. "Modification de l'appareil {ref}\\n     ==> {field} : '{old}' → '{new}'"
+      2. "Modification {field}: '{old}' → '{new}'"
+    """
+    raw = message.replace('\\n', '\n')
+    lines = [l.strip() for l in raw.split('\n') if l.strip()]
+    if not lines:
+        return None
+
+    # Format 1 — grouped_history_service, une seule ligne ==>
+    if lines[0].startswith("Modification de l'appareil ") and len(lines) == 2:
+        device_ref = lines[0][len("Modification de l'appareil "):]
+        m = _RE_ARROW.search(lines[1])
+        if m:
+            return device_ref.strip(), m.group(1).strip(), m.group(2), m.group(3)
+
+    # Format 2 — appel direct depuis main_refactored, une seule ligne
+    if len(lines) == 1:
+        m = re.match(r"Modification (.+?):\s*'(.*)'\s*→\s*'(.*)'", lines[0])
+        if m:
+            return None, m.group(1).strip(), m.group(2), m.group(3)
+
+    return None
+
+
+def _parse_entry(message: str, timestamp: datetime) -> Dict[str, Any]:
+    """
+    Construire un dict d'entrée structurée à partir d'un message brut.
+
+    Champs :
+        timestamp      : datetime (pour calculs de séparateur)
+        timestamp_str  : "HH:MM:SS"
+        action_type    : str
+        title          : ligne principale (sans timestamp)
+        details        : liste de lignes secondaires (les ==>)
+        count          : 1 (sera incrémenté si agrégé)
+        devices        : [] ou [ref] si edit simple
+        agg_key        : (field, new_value) pour comparaison d'agrégation, ou None
+    """
+    action_type = _detect_action_type(message)
+    raw = message.replace('\\n', '\n')
+    lines = [l.strip() for l in raw.split('\n') if l.strip()]
+
+    title = _strip_emoji(lines[0]) if lines else _strip_emoji(message)
+    details = lines[1:] if len(lines) > 1 else []
+
+    # Agrégation : uniquement pour edit mono-champ
+    agg_key = None
+    devices = []
+    if action_type == 'edit':
+        parsed = _parse_single_edit(message)
+        if parsed is not None:
+            device_ref, field, old_val, new_val = parsed
+            agg_key = (field, new_val)
+            # Titre plus concis pour les éditions simples
+            title = f"[{field}]  '{old_val}' → '{new_val}'"
+            if device_ref:
+                devices = [device_ref]
+                title = f"[{field}]  '{old_val}' → '{new_val}'"
+            details = []  # Infos absorbées dans le titre
+
+    elif action_type == 'export':
+        # Exports : "HTML Marques: 7 marques..." → titre "HTML Marques:" + détail "==> 7 marques..."
+        first_line = lines[0] if lines else ''
+        colon_idx = first_line.find(':')
+        if colon_idx != -1:
+            title = _strip_emoji(first_line[:colon_idx + 1])
+            detail_part = first_line[colon_idx + 1:].strip()
+            details = []
+            if detail_part:
+                details.append(f'==> {detail_part}')
+            details.extend(lines[1:])
+
+    return {
+        'timestamp': timestamp,
+        'timestamp_str': timestamp.strftime('%H:%M:%S'),
+        'action_type': action_type,
+        'title': title,
+        'details': details,
+        'count': 1,
+        'devices': devices,
+        'agg_key': agg_key,
+        'duration_ms': None,
+    }
+
+
 class UserInteractionService:
     """
-    Service spécialisé pour les interactions avec l'utilisateur
-    
-    Responsabilités:
-    - Dialogues de confirmation, erreur et information
-    - Gestion de l'historique des actions avec formatage HTML
-    - Mise à jour des compteurs de lignes et indicateurs de performance
-    - Messages temporisés dans la barre de statut
+    Service spécialisé pour les interactions avec l'utilisateur.
+
+    Historique v2 : modèle structuré, agrégation cross-appareils,
+    code couleur par type d'action, barres verticales CSS, séparateurs temporels.
     """
-    
+
     def __init__(self, main_window):
         self.main_window = main_window
-        
+        self._history_entries: List[Dict[str, Any]] = []
+
+    # ── Dialogues ──────────────────────────────────────────────────────────────
+
     def show_error(self, message: str) -> None:
         """Afficher une erreur"""
         QMessageBox.critical(self.main_window, "Erreur", message)
@@ -38,275 +194,270 @@ class UserInteractionService:
     def show_info(self, message: str) -> None:
         """Afficher une information"""
         QMessageBox.information(self.main_window, "Information", message)
-    
+
     def show_confirmation(self, title: str, message: str, default_yes: bool = False) -> bool:
         """Afficher une confirmation avec support des raccourcis clavier (Entrée/Échap)"""
         msg_box = QMessageBox(self.main_window)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.setIcon(QMessageBox.Question)
-        
-        # Créer les boutons
+
         yes_btn = msg_box.addButton("Oui", QMessageBox.YesRole)
         no_btn = msg_box.addButton("Non", QMessageBox.NoRole)
-        
-        # Configurer le bouton par défaut
+
         if default_yes:
             msg_box.setDefaultButton(yes_btn)
             yes_btn.setDefault(True)
         else:
             msg_box.setDefaultButton(no_btn)
             no_btn.setDefault(True)
-        
-        # Configurer les raccourcis clavier
-        yes_btn.setShortcut("Return")  # Entrée
-        no_btn.setShortcut("Escape")   # Échap
-        
-        # Afficher et récupérer le résultat
-        result = msg_box.exec_()
+
+        yes_btn.setShortcut("Return")
+        no_btn.setShortcut("Escape")
+
+        msg_box.exec_()
         return msg_box.clickedButton() == yes_btn
-    
+
     def show_save_confirmation(self, title: str, message: str) -> str:
         """Afficher une confirmation Oui/Non/Annuler avec raccourcis clavier"""
         msg_box = QMessageBox(self.main_window)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.setIcon(QMessageBox.Question)
-        
-        # Créer les boutons
+
         yes_btn = msg_box.addButton("Oui", QMessageBox.YesRole)
-        no_btn = msg_box.addButton("Non", QMessageBox.NoRole) 
+        no_btn = msg_box.addButton("Non", QMessageBox.NoRole)
         cancel_btn = msg_box.addButton("Annuler", QMessageBox.RejectRole)
-        
-        # Configurer le bouton par défaut
+
         msg_box.setDefaultButton(yes_btn)
         yes_btn.setDefault(True)
-        
-        # Configurer les raccourcis clavier
-        yes_btn.setShortcut("Return")  # Entrée pour Oui (sauvegarder)
-        cancel_btn.setShortcut("Escape")  # Échap pour Annuler
-        # N pour Non
+        yes_btn.setShortcut("Return")
+        cancel_btn.setShortcut("Escape")
         no_btn.setShortcut("N")
-        
-        # Afficher et récupérer le résultat
-        result = msg_box.exec_()
-        clicked_button = msg_box.clickedButton()
-        
-        if clicked_button == yes_btn:
+
+        msg_box.exec_()
+        clicked = msg_box.clickedButton()
+
+        if clicked == yes_btn:
             return "yes"
-        elif clicked_button == no_btn:
+        elif clicked == no_btn:
             return "no"
-        else:  # cancel_btn ou fermeture
-            return "cancel"
+        return "cancel"
+
+    # ── Compteur ───────────────────────────────────────────────────────────────
 
     def update_counter(self) -> None:
         """Mettre à jour le compteur de lignes via TableController"""
         displayed_count = self.main_window.table.rowCount()
-        
-        # Utiliser le size_label du TableController si disponible
-        if hasattr(self.main_window, 'table_controller') and hasattr(self.main_window.table_controller, 'size_label') and self.main_window.table_controller.size_label:
-            if hasattr(self.main_window, 'total_rows') and self.main_window.use_pagination and self.main_window.total_rows > Config.MAX_DISPLAY_ROWS:
-                self.main_window.table_controller.size_label.setText(f"Affichées : {displayed_count} / Total : {self.main_window.total_rows:,}")
+
+        if (hasattr(self.main_window, 'table_controller') and
+                hasattr(self.main_window.table_controller, 'size_label') and
+                self.main_window.table_controller.size_label):
+            if (hasattr(self.main_window, 'total_rows') and
+                    self.main_window.use_pagination and
+                    self.main_window.total_rows > Config.MAX_DISPLAY_ROWS):
+                self.main_window.table_controller.size_label.setText(
+                    f"Affichées : {displayed_count} / Total : {self.main_window.total_rows:,}")
             else:
                 self.main_window.table_controller.size_label.setText(f"Lignes : {displayed_count:,}")
-        # Fallback sur counter_label si il existe encore
         elif hasattr(self.main_window, 'counter_label'):
-            if hasattr(self.main_window, 'total_rows') and self.main_window.use_pagination and self.main_window.total_rows > Config.MAX_DISPLAY_ROWS:
-                self.main_window.counter_label.setText(f"Affichées : {displayed_count} / Total : {self.main_window.total_rows:,}")
+            if (hasattr(self.main_window, 'total_rows') and
+                    self.main_window.use_pagination and
+                    self.main_window.total_rows > Config.MAX_DISPLAY_ROWS):
+                self.main_window.counter_label.setText(
+                    f"Affichées : {displayed_count} / Total : {self.main_window.total_rows:,}")
             else:
                 self.main_window.counter_label.setText(f"Lignes : {displayed_count:,}")
 
-    def add_to_history(self, message: str) -> None:
-        """Ajouter un message à l'historique"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        # Initialiser ou récupérer la liste des messages d'historique
-        if not hasattr(self.main_window, '_history_messages'):
-            self.main_window._history_messages = []
-        
-        # Appliquer le formatage spécialisé pour les messages d'import
-        formatted_message = self._format_message_for_history_original(message, timestamp)
-        
-        # Ajouter le nouveau message au début de la liste
-        self.main_window._history_messages.insert(0, formatted_message)
-        
-        # Limiter à 50 entrées
-        if len(self.main_window._history_messages) > 50:
-            self.main_window._history_messages = self.main_window._history_messages[:50]
-        
-        # Reconstruire tout le HTML
-        html_content = self._build_history_html()
-        
-        # Mettre à jour l'affichage (utiliser history_list comme dans l'original)
+    # ── Historique ─────────────────────────────────────────────────────────────
+
+    def add_to_history(self, message: str, duration_ms: Optional[int] = None) -> None:
+        """
+        Ajouter un message à l'historique.
+        API identique à v1 — les appelants n'ont pas à changer.
+
+        Args:
+            message: Texte brut de l'action (timestamp ajouté automatiquement)
+            duration_ms: Durée optionnelle en millisecondes (affichée en gris pour les imports)
+
+        Logique d'agrégation :
+        - Si le nouveau message est un edit mono-champ avec le même (field, new_value)
+          que la dernière entrée → incrémenter count et ajouter le device.
+        - Sinon → insérer une nouvelle entrée en tête.
+        """
+        now = datetime.now()
+        entry = _parse_entry(message, now)
+        if duration_ms is not None:
+            entry['duration_ms'] = duration_ms
+
+        # Tentative d'agrégation avec la dernière entrée
+        if (entry['agg_key'] is not None and
+                self._history_entries and
+                self._history_entries[0]['agg_key'] == entry['agg_key']):
+            last = self._history_entries[0]
+            last['count'] += 1
+            if entry['devices']:
+                last['devices'].extend(entry['devices'])
+            # Mettre à jour le timestamp pour refléter la dernière modification
+            last['timestamp'] = now
+            last['timestamp_str'] = now.strftime('%H:%M:%S')
+        else:
+            self._history_entries.insert(0, entry)
+            if len(self._history_entries) > _MAX_HISTORY:
+                self._history_entries = self._history_entries[:_MAX_HISTORY]
+
+        self._refresh_display()
+
+    def _refresh_display(self) -> None:
+        """Reconstruire et afficher le HTML de l'historique."""
         if hasattr(self.main_window, 'history_list'):
-            self.main_window.history_list.setHtml(html_content)
-            # Garder le scroll en haut pour voir les messages récents
+            html = self._build_history_html()
+            self.main_window.history_list.setHtml(html)
             cursor = self.main_window.history_list.textCursor()
             cursor.movePosition(cursor.Start)
             self.main_window.history_list.setTextCursor(cursor)
 
-    def _format_message_for_history(self, message: str, timestamp: str) -> str:
-        """Formater un message pour l'historique avec gestion spécialisée des imports"""
-        
-        # Couleur par défaut pour les messages normaux
-        message_color = Config.Colors.BLACK
-        
-        # Déterminer la couleur selon le type de message
-        if any(keyword in message.lower() for keyword in ["erreur", "error", "échec", "failed"]):
-            message_color = Config.Colors.DANGER  # Rouge pour erreurs
-        elif any(keyword in message.lower() for keyword in ["succès", "success", "terminé", "completed", "ajouté", "added"]):
-            message_color = Config.Colors.SUCCESS  # Vert pour succès
-        elif any(keyword in message.lower() for keyword in ["warning", "attention", "avertissement"]):
-            message_color = Config.Colors.WARNING  # Orange pour avertissements
-        elif any(keyword in message.lower() for keyword in ["import", "export", "fichier", "file"]):
-            message_color = Config.Colors.INFO  # Bleu pour opérations fichiers
-        
-        return f'<p class="message-block"><span class="timestamp">[{timestamp}]</span> <span class="message" style="color: {message_color};">{message}</span></p>'
-
     def _build_history_html(self) -> str:
-        """Construire le HTML complet de l'historique - Compatible avec l'ancien format"""
-        html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }}
-        p {{ margin: 1px 0; line-height: 1.0; }}
-        p.message-block {{ margin: 1px 0; line-height: 1.0; }}
-        p.separator {{ margin: 10px 0 5px 0; }}
-        .timestamp {{ color: {Config.Colors.TEXT_MUTED}; }}
-        .message {{ color: {Config.Colors.BLACK}; }}
-        .indented {{ margin-left: 20px; }}
-        .import-header {{ font-weight: bold; color: {Config.Colors.INFO_LIGHT}; }}
-        .import-section {{ margin-left: 20px; color: {Config.Colors.TEXT_SECONDARY}; }}
-        .import-summary {{ margin-left: 20px; color: {Config.Colors.INFO_LIGHT}; font-weight: 500; }}
-        .entry-separator {{ height: 8px; margin: 4px 0; }}
-    </style>
-</head>
-<body>
-"""
-        
-        # Ajouter tous les messages avec le même format que l'original
-        for i, msg in enumerate(self.main_window._history_messages):
-            # Séparer timestamp et contenu pour styling
-            if msg.startswith('[') and '] ' in msg:
-                parts = msg.split('] ', 1)
-                timestamp_part = parts[0] + ']'
-                content_part = parts[1] if len(parts) > 1 else ''
-                # Convertir les retours à la ligne en HTML et appliquer l'indentation CSS
-                content_part = self._apply_css_indentation(content_part)
-                # Cadre rouge (timestamp) : bien séparé du contenu suivant  
-                html_content += f"<p class='separator'><span class='timestamp'>{timestamp_part}</span> <span class='message'>{content_part}</span></p>\n"
-            else:
-                # Convertir les retours à la ligne en HTML avec interligne minimal et indentation CSS
-                msg_html = self._apply_css_indentation(msg)
-                html_content += f"<p class='message-block'>{msg_html}</p>\n"
-            
-            # CORRECTION: Réduire l'espacement entre entrées (1 ligne au lieu de 2)
-            # Pas de <br> supplémentaire - espacement géré par CSS
-        
-        html_content += """</body>
-</html>"""
-        return html_content
+        """
+        Construire le HTML de l'historique.
 
-    def _apply_css_indentation(self, content: str) -> str:
-        """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""
-        # CORRECTION: Remplacer les \\n littéraux par de vrais retours à la ligne
-        content = content.replace('\\n', '\n')
-        lines = content.split('\n')
-        processed_lines = []
-        
-        for line in lines:
-            stripped_line = line.strip()
-            
-            if (stripped_line.startswith('==> ') or 
-                stripped_line.startswith('Créés :') or 
-                stripped_line.startswith('Complétion automatique :') or 
-                stripped_line.startswith('À compléter :') or 
-                stripped_line.startswith('Doublon ignoré :') or 
-                stripped_line.startswith('Nouvelles :') or 
-                stripped_line.startswith('Déjà associées :')):
-                # Utiliser des espaces non-sécables pour l'indentation
-                processed_lines.append(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line.strip()}')
-            else:
-                processed_lines.append(line)
-        
-        # Convertir les retours à la ligne en HTML
-        return '<br>'.join(processed_lines)
-    
-    def _format_message_for_history_original(self, message: str, timestamp: str) -> str:
-        """Formater les messages pour un affichage optimisé dans l'historique - Version originale"""
-        
-        # Si c'est un message d'import PDF, appliquer le formatage spécialisé
-        if "📊 Import" in message:
-            lines = message.strip().split('\n')
-            formatted_lines = []
-            
-            for i, line in enumerate(lines):
-                if not line.strip():
-                    continue
-                
-                # En-tête d'import : garder tel quel mais sans timestamp redondant
-                if line.startswith("📊 Import"):
-                    formatted_lines.append(line)
-                    continue
-                
-                # Messages PDF : enlever les préfixes de fichier et nettoyer
-                if "📄 Fichier PDF" in line and "lignes extraites" in line:
-                    # Format: "📄 Fichier PDF filename.pdf: N lignes extraites"
-                    # On veut garder juste cette information
-                    formatted_lines.append(line)
-                    continue
-                
-                # Lignes traitées : ajouter le préfixe ==>
-                if line.startswith("Lignes traitées"):
-                    formatted_lines.append(f"==> {line}")
-                    continue
-                
-                # Titres de sections : ajouter interligne seulement avant "Appareils :"
-                if line.endswith("Appareils :"):
-                    formatted_lines.append("")  # Interligne avant première section
-                    formatted_lines.append(line)
-                    continue
-                elif line.endswith("Associations de pièce :"):
-                    formatted_lines.append(line)  # Pas d'interligne supplémentaire
-                    continue
-                
-                # Éléments de synthèse : garder tels quels (l'indentation sera gérée par CSS)
-                if line.strip().startswith("==> ") or line.strip().startswith("Créés :") or line.strip().startswith("Complétion automatique :"):
-                    formatted_lines.append(line.strip())
-                    continue
-                
-                # Autres lignes : garder telles quelles
-                formatted_lines.append(line)
-            
-            # Reconstruire le message avec le formatage appliqué
-            formatted_content = '\n'.join(formatted_lines)
-            return f"[{timestamp}] {formatted_content}"
-        
-        # CORRECTION: Pour les autres messages, traiter les \n littéraux
-        # Remplacer les \n littéraux par de vrais retours à la ligne
-        processed_message = message.replace('\\n', '\n')
-        return f"[{timestamp}] {processed_message}"
+        Rendu compatible Qt QTextEdit (subset HTML/CSS limité) :
+        - Barre colorée : colonne <td> de 3px avec bgcolor (border-left non supporté)
+        - Badge ×N : <span> inline avec background-color
+        - Séparateurs temporels : ligne <hr> + texte centré
+        """
+        css = """
+        body {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            margin: 2px 4px;
+            padding: 0;
+        }
+        .ts      { color: #999999; }
+        .title   { color: #222222; }
+        .badge   { color: #666666; font-size: 11px; }
+        .devices { color: #888888; font-size: 11px; }
+        .detail  { color: #666666; font-size: 11px; }
+        .sep     { color: #bbbbbb; font-size: 10px; }
+        """
+
+        html = f'<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>\n'
+
+        prev_ts = None
+        for entry in self._history_entries:
+            # Séparateur temporel entre blocs distants
+            if prev_ts is not None:
+                delta = prev_ts - entry['timestamp']
+                if delta > timedelta(minutes=_TIME_GAP_MINUTES):
+                    label = self._time_label(entry['timestamp'])
+                    html += (
+                        f'<table width="100%" cellpadding="0" cellspacing="0">'
+                        f'<tr><td><hr/></td>'
+                        f'<td width="1" style="white-space:nowrap;" align="center">'
+                        f'<span class="sep">&nbsp;{label}&nbsp;</span></td>'
+                        f'<td><hr/></td></tr></table>\n'
+                    )
+            prev_ts = entry['timestamp']
+
+            style = _ACTION_STYLES.get(entry['action_type'], _ACTION_STYLES['system'])
+            color = style['color']
+            label = style['label']
+            # Badge type : texte blanc sur fond coloré (plus fiable qu'emoji dans Qt)
+            icon = (f'<span style="background-color:{color}; color:white; '
+                    f'font-size:10px; padding:1px 4px;">{label}</span>')
+
+            # Titre et badge
+            safe_title = (entry['title']
+                          .replace('&', '&amp;')
+                          .replace('<', '&lt;')
+                          .replace('>', '&gt;'))
+
+            badge = ''
+            if entry['count'] > 1:
+                badge = (f'&nbsp;<span class="badge"'
+                         f' style="background-color:#eeeeee; color:#555555;">'
+                         f'&times;{entry["count"]} appareils</span>')
+
+            # Durée de traitement (imports uniquement) — affichée en gris sur la ligne de titre
+            duration_suffix = ''
+            if entry.get('duration_ms') is not None:
+                ms = entry['duration_ms']
+                dur_str = f'{ms / 1000:.1f}s' if ms >= 1000 else f'{ms}ms'
+                duration_suffix = (f'&nbsp;<span style="color:#999999; font-size:10px;">'
+                                   f'{dur_str}</span>')
+
+
+            # Ligne devices (sous-titre)
+            devices_html = ''
+            if entry['devices']:
+                refs = ', '.join(entry['devices'][:8])
+                if len(entry['devices']) > 8:
+                    refs += f', \u2026 (+{len(entry["devices"]) - 8})'
+                safe_refs = refs.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                devices_html = (
+                    f'<tr><td bgcolor="{color}" width="3"></td>'
+                    f'<td width="6"></td>'
+                    f'<td><span class="devices">\u2514\u2500 {safe_refs}</span></td></tr>\n'
+                )
+
+            # Lignes de détail (==>)
+            details_html = ''
+            for line in entry['details']:
+                safe = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                indent = '&nbsp;&nbsp;' if line.lstrip().startswith('==>') else ''
+                details_html += (
+                    f'<tr><td bgcolor="{color}" width="3"></td>'
+                    f'<td width="6"></td>'
+                    f'<td><span class="detail">{indent}{safe}</span></td></tr>\n'
+                )
+
+            # Assemblage : table avec barre colorée en TD gauche
+            html += (
+                f'<table width="100%" cellpadding="0" cellspacing="1" style="margin:2px 0;">\n'
+                f'<tr>'
+                f'<td bgcolor="{color}" width="3"></td>'
+                f'<td width="6"></td>'
+                f'<td>'
+                f'<span class="ts">[{entry["timestamp_str"]}]</span>&nbsp;'
+                f'{icon}&nbsp;'
+                f'<span class="title">{safe_title}</span>'
+                f'{badge}'
+                f'{duration_suffix}'
+                f'</td></tr>\n'
+                f'{devices_html}'
+                f'{details_html}'
+                f'</table>\n'
+            )
+
+        html += '</body></html>'
+        return html
+
+    @staticmethod
+    def _time_label(ts: datetime) -> str:
+        """Convertir un datetime en libellé relatif lisible."""
+        delta = datetime.now() - ts
+        minutes = int(delta.total_seconds() / 60)
+        if minutes < 1:
+            return "Il y a moins d'une minute"
+        if minutes < 60:
+            return f"Il y a {minutes} minute{'s' if minutes > 1 else ''}"
+        hours = minutes // 60
+        return f"Il y a {hours} heure{'s' if hours > 1 else ''}"
+
+    # ── Statut et performance ──────────────────────────────────────────────────
 
     def show_status_message(self, message: str, timeout: int = None) -> None:
         """Afficher un message temporaire dans la barre de statut"""
         if timeout is None:
             timeout = Config.STATUS_MESSAGE_TIMEOUT
-            
         if hasattr(self.main_window, 'statusbar'):
             self.main_window.statusbar.showMessage(message, timeout)
 
     def show_performance_indicator(self, message: str, duration_ms: Optional[int] = None) -> None:
         """Afficher un indicateur de performance"""
         if hasattr(self.main_window, 'perf_label'):
-            if duration_ms is not None:
-                perf_message = f"⚡ {message} ({duration_ms}ms)"
-            else:
-                perf_message = f"⚡ {message}"
-            
+            perf_message = f"⚡ {message} ({duration_ms}ms)" if duration_ms else f"⚡ {message}"
             self.main_window.perf_label.setText(perf_message)
-            
-            # Remettre "Prêt" après quelques secondes
             if duration_ms is not None:
                 QTimer.singleShot(3000, lambda: self._reset_performance_indicator())
 
@@ -315,27 +466,20 @@ class UserInteractionService:
         if hasattr(self.main_window, 'perf_label'):
             self.main_window.perf_label.setText("⚡ Prêt")
 
+    # ── Utilitaires ────────────────────────────────────────────────────────────
+
     def clear_history(self) -> None:
         """Vider l'historique des messages"""
-        if hasattr(self.main_window, '_history_messages'):
-            self.main_window._history_messages.clear()
-            
+        self._history_entries.clear()
         if hasattr(self.main_window, 'history_list'):
-            empty_html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; margin: 4px; padding: 4px; }}
-    </style>
-</head>
-<body>
-    <p style="color: {Config.Colors.TEXT_MUTED};">Historique vide</p>
-</body>
-</html>"""
+            empty_html = (
+                f'<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+                f'<p style="color:{Config.Colors.TEXT_MUTED}; font-family: monospace; '
+                f'font-size:12px; margin:4px;">Historique vide</p>'
+                f'</body></html>'
+            )
             self.main_window.history_list.setHtml(empty_html)
 
     def get_history_count(self) -> int:
-        """Obtenir le nombre de messages dans l'historique"""
-        if hasattr(self.main_window, '_history_messages'):
-            return len(self.main_window._history_messages)
-        return 0
+        """Obtenir le nombre d'entrées dans l'historique"""
+        return len(self._history_entries)

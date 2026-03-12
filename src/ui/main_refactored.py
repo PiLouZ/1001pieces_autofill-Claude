@@ -1916,7 +1916,8 @@ class MainWindow(QMainWindow):
         summary += f"     ==> Déjà associées : {results.get('associations_existing', 0)}"
 
         # Ajouter SEULEMENT à l'historique (timestamp ajouté automatiquement)
-        self.user_interaction_service.add_to_history(summary)
+        duration_ms = results.get('processing_time_ms')
+        self.user_interaction_service.add_to_history(summary, duration_ms=duration_ms)
 
     def _validate_and_detect_inconsistencies(self):
         """Ouvrir la fenêtre interactive de validation et incohérences"""
