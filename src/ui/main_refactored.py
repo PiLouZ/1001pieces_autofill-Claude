@@ -1283,11 +1283,6 @@ class MainWindow(QMainWindow):
     def _get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
         """Récupérer les informations DB d'une cellule - PHASE 5: Délégation vers CellEditingService"""
         return self.cell_editing_service.get_cell_db_info(item)
-        
-        # Récupérer le nom de colonne
-        column_name = self._get_db_field_name(col)
-        
-        return db_id, column_name
 
     def _update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False):
         """Mettre à jour une cellule - PHASE 5: Délégation vers CellEditingService"""

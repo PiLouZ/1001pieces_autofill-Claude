@@ -1,156 +1,143 @@
-# 🔧 1001pieces_autofill - Gestionnaire d'Appareils
+# 1001pieces_autofill — Gestionnaire d'Appareils
 
-Application moderne de gestion d'appareils avec interface PyQt5 avancée, gestion de 523 000+ enregistrements et outils de validation interactifs avec EventDrivenSaveService. **v3.15.8**
+Application de gestion de pièces détachées et d'appareils électroménagers. Interface PyQt5, base SQLite de 598 000+ enregistrements, recherche plein-texte FTS5, gestion de la supersession de références. **v3.26.0**
 
-## 🚀 Lancement Rapide
+## Lancement
 
-### 🖱️ **Le plus simple - Sans terminal**
 ```bash
-# Double-cliquez sur le fichier
-1001pieces_autofill.command
-```
-
-### ⌨️ **En ligne de commande classique**
-```bash
-python3 run.py
-```
-
-### 🔗 **Lancement direct**
-```bash
-python3 -m src.ui.main_refactored
-```
-
-## 📁 Structure du Projet
-
-```
-📦 1001pieces_autofill/
-├── 🚀 1001pieces_autofill.command  # Lanceur sans terminal (double-clic)
-├── 🚀 run.py                      # Point d'entrée principal  
-├── 📋 README.md                   # Ce fichier
-├── 📄 requirements.txt            # Dépendances Python
-├── 🖼️ logo.webp                   # Logo de l'application
-├── 📱 1001pieces_autofill.app     # Bundle macOS (optionnel)
-│
-├── 📂 src/                        # Code source principal
-│   ├── 🔧 core/                   # Configuration centrale
-│   │   ├── config.py              # Configuration globale
-│   │   └── logger.py              # Système de logs
-│   ├── 💾 data/                   # Gestion des données
-│   │   ├── database_manager.py    # Gestionnaire BDD optimisé
-│   │   ├── data_validator.py      # Validation avancée
-│   │   └── data_exporter.py       # Exports multiformats
-│   └── 🖥️ ui/                     # Interface utilisateur
-│       ├── main_refactored.py     # Application principale
-│       ├── validation_window.py   # Fenêtre de validation interactive
-│       └── log_viewer.py          # Visualiseur de logs
-│
-├── 📂 data/                       # Données de l'application
-│   └── appareils.db               # Base de données SQLite
-│
-├── 📂 logs/                       # Fichiers de logs
-│   ├── detailed.log               # Logs détaillés
-│   ├── errors.log                 # Erreurs système
-│   └── data_operations.log        # Opérations sur les données
-│
-└── 📂 docs/                       # Documentation
-    ├── GUIDE_COLLAGE.md           # Guide du collage de données
-    └── LANCEMENT.md               # Guide de lancement détaillé
-```
-
-## 🎯 Fonctionnalités Principales
-
-### 📊 **Gestion de Base de Données Massive**
-- **523 000+ enregistrements** - Performance optimisée pour gros volumes
-- **Architecture PyQt5** - Interface moderne et responsive
-- **Sauvegarde événementielle** - Latence sub-100ms avec EventDrivenSaveService
-- **Cache intelligent** - Système de mise en cache pour performances maximales
-
-### 📥 **Import Multi-Format Avancé**
-- **Import PDF** - Extraction précise avec Camelot-Py
-- **Import CSV** - Gestion intelligente des délimiteurs
-- **Drag & Drop** - Multi-fichiers simultané
-- **Collage intelligent** - Nettoyage automatique des extensions (.pdf, .csv)
-- **Auto-complétion** - Popup filtrable pour Type et Fabricant
-
-### 🔍 **Recherche et Filtrage Puissant**
-- **Recherche temps réel** - Dans tous les champs simultanément
-- **Filtres avancés** - Lignes incomplètes, doublons, catégories
-- **Navigation clavier** - Flèches, Page Up/Down optimisées
-- **Tri intelligent** - Multi-colonnes avec préservation des filtres
-
-### 🔄 **Gestion des Doublons**
-- **Détection visuelle** - Indicateur rouge sur le bouton Action
-- **Interface hiérarchique** - Vue QTreeWidget parents/enfants
-- **Exclusion DISTINCT** - Respect des décisions utilisateur
-- **Fusion intelligente** - Référence principale automatique
-
-### 🛠️ **Gestion des Pièces**
-- **Double niveau** - Appareils ET pièces associées
-- **Libellés descriptifs** - Champ dédié pour descriptions
-- **Gestionnaire intégré** - Fenêtre dédiée avec édition temps réel
-- **Validation automatique** - Vérification doublons et conflits
-
-### 🎨 **Interface & UX Moderne**
-- **Design épuré** - Interface PyQt5 moderne et intuitive
-- **Colonnes configurables** - Affichage personnalisable selon les besoins
-- **Raccourcis complets** - Navigation clavier optimisée (Cmd+N, Cmd+S, F5, etc.)
-- **Validation temps réel** - Fenêtre dédiée avec cartes visuelles et statistiques
-
-## 🛠️ Installation
-
-### Dépendances
-```bash
-pip3 install -r requirements.txt
-```
-
-### Installation manuelle
-```bash
-pip3 install PyQt5
-```
-
-## ⌨️ Raccourcis Clavier
-
-### 🚀 **Navigation & Actions**
-- **Cmd+N** - Nouvelle ligne
-- **Cmd+S** - Sauvegarde
-- **Cmd+Z/Y** - Annuler/Refaire
-- **Cmd+F** - Recherche
-- **Cmd+C/V** - Copier/Coller
-- **F5** - Actualiser
-- **F12** - Visualiseur de logs
-
-### 🎯 **Navigation Avancée**
-- **Cmd+↑/↓** - Navigation cellules vides
-- **Cmd+D** - Auto-complétion (Type/Fabricant)
-- **Delete/Backspace** - Effacement cellules
-- **Échap** - Réinitialiser recherche/filtres
-
-## 📊 Performances
-
-### 🚀 **Optimisations Majeures**
-- **Requêtes SQL** : 2300ms → 150ms (93% d'amélioration)
-- **Sauvegarde événementielle** : 5000ms → <100ms (98% d'amélioration)
-- **Gestion 523 000+ enregistrements** avec pagination intelligente
-- **Cache adaptatif** avec invalidation sélective
-
-## 🆘 Dépannage
-
-### Lancement de l'application
-```bash
-# Méthode recommandée
+# Double-clic (sans terminal)
 ./1001pieces_autofill.command
 
-# Alternative
+# Ligne de commande
 python3 run.py
 ```
 
-### Performance lente
-- Vérifier la pagination (activée automatiquement pour >2000 lignes)
-- Appuyer sur **Échap** pour vider filtres et recherche
-- **F5** pour actualiser
+## Structure du projet
+
+```
+1001pieces_autofill/
+├── run.py                        # Point d'entrée
+├── 1001pieces_autofill.command   # Lanceur macOS
+├── requirements.txt              # Dépendances (PyQt5, Camelot-py)
+├── CHANGELOG.md                  # Historique des versions
+│
+├── src/
+│   ├── core/
+│   │   ├── config.py             # Configuration globale (VERSION, flags)
+│   │   ├── constants.py          # Constantes UI et DB
+│   │   ├── logger.py             # Système de logs
+│   │   └── import_manager.py     # Dialogue d'import (CSV/PDF) avec lazy loading
+│   │
+│   ├── data/
+│   │   ├── database_manager.py   # Requêtes SQLite, FTS5, supersession, cache
+│   │   ├── data_validator.py     # Validation des données
+│   │   ├── data_exporter.py      # Exports CSV/HTML
+│   │   └── pdf_extractor_camelot.py
+│   │
+│   ├── services/                 # ~30 services métier
+│   │   ├── event_bus.py          # Bus d'événements interne
+│   │   ├── event_driven_save_service.py  # Sauvegarde <100ms
+│   │   ├── search_cache_service.py
+│   │   ├── drag_handle_service.py
+│   │   ├── grouped_history_service.py
+│   │   └── ...
+│   │
+│   ├── ui/
+│   │   ├── main_refactored.py    # Fenêtre principale (QMainWindow)
+│   │   ├── table_controller.py   # Pagination, tri, recherche, bannière supersession
+│   │   ├── pieces_manager.py     # Gestionnaire de pièces + succession
+│   │   ├── piece_management_service.py
+│   │   ├── pieces_panel_service.py
+│   │   └── ...
+│   │
+│   └── utils/
+│       ├── text_utils.py
+│       ├── error_handler.py
+│       └── seo_generator.py
+│
+├── data/
+│   └── appareils.db              # Base SQLite (~598 000 enregistrements)
+│
+└── docs/
+    ├── cdc_supersession_pieces.md   # Cahier des charges supersession (v1.0)
+    ├── IMPROVEMENTS.md              # Améliorations futures
+    └── MIGRATION_QTABLEVIEW.md      # Historique migration QTableView (v3.17)
+```
+
+## Fonctionnalités
+
+### Base de données
+- **598 000+ enregistrements** — pagination virtuelle (100 lignes affichées, scroll infini)
+- **FTS5 trigram** — index plein-texte sur toutes les colonnes appareils (`USE_FTS5=True`)
+- **Sauvegarde événementielle** — latence <100ms (EventDrivenSaveService)
+- **Cache adaptatif** — invalidation sélective après modification/import
+
+### Recherche
+- **Recherche pièces uniquement** (`SEARCH_PIECES_ONLY=True`) — filtre sur `pieces.ref_piece`
+- **Opérateurs avancés** — `&&` (ET), `||` (OU)
+- **Supersession** — résolution automatique de la chaîne de succession :
+  - Bannière "ancienne réf. : A → B (courante)" avec toggle pour voir A seul
+  - Bannière "REF remplace : A, B" avec toggle pour inclure les appareils des réfs remplacées
+
+### Gestion des pièces et supersession
+- **Succession** — `piece_supersessions(ref_old PK, ref_new NOT NULL)` — CTE récursive pour chaînes longues
+- **Obsolescence** — colonne `pieces.is_obsolete` indépendante de la succession
+- **Indicateurs visuels** — `→` (remplacée) et `⚠` (obsolète) dans toutes les listes de pièces
+- **Alerte obsolescence** — dialogue listant les appareils concernés avant marquage
+- **Import avec succession** — déclaration directe dans le dialogue d'import (champs autocompletés)
+
+### Import
+- **PDF** — extraction Camelot-Py avec lazy loading (0 freeze)
+- **CSV** — détection automatique délimiteur et format
+- **Drag & Drop** — multi-fichiers simultané
+- **Succession à l'import** — "cette réf. remplace" / "remplacée par" + radio "Courante" multi-fichiers
+
+### Interface
+- **Historique structuré** — badges colorés MOD/IMP/EXP/SUP/ANN/PIC/SYS, agrégation `×N appareils`
+- **Dialogues non-bloquants** — `show()` + callbacks (Finder ne freeze plus)
+- **Undo/Redo** — historique d'actions annulables
+- **Doublons** — détection visuelle + interface hiérarchique de fusion
+- **Drag handle** — duplication vers le bas par double-clic
+
+## Installation
+
+```bash
+pip3 install -r requirements.txt
+# PyQt5>=5.15.0 + camelot-py[cv] pour les PDF
+```
+
+## Raccourcis clavier
+
+| Raccourci | Action |
+|-----------|--------|
+| Cmd+N | Nouvelle ligne |
+| Cmd+Z / Cmd+Y | Annuler / Refaire |
+| Cmd+F | Recherche |
+| Cmd+D | Auto-complétion (Type/Fabricant) |
+| Cmd+↑/↓ | Navigation cellules vides |
+| Échap | Réinitialiser recherche/filtres |
+| F5 | Actualiser |
+| F12 | Visualiseur de logs |
+| Delete | Effacement cellule |
+
+## Performances (v3.14+)
+
+| Opération | Avant | Après |
+|-----------|-------|-------|
+| Requêtes SQL | 2 300ms | 150ms |
+| Sauvegarde | 5 000ms | <100ms |
+| Import PDF (freeze) | 15s | 0s |
+| Effacement recherche | 2 500ms | ~6ms |
+
+## Configuration clé (`src/core/config.py`)
+
+```python
+Config.USE_FTS5 = True             # Index plein-texte FTS5 (désactiver si index non construit)
+Config.SEARCH_PIECES_ONLY = True   # Recherche uniquement sur les refs pièces
+```
+
+Reconstruction index FTS5 : menu **Gestion → Index de recherche FTS5 → Construire l'index** (~5s)
 
 ---
 
-## 📋 Changelog
-
-Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique complet des versions et nouveautés.
+Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique complet des versions.
