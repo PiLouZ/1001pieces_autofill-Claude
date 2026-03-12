@@ -1,7 +1,7 @@
 # Cahier des charges — Gestion de la supersession de références pièces
 
-**Statut :** En conception
-**Version :** 0.2
+**Statut :** Implémenté — v3.26.0
+**Version :** 1.0
 **Contexte :** L'application gère la compatibilité entre pièces détachées et appareils électroménagers. Les fabricants remplacent régulièrement une référence par une nouvelle (supersession). Ce document définit les règles métier, le modèle de données et les comportements attendus pour gérer ces évolutions.
 
 ---
