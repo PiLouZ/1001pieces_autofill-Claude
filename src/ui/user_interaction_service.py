@@ -148,6 +148,18 @@ def _parse_entry(message: str, timestamp: datetime) -> Dict[str, Any]:
                 title = f"[{field}]  '{old_val}' → '{new_val}'"
             details = []  # Infos absorbées dans le titre
 
+    elif action_type == 'export':
+        # Exports : "HTML Marques: 7 marques..." → titre "HTML Marques:" + détail "==> 7 marques..."
+        first_line = lines[0] if lines else ''
+        colon_idx = first_line.find(':')
+        if colon_idx != -1:
+            title = _strip_emoji(first_line[:colon_idx + 1])
+            detail_part = first_line[colon_idx + 1:].strip()
+            details = []
+            if detail_part:
+                details.append(f'==> {detail_part}')
+            details.extend(lines[1:])
+
     return {
         'timestamp': timestamp,
         'timestamp_str': timestamp.strftime('%H:%M:%S'),
@@ -366,13 +378,14 @@ class UserInteractionService:
                          f' style="background-color:#eeeeee; color:#555555;">'
                          f'&times;{entry["count"]} appareils</span>')
 
-            # Durée de traitement (imports uniquement)
+            # Durée de traitement (imports uniquement) — affichée en gris sur la ligne de titre
             duration_suffix = ''
             if entry.get('duration_ms') is not None:
                 ms = entry['duration_ms']
                 dur_str = f'{ms / 1000:.1f}s' if ms >= 1000 else f'{ms}ms'
                 duration_suffix = (f'&nbsp;<span style="color:#999999; font-size:10px;">'
                                    f'{dur_str}</span>')
+
 
             # Ligne devices (sous-titre)
             devices_html = ''
@@ -391,10 +404,11 @@ class UserInteractionService:
             details_html = ''
             for line in entry['details']:
                 safe = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                indent = '&nbsp;&nbsp;' if line.lstrip().startswith('==>') else ''
                 details_html += (
                     f'<tr><td bgcolor="{color}" width="3"></td>'
                     f'<td width="6"></td>'
-                    f'<td><span class="detail">{safe}</span></td></tr>\n'
+                    f'<td><span class="detail">{indent}{safe}</span></td></tr>\n'
                 )
 
             # Assemblage : table avec barre colorée en TD gauche
