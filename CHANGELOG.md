@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.25.0] - 2026-03-12
+
+### ✨ Supersession étape 1 — Fondations DB + UI gestionnaire de pièces
+
+- **Nouvelle table `piece_supersessions`** : `ref_old` (PK) → `ref_new` (nullable pour obsolète). Créée automatiquement au démarrage, sans impact sur le schéma existant.
+- **6 méthodes `DatabaseManager`** : `get_piece_status`, `resolve_current_ref`, `get_supersession_chain` (CTE récursive), `_has_supersession_cycle`, `add_supersession`, `remove_supersession`
+- **Panneau "Succession"** dans le gestionnaire de pièces : statut coloré (✓ courante / → remplacée / ⚠ obsolète), chaîne complète, 3 boutons d'action
+- **Multi-sélection** : les 3 actions (remplacée par / obsolète / annuler) s'appliquent à toutes les pièces sélectionnées (Ctrl+Clic)
+- **Historique** : format `Succession :\n==> 'ref' → 'ref'` → badge MOD, lignes grises indentées
+
+---
+
 ## [3.24.0] - 2026-03-12
 
 ### ✨ Historique v2 — Modèle structuré, agrégation cross-appareils, code couleur
