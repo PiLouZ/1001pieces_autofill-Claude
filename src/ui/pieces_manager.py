@@ -899,3 +899,126 @@ class PieceEditDialog(QDialog):
     def get_values(self):
         """Retourner les valeurs saisies"""
         return self.ref_input.text().strip(), self.desc_input.text().strip()
+
+
+class PieceSuccessionDialog(QDialog):
+    """
+    Dialogue de gestion de la succession pour une référence pièce.
+    Utilisable depuis le gestionnaire de pièces ou la liste des pièces associées.
+    """
+
+    def __init__(self, parent, db_manager, ref_piece: str, history_callback=None):
+        super().__init__(parent)
+        self.db_manager = db_manager
+        self.ref_piece = ref_piece
+        self.history_callback = history_callback  # callable(message) ou None
+
+        self.setWindowTitle(f"Succession — {ref_piece}")
+        self.setModal(True)
+        self.resize(480, 200)
+        self._init_ui()
+        self._refresh()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Statut + chaîne
+        self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet("font-size: 12px;")
+        layout.addWidget(self.status_label)
+
+        # Boutons d'action
+        btn_layout = QHBoxLayout()
+
+        self.btn_superseded = QPushButton("Remplacée par…")
+        self.btn_superseded.clicked.connect(self._on_mark_superseded)
+        btn_layout.addWidget(self.btn_superseded)
+
+        self.btn_obsolete = QPushButton("Marquer obsolète")
+        self.btn_obsolete.setStyleSheet("QPushButton { color: #E05252; }")
+        self.btn_obsolete.clicked.connect(self._on_mark_obsolete)
+        btn_layout.addWidget(self.btn_obsolete)
+
+        self.btn_cancel_succ = QPushButton("Annuler la succession")
+        self.btn_cancel_succ.clicked.connect(self._on_cancel_succession)
+        btn_layout.addWidget(self.btn_cancel_succ)
+
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        # Fermer
+        close_layout = QHBoxLayout()
+        close_layout.addStretch()
+        close_btn = QPushButton("Fermer")
+        close_btn.clicked.connect(self.accept)
+        close_layout.addWidget(close_btn)
+        layout.addLayout(close_layout)
+
+    def _refresh(self):
+        """Mettre à jour l'affichage du statut."""
+        status_info = self.db_manager.get_piece_status(self.ref_piece)
+        status = status_info['status']
+
+        if status == 'current':
+            self.status_label.setText("✓ Référence courante")
+            self.status_label.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
+            self.btn_cancel_succ.setEnabled(False)
+        elif status == 'superseded':
+            chain = self.db_manager.get_supersession_chain(self.ref_piece)
+            self.status_label.setText("→ Remplacée : " + " → ".join(chain))
+            self.status_label.setStyleSheet("color: #4A9EFF; font-size: 12px;")
+            self.btn_cancel_succ.setEnabled(True)
+        elif status == 'obsolete':
+            self.status_label.setText("⚠ Obsolète — aucun remplacement")
+            self.status_label.setStyleSheet("color: #E05252; font-size: 12px; font-weight: bold;")
+            self.btn_cancel_succ.setEnabled(True)
+
+    def _on_mark_superseded(self):
+        ref_new, ok = QInputDialog.getText(
+            self, "Référence de remplacement",
+            f"Référence qui remplace '{self.ref_piece}' :",
+        )
+        if not ok or not ref_new.strip():
+            return
+        ref_new = ref_new.strip()
+        success, error = self.db_manager.add_supersession(self.ref_piece, ref_new)
+        if success:
+            self._send_history(f"Succession :\n==> '{self.ref_piece}' → '{ref_new}'")
+            self._refresh()
+        else:
+            QMessageBox.warning(self, "Erreur de succession", error)
+
+    def _on_mark_obsolete(self):
+        confirm = QMessageBox.question(
+            self, "Marquer comme obsolète",
+            f"Marquer '{self.ref_piece}' comme obsolète (aucun remplacement) ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        success, error = self.db_manager.add_supersession(self.ref_piece, None)
+        if success:
+            self._send_history(f"Succession :\n==> '{self.ref_piece}' → obsolète")
+            self._refresh()
+        else:
+            QMessageBox.warning(self, "Erreur", error)
+
+    def _on_cancel_succession(self):
+        confirm = QMessageBox.question(
+            self, "Annuler la succession",
+            f"Supprimer le lien de succession pour '{self.ref_piece}' ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        if self.db_manager.remove_supersession(self.ref_piece):
+            self._send_history(f"Succession :\n==> '{self.ref_piece}' → (annulée)")
+            self._refresh()
+
+    def _send_history(self, message: str):
+        if self.history_callback:
+            try:
+                self.history_callback(message)
+            except Exception:
+                pass

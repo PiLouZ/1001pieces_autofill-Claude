@@ -189,11 +189,18 @@ class PiecesListService:
             return
         
         menu = QMenu(self.main_window)
-        
+
         # Action copier (toujours utile)
         copy_action = menu.addAction("Copier")
         copy_action.triggered.connect(lambda: self.main_window._copy_piece(item))
-        
+
+        # Gestion de la succession
+        ref_piece = item.data(Qt.UserRole)
+        if ref_piece:
+            menu.addSeparator()
+            succession_action = menu.addAction("→ Gestion de la succession…")
+            succession_action.triggered.connect(lambda: self._open_succession_dialog(ref_piece))
+
         # Vérifier s'il y a plusieurs appareils sélectionnés
         selected_ranges = self.main_window.table.selectedRanges()
         multiple_selection = len(selected_ranges) > 0 and sum(
@@ -209,3 +216,17 @@ class PiecesListService:
         
         # Afficher le menu
         menu.exec_(self.main_window.pieces_list.mapToGlobal(position))
+
+    def _open_succession_dialog(self, ref_piece: str):
+        """Ouvrir le dialogue de gestion de succession pour une pièce."""
+        from .pieces_manager import PieceSuccessionDialog
+        history_cb = None
+        if hasattr(self.main_window, 'user_interaction_service'):
+            history_cb = self.main_window.user_interaction_service.add_to_history
+        dialog = PieceSuccessionDialog(
+            self.main_window,
+            self.main_window.db_manager,
+            ref_piece,
+            history_callback=history_cb,
+        )
+        dialog.exec_()
