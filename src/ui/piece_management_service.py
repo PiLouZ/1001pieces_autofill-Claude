@@ -340,8 +340,8 @@ class PieceManagementService:
                     changes.append(f"libellé: {old_display} → {new_display}")
 
                 if changes:
-                    change_text = " | ".join(changes)
-                    self.main_window.user_interaction_service.add_to_history(f"Pièce modifiée: {change_text}")
+                    summary = "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
+                    self.main_window.user_interaction_service.add_to_history(summary)
                 else:
                     self.main_window.user_interaction_service.add_to_history("Pièce modifiée (aucun changement détecté)")
 

@@ -684,6 +684,33 @@ class DatabaseManager:
             app_logger.error(f"Erreur get_piece_status({ref_piece}): {e}")
             return {'status': 'current', 'ref_new': None}
 
+    def get_pieces_statuses_batch(self, refs: list) -> dict:
+        """
+        Retourner les statuts de succession pour une liste de références en une seule requête.
+
+        Returns:
+            dict {ref_piece: {'status': 'current'|'superseded'|'obsolete', 'ref_new': str|None}}
+            Les refs absentes de piece_supersessions ont le statut 'current'.
+        """
+        if not refs:
+            return {}
+        try:
+            placeholders = ",".join("?" * len(refs))
+            rows = self.execute_query(
+                f"SELECT ref_old, ref_new FROM piece_supersessions WHERE ref_old IN ({placeholders})",
+                refs
+            )
+            result = {ref: {'status': 'current', 'ref_new': None} for ref in refs}
+            for ref_old, ref_new in rows:
+                if ref_new is None:
+                    result[ref_old] = {'status': 'obsolete', 'ref_new': None}
+                else:
+                    result[ref_old] = {'status': 'superseded', 'ref_new': ref_new}
+            return result
+        except Exception as e:
+            app_logger.error(f"Erreur get_pieces_statuses_batch: {e}")
+            return {ref: {'status': 'current', 'ref_new': None} for ref in refs}
+
     def resolve_current_ref(self, ref_piece: str, max_depth: int = 20) -> str:
         """
         Remonter la chaîne de succession jusqu'à la référence courante.

@@ -319,10 +319,26 @@ class PiecesManagerWindow(QDialog):
         filtered_data = self._get_filtered_data()
         
         self.pieces_table.setRowCount(len(filtered_data))
-        
+
+        all_refs = [row[0] for row in filtered_data if row[0]]
+        statuses = self.db_manager.get_pieces_statuses_batch(all_refs)
+
         for row_idx, (ref_piece, description, nb_appareils, types_appareils) in enumerate(filtered_data):
-            # Référence de pièce
-            ref_item = QTableWidgetItem(ref_piece or "")
+            # Référence de pièce avec indicateur de succession
+            status_info = statuses.get(ref_piece or '', {'status': 'current', 'ref_new': None})
+            if status_info['status'] == 'superseded':
+                ref_display = f"{ref_piece} →"
+                ref_tooltip = f"Remplacée par {status_info['ref_new']}"
+            elif status_info['status'] == 'obsolete':
+                ref_display = f"{ref_piece} ⚠️"
+                ref_tooltip = "Obsolète — aucun remplacement"
+            else:
+                ref_display = ref_piece or ""
+                ref_tooltip = ""
+            ref_item = QTableWidgetItem(ref_display)
+            ref_item.setData(Qt.UserRole, ref_piece or "")
+            if ref_tooltip:
+                ref_item.setToolTip(ref_tooltip)
             self.pieces_table.setItem(row_idx, 0, ref_item)
             
             # Libellé de la pièce
@@ -394,7 +410,7 @@ class PiecesManagerWindow(QDialog):
         if not ref_item:
             return
 
-        ref_piece = ref_item.text()
+        ref_piece = ref_item.data(Qt.UserRole) or ref_item.text()
         self._current_ref_piece = ref_piece
         self._load_piece_details(ref_piece)
         self._refresh_succession_panel(ref_piece)
@@ -446,7 +462,7 @@ class PiecesManagerWindow(QDialog):
         for row in rows:
             item = self.pieces_table.item(row, 0)
             if item:
-                refs.append(item.text())
+                refs.append(item.data(Qt.UserRole) or item.text())
         return refs
 
     def _refresh_succession_panel(self, ref_piece):
@@ -623,7 +639,7 @@ class PiecesManagerWindow(QDialog):
             ref_item = self.pieces_table.item(row, 0)
             nb_item = self.pieces_table.item(row, 2)  # Colonne 2 pour le nombre d'appareils
             if ref_item and nb_item:
-                ref_piece = ref_item.text()
+                ref_piece = ref_item.data(Qt.UserRole) or ref_item.text()
                 nb_appareils = int(nb_item.text())
                 pieces_to_delete.append((ref_piece, nb_appareils))
                 total_associations += nb_appareils
@@ -717,7 +733,7 @@ class PiecesManagerWindow(QDialog):
         if not ref_item:
             return
 
-        current_ref = ref_item.text()
+        current_ref = ref_item.data(Qt.UserRole) or ref_item.text()
         current_desc = desc_item.text() if desc_item else ""
 
         # Créer une boîte de dialogue d'édition
@@ -751,13 +767,9 @@ class PiecesManagerWindow(QDialog):
                     changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
 
                 if changes:
-                    # Format harmonisé avec les appareils
-                    summary = f"Modification de la pièce {new_ref}\n     ==> {changes[0]}"
-                    if len(changes) > 1:
-                        for change in changes[1:]:
-                            summary += f"\n     ==> {change}"
+                    summary = "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
                     self.parent().user_interaction_service.add_to_history(summary)
-    
+
     @handle_ui_errors(log_prefix="Erreur modification pièce (row)", show_message=True)
     def _edit_piece_at_row(self, row: int):
         """Éditer la pièce à la ligne spécifiée (appelée depuis boutons au survol)"""
@@ -771,7 +783,7 @@ class PiecesManagerWindow(QDialog):
         if not ref_item:
             return
 
-        current_ref = ref_item.text()
+        current_ref = ref_item.data(Qt.UserRole) or ref_item.text()
         current_desc = desc_item.text() if desc_item else ""
 
         # Ouvrir le dialogue d'édition
@@ -801,11 +813,7 @@ class PiecesManagerWindow(QDialog):
                     changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
 
                 if changes:
-                    # Format harmonisé avec les appareils
-                    summary = f"Modification de la pièce {new_ref}\n     ==> {changes[0]}"
-                    if len(changes) > 1:
-                        for change in changes[1:]:
-                            summary += f"\n     ==> {change}"
+                    summary = "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
                     self.parent().user_interaction_service.add_to_history(summary)
     
     @handle_ui_errors(log_prefix="Erreur suppression pièce (row)", show_message=True)
@@ -819,7 +827,7 @@ class PiecesManagerWindow(QDialog):
         if not ref_item:
             return
 
-        ref_piece = ref_item.text()
+        ref_piece = ref_item.data(Qt.UserRole) or ref_item.text()
 
         # Confirmation
         reply = QMessageBox.question(
