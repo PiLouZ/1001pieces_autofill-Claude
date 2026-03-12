@@ -483,6 +483,9 @@ class DatabaseManager:
         # Infrastructure FTS5 (table + triggers) — population via rebuild_fts5()
         self._setup_fts5()
 
+        # Table de supersession des références pièces
+        self._setup_supersession_table()
+
         self.conn.commit()
     
     @handle_database_errors(title="Erreur ajout colonnes")
@@ -634,6 +637,167 @@ class DatabaseManager:
             except sqlite3.Error as e:
                 raise DatabaseError(f"Erreur lors de la création des index: {e}")
     
+    # ── Supersession des références pièces ──────────────────────────────────
+
+    def _setup_supersession_table(self):
+        """Créer la table piece_supersessions si elle n'existe pas."""
+        try:
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS piece_supersessions (
+                    ref_old  TEXT NOT NULL,
+                    ref_new  TEXT,
+                    PRIMARY KEY (ref_old),
+                    FOREIGN KEY (ref_old) REFERENCES pieces(ref_piece) ON DELETE CASCADE,
+                    FOREIGN KEY (ref_new) REFERENCES pieces(ref_piece) ON DELETE SET NULL
+                )
+            """)
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_supersessions_old ON piece_supersessions(ref_old)"
+            )
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_supersessions_new ON piece_supersessions(ref_new)"
+            )
+        except Exception as e:
+            app_logger.error(f"Erreur création table piece_supersessions: {e}")
+
+    def get_piece_status(self, ref_piece: str) -> dict:
+        """
+        Retourner le statut de succession d'une référence pièce.
+
+        Returns:
+            dict avec les clés :
+              - 'status' : 'current' | 'superseded' | 'obsolete'
+              - 'ref_new' : ref de remplacement (str ou None)
+        """
+        try:
+            row = self.execute_query(
+                "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?",
+                [ref_piece]
+            )
+            if not row:
+                return {'status': 'current', 'ref_new': None}
+            ref_new = row[0][0]
+            if ref_new is None:
+                return {'status': 'obsolete', 'ref_new': None}
+            return {'status': 'superseded', 'ref_new': ref_new}
+        except Exception as e:
+            app_logger.error(f"Erreur get_piece_status({ref_piece}): {e}")
+            return {'status': 'current', 'ref_new': None}
+
+    def resolve_current_ref(self, ref_piece: str, max_depth: int = 20) -> str:
+        """
+        Remonter la chaîne de succession jusqu'à la référence courante.
+        Protégé contre les cycles via max_depth.
+
+        Returns:
+            La ref courante (dernière de la chaîne), ou ref_piece si déjà courante.
+        """
+        try:
+            query = """
+                WITH RECURSIVE chain(ref, depth) AS (
+                    SELECT ?, 0
+                    UNION ALL
+                    SELECT ps.ref_new, chain.depth + 1
+                    FROM chain
+                    JOIN piece_supersessions ps ON ps.ref_old = chain.ref
+                    WHERE ps.ref_new IS NOT NULL AND chain.depth < ?
+                )
+                SELECT ref FROM chain ORDER BY depth DESC LIMIT 1
+            """
+            rows = self.execute_query(query, [ref_piece, max_depth])
+            return rows[0][0] if rows else ref_piece
+        except Exception as e:
+            app_logger.error(f"Erreur resolve_current_ref({ref_piece}): {e}")
+            return ref_piece
+
+    def get_supersession_chain(self, ref_piece: str, max_depth: int = 20) -> list:
+        """
+        Retourner la chaîne complète depuis la ref donnée jusqu'à la ref courante.
+
+        Returns:
+            Liste ordonnée [ref_piece, ..., ref_courante].
+            Contient uniquement ref_piece si elle est déjà courante.
+        """
+        try:
+            query = """
+                WITH RECURSIVE chain(ref, depth) AS (
+                    SELECT ?, 0
+                    UNION ALL
+                    SELECT ps.ref_new, chain.depth + 1
+                    FROM chain
+                    JOIN piece_supersessions ps ON ps.ref_old = chain.ref
+                    WHERE ps.ref_new IS NOT NULL AND chain.depth < ?
+                )
+                SELECT ref FROM chain ORDER BY depth ASC
+            """
+            rows = self.execute_query(query, [ref_piece, max_depth])
+            return [r[0] for r in rows] if rows else [ref_piece]
+        except Exception as e:
+            app_logger.error(f"Erreur get_supersession_chain({ref_piece}): {e}")
+            return [ref_piece]
+
+    def _has_supersession_cycle(self, ref_old: str, ref_new: str) -> bool:
+        """Vérifier si ajouter ref_old → ref_new créerait un cycle."""
+        try:
+            current = ref_new
+            visited = {ref_old}
+            for _ in range(30):
+                if current in visited:
+                    return True
+                visited.add(current)
+                rows = self.execute_query(
+                    "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?",
+                    [current]
+                )
+                if not rows or rows[0][0] is None:
+                    return False
+                current = rows[0][0]
+            return True  # chaîne trop longue, considérée comme cycle
+        except Exception as e:
+            app_logger.error(f"Erreur détection cycle supersession: {e}")
+            return False
+
+    def add_supersession(self, ref_old: str, ref_new) -> tuple:
+        """
+        Ajouter ou mettre à jour une entrée de supersession.
+
+        Args:
+            ref_old : référence remplacée (ou obsolète)
+            ref_new : nouvelle référence, ou None pour marquer obsolète
+
+        Returns:
+            (success: bool, error_message: str)
+        """
+        try:
+            if ref_old == ref_new:
+                return False, "Une référence ne peut pas se remplacer elle-même."
+            if ref_new is not None and self._has_supersession_cycle(ref_old, ref_new):
+                return False, f"Cette opération créerait un cycle de succession ({ref_old} → ... → {ref_old})."
+            with self.lock:
+                self.cursor.execute(
+                    "INSERT OR REPLACE INTO piece_supersessions(ref_old, ref_new) VALUES (?, ?)",
+                    [ref_old, ref_new]
+                )
+                self.conn.commit()
+            return True, ""
+        except Exception as e:
+            app_logger.error(f"Erreur add_supersession({ref_old} → {ref_new}): {e}")
+            return False, str(e)
+
+    def remove_supersession(self, ref_old: str) -> bool:
+        """Supprimer la relation de supersession pour ref_old."""
+        try:
+            with self.lock:
+                self.cursor.execute(
+                    "DELETE FROM piece_supersessions WHERE ref_old = ?",
+                    [ref_old]
+                )
+                self.conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Erreur remove_supersession({ref_old}): {e}")
+            return False
+
     # ── FTS5 Full-Text Search ────────────────────────────────────────────────
 
     def _setup_fts5(self):
