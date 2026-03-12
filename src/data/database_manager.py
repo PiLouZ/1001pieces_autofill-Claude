@@ -193,13 +193,9 @@ class DatabaseManager:
 
             term = search_term.strip()
 
-            # Phase 5: Recherche uniquement dans les pièces associées
+            # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
             if Config.SEARCH_PIECES_ONLY:
-                return {
-                    'query_type': 'pieces_only',
-                    'condition': "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))",
-                    'params': [f"%{term}%"]
-                }
+                return self._build_pieces_only_condition(term)  # string path — pas de bypass possible
 
             # DÉSACTIVÉ TEMPORAIREMENT: Recherches optimisées à cause de problèmes de paramètres
             # Utiliser toujours la recherche LIKE classique pour garantir la stabilité
@@ -228,13 +224,10 @@ class DatabaseManager:
 
             term = terms[0]
 
-            # Phase 5: Recherche uniquement dans les pièces associées
+            # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
             if Config.SEARCH_PIECES_ONLY:
-                return {
-                    'query_type': 'pieces_only',
-                    'condition': "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))",
-                    'params': [f"%{term}%"]
-                }
+                bypass = search_term.get('bypass_supersession', False)
+                return self._build_pieces_only_condition(term, bypass=bypass)
 
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
             search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
@@ -789,6 +782,63 @@ class DatabaseManager:
         except Exception as e:
             app_logger.error(f"Erreur get_appareils_for_piece_ref({ref_piece}): {e}")
             return []
+
+    def _resolve_refs_via_supersession(self, term: str) -> list:
+        """
+        Retourner les refs courantes des pièces dont une ancienne ref correspond au terme.
+        Utilisé pour étendre la recherche aux références supersédées.
+
+        Returns:
+            list de refs courantes (sans doublon), vide si aucune correspondance.
+        """
+        try:
+            old_matches = self.execute_query(
+                "SELECT DISTINCT ref_old FROM piece_supersessions WHERE ref_old LIKE ?",
+                [f"%{term}%"]
+            ) or []
+            resolved = []
+            for (ref_old,) in old_matches:
+                current = self.resolve_current_ref(ref_old)
+                if current and current not in resolved:
+                    resolved.append(current)
+            return resolved
+        except Exception as e:
+            app_logger.error(f"Erreur _resolve_refs_via_supersession({term}): {e}")
+            return []
+
+    def _build_pieces_only_condition(self, term: str, bypass: bool = False) -> dict:
+        """
+        Construire la condition SQL pour la recherche par ref_piece (SEARCH_PIECES_ONLY).
+        Si bypass=True, cherche uniquement la ref telle quelle (sans résolution supersession).
+        """
+        if bypass:
+            return {
+                'query_type': 'pieces_only',
+                'condition': (
+                    "a.id IN (SELECT pa.appareil_id FROM piece_associations pa "
+                    "WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+                ),
+                'params': [f"%{term}%"]
+            }
+        resolved = self._resolve_refs_via_supersession(term)
+        if resolved:
+            placeholders = ",".join("?" * len(resolved))
+            condition = (
+                f"a.id IN ("
+                f"SELECT pa.appareil_id FROM piece_associations pa "
+                f"WHERE pa.piece_id IN ("
+                f"SELECT id FROM pieces WHERE ref_piece LIKE ? "
+                f"UNION SELECT id FROM pieces WHERE ref_piece IN ({placeholders})"
+                f"))"
+            )
+            params = [f"%{term}%"] + resolved
+        else:
+            condition = (
+                "a.id IN (SELECT pa.appareil_id FROM piece_associations pa "
+                "WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+            )
+            params = [f"%{term}%"]
+        return {'query_type': 'pieces_only', 'condition': condition, 'params': params}
 
     def resolve_current_ref(self, ref_piece: str, max_depth: int = 20) -> str:
         """
