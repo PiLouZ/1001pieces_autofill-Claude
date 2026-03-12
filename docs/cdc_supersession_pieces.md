@@ -143,24 +143,9 @@ Chaque ajout/modification/suppression de supersession est tracé dans le panneau
 
 ## 6. Import
 
-### 6.1 Import fichier fournisseur (CSV / PDF) — colonne `ref_remplace`
+> **Contexte** : chaque fichier importé (CSV / PDF) contient une liste d'appareils compatibles avec **une seule référence pièce**. La ref est déclarée dans le dialogue d'import, pas dans le fichier. La succession se configure donc uniquement au niveau du dialogue.
 
-Colonne optionnelle `ref_remplace` dans le fichier source :
-
-```
-ref_piece  | ref_remplace
------------+-------------
-REF456     | REF123        ← REF123 est remplacée par REF456
-REF789     |               ← ref courante, pas de succession
-```
-
-Comportement à l'import :
-- Si `ref_remplace` est renseignée → `piece_supersessions(ref_old=ref_remplace, ref_new=ref_piece)`
-- Si la ref n'existe pas encore dans `pieces`, la créer avant d'insérer la supersession
-- Rapport d'import : nombre de supersessions ajoutées / mises à jour
-- Import d'une supersession déjà existante → `INSERT OR REPLACE` (mise à jour silencieuse)
-
-### 6.2 Import fichier unique — déclaration de succession avec la base existante
+### 6.1 Import fichier unique — déclaration de succession avec la base existante
 
 Lors de l'import d'un fichier contenant **une seule référence**, le dialogue d'import propose une section optionnelle "Succession" avec deux champs en autocomplétion sur les références déjà présentes en base :
 
@@ -186,7 +171,7 @@ Règles :
 - Si les deux sont renseignés, la cohérence de chaîne est vérifiée (pas de cycle)
 - Le champ "remplacée par" ne peut pas pointer vers la même ref que "remplace" (évite A → A)
 
-### 6.3 Import multi-refs — sélection de la ref courante (topologie étoile)
+### 6.2 Import multi-fichiers — sélection de la ref courante (topologie étoile)
 
 Quand un fichier contient plusieurs refs pour la même pièce **sans colonne `ref_remplace`**, le dialogue d'import propose une étape dédiée :
 
@@ -204,7 +189,7 @@ Refs détectées pour cette pièce :
 
 Cette approche est préférable à une case à cocher car elle impose un choix unique et prévisualise le résultat avant validation.
 
-### 6.4 Saisie manuelle
+### 6.3 Saisie manuelle
 
 Via le gestionnaire de pièces (cf. §5.1) ou via un écran dédié "Gérer les successions" accessible depuis le menu Gestion.
 
@@ -241,7 +226,7 @@ Via le gestionnaire de pièces (cf. §5.1) ou via un écran dédié "Gérer les 
 
 - `database_manager.py` : nouvelles méthodes `get_supersession_chain(ref)`, `resolve_current_ref(ref)`, `add_supersession(ref_old, ref_new)`, mise à jour `rebuild_fts5()` pour inclure `ref_old`
 - `search_service.py` : étendre la résolution de recherche pour remonter la chaîne avant d'interroger les associations
-- `import_manager.py` : parsing colonne `ref_remplace` optionnelle + UI bouton radio pour sélection ref courante
+- `import_manager.py` : UI dialogue — champs autocomplétés (fichier unique) + bouton radio sélection ref courante (multi-fichiers)
 - `pieces_manager.py` / `piece_management_service.py` : UI de gestion des successions, notifications obsolescence
 - Migration DB : `CREATE TABLE piece_supersessions` + rebuild FTS5 à versionner dans un script de migration
 
