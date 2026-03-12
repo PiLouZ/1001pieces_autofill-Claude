@@ -773,7 +773,7 @@ class DatabaseManager:
                 return False, "Une référence ne peut pas se remplacer elle-même."
             if ref_new is not None and self._has_supersession_cycle(ref_old, ref_new):
                 return False, f"Cette opération créerait un cycle de succession ({ref_old} → ... → {ref_old})."
-            with self.lock:
+            with self._query_lock:
                 self.cursor.execute(
                     "INSERT OR REPLACE INTO piece_supersessions(ref_old, ref_new) VALUES (?, ?)",
                     [ref_old, ref_new]
@@ -787,7 +787,7 @@ class DatabaseManager:
     def remove_supersession(self, ref_old: str) -> bool:
         """Supprimer la relation de supersession pour ref_old."""
         try:
-            with self.lock:
+            with self._query_lock:
                 self.cursor.execute(
                     "DELETE FROM piece_supersessions WHERE ref_old = ?",
                     [ref_old]
