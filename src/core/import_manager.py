@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from enum import Enum
 import os
+import time as _time
 import warnings
 from datetime import datetime
 
@@ -850,8 +851,11 @@ class ImportManager:
         try:
             config = dialog.get_configuration()
             if config:
-                # Exécuter l'import
+                # Exécuter l'import avec mesure du temps de traitement
+                t0 = _time.perf_counter()
                 results = self._execute_import(config)
+                if results is not None:
+                    results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
                 # Appeler le callback avec les résultats
                 if callback:
                     callback(results)
@@ -983,12 +987,14 @@ class ImportManager:
         try:
             config = dialog.get_configuration()
             if config:
-                # Exécuter l'import
+                # Exécuter l'import avec mesure du temps de traitement
+                t0 = _time.perf_counter()
                 results = self._execute_import(config)
 
-                # Marquer comme drag&drop
-                if results:
+                # Marquer comme drag&drop et enregistrer la durée
+                if results is not None:
                     results['import_source'] = 'drag_drop'
+                    results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
 
                 # Appeler le callback avec les résultats
                 if callback:

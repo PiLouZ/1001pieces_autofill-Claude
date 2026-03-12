@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.24.0] - 2026-03-12
+
+### ✨ Historique v2 — Modèle structuré, agrégation cross-appareils, code couleur
+
+Refonte complète du panneau historique (`user_interaction_service.py`) :
+
+- **Modèle structuré** : `_history_entries: List[dict]` remplace les chaînes brutes — chaque entrée contient `timestamp`, `action_type`, `title`, `details`, `count`, `devices`, `agg_key`, `duration_ms`
+- **Agrégation cross-appareils** : N modifications du même champ vers la même valeur sont fusionnées en une entrée `×N appareils` avec la liste des références
+- **Code couleur par type** : badges texte colorés (`MOD`, `IMP`, `EXP`, `SUP`, `ANN`, `PIC`, `SYS`) + barre verticale colorée par `<td bgcolor>` (border-left CSS non supporté dans Qt QTextEdit)
+- **Séparateurs temporels** : ligne horizontale avec libellé relatif ("Il y a 5 minutes") entre blocs distants de plus de 5 minutes
+- **Durée de traitement** : les entrées d'import affichent la durée en gris (`1.4s` ou `234ms`) mesurée par `time.perf_counter()` dans `import_manager.py`
+- **Zéro régression** : API `add_to_history(message)` inchangée, nouveau paramètre optionnel `duration_ms=None`
+- **Nettoyage emojis** : regex Unicode strip appliquée aux titres (emojis dans `📊 Import...` non fiables dans Qt)
+
+---
+
 ## [3.23.0] - 2026-03-11
 
 ### ⚡ Perf — Effacement recherche instantané (×470 supplémentaire)
