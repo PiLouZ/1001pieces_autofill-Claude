@@ -16,10 +16,7 @@ os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
 import warnings
 warnings.filterwarnings('ignore')
 
-# Ajouter le répertoire src au path Python
 current_dir = os.path.dirname(os.path.abspath(__file__))
-src_dir = os.path.join(current_dir, 'src')
-sys.path.insert(0, src_dir)
 
 def check_dependencies():
     """Vérifier les dépendances essentielles"""
@@ -41,10 +38,8 @@ def check_dependencies():
     
     # Vérifier les modules locaux
     try:
-        from src.core.config import Config
-        from src.data.database_manager import DatabaseManager
-        from src.data.data_validator import DataValidator
-        from src.data.data_exporter import DataExporter
+        from src.core.config import Config  # noqa: F401
+        from src.data.database_manager import DatabaseManager  # noqa: F401
         print("✅ Modules de l'application disponibles")
     except ImportError as e:
         print(f"❌ Erreur d'import des modules: {e}")

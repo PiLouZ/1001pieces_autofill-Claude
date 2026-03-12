@@ -6,11 +6,16 @@ Permet un suivi précis des opérations et des erreurs
 import logging
 import json
 import os
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
 from enum import Enum
 
 from ..utils.error_handler import handle_logger_errors
+
+# Répertoire de logs absolu : <racine_projet>/data/logs/
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+_DEFAULT_LOG_DIR = str(_PROJECT_ROOT / "data" / "logs")
 
 class LogLevel(Enum):
     """Niveaux de logging personnalisés"""
@@ -26,7 +31,7 @@ class LogLevel(Enum):
 class AppLogger:
     """Gestionnaire de logs avancé pour l'application"""
     
-    def __init__(self, log_dir: str = "logs"):
+    def __init__(self, log_dir: str = _DEFAULT_LOG_DIR):
         """
         Initialise le système de logging
         

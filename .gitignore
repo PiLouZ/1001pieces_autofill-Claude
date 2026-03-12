@@ -14,14 +14,26 @@ venv.bak/
 *.qmlc
 *.jsc
 
-# Database backups
+# Database
+data/appareils.db
+data/appareils.db-shm
+data/appareils.db-wal
 data/*.db.backup
 data/*_backup.db
 data/*.db.bak
 
 # Logs
-logs/*.log
+logs/
+data/logs/
 *.log
+
+# Cache
+cache/
+.cache/
+
+# Exports / analyses
+analysis_exports/
+data/exports/
 
 # macOS
 .DS_Store
@@ -37,7 +49,7 @@ Icon
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
 
-# Application bundles (keep the built app but ignore temp files)
+# Application bundles
 *.app/Contents/MacOS/*
 *.app/Contents/Resources/.localized
 
@@ -51,7 +63,6 @@ Icon
 # Temporary files
 *.tmp
 *.temp
-.cache/
 
 # User-specific files
 config/user_settings.json
@@ -60,8 +71,11 @@ config/user_settings.json
 # Build artifacts
 build/
 dist/
-*.egg-info/data/appareils.db
-data/appareils.db
-data/appareils.db
+*.egg-info/
+
+# Tests
+.pytest_cache/
+
+# Virtual envs
 .auditor_venv/
 .pf/
