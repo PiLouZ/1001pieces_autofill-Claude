@@ -211,19 +211,24 @@ class PieceManagementService:
         def _refresh_succ():
             info = db.get_piece_status(ref_piece)
             status = info['status']
-            if status == 'current':
+            is_obsolete = info['is_obsolete']
+            btn_obsolete.setText("Retirer l'obsolescence" if is_obsolete else "Marquer obsolète")
+            if status == 'current' and not is_obsolete:
                 succ_status.setText("✓ Référence courante")
                 succ_status.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
                 btn_cancel_s.setEnabled(False)
             elif status == 'superseded':
                 chain = db.get_supersession_chain(ref_piece)
-                succ_status.setText("→ Remplacée : " + " → ".join(chain))
+                text = "→ Remplacée : " + " → ".join(chain)
+                if is_obsolete:
+                    text += " (⚠ obsolète)"
+                succ_status.setText(text)
                 succ_status.setStyleSheet("color: #4A9EFF; font-size: 12px;")
                 btn_cancel_s.setEnabled(True)
             elif status == 'obsolete':
-                succ_status.setText("⚠ Obsolète — aucun remplacement")
+                succ_status.setText("⚠ Obsolète — plus fabriquée")
                 succ_status.setStyleSheet("color: #E05252; font-size: 12px; font-weight: bold;")
-                btn_cancel_s.setEnabled(True)
+                btn_cancel_s.setEnabled(False)
 
         def _succ_history(msg):
             self.main_window.user_interaction_service.add_to_history(msg)
@@ -242,18 +247,30 @@ class PieceManagementService:
                 QMessageBox.warning(dialog, "Erreur de succession", error)
 
         def _on_obsolete():
+            appareils = db.get_appareils_for_piece_ref(ref_piece)
+            msg = f"Marquer '{ref_piece}' comme obsolète (aucun remplacement) ?"
+            if appareils:
+                lines = [f"  • {mfr or '?'} {ref_mod or '?'} ({type_ or '?'})" for type_, mfr, ref_mod in appareils[:10]]
+                if len(appareils) > 10:
+                    lines.append(f"  … et {len(appareils) - 10} autre(s)")
+                msg += "\n\nAppareils concernés :\n" + "\n".join(lines)
             if QMessageBox.question(
-                dialog, "Marquer comme obsolète",
-                f"Marquer '{ref_piece}' comme obsolète ?",
+                dialog, "Marquer comme obsolète", msg,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             ) != QMessageBox.StandardButton.Yes:
                 return
-            success, error = db.add_supersession(ref_piece, None)
-            if success:
-                _succ_history(f"Succession :\n==> '{ref_piece}' → obsolète")
+            is_obsolete = db.get_piece_status(ref_piece)['is_obsolete']
+            if is_obsolete:
+                ok = db.unmark_obsolete(ref_piece)
+                msg = f"Succession :\n==> '{ref_piece}' → plus obsolète"
+            else:
+                ok = db.mark_obsolete(ref_piece)
+                msg = f"Succession :\n==> '{ref_piece}' → obsolète"
+            if ok:
+                _succ_history(msg)
                 _refresh_succ()
             else:
-                QMessageBox.warning(dialog, "Erreur", error)
+                QMessageBox.warning(dialog, "Erreur", "Impossible de modifier le statut d'obsolescence.")
 
         def _on_cancel_succ():
             if QMessageBox.question(
@@ -262,9 +279,9 @@ class PieceManagementService:
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             ) != QMessageBox.StandardButton.Yes:
                 return
-            if db.remove_supersession(ref_piece):
-                _succ_history(f"Succession :\n==> '{ref_piece}' → (annulée)")
-                _refresh_succ()
+            db.remove_supersession(ref_piece)
+            _succ_history(f"Succession :\n==> '{ref_piece}' → (succession annulée)")
+            _refresh_succ()
 
         btn_superseded.clicked.connect(_on_superseded)
         btn_obsolete.clicked.connect(_on_obsolete)
@@ -342,8 +359,6 @@ class PieceManagementService:
                 if changes:
                     summary = "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
                     self.main_window.user_interaction_service.add_to_history(summary)
-                else:
-                    self.main_window.user_interaction_service.add_to_history("Pièce modifiée (aucun changement détecté)")
 
                 self.main_window.user_interaction_service.show_status_message(
                     f"Pièce modifiée avec succès", Config.STATUS_MESSAGE_TIMEOUT

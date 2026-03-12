@@ -640,15 +640,15 @@ class DatabaseManager:
     # ── Supersession des références pièces ──────────────────────────────────
 
     def _setup_supersession_table(self):
-        """Créer la table piece_supersessions si elle n'existe pas."""
+        """Créer la table piece_supersessions et migrer le schéma si nécessaire."""
         try:
             self.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS piece_supersessions (
                     ref_old  TEXT NOT NULL,
-                    ref_new  TEXT,
+                    ref_new  TEXT NOT NULL,
                     PRIMARY KEY (ref_old),
                     FOREIGN KEY (ref_old) REFERENCES pieces(ref_piece) ON DELETE CASCADE,
-                    FOREIGN KEY (ref_new) REFERENCES pieces(ref_piece) ON DELETE SET NULL
+                    FOREIGN KEY (ref_new) REFERENCES pieces(ref_piece) ON DELETE CASCADE
                 )
             """)
             self.cursor.execute(
@@ -657,6 +657,28 @@ class DatabaseManager:
             self.cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_supersessions_new ON piece_supersessions(ref_new)"
             )
+            # Migration : ajout colonne is_obsolete sur pieces (idempotent)
+            try:
+                self.cursor.execute(
+                    "ALTER TABLE pieces ADD COLUMN is_obsolete INTEGER NOT NULL DEFAULT 0"
+                )
+                app_logger.info("Migration : colonne is_obsolete ajoutée à pieces")
+            except Exception:
+                pass  # Colonne déjà présente
+            # Migration : (ref_old, NULL) → is_obsolete=1 puis suppression de la ligne
+            null_rows = self.cursor.execute(
+                "SELECT ref_old FROM piece_supersessions WHERE ref_new IS NULL"
+            ).fetchall()
+            if null_rows:
+                for (ref_old,) in null_rows:
+                    self.cursor.execute(
+                        "UPDATE pieces SET is_obsolete = 1 WHERE ref_piece = ?", (ref_old,)
+                    )
+                self.cursor.execute(
+                    "DELETE FROM piece_supersessions WHERE ref_new IS NULL"
+                )
+                self.conn.commit()
+                app_logger.info(f"Migration : {len(null_rows)} entrée(s) (ref_old, NULL) converties en is_obsolete=1")
         except Exception as e:
             app_logger.error(f"Erreur création table piece_supersessions: {e}")
 
@@ -666,50 +688,107 @@ class DatabaseManager:
 
         Returns:
             dict avec les clés :
-              - 'status' : 'current' | 'superseded' | 'obsolete'
-              - 'ref_new' : ref de remplacement (str ou None)
+              - 'status'      : 'current' | 'superseded' | 'obsolete'
+              - 'ref_new'     : ref de remplacement (str ou None)
+              - 'is_obsolete' : bool — pièce marquée obsolète (plus fabriquée)
+            Note : une pièce peut être à la fois superseded ET obsolète.
+                   Dans ce cas status='superseded' et is_obsolete=True.
         """
         try:
-            row = self.execute_query(
-                "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?",
-                [ref_piece]
+            succ = self.execute_query(
+                "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?", [ref_piece]
             )
-            if not row:
-                return {'status': 'current', 'ref_new': None}
-            ref_new = row[0][0]
-            if ref_new is None:
-                return {'status': 'obsolete', 'ref_new': None}
-            return {'status': 'superseded', 'ref_new': ref_new}
+            obs = self.execute_query(
+                "SELECT is_obsolete FROM pieces WHERE ref_piece = ?", [ref_piece]
+            )
+            is_obsolete = bool(obs and obs[0][0])
+            if succ:
+                return {'status': 'superseded', 'ref_new': succ[0][0], 'is_obsolete': is_obsolete}
+            if is_obsolete:
+                return {'status': 'obsolete', 'ref_new': None, 'is_obsolete': True}
+            return {'status': 'current', 'ref_new': None, 'is_obsolete': False}
         except Exception as e:
             app_logger.error(f"Erreur get_piece_status({ref_piece}): {e}")
-            return {'status': 'current', 'ref_new': None}
+            return {'status': 'current', 'ref_new': None, 'is_obsolete': False}
 
     def get_pieces_statuses_batch(self, refs: list) -> dict:
         """
         Retourner les statuts de succession pour une liste de références en une seule requête.
 
         Returns:
-            dict {ref_piece: {'status': 'current'|'superseded'|'obsolete', 'ref_new': str|None}}
-            Les refs absentes de piece_supersessions ont le statut 'current'.
+            dict {ref_piece: {'status': 'current'|'superseded'|'obsolete', 'ref_new': str|None, 'is_obsolete': bool}}
         """
         if not refs:
             return {}
         try:
             placeholders = ",".join("?" * len(refs))
             rows = self.execute_query(
-                f"SELECT ref_old, ref_new FROM piece_supersessions WHERE ref_old IN ({placeholders})",
+                f"""SELECT p.ref_piece, ps.ref_new, p.is_obsolete
+                    FROM pieces p
+                    LEFT JOIN piece_supersessions ps ON ps.ref_old = p.ref_piece
+                    WHERE p.ref_piece IN ({placeholders})""",
                 refs
             )
-            result = {ref: {'status': 'current', 'ref_new': None} for ref in refs}
-            for ref_old, ref_new in rows:
-                if ref_new is None:
-                    result[ref_old] = {'status': 'obsolete', 'ref_new': None}
+            result = {ref: {'status': 'current', 'ref_new': None, 'is_obsolete': False} for ref in refs}
+            for ref_piece, ref_new, is_obsolete in rows:
+                is_obs = bool(is_obsolete)
+                if ref_new is not None:
+                    result[ref_piece] = {'status': 'superseded', 'ref_new': ref_new, 'is_obsolete': is_obs}
+                elif is_obs:
+                    result[ref_piece] = {'status': 'obsolete', 'ref_new': None, 'is_obsolete': True}
                 else:
-                    result[ref_old] = {'status': 'superseded', 'ref_new': ref_new}
+                    result[ref_piece] = {'status': 'current', 'ref_new': None, 'is_obsolete': False}
             return result
         except Exception as e:
             app_logger.error(f"Erreur get_pieces_statuses_batch: {e}")
-            return {ref: {'status': 'current', 'ref_new': None} for ref in refs}
+            return {ref: {'status': 'current', 'ref_new': None, 'is_obsolete': False} for ref in refs}
+
+    def mark_obsolete(self, ref_piece: str) -> bool:
+        """Marquer une pièce comme obsolète (plus fabriquée). Indépendant de la succession."""
+        try:
+            with self._query_lock:
+                self.cursor.execute(
+                    "UPDATE pieces SET is_obsolete = 1 WHERE ref_piece = ?", [ref_piece]
+                )
+                self.conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Erreur mark_obsolete({ref_piece}): {e}")
+            return False
+
+    def unmark_obsolete(self, ref_piece: str) -> bool:
+        """Retirer le marqueur obsolète d'une pièce."""
+        try:
+            with self._query_lock:
+                self.cursor.execute(
+                    "UPDATE pieces SET is_obsolete = 0 WHERE ref_piece = ?", [ref_piece]
+                )
+                self.conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Erreur unmark_obsolete({ref_piece}): {e}")
+            return False
+
+    def get_appareils_for_piece_ref(self, ref_piece: str) -> list:
+        """
+        Retourner la liste des appareils associés à une référence pièce.
+
+        Returns:
+            list de tuples (type, manufacturer, ref_modele)
+        """
+        try:
+            return self.execute_query(
+                """SELECT a.type, a.manufacturer, a.ref_modele
+                   FROM appareils a
+                   JOIN piece_associations pa ON pa.appareil_id = a.id
+                   JOIN pieces p ON pa.piece_id = p.id
+                   WHERE p.ref_piece = ?
+                   ORDER BY a.manufacturer, a.ref_modele""",
+                [ref_piece]
+            ) or []
+        except Exception as e:
+            app_logger.error(f"Erreur get_appareils_for_piece_ref({ref_piece}): {e}")
+            return []
 
     def resolve_current_ref(self, ref_piece: str, max_depth: int = 20) -> str:
         """
@@ -776,7 +855,7 @@ class DatabaseManager:
                     "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?",
                     [current]
                 )
-                if not rows or rows[0][0] is None:
+                if not rows:
                     return False
                 current = rows[0][0]
             return True  # chaîne trop longue, considérée comme cycle
@@ -796,9 +875,11 @@ class DatabaseManager:
             (success: bool, error_message: str)
         """
         try:
+            if ref_new is None:
+                return False, "ref_new ne peut pas être None — utiliser mark_obsolete() à la place."
             if ref_old == ref_new:
                 return False, "Une référence ne peut pas se remplacer elle-même."
-            if ref_new is not None and self._has_supersession_cycle(ref_old, ref_new):
+            if self._has_supersession_cycle(ref_old, ref_new):
                 return False, f"Cette opération créerait un cycle de succession ({ref_old} → ... → {ref_old})."
             with self._query_lock:
                 self.cursor.execute(

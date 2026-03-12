@@ -98,7 +98,7 @@ class PiecesPanelService:
                 item_text += " →"
                 tooltip = f"Remplacée par {status_info['ref_new']}"
             elif status_info['status'] == 'obsolete':
-                item_text += " ⚠️"
+                item_text += " ⚠"
                 tooltip = "Obsolète — aucun remplacement"
             else:
                 tooltip = description or ""
@@ -166,7 +166,7 @@ class PiecesPanelService:
                 base_text += " →"
                 tooltip = f"Remplacée par {status_info['ref_new']}"
             elif status_info['status'] == 'obsolete':
-                base_text += " ⚠️"
+                base_text += " ⚠"
                 tooltip = "Obsolète — aucun remplacement"
             else:
                 tooltip = ""
