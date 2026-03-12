@@ -85,13 +85,28 @@ class PiecesPanelService:
         db_id = self.main_window.table_fill_service.get_db_id_from_row(self.main_window.table, row)
         pieces = self.main_window.db_manager.get_pieces_for_appareil(db_id)
         
+        refs = [ref_piece for ref_piece, _ in pieces]
+        statuses = self.main_window.db_manager.get_pieces_statuses_batch(refs)
+
         for ref_piece, description in pieces:
             item_text = ref_piece
             if description:
                 item_text += f" - {description}"
-            
+
+            status_info = statuses.get(ref_piece, {'status': 'current', 'ref_new': None})
+            if status_info['status'] == 'superseded':
+                item_text += " →"
+                tooltip = f"Remplacée par {status_info['ref_new']}"
+            elif status_info['status'] == 'obsolete':
+                item_text += " ⚠"
+                tooltip = "Obsolète — aucun remplacement"
+            else:
+                tooltip = description or ""
+
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, ref_piece)
+            if tooltip:
+                item.setToolTip(tooltip)
             self.main_window.pieces_list.addItem(item)
     
     def _handle_multiple_selection(self, selected_rows: Set[int]) -> None:
@@ -140,17 +155,28 @@ class PiecesPanelService:
             common_pieces: Ensemble des références de pièces communes
             selected_rows: Ensemble des lignes sélectionnées
         """
+        statuses = self.main_window.db_manager.get_pieces_statuses_batch(list(common_pieces))
+
         for common_ref in sorted(common_pieces):
             description = self._get_piece_description(common_ref, selected_rows)
-            
-            item_text = f"{common_ref} (commune à {len(selected_rows)} appareils)"
-            if description:
-                item_text = f"{common_ref} - {description} (commune à {len(selected_rows)} appareils)"
-            
+
+            base_text = f"{common_ref} - {description}" if description else common_ref
+            status_info = statuses.get(common_ref, {'status': 'current', 'ref_new': None})
+            if status_info['status'] == 'superseded':
+                base_text += " →"
+                tooltip = f"Remplacée par {status_info['ref_new']}"
+            elif status_info['status'] == 'obsolete':
+                base_text += " ⚠"
+                tooltip = "Obsolète — aucun remplacement"
+            else:
+                tooltip = ""
+
+            item_text = f"{base_text} (commune à {len(selected_rows)} appareils)"
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, common_ref)
-            # Marquer visuellement les pièces communes
             item.setBackground(QColor(240, 248, 255))  # Bleu très clair
+            if tooltip:
+                item.setToolTip(tooltip)
             self.main_window.pieces_list.addItem(item)
     
     def _get_piece_description(self, ref_piece: str, selected_rows: Set[int]) -> str:

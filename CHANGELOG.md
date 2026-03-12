@@ -4,6 +4,58 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.26.0] - 2026-03-12
+
+### ✨ Supersession — Recherche, UI complète, import et indicateurs visuels
+
+**Modèle de données (Case B)**
+- `pieces.is_obsolete` : colonne booléenne indépendante de la succession — une pièce peut être à la fois obsolète ET remplaçante d'une autre
+- Migration automatique au démarrage : les lignes `(ref_old, NULL)` existantes sont converties en `is_obsolete=1`, `ref_new NOT NULL` désormais imposé
+- `mark_obsolete()` / `unmark_obsolete()` : bascule binaire découplée de la succession
+- `get_pieces_statuses_batch()` : requête batch unique avec LEFT JOIN pour statut + obsolescence
+
+**Indicateurs visuels §5.2**
+- `→` (pièce remplacée) et `⚠` (pièce obsolète) dans le panneau des pièces et le gestionnaire de pièces
+- Tooltip détaillé : "Remplacée par REF" ou "Obsolète — aucun remplacement"
+- `data(Qt.UserRole)` stocke la ref propre ; `text()` uniquement pour l'affichage
+
+**Notifications obsolescence §5.3**
+- Dialogue de confirmation avant marquage obsolète : liste exhaustive des appareils concernés
+- Bouton "Marquer obsolète" devient toggle (second clic annule l'obsolescence)
+- "Annuler la succession" ne touche plus à l'obsolescence (dimensions indépendantes)
+
+**Recherche par ancienne référence §4**
+- `_resolve_refs_via_supersession(term)` : résolution Python avant SQL (compatible SQLite ≥ 3.8)
+- `_build_pieces_only_condition(term, bypass, extra_refs)` : trois modes (normal, bypass, expansion prédécesseurs)
+- Bannière persistante sous la barre de recherche, active dans tous les modes de recherche
+- **Mode "superseded"** : terme = ancienne réf → `⚠ Ancienne réf. : A → B (courante)` + toggle "Voir uniquement 'A'"
+- **Mode "replacing"** : terme = réf courante → `⚠ 'REF' remplace : A, B` + toggle "Voir aussi les appareils des réfs remplacées"
+- `get_all_predecessors()` : CTE récursive inverse (`ref_new → ref_old`) pour remonter la chaîne complète
+
+**Import §6**
+- Section "Succession (optionnel)" dans le dialogue d'import fichier unique : deux champs autocompletés (`MatchContains`, ≤ 5 000 refs)
+- Bouton radio "Courante" par fichier en multi-fichiers : topologie étoile
+- `_apply_succession_from_config()` : création des successions après l'import, erreurs FK absorbées
+
+**Corrections historique**
+- Modifications multi-champs simultanées sur N appareils : agrégées en `[Type + Fabricant] ×N appareils`
+- `_parse_multi_edit()` : `agg_key` canonique = tuple trié de `(field, new_val)`
+- Aucune entrée dans l'historique si aucun changement détecté lors de l'édition d'une pièce
+
+---
+
+## [3.25.0] - 2026-03-12
+
+### ✨ Supersession étape 1 — Fondations DB + UI gestionnaire de pièces
+
+- **Nouvelle table `piece_supersessions`** : `ref_old` (PK) → `ref_new` (nullable pour obsolète). Créée automatiquement au démarrage, sans impact sur le schéma existant.
+- **6 méthodes `DatabaseManager`** : `get_piece_status`, `resolve_current_ref`, `get_supersession_chain` (CTE récursive), `_has_supersession_cycle`, `add_supersession`, `remove_supersession`
+- **Panneau "Succession"** dans le gestionnaire de pièces : statut coloré (✓ courante / → remplacée / ⚠ obsolète), chaîne complète, 3 boutons d'action
+- **Multi-sélection** : les 3 actions (remplacée par / obsolète / annuler) s'appliquent à toutes les pièces sélectionnées (Ctrl+Clic)
+- **Historique** : format `Succession :\n==> 'ref' → 'ref'` → badge MOD, lignes grises indentées
+
+---
+
 ## [3.24.0] - 2026-03-12
 
 ### ✨ Historique v2 — Modèle structuré, agrégation cross-appareils, code couleur

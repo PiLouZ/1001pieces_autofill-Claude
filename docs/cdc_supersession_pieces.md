@@ -1,7 +1,7 @@
 # Cahier des charges — Gestion de la supersession de références pièces
 
-**Statut :** En conception
-**Version :** 0.2
+**Statut :** Implémenté — v3.26.0
+**Version :** 1.0
 **Contexte :** L'application gère la compatibilité entre pièces détachées et appareils électroménagers. Les fabricants remplacent régulièrement une référence par une nouvelle (supersession). Ce document définit les règles métier, le modèle de données et les comportements attendus pour gérer ces évolutions.
 
 ---
@@ -91,7 +91,7 @@ Quand l'utilisateur recherche une ref (ex: `REF123`) :
 
 ### 4.2 Indexation FTS5
 
-Les `ref_old` de la table `piece_supersessions` sont indexées dans l'index FTS5 existant, au même titre que les `ref_piece` courantes. Cela garantit que la recherche par ancienne référence bénéficie des mêmes performances (trigram, recherche partielle).
+**Décision architecturale (Case B) :** L'index FTS5 (`appareils_fts`) couvre uniquement les colonnes d'`appareils`. Le mode `SEARCH_PIECES_ONLY=True` (production) court-circuite FTS5 entièrement et effectue une recherche LIKE sur `pieces.ref_piece`. La table `piece_supersessions` étant petite (quelques dizaines d'entrées), une requête LIKE dessus est sub-milliseconde — créer un index FTS5 séparé n'apporte aucun gain mesurable. La résolution de la chaîne de succession se fait en Python via `_resolve_refs_via_supersession()` avant la construction de la condition SQL.
 
 ### 4.3 Affichage dans les résultats
 
@@ -213,7 +213,7 @@ Via le gestionnaire de pièces (cf. §5.1) ou via un écran dédié "Gérer les 
 
 | Sujet                          | Décision                                                                 |
 |-------------------------------|--------------------------------------------------------------------------|
-| FTS5                          | ✅ Indexer les `ref_old` dans FTS5 pour performances égales aux refs courantes |
+| FTS5                          | ✅ Pas d'indexation séparée — `piece_supersessions` est petite, LIKE sub-ms. Résolution chaîne en Python avant SQL. |
 | Affichage tableau principal   | ✅ Indicateur discret dans la colonne `ref_piece` (pas de colonne dédiée) |
 | Export CSV/HTML               | ✅ Inchangé — le statut de succession n'est pas exporté                  |
 | Notification obsolescence     | ✅ Alerte au moment du marquage + indicateur persistant                  |
@@ -224,11 +224,11 @@ Via le gestionnaire de pièces (cf. §5.1) ou via un écran dédié "Gérer les 
 
 ## 9. Dépendances techniques
 
-- `database_manager.py` : nouvelles méthodes `get_supersession_chain(ref)`, `resolve_current_ref(ref)`, `add_supersession(ref_old, ref_new)`, mise à jour `rebuild_fts5()` pour inclure `ref_old`
+- `database_manager.py` : nouvelles méthodes `get_supersession_chain(ref)`, `resolve_current_ref(ref)`, `add_supersession(ref_old, ref_new)`, `_resolve_refs_via_supersession(term)` (résolution chaîne avant SQL — pas de rebuild FTS5)
 - `search_service.py` : étendre la résolution de recherche pour remonter la chaîne avant d'interroger les associations
 - `import_manager.py` : UI dialogue — champs autocomplétés (fichier unique) + bouton radio sélection ref courante (multi-fichiers)
 - `pieces_manager.py` / `piece_management_service.py` : UI de gestion des successions, notifications obsolescence
-- Migration DB : `CREATE TABLE piece_supersessions` + rebuild FTS5 à versionner dans un script de migration
+- Migration DB : `CREATE TABLE piece_supersessions` + ajout colonne `pieces.is_obsolete` — versionné dans `_setup_supersession_table()`
 
 ---
 

@@ -112,6 +112,33 @@ def _parse_single_edit(message: str):
     return None
 
 
+def _parse_multi_edit(message: str):
+    """
+    Tente de parser un message multi-champs généré par grouped_history_service.
+    Format : "Modification de l'appareil {ref}\\n ==> F1 : 'old' → 'new'\\n ==> F2 : 'old' → 'new'"
+
+    Retourne (device_ref, [(field, old, new), ...]) ou None si non applicable.
+    Nécessite au moins 2 lignes ==> (sinon _parse_single_edit couvre déjà le cas).
+    """
+    raw = message.replace('\\n', '\n')
+    lines = [l.strip() for l in raw.split('\n') if l.strip()]
+    if len(lines) < 3:
+        return None
+    if not lines[0].startswith("Modification de l'appareil "):
+        return None
+
+    device_ref = lines[0][len("Modification de l'appareil "):].strip()
+    pairs = []
+    for line in lines[1:]:
+        m = _RE_ARROW.search(line)
+        if m:
+            pairs.append((m.group(1).strip(), m.group(2), m.group(3)))
+
+    if len(pairs) < 2:
+        return None
+    return device_ref, pairs
+
+
 def _parse_entry(message: str, timestamp: datetime) -> Dict[str, Any]:
     """
     Construire un dict d'entrée structurée à partir d'un message brut.
@@ -133,20 +160,31 @@ def _parse_entry(message: str, timestamp: datetime) -> Dict[str, Any]:
     title = _strip_emoji(lines[0]) if lines else _strip_emoji(message)
     details = lines[1:] if len(lines) > 1 else []
 
-    # Agrégation : uniquement pour edit mono-champ
+    # Agrégation : edit mono-champ ou multi-champs
     agg_key = None
     devices = []
     if action_type == 'edit':
         parsed = _parse_single_edit(message)
         if parsed is not None:
+            # Mono-champ : titre concis, pas de details
             device_ref, field, old_val, new_val = parsed
             agg_key = (field, new_val)
-            # Titre plus concis pour les éditions simples
             title = f"[{field}]  '{old_val}' → '{new_val}'"
             if device_ref:
                 devices = [device_ref]
-                title = f"[{field}]  '{old_val}' → '{new_val}'"
             details = []  # Infos absorbées dans le titre
+        else:
+            # Multi-champs : titre groupé, details = les lignes ==>
+            multi = _parse_multi_edit(message)
+            if multi is not None:
+                device_ref, pairs = multi
+                # agg_key = ensemble canonique des (champ, nouvelle valeur)
+                agg_key = tuple(sorted((f, n) for (f, o, n) in pairs))
+                field_names = ' + '.join(f for (f, o, n) in pairs)
+                title = f"[{field_names}]"
+                if device_ref:
+                    devices = [device_ref]
+                details = [f"==> {f} : '{o}' → '{n}'" for (f, o, n) in pairs]
 
     elif action_type == 'export':
         # Exports : "HTML Marques: 7 marques..." → titre "HTML Marques:" + détail "==> 7 marques..."
