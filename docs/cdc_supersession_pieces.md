@@ -160,7 +160,33 @@ Comportement à l'import :
 - Rapport d'import : nombre de supersessions ajoutées / mises à jour
 - Import d'une supersession déjà existante → `INSERT OR REPLACE` (mise à jour silencieuse)
 
-### 6.2 Import avec sélection de la ref courante (topologie étoile)
+### 6.2 Import fichier unique — déclaration de succession avec la base existante
+
+Lors de l'import d'un fichier contenant **une seule référence**, le dialogue d'import propose une section optionnelle "Succession" avec deux champs en autocomplétion sur les références déjà présentes en base :
+
+```
+┌─ Succession (optionnel) ──────────────────────────────────────┐
+│  Cette référence remplace      : [ REF123 ▾ ]  ← autocomplétion
+│  Cette référence est remplacée : [ REF456 ▾ ]  ← autocomplétion
+└───────────────────────────────────────────────────────────────┘
+```
+
+Comportement selon le champ renseigné :
+
+| Champ renseigné                    | Entrée créée dans `piece_supersessions`              |
+|------------------------------------|------------------------------------------------------|
+| "Cette ref remplace REF123"        | `(ref_old=REF123, ref_new=ref_importée)`             |
+| "Cette ref est remplacée par REF456" | `(ref_old=ref_importée, ref_new=REF456)`           |
+| Les deux renseignés                | Les deux entrées créées (ref_importée = nœud intermédiaire) |
+| Aucun renseigné                    | Aucune entrée de succession (comportement actuel)    |
+
+Règles :
+- L'autocomplétion interroge la table `pieces` existante (recherche partielle sur `ref_piece`)
+- Les deux champs sont indépendants et facultatifs
+- Si les deux sont renseignés, la cohérence de chaîne est vérifiée (pas de cycle)
+- Le champ "remplacée par" ne peut pas pointer vers la même ref que "remplace" (évite A → A)
+
+### 6.3 Import multi-refs — sélection de la ref courante (topologie étoile)
 
 Quand un fichier contient plusieurs refs pour la même pièce **sans colonne `ref_remplace`**, le dialogue d'import propose une étape dédiée :
 
@@ -178,7 +204,7 @@ Refs détectées pour cette pièce :
 
 Cette approche est préférable à une case à cocher car elle impose un choix unique et prévisualise le résultat avant validation.
 
-### 6.3 Saisie manuelle
+### 6.4 Saisie manuelle
 
 Via le gestionnaire de pièces (cf. §5.1) ou via un écran dédié "Gérer les successions" accessible depuis le menu Gestion.
 
