@@ -47,11 +47,13 @@ def temp_db_path():
 @pytest.fixture
 def test_db_manager(temp_db_path):
     """Fixture DatabaseManager avec base temporaire"""
-    # Sauvegarder l'ancien chemin
+    # Sauvegarder l'ancien chemin et config
     original_db_path = Config.DB_FILE
+    original_search_only = Config.SEARCH_PIECES_ONLY
 
-    # Configurer chemin temporaire
+    # Configurer chemin temporaire et désactiver la recherche pièces uniquement
     Config.DB_FILE = temp_db_path
+    Config.SEARCH_PIECES_ONLY = False
 
     # Créer le manager (l'initialisation se fait automatiquement)
     db_manager = DatabaseManager()
@@ -60,6 +62,7 @@ def test_db_manager(temp_db_path):
 
     # Restaurer et nettoyer
     Config.DB_FILE = original_db_path
+    Config.SEARCH_PIECES_ONLY = original_search_only
     db_manager.close()
 
 
@@ -187,7 +190,7 @@ class TestHelpers:
         """Créer des appareils de test en base et retourner leurs IDs"""
         device_ids = []
         for device_data in devices_data:
-            device_id = db_manager.add_device(device_data)
+            device_id = db_manager.insert_appareil(device_data)
             device_ids.append(device_id)
         return device_ids
 
@@ -204,7 +207,7 @@ class TestHelpers:
 
         for malicious_input in malicious_inputs:
             # Tester recherche
-            results = db_manager.search_devices(malicious_input)
+            results = db_manager.load_data(search_term=malicious_input)
             assert isinstance(results, list), "La recherche doit retourner une liste même avec input malveillant"
 
             # Tester ajout d'appareil avec données malveillantes
@@ -218,11 +221,11 @@ class TestHelpers:
                 'notes': malicious_input
             }
 
-            device_id = db_manager.add_device(malicious_device)
+            device_id = db_manager.insert_appareil(malicious_device)
             assert device_id is not None, "L'ajout doit fonctionner même avec données malveillantes"
 
             # Vérifier que les données sont correctement échappées
-            retrieved_device = db_manager.get_device_by_id(device_id)
+            retrieved_device = db_manager.get_device_info(device_id)
             assert retrieved_device is not None, "L'appareil doit être récupérable"
 
 

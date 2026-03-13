@@ -4,6 +4,51 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.27.0] - 2026-03-13
+
+### ✨ Équivalences, export bannières, refonte gestionnaire de pièces
+
+**Équivalences — nouveau concept (symétrique, non directionnel)**
+- Table `piece_equivalence_groups(group_id, ref_piece)` avec stratégie Union-Find : fusion de groupes en O(1) SQL
+- `add_equivalence`, `remove_equivalence`, `get_equivalents` dans `DatabaseManager` ; auto-création de refs fantômes
+- `get_pieces_statuses_batch` étendu : 3e requête pour les membres du groupe d'équivalence
+- Panneau pièces : ligne 2 `≡ Équiv. REF_B, REF_C` en violet (#8e44ad), hauteur dynamique 40/52px
+- Bannière équivalence (violet, fond #F3E5F5) dans la recherche principale — toggle "Voir aussi les équivalentes"
+- Section "Équivalences" dans le dialogue d'édition de pièce : statut + boutons "Lier…" / "Retirer du groupe"
+- Gestionnaire de pièces : panneau "Équivalences" avec même interface, filtre rapide "Équivalentes ≡"
+- Import multi-fichiers : checkbox "Équivalente" par fichier ; Option B — groupe créé sans "Courante" désignée
+- Support `;` comme séparateur multi-refs dans tous les champs de saisie et la recherche du gestionnaire
+
+**Export — respect de l'état des bannières**
+- `_parse_search_term` (export_manager) réécrit : utilise `search_service.parse_advanced_search` puis injecte `bypass_supersession`, `expand_predecessors`, `expand_equivalents` depuis l'état du `table_controller`
+- Les trois chemins d'export (MAIN, QUICK, `export_with_reference`) exportent désormais exactement ce qui est affiché dans le tableau selon la bannière active
+
+**Bannières — comportement RAZ**
+- `load_data(None)` : masque automatiquement les deux bannières (supersession + équivalence) avant le rechargement
+- `_clear_advanced_search` (× pièce) : `_hide_equivalence_banner()` ajouté en miroir de `_hide_supersession_banner()` + reset du panneau pièces
+
+**Panneau pièces — UI**
+- Description inline sur la ligne 1 (gris, 10px) après la ref en gras ; ligne 2 réservée au statut succession/équivalence
+- En-tête : `Type · Fabricant [ref_modele – commercial_ref]`, sans italique
+- QTabWidget remplacé par un toggle `＋` direct ; bouton ↺ corrigé (lambda anti-TypeError signal `clicked(bool)`)
+- Succession bidirectionnelle affichée dans le panneau : `↑ Remplace REF_B` (mode `replacing`)
+
+**Gestionnaire de pièces — refonte**
+- Barre de 8 filtres rapides exclusifs : Toutes / Orphelines 🔴 / Fantômes 👻 / Remplacées → / Obsolètes ⚠ / Remplaçantes ↑ / Équivalentes ≡ / Courantes ✓
+- Colonne "Statut" (#5) avec badge coloré
+- Bouton "Remplace…" — inverse de "Remplacée par…" : les sélectionnées remplacent des refs saisies (`;`-séparées)
+- Recherche multi-refs avec `;` comme séparateur (OR logique)
+- Zone détails masquée (splitter supprimé, `self.details_text` conservé hors layout)
+- Refresh automatique des panneaux Succession/Équivalences en fin de `_update_table_display`
+- Signal `currentItemChanged` ajouté pour refresh cohérent lors des clics dans une sélection étendue
+- Double-clic sur une ligne → édition directe
+
+**Corrections**
+- `cell_editing_service` : guard `if item is None` avant `.row()` et `.emit()` → élimine les TypeError sur cellule vide
+- Succession bidirectionnelle dans le dialogue d'édition et `PiecesManagerWindow` : cas `replacing` (↑ Remplace) affiché correctement
+
+---
+
 ## [3.26.0] - 2026-03-12
 
 ### ✨ Supersession — Recherche, UI complète, import et indicateurs visuels

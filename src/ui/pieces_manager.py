@@ -7,7 +7,7 @@ from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
                            QCheckBox, QApplication, QWidget, QMenu, QAction,
                            Qt, QTimer, pyqtSignal, QColor, QPainter,
-                           QGroupBox, QInputDialog, QComboBox)
+                           QGroupBox, QButtonGroup, QInputDialog, QComboBox, QFont)
 import sqlite3
 from typing import List, Tuple, Dict
 
@@ -157,58 +157,86 @@ class PiecesManagerWindow(QDialog):
         
         layout.addLayout(header_layout)
         
-        # Barre de recherche et filtres
+        # Barre de recherche
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Recherche:"))
-        
+        search_layout.addWidget(QLabel("Recherche :"))
+
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Rechercher une référence ou un libellé de pièce...")
+        self.search_input.setPlaceholderText("Référence ou libellé… (utiliser ; pour plusieurs refs)")
         self.search_input.textChanged.connect(self._filter_pieces)
         search_layout.addWidget(self.search_input)
-        
-        self.orphan_checkbox = QCheckBox("Afficher seulement les pièces orphelines")
-        self.orphan_checkbox.stateChanged.connect(self._filter_pieces)
-        search_layout.addWidget(self.orphan_checkbox)
-        
-        refresh_btn = QPushButton("🔄 Actualiser")
+
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setFixedWidth(32)
+        refresh_btn.setToolTip("Actualiser")
         refresh_btn.clicked.connect(self._load_pieces_data)
         search_layout.addWidget(refresh_btn)
-        
+
         layout.addLayout(search_layout)
+
+        # Barre de filtres rapides
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("Filtrer :"))
+
+        self._filter_group = QButtonGroup(self)
+        self._filter_group.setExclusive(True)
+        self._active_filter = 'all'
+
+        _filter_defs = [
+            ('all',        'Toutes'),
+            ('orphan',     'Orphelines 🔴'),
+            ('phantom',    'Fantômes 👻'),
+            ('superseded', 'Remplacées →'),
+            ('obsolete',   'Obsolètes ⚠'),
+            ('replacing',  'Remplaçantes ↑'),
+            ('equivalent', 'Équivalentes ≡'),
+            ('current',    'Courantes ✓'),
+        ]
+        self._filter_btns = {}
+        for i, (key, label) in enumerate(_filter_defs):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setChecked(key == 'all')
+            btn.setProperty('filter_key', key)
+            btn.setStyleSheet("""
+                QPushButton { padding: 2px 6px; font-size: 11px; }
+                QPushButton:checked { background-color: #495057; color: white; border-radius: 3px; }
+            """)
+            self._filter_group.addButton(btn, i)
+            filter_layout.addWidget(btn)
+            self._filter_btns[key] = btn
+
+        self._filter_group.buttonClicked.connect(self._on_filter_changed)
+        filter_layout.addStretch()
+        layout.addLayout(filter_layout)
         
-        # Splitter principal
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        # Tableau des pièces (boutons de survol désactivés)
+        # Tableau des pièces
         self.pieces_table = PiecesTableWidget()
-        self.pieces_table.setColumnCount(4)
+        self.pieces_table.setColumnCount(5)
         self.pieces_table.setHorizontalHeaderLabels([
-            "Référence Pièce", "Libellé", "Nb Appareils", "Type d'Appareils"
+            "Référence Pièce", "Libellé", "Nb", "Types d'Appareils", "Statut"
         ])
-        
+
         # Configuration du tableau
         header = self.pieces_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Référence
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Libellé
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Nb
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Types
-        
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+
         self.pieces_table.setAlternatingRowColors(True)
         self.pieces_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.pieces_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # Sélection multiple
-        self.pieces_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Empêche l'édition
+        self.pieces_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.pieces_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.pieces_table.itemSelectionChanged.connect(self._on_piece_selected)
-        
-        splitter.addWidget(self.pieces_table)
-        
-        # Zone de détails
-        details_widget = QTextEdit()
-        details_widget.setMaximumHeight(200)
-        details_widget.setPlaceholderText("Sélectionnez une pièce pour voir les détails des appareils associés...")
-        self.details_text = details_widget
-        splitter.addWidget(details_widget)
-        
-        layout.addWidget(splitter)
+        self.pieces_table.currentItemChanged.connect(lambda cur, prev: self._on_piece_selected())
+        self.pieces_table.itemDoubleClicked.connect(self._on_double_click_piece)
+
+        layout.addWidget(self.pieces_table, 1)
+
+        # Zone de détails masquée — conservée pour compatibilité interne
+        self.details_text = QTextEdit()
 
         # ── Panneau Succession ────────────────────────────────────────────
         succession_group = QGroupBox("Succession de référence")
@@ -230,6 +258,12 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_superseded.clicked.connect(self._on_mark_superseded)
         succession_btn_layout.addWidget(self.btn_mark_superseded)
 
+        self.btn_mark_replaces = QPushButton("Remplace…")
+        self.btn_mark_replaces.setToolTip("Indiquer la/les référence(s) que celle-ci remplace (utiliser ; pour plusieurs)")
+        self.btn_mark_replaces.setEnabled(False)
+        self.btn_mark_replaces.clicked.connect(self._on_mark_replaces)
+        succession_btn_layout.addWidget(self.btn_mark_replaces)
+
         self.btn_mark_obsolete = QPushButton("Marquer obsolète")
         self.btn_mark_obsolete.setToolTip("Marquer cette référence comme obsolète (aucun remplacement)")
         self.btn_mark_obsolete.setEnabled(False)
@@ -248,13 +282,48 @@ class PiecesManagerWindow(QDialog):
         succession_group.setLayout(succession_layout)
         layout.addWidget(succession_group)
 
+        # ── Panneau Équivalences ───────────────────────────────────────────
+        equiv_group = QGroupBox("Équivalences")
+        equiv_layout = QVBoxLayout()
+        equiv_layout.setSpacing(4)
+
+        self.equiv_status_label = QLabel("Sélectionnez une pièce pour voir ses équivalences.")
+        self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+        self.equiv_status_label.setWordWrap(True)
+        equiv_layout.addWidget(self.equiv_status_label)
+
+        equiv_btn_layout = QHBoxLayout()
+
+        self.btn_link_equiv = QPushButton("Lier comme équivalent…")
+        self.btn_link_equiv.setToolTip("Associer la pièce sélectionnée à une référence équivalente")
+        self.btn_link_equiv.setEnabled(False)
+        self.btn_link_equiv.clicked.connect(self._on_link_equiv)
+        equiv_btn_layout.addWidget(self.btn_link_equiv)
+
+        self.btn_unlink_equiv = QPushButton("Retirer du groupe")
+        self.btn_unlink_equiv.setToolTip("Retirer la pièce sélectionnée de son groupe d'équivalence")
+        self.btn_unlink_equiv.setEnabled(False)
+        self.btn_unlink_equiv.setStyleSheet("QPushButton { color: #E05252; }")
+        self.btn_unlink_equiv.clicked.connect(self._on_unlink_equiv)
+        equiv_btn_layout.addWidget(self.btn_unlink_equiv)
+
+        equiv_btn_layout.addStretch()
+        equiv_layout.addLayout(equiv_btn_layout)
+        equiv_group.setLayout(equiv_layout)
+        layout.addWidget(equiv_group)
+
         # Référence courante sélectionnée (pour les callbacks)
         self._current_ref_piece = None
 
         # Boutons d'action
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
-        
+
+        search_app_btn = QPushButton("🔍 Chercher dans l'app")
+        search_app_btn.setToolTip("Injecter la référence sélectionnée dans la recherche principale")
+        search_app_btn.clicked.connect(self._search_in_main_app)
+        buttons_layout.addWidget(search_app_btn)
+
         export_btn = QPushButton("Exporter la liste")
         export_btn.clicked.connect(self._export_pieces)
         buttons_layout.addWidget(export_btn)
@@ -282,120 +351,212 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur chargement pièces", show_message=True)
     def _load_pieces_data(self, checked=False):
         """Charger les données des pièces"""
-        # Requête pour obtenir les statistiques des pièces (nouvelle structure)
         query = """
         SELECT
             p.ref_piece,
             p.description,
             COUNT(DISTINCT pa.appareil_id) as nb_appareils,
-            GROUP_CONCAT(DISTINCT a.type) as types_appareils
+            GROUP_CONCAT(DISTINCT a.type) as types_appareils,
+            COALESCE(p.is_phantom, 0) as is_phantom
         FROM pieces p
         LEFT JOIN piece_associations pa ON p.id = pa.piece_id
         LEFT JOIN appareils a ON pa.appareil_id = a.id
-        GROUP BY p.id, p.ref_piece, p.description
+        GROUP BY p.id, p.ref_piece, p.description, p.is_phantom
         ORDER BY nb_appareils DESC, p.ref_piece ASC
         """
 
         results = self.db_manager.execute_query(query)
 
-        # Calculer les statistiques
         total_pieces = len(results)
-        orphan_pieces = len([r for r in results if r[2] == 0])  # nb_appareils est maintenant à l'index 2
-        total_associations = sum(r[2] for r in results)  # nb_appareils est maintenant à l'index 2
+        orphan_pieces = len([r for r in results if r[2] == 0])
+        phantom_pieces = len([r for r in results if r[4] == 1])
+        total_associations = sum(r[2] for r in results)
 
         from src.core.config import pluralize
+        phantom_str = f"  •  {pluralize(phantom_pieces, 'fantôme')} 👻" if phantom_pieces else ""
         self.stats_label.setText(
-            f"{pluralize(total_pieces, 'référence')} • "
-            f"ATTENTION: {pluralize(orphan_pieces, 'orpheline')} • "
+            f"{pluralize(total_pieces, 'référence')}  •  "
+            f"{pluralize(orphan_pieces, 'orpheline')} 🔴"
+            f"{phantom_str}  •  "
             f"{pluralize(total_associations, 'association')}"
         )
 
-        # Stocker les données pour le filtrage
+        # Stocker les données et les statuts pour le filtrage
         self.all_pieces_data = results
+        all_refs = [r[0] for r in results if r[0]]
+        self.all_statuses = self.db_manager.get_pieces_statuses_batch(all_refs)
         self._update_table_display()
             
     def _update_table_display(self):
         """Mettre à jour l'affichage du tableau avec filtrage"""
         filtered_data = self._get_filtered_data()
-        
         self.pieces_table.setRowCount(len(filtered_data))
+        statuses = getattr(self, 'all_statuses', {})
 
-        all_refs = [row[0] for row in filtered_data if row[0]]
-        statuses = self.db_manager.get_pieces_statuses_batch(all_refs)
+        from src.core.config import pluralize
+        _phantom_font = QFont()
+        _phantom_font.setItalic(True)
+        _phantom_color = QColor(170, 170, 170)
 
-        for row_idx, (ref_piece, description, nb_appareils, types_appareils) in enumerate(filtered_data):
-            # Référence de pièce avec indicateur de succession
-            status_info = statuses.get(ref_piece or '', {'status': 'current', 'ref_new': None})
-            if status_info['status'] == 'superseded':
-                ref_display = f"{ref_piece} →"
-                ref_tooltip = f"Remplacée par {status_info['ref_new']}"
-            elif status_info['status'] == 'obsolete':
-                ref_display = f"{ref_piece} ⚠"
-                ref_tooltip = "Obsolète — aucun remplacement"
-            else:
-                ref_display = ref_piece or ""
-                ref_tooltip = ""
-            ref_item = QTableWidgetItem(ref_display)
+        for row_idx, row_data in enumerate(filtered_data):
+            ref_piece    = row_data[0]
+            description  = row_data[1]
+            nb_appareils = row_data[2]
+            types_appareils = row_data[3]
+            is_phantom   = row_data[4] if len(row_data) > 4 else 0
+
+            status_info = statuses.get(ref_piece or '', {'status': 'current', 'ref_new': None, 'refs_old': None})
+            status = status_info.get('status', 'current')
+            is_obsolete = status_info.get('is_obsolete', False)
+
+            # ── Colonne 0 : référence (plain, fantôme en gris italique) ────
+            ref_item = QTableWidgetItem(ref_piece or "")
             ref_item.setData(Qt.UserRole, ref_piece or "")
-            if ref_tooltip:
-                ref_item.setToolTip(ref_tooltip)
+            if is_phantom:
+                ref_item.setForeground(_phantom_color)
+                ref_item.setFont(_phantom_font)
+                ref_item.setToolTip("Référence fantôme — créée automatiquement pour la succession")
             self.pieces_table.setItem(row_idx, 0, ref_item)
-            
-            # Libellé de la pièce
+
+            # ── Colonne 1 : libellé ───────────────────────────────────────
             desc_item = QTableWidgetItem(description or "")
             desc_item.setToolTip(description or "Pas de libellé")
+            if is_phantom:
+                desc_item.setForeground(_phantom_color)
+                desc_item.setFont(_phantom_font)
             self.pieces_table.setItem(row_idx, 1, desc_item)
-            
-            # Nombre d'appareils
+
+            # ── Colonne 2 : nb appareils (fond coloré) ────────────────────
             nb_item = QTableWidgetItem(str(nb_appareils))
             nb_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            # Colorer selon le statut
-            from src.core.config import pluralize
             if nb_appareils == 0:
-                nb_item.setBackground(QColor(*Config.Colors.ORPHAN_ROW))  # Rouge clair pour orphelines
-                nb_item.setToolTip("ATTENTION: Pièce orpheline - aucun appareil associé")
+                nb_item.setBackground(QColor(*Config.Colors.ORPHAN_ROW))
+                nb_item.setToolTip("Pièce orpheline — aucun appareil associé")
             elif nb_appareils == 1:
-                nb_item.setBackground(QColor(*Config.Colors.SINGLE_PIECE))  # Jaune pour 1 seul
-                nb_item.setToolTip("⚡ Pièce associée à un seul appareil")
+                nb_item.setBackground(QColor(*Config.Colors.SINGLE_PIECE))
+                nb_item.setToolTip("Pièce associée à un seul appareil")
             else:
-                nb_item.setBackground(QColor(*Config.Colors.MULTI_PIECES))  # Vert pour multiples
-                nb_item.setToolTip(f"✅ Pièce associée à {pluralize(nb_appareils, 'appareil')}")
-                
+                nb_item.setBackground(QColor(*Config.Colors.MULTI_PIECES))
+                nb_item.setToolTip(f"Pièce associée à {pluralize(nb_appareils, 'appareil')}")
             self.pieces_table.setItem(row_idx, 2, nb_item)
-            
-            # Types d'appareils (limité à 50 caractères pour l'affichage)
-            types_display = types_appareils or "N/A"
+
+            # ── Colonne 3 : types d'appareils ─────────────────────────────
+            types_display = types_appareils or "—"
             if len(types_display) > 50:
-                types_display = types_display[:47] + "..."
+                types_display = types_display[:47] + "…"
             types_item = QTableWidgetItem(types_display)
             types_item.setToolTip(types_appareils or "Aucun type")
             self.pieces_table.setItem(row_idx, 3, types_item)
+
+            # ── Colonne 4 : statut ────────────────────────────────────────
+            if is_phantom:
+                status_text  = "👻 Fantôme"
+                status_color = QColor(150, 150, 150)
+            elif status == 'superseded':
+                status_text  = f"↳ → {status_info.get('ref_new', '')}"
+                status_color = QColor(230, 126, 34)
+            elif status == 'obsolete' or is_obsolete:
+                status_text  = "⚠ Obsolète"
+                status_color = QColor(192, 57, 43)
+            elif status == 'replacing':
+                refs_old = status_info.get('refs_old', '')
+                status_text  = f"↑ Remplace"
+                status_color = QColor(41, 128, 185)
+                if refs_old:
+                    status_text += f" {refs_old}"
+            elif status_info.get('equivalents'):
+                equivs = status_info.get('equivalents', '')
+                status_text  = f"≡ {equivs}"
+                status_color = QColor(142, 68, 173)
+            else:
+                status_text  = "✓"
+                status_color = QColor(52, 168, 83)
+            status_item = QTableWidgetItem(status_text)
+            status_item.setForeground(status_color)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            self.pieces_table.setItem(row_idx, 4, status_item)
+
+        # Rafraîchir les panneaux latéraux si une pièce est toujours sélectionnée
+        ref = getattr(self, '_current_ref_piece', None)
+        if ref:
+            self._refresh_succession_panel(ref)
+            self._refresh_equivalence_panel(ref)
             
     def _get_filtered_data(self):
         """Obtenir les données filtrées selon les critères"""
         if not hasattr(self, 'all_pieces_data'):
             return []
-            
+
         filtered = self.all_pieces_data
-        
-        # Filtre par recherche (référence ET libellé)
+
+        # Filtre texte (référence + libellé) — supporte && pour multi-refs
         search_text = self.search_input.text().lower().strip()
         if search_text:
-            filtered = [
-                row for row in filtered 
-                if search_text in (row[0] or "").lower() or search_text in (row[1] or "").lower()
-            ]
-        
-        # Filtre orphelines (nb_appareils est maintenant à l'index 2)
-        if self.orphan_checkbox.isChecked():
-            filtered = [row for row in filtered if row[2] == 0]
-            
+            if ';' in search_text:
+                parts = [p.strip() for p in search_text.split(';') if p.strip()]
+                filtered = [r for r in filtered
+                            if any(p in (r[0] or "").lower() or p in (r[1] or "").lower()
+                                   for p in parts)]
+            else:
+                filtered = [r for r in filtered
+                            if search_text in (r[0] or "").lower()
+                            or search_text in (r[1] or "").lower()]
+
+        # Filtre actif
+        active = getattr(self, '_active_filter', 'all')
+        statuses = getattr(self, 'all_statuses', {})
+
+        if active == 'orphan':
+            filtered = [r for r in filtered if r[2] == 0]
+        elif active == 'phantom':
+            filtered = [r for r in filtered if (len(r) > 4 and r[4] == 1)]
+        elif active == 'superseded':
+            filtered = [r for r in filtered
+                        if statuses.get(r[0] or '', {}).get('status') == 'superseded']
+        elif active == 'obsolete':
+            filtered = [r for r in filtered
+                        if statuses.get(r[0] or '', {}).get('is_obsolete')]
+        elif active == 'replacing':
+            filtered = [r for r in filtered
+                        if statuses.get(r[0] or '', {}).get('status') == 'replacing']
+        elif active == 'equivalent':
+            filtered = [r for r in filtered
+                        if statuses.get(r[0] or '', {}).get('equivalents')]
+        elif active == 'current':
+            filtered = [r for r in filtered
+                        if (statuses.get(r[0] or '', {}).get('status') == 'current'
+                            and not statuses.get(r[0] or '', {}).get('is_obsolete')
+                            and not (len(r) > 4 and r[4] == 1))]
+
         return filtered
         
     def _filter_pieces(self):
         """Filtrer les pièces selon les critères"""
         self._update_table_display()
+
+    def _on_filter_changed(self, btn):
+        """Changer le filtre actif via les boutons rapides."""
+        self._active_filter = btn.property('filter_key')
+        self._update_table_display()
+
+    def _on_double_click_piece(self, item):
+        """Double-clic sur une ligne → édition immédiate."""
+        self._edit_selected_piece()
+
+    def _search_in_main_app(self):
+        """Injecter la référence sélectionnée dans le champ de recherche principal."""
+        current_row = self.pieces_table.currentRow()
+        if current_row < 0:
+            return
+        ref_item = self.pieces_table.item(current_row, 0)
+        if not ref_item:
+            return
+        ref = ref_item.data(Qt.UserRole) or ref_item.text()
+        parent = self.parent()
+        if parent and hasattr(parent, 'search_input'):
+            parent.search_input.setText(ref)
+            parent.search_input.setFocus()
+            parent.activateWindow()
         
     def _on_piece_selected(self):
         """Quand une pièce est sélectionnée"""
@@ -404,6 +565,7 @@ class PiecesManagerWindow(QDialog):
             self.details_text.clear()
             self._current_ref_piece = None
             self._refresh_succession_panel(None)
+            self._refresh_equivalence_panel(None)
             return
 
         ref_item = self.pieces_table.item(current_row, 0)
@@ -414,6 +576,7 @@ class PiecesManagerWindow(QDialog):
         self._current_ref_piece = ref_piece
         self._load_piece_details(ref_piece)
         self._refresh_succession_panel(ref_piece)
+        self._refresh_equivalence_panel(ref_piece)
         
     @handle_ui_errors(log_prefix="Erreur chargement détails pièce", show_message=False)
     def _load_piece_details(self, ref_piece):
@@ -472,6 +635,7 @@ class PiecesManagerWindow(QDialog):
         has_selection = n > 0
 
         self.btn_mark_superseded.setEnabled(has_selection)
+        self.btn_mark_replaces.setEnabled(has_selection)
         self.btn_mark_obsolete.setEnabled(has_selection)
 
         if not has_selection or ref_piece is None:
@@ -490,24 +654,30 @@ class PiecesManagerWindow(QDialog):
         status_info = self.db_manager.get_piece_status(ref_piece)
         status = status_info['status']
         is_obsolete = status_info['is_obsolete']
+        ref_new = status_info.get('ref_new')
 
         self.btn_mark_obsolete.setText("Retirer l'obsolescence" if is_obsolete else "Marquer obsolète")
+        predecessors = self.db_manager.get_all_predecessors(ref_piece)
 
-        if status == 'current' and not is_obsolete:
-            self.succession_status_label.setText("✓ Référence courante")
-            self.succession_status_label.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
-            self.btn_cancel_succession.setEnabled(False)
-        elif status == 'superseded':
-            chain = self.db_manager.get_supersession_chain(ref_piece)
-            text = "→ Remplacée : " + " → ".join(chain)
+        if status == 'superseded':
+            text = f"↳ Remplacée par  {ref_new}"
             if is_obsolete:
-                text += " (⚠ obsolète)"
+                text += "  (⚠ obsolète)"
             self.succession_status_label.setText(text)
-            self.succession_status_label.setStyleSheet("color: #4A9EFF; font-size: 12px;")
+            self.succession_status_label.setStyleSheet("color: #e67e22; font-size: 12px; font-weight: bold;")
             self.btn_cancel_succession.setEnabled(True)
         elif status == 'obsolete':
-            self.succession_status_label.setText("⚠ Obsolète — plus fabriquée")
-            self.succession_status_label.setStyleSheet("color: #E05252; font-size: 12px; font-weight: bold;")
+            self.succession_status_label.setText("⚠ Obsolète — aucun remplacement")
+            self.succession_status_label.setStyleSheet("color: #c0392b; font-size: 12px; font-weight: bold;")
+            self.btn_cancel_succession.setEnabled(False)
+        elif predecessors:
+            refs_old = ", ".join(predecessors)
+            self.succession_status_label.setText(f"↑ Remplace  {refs_old}")
+            self.succession_status_label.setStyleSheet("color: #2980b9; font-size: 12px; font-weight: bold;")
+            self.btn_cancel_succession.setEnabled(False)
+        else:
+            self.succession_status_label.setText("✓ Référence courante")
+            self.succession_status_label.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
             self.btn_cancel_succession.setEnabled(False)
 
     def _on_mark_superseded(self):
@@ -538,6 +708,40 @@ class PiecesManagerWindow(QDialog):
         if details_lines:
             self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
+            self._update_table_display()
+        if errors:
+            QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
+
+    def _on_mark_replaces(self):
+        """Déclarer que les pièces sélectionnées remplacent une ou plusieurs autres références."""
+        refs = self._get_selected_refs()
+        if not refs:
+            return
+
+        label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces sélectionnées"
+        ref_olds_text, ok = QInputDialog.getText(
+            self,
+            "Référence(s) remplacée(s)",
+            f"Référence(s) remplacée(s) par {label}\n(utiliser ; pour plusieurs) :",
+        )
+        if not ok or not ref_olds_text.strip():
+            return
+
+        ref_olds = [r.strip() for r in ref_olds_text.split(';') if r.strip()]
+        errors = []
+        details_lines = []
+        for ref_new in refs:
+            for ref_old in ref_olds:
+                success, error = self.db_manager.add_supersession(ref_old, ref_new)
+                if success:
+                    details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
+                else:
+                    errors.append(f"{ref_old} → {ref_new} : {error}")
+
+        if details_lines:
+            self._notify_history("Succession :\n" + "\n".join(details_lines))
+            self._refresh_succession_panel(self._current_ref_piece)
+            self._update_table_display()
         if errors:
             QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
 
@@ -624,6 +828,82 @@ class PiecesManagerWindow(QDialog):
             self._refresh_succession_panel(self._current_ref_piece)
             self._update_table_display()
 
+    # ── Équivalences ────────────────────────────────────────────────────────
+
+    def _refresh_equivalence_panel(self, ref_piece):
+        """Mettre à jour le panneau Équivalences pour la pièce courante."""
+        selected = self._get_selected_refs()
+        n = len(selected)
+        has_selection = n > 0
+
+        self.btn_link_equiv.setEnabled(has_selection)
+
+        if not has_selection or ref_piece is None:
+            self.equiv_status_label.setText("Sélectionnez une pièce pour voir ses équivalences.")
+            self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.btn_unlink_equiv.setEnabled(False)
+            return
+
+        if n > 1:
+            self.equiv_status_label.setText(f"{n} pièces sélectionnées.")
+            self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.btn_unlink_equiv.setEnabled(True)
+            return
+
+        equivs = self.db_manager.get_equivalents(ref_piece)
+        if equivs:
+            self.equiv_status_label.setText(f"≡ Équivalente à  {', '.join(equivs)}")
+            self.equiv_status_label.setStyleSheet("color: #8e44ad; font-size: 12px; font-weight: bold;")
+            self.btn_unlink_equiv.setEnabled(True)
+        else:
+            self.equiv_status_label.setText("Aucune équivalence")
+            self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.btn_unlink_equiv.setEnabled(False)
+
+    def _on_link_equiv(self):
+        """Lier la pièce courante à une ou plusieurs références équivalentes."""
+        ref_piece = self._current_ref_piece
+        if not ref_piece:
+            return
+        refs_text, ok = QInputDialog.getText(
+            self, "Référence(s) équivalente(s)",
+            f"Référence(s) équivalente(s) à '{ref_piece}'\n(utiliser ; pour plusieurs) :",
+        )
+        if not ok or not refs_text.strip():
+            return
+        refs_b = [r.strip() for r in refs_text.split(';') if r.strip()]
+        errors = []
+        details_lines = []
+        for ref_b in refs_b:
+            success = self.db_manager.add_equivalence(ref_piece, ref_b)
+            if success:
+                details_lines.append(f"==> '{ref_piece}' ≡ '{ref_b}'")
+            else:
+                errors.append(ref_b)
+        if details_lines:
+            self._notify_history("Équivalence :\n" + "\n".join(details_lines))
+            self._refresh_equivalence_panel(ref_piece)
+            self._update_table_display()
+        if errors:
+            QMessageBox.warning(self, "Erreur", f"Impossible de créer l'équivalence pour : {', '.join(errors)}")
+
+    def _on_unlink_equiv(self):
+        """Retirer la pièce courante de son groupe d'équivalence."""
+        ref_piece = self._current_ref_piece
+        if not ref_piece:
+            return
+        confirm = QMessageBox.question(
+            self, "Retirer du groupe",
+            f"Retirer '{ref_piece}' de son groupe d'équivalence ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self.db_manager.remove_equivalence(ref_piece)
+        self._notify_history(f"Équivalence :\n==> '{ref_piece}' → (retiré du groupe)")
+        self._refresh_equivalence_panel(ref_piece)
+        self._update_table_display()
+
     def _notify_history(self, message: str):
         """Envoyer un message à l'historique principal si disponible."""
         try:
@@ -647,11 +927,12 @@ class PiecesManagerWindow(QDialog):
             import csv
             with open(filename, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file, delimiter=';')
-                writer.writerow(['Référence Pièce', 'Nb Appareils', 'Types d\'Appareils'])
+                writer.writerow(['Référence Pièce', 'Libellé', 'Nb Appareils', "Types d'Appareils"])
 
                 filtered_data = self._get_filtered_data()
-                for ref_piece, nb_appareils, types_appareils in filtered_data:
-                    writer.writerow([ref_piece, nb_appareils, types_appareils or ""])
+                for row in filtered_data:
+                    ref_piece, description, nb_appareils, types_appareils = row[0], row[1], row[2], row[3]
+                    writer.writerow([ref_piece, description, nb_appareils, types_appareils or ""])
 
             QMessageBox.information(self, "Export réussi", f"Liste exportée vers:\n{filename}")
     
@@ -1001,24 +1282,30 @@ class PieceSuccessionDialog(QDialog):
         status_info = self.db_manager.get_piece_status(self.ref_piece)
         status = status_info['status']
         is_obsolete = status_info['is_obsolete']
+        ref_new = status_info.get('ref_new')
 
         self.btn_obsolete.setText("Retirer l'obsolescence" if is_obsolete else "Marquer obsolète")
+        predecessors = self.db_manager.get_all_predecessors(self.ref_piece)
 
-        if status == 'current' and not is_obsolete:
-            self.status_label.setText("✓ Référence courante")
-            self.status_label.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
-            self.btn_cancel_succ.setEnabled(False)
-        elif status == 'superseded':
-            chain = self.db_manager.get_supersession_chain(self.ref_piece)
-            text = "→ Remplacée : " + " → ".join(chain)
+        if status == 'superseded':
+            text = f"↳ Remplacée par  {ref_new}"
             if is_obsolete:
-                text += " (⚠ obsolète)"
+                text += "  (⚠ obsolète)"
             self.status_label.setText(text)
-            self.status_label.setStyleSheet("color: #4A9EFF; font-size: 12px;")
+            self.status_label.setStyleSheet("color: #e67e22; font-size: 12px; font-weight: bold;")
             self.btn_cancel_succ.setEnabled(True)
         elif status == 'obsolete':
-            self.status_label.setText("⚠ Obsolète — plus fabriquée")
-            self.status_label.setStyleSheet("color: #E05252; font-size: 12px; font-weight: bold;")
+            self.status_label.setText("⚠ Obsolète — aucun remplacement")
+            self.status_label.setStyleSheet("color: #c0392b; font-size: 12px; font-weight: bold;")
+            self.btn_cancel_succ.setEnabled(False)
+        elif predecessors:
+            refs_old = ", ".join(predecessors)
+            self.status_label.setText(f"↑ Remplace  {refs_old}")
+            self.status_label.setStyleSheet("color: #2980b9; font-size: 12px; font-weight: bold;")
+            self.btn_cancel_succ.setEnabled(False)
+        else:
+            self.status_label.setText("✓ Référence courante")
+            self.status_label.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
             self.btn_cancel_succ.setEnabled(False)
 
     def _on_mark_superseded(self):

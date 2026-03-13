@@ -104,7 +104,8 @@ class ExportManagerService:
         if not self._validate_search_term(search_term):
             return False
 
-        return self._execute_export_with_reference(search_term, custom_reference, export_format)
+        parsed = self._parse_search_term(search_term)
+        return self._execute_export_with_reference(parsed, custom_reference, export_format)
     
     # ===== GESTION DES TYPES D'EXPORT =====
     
@@ -148,9 +149,10 @@ class ExportManagerService:
         """Gérer l'export rapide sans dialogue"""
         # Extraire une référence automatiquement
         reference = self._extract_default_reference(search_term)
-        
-        # Export direct
-        return self._execute_export_with_reference(search_term, reference, export_format)
+
+        # Utiliser le terme parsé avec flags bannières
+        parsed = self._parse_search_term(search_term)
+        return self._execute_export_with_reference(parsed, reference, export_format)
     
     # ===== SÉLECTION DE RÉFÉRENCE UNIFIÉE =====
     
@@ -165,21 +167,24 @@ class ExportManagerService:
             # Recherche multiple OR
             return self._handle_multiple_references_dialog(parsed_term, export_format)
         else:
-            # Recherche simple
-            return self._handle_single_reference_dialog(search_term, export_format)
+            # Recherche simple — utilise parsed_term (avec flags bannières) comme données d'export
+            return self._handle_single_reference_dialog(search_term, export_format, parsed_term)
     
-    def _handle_single_reference_dialog(self, search_term: str, export_format: ExportFormat) -> ReferenceSelectionResult:
+    def _handle_single_reference_dialog(self, search_term: str, export_format: ExportFormat,
+                                         parsed_term=None) -> ReferenceSelectionResult:
         """Dialogue pour référence unique"""
         default_reference = self._extract_default_reference(search_term)
-        
+
         # Adapter le message selon le format
         title, message = self._get_reference_dialog_messages(export_format, search_term)
-        
+
         # Afficher le dialogue
         selected_reference = self._show_reference_dialog(title, message, default_reference)
-        
+
         if selected_reference:
-            return ReferenceSelectionResult(selected_reference, search_term)
+            # Utiliser parsed_term (avec flags des bannières actives) si disponible
+            search_data = parsed_term if parsed_term is not None else search_term
+            return ReferenceSelectionResult(selected_reference, search_data)
         else:
             return ReferenceSelectionResult("", "", cancelled=True)
     
@@ -441,10 +446,33 @@ class ExportManagerService:
         return self.main_window.search_input.text().strip()
     
     def _parse_search_term(self, search_term: str) -> Union[str, Dict]:
-        """Parser le terme de recherche"""
-        return self.main_window.advanced_search_service.get_current_search_term_with_fallback(
-            self.main_window
-        ) or search_term
+        """Parser le terme de recherche avec injection des flags des bannières actives.
+
+        Reproduit exactement la logique de table_controller.load_data (lignes 472-492)
+        afin que l'export exporte exactement ce qui est affiché dans le tableau.
+        """
+        # Étape 1 : parser avec le même service que table_controller
+        effective = search_term
+        if search_term and isinstance(search_term, str) and hasattr(self.main_window, 'search_service'):
+            parsed = self.main_window.search_service.parse_advanced_search(search_term)
+            if parsed:
+                effective = parsed  # toujours un dict après parsing réussi
+
+        # Étape 2 : injecter les flags des bannières actives (identique à table_controller)
+        tc = getattr(self.main_window, 'table_controller', None)
+        if tc and isinstance(effective, dict):
+            if getattr(tc, '_supersession_bypass', False):
+                effective = dict(effective)
+                effective['bypass_supersession'] = True
+            preds = getattr(tc, '_supersession_predecessors', None)
+            if getattr(tc, '_supersession_expand', False) and preds:
+                effective = dict(effective)
+                effective['expand_predecessors'] = preds
+            equiv_group = getattr(tc, '_equivalence_group', None)
+            if getattr(tc, '_equivalence_expand', False) and equiv_group:
+                effective = dict(effective)
+                effective['expand_equivalents'] = equiv_group
+        return effective
     
     def _extract_default_reference(self, search_term: str) -> str:
         """Extraire une référence par défaut"""

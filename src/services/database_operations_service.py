@@ -26,7 +26,9 @@ class DatabaseOperationsService(BaseService):
 
         # Services requis pour l'injection automatique (seulement les essentiels disponibles)
         self._required_services = [
-            'db_manager'  # Seul service réellement essentiel et toujours disponible
+            'db_manager',
+            'cache_service',
+            'auto_save_manager'
         ]
 
         # État interne

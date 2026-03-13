@@ -55,7 +55,7 @@ class TestUIStateManagementService:
     def ui_service(self, mock_parent_widget):
         """Service UIStateManagement avec parent mocké"""
         service = UIStateManagementService(parent=None)
-        service.parent_widget = mock_parent_widget
+        service.parent_window = mock_parent_widget
         service.initialize_services()
         return service
 
@@ -71,7 +71,7 @@ class TestUIStateManagementService:
     def test_initialization_without_parent(self):
         """Test de l'initialisation sans parent"""
         service = UIStateManagementService()
-        assert service.parent_widget is None
+        assert service.parent_window is None
         service.initialize_services()  # Ne doit pas lever d'exception
 
     def test_update_sort_indicators_enable(self, ui_service):
@@ -145,14 +145,14 @@ class TestUIStateManagementService:
         ui_service.set_button_states(button_configs)
 
         # Vérifier delete_button
-        ui_service.parent_widget.delete_button.setEnabled.assert_called_with(False)
-        ui_service.parent_widget.delete_button.setVisible.assert_called_with(True)
-        ui_service.parent_widget.delete_button.setText.assert_called_with("Supprimer")
+        ui_service.parent_window.delete_button.setEnabled.assert_called_with(False)
+        ui_service.parent_window.delete_button.setVisible.assert_called_with(True)
+        ui_service.parent_window.delete_button.setText.assert_called_with("Supprimer")
 
         # Vérifier copy_button
-        ui_service.parent_widget.copy_button.setEnabled.assert_called_with(True)
-        ui_service.parent_widget.copy_button.setVisible.assert_called_with(False)
-        ui_service.parent_widget.copy_button.setText.assert_called_with("Copier")
+        ui_service.parent_window.copy_button.setEnabled.assert_called_with(True)
+        ui_service.parent_window.copy_button.setVisible.assert_called_with(False)
+        ui_service.parent_window.copy_button.setText.assert_called_with("Copier")
 
     def test_set_button_states_partial(self, ui_service):
         """Test de la configuration partielle des états de boutons"""
@@ -162,9 +162,9 @@ class TestUIStateManagementService:
 
         ui_service.set_button_states(button_configs)
 
-        ui_service.parent_widget.save_button.setEnabled.assert_called_with(False)
-        ui_service.parent_widget.save_button.setVisible.assert_not_called()
-        ui_service.parent_widget.save_button.setText.assert_not_called()
+        ui_service.parent_window.save_button.setEnabled.assert_called_with(False)
+        ui_service.parent_window.save_button.setVisible.assert_not_called()
+        ui_service.parent_window.save_button.setText.assert_not_called()
 
     def test_configure_table_appearance_font_size(self, ui_service):
         """Test de la configuration de la taille de police du tableau"""
@@ -186,21 +186,21 @@ class TestUIStateManagementService:
         """Test du titre de fenêtre avec suffixe"""
         ui_service.set_window_title_suffix("Test Mode")
 
-        ui_service.parent_widget.setWindowTitle.assert_called_with("1001 Pièces Auto-Fill - Test Mode")
+        ui_service.parent_window.setWindowTitle.assert_called_with("1001 Pièces Auto-Fill - Test Mode")
 
     def test_set_window_title_suffix_empty(self, ui_service):
         """Test du titre de fenêtre sans suffixe"""
         ui_service.set_window_title_suffix("")
 
-        ui_service.parent_widget.setWindowTitle.assert_called_with("1001 Pièces Auto-Fill")
+        ui_service.parent_window.setWindowTitle.assert_called_with("1001 Pièces Auto-Fill")
 
     def test_update_selection_state_with_selection(self, ui_service):
         """Test de la mise à jour avec sélection"""
         ui_service.update_selection_state(True, 5)
 
         # Vérifier que les boutons sont activés
-        ui_service.parent_widget.delete_button.setEnabled.assert_called_with(True)
-        ui_service.parent_widget.copy_button.setEnabled.assert_called_with(True)
+        ui_service.parent_window.delete_button.setEnabled.assert_called_with(True)
+        ui_service.parent_window.copy_button.setEnabled.assert_called_with(True)
 
         # Vérifier le message de statut
         ui_service.status_bar.showMessage.assert_called()
@@ -210,8 +210,8 @@ class TestUIStateManagementService:
         ui_service.update_selection_state(False, 0)
 
         # Vérifier que les boutons sont désactivés
-        ui_service.parent_widget.delete_button.setEnabled.assert_called_with(False)
-        ui_service.parent_widget.copy_button.setEnabled.assert_called_with(False)
+        ui_service.parent_window.delete_button.setEnabled.assert_called_with(False)
+        ui_service.parent_window.copy_button.setEnabled.assert_called_with(False)
 
     def test_toggle_drag_handles_visibility_show(self, ui_service):
         """Test de l'affichage des poignées de redimensionnement"""
@@ -235,7 +235,7 @@ class TestUIStateManagementService:
         ui_service.show_loading_overlay("Test chargement")
 
         ui_service.status_bar.showMessage.assert_called_with("⏳ Test chargement")
-        ui_service.parent_widget.setEnabled.assert_called_with(False)
+        ui_service.parent_window.setEnabled.assert_called_with(False)
         mock_process_events.assert_called()
 
     @patch('PyQt5.QtWidgets.QApplication.processEvents')
@@ -243,7 +243,7 @@ class TestUIStateManagementService:
         """Test du masquage de l'overlay de chargement"""
         ui_service.hide_loading_overlay()
 
-        ui_service.parent_widget.setEnabled.assert_called_with(True)
+        ui_service.parent_window.setEnabled.assert_called_with(True)
         ui_service.status_bar.clearMessage.assert_called()
         mock_process_events.assert_called()
 
@@ -308,7 +308,7 @@ class TestUIStateManagementService:
         assert ui_service.progress_visible is False
 
         # Vérifier que le titre est remis par défaut
-        ui_service.parent_widget.setWindowTitle.assert_called_with("1001 Pièces Auto-Fill")
+        ui_service.parent_window.setWindowTitle.assert_called_with("1001 Pièces Auto-Fill")
 
     def test_get_current_state(self, ui_service):
         """Test de l'obtention de l'état actuel"""

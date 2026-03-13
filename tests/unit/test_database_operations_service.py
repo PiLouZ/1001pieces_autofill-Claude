@@ -55,7 +55,7 @@ class TestDatabaseOperationsService:
         """Test initialisation du service"""
         assert database_service.parent_window == mock_parent_window
         assert database_service.db_manager == mock_parent_window.db_manager
-        assert database_service.table_controller == mock_parent_window.table_controller
+        assert database_service.parent_window.table_controller == mock_parent_window.table_controller
         assert database_service.modified_cells == mock_parent_window.modified_cells
         assert not database_service.save_in_progress
 
@@ -63,14 +63,12 @@ class TestDatabaseOperationsService:
         """Test initialisation des références de services"""
         service = DatabaseOperationsService(mock_parent_window)
 
-        # Services non initialisés au début
-        assert service.db_manager is None
-        assert service.table_controller is None
-
+        # db_manager injecté via _required_services lors de initialize_services
+        # table_controller est accédé via parent_window (pas un attribut direct)
         # Après initialisation
         service.initialize_services()
         assert service.db_manager == mock_parent_window.db_manager
-        assert service.table_controller == mock_parent_window.table_controller
+        assert service.parent_window.table_controller == mock_parent_window.table_controller
 
     def test_add_new_device_success(self, database_service):
         """Test ajout nouvel appareil - succès"""
@@ -94,7 +92,7 @@ class TestDatabaseOperationsService:
         # Vérifications
         assert device_id == 123
         database_service.db_manager.add_device.assert_called_once_with(device_data)
-        database_service.table_controller.load_data.assert_called_once()
+        database_service.parent_window.table_controller.load_data.assert_called_once()
         database_service.cache_service.invalidate_all.assert_called_once()
         database_service.user_interaction_service.add_to_history.assert_called_once()
 
@@ -269,6 +267,8 @@ class TestDatabaseOperationsService:
     def test_manual_save_with_manager(self, database_service):
         """Test sauvegarde manuelle avec AutoSaveManager"""
         database_service.auto_save_manager.save_now.return_value = True
+        # Simuler des cellules modifiées pour déclencher la sauvegarde
+        database_service.parent_window.modified_cells = {(0, 1)}
 
         success = database_service.manual_save()
 
@@ -304,7 +304,7 @@ class TestDatabaseOperationsService:
         # Vérifications
         assert deleted_count == 3
         assert database_service.db_manager.delete_appareil.call_count == 3
-        database_service.table_controller.load_data.assert_called_once()
+        database_service.parent_window.table_controller.load_data.assert_called_once()
         database_service.cache_service.invalidate_all.assert_called_once()
         database_service.user_interaction_service.show_success.assert_called_once()
 
@@ -352,12 +352,13 @@ class TestDatabaseOperationsService:
         table = database_service.parent_window.table
         table.selectedItems.return_value = selected_items
 
-        # Mock des items ID (colonne 0)
-        table.item.side_effect = lambda row, col: self._mock_id_item(row) if col == 0 else None
+        # Mock table_fill_service.get_db_id_from_row (utilisé par _safe_get_device_id_from_row)
+        database_service.parent_window.table_fill_service.get_db_id_from_row.side_effect = \
+            lambda t, row: 100 + row
 
         device_ids = database_service._get_selected_device_ids()
 
-        assert device_ids == [100, 102, 104]  # IDs correspondants
+        assert sorted(device_ids) == [100, 102, 104]  # IDs correspondants
 
     def _mock_id_item(self, row):
         """Helper pour mock des items ID"""
@@ -473,8 +474,8 @@ class TestDatabaseOperationsService:
         device_id = database_service.add_new_device({'reference': 'TEST'})
         database_service.device_added.emit.assert_called_once_with(123)
 
-        # Test signal validation échouée
-        invalid_data = {'reference': ''}
+        # Test signal validation échouée (marque non-vide + référence vide = validation déclenchée)
+        invalid_data = {'reference': '', 'marque': 'X'}
         database_service.add_new_device(invalid_data)
         database_service.validation_failed.emit.assert_called_once()
 

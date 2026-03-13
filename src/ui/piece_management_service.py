@@ -165,7 +165,7 @@ class PieceManagementService:
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle("Éditer la pièce")
         dialog.setModal(True)
-        dialog.resize(460, 260)
+        dialog.resize(460, 400)
 
         layout = QVBoxLayout(dialog)
 
@@ -212,22 +212,28 @@ class PieceManagementService:
             info = db.get_piece_status(ref_piece)
             status = info['status']
             is_obsolete = info['is_obsolete']
+            ref_new = info.get('ref_new')
             btn_obsolete.setText("Retirer l'obsolescence" if is_obsolete else "Marquer obsolète")
-            if status == 'current' and not is_obsolete:
-                succ_status.setText("✓ Référence courante")
-                succ_status.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
-                btn_cancel_s.setEnabled(False)
-            elif status == 'superseded':
-                chain = db.get_supersession_chain(ref_piece)
-                text = "→ Remplacée : " + " → ".join(chain)
+            predecessors = db.get_all_predecessors(ref_piece)
+            if status == 'superseded':
+                text = f"↳ Remplacée par  {ref_new}"
                 if is_obsolete:
-                    text += " (⚠ obsolète)"
+                    text += "  (⚠ obsolète)"
                 succ_status.setText(text)
-                succ_status.setStyleSheet("color: #4A9EFF; font-size: 12px;")
+                succ_status.setStyleSheet("color: #e67e22; font-size: 12px; font-weight: bold;")
                 btn_cancel_s.setEnabled(True)
             elif status == 'obsolete':
-                succ_status.setText("⚠ Obsolète — plus fabriquée")
-                succ_status.setStyleSheet("color: #E05252; font-size: 12px; font-weight: bold;")
+                succ_status.setText("⚠ Obsolète — aucun remplacement")
+                succ_status.setStyleSheet("color: #c0392b; font-size: 12px; font-weight: bold;")
+                btn_cancel_s.setEnabled(False)
+            elif predecessors:
+                refs_old = ", ".join(predecessors)
+                succ_status.setText(f"↑ Remplace  {refs_old}")
+                succ_status.setStyleSheet("color: #2980b9; font-size: 12px; font-weight: bold;")
+                btn_cancel_s.setEnabled(False)
+            else:
+                succ_status.setText("✓ Référence courante")
+                succ_status.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
                 btn_cancel_s.setEnabled(False)
 
         def _succ_history(msg):
@@ -287,6 +293,67 @@ class PieceManagementService:
         btn_obsolete.clicked.connect(_on_obsolete)
         btn_cancel_s.clicked.connect(_on_cancel_succ)
         _refresh_succ()  # initialisation
+
+        # ── Section Équivalences ────────────────────────────────────────────
+        equiv_group = QGroupBox("Équivalences")
+        equiv_layout = QVBoxLayout()
+        equiv_layout.setSpacing(4)
+
+        equiv_status = QLabel()
+        equiv_status.setWordWrap(True)
+        equiv_status.setStyleSheet("font-size: 12px;")
+        equiv_layout.addWidget(equiv_status)
+
+        equiv_btn_layout = QHBoxLayout()
+        btn_link_equiv   = QPushButton("Lier comme équivalent…")
+        btn_unlink_equiv = QPushButton("Retirer du groupe")
+        btn_unlink_equiv.setStyleSheet("QPushButton { color: #E05252; }")
+        equiv_btn_layout.addWidget(btn_link_equiv)
+        equiv_btn_layout.addWidget(btn_unlink_equiv)
+        equiv_btn_layout.addStretch()
+        equiv_layout.addLayout(equiv_btn_layout)
+        equiv_group.setLayout(equiv_layout)
+        layout.addWidget(equiv_group)
+
+        def _refresh_equiv():
+            equivs = db.get_equivalents(ref_piece)
+            if equivs:
+                equiv_status.setText(f"≡ Équivalente à  {', '.join(equivs)}")
+                equiv_status.setStyleSheet("color: #8e44ad; font-size: 12px; font-weight: bold;")
+                btn_unlink_equiv.setEnabled(True)
+            else:
+                equiv_status.setText("Aucune équivalence")
+                equiv_status.setStyleSheet("color: #555555; font-size: 12px;")
+                btn_unlink_equiv.setEnabled(False)
+
+        def _on_link_equiv():
+            ref_b, ok = QInputDialog.getText(
+                dialog, "Référence équivalente",
+                f"Référence équivalente à '{ref_piece}' :")
+            if not ok or not ref_b.strip():
+                return
+            ref_b = ref_b.strip()
+            success = db.add_equivalence(ref_piece, ref_b)
+            if success:
+                _succ_history(f"Équivalence :\n==> '{ref_piece}' ≡ '{ref_b}'")
+                _refresh_equiv()
+            else:
+                QMessageBox.warning(dialog, "Erreur", "Impossible de créer l'équivalence.")
+
+        def _on_unlink_equiv():
+            if QMessageBox.question(
+                dialog, "Retirer du groupe",
+                f"Retirer '{ref_piece}' de son groupe d'équivalence ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            ) != QMessageBox.StandardButton.Yes:
+                return
+            db.remove_equivalence(ref_piece)
+            _succ_history(f"Équivalence :\n==> '{ref_piece}' → (retiré du groupe)")
+            _refresh_equiv()
+
+        btn_link_equiv.clicked.connect(_on_link_equiv)
+        btn_unlink_equiv.clicked.connect(_on_unlink_equiv)
+        _refresh_equiv()  # initialisation
 
         # Boutons OK / Annuler
         btn_layout = QHBoxLayout()

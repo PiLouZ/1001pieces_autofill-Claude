@@ -30,7 +30,8 @@ class ImportExportService(BaseService):
 
         # Services requis pour l'injection automatique (seulement les essentiels disponibles)
         self._required_services = [
-            'export_manager', 'db_manager'  # Services essentiels et disponibles
+            'export_manager', 'db_manager',
+            'import_manager', 'file_processing_service', 'table_controller'
         ]
 
     def initialize_services(self):

@@ -38,6 +38,8 @@ class CellEditingService(QObject):
     @handle_errors(title="Erreur récupération info cellule", return_on_error=(None, None))
     def get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
         """Récupérer les informations DB d'une cellule (db_id, column_name)"""
+        if item is None:
+            return None, None
         from ..ui.qt_imports import Qt
         row, col = item.row(), item.column()
 
@@ -133,6 +135,8 @@ class CellEditingService(QObject):
     @handle_errors("Erreur lors de la mise à jour de la cellule")
     def update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False) -> bool:
         """Mettre à jour une cellule dans la base de données"""
+        if item is None:
+            return False
         row, col = item.row(), item.column()
         new_value = item.text().strip()
 
@@ -204,10 +208,9 @@ class CellEditingService(QObject):
         self._validation_cache[cache_key] = is_valid
 
         if not is_valid and error_message:
-            self.cell_validation_failed.emit(
-                self.table.currentItem(),
-                error_message
-            )
+            current_item = self.table.currentItem()
+            if current_item is not None:
+                self.cell_validation_failed.emit(current_item, error_message)
 
         return is_valid
             

@@ -119,7 +119,7 @@ class UIStateManagementService(BaseService):
             button_configs: Dict avec nom_bouton -> {"enabled": bool, "visible": bool, "text": str}
         """
         for button_name, config in button_configs.items():
-            button = getattr(self.parent_widget, button_name, None)
+            button = getattr(self.parent_window, button_name, None)
             if button:
                 if "enabled" in config:
                     button.setEnabled(config["enabled"])
@@ -152,13 +152,13 @@ class UIStateManagementService(BaseService):
     @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur set_window_title_suffix")
     def set_window_title_suffix(self, suffix: str = ""):
         """Ajouter un suffixe au titre de la fenêtre"""
-        if self.parent_widget:
+        if self.parent_window:
             base_title = "1001 Pièces Auto-Fill"
             if suffix:
                 title = f"{base_title} - {suffix}"
             else:
                 title = base_title
-            self.parent_widget.setWindowTitle(title)
+            self.parent_window.setWindowTitle(title)
 
     # === GESTION DES SÉLECTIONS ET DES HANDLES ===
 
@@ -208,16 +208,16 @@ class UIStateManagementService(BaseService):
             self.status_bar.showMessage(f"⏳ {message}")
 
         # Désactiver les interactions pendant le chargement
-        if self.parent_widget:
-            self.parent_widget.setEnabled(False)
+        if self.parent_window:
+            self.parent_window.setEnabled(False)
 
         QApplication.processEvents()
 
     @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur hide_loading_overlay")
     def hide_loading_overlay(self):
         """Masquer l'overlay de chargement"""
-        if self.parent_widget:
-            self.parent_widget.setEnabled(True)
+        if self.parent_window:
+            self.parent_window.setEnabled(True)
 
         if self.status_bar:
             self.status_bar.clearMessage()
@@ -227,7 +227,7 @@ class UIStateManagementService(BaseService):
     @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur apply_visual_effect")
     def apply_visual_effect(self, effect_type: str, target_widget: str = "table"):
         """Appliquer un effet visuel temporaire"""
-        widget = getattr(self.parent_widget, target_widget, None)
+        widget = getattr(self.parent_window, target_widget, None)
         if not widget:
             return
 

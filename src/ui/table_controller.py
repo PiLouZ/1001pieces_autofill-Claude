@@ -113,6 +113,10 @@ class TableController:
         self._supersession_mode = ''          # 'superseded' | 'replacing' | ''
         self._supersession_predecessors = []  # prédécesseurs dans le mode "replacing"
         self._supersession_expand = False     # True = inclure les appareils des prédécesseurs
+        # Équivalence : term fait partie d'un groupe d'équivalence
+        self._equivalence_expand = False      # True = inclure les appareils des équivalents
+        self._equivalence_term = None
+        self._equivalence_group = []          # autres membres du groupe (sans le term)
 
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
@@ -354,6 +358,39 @@ class TableController:
 
         layout.addWidget(self.supersession_banner)
 
+        # Bandeau équivalence (caché par défaut, fond violet clair)
+        self.equivalence_banner = QWidget()
+        self.equivalence_banner.setVisible(False)
+        self.equivalence_banner.setStyleSheet(
+            "QWidget { background-color: #F3E5F5; border: 1px solid #CE93D8; border-radius: 3px; }"
+        )
+        equiv_banner_layout = QHBoxLayout(self.equivalence_banner)
+        equiv_banner_layout.setContentsMargins(8, 3, 8, 3)
+        equiv_banner_layout.setSpacing(8)
+
+        self.equivalence_banner_label = QLabel()
+        self.equivalence_banner_label.setStyleSheet(
+            "color: #6A1B9A; font-size: 12px; border: none; background: transparent;"
+        )
+        equiv_banner_layout.addWidget(self.equivalence_banner_label)
+        equiv_banner_layout.addStretch()
+
+        self.equivalence_expand_btn = QPushButton()
+        self.equivalence_expand_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #6A1B9A;
+                border: 1px solid #CE93D8;
+                border-radius: 3px;
+                font-size: 11px;
+                padding: 1px 6px;
+            }
+            QPushButton:hover { background-color: #CE93D8; }
+        """)
+        self.equivalence_expand_btn.clicked.connect(self._toggle_equivalence_expand)
+        equiv_banner_layout.addWidget(self.equivalence_expand_btn)
+        layout.addWidget(self.equivalence_banner)
+
         # Boutons d'export (si le service UI est disponible)
         if hasattr(self, 'ui_component_service') and self.ui_component_service:
             self.ui_component_service.add_export_buttons(layout)
@@ -386,6 +423,11 @@ class TableController:
 
         # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
         self.current_search_term = search_term
+
+        # Cacher les bannières (supersession + équivalence) si aucune recherche active
+        if not search_term:
+            self._hide_supersession_banner()
+            self._hide_equivalence_banner()
 
         # Annuler tout prefetch planifié (le worker en cours finira sur sa propre connexion)
         self.prefetch_timer.stop()
@@ -448,6 +490,11 @@ class TableController:
         if self._supersession_expand and self._supersession_predecessors and isinstance(effective_search_term, dict):
             effective_search_term = dict(effective_search_term)
             effective_search_term['expand_predecessors'] = self._supersession_predecessors
+
+        # Injecter les équivalents si expansion active
+        if self._equivalence_expand and self._equivalence_group and isinstance(effective_search_term, dict):
+            effective_search_term = dict(effective_search_term)
+            effective_search_term['expand_equivalents'] = self._equivalence_group
 
         # Compter le total avec le terme unifié
         self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
@@ -1109,11 +1156,16 @@ class TableController:
 
         self.current_search_term = None  # Nettoyer aussi le terme persistant
         self._hide_supersession_banner()
+        self._hide_equivalence_banner()
         self.load_data(None, is_search=False)
 
         # Désactiver les boutons d'export quand on vide la recherche
         if hasattr(self.parent_window, '_update_export_buttons_state'):
             self.parent_window._update_export_buttons_state("")
+
+        # Réinitialiser le panneau pièces (aucune sélection après RAZ)
+        if hasattr(self.parent_window, 'pieces_panel_service'):
+            self.parent_window.pieces_panel_service.update_pieces_panel()
 
     def _execute_prefetch(self):
         """Lancer le préchargement de la page suivante en arrière-plan"""
@@ -1178,6 +1230,7 @@ class TableController:
                 self._supersession_predecessors = []
                 self._update_supersession_banner()
                 self.supersession_banner.setVisible(True)
+                self._check_equivalence_banner(term)
                 return
 
             # Cas B : term est une réf. courante qui remplace d'autres
@@ -1189,11 +1242,14 @@ class TableController:
                 self._supersession_predecessors = predecessors
                 self._update_supersession_banner()
                 self.supersession_banner.setVisible(True)
+                self._check_equivalence_banner(term)
                 return
 
             self._hide_supersession_banner()
+            self._check_equivalence_banner(term)
         except Exception:
             self._hide_supersession_banner()
+            self._hide_equivalence_banner()
 
     def _hide_supersession_banner(self):
         """Cacher le bandeau et réinitialiser tous les états de supersession."""
@@ -1238,6 +1294,58 @@ class TableController:
         elif self._supersession_mode == 'replacing':
             self._supersession_expand = not self._supersession_expand
         self._update_supersession_banner()
+        self.load_data(self.current_search_term, is_search=True)
+
+    # ── Bannière d'équivalence ───────────────────────────────────────────────
+
+    def _check_equivalence_banner(self, term: str):
+        """Afficher le bandeau équivalence si le terme appartient à un groupe."""
+        if not hasattr(self, 'equivalence_banner'):
+            return
+        if not term or '||' in term or '&&' in term:
+            self._hide_equivalence_banner()
+            return
+        try:
+            equivalents = self.db_manager.get_equivalents(term)
+            if equivalents:
+                self._equivalence_term = term
+                self._equivalence_group = equivalents
+                self._update_equivalence_banner()
+                self.equivalence_banner.setVisible(True)
+            else:
+                self._hide_equivalence_banner()
+        except Exception:
+            self._hide_equivalence_banner()
+
+    def _hide_equivalence_banner(self):
+        """Cacher le bandeau équivalence et réinitialiser l'état."""
+        self._equivalence_expand = False
+        self._equivalence_term = None
+        self._equivalence_group = []
+        if hasattr(self, 'equivalence_banner'):
+            self.equivalence_banner.setVisible(False)
+
+    def _update_equivalence_banner(self):
+        """Mettre à jour le texte du bandeau équivalence."""
+        if not hasattr(self, 'equivalence_banner_label'):
+            return
+        term = self._equivalence_term or ''
+        equivs_str = ", ".join(self._equivalence_group)
+        if self._equivalence_expand:
+            self.equivalence_banner_label.setText(
+                f"≡ Résultats étendus — '{term}' · équivalents inclus : {equivs_str}"
+            )
+            self.equivalence_expand_btn.setText(f"Voir uniquement '{term}'")
+        else:
+            self.equivalence_banner_label.setText(
+                f"≡ '{term}' a des équivalents : {equivs_str}"
+            )
+            self.equivalence_expand_btn.setText("Voir aussi les appareils des équivalents")
+
+    def _toggle_equivalence_expand(self):
+        """Basculer l'inclusion des équivalents dans la recherche."""
+        self._equivalence_expand = not self._equivalence_expand
+        self._update_equivalence_banner()
         self.load_data(self.current_search_term, is_search=True)
 
     def _add_to_search_history(self, term: str):

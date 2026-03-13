@@ -8,7 +8,7 @@ import sqlite3
 import tempfile
 from typing import List, Dict, Any
 
-from src.data.database_manager import DatabaseManager
+from src.data.database_manager import DatabaseManager, DatabaseError
 from src.core.config import Config
 
 
@@ -214,9 +214,9 @@ class TestDatabaseManagerCore:
         device_id = test_db_manager.insert_appareil(sample_device_data)
         assert device_id is not None
 
-        # Tenter une opération qui doit échouer
-        success = test_db_manager.update_cell(device_id, 'colonne_invalide', 'valeur')
-        assert not success
+        # Tenter une opération qui doit échouer (lève DatabaseError sur colonne invalide)
+        with pytest.raises(DatabaseError):
+            test_db_manager.update_cell(device_id, 'colonne_invalide', 'valeur')
 
         # Vérifier que l'appareil est toujours cohérent
         query = "SELECT type FROM appareils WHERE id = ?"

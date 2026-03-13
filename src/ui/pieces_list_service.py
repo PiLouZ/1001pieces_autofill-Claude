@@ -1,232 +1,221 @@
 """
-Service de gestion de la liste des pièces avec boutons d'action au survol - Phase 2.16
-Extrait de main_refactored.py pour respecter l'architecture service-orientée
-
+Service de gestion de la liste des pièces avec boutons d'action au survol
 Responsabilités:
-- Gestion de la liste des pièces avec boutons d'action au survol
-- Widget personnalisé PiecesListWidget avec détection de survol
-- Boutons d'action "Edit" et "×" sur chaque élément
-- Interface propre entre la liste des pièces et les actions
+- Widget PieceItemWidget : affichage 2 lignes + boutons hover (✎ 🔍 ×)
+- PiecesListWidget : QListWidget utilisant setItemWidget
+- PiecesListService : factory + menu contextuel minimal
 """
 
 from typing import Optional
-from .qt_imports import (QWidget, QHBoxLayout, QPushButton, QListWidget,
-                           QListWidgetItem, QMenu, Qt)
+from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
+                          QListWidget, QListWidgetItem, QLabel, QMenu,
+                          QFont, QSize, Qt)
 from src.core.logger import app_logger
 
-class PieceActionButtonWidget(QWidget):
-    """Widget contenant les boutons d'action pour chaque pièce dans la liste"""
-    
-    def __init__(self, list_item: QListWidgetItem, parent=None):
+
+class PieceItemWidget(QWidget):
+    """
+    Widget autonome pour un item de pièce — 2 lignes + boutons hover.
+
+    Ligne 1 : référence (bold)
+    Ligne 2 : statut de succession (coloré) ou description (gris)
+    Boutons  : ✎ éditer | 🔍 rechercher | × supprimer  (visibles au survol)
+    """
+
+    def __init__(self, ref_piece: str, description: str, status_info: dict,
+                 list_item: QListWidgetItem, parent=None):
         super().__init__(parent)
         self.list_item = list_item
-        self.setFixedSize(50, 22)
-        
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
-        
-        # Bouton éditer avec icône texte
-        edit_btn = QPushButton("✎")
-        edit_btn.setFixedSize(22, 18)
-        edit_btn.setToolTip("Modifier cette pièce")
-        edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #007bff;
-                color: white;
-                border: none;
-                border-radius: 2px;
-                font-size: 10px;
-                font-weight: bold;
-                padding: 1px;
-            }
-            QPushButton:hover {
-                background-color: #0056b3;
-            }
-        """)
-        edit_btn.clicked.connect(self._edit_piece)
-        layout.addWidget(edit_btn)
-        
-        # Bouton supprimer avec icône texte
-        delete_btn = QPushButton("×")
-        delete_btn.setFixedSize(18, 18)
-        delete_btn.setToolTip("Supprimer cette pièce")
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 2px;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 1px;
-            }
-            QPushButton:hover {
-                background-color: #c82333;
-            }
-        """)
-        delete_btn.clicked.connect(self._delete_piece_from_selected)
-        layout.addWidget(delete_btn)
-        
-        layout.addStretch()
-        
-    def _edit_piece(self):
-        """Éditer la pièce - Remonter vers la MainWindow"""
-        # Remonter jusqu'à la MainWindow pour trouver les bonnes méthodes
-        main_window = self.parent()
-        while main_window and not hasattr(main_window, '_edit_piece'):
-            main_window = main_window.parent()
-        
-        if main_window and hasattr(main_window, '_edit_piece'):
-            main_window._edit_piece(self.list_item)
-    
-    def _delete_piece_from_selected(self):
-        """Supprimer la pièce des appareils sélectionnés - Remonter vers la MainWindow"""
-        # Remonter jusqu'à la MainWindow pour trouver les bonnes méthodes
-        main_window = self.parent()
-        while main_window and not hasattr(main_window, '_delete_piece_from_selected'):
-            main_window = main_window.parent()
+        self.ref_piece = ref_piece
+        self.setMouseTracking(True)
 
-        if main_window and hasattr(main_window, '_delete_piece_from_selected'):
-            main_window._delete_piece_from_selected(self.list_item)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(6, 3, 4, 3)
+        outer.setSpacing(4)
+
+        # ── Bloc texte ─────────────────────────────────────────────────────
+        text_widget = QWidget()
+        text_layout = QVBoxLayout(text_widget)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(1)
+
+        status   = status_info.get('status', 'current')
+        ref_new  = status_info.get('ref_new')
+        refs_old = status_info.get('refs_old')
+
+        # Ligne 1 : référence (bold) + désignation inline (gris)
+        desc_html = (f' <span style="color:#9e9e9e;font-size:10px;">{description}</span>'
+                     if description else '')
+        line1 = QLabel(f'<b>{ref_piece}</b>{desc_html}')
+        line1.setTextFormat(Qt.RichText)
+        text_layout.addWidget(line1)
+
+        # Ligne 2 : statut de succession uniquement (absent si pièce courante)
+        if status == 'superseded':
+            line2_text  = f"↳ Remplacée par  {ref_new}"
+            line2_style = "color: #e67e22; font-style: italic; font-size: 10px;"
+        elif status == 'obsolete':
+            line2_text  = "⚠ Obsolète — aucun remplacement"
+            line2_style = "color: #c0392b; font-style: italic; font-size: 10px;"
+        elif status == 'replacing':
+            line2_text  = f"↑ Remplace  {refs_old}"
+            line2_style = "color: #2980b9; font-style: italic; font-size: 10px;"
+        elif status_info.get('equivalents'):
+            line2_text  = f"≡ Équiv.  {status_info['equivalents']}"
+            line2_style = "color: #8e44ad; font-style: italic; font-size: 10px;"
+        else:
+            line2_text  = ""
+            line2_style = ""
+
+        self._has_line2 = bool(line2_text)
+        if line2_text:
+            line2 = QLabel(line2_text)
+            line2.setStyleSheet(line2_style)
+            text_layout.addWidget(line2)
+
+        outer.addWidget(text_widget, 1)
+
+        # ── Boutons hover ─────────────────────────────────────────────────
+        self._search_btn = self._make_btn("🔍", "#28a745", "#1e7e34", "Rechercher les appareils compatibles")
+        self._edit_btn   = self._make_btn("✎",  "#007bff", "#0056b3", "Modifier cette pièce")
+        self._delete_btn = self._make_btn("×",  "#dc3545", "#c82333", "Supprimer cette pièce")
+
+        for btn in (self._search_btn, self._edit_btn, self._delete_btn):
+            btn.setVisible(False)
+            outer.addWidget(btn)
+
+        self._search_btn.clicked.connect(self._search_piece)
+        self._edit_btn.clicked.connect(self._edit_piece)
+        self._delete_btn.clicked.connect(self._delete_piece)
+
+    # ── Helpers ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _make_btn(text: str, bg: str, bg_hover: str, tooltip: str) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setFixedSize(22, 22)
+        btn.setToolTip(tooltip)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 1px;
+            }}
+            QPushButton:hover {{ background-color: {bg_hover}; }}
+        """)
+        return btn
+
+    def _main_window(self):
+        """Remonter jusqu'à la MainWindow."""
+        w = self.parent()
+        while w and not hasattr(w, '_edit_piece'):
+            w = w.parent()
+        return w
+
+    # ── Hover ──────────────────────────────────────────────────────────────
+
+    def enterEvent(self, event):
+        for btn in (self._search_btn, self._edit_btn, self._delete_btn):
+            btn.setVisible(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        for btn in (self._search_btn, self._edit_btn, self._delete_btn):
+            btn.setVisible(False)
+        super().leaveEvent(event)
+
+    # ── Actions ────────────────────────────────────────────────────────────
+
+    def _search_piece(self):
+        """Lancer une recherche des appareils compatibles dans le champ principal."""
+        mw = self._main_window()
+        if mw and hasattr(mw, 'search_input'):
+            mw.search_input.setText(self.ref_piece)
+            mw.search_input.setFocus()
+
+    def _edit_piece(self):
+        mw = self._main_window()
+        if mw:
+            mw._edit_piece(self.list_item)
+
+    def _delete_piece(self):
+        mw = self._main_window()
+        if mw and hasattr(mw, '_delete_piece_from_selected'):
+            mw._delete_piece_from_selected(self.list_item)
+
 
 class PiecesListWidget(QListWidget):
-    """Liste des pièces personnalisée avec boutons d'action au survol"""
-    
+    """QListWidget utilisant setItemWidget pour les items 2 lignes."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.action_widgets = {}
         self.setMouseTracking(True)
-        
-    def enterEvent(self, event):
-        """Souris entre dans le widget"""
-        super().enterEvent(event)
-        
-    def leaveEvent(self, event):
-        """Souris quitte le widget"""
-        super().leaveEvent(event)
-        # Masquer tous les boutons d'action
-        for widget in self.action_widgets.values():
-            widget.hide()
-    
-    def mouseMoveEvent(self, event):
-        """Gérer le survol des éléments de liste"""
-        super().mouseMoveEvent(event)
-        
-        item = self.itemAt(event.pos())
-        if item is not None:
-            self._show_action_buttons_for_item(item)
-        else:
-            # Masquer tous les boutons
-            for widget in self.action_widgets.values():
-                widget.hide()
-    
-    def _show_action_buttons_for_item(self, item: QListWidgetItem):
-        """Afficher les boutons d'action pour un élément"""
-        # Masquer tous les boutons d'abord
-        for widget in self.action_widgets.values():
-            widget.hide()
-        
-        # Créer ou réutiliser le widget pour cet élément
-        item_key = id(item)
-        if item_key not in self.action_widgets:
-            widget = PieceActionButtonWidget(item, self)
-            self.action_widgets[item_key] = widget
-            
-        # Positionner et afficher le widget
-        widget = self.action_widgets[item_key]
-        
-        # Calculer la position
-        rect = self.visualItemRect(item)
-        widget.move(rect.right() - widget.width() - 5, rect.top() + 2)
-        widget.show()
-        widget.raise_()
-    
+        # Hauteur de ligne uniforme pour les items avec widget
+        self.setUniformItemSizes(False)
+
     def clear(self):
-        """Override clear pour nettoyer les widgets d'action"""
-        # Nettoyer tous les widgets d'action
-        for widget in self.action_widgets.values():
-            widget.deleteLater()
-        self.action_widgets.clear()
+        """Override : nettoyer les item widgets avant de vider la liste."""
+        for i in range(self.count()):
+            w = self.itemWidget(self.item(i))
+            if w:
+                w.deleteLater()
         super().clear()
+
+    def add_piece_item(self, ref_piece: str, description: str,
+                       status_info: dict) -> QListWidgetItem:
+        """Ajouter un item pièce avec son widget."""
+        item = QListWidgetItem()
+        item.setData(Qt.UserRole, ref_piece)
+        self.addItem(item)
+        widget = PieceItemWidget(ref_piece, description, status_info, item, self)
+        height = 52 if widget._has_line2 else 40
+        item.setSizeHint(QSize(0, height))
+        self.setItemWidget(item, widget)
+        return item
+
 
 class PiecesListService:
     """
-    Service pour la gestion de la liste des pièces avec boutons d'action au survol
-    
-    Responsabilités:
-    - Création et configuration du widget de liste des pièces
-    - Gestion des boutons d'action au survol 
-    - Interface avec les actions de modification et suppression des pièces
-    - Menu contextuel simplifié pour actions spéciales seulement
+    Service pour la gestion de la liste des pièces.
+    Factory + menu contextuel minimal (multi-sélection uniquement).
     """
-    
+
     def __init__(self, main_window):
         self.main_window = main_window
-        
+
     def create_pieces_list_widget(self) -> PiecesListWidget:
-        """
-        Créer et configurer le widget de liste des pièces avec boutons d'action
-        
-        Returns:
-            PiecesListWidget: Widget personnalisé avec boutons au survol
-        """
         pieces_list = PiecesListWidget()
-        pieces_list.itemDoubleClicked.connect(self.main_window._edit_piece)
+        pieces_list.itemDoubleClicked.connect(self._on_double_click)
         pieces_list.setContextMenuPolicy(Qt.CustomContextMenu)
         pieces_list.customContextMenuRequested.connect(self._show_pieces_context_menu)
-        
-        app_logger.debug("PiecesListWidget créé avec boutons d'action au survol")
+        app_logger.debug("PiecesListWidget créé")
         return pieces_list
-    
+
+    def _on_double_click(self, item: QListWidgetItem):
+        """Double-clic → éditer la pièce."""
+        self.main_window._edit_piece(item)
+
     def _show_pieces_context_menu(self, position):
-        """
-        Afficher le menu contextuel simplifié pour les pièces
-        Actions de base (modifier/supprimer) maintenant sur boutons survol
-        """
+        """Menu contextuel : uniquement pour la suppression multi-appareils."""
         item = self.main_window.pieces_list.itemAt(position)
         if not item:
             return
-        
-        menu = QMenu(self.main_window)
 
-        # Action copier (toujours utile)
-        copy_action = menu.addAction("Copier")
-        copy_action.triggered.connect(lambda: self.main_window._copy_piece(item))
-
-        # Gestion de la succession
-        ref_piece = item.data(Qt.UserRole)
-        if ref_piece:
-            menu.addSeparator()
-            succession_action = menu.addAction("→ Gestion de la succession…")
-            succession_action.triggered.connect(lambda: self._open_succession_dialog(ref_piece))
-
-        # Vérifier s'il y a plusieurs appareils sélectionnés
         selected_ranges = self.main_window.table.selectedRanges()
-        multiple_selection = len(selected_ranges) > 0 and sum(
-            range_sel.bottomRow() - range_sel.topRow() + 1 
-            for range_sel in selected_ranges
-        ) > 1
-        
-        # Action spéciale pour suppression de tous les appareils sélectionnés
-        if multiple_selection:
-            menu.addSeparator()
-            delete_from_all_action = menu.addAction("🗑️ Supprimer de tous les appareils sélectionnés")
-            delete_from_all_action.triggered.connect(lambda: self.main_window._delete_piece_from_selected(item))
-        
-        # Afficher le menu
-        menu.exec_(self.main_window.pieces_list.mapToGlobal(position))
+        total_selected = sum(
+            r.bottomRow() - r.topRow() + 1 for r in selected_ranges
+        ) if selected_ranges else 0
 
-    def _open_succession_dialog(self, ref_piece: str):
-        """Ouvrir le dialogue de gestion de succession pour une pièce."""
-        from .pieces_manager import PieceSuccessionDialog
-        history_cb = None
-        if hasattr(self.main_window, 'user_interaction_service'):
-            history_cb = self.main_window.user_interaction_service.add_to_history
-        dialog = PieceSuccessionDialog(
-            self.main_window,
-            self.main_window.db_manager,
-            ref_piece,
-            history_callback=history_cb,
+        if total_selected <= 1:
+            return  # Rien de spécial à proposer pour sélection simple
+
+        menu = QMenu(self.main_window)
+        delete_all = menu.addAction("🗑️ Supprimer de tous les appareils sélectionnés")
+        delete_all.triggered.connect(
+            lambda: self.main_window._delete_piece_from_selected(item)
         )
-        dialog.exec_()
+        menu.exec_(self.main_window.pieces_list.mapToGlobal(position))

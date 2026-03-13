@@ -227,7 +227,10 @@ class DatabaseManager:
             # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
             if Config.SEARCH_PIECES_ONLY:
                 bypass = search_term.get('bypass_supersession', False)
-                extra_refs = search_term.get('expand_predecessors', [])
+                extra_refs = list(search_term.get('expand_predecessors', []))
+                for r in search_term.get('expand_equivalents', []):
+                    if r not in extra_refs:
+                        extra_refs.append(r)
                 return self._build_pieces_only_condition(term, bypass=bypass, extra_refs=extra_refs)
 
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
@@ -414,7 +417,15 @@ class DatabaseManager:
         # Ajouter les colonnes manquantes
         self._add_missing_columns()
 
-        # Table pièces (sera créée/recréée par la migration)
+        # Table pièces (structure finale — la migration la recrée si l'ancienne structure est détectée)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pieces (
+                id INTEGER PRIMARY KEY,
+                ref_piece TEXT NOT NULL UNIQUE,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         # Table associations pièce-appareil (nouvelle structure)
         self.cursor.execute("""
@@ -479,6 +490,9 @@ class DatabaseManager:
 
         # Table de supersession des références pièces
         self._setup_supersession_table()
+
+        # Table d'équivalence des références pièces
+        self._setup_equivalence_table()
 
         self.conn.commit()
     
@@ -659,6 +673,14 @@ class DatabaseManager:
                 app_logger.info("Migration : colonne is_obsolete ajoutée à pieces")
             except Exception:
                 pass  # Colonne déjà présente
+            # Migration : ajout colonne is_phantom sur pieces (idempotent)
+            try:
+                self.cursor.execute(
+                    "ALTER TABLE pieces ADD COLUMN is_phantom INTEGER NOT NULL DEFAULT 0"
+                )
+                app_logger.info("Migration : colonne is_phantom ajoutée à pieces")
+            except Exception:
+                pass  # Colonne déjà présente
             # Migration : (ref_old, NULL) → is_obsolete=1 puis suppression de la ligne
             null_rows = self.cursor.execute(
                 "SELECT ref_old FROM piece_supersessions WHERE ref_new IS NULL"
@@ -675,6 +697,129 @@ class DatabaseManager:
                 app_logger.info(f"Migration : {len(null_rows)} entrée(s) (ref_old, NULL) converties en is_obsolete=1")
         except Exception as e:
             app_logger.error(f"Erreur création table piece_supersessions: {e}")
+
+    # ── Équivalence des références pièces ───────────────────────────────────
+
+    def _setup_equivalence_table(self):
+        """Créer la table piece_equivalence_groups si nécessaire."""
+        try:
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS piece_equivalence_groups (
+                    group_id  INTEGER NOT NULL,
+                    ref_piece TEXT NOT NULL,
+                    PRIMARY KEY (group_id, ref_piece),
+                    FOREIGN KEY (ref_piece) REFERENCES pieces(ref_piece) ON DELETE CASCADE
+                )
+            """)
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_equiv_ref ON piece_equivalence_groups(ref_piece)"
+            )
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_equiv_gid ON piece_equivalence_groups(group_id)"
+            )
+            self.conn.commit()
+        except Exception as e:
+            app_logger.error(f"Erreur création table piece_equivalence_groups: {e}")
+
+    def add_equivalence(self, ref_a: str, ref_b: str) -> tuple:
+        """
+        Créer un lien d'équivalence symétrique entre ref_a et ref_b.
+        Fusionne les groupes si les deux refs appartiennent déjà à des groupes distincts.
+
+        Returns: (success: bool, error_message: str)
+        """
+        if ref_a == ref_b:
+            return False, "Une référence ne peut pas être équivalente à elle-même."
+        try:
+            with self._query_lock:
+                # §7 — créer les refs fantômes si absentes
+                for ref in (ref_a, ref_b):
+                    self.cursor.execute(
+                        "INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)", [ref]
+                    )
+                gid_a = (self.cursor.execute(
+                    "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_a]
+                ).fetchone() or [None])[0]
+                gid_b = (self.cursor.execute(
+                    "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_b]
+                ).fetchone() or [None])[0]
+
+                if gid_a is None and gid_b is None:
+                    new_gid = (self.cursor.execute(
+                        "SELECT COALESCE(MAX(group_id), 0) FROM piece_equivalence_groups"
+                    ).fetchone()[0]) + 1
+                    self.cursor.execute(
+                        "INSERT INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)", [new_gid, ref_a]
+                    )
+                    self.cursor.execute(
+                        "INSERT INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)", [new_gid, ref_b]
+                    )
+                elif gid_a is None:
+                    self.cursor.execute(
+                        "INSERT OR IGNORE INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)", [gid_b, ref_a]
+                    )
+                elif gid_b is None:
+                    self.cursor.execute(
+                        "INSERT OR IGNORE INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)", [gid_a, ref_b]
+                    )
+                elif gid_a != gid_b:
+                    # Fusion : déplacer tous les membres du groupe B vers le groupe A
+                    self.cursor.execute(
+                        "UPDATE piece_equivalence_groups SET group_id = ? WHERE group_id = ?", [gid_a, gid_b]
+                    )
+                # else: déjà dans le même groupe
+                self.conn.commit()
+            return True, ""
+        except Exception as e:
+            app_logger.error(f"Erreur add_equivalence({ref_a} ≡ {ref_b}): {e}")
+            return False, str(e)
+
+    def remove_equivalence(self, ref_piece: str) -> bool:
+        """
+        Retirer ref_piece de son groupe d'équivalence.
+        Si le groupe tombe à ≤ 1 membre, il est dissous.
+        """
+        try:
+            with self._query_lock:
+                row = self.cursor.execute(
+                    "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_piece]
+                ).fetchone()
+                if not row:
+                    return True
+                gid = row[0]
+                self.cursor.execute(
+                    "DELETE FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_piece]
+                )
+                count = self.cursor.execute(
+                    "SELECT COUNT(*) FROM piece_equivalence_groups WHERE group_id = ?", [gid]
+                ).fetchone()[0]
+                if count <= 1:
+                    self.cursor.execute(
+                        "DELETE FROM piece_equivalence_groups WHERE group_id = ?", [gid]
+                    )
+                self.conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Erreur remove_equivalence({ref_piece}): {e}")
+            return False
+
+    def get_equivalents(self, ref_piece: str) -> list:
+        """
+        Retourner les références équivalentes à ref_piece (hors ref_piece elle-même).
+        """
+        try:
+            rows = self.execute_query(
+                """SELECT peg2.ref_piece
+                   FROM piece_equivalence_groups peg
+                   JOIN piece_equivalence_groups peg2 ON peg.group_id = peg2.group_id
+                   WHERE peg.ref_piece = ? AND peg2.ref_piece != ?
+                   ORDER BY peg2.ref_piece""",
+                [ref_piece, ref_piece]
+            )
+            return [r[0] for r in rows] if rows else []
+        except Exception as e:
+            app_logger.error(f"Erreur get_equivalents({ref_piece}): {e}")
+            return []
 
     def get_piece_status(self, ref_piece: str) -> dict:
         """
@@ -710,12 +855,18 @@ class DatabaseManager:
         Retourner les statuts de succession pour une liste de références en une seule requête.
 
         Returns:
-            dict {ref_piece: {'status': 'current'|'superseded'|'obsolete', 'ref_new': str|None, 'is_obsolete': bool}}
+            dict {ref_piece: {
+                'status': 'current'|'superseded'|'obsolete'|'replacing',
+                'ref_new': str|None,       # ref qui remplace cette pièce
+                'refs_old': str|None,      # refs que cette pièce remplace (ex: "A, B")
+                'is_obsolete': bool
+            }}
         """
         if not refs:
             return {}
         try:
             placeholders = ",".join("?" * len(refs))
+            # Requête 1 : statut forward (cette ref est-elle remplacée / obsolète ?)
             rows = self.execute_query(
                 f"""SELECT p.ref_piece, ps.ref_new, p.is_obsolete
                     FROM pieces p
@@ -723,19 +874,45 @@ class DatabaseManager:
                     WHERE p.ref_piece IN ({placeholders})""",
                 refs
             )
-            result = {ref: {'status': 'current', 'ref_new': None, 'is_obsolete': False} for ref in refs}
-            for ref_piece, ref_new, is_obsolete in rows:
+            result = {ref: {'status': 'current', 'ref_new': None, 'refs_old': None, 'is_obsolete': False, 'equivalents': None} for ref in refs}
+            for ref_piece, ref_new, is_obsolete in (rows or []):
                 is_obs = bool(is_obsolete)
                 if ref_new is not None:
-                    result[ref_piece] = {'status': 'superseded', 'ref_new': ref_new, 'is_obsolete': is_obs}
+                    result[ref_piece] = {'status': 'superseded', 'ref_new': ref_new, 'refs_old': None, 'is_obsolete': is_obs}
                 elif is_obs:
-                    result[ref_piece] = {'status': 'obsolete', 'ref_new': None, 'is_obsolete': True}
+                    result[ref_piece] = {'status': 'obsolete', 'ref_new': None, 'refs_old': None, 'is_obsolete': True}
                 else:
-                    result[ref_piece] = {'status': 'current', 'ref_new': None, 'is_obsolete': False}
+                    result[ref_piece] = {'status': 'current', 'ref_new': None, 'refs_old': None, 'is_obsolete': False}
+            # Requête 2 : statut backward (cette ref remplace-t-elle d'autres refs ?)
+            replacing_rows = self.execute_query(
+                f"""SELECT ps.ref_new, GROUP_CONCAT(ps.ref_old, ', ') as replaced_refs
+                    FROM piece_supersessions ps
+                    WHERE ps.ref_new IN ({placeholders})
+                    GROUP BY ps.ref_new""",
+                refs
+            )
+            for ref_new, replaced_refs in (replacing_rows or []):
+                if ref_new in result:
+                    result[ref_new]['refs_old'] = replaced_refs
+                    if result[ref_new]['status'] == 'current':
+                        result[ref_new]['status'] = 'replacing'
+            # Requête 3 : équivalences (même groupe d'équivalence)
+            equiv_rows = self.execute_query(
+                f"""SELECT peg.ref_piece, GROUP_CONCAT(peg2.ref_piece, ', ')
+                    FROM piece_equivalence_groups peg
+                    JOIN piece_equivalence_groups peg2 ON peg.group_id = peg2.group_id
+                        AND peg2.ref_piece != peg.ref_piece
+                    WHERE peg.ref_piece IN ({placeholders})
+                    GROUP BY peg.ref_piece""",
+                refs
+            )
+            for ref_piece, equiv_str in (equiv_rows or []):
+                if ref_piece in result:
+                    result[ref_piece]['equivalents'] = equiv_str
             return result
         except Exception as e:
             app_logger.error(f"Erreur get_pieces_statuses_batch: {e}")
-            return {ref: {'status': 'current', 'ref_new': None, 'is_obsolete': False} for ref in refs}
+            return {ref: {'status': 'current', 'ref_new': None, 'refs_old': None, 'is_obsolete': False, 'equivalents': None} for ref in refs}
 
     def mark_obsolete(self, ref_piece: str) -> bool:
         """Marquer une pièce comme obsolète (plus fabriquée). Indépendant de la succession."""
@@ -974,6 +1151,12 @@ class DatabaseManager:
             if self._has_supersession_cycle(ref_old, ref_new):
                 return False, f"Cette opération créerait un cycle de succession ({ref_old} → ... → {ref_old})."
             with self._query_lock:
+                # §7 — Créer automatiquement les refs fantômes si absentes de pieces
+                for ref in (ref_old, ref_new):
+                    self.cursor.execute(
+                        "INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)",
+                        [ref]
+                    )
                 self.cursor.execute(
                     "INSERT OR REPLACE INTO piece_supersessions(ref_old, ref_new) VALUES (?, ?)",
                     [ref_old, ref_new]
@@ -2008,6 +2191,12 @@ class DatabaseManager:
         if piece_result:
             piece_id, current_desc = piece_result
 
+            # Promouvoir la ref fantôme en pièce réelle si nécessaire
+            self.cursor.execute(
+                "UPDATE pieces SET is_phantom = 0 WHERE id = ? AND is_phantom = 1",
+                (piece_id,)
+            )
+
             # Gérer les conflits de description
             if clean_description and current_desc and clean_description != current_desc:
                 if confirm_callback:
@@ -2078,6 +2267,12 @@ class DatabaseManager:
             # Pièce existante
             piece_id = piece_result[0][0]
             current_desc = piece_result[0][1]
+
+            # Promouvoir la ref fantôme en pièce réelle si nécessaire
+            self.cursor.execute(
+                "UPDATE pieces SET is_phantom = 0 WHERE id = ? AND is_phantom = 1",
+                (piece_id,)
+            )
 
             # Gérer les conflits de description
             if clean_description and current_desc and clean_description != current_desc:

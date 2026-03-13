@@ -151,33 +151,19 @@ class AutoCompletionService(BaseService):
             key = event.key()
 
             if key == Qt.Key_Down:
-                # Flèche bas : passer à l'item suivant
+                # Flèche bas : passer à l'item suivant sans modifier le champ de recherche
                 current_row = values_list.currentRow()
                 if current_row < values_list.count() - 1:
                     values_list.setCurrentRow(current_row + 1)
-                    current_item = values_list.currentItem()
-                    if current_item:
-                        input_field.setText(current_item.text())
                 elif values_list.count() > 0:
-                    # Si on est à la fin, revenir au premier
                     values_list.setCurrentRow(0)
-                    current_item = values_list.currentItem()
-                    if current_item:
-                        input_field.setText(current_item.text())
             elif key == Qt.Key_Up:
-                # Flèche haut : passer à l'item précédent
+                # Flèche haut : passer à l'item précédent sans modifier le champ de recherche
                 current_row = values_list.currentRow()
                 if current_row > 0:
                     values_list.setCurrentRow(current_row - 1)
-                    current_item = values_list.currentItem()
-                    if current_item:
-                        input_field.setText(current_item.text())
                 elif values_list.count() > 0:
-                    # Si on est au début, aller au dernier
                     values_list.setCurrentRow(values_list.count() - 1)
-                    current_item = values_list.currentItem()
-                    if current_item:
-                        input_field.setText(current_item.text())
             elif key == Qt.Key_Return or key == Qt.Key_Enter:
                 # Entrée : utiliser l'item surligné dans la liste si disponible
                 selected_list_item = values_list.currentItem()

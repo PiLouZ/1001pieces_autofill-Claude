@@ -471,38 +471,82 @@ class MainWindow(QMainWindow):
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
         
-        self.pieces_tabs = QTabWidget()
-        # Correction largeur onglet: empêcher le texte bold qui déborde
-        self.pieces_tabs.setStyleSheet("""
-            QTabBar::tab:selected {
-                font-weight: normal;  /* Enlever le bold par défaut pour éviter débordement */
+        # ── En-tête : nom appareil + bouton rafraîchir ──────────────────────
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(4, 2, 4, 2)
+        header_layout.setSpacing(4)
+
+        self.pieces_header_label = QLabel("")
+        self.pieces_header_label.setStyleSheet(
+            "color: #343a40; font-size: 11px;"
+        )
+        self.pieces_header_label.setWordWrap(False)
+        header_layout.addWidget(self.pieces_header_label, 1)
+
+        self.pieces_count_label = QLabel("")
+        self.pieces_count_label.setStyleSheet(
+            "color: #6c757d; font-size: 10px;"
+        )
+        header_layout.addWidget(self.pieces_count_label)
+
+        _btn_style = """
+            QPushButton {
+                background-color: transparent;
+                color: #6c757d;
+                border: 1px solid #ced4da;
+                border-radius: 3px;
+                font-size: 13px;
+                font-weight: bold;
+                min-width: 22px;
+                max-width: 22px;
+                min-height: 20px;
+                max-height: 20px;
+                padding: 0px;
             }
-        """)
-        
-        # Liste des pièces avec boutons d'action au survol - Phase 2.16: Délégation vers PiecesListService
+            QPushButton:hover { background-color: #e9ecef; color: #343a40; }
+        """
+
+        refresh_btn = QPushButton("↺")
+        refresh_btn.setToolTip("Rafraîchir la liste des pièces")
+        refresh_btn.setStyleSheet(_btn_style)
+        refresh_btn.clicked.connect(lambda: self.pieces_panel_service.update_pieces_panel())
+        header_layout.addWidget(refresh_btn)
+
+        add_toggle_btn = QPushButton("＋")
+        add_toggle_btn.setToolTip("Ajouter une pièce")
+        add_toggle_btn.setStyleSheet(_btn_style)
+        header_layout.addWidget(add_toggle_btn)
+
+        top_layout.addWidget(header_widget)
+
+        # Liste des pièces directement (plus de QTabWidget)
         self.pieces_list = self.pieces_list_service.create_pieces_list_widget()
-        self.pieces_tabs.addTab(self.pieces_list, "Liste des pièces associées")
-        
-        # Ajout de pièce
+        top_layout.addWidget(self.pieces_list, 1)
+
+        # Formulaire d'ajout de pièce (masqué par défaut, toggle via ＋)
         pieces_add_widget = QWidget()
+        pieces_add_widget.setVisible(False)
         pieces_add_layout = QVBoxLayout(pieces_add_widget)
-        
+        pieces_add_layout.setContentsMargins(4, 4, 4, 4)
+        pieces_add_layout.setSpacing(4)
+
         self.piece_input = QLineEdit()
         self.piece_input.setPlaceholderText("Référence de la pièce...")
         pieces_add_layout.addWidget(self.piece_input)
-        
+
         self.piece_libelle_input = QLineEdit()
         self.piece_libelle_input.setPlaceholderText("Libellé de la pièce (optionnel)...")
         pieces_add_layout.addWidget(self.piece_libelle_input)
-        
+
         add_piece_btn = QPushButton("Ajouter")
         add_piece_btn.clicked.connect(self._add_piece)
         pieces_add_layout.addWidget(add_piece_btn)
-        
-        pieces_add_layout.addStretch()
-        self.pieces_tabs.addTab(pieces_add_widget, "+")
-        
-        top_layout.addWidget(self.pieces_tabs)
+
+        add_toggle_btn.clicked.connect(
+            lambda: pieces_add_widget.setVisible(not pieces_add_widget.isVisible())
+        )
+        top_layout.addWidget(pieces_add_widget)
         pieces_splitter.addWidget(top_widget)
 
         # Partie basse - Historique des modifications

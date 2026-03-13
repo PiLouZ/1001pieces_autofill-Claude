@@ -87,7 +87,10 @@ class ImportConfiguration:
     succession_replaces: Optional[str] = None       # Réf existante que cette réf remplace (ref_old=existing, ref_new=imported)
     succession_replaced_by: Optional[str] = None    # Réf existante qui remplace cette réf (ref_old=imported, ref_new=existing)
     succession_current_ref: Optional[str] = None    # Multi-fichiers : réf désignée comme courante (les autres lui sont successées)
-    
+
+    # Équivalences déclarées lors de l'import (multi-fichiers)
+    equivalence_refs: Optional[List[str]] = None    # Réfs cochées comme équivalentes à la courante (ou entre elles si pas de courante)
+
     def __post_init__(self):
         if self.label_config is None:
             self.label_config = LabelConfiguration()
@@ -95,6 +98,8 @@ class ImportConfiguration:
             self.individual_references = {}
         if self.individual_labels is None:
             self.individual_labels = {}
+        if self.equivalence_refs is None:
+            self.equivalence_refs = []
 
 
 class ImportDialog(QDialog):
@@ -391,6 +396,7 @@ class ImportDialog(QDialog):
         self.succ_replaced_by_input = None
         self._succ_button_group = None
         self._succ_radio_files = []
+        self._equiv_checkboxes = []   # [(QCheckBox, ImportFile), ...]
 
         if len(self.import_config.files) == 1:
             succ_group = QGroupBox("Succession (optionnel)")
@@ -492,7 +498,7 @@ class ImportDialog(QDialog):
             # Stocker la référence du champ pour la duplication automatique
             self.individual_desc_fields.append(desc_input)
 
-            # Radio button "Courante" pour multi-fichiers (succession)
+            # Radio "Courante" + case "Équivalente" pour multi-fichiers
             if self.import_config.import_type == ImportType.MULTI_FILE:
                 if self._succ_button_group is None:
                     self._succ_button_group = QButtonGroup(self)
@@ -503,6 +509,15 @@ class ImportDialog(QDialog):
                 self._succ_button_group.addButton(radio, i)
                 self._succ_radio_files.append(file)
                 file_layout.addWidget(radio)
+
+                equiv_check = QCheckBox("Équivalente")
+                equiv_check.setToolTip(
+                    "Marquer cette réf. comme équivalente à la pièce courante\n"
+                    "(même fonction, fabricant différent — les deux restent valides)"
+                )
+                equiv_check.setStyleSheet("font-size: 11px; color: #6c757d;")
+                self._equiv_checkboxes.append((equiv_check, file))
+                file_layout.addWidget(equiv_check)
 
             # Ajouter le conteneur avec hauteur fixe au lieu du layout directement
             self.individual_refs_widget.addWidget(file_container)
@@ -636,6 +651,14 @@ class ImportDialog(QDialog):
             if checked_id < len(self._succ_radio_files):
                 current_file = self._succ_radio_files[checked_id]
                 config.succession_current_ref = config.individual_references.get(current_file.path) or None
+
+        # Équivalences — multi-fichiers (cases cochées "Équivalente")
+        if config.import_type == ImportType.MULTI_FILE and self._equiv_checkboxes:
+            for equiv_check, file in self._equiv_checkboxes:
+                if equiv_check.isChecked():
+                    ref = config.individual_references.get(file.path, '') or ''
+                    if ref:
+                        config.equivalence_refs.append(ref)
 
         self.result_config = config
         self.accept()
@@ -1328,11 +1351,27 @@ class ImportManager:
                     app_logger.warning(f"Succession import non créée ({file_ref} → {config.succession_replaced_by}) : {msg}")
 
         # --- Multi-fichiers ---
-        elif config.import_type == ImportType.MULTI_FILE and config.succession_current_ref:
-            current = config.succession_current_ref
+        elif config.import_type == ImportType.MULTI_FILE:
+            current = config.succession_current_ref   # Peut être None (Option B)
+            equiv_refs = config.equivalence_refs or []
+
             for file in config.files:
                 other_ref = config.individual_references.get(file.path, '') or ''
-                if other_ref and other_ref != current:
+                if not other_ref or other_ref == current:
+                    continue
+
+                if other_ref in equiv_refs:
+                    # Équivalence — lier à la courante, ou au premier équivalent si pas de courante
+                    pivot = current or (equiv_refs[0] if equiv_refs[0] != other_ref else None)
+                    if pivot:
+                        ok, msg = self.db_manager.add_equivalence(pivot, other_ref)
+                        if ok:
+                            results['equivalences_created'] = results.get('equivalences_created', 0) + 1
+                            app_logger.info(f"Équivalence import : {other_ref} ≡ {pivot}")
+                        else:
+                            app_logger.warning(f"Équivalence import non créée ({other_ref} ≡ {pivot}) : {msg}")
+                elif current:
+                    # Succession normale
                     ok, msg = self.db_manager.add_supersession(other_ref, current)
                     if ok:
                         results['succession_created'] = results.get('succession_created', 0) + 1

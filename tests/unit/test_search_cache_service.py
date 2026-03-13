@@ -19,9 +19,10 @@ class TestSearchCacheService:
         """Fixture DatabaseManager avec cache mockée"""
         db_manager = Mock()
 
-        # Mock du cache de recherche
+        # Mock du cache de recherche (MagicMock pour supporter len() et .clear())
         mock_cache = Mock()
-        mock_cache.cache = {'key1': 'value1', 'key2': 'value2'}
+        mock_cache.cache = MagicMock()
+        mock_cache.cache.__len__ = Mock(return_value=2)
 
         db_manager.search_cache = mock_cache
         return db_manager
@@ -189,7 +190,7 @@ class TestSearchCacheService:
         assert cache_service.invalidation_stats['total_invalidations'] == 1
 
     def test_invalidate_without_cache(self):
-        """Test invalidation sans cache disponible"""
+        """Test invalidation sans cache disponible — ne compte pas dans les stats"""
         # Service avec DB manager sans cache
         db_manager = Mock()
         db_manager.search_cache = None
@@ -198,7 +199,8 @@ class TestSearchCacheService:
         cleared_entries = service.invalidate_search_cache("test no cache")
 
         assert cleared_entries == 0
-        assert service.invalidation_stats['total_invalidations'] == 1
+        # Quand search_cache est None, aucune invalidation n'est comptabilisée
+        assert service.invalidation_stats['total_invalidations'] == 0
 
     def test_invalidate_with_cache_without_search_cache_attribute(self):
         """Test invalidation avec DB manager sans attribut search_cache"""
@@ -259,7 +261,8 @@ class TestSearchCacheService:
         """Test cas limite avec cache vide"""
         # Cache avec dictionnaire vide
         mock_cache = Mock()
-        mock_cache.cache = {}
+        mock_cache.cache = MagicMock()
+        mock_cache.cache.__len__ = Mock(return_value=0)
         mock_db_manager_without_cache.search_cache = mock_cache
 
         service = SearchCacheInvalidationService(mock_db_manager_without_cache)

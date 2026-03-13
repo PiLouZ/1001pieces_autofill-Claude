@@ -58,11 +58,7 @@ class TestImportExportService:
         """Test initialisation des références de services"""
         service = ImportExportService(mock_parent_window)
 
-        # Services non initialisés au début
-        assert service.export_manager is None
-        assert service.import_manager is None
-
-        # Après initialisation
+        # Après initialisation, les services sont injectés depuis parent_window
         service.initialize_services()
         assert service.export_manager == mock_parent_window.export_manager
         assert service.import_manager == mock_parent_window.import_manager

@@ -58,7 +58,7 @@ class TestKeyboardShortcutService:
     def shortcut_service(self, mock_parent_widget):
         """Service KeyboardShortcut avec parent mocké"""
         service = KeyboardShortcutService(parent=None)
-        service.parent_widget = mock_parent_widget
+        service.parent_window = mock_parent_widget
         service.initialize_services()
         return service
 
@@ -87,7 +87,7 @@ class TestKeyboardShortcutService:
     def test_initialization_without_parent(self):
         """Test de l'initialisation sans parent"""
         service = KeyboardShortcutService()
-        assert service.parent_widget is None
+        assert service.parent_window is None
         service.initialize_services()  # Ne doit pas lever d'exception
 
     @patch('sys.platform', 'darwin')
@@ -123,7 +123,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._add_new_row.assert_called_once()
+        shortcut_service.parent_window._add_new_row.assert_called_once()
 
     def test_handle_save_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+S (sauvegarder)"""
@@ -134,7 +134,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._manual_save.assert_called_once()
+        shortcut_service.parent_window._manual_save.assert_called_once()
 
     def test_handle_find_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+F (rechercher)"""
@@ -144,8 +144,8 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget.search_input.setFocus.assert_called_once()
-        shortcut_service.parent_widget.search_input.selectAll.assert_called_once()
+        shortcut_service.parent_window.search_input.setFocus.assert_called_once()
+        shortcut_service.parent_window.search_input.selectAll.assert_called_once()
 
     def test_handle_paste_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+V (coller)"""
@@ -155,7 +155,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._handle_paste.assert_called_once()
+        shortcut_service.parent_window._handle_paste.assert_called_once()
 
     def test_handle_copy_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+C (copier)"""
@@ -165,7 +165,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._handle_copy.assert_called_once()
+        shortcut_service.parent_window._handle_copy.assert_called_once()
 
     def test_handle_undo_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+Z (annuler)"""
@@ -174,7 +174,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._undo.assert_called_once()
+        shortcut_service.parent_window._undo.assert_called_once()
 
     def test_handle_redo_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+Y (refaire)"""
@@ -183,29 +183,29 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._redo.assert_called_once()
+        shortcut_service.parent_window._redo.assert_called_once()
 
     def test_handle_column_values_shortcut_allowed(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+D (valeurs colonne) - autorisé"""
         # Le focus n'est pas sur search_input
-        shortcut_service.parent_widget.focusWidget.return_value = Mock()
+        shortcut_service.parent_window.focusWidget.return_value = Mock()
         event = mock_key_event(Qt.Key.Key_D, Qt.ControlModifier)
 
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._show_column_values_list.assert_called_once()
+        shortcut_service.parent_window._show_column_values_list.assert_called_once()
 
     def test_handle_column_values_shortcut_blocked(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+D (valeurs colonne) - bloqué par focus"""
         # Le focus est sur search_input
-        shortcut_service.parent_widget.focusWidget.return_value = shortcut_service.parent_widget.search_input
+        shortcut_service.parent_window.focusWidget.return_value = shortcut_service.parent_window.search_input
         event = mock_key_event(Qt.Key.Key_D, Qt.ControlModifier)
 
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is False
-        shortcut_service.parent_widget._show_column_values_list.assert_not_called()
+        shortcut_service.parent_window._show_column_values_list.assert_not_called()
 
     def test_handle_navigation_up_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+Up (navigation vers le haut)"""
@@ -214,7 +214,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._navigate_to_empty_cell.assert_called_once_with(direction='up')
+        shortcut_service.parent_window._navigate_to_empty_cell.assert_called_once_with(direction='up')
 
     def test_handle_navigation_down_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Cmd+Down (navigation vers le bas)"""
@@ -223,7 +223,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._navigate_to_empty_cell.assert_called_once_with(direction='down')
+        shortcut_service.parent_window._navigate_to_empty_cell.assert_called_once_with(direction='down')
 
     def test_handle_f5_refresh_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci F5 (actualiser)"""
@@ -232,8 +232,9 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget.advanced_search_service.get_current_search_term_with_fallback.assert_called_once()
-        shortcut_service.parent_widget.table_controller.load_data.assert_called_once()
+        shortcut_service.parent_window.advanced_search_service.get_current_search_term_with_fallback.assert_called_once()
+        # Config.USE_ASYNC_LOAD_DATA=True → load_data_async() est appelé
+        shortcut_service.parent_window.table_controller.load_data_async.assert_called_once()
 
     def test_handle_f12_log_viewer_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci F12 (visualiseur de logs)"""
@@ -242,7 +243,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._open_log_viewer.assert_called_once()
+        shortcut_service.parent_window._open_log_viewer.assert_called_once()
 
     def test_handle_escape_clear_search_shortcut(self, shortcut_service, mock_key_event):
         """Test du raccourci Escape (effacer recherche)"""
@@ -251,7 +252,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget.advanced_search_service.clear_search_ui.assert_called_once()
+        shortcut_service.parent_window.advanced_search_service.clear_search_ui.assert_called_once()
 
     def test_unhandled_shortcut(self, shortcut_service, mock_key_event):
         """Test d'un raccourci non géré"""
@@ -326,7 +327,7 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is True
-        shortcut_service.parent_widget._add_new_row.assert_called_once()
+        shortcut_service.parent_window._add_new_row.assert_called_once()
 
     def test_modifier_detection_signal(self, shortcut_service, mock_key_event):
         """Test que le signal de détection de modificateur fonctionne"""
@@ -348,7 +349,7 @@ class TestKeyboardShortcutService:
     def test_error_handling_missing_method(self, shortcut_service, mock_key_event):
         """Test de la gestion d'erreur pour une méthode manquante"""
         # Supprimer une méthode du parent
-        del shortcut_service.parent_widget._add_new_row
+        del shortcut_service.parent_window._add_new_row
 
         event = mock_key_event(Qt.Key.Key_N, Qt.ControlModifier)
         result = shortcut_service.handle_key_press_event(event)
