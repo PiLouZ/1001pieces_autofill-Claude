@@ -71,6 +71,7 @@ from ..services.table_widget_service import CustomTableWidget, TableWidgetServic
 from ..services.grouped_history_service import GroupedHistoryService
 from ..services.drag_handle_service import DragHandle, DragHandleService
 from ..services.undo_manager import UndoRedoManager
+from ..services.app_export_service import AppExportService
 # Supprimé: remplacé par DialogManager dans les imports centralisés
 from ..services.event_handlers_service import EventHandlersService
 from ..services.table_fill_service import TableFillService
@@ -197,6 +198,7 @@ class MainWindow(QMainWindow):
         """Initialiser les services d'interface utilisateur"""
         from .toolbar_service import ToolbarService
         self.toolbar_service = ToolbarService(self)
+        self.app_export_service = AppExportService(self)
 
         self.dialog_manager = DialogManager(self)
 
@@ -2397,89 +2399,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         dialog.exec_()
 
     def _export_application(self):
-        """Lancer l'export portable de l'application"""
-        self._safe_export_application()
-
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur export application")
-    def _safe_export_application(self):
-        """Dialogue d'export portable — choisit le dossier et lance l'export dans un thread."""
-        from .qt_imports import (QFileDialog, QProgressDialog, Qt, QThread, pyqtSignal as Signal)
-
-        # ── Choix du dossier de destination ─────────────────────────────────
-        output_dir = QFileDialog.getExistingDirectory(
-            self,
-            "Choisir le dossier de destination de l'export",
-            str(__import__('pathlib').Path.home() / 'Desktop'),
-        )
-        if not output_dir:
-            return
-
-        # ── Thread d'export ──────────────────────────────────────────────────
-        class ExportWorker(QThread):
-            progress = Signal(str)
-            finished = Signal(dict)
-
-            def __init__(self, out_dir):
-                super().__init__()
-                self._out_dir = out_dir
-
-            def run(self):
-                import importlib.util, pathlib
-                # Charger export_app depuis la racine du projet
-                root = pathlib.Path(__file__).parent.parent.parent
-                spec = importlib.util.spec_from_file_location(
-                    "export_app", root / "export_app.py"
-                )
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                result = mod.create_export(
-                    output_dir=self._out_dir,
-                    progress_callback=lambda msg: self.progress.emit(msg),
-                )
-                self.finished.emit(result)
-
-        # ── Barre de progression ─────────────────────────────────────────────
-        progress_dlg = QProgressDialog(
-            "Export en cours…", None, 0, 0, self
-        )
-        progress_dlg.setWindowTitle("📦 Export de l'application")
-        progress_dlg.setWindowModality(Qt.WindowModal)
-        progress_dlg.setMinimumWidth(420)
-        progress_dlg.setCancelButton(None)
-        progress_dlg.show()
-
-        worker = ExportWorker(output_dir)
-
-        def _on_progress(msg):
-            progress_dlg.setLabelText(msg)
-
-        def _on_finished(result):
-            progress_dlg.close()
-            if result['success']:
-                from .message_helper import MessageHelper
-                MessageHelper.show_info(
-                    self,
-                    f"✅ Export terminé avec succès !\n\n"
-                    f"Dossier : {result['path']}\n"
-                    f"Taille  : {result['size_mb']:.0f} Mo\n\n"
-                    f"Sur le poste cible :\n"
-                    f"  1. Double-clic sur install.command   (une seule fois)\n"
-                    f"  2. Double-clic sur 1001pieces_autofill.command",
-                    "Export réussi",
-                )
-            else:
-                from .message_helper import MessageHelper
-                MessageHelper.show_error(
-                    self,
-                    f"Échec de l'export :\n{result['error']}",
-                    "Erreur export",
-                )
-
-        worker.progress.connect(_on_progress)
-        worker.finished.connect(_on_finished)
-        worker.start()
-        # Garder une référence pour éviter la destruction prématurée
-        self._export_worker = worker
+        """Lancer l'export portable de l'application — délégué à AppExportService."""
+        self.app_export_service.open_dialog()
 
     def _apply_column_visibility(self):
         """Appliquer la visibilité des colonnes au tableau"""
