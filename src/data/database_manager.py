@@ -721,6 +721,31 @@ class DatabaseManager:
         except Exception as e:
             app_logger.error(f"Erreur création table piece_equivalence_groups: {e}")
 
+    def _propagate_predecessors_to_group(self, group_id: int):
+        """
+        Ajouter dans le groupe tous les prédécesseurs (via chaîne de supersession)
+        de ses membres actuels, afin de garantir la transitivité supersession→équivalence.
+
+        Ex : si A ≡ B et C → A, alors C est ajouté au groupe {A, B}.
+        Doit être appelé sous _query_lock (utilise self.cursor directement).
+        """
+        members = {r[0] for r in self.cursor.execute(
+            "SELECT ref_piece FROM piece_equivalence_groups WHERE group_id = ?", [group_id]
+        ).fetchall()}
+        to_add = set()
+        for member in members:
+            for pred in self.get_all_predecessors(member):
+                if pred not in members:
+                    to_add.add(pred)
+        for pred in to_add:
+            self.cursor.execute(
+                "INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)", [pred]
+            )
+            self.cursor.execute(
+                "INSERT OR IGNORE INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)",
+                [group_id, pred]
+            )
+
     def add_equivalence(self, ref_a: str, ref_b: str) -> tuple:
         """
         Créer un lien d'équivalence symétrique entre ref_a et ref_b.
@@ -768,6 +793,12 @@ class DatabaseManager:
                         "UPDATE piece_equivalence_groups SET group_id = ? WHERE group_id = ?", [gid_a, gid_b]
                     )
                 # else: déjà dans le même groupe
+
+                # Propager les prédécesseurs (transitivité supersession → équivalence)
+                final_gid = self.cursor.execute(
+                    "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_a]
+                ).fetchone()[0]
+                self._propagate_predecessors_to_group(final_gid)
                 self.conn.commit()
             return True, ""
         except Exception as e:
@@ -1161,6 +1192,19 @@ class DatabaseManager:
                     "INSERT OR REPLACE INTO piece_supersessions(ref_old, ref_new) VALUES (?, ?)",
                     [ref_old, ref_new]
                 )
+                # Propager : si ref_new appartient à un groupe d'équivalence, y ajouter ref_old
+                gid_row = self.cursor.execute(
+                    "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_new]
+                ).fetchone()
+                if gid_row:
+                    self.cursor.execute(
+                        "INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)", [ref_old]
+                    )
+                    self.cursor.execute(
+                        "INSERT OR IGNORE INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)",
+                        [gid_row[0], ref_old]
+                    )
+                    self._propagate_predecessors_to_group(gid_row[0])
                 self.conn.commit()
             return True, ""
         except Exception as e:
