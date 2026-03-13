@@ -2267,12 +2267,10 @@ class MainWindow(QMainWindow):
 ### Sur le poste cible (macOS)
 **Prérequis** : Python 3.10+ (`python3 --version` pour vérifier)
 
-```
-bash install.sh   # une seule fois — crée le venv et installe les dépendances
-bash launch.sh    # pour lancer l'application
-```
+1. **Double-cliquez sur `install.command`** — installe les dépendances (une seule fois)
+2. **Double-cliquez sur `1001pieces_autofill.command`** — lance l'application
 
-> L'installation ne nécessite pas de connexion internet (les wheels sont inclus).
+> Aucune connexion internet nécessaire sur le poste cible (les wheels sont inclus).
 
 ---
 
@@ -2465,8 +2463,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     f"Dossier : {result['path']}\n"
                     f"Taille  : {result['size_mb']:.0f} Mo\n\n"
                     f"Sur le poste cible :\n"
-                    f"  1. bash install.sh   (une seule fois)\n"
-                    f"  2. bash launch.sh    (pour lancer)",
+                    f"  1. Double-clic sur install.command   (une seule fois)\n"
+                    f"  2. Double-clic sur 1001pieces_autofill.command",
                     "Export réussi",
                 )
             else:

@@ -131,30 +131,34 @@ venv/bin/pip install --quiet --no-index --find-links=wheels -r requirements_froz
 
 echo ""
 echo "✅ Installation terminée."
-echo "   Pour lancer l'application : double-cliquez sur launch.sh"
-echo "   ou tapez : bash launch.sh"
+echo "   Pour lancer l'application : double-cliquez sur 1001pieces_autofill.command"
+echo ""
+read -n 1 -s -r -p "Appuyez sur une touche pour fermer cette fenêtre…"
 """
-    script = dest / 'install.sh'
-    script.write_text(content, encoding='utf-8')
-    script.chmod(0o755)
+    for name in ('install.command',):
+        script = dest / name
+        script.write_text(content, encoding='utf-8')
+        script.chmod(0o755)
 
 
 def _write_launch_script(dest: Path):
-    """Crée launch.sh sur la machine cible."""
+    """Crée 1001pieces_autofill.command (double-cliquable) sur la machine cible."""
     content = """\
 #!/usr/bin/env bash
-# launch.sh — Lancement de 1001pieces_autofill
+# 1001pieces_autofill.command — Lancement (double-clic depuis le Finder)
 cd "$(dirname "$0")"
 
 if [ ! -d "venv" ]; then
-    echo "L'environnement virtuel est absent. Exécutez install.sh d'abord."
+    echo "⚠️  L'environnement virtuel est absent."
+    echo "   Double-cliquez d'abord sur install.command"
+    read -n 1 -s -r -p "Appuyez sur une touche pour fermer…"
     exit 1
 fi
 
 source venv/bin/activate
 python3 run.py
 """
-    script = dest / 'launch.sh'
+    script = dest / '1001pieces_autofill.command'
     script.write_text(content, encoding='utf-8')
     script.chmod(0o755)
 
@@ -178,24 +182,16 @@ Export généré le : **{export_date}**
 
 ## Installation (une seule fois)
 
-Ouvrez un Terminal dans ce dossier, puis tapez :
+**Double-cliquez sur `install.command`** dans le Finder.
 
-```bash
-bash install.sh
-```
-
-Ce script crée un environnement virtuel et installe toutes les dépendances
-**sans connexion internet** (les fichiers .whl sont dans le dossier `wheels/`).
+Une fenêtre Terminal s'ouvre, installe les dépendances et se ferme automatiquement.
+Aucune connexion internet nécessaire (les fichiers `.whl` sont inclus dans `wheels/`).
 
 ---
 
 ## Lancement
 
-```bash
-bash launch.sh
-```
-
-Ou double-cliquez sur `1001pieces_autofill.command` si présent.
+**Double-cliquez sur `1001pieces_autofill.command`** dans le Finder.
 
 ---
 
@@ -207,14 +203,14 @@ Ou double-cliquez sur `1001pieces_autofill.command` si présent.
 | `data/appareils.db` | Base de données (598 000+ enregistrements) |
 | `wheels/` | Dépendances pip pré-téléchargées |
 | `requirements_frozen.txt` | Versions exactes des dépendances |
-| `install.sh` | Script d'installation |
-| `launch.sh` | Script de lancement |
+| `install.command` | Installation (double-clic, une seule fois) |
+| `1001pieces_autofill.command` | Lancement (double-clic) |
 
 ---
 
 ## Dépannage
 
-- **"venv absent"** → relancez `bash install.sh`
+- **"venv absent"** → double-cliquez à nouveau sur `install.command`
 - **Erreur PyQt5** → assurez-vous d'utiliser Python 3.10+
 - **Base de données absente** → vérifiez que `data/appareils.db` est présent
 """
