@@ -136,6 +136,13 @@ class ToolbarService:
         fts5_action.triggered.connect(getattr(self.main_window, '_open_fts5_manager', lambda: None))
         gestion_menu.addAction(fts5_action)
 
+        gestion_menu.addSeparator()
+
+        export_action = QAction("📦 Exporter l'application…", self.main_window)
+        export_action.setToolTip("Créer un dossier portable pour installation sur une autre machine")
+        export_action.triggered.connect(getattr(self.main_window, '_export_application', lambda: None))
+        gestion_menu.addAction(export_action)
+
         gestion_btn.setMenu(gestion_menu)
         toolbar.addWidget(gestion_btn)
     
