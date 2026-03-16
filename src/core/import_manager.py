@@ -402,25 +402,17 @@ class ImportDialog(QDialog):
         self.format_warning_widget.setVisible(False)
         format_layout.addWidget(self.format_warning_widget)
 
-        # Conteneur de mapping de colonnes (v3.30.0 — masqué par défaut)
-        self.mapping_container = QWidget()
-        self.mapping_container_layout = QVBoxLayout(self.mapping_container)
-        self.mapping_container_layout.setContentsMargins(0, 4, 0, 0)
-        self.mapping_container_layout.setSpacing(6)
-        self.mapping_container.setVisible(False)
-        format_layout.addWidget(self.mapping_container)
-
-        # Aperçu des données avec hauteur augmentée
+        # Aperçu des données (au-dessus du mapping)
         self.preview_text = QTextEdit()
         self.preview_text.setMinimumHeight(80)
         self.preview_text.setMaximumHeight(100)
         self.preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 11px;")
         self.preview_text.setReadOnly(True)
         format_layout.addWidget(self.preview_text)
-        
+
         # Espacement visuel augmenté entre l'aperçu et les options
         format_layout.addSpacing(5)
-        
+
         # Options techniques clairement séparées sous l'aperçu
         options_layout = QVBoxLayout()
         options_layout.setContentsMargins(10, 10, 10, 5)  # Marges pour séparer visuellement
@@ -452,7 +444,15 @@ class ImportDialog(QDialog):
         self.headers_checkbox.hide()  # Caché par défaut, affiché seulement pour CSV
         
         format_layout.addLayout(options_layout)
-        
+
+        # Conteneur de mapping de colonnes (v3.30.0 — sous l'aperçu et les options)
+        self.mapping_container = QWidget()
+        self.mapping_container_layout = QVBoxLayout(self.mapping_container)
+        self.mapping_container_layout.setContentsMargins(0, 4, 0, 0)
+        self.mapping_container_layout.setSpacing(6)
+        self.mapping_container.setVisible(False)
+        format_layout.addWidget(self.mapping_container)
+
         format_group.setLayout(format_layout)
         layout.addWidget(format_group)
         
@@ -1024,15 +1024,61 @@ class ImportDialog(QDialog):
         # Grouper les fichiers par structure
         self._file_groups = self._group_files_by_columns()
 
-        # Masquer les widgets legacy
+        # Masquer les labels legacy de format (le mapping les remplace)
         self.format_info_label.setVisible(False)
         self.format_desc_label.setVisible(False)
         self.format_warning_widget.setVisible(False)
-        self.preview_text.setVisible(False)
-        self.third_col_widget.setVisible(False)
-        self.headers_checkbox.setVisible(False)
 
-        # Vider et afficher le conteneur de mapping
+        # ── Aperçu : utiliser le premier fichier du premier groupe (trié par nb colonnes) ──
+        sorted_groups = sorted(self._file_groups.items())
+        first_group_files = sorted_groups[0][1] if sorted_groups else []
+        if first_group_files:
+            _, sample_data_preview = self._safe_analyze_file_format(first_group_files[0])
+        else:
+            sample_data_preview = []
+
+        if sample_data_preview:
+            n_preview = len(sample_data_preview[0]) if sample_data_preview else 0
+            header_line = "".join(f"Col{i+1:<15} " for i in range(n_preview))
+            lines = [f"{'='*60}", header_line, f"{'='*60}"]
+            for row in sample_data_preview:
+                line = ""
+                for j in range(min(n_preview, len(row))):
+                    val = str(row[j])
+                    cell = (val[:12] + "...") if len(val) > 12 else val
+                    line += f"{cell:<15} "
+                lines.append(line)
+            self.preview_text.setPlainText("\n".join(lines))
+            self.preview_text.setVisible(True)
+        else:
+            self.preview_text.setVisible(False)
+
+        # ── Options : third_col_widget si groupe reconnu à 3 colonnes ──
+        has_3col_recognized = any(
+            n == 3 and self._is_format_recognized(n)
+            for n in self._file_groups
+        )
+        if has_3col_recognized:
+            has_pdf_3col = any(
+                f.type == FileType.PDF
+                for f in self._file_groups.get(3, [])
+            )
+            self.third_col_label.setText(
+                "Destination Description:" if has_pdf_3col else "Destination 3ème colonne:"
+            )
+            self.third_col_widget.setVisible(True)
+        else:
+            self.third_col_widget.setVisible(False)
+
+        # ── Option en-têtes CSV ──
+        has_csv = any(
+            f.type == FileType.CSV
+            for files in self._file_groups.values()
+            for f in files
+        )
+        self.headers_checkbox.setVisible(has_csv)
+
+        # ── Vider et afficher le conteneur de mapping ──
         while self.mapping_container_layout.count():
             item = self.mapping_container_layout.takeAt(0)
             if item.widget():
