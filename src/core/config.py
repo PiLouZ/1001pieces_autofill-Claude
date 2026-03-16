@@ -107,6 +107,9 @@ class Config:
     # Feature Flags - Phase 5 Search Optimization
     SEARCH_PIECES_ONLY = True  # Phase 5: Recherche principale → pièces uniquement (désactivé = comportement actuel)
 
+    # Feature Flags - v3.30.0 Mapping de colonnes à l'import
+    ENABLE_COLUMN_MAPPING = False  # Mapping manuel des colonnes (désactivé pendant développement)
+
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3
     # Toutes les couleurs de l'application pour éviter hardcoding dispersé

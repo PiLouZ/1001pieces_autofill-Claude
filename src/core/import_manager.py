@@ -94,6 +94,13 @@ class ImportConfiguration:
     # Références à marquer obsolètes lors de l'import
     obsolete_refs: Optional[List[str]] = None       # Réfs à marquer comme obsolètes après import
 
+    # Mapping personnalisé des colonnes (v3.30.0)
+    # None = comportement positionnel actuel (défaut, zéro régression)
+    # Clé   : nombre de colonnes du groupe de fichiers
+    # Valeur : liste de N destinations (une par colonne détectée)
+    # Exemple : {3: ["commercial_ref", "ref_modele", "ignore"]}
+    column_mapping: Optional[Dict[int, List[str]]] = None
+
     def __post_init__(self):
         if self.label_config is None:
             self.label_config = LabelConfiguration()
@@ -2110,8 +2117,21 @@ class ImportManager:
         """Parser une ligne de données selon la configuration"""
         if not row:
             return None
-        
-        # Mode basique : détecter automatiquement selon le nombre de colonnes
+
+        # Mode mapping personnalisé (v3.30.0) — uniquement si explicitement renseigné
+        n = len(row)
+        if config.column_mapping and n in config.column_mapping:
+            data = {}
+            for i, field in enumerate(config.column_mapping[n]):
+                if i < n and field != "ignore" and row[i] is not None:
+                    data[field] = str(row[i]).strip()
+            if not any(v for v in data.values() if v):
+                return None
+            if not data.get('type') or not data.get('manufacturer'):
+                self._try_auto_complete(data)
+            return data
+
+        # Mode positionnel — comportement actuel inchangé (fallback)
         data = {}
         
         if len(row) >= 1:
