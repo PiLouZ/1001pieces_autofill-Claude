@@ -766,11 +766,76 @@ class ImportDialog(QDialog):
 
         return detected_columns, sample_data
 
+    # ── Helpers groupement et mapping (v3.30.0) ──────────────────────────────
+
+    def _group_files_by_columns(self) -> Dict[int, list]:
+        """
+        Analyser tous les fichiers et les grouper par nombre de colonnes détecté.
+        Clé 0 = format non reconnu (fichier vide ou illisible).
+        """
+        groups: Dict[int, list] = {}
+        for file in self.import_config.files:
+            n_cols, _ = self._safe_analyze_file_format(file)
+            groups.setdefault(n_cols, []).append(file)
+        return groups
+
+    @staticmethod
+    def _is_format_recognized(n_cols: int) -> bool:
+        """Un format est reconnu si le nombre de colonnes est >= 1."""
+        return n_cols >= 1
+
+    def _get_format_description(self, n_cols: int, files: list) -> str:
+        """Description textuelle du format pour un groupe de fichiers."""
+        if n_cols == 1:
+            return "• 1 colonne → Réf. Modèle uniquement"
+        elif n_cols == 2:
+            return "• 2 colonnes → Réf. Modèle + Réf. Commerciale"
+        elif n_cols == 3:
+            if any(f.type == FileType.PDF for f in files):
+                return "• 3 colonnes → Réf. technique + Réf. commerciale + Description"
+            return "• 3 colonnes → Réf. Modèle + Réf. Commerciale + Autre"
+        elif n_cols >= 4:
+            return "• 4+ colonnes → Format complet (Type, Fabricant, Réf. Modèle, Réf. Commerciale, ...)"
+        return ""
+
+    def _get_default_mapping(self, n_cols: int, files: list) -> List[str]:
+        """
+        Retourne le mapping positionnel par défaut pour un groupe.
+        Utilisé pour pré-remplir les combos du widget de mapping (Phase 3).
+        """
+        if n_cols == 1:
+            return ["ref_modele"]
+        elif n_cols == 2:
+            return ["ref_modele", "commercial_ref"]
+        elif n_cols == 3:
+            return ["ref_modele", "commercial_ref", "ignore"]
+        elif n_cols >= 4:
+            mapping = ["type", "manufacturer", "ref_modele", "commercial_ref"]
+            mapping += ["ignore"] * (n_cols - 4)
+            return mapping
+        return ["ignore"] * max(n_cols, 1)
+
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _analyze_formats_and_preview(self):
         """Analyser les formats des fichiers et générer l'aperçu des données"""
         if not self.import_config.files:
             return
 
+        from .config import Config
+        if not Config.ENABLE_COLUMN_MAPPING:
+            # Comportement actuel inchangé
+            self._analyze_formats_and_preview_legacy()
+            return
+
+        # Grouper les fichiers par structure (Phase 2+)
+        self._file_groups = self._group_files_by_columns()
+        # Phase 3 : création des widgets de mapping par groupe
+        # En attendant, affichage legacy
+        self._analyze_formats_and_preview_legacy()
+
+    def _analyze_formats_and_preview_legacy(self):
+        """Comportement historique : analyse le premier fichier pour le format général"""
         # Analyser le premier fichier pour déterminer le format général
         first_file = self.import_config.files[0]
         detected_columns, sample_data = self._safe_analyze_file_format(first_file)
