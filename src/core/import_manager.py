@@ -153,8 +153,8 @@ class MappingGroupWidget(QWidget):
     def _build_ui(self, n_cols, files, sample_data, is_recognized, default_mapping):
         import os
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 2, 0, 2)
-        outer.setSpacing(4)
+        outer.setContentsMargins(0, 1, 0, 1)
+        outer.setSpacing(2)
 
         file_names = self._format_file_names(files)
         col_label = f"{n_cols} colonne{'s' if n_cols > 1 else ''}"
@@ -371,6 +371,7 @@ class ImportDialog(QDialog):
         # Section format reconnu et aperçu des données (repositionnée ici)
         format_group = QGroupBox("Format reconnu et aperçu")
         format_layout = QVBoxLayout()
+        format_layout.setSpacing(4)
         
         self.format_info_label = QLabel()
         self.format_info_label.setStyleSheet("font-weight: bold;")
@@ -405,12 +406,11 @@ class ImportDialog(QDialog):
         self.format_warning_widget.setVisible(False)
         format_layout.addWidget(self.format_warning_widget)
 
-        # Aperçu des données (au-dessus du mapping)
+        # Aperçu des données (hauteur auto-ajustée selon contenu — voir _set_preview_text)
         self.preview_text = QTextEdit()
-        self.preview_text.setMinimumHeight(80)
-        self.preview_text.setMaximumHeight(100)
         self.preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 11px;")
         self.preview_text.setReadOnly(True)
+        self.preview_text.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         format_layout.addWidget(self.preview_text)
 
         # Options techniques sous l'aperçu
@@ -419,9 +419,9 @@ class ImportDialog(QDialog):
         
         # Gestion de la 3ème colonne si applicable
         self.third_col_widget = QWidget()
-        self.third_col_widget.setStyleSheet("background-color: #fff; border: 1px solid #e9ecef; border-radius: 4px; padding: 5px;")
+        self.third_col_widget.setStyleSheet("background-color: #fff; border: 1px solid #e9ecef; border-radius: 4px;")
         third_col_layout = QHBoxLayout(self.third_col_widget)
-        third_col_layout.setContentsMargins(10, 8, 10, 8)
+        third_col_layout.setContentsMargins(10, 3, 10, 3)
         
         self.third_col_label = QLabel("Destination 3ème colonne:")
         self.third_col_label.setStyleSheet("font-weight: bold;")
@@ -448,8 +448,8 @@ class ImportDialog(QDialog):
         # Conteneur de mapping de colonnes (v3.30.0 — sous l'aperçu et les options)
         self.mapping_container = QWidget()
         self.mapping_container_layout = QVBoxLayout(self.mapping_container)
-        self.mapping_container_layout.setContentsMargins(0, 4, 0, 0)
-        self.mapping_container_layout.setSpacing(6)
+        self.mapping_container_layout.setContentsMargins(0, 2, 0, 0)
+        self.mapping_container_layout.setSpacing(4)
         self.mapping_container.setVisible(False)
         format_layout.addWidget(self.mapping_container)
 
@@ -573,14 +573,8 @@ class ImportDialog(QDialog):
         base_height = 40   # Hauteur de base réduite pour les marges (20px top + 20px bottom)
         calculated_height = base_height + (num_files * line_height)
         
-        # Limiter la hauteur pour éviter une fenêtre trop grande
-        min_height = 150
-        max_height = 200
-        adaptive_height = max(min_height, min(calculated_height, max_height))
-        
-        scroll_area.setMinimumHeight(adaptive_height)
-        if calculated_height > max_height:
-            scroll_area.setMaximumHeight(max_height)
+        scroll_area.setMinimumHeight(80)
+        scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         scroll_widget = QWidget()
         scroll_widget.setObjectName("scroll_content")
@@ -597,7 +591,8 @@ class ImportDialog(QDialog):
         
         individual_layout.addWidget(scroll_area)
         individual_group.setLayout(individual_layout)
-        layout.addWidget(individual_group)
+        individual_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(individual_group, 1)  # stretch=1 → prend l'espace vertical disponible
         
         # Section aperçu des données supprimée pour améliorer la lisibilité
         
@@ -803,6 +798,12 @@ class ImportDialog(QDialog):
                 field.setCompleter(completer)
         except Exception as e:
             app_logger.warning(f"Autocomplétion succession non disponible : {e}")
+
+    def _set_preview_text(self, text: str):
+        """Définit le texte de l'aperçu et ajuste la hauteur pour éviter l'ascenseur."""
+        self.preview_text.setPlainText(text)
+        n_lines = text.count('\n') + 1 if text else 0
+        self.preview_text.setFixedHeight(max(n_lines * 16 + 6, 30))
 
     def _toggle_succ(self):
         """Ouvre/ferme la section Succession."""
@@ -1083,7 +1084,7 @@ class ImportDialog(QDialog):
                     cell = (val[:12] + "...") if len(val) > 12 else val
                     line += f"{cell:<15} "
                 lines.append(line)
-            self.preview_text.setPlainText("\n".join(lines))
+            self._set_preview_text("\n".join(lines))
             self.preview_text.setVisible(True)
         else:
             self.preview_text.setVisible(False)
@@ -1209,8 +1210,8 @@ class ImportDialog(QDialog):
             if len(first_file.data or []) > 3:
                 preview_content += f"\n... et {len(first_file.data or []) - 3} autres lignes"
             
-            self.preview_text.setPlainText(preview_content)
-        
+            self._set_preview_text(preview_content)
+
         # Afficher les options spécifiques selon le format
         if detected_columns == 3:
             self.third_col_widget.show()
