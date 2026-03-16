@@ -1,6 +1,6 @@
 #!/bin/bash
 # 🚀 Lanceur pour 1001pieces_autofill
-# Double-cliquez sur ce fichier pour ouvrir l'application
+# Double-cliquez sur ce fichier pour ouvrir l'application avec la console
 
 # Aller dans le répertoire du script
 cd "$(dirname "$0")"
@@ -20,8 +20,10 @@ if [ ! -f "run.py" ]; then
     exit 1
 fi
 
-# Lancer l'application en arrière-plan et fermer la console
-python3 run.py &
-disown $!
-osascript -e 'tell application "Terminal" to close front window' > /dev/null 2>&1
-exit 0
+# Lancer l'application — console visible pour voir les logs
+echo "=== 1001pieces_autofill — console de debug ==="
+echo ""
+python3 run.py
+echo ""
+echo "=== Application terminée ==="
+read -p "Appuyez sur Entrée pour fermer..."

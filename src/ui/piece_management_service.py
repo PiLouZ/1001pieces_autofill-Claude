@@ -12,7 +12,9 @@ Responsabilités:
 
 from typing import Optional, List, Dict, Any, Set
 from .qt_imports import QListWidgetItem, QMessageBox
-from .qt_imports import Qt
+from .qt_imports import Qt, QFrame
+from .pieces_list_service import _truncate_refs_str, _link_if_truncated, PieceRelationsPopup
+from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -160,12 +162,12 @@ class PieceManagementService:
 
         # Dialog pour éditer la référence et le libellé
         from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                                 QPushButton, QGroupBox, QInputDialog, QMessageBox)
+                                 QPushButton, QGroupBox, QInputDialog, QMessageBox, QFrame)
 
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle("Éditer la pièce")
         dialog.setModal(True)
-        dialog.resize(460, 400)
+        dialog.resize(520, 560)
 
         layout = QVBoxLayout(dialog)
 
@@ -186,27 +188,71 @@ class PieceManagementService:
         # ── Section Succession ────────────────────────────────────────────
         succ_group = QGroupBox("Succession de référence")
         succ_layout = QVBoxLayout()
-        succ_layout.setSpacing(4)
+        succ_layout.setSpacing(6)
 
+        # Message d'état (obsolète / ✓ / rien)
         succ_status = QLabel()
         succ_status.setWordWrap(True)
         succ_status.setStyleSheet("font-size: 12px;")
         succ_layout.addWidget(succ_status)
 
-        succ_btn_layout = QHBoxLayout()
-        btn_superseded = QPushButton("Remplacée par…")
-        btn_obsolete   = QPushButton("Marquer obsolète")
+        # Sub-section "↳ Remplacée par"
+        superseded_hdr = QHBoxLayout()
+        lbl_sup = QLabel("↳ Remplacée par")
+        lbl_sup.setStyleSheet("color: #e67e22; font-weight: bold; font-size: 11px;")
+        superseded_hdr.addWidget(lbl_sup)
+        superseded_hdr.addStretch()
+        btn_superseded = QPushButton("+ Déclarer remplacée par…")
+        btn_superseded.setStyleSheet(
+            "QPushButton { color: #e67e22; font-size: 11px; border: none; }"
+            "QPushButton:hover { text-decoration: underline; }"
+        )
+        btn_superseded.setFlat(True)
+        superseded_hdr.addWidget(btn_superseded)
+        succ_layout.addLayout(superseded_hdr)
+
+        superseded_by_tags = RefTagList()
+        succ_layout.addWidget(superseded_by_tags)
+
+        # Séparateur
+        sep_s = QFrame()
+        sep_s.setFrameShape(QFrame.HLine)
+        sep_s.setStyleSheet("color: #dee2e6;")
+        succ_layout.addWidget(sep_s)
+
+        # Sub-section "↑ Remplace"
+        replaces_hdr = QHBoxLayout()
+        lbl_rep = QLabel("↑ Remplace")
+        lbl_rep.setStyleSheet("color: #2980b9; font-weight: bold; font-size: 11px;")
+        replaces_hdr.addWidget(lbl_rep)
+        replaces_hdr.addStretch()
+        btn_replaces = QPushButton("+ Ajouter une référence remplacée…")
+        btn_replaces.setStyleSheet(
+            "QPushButton { color: #2980b9; font-size: 11px; border: none; }"
+            "QPushButton:hover { text-decoration: underline; }"
+        )
+        btn_replaces.setFlat(True)
+        replaces_hdr.addWidget(btn_replaces)
+        succ_layout.addLayout(replaces_hdr)
+
+        replaces_tags = RefTagList()
+        succ_layout.addWidget(replaces_tags)
+
+        # Bouton obsolète
+        succ_action_row = QHBoxLayout()
+        btn_obsolete = QPushButton("Marquer obsolète")
         btn_obsolete.setStyleSheet("QPushButton { color: #E05252; }")
-        btn_cancel_s   = QPushButton("Annuler succession")
-        succ_btn_layout.addWidget(btn_superseded)
-        succ_btn_layout.addWidget(btn_obsolete)
-        succ_btn_layout.addWidget(btn_cancel_s)
-        succ_btn_layout.addStretch()
-        succ_layout.addLayout(succ_btn_layout)
+        succ_action_row.addWidget(btn_obsolete)
+        succ_action_row.addStretch()
+        succ_layout.addLayout(succ_action_row)
+
         succ_group.setLayout(succ_layout)
         layout.addWidget(succ_group)
 
         db = self.main_window.db_manager
+
+        def _succ_history(msg):
+            self.main_window.user_interaction_service.add_to_history(msg)
 
         def _refresh_succ():
             info = db.get_piece_status(ref_piece)
@@ -215,42 +261,62 @@ class PieceManagementService:
             ref_new = info.get('ref_new')
             btn_obsolete.setText("Retirer l'obsolescence" if is_obsolete else "Marquer obsolète")
             predecessors = db.get_all_predecessors(ref_piece)
-            if status == 'superseded':
-                text = f"↳ Remplacée par  {ref_new}"
-                if is_obsolete:
-                    text += "  (⚠ obsolète)"
-                succ_status.setText(text)
-                succ_status.setStyleSheet("color: #e67e22; font-size: 12px; font-weight: bold;")
-                btn_cancel_s.setEnabled(True)
-            elif status == 'obsolete':
-                succ_status.setText("⚠ Obsolète — aucun remplacement")
+
+            # Chip "Remplacée par" (0 ou 1)
+            superseded_by_tags.set_refs([ref_new] if ref_new else [], '#e67e22')
+
+            # Chips "Remplace" (N prédécesseurs)
+            replaces_tags.set_refs(predecessors, '#2980b9')
+
+            # Message d'état
+            if is_obsolete:
+                succ_status.setText("⚠ Obsolète")
                 succ_status.setStyleSheet("color: #c0392b; font-size: 12px; font-weight: bold;")
-                btn_cancel_s.setEnabled(False)
-            elif predecessors:
-                refs_old = ", ".join(predecessors)
-                succ_status.setText(f"↑ Remplace  {refs_old}")
-                succ_status.setStyleSheet("color: #2980b9; font-size: 12px; font-weight: bold;")
-                btn_cancel_s.setEnabled(False)
-            else:
+            elif not ref_new and not predecessors:
                 succ_status.setText("✓ Référence courante")
                 succ_status.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
-                btn_cancel_s.setEnabled(False)
-
-        def _succ_history(msg):
-            self.main_window.user_interaction_service.add_to_history(msg)
+            else:
+                succ_status.setText("")
 
         def _on_superseded():
-            ref_new, ok = QInputDialog.getText(
-                dialog, "Référence de remplacement",
-                f"Référence qui remplace '{ref_piece}' :")
-            if not ok or not ref_new.strip():
+            pick = PiecePickerDialog(db, dialog, exclude_ref=ref_piece,
+                                     title=f"Référence qui remplace '{ref_piece}'")
+            if pick.exec_() != QDialog.Accepted:
                 return
-            success, error = db.add_supersession(ref_piece, ref_new.strip())
+            ref_new = pick.selected_ref()
+            if not ref_new:
+                return
+            success, error = db.add_supersession(ref_piece, ref_new)
             if success:
-                _succ_history(f"Succession :\n==> '{ref_piece}' → '{ref_new.strip()}'")
+                _succ_history(f"Succession :\n==> '{ref_piece}' → '{ref_new}'")
                 _refresh_succ()
             else:
                 QMessageBox.warning(dialog, "Erreur de succession", error)
+
+        def _on_replaces():
+            pick = PiecePickerDialog(db, dialog, exclude_ref=ref_piece,
+                                     title=f"Référence remplacée par '{ref_piece}'")
+            if pick.exec_() != QDialog.Accepted:
+                return
+            ref_old = pick.selected_ref()
+            if not ref_old:
+                return
+            success, error = db.add_supersession(ref_old, ref_piece)
+            if success:
+                _succ_history(f"Succession :\n==> '{ref_old}' → '{ref_piece}'")
+                _refresh_succ()
+            else:
+                QMessageBox.warning(dialog, "Erreur de succession", error)
+
+        def _on_remove_superseded_by(ref_new_chip: str):
+            db.remove_supersession(ref_piece)
+            _succ_history(f"Succession :\n==> '{ref_piece}' → (succession annulée)")
+            _refresh_succ()
+
+        def _on_remove_replaces(ref_old_chip: str):
+            db.remove_supersession(ref_old_chip)
+            _succ_history(f"Succession :\n==> '{ref_old_chip}' → (succession annulée)")
+            _refresh_succ()
 
         def _on_obsolete():
             appareils = db.get_appareils_for_piece_ref(ref_piece)
@@ -278,61 +344,61 @@ class PieceManagementService:
             else:
                 QMessageBox.warning(dialog, "Erreur", "Impossible de modifier le statut d'obsolescence.")
 
-        def _on_cancel_succ():
-            if QMessageBox.question(
-                dialog, "Annuler la succession",
-                f"Supprimer le lien de succession pour '{ref_piece}' ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            ) != QMessageBox.StandardButton.Yes:
-                return
-            db.remove_supersession(ref_piece)
-            _succ_history(f"Succession :\n==> '{ref_piece}' → (succession annulée)")
-            _refresh_succ()
-
         btn_superseded.clicked.connect(_on_superseded)
+        btn_replaces.clicked.connect(_on_replaces)
+        superseded_by_tags.ref_removed.connect(_on_remove_superseded_by)
+        replaces_tags.ref_removed.connect(_on_remove_replaces)
         btn_obsolete.clicked.connect(_on_obsolete)
-        btn_cancel_s.clicked.connect(_on_cancel_succ)
         _refresh_succ()  # initialisation
 
         # ── Section Équivalences ────────────────────────────────────────────
         equiv_group = QGroupBox("Équivalences")
         equiv_layout = QVBoxLayout()
-        equiv_layout.setSpacing(4)
+        equiv_layout.setSpacing(6)
 
+        # Message d'état
         equiv_status = QLabel()
         equiv_status.setWordWrap(True)
-        equiv_status.setStyleSheet("font-size: 12px;")
+        equiv_status.setStyleSheet("color: #555555; font-size: 12px;")
         equiv_layout.addWidget(equiv_status)
 
-        equiv_btn_layout = QHBoxLayout()
-        btn_link_equiv   = QPushButton("Lier comme équivalent…")
-        btn_unlink_equiv = QPushButton("Retirer du groupe")
-        btn_unlink_equiv.setStyleSheet("QPushButton { color: #E05252; }")
-        equiv_btn_layout.addWidget(btn_link_equiv)
-        equiv_btn_layout.addWidget(btn_unlink_equiv)
-        equiv_btn_layout.addStretch()
-        equiv_layout.addLayout(equiv_btn_layout)
+        # Header + bouton ajouter
+        equiv_hdr = QHBoxLayout()
+        equiv_hdr.addStretch()
+        btn_link_equiv = QPushButton("+ Ajouter une équivalence…")
+        btn_link_equiv.setStyleSheet(
+            "QPushButton { color: #8e44ad; font-size: 11px; border: none; }"
+            "QPushButton:hover { text-decoration: underline; }"
+        )
+        btn_link_equiv.setFlat(True)
+        equiv_hdr.addWidget(btn_link_equiv)
+        equiv_layout.addLayout(equiv_hdr)
+
+        # Chips équivalences
+        equiv_tags = RefTagList()
+        equiv_layout.addWidget(equiv_tags)
+
         equiv_group.setLayout(equiv_layout)
         layout.addWidget(equiv_group)
 
         def _refresh_equiv():
             equivs = db.get_equivalents(ref_piece)
             if equivs:
-                equiv_status.setText(f"≡ Équivalente à  {', '.join(equivs)}")
-                equiv_status.setStyleSheet("color: #8e44ad; font-size: 12px; font-weight: bold;")
-                btn_unlink_equiv.setEnabled(True)
+                equiv_tags.set_refs(equivs, '#8e44ad')
+                equiv_status.setText("")
             else:
+                equiv_tags.set_refs([])
                 equiv_status.setText("Aucune équivalence")
                 equiv_status.setStyleSheet("color: #555555; font-size: 12px;")
-                btn_unlink_equiv.setEnabled(False)
 
         def _on_link_equiv():
-            ref_b, ok = QInputDialog.getText(
-                dialog, "Référence équivalente",
-                f"Référence équivalente à '{ref_piece}' :")
-            if not ok or not ref_b.strip():
+            pick = PiecePickerDialog(db, dialog, exclude_ref=ref_piece,
+                                     title=f"Référence équivalente à '{ref_piece}'")
+            if pick.exec_() != QDialog.Accepted:
                 return
-            ref_b = ref_b.strip()
+            ref_b = pick.selected_ref()
+            if not ref_b:
+                return
             success = db.add_equivalence(ref_piece, ref_b)
             if success:
                 _succ_history(f"Équivalence :\n==> '{ref_piece}' ≡ '{ref_b}'")
@@ -340,19 +406,13 @@ class PieceManagementService:
             else:
                 QMessageBox.warning(dialog, "Erreur", "Impossible de créer l'équivalence.")
 
-        def _on_unlink_equiv():
-            if QMessageBox.question(
-                dialog, "Retirer du groupe",
-                f"Retirer '{ref_piece}' de son groupe d'équivalence ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            ) != QMessageBox.StandardButton.Yes:
-                return
-            db.remove_equivalence(ref_piece)
-            _succ_history(f"Équivalence :\n==> '{ref_piece}' → (retiré du groupe)")
+        def _on_remove_equiv(equiv_ref: str):
+            db.remove_equivalence(equiv_ref)
+            _succ_history(f"Équivalence :\n==> '{equiv_ref}' → (retiré du groupe)")
             _refresh_equiv()
 
         btn_link_equiv.clicked.connect(_on_link_equiv)
-        btn_unlink_equiv.clicked.connect(_on_unlink_equiv)
+        equiv_tags.ref_removed.connect(_on_remove_equiv)
         _refresh_equiv()  # initialisation
 
         # Boutons OK / Annuler

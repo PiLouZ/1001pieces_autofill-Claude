@@ -4,6 +4,70 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.29.0] - 2026-03-16
+
+### ✨ Gestion des liens pièces repensée — chips + picker
+
+**`PiecePickerDialog` — nouveau dialog de sélection de pièce**
+- Remplace `QInputDialog.getText` partout où l'on saisit une référence pour la succession ou l'équivalence
+- Tableau filtrable en temps réel : ref | libellé | statut (✓ / ⚠ Obsolète / 👻 Fantôme)
+- Tri par colonne, exclusion automatique de la ref courante
+- **Références fantômes** : si le texte saisi ne correspond à aucune pièce existante, un hint `↵ Utiliser « XYZ » comme nouvelle référence fantôme` apparaît — une seule opération suffit (pas de double saisie)
+- Validation au clavier (Entrée) ou double-clic sur une ligne
+
+**`RefTagList` — widget de chips supprimables**
+- Remplace les labels texte dans tous les panneaux succession/équivalence
+- Chaque référence liée s'affiche en ligne individuelle : `[ref monospace]  [libellé gris]  [✕]`
+- Le `✕` est un `QLabel` cliquable (évite la hauteur minimale imposée par macOS sur `QPushButton`)
+- Signal `ref_removed(str)` → suppression immédiate sans confirmation modale pour les opérations unitaires
+
+**Panneaux Succession redessinés** (gestionnaire de pièces + dialogue d'édition)
+- Section **↳ Remplacée par** : 0 ou 1 chip + bouton `+ Déclarer remplacée par…`
+- Section **↑ Remplace** : N chips + bouton `+ Ajouter une référence remplacée…`
+- Mode multi-sélection : basculement automatique vers les boutons batch + `Annuler la succession`
+- Le bouton `Marquer obsolète` (toggle) reste toujours accessible
+
+**Panneau Équivalences redessiné**
+- N chips supprimables individuellement (plus besoin du "Retirer du groupe" global)
+- Bouton `+ Ajouter une équivalence…` ouvre `PiecePickerDialog`
+- `_on_remove_equiv(ref)` : retire un membre spécifique du groupe sans toucher les autres
+
+**Tooltips — Option B**
+- Fond blanc `#ffffff`, bordure `#ced4da`, `border-radius: 6px` via `QToolTip` dans `style_manager.py`
+
+**Liens `… +N` cliquables — `PieceRelationsPopup`**
+- Popup `Qt.Popup | Qt.FramelessWindowHint` affichant la synthèse complète des relations
+- `QTimer.singleShot(0, self.show)` : correction de la fermeture immédiate dans les bannières
+- Disponible dans : liste de pièces, bannières supersession/équivalence, panneaux gestionnaire, dialogue d'édition
+
+---
+
+## [3.28.0] - 2026-03-16
+
+### ✨ Affichage additif des relations, truncation des bannières, obsolète à l'import
+
+**Affichage additif dans `PieceItemWidget` (liste des pièces)**
+- Remplacement du rendu exclusif `if/elif` par des checks indépendants : chaque relation (⚠ Obsolète, ↳ Remplacée, ↑ Remplace, ≡ Équiv.) s'affiche sur sa propre ligne, même en combinaison
+- Hauteur dynamique : `40 + extra_lines × 12 px` (au lieu du binaire 40/52)
+- `_truncate_refs_str(refs_str, max_inline=2)` : helper pour tronquer les listes de refs avec `… +N` et tooltip complet
+
+**Panneau succession — affichage additif**
+- `_refresh_succession_panel` (gestionnaire de pièces) : même logique additive — obsolète + supersédé + prédécesseurs + équivalences affichés simultanément
+- `_refresh_succ` (dialogue d'édition) : idem, avec truncation de la liste des prédécesseurs et tooltip
+
+**Bannières de recherche — truncation**
+- `_truncate_refs(refs, max_inline=3)` dans `table_controller.py` (module-level)
+- Bannière supersession mode `replacing` : liste des prédécesseurs tronquée avec tooltip si > 3 refs
+- Bannière équivalence : liste des équivalents tronquée avec tooltip si > 3 refs
+
+**Import — checkbox "Marquer obsolète"**
+- `ImportConfiguration.obsolete_refs: List[str]` — nouveau champ pour les refs à marquer obsolètes
+- Dialogue import fichier unique : checkbox "Marquer cette référence comme obsolète" dans le groupe Succession
+- Dialogue import multi-fichiers : checkbox "Obsolète" par ligne de fichier (à côté d'"Équivalente")
+- `_apply_succession_from_config` : appelle `db_manager.mark_obsolete()` pour chaque ref de `obsolete_refs`
+
+---
+
 ## [3.27.0] - 2026-03-13
 
 ### ✨ Équivalences, export bannières, refonte gestionnaire de pièces

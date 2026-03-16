@@ -457,8 +457,19 @@ class StyleManager:
             padding: 8px 12px;
         }
 
+        /* === TOOLTIPS === */
+        QToolTip {
+            background-color: #ffffff;
+            color: #2c3e50;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-family: -apple-system, 'SF Pro Display', system-ui, 'Helvetica Neue', sans-serif;
+        }
+
         /* === ANIMATIONS SUBTILES === */
         /* Transitions not supported in PyQt5 */
-        
+
         /* Transitions not supported in PyQt5 - removed */
         """

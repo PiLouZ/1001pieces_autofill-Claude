@@ -91,6 +91,9 @@ class ImportConfiguration:
     # Équivalences déclarées lors de l'import (multi-fichiers)
     equivalence_refs: Optional[List[str]] = None    # Réfs cochées comme équivalentes à la courante (ou entre elles si pas de courante)
 
+    # Références à marquer obsolètes lors de l'import
+    obsolete_refs: Optional[List[str]] = None       # Réfs à marquer comme obsolètes après import
+
     def __post_init__(self):
         if self.label_config is None:
             self.label_config = LabelConfiguration()
@@ -100,6 +103,8 @@ class ImportConfiguration:
             self.individual_labels = {}
         if self.equivalence_refs is None:
             self.equivalence_refs = []
+        if self.obsolete_refs is None:
+            self.obsolete_refs = []
 
 
 class ImportDialog(QDialog):
@@ -396,7 +401,9 @@ class ImportDialog(QDialog):
         self.succ_replaced_by_input = None
         self._succ_button_group = None
         self._succ_radio_files = []
-        self._equiv_checkboxes = []   # [(QCheckBox, ImportFile), ...]
+        self._equiv_checkboxes = []    # [(QCheckBox, ImportFile), ...]
+        self._obsolete_checkbox = None # Fichier unique : checkbox "Marquer obsolète"
+        self._obsolete_checkboxes = [] # Multi-fichiers : [(QCheckBox, ImportFile), ...]
 
         if len(self.import_config.files) == 1:
             succ_group = QGroupBox("Succession (optionnel)")
@@ -428,6 +435,17 @@ class ImportDialog(QDialog):
             self.succ_replaced_by_input.setMinimumHeight(30)
             row2.addWidget(self.succ_replaced_by_input)
             succ_layout.addLayout(row2)
+
+            row3 = QHBoxLayout()
+            self._obsolete_checkbox = QCheckBox("Marquer cette référence comme obsolète")
+            self._obsolete_checkbox.setToolTip(
+                "Cochez si cette pièce est obsolète (plus fabriquée).\n"
+                "Elle restera visible mais affichera ⚠ Obsolète."
+            )
+            self._obsolete_checkbox.setStyleSheet("color: #c0392b; font-size: 11px;")
+            row3.addWidget(self._obsolete_checkbox)
+            row3.addStretch()
+            succ_layout.addLayout(row3)
 
             succ_group.setLayout(succ_layout)
             layout.addWidget(succ_group)
@@ -518,6 +536,12 @@ class ImportDialog(QDialog):
                 equiv_check.setStyleSheet("font-size: 11px; color: #6c757d;")
                 self._equiv_checkboxes.append((equiv_check, file))
                 file_layout.addWidget(equiv_check)
+
+                obs_check = QCheckBox("Obsolète")
+                obs_check.setToolTip("Marquer cette référence comme obsolète (⚠ plus fabriquée)")
+                obs_check.setStyleSheet("font-size: 11px; color: #c0392b;")
+                self._obsolete_checkboxes.append((obs_check, file))
+                file_layout.addWidget(obs_check)
 
             # Ajouter le conteneur avec hauteur fixe au lieu du layout directement
             self.individual_refs_widget.addWidget(file_container)
@@ -659,6 +683,22 @@ class ImportDialog(QDialog):
                     ref = config.individual_references.get(file.path, '') or ''
                     if ref:
                         config.equivalence_refs.append(ref)
+
+        # Obsolète — fichier unique
+        if self._obsolete_checkbox is not None and self._obsolete_checkbox.isChecked():
+            ref = config.common_reference or (
+                config.individual_references.get(config.files[0].path, '') if config.files else ''
+            )
+            if ref:
+                config.obsolete_refs.append(ref)
+
+        # Obsolète — multi-fichiers (cases cochées "Obsolète")
+        if config.import_type == ImportType.MULTI_FILE and self._obsolete_checkboxes:
+            for obs_check, file in self._obsolete_checkboxes:
+                if obs_check.isChecked():
+                    ref = config.individual_references.get(file.path, '') or ''
+                    if ref:
+                        config.obsolete_refs.append(ref)
 
         self.result_config = config
         self.accept()
@@ -1378,6 +1418,16 @@ class ImportManager:
                         app_logger.info(f"Succession import (multi) : {other_ref} → {current}")
                     else:
                         app_logger.warning(f"Succession import (multi) non créée ({other_ref} → {current}) : {msg}")
+
+        # --- Obsolètes (tous modes) ---
+        for ref in (config.obsolete_refs or []):
+            if ref:
+                ok = self.db_manager.mark_obsolete(ref)
+                if ok:
+                    results['obsolete_marked'] = results.get('obsolete_marked', 0) + 1
+                    app_logger.info(f"Obsolète import : {ref}")
+                else:
+                    app_logger.warning(f"Obsolète import non appliqué : {ref}")
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import fichier")
     def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Optional[Dict[str, Any]]:

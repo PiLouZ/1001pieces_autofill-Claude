@@ -4,29 +4,259 @@ Responsabilités:
 - Widget PieceItemWidget : affichage 2 lignes + boutons hover (✎ 🔍 ×)
 - PiecesListWidget : QListWidget utilisant setItemWidget
 - PiecesListService : factory + menu contextuel minimal
+- PieceRelationsPopup : popup de synthèse de toutes les relations d'une pièce
 """
 
 from typing import Optional
 from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
-                          QFont, QSize, Qt)
+                          QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
+                          QCursor, QTimer)
 from src.core.logger import app_logger
 
 
+def _truncate_refs_str(refs_str: str, max_inline: int = 2) -> tuple:
+    """
+    Parse une string de refs séparées par virgules et tronque si nécessaire.
+    Retourne (display_str, full_tooltip).
+    - display_str : "REF1, REF2 … +N" si > max_inline, sinon la string complète.
+    - full_tooltip : string complète si tronquée, sinon "".
+    """
+    if not refs_str:
+        return "", ""
+    parts = [r.strip() for r in refs_str.split(',') if r.strip()]
+    full = ", ".join(parts)
+    if len(parts) <= max_inline:
+        return full, ""
+    shown = ", ".join(parts[:max_inline])
+    return f"{shown}  … +{len(parts) - max_inline}", full
+
+
+def _link_if_truncated(disp: str, tip: str, color: str) -> str:
+    """
+    Si tip est non-vide (liste tronquée), remplace le '… +N' de disp par un lien HTML.
+    Sinon retourne disp tel quel (compatible RichText).
+    """
+    if not tip or '… +' not in disp:
+        return disp
+    base, n = disp.rsplit('… +', 1)
+    return (f"{base}<a href='#' style='color:{color};text-decoration:none;"
+            f"border-bottom:1px dashed {color};'>… +{n}</a>")
+
+
+def _parse_refs(refs_str: str) -> list:
+    """Parse une string de refs séparées par virgules en liste propre."""
+    if not refs_str:
+        return []
+    return [r.strip() for r in refs_str.split(',') if r.strip()]
+
+
+# ── Popup de synthèse des relations ────────────────────────────────────────────
+
+class PieceRelationsPopup(QDialog):
+    """
+    Popup léger affichant la synthèse complète des relations d'une pièce :
+    obsolescence, supersession (↳/↑) et équivalences (≡).
+
+    Se ferme au clic extérieur grâce au flag Qt.Popup.
+    Scrollable si le contenu dépasse MAX_HEIGHT.
+    """
+
+    MAX_HEIGHT = 300
+    WIDTH      = 280
+
+    def __init__(self, ref_piece: str, status_info: dict, parent=None):
+        super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+
+        status      = status_info.get('status', 'current')
+        is_obsolete = status_info.get('is_obsolete', False)
+        ref_new     = status_info.get('ref_new')
+        refs_old    = _parse_refs(status_info.get('refs_old') or '')
+        equivalents = _parse_refs(status_info.get('equivalents') or '')
+
+        # ── Mise en page racine ────────────────────────────────────────────
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self.setStyleSheet("""
+            QDialog {
+                background: white;
+                border: 1px solid #ced4da;
+                border-radius: 8px;
+            }
+        """)
+
+        # ── En-tête ────────────────────────────────────────────────────────
+        header = QWidget()
+        header.setStyleSheet(
+            "background: #f8f9fa;"
+            "border-bottom: 1px solid #e9ecef;"
+            "border-top-left-radius: 8px;"
+            "border-top-right-radius: 8px;"
+        )
+        h_layout = QHBoxLayout(header)
+        h_layout.setContentsMargins(12, 8, 12, 8)
+
+        title = QLabel(f"<b>{ref_piece}</b>  <span style='color:#6c757d;font-weight:normal;'>"
+                       f"— Relations</span>")
+        title.setStyleSheet("font-size: 12px; color: #2c3e50; background: transparent;")
+        h_layout.addWidget(title, 1)
+        root.addWidget(header)
+
+        # ── Zone scrollable ────────────────────────────────────────────────
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setMaximumHeight(self.MAX_HEIGHT)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("background: white;")
+
+        content = QWidget()
+        content.setStyleSheet("background: white;")
+        c_layout = QVBoxLayout(content)
+        c_layout.setContentsMargins(12, 10, 12, 12)
+        c_layout.setSpacing(10)
+
+        has_content = False
+
+        # Obsolète
+        if is_obsolete:
+            lbl = QLabel("⚠  Obsolète")
+            lbl.setStyleSheet(
+                "color: #c0392b; font-weight: bold; font-size: 11px;"
+                "background: #fdf2f2; border: 1px solid #f5c6cb;"
+                "border-radius: 4px; padding: 4px 8px;"
+            )
+            c_layout.addWidget(lbl)
+            has_content = True
+
+        # Remplacée par
+        if status == 'superseded' and ref_new:
+            c_layout.addWidget(self._section(
+                "↳  Remplacée par", [ref_new], "#e67e22", "#fef9f0", "#fde8c8"))
+            has_content = True
+
+        # Remplace
+        if refs_old:
+            c_layout.addWidget(self._section(
+                f"↑  Remplace  ({len(refs_old)})", refs_old, "#2980b9", "#f0f7ff", "#c5dff8"))
+            has_content = True
+
+        # Équivalences
+        if equivalents:
+            c_layout.addWidget(self._section(
+                f"≡  Équivalences  ({len(equivalents)})", equivalents, "#8e44ad", "#faf0ff", "#e8c8f8"))
+            has_content = True
+
+        if not has_content:
+            lbl = QLabel("Aucune relation enregistrée.")
+            lbl.setStyleSheet("color: #6c757d; font-size: 11px; font-style: italic;")
+            c_layout.addWidget(lbl)
+
+        c_layout.addStretch()
+        scroll.setWidget(content)
+        root.addWidget(scroll)
+
+        self.setFixedWidth(self.WIDTH)
+
+    @staticmethod
+    def _section(title: str, refs: list, color: str,
+                 bg: str, border_color: str) -> QWidget:
+        """Crée un bloc section (titre + liste de refs) avec fond coloré."""
+        w = QWidget()
+        w.setStyleSheet(
+            f"background: {bg}; border: 1px solid {border_color}; border-radius: 6px;"
+        )
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(3)
+
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet(
+            f"color: {color}; font-weight: bold; font-size: 11px;"
+            f"background: transparent; border: none;"
+        )
+        layout.addWidget(title_lbl)
+
+        for ref in refs:
+            ref_lbl = QLabel(f"  {ref}")
+            ref_lbl.setStyleSheet(
+                "color: #2c3e50; font-size: 11px; font-family: monospace;"
+                "background: transparent; border: none;"
+            )
+            layout.addWidget(ref_lbl)
+
+        return w
+
+    def show_at_cursor(self):
+        """
+        Positionner le popup près du curseur et l'afficher.
+        Le QTimer.singleShot(0) diffère l'affichage d'un tick pour que le clic
+        qui a déclenché l'appel soit entièrement consommé avant l'ouverture —
+        évite la fermeture immédiate du Qt.Popup sur les parents de haut niveau.
+        """
+        pos = QCursor.pos()
+        self.move(pos.x() + 4, pos.y() + 4)
+        QTimer.singleShot(0, self.show)
+
+
+# ── Helpers label ───────────────────────────────────────────────────────────────
+
+def _make_relation_label(prefix: str, refs_str: str, color: str,
+                          click_callback, max_inline: int = 2) -> QLabel:
+    """
+    Crée un QLabel pour une ligne de relation (↳/↑/≡).
+    Si les refs sont tronquées, le '… +N' est un lien cliquable HTML.
+    """
+    parts = _parse_refs(refs_str)
+    if not parts:
+        return None
+
+    style = f"color: {color}; font-style: italic; font-size: 10px;"
+
+    if len(parts) <= max_inline:
+        lbl = QLabel(f"{prefix}  {', '.join(parts)}")
+        lbl.setStyleSheet(style)
+        return lbl
+
+    shown    = ', '.join(parts[:max_inline])
+    n_more   = len(parts) - max_inline
+    link_html = (
+        f"<a href='#' style='color:{color}; font-style:italic; font-size:9px;"
+        f"text-decoration:none; border-bottom:1px dashed {color};'>"
+        f"… +{n_more}</a>"
+    )
+    lbl = QLabel(f"{prefix}  {shown}  {link_html}")
+    lbl.setTextFormat(Qt.RichText)
+    lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+    lbl.setStyleSheet(style)
+    lbl.linkActivated.connect(lambda _href: click_callback())
+    return lbl
+
+
+# ── Widget item pièce ───────────────────────────────────────────────────────────
+
 class PieceItemWidget(QWidget):
     """
-    Widget autonome pour un item de pièce — 2 lignes + boutons hover.
+    Widget autonome pour un item de pièce — lignes additives + boutons hover.
 
-    Ligne 1 : référence (bold)
-    Ligne 2 : statut de succession (coloré) ou description (gris)
+    Ligne 1 : référence (bold) + désignation (gris)
+    Ligne 2 : ⚠ Obsolète                              [si is_obsolete]
+    Ligne 3 : ↳ Remplacée par / ↑ Remplace…  [+N]    [si supersession]
+    Ligne 4 : ≡ Équiv. …                      [+N]    [si équivalences]
     Boutons  : ✎ éditer | 🔍 rechercher | × supprimer  (visibles au survol)
+
+    Le lien '… +N' ouvre PieceRelationsPopup avec la synthèse complète.
     """
 
     def __init__(self, ref_piece: str, description: str, status_info: dict,
                  list_item: QListWidgetItem, parent=None):
         super().__init__(parent)
-        self.list_item = list_item
-        self.ref_piece = ref_piece
+        self.list_item    = list_item
+        self.ref_piece    = ref_piece
+        self._status_info = status_info
         self.setMouseTracking(True)
 
         outer = QHBoxLayout(self)
@@ -39,9 +269,11 @@ class PieceItemWidget(QWidget):
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.setSpacing(1)
 
-        status   = status_info.get('status', 'current')
-        ref_new  = status_info.get('ref_new')
-        refs_old = status_info.get('refs_old')
+        status      = status_info.get('status', 'current')
+        is_obsolete = status_info.get('is_obsolete', False)
+        ref_new     = status_info.get('ref_new')
+        refs_old    = status_info.get('refs_old')     # str séparée par virgules
+        equivalents = status_info.get('equivalents')  # str séparée par virgules
 
         # Ligne 1 : référence (bold) + désignation inline (gris)
         desc_html = (f' <span style="color:#9e9e9e;font-size:10px;">{description}</span>'
@@ -50,29 +282,37 @@ class PieceItemWidget(QWidget):
         line1.setTextFormat(Qt.RichText)
         text_layout.addWidget(line1)
 
-        # Ligne 2 : statut de succession uniquement (absent si pièce courante)
-        if status == 'superseded':
-            line2_text  = f"↳ Remplacée par  {ref_new}"
-            line2_style = "color: #e67e22; font-style: italic; font-size: 10px;"
-        elif status == 'obsolete':
-            line2_text  = "⚠ Obsolète — aucun remplacement"
-            line2_style = "color: #c0392b; font-style: italic; font-size: 10px;"
-        elif status == 'replacing':
-            line2_text  = f"↑ Remplace  {refs_old}"
-            line2_style = "color: #2980b9; font-style: italic; font-size: 10px;"
-        elif status_info.get('equivalents'):
-            line2_text  = f"≡ Équiv.  {status_info['equivalents']}"
-            line2_style = "color: #8e44ad; font-style: italic; font-size: 10px;"
-        else:
-            line2_text  = ""
-            line2_style = ""
+        extra_lines = 0
 
-        self._has_line2 = bool(line2_text)
-        if line2_text:
-            line2 = QLabel(line2_text)
-            line2.setStyleSheet(line2_style)
-            text_layout.addWidget(line2)
+        # Ligne 2 : obsolète (indépendant des autres statuts)
+        if is_obsolete:
+            lbl = QLabel("⚠ Obsolète")
+            lbl.setStyleSheet("color: #c0392b; font-style: italic; font-size: 10px;")
+            text_layout.addWidget(lbl)
+            extra_lines += 1
 
+        # Ligne 3 : direction de supersession
+        if status == 'superseded' and ref_new:
+            lbl = QLabel(f"↳ Remplacée par  {ref_new}")
+            lbl.setStyleSheet("color: #e67e22; font-style: italic; font-size: 10px;")
+            text_layout.addWidget(lbl)
+            extra_lines += 1
+
+        if refs_old:  # peut coexister avec is_obsolete
+            lbl = _make_relation_label(
+                "↑ Remplace", refs_old, "#2980b9", self._show_relations_popup)
+            text_layout.addWidget(lbl)
+            extra_lines += 1
+
+        # Ligne 4 : équivalences (toujours affichée si présente)
+        if equivalents:
+            lbl = _make_relation_label(
+                "≡ Équiv.", equivalents, "#8e44ad", self._show_relations_popup)
+            text_layout.addWidget(lbl)
+            extra_lines += 1
+
+        self._has_line2   = extra_lines > 0  # rétrocompat
+        self._extra_lines = extra_lines
         outer.addWidget(text_widget, 1)
 
         # ── Boutons hover ─────────────────────────────────────────────────
@@ -130,6 +370,11 @@ class PieceItemWidget(QWidget):
 
     # ── Actions ────────────────────────────────────────────────────────────
 
+    def _show_relations_popup(self):
+        """Afficher le popup de synthèse des relations de cette pièce."""
+        popup = PieceRelationsPopup(self.ref_piece, self._status_info, self)
+        popup.show_at_cursor()
+
     def _search_piece(self):
         """Lancer une recherche des appareils compatibles dans le champ principal."""
         mw = self._main_window()
@@ -172,7 +417,7 @@ class PiecesListWidget(QListWidget):
         item.setData(Qt.UserRole, ref_piece)
         self.addItem(item)
         widget = PieceItemWidget(ref_piece, description, status_info, item, self)
-        height = 52 if widget._has_line2 else 40
+        height = 40 + widget._extra_lines * 12
         item.setSizeHint(QSize(0, height))
         self.setItemWidget(item, widget)
         return item

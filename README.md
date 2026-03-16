@@ -1,6 +1,6 @@
 # 1001pieces_autofill — Gestionnaire d'Appareils
 
-Application de gestion de pièces détachées et d'appareils électroménagers. Interface PyQt5, base SQLite de 598 000+ enregistrements, recherche plein-texte FTS5, gestion de la supersession de références. **v3.26.0**
+Application de gestion de pièces détachées et d'appareils électroménagers. Interface PyQt5, base SQLite de 598 000+ enregistrements, recherche plein-texte FTS5, gestion de la supersession de références. **v3.29.0**
 
 ## Lancement
 
@@ -43,10 +43,12 @@ python3 run.py
 │   │   └── ...
 │   │
 │   ├── ui/
-│   │   ├── main_refactored.py    # Fenêtre principale (QMainWindow)
-│   │   ├── table_controller.py   # Pagination, tri, recherche, bannière supersession
-│   │   ├── pieces_manager.py     # Gestionnaire de pièces + succession
-│   │   ├── piece_management_service.py
+│   │   ├── main_refactored.py        # Fenêtre principale (QMainWindow)
+│   │   ├── table_controller.py       # Pagination, tri, recherche, bannières
+│   │   ├── pieces_manager.py         # Gestionnaire de pièces + succession + équivalences
+│   │   ├── piece_management_service.py  # Dialogue d'édition de pièce
+│   │   ├── piece_picker_dialog.py    # PiecePickerDialog + RefTagList (chips)
+│   │   ├── pieces_list_service.py    # PieceItemWidget, PieceRelationsPopup
 │   │   ├── pieces_panel_service.py
 │   │   └── ...
 │   │
@@ -79,12 +81,16 @@ python3 run.py
   - Bannière "ancienne réf. : A → B (courante)" avec toggle pour voir A seul
   - Bannière "REF remplace : A, B" avec toggle pour inclure les appareils des réfs remplacées
 
-### Gestion des pièces et supersession
+### Gestion des pièces et succession
 - **Succession** — `piece_supersessions(ref_old PK, ref_new NOT NULL)` — CTE récursive pour chaînes longues
+- **Équivalences** — `piece_equivalence_groups(group_id, ref_piece)` — groupes symétriques Union-Find
 - **Obsolescence** — colonne `pieces.is_obsolete` indépendante de la succession
-- **Indicateurs visuels** — `→` (remplacée) et `⚠` (obsolète) dans toutes les listes de pièces
+- **Affichage additif** — chaque relation (⚠ obsolète, ↳ remplacée, ↑ remplace, ≡ équiv.) s'affiche simultanément
+- **Liens cliquables `… +N`** — popup synthèse `PieceRelationsPopup` sur les listes tronquées
+- **`PiecePickerDialog`** — sélecteur de référence avec recherche temps réel ; saisie libre pour créer une référence fantôme en une seule opération
+- **`RefTagList`** — chips supprimables individuellement pour succession et équivalences (panneau + dialogue d'édition)
 - **Alerte obsolescence** — dialogue listant les appareils concernés avant marquage
-- **Import avec succession** — déclaration directe dans le dialogue d'import (champs autocompletés)
+- **Import avec succession** — déclaration directe dans le dialogue d'import (champs autocompletés, checkbox obsolète)
 
 ### Import
 - **PDF** — extraction Camelot-Py avec lazy loading (0 freeze)

@@ -19,6 +19,23 @@ from ..utils.error_handler import (
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
+from .pieces_list_service import PieceRelationsPopup, _link_if_truncated as _link_banner
+
+def _truncate_refs(refs: list, max_inline: int = 3) -> tuple:
+    """
+    Tronque une liste de références si elle dépasse max_inline.
+    Retourne (display_str, full_tooltip).
+    - display_str  : "A, B, C … +N" si > max_inline, sinon la str complète.
+    - full_tooltip : str complète si tronquée, sinon "".
+    """
+    if not refs:
+        return "", ""
+    full = ", ".join(refs)
+    if len(refs) <= max_inline:
+        return full, ""
+    shown = ", ".join(refs[:max_inline])
+    return f"{shown}  … +{len(refs) - max_inline}", full
+
 
 class DatabaseQueryWorker(QThread):
     """Worker thread pour les requêtes DB async - Phase 2c"""
@@ -338,6 +355,9 @@ class TableController:
 
         self.supersession_banner_label = QLabel()
         self.supersession_banner_label.setStyleSheet("color: #795548; font-size: 12px; border: none; background: transparent;")
+        self.supersession_banner_label.setTextFormat(Qt.RichText)
+        self.supersession_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+        self.supersession_banner_label.linkActivated.connect(lambda _: self._show_supersession_popup())
         banner_layout.addWidget(self.supersession_banner_label)
         banner_layout.addStretch()
 
@@ -372,6 +392,9 @@ class TableController:
         self.equivalence_banner_label.setStyleSheet(
             "color: #6A1B9A; font-size: 12px; border: none; background: transparent;"
         )
+        self.equivalence_banner_label.setTextFormat(Qt.RichText)
+        self.equivalence_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+        self.equivalence_banner_label.linkActivated.connect(lambda _: self._show_equivalence_popup())
         equiv_banner_layout.addWidget(self.equivalence_banner_label)
         equiv_banner_layout.addStretch()
 
@@ -1279,13 +1302,17 @@ class TableController:
 
         elif self._supersession_mode == 'replacing':
             preds = self._supersession_predecessors
-            preds_str = ", ".join(preds)
+            preds_disp, preds_tip = _truncate_refs(preds)
+            label_refs = _link_banner(preds_disp, preds_tip, "#795548")
             if self._supersession_expand:
-                self.supersession_banner_label.setText(f"⚠ Résultats étendus — '{term}' remplace : {preds_str}")
+                self.supersession_banner_label.setText(
+                    f"⚠ Résultats étendus — '{term}' remplace : {label_refs}")
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
             else:
-                self.supersession_banner_label.setText(f"⚠ '{term}' remplace : {preds_str}")
+                self.supersession_banner_label.setText(
+                    f"⚠ '{term}' remplace : {label_refs}")
                 self.supersession_bypass_btn.setText("Voir aussi les appareils des réfs remplacées")
+            self.supersession_banner_label.setToolTip(preds_tip if preds_tip else "")
 
     def _toggle_supersession_bypass(self):
         """Basculer l'état du bouton selon le mode actif."""
@@ -1330,23 +1357,62 @@ class TableController:
         if not hasattr(self, 'equivalence_banner_label'):
             return
         term = self._equivalence_term or ''
-        equivs_str = ", ".join(self._equivalence_group)
+        equivs_disp, equivs_tip = _truncate_refs(self._equivalence_group)
+        label_refs = _link_banner(equivs_disp, equivs_tip, "#6A1B9A")
         if self._equivalence_expand:
             self.equivalence_banner_label.setText(
-                f"≡ Résultats étendus — '{term}' · équivalents inclus : {equivs_str}"
+                f"≡ Résultats étendus — '{term}' · équivalents inclus : {label_refs}"
             )
             self.equivalence_expand_btn.setText(f"Voir uniquement '{term}'")
         else:
             self.equivalence_banner_label.setText(
-                f"≡ '{term}' a des équivalents : {equivs_str}"
+                f"≡ '{term}' a des équivalents : {label_refs}"
             )
             self.equivalence_expand_btn.setText("Voir aussi les appareils des équivalents")
+        self.equivalence_banner_label.setToolTip(equivs_tip if equivs_tip else "")
 
     def _toggle_equivalence_expand(self):
         """Basculer l'inclusion des équivalents dans la recherche."""
         self._equivalence_expand = not self._equivalence_expand
         self._update_equivalence_banner()
         self.load_data(self.current_search_term, is_search=True)
+
+    def _show_supersession_popup(self):
+        """Popup de synthèse des relations pour le terme courant (bannière supersession)."""
+        term = self._supersession_term or ''
+        if not term:
+            return
+        chain = self._supersession_chain or []
+        preds = self._supersession_predecessors or []
+        equivs = self._equivalence_group if self._equivalence_term == term else []
+        status_info = {
+            'status':      'superseded' if self._supersession_mode == 'superseded' else 'replacing',
+            'ref_new':     chain[-1] if chain and self._supersession_mode == 'superseded' else None,
+            'refs_old':    ', '.join(preds) if preds else None,
+            'is_obsolete': False,
+            'equivalents': ', '.join(equivs) if equivs else None,
+        }
+        parent_widget = getattr(self, 'main_window', None)
+        self._active_popup = PieceRelationsPopup(term, status_info, parent_widget)
+        self._active_popup.show_at_cursor()
+
+    def _show_equivalence_popup(self):
+        """Popup de synthèse des relations pour le terme courant (bannière équivalence)."""
+        term = self._equivalence_term or ''
+        if not term:
+            return
+        equivs = self._equivalence_group or []
+        preds  = self._supersession_predecessors if self._supersession_term == term else []
+        status_info = {
+            'status':      'replacing' if preds else 'current',
+            'ref_new':     None,
+            'refs_old':    ', '.join(preds) if preds else None,
+            'is_obsolete': False,
+            'equivalents': ', '.join(equivs) if equivs else None,
+        }
+        parent_widget = getattr(self, 'main_window', None)
+        self._active_popup = PieceRelationsPopup(term, status_info, parent_widget)
+        self._active_popup.show_at_cursor()
 
     def _add_to_search_history(self, term: str):
         """Ajouter un terme à l'historique des recherches (max 10, FIFO, sans doublons)"""
