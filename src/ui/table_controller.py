@@ -575,6 +575,10 @@ class TableController:
             self._pending_prefetch_params = None
             self.prefetch_timer.stop()
 
+        # Panneau pièces : vider si aucun résultat (évite d'afficher les pièces du dernier appareil consulté)
+        if self.total_rows == 0 and hasattr(self.parent_window, 'pieces_panel_service'):
+            self.parent_window.pieces_panel_service.update_pieces_panel()
+
         # Performance logging
         elapsed = time.time() - start_time
         app_logger.debug(f"Table loaded: {len(records) if 'records' in locals() else 0} records in {elapsed:.3f}s")
@@ -706,6 +710,10 @@ class TableController:
         # Init valeurs précédentes (même logique)
         if hasattr(self.parent_window, '_init_previous_values'):
             self.parent_window._init_previous_values()
+
+        # Panneau pièces : vider si aucun résultat (même logique que load_data)
+        if self.total_rows == 0 and hasattr(self.parent_window, 'pieces_panel_service'):
+            self.parent_window.pieces_panel_service.update_pieces_panel()
 
         # Nettoyer et finaliser
         self.loading_in_progress = False
