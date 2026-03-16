@@ -155,8 +155,12 @@ if [ ! -d "venv" ]; then
     exit 1
 fi
 
+# Lancer l'application en arrière-plan et fermer la console
 source venv/bin/activate
-python3 run.py
+python3 run.py &
+disown $!
+osascript -e 'tell application "Terminal" to close front window' > /dev/null 2>&1
+exit 0
 """
     script = dest / '1001pieces_autofill.command'
     script.write_text(content, encoding='utf-8')

@@ -20,14 +20,8 @@ if [ ! -f "run.py" ]; then
     exit 1
 fi
 
-# Message de lancement
-echo "🚀 Lancement de 1001pieces_autofill..."
-echo ""
-
-# Lancer l'application
-python3 run.py
-
-# Message de fermeture
-echo ""
-echo "👋 Application fermée"
-read -p "Appuyez sur Entrée pour fermer ce terminal..."
+# Lancer l'application en arrière-plan et fermer la console
+python3 run.py &
+disown $!
+osascript -e 'tell application "Terminal" to close front window' > /dev/null 2>&1
+exit 0
