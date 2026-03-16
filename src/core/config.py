@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.29.0"
+    VERSION = "3.30.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -108,7 +108,7 @@ class Config:
     SEARCH_PIECES_ONLY = True  # Phase 5: Recherche principale → pièces uniquement (désactivé = comportement actuel)
 
     # Feature Flags - v3.30.0 Mapping de colonnes à l'import
-    ENABLE_COLUMN_MAPPING = False  # Mapping manuel des colonnes (désactivé pendant développement)
+    ENABLE_COLUMN_MAPPING = True   # Mapping manuel des colonnes (activé v3.30.0)
 
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3

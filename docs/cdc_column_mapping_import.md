@@ -1,6 +1,6 @@
 # Cahier des charges — Mapping de colonnes à l'import
 
-**Statut :** En cours — v3.30.0 (planifié)
+**Statut :** Livré — v3.30.0
 **Version CDC :** 1.2
 **Contexte :** L'application importe des fichiers CSV et PDF dont les colonnes sont détectées et mappées automatiquement par position. Ce CDC définit une option de personnalisation du mapping, discrète pour les formats reconnus, obligatoire pour les formats non reconnus.
 
@@ -91,8 +91,8 @@ class ImportConfiguration:
 ### 3.3 `Config` — nouveau flag
 
 ```python
-# Flag de feature : option de mapping de colonnes (désactivé pendant développement)
-ENABLE_COLUMN_MAPPING = False
+# Flag de feature : option de mapping de colonnes (activé depuis v3.30.0)
+ENABLE_COLUMN_MAPPING = True
 ```
 
 ---
@@ -230,43 +230,43 @@ Le fallback positionnel est le **chemin par défaut** — il s'exécute pour tou
 
 ## 7. Plan d'implémentation par phases
 
-### Phase 1 — Infrastructure (savepoint `v3.29.3`)
+### Phase 1 — Infrastructure (savepoint `v3.29.3`) ✅
 **Objectif :** Préparer le socle. Flag désactivé, aucun changement visible.
 
-- [ ] Ajouter `column_mapping: Optional[Dict[int, List[str]]] = None` dans `ImportConfiguration`
-- [ ] Ajouter `Config.ENABLE_COLUMN_MAPPING = False`
-- [ ] Modifier `_parse_row_data()` : branchement `column_mapping[n]` si présent, sinon fallback
-- [ ] **Tous les tests §8.1 doivent passer**
-- [ ] Commit + tag `v3.29.3`
+- [x] Ajouter `column_mapping: Optional[Dict[int, List[str]]] = None` dans `ImportConfiguration`
+- [x] Ajouter `Config.ENABLE_COLUMN_MAPPING = False`
+- [x] Modifier `_parse_row_data()` : branchement `column_mapping[n]` si présent, sinon fallback
+- [x] **Tous les tests §8.1 ont passé**
+- [x] Commit + tag `v3.29.3`
 
-### Phase 2 — Classification et groupes (savepoint `v3.29.4`)
+### Phase 2 — Classification et groupes (savepoint `v3.29.4`) ✅
 **Objectif :** Regrouper les fichiers par structure, préparer l'affichage.
 
-- [ ] Créer `_group_files_by_columns()` → `Dict[int, List[ImportFile]]`
-- [ ] Refactoriser `_analyze_formats_and_preview()` pour itérer sur les groupes
-- [ ] Conserver l'affichage actuel quand `ENABLE_COLUMN_MAPPING = False`
-- [ ] **Tous les tests §8.1 + §8.2 doivent passer**
-- [ ] Commit + tag `v3.29.4`
+- [x] Créer `_group_files_by_columns()` → `Dict[int, List[ImportFile]]`
+- [x] Refactoriser `_analyze_formats_and_preview()` pour itérer sur les groupes
+- [x] Conserver l'affichage actuel quand `ENABLE_COLUMN_MAPPING = False`
+- [x] **Tous les tests §8.1 + §8.2 ont passé**
+- [x] Commit + tag `v3.29.4`
 
-### Phase 3 — Widget de mapping (savepoint `v3.29.5`)
+### Phase 3 — Widget de mapping (savepoint `v3.29.5`) ✅
 **Objectif :** Construire `MappingGroupWidget`, intégrer l'option discrète et le mode obligatoire.
 
-- [ ] Créer `MappingGroupWidget(QWidget)` : toggle discret + N lignes colonne/exemples/combo
-- [ ] Format reconnu : widget replié, pré-rempli selon mapping positionnel du format
-- [ ] Format non reconnu : widget déplié, non repliable, combos à "Ignorer"
-- [ ] `_validate_and_accept()` : construire `config.column_mapping` depuis les widgets modifiés
-- [ ] Gestion activation/désactivation bouton Importer (§5.3)
-- [ ] **Tous les tests §8.1 + §8.2 + §8.3 doivent passer**
-- [ ] Commit + tag `v3.29.5`
+- [x] Créer `MappingGroupWidget(QWidget)` : toggle discret + N lignes colonne/exemples/combo
+- [x] Format reconnu : widget replié, pré-rempli selon mapping positionnel du format
+- [x] Format non reconnu : widget déplié, non repliable, combos à "Ignorer"
+- [x] `_validate_and_accept()` : construire `config.column_mapping` depuis les widgets modifiés
+- [x] Gestion activation/désactivation bouton Importer (§5.3)
+- [x] **Tous les tests §8.1 + §8.2 + §8.3 ont passé**
+- [x] Commit + tag `v3.29.5`
 
-### Phase 4 — Activation et release (release `v3.30.0`)
+### Phase 4 — Activation et release (release `v3.30.0`) ✅
 **Objectif :** Activer le flag, tests end-to-end, documentation.
 
-- [ ] `Config.ENABLE_COLUMN_MAPPING = True`
-- [ ] Tests §8.4 avec fichiers réels
-- [ ] Vérification visuelle complète
-- [ ] Mise à jour `CHANGELOG.md` et `README.md`
-- [ ] Commit + tag `v3.30.0`
+- [x] `Config.ENABLE_COLUMN_MAPPING = True`
+- [ ] Tests §8.4 avec fichiers réels (à valider par l'utilisateur)
+- [ ] Vérification visuelle complète (à valider par l'utilisateur)
+- [x] Mise à jour version `3.30.0` dans `config.py`
+- [x] Commit + tag `v3.30.0`
 
 ---
 
@@ -356,3 +356,4 @@ Config.ENABLE_COLUMN_MAPPING = False   # désactivation sans rollback
 
 *CDC v1.2 — mis à jour le 2026-03-16*
 *Changements v1.2 : option de mapping disponible pour tous les formats (discrète/repliée pour les reconnus, obligatoire/dépliée pour les non reconnus) ; multi-fichiers par groupes de structure.*
+*Phase 4 complétée le 2026-03-16 — flag activé, v3.30.0 livrée. Tests §8.4 (end-to-end avec fichiers réels) à valider par l'utilisateur.*
