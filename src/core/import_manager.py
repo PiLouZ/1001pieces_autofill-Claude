@@ -188,7 +188,7 @@ class MappingGroupWidget(QWidget):
         )
         grid = QGridLayout(self._mapping_widget)
         grid.setContentsMargins(8, 6, 8, 6)
-        grid.setSpacing(4)
+        grid.setSpacing(6)
         grid.setColumnStretch(1, 1)
 
         for i in range(n_cols):
@@ -214,6 +214,7 @@ class MappingGroupWidget(QWidget):
             grid.addWidget(ex_lbl, i, 1)
 
             combo = QComboBox()
+            combo.setMinimumHeight(28)
             for label, value in self.FIELD_CHOICES:
                 combo.addItem(label, value)
             target = default_mapping[i] if i < len(default_mapping) else "ignore"
@@ -347,7 +348,9 @@ class ImportDialog(QDialog):
         # Section fichiers avec layout en grille (max 5 colonnes)
         files_group = QGroupBox("Fichiers à importer")
         files_main_layout = QVBoxLayout()
-        
+        files_main_layout.setContentsMargins(6, 2, 6, 4)
+        files_main_layout.setSpacing(2)
+
         # Utiliser un layout en grille pour tous les cas avec max 5 colonnes
         files_grid = QGridLayout()
         files_per_row = min(5, max(1, len(self.import_config.files)))
@@ -410,12 +413,9 @@ class ImportDialog(QDialog):
         self.preview_text.setReadOnly(True)
         format_layout.addWidget(self.preview_text)
 
-        # Espacement visuel augmenté entre l'aperçu et les options
-        format_layout.addSpacing(5)
-
-        # Options techniques clairement séparées sous l'aperçu
+        # Options techniques sous l'aperçu
         options_layout = QVBoxLayout()
-        options_layout.setContentsMargins(10, 10, 10, 5)  # Marges pour séparer visuellement
+        options_layout.setContentsMargins(10, 4, 10, 2)
         
         # Gestion de la 3ème colonne si applicable
         self.third_col_widget = QWidget()
@@ -611,17 +611,41 @@ class ImportDialog(QDialog):
         self._obsolete_checkboxes = [] # Multi-fichiers : [(QCheckBox, ImportFile), ...]
 
         if len(self.import_config.files) == 1:
-            succ_group = QGroupBox("Succession (optionnel)")
-            succ_layout = QVBoxLayout()
+            # Section succession repliable par défaut
+            succ_container = QWidget()
+            succ_container_layout = QVBoxLayout(succ_container)
+            succ_container_layout.setContentsMargins(0, 0, 0, 0)
+            succ_container_layout.setSpacing(4)
+
+            self._succ_toggle_btn = QPushButton("▶  Succession (optionnel)")
+            self._succ_toggle_btn.setFlat(True)
+            self._succ_toggle_btn.setCursor(Qt.PointingHandCursor)
+            self._succ_toggle_btn.setStyleSheet(
+                "QPushButton { color: #0066cc; font-size: 11px; text-align: left;"
+                " padding: 4px 6px; border: none; background: transparent; }"
+                "QPushButton:hover { color: #004499; text-decoration: underline; }"
+            )
+            self._succ_toggle_btn.clicked.connect(self._toggle_succ)
+            succ_container_layout.addWidget(self._succ_toggle_btn)
+
+            self._succ_content = QWidget()
+            self._succ_content.setStyleSheet(
+                "QWidget { background: #fffde7; border: 1px solid #f0e68c; border-radius: 4px; }"
+            )
+            succ_layout = QVBoxLayout(self._succ_content)
+            succ_layout.setContentsMargins(12, 8, 12, 8)
+            succ_layout.setSpacing(6)
 
             succ_info = QLabel("💡 Déclarez ici si cette référence est liée à une succession de pièces déjà en base.")
-            succ_info.setStyleSheet("color: #666; font-style: italic; padding: 6px; background-color: #fffde7; border-radius: 4px;")
+            succ_info.setStyleSheet(
+                "color: #666; font-style: italic; padding: 4px; background: transparent; border: none;"
+            )
             succ_info.setWordWrap(True)
             succ_layout.addWidget(succ_info)
 
             row1 = QHBoxLayout()
             lbl1 = QLabel("Cette réf. remplace :")
-            lbl1.setStyleSheet("font-weight: bold;")
+            lbl1.setStyleSheet("font-weight: bold; background: transparent; border: none;")
             lbl1.setFixedWidth(220)
             row1.addWidget(lbl1)
             self.succ_replaces_input = QLineEdit()
@@ -632,7 +656,7 @@ class ImportDialog(QDialog):
 
             row2 = QHBoxLayout()
             lbl2 = QLabel("Cette réf. est remplacée par :")
-            lbl2.setStyleSheet("font-weight: bold;")
+            lbl2.setStyleSheet("font-weight: bold; background: transparent; border: none;")
             lbl2.setFixedWidth(220)
             row2.addWidget(lbl2)
             self.succ_replaced_by_input = QLineEdit()
@@ -647,13 +671,16 @@ class ImportDialog(QDialog):
                 "Cochez si cette pièce est obsolète (plus fabriquée).\n"
                 "Elle restera visible mais affichera ⚠ Obsolète."
             )
-            self._obsolete_checkbox.setStyleSheet("color: #c0392b; font-size: 11px;")
+            self._obsolete_checkbox.setStyleSheet(
+                "color: #c0392b; font-size: 11px; background: transparent; border: none;"
+            )
             row3.addWidget(self._obsolete_checkbox)
             row3.addStretch()
             succ_layout.addLayout(row3)
 
-            succ_group.setLayout(succ_layout)
-            layout.addWidget(succ_group)
+            self._succ_content.setVisible(False)
+            succ_container_layout.addWidget(self._succ_content)
+            layout.addWidget(succ_container)
 
         # Boutons
         buttons_layout = QHBoxLayout()
@@ -776,6 +803,14 @@ class ImportDialog(QDialog):
                 field.setCompleter(completer)
         except Exception as e:
             app_logger.warning(f"Autocomplétion succession non disponible : {e}")
+
+    def _toggle_succ(self):
+        """Ouvre/ferme la section Succession."""
+        visible = not self._succ_content.isVisible()
+        self._succ_content.setVisible(visible)
+        arrow = "▼" if visible else "▶"
+        text = self._succ_toggle_btn.text()
+        self._succ_toggle_btn.setText(arrow + text[1:])
 
     def _on_apply_to_individual_changed(self, state):
         """Gère le changement d'état de la case 'Appliquer aux références individuelles'"""
