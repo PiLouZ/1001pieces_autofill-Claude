@@ -6,7 +6,7 @@ RefTagList        : widget de liste de références supprimables (chips).
 from typing import Optional, List
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
                           QLabel, QPushButton, QLineEdit, QTableWidget,
-                          QTableWidgetItem, QHeaderView, Qt,
+                          QTableWidgetItem, QHeaderView, Qt, QFrame, QScrollArea,
                           QSize, pyqtSignal, QColor, QFont)
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -18,19 +18,40 @@ class RefTagList(QWidget):
     """
     Widget affichant des références comme des lignes (chips) individuellement supprimables.
 
-    Chaque ligne : [ref monospace] [description grisée]  [× bouton]
+    Chaque ligne : [ref monospace] [description grisée]  [✕]
 
-    Signal ref_removed(str) émis quand l'utilisateur clique ×.
+    Auto-scrollable : hauteur limitée à MAX_HEIGHT, ascenseur vertical si dépassement.
+    Signal ref_removed(str) émis quand l'utilisateur clique ✕.
     """
 
     ref_removed = pyqtSignal(str)
+    MAX_HEIGHT = 124  # ~4 chips visibles avant scroll
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._layout = QVBoxLayout(self)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Zone scrollable
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self._content = QWidget()
+        self._content.setStyleSheet("background: transparent;")
+        self._layout = QVBoxLayout(self._content)
         self._layout.setContentsMargins(0, 2, 0, 2)
         self._layout.setSpacing(3)
+
+        self._scroll.setWidget(self._content)
+        outer.addWidget(self._scroll)
+
         self._refs = []
+        self.setVisible(False)
 
     # ── API publique ─────────────────────────────────────────────────────────
 
@@ -56,7 +77,14 @@ class RefTagList(QWidget):
             row_widget = self._make_row(ref, desc, color)
             self._layout.addWidget(row_widget)
 
-        self.setVisible(bool(refs))
+        # Hauteur adaptive : limitée à MAX_HEIGHT, ascenseur si plus
+        n = len(refs)
+        if n == 0:
+            self.setVisible(False)
+        else:
+            natural_h = n * 31 + 4  # 28px chip + 3px spacing + marges
+            self._scroll.setFixedHeight(min(natural_h, self.MAX_HEIGHT))
+            self.setVisible(True)
 
     def get_refs(self) -> list:
         return list(self._refs)

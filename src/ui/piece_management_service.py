@@ -162,14 +162,42 @@ class PieceManagementService:
 
         # Dialog pour éditer la référence et le libellé
         from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                                 QPushButton, QGroupBox, QInputDialog, QMessageBox, QFrame)
+                                 QPushButton, QGroupBox, QInputDialog, QMessageBox,
+                                 QFrame, QScrollArea, QWidget, QApplication)
 
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle("Éditer la pièce")
         dialog.setModal(True)
-        dialog.resize(520, 560)
 
-        layout = QVBoxLayout(dialog)
+        # Hauteur max = écran disponible - marges de fenêtre
+        screen_h = QApplication.primaryScreen().availableGeometry().height()
+        dialog.resize(520, min(560, screen_h - 80))
+        dialog.setMaximumHeight(screen_h - 60)
+
+        # Layout racine : scroll + boutons fixes
+        root_layout = QVBoxLayout(dialog)
+        root_layout.setSpacing(0)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ── Zone scrollable ───────────────────────────────────────────────
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        scroll_content = QWidget()
+        layout = QVBoxLayout(scroll_content)
+        layout.setContentsMargins(12, 12, 12, 8)
+        layout.setSpacing(8)
+
+        scroll.setWidget(scroll_content)
+        root_layout.addWidget(scroll, 1)
+
+        # ── Séparateur avant les boutons ──────────────────────────────────
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #dee2e6;")
+        root_layout.addWidget(sep)
 
         # Référence
         ref_layout = QHBoxLayout()
@@ -415,13 +443,15 @@ class PieceManagementService:
         equiv_tags.ref_removed.connect(_on_remove_equiv)
         _refresh_equiv()  # initialisation
 
-        # Boutons OK / Annuler
-        btn_layout = QHBoxLayout()
+        # ── Boutons OK / Annuler — hors scroll, toujours visibles ───────────
+        btn_container = QWidget()
+        btn_layout = QHBoxLayout(btn_container)
+        btn_layout.setContentsMargins(12, 8, 12, 12)
         ok_btn = QPushButton("OK")
         cancel_btn = QPushButton("Annuler")
         btn_layout.addWidget(ok_btn)
         btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
+        root_layout.addWidget(btn_container)
 
         # Connexions
         ok_btn.clicked.connect(dialog.accept)
