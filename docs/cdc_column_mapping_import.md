@@ -1,8 +1,8 @@
 # Cahier des charges — Mapping de colonnes à l'import
 
 **Statut :** En cours — v3.30.0 (planifié)
-**Version CDC :** 1.1
-**Contexte :** L'application importe des fichiers CSV et PDF dont les colonnes sont détectées automatiquement par position. Certains fichiers fournisseurs ont des colonnes dans un ordre différent ou avec des champs supplémentaires que le système ne reconnaît pas. Ce CDC définit le mécanisme permettant à l'utilisateur de mapper manuellement les colonnes dans ce cas précis, sans altérer les formats existants reconnus.
+**Version CDC :** 1.2
+**Contexte :** L'application importe des fichiers CSV et PDF dont les colonnes sont détectées et mappées automatiquement par position. Ce CDC définit une option de personnalisation du mapping, discrète pour les formats reconnus, obligatoire pour les formats non reconnus.
 
 ---
 
@@ -23,31 +23,38 @@ Historique rétrospectivement renuméroté :
 
 ## 1. Objectifs
 
-- Permettre à l'utilisateur de mapper manuellement les colonnes d'un fichier **non reconnu**
-- Conserver **intégralement** le comportement actuel pour les formats reconnus automatiquement
-- Présenter les fichiers reconnus tel qu'aujourd'hui, avec leur aperçu, pour vérification avant import
-- Gérer les imports multi-fichiers : fichiers reconnus + fichiers non reconnus coexistent dans le même dialogue
-- Gérer les imports multi-fichiers avec structures hétérogènes (groupes de fichiers par nombre de colonnes)
-- Garantir zéro régression sur tous les formats existants
+- Conserver **intégralement** le comportement actuel pour les imports non modifiés
+- Offrir une option discrète de personnalisation du mapping pour **tous** les formats
+- Rendre le mapping **obligatoire et déplié** pour les formats non reconnus
+- Gérer les imports multi-fichiers avec structures hétérogènes : un mapping par groupe de colonnes
+- Garantir zéro régression — si l'utilisateur ne touche pas à l'option, tout se comporte comme avant
 
 ---
 
-## 2. Contrainte impérative — Formats existants protégés
+## 2. Formats reconnus (rappel — inchangés)
 
-Ces formats doivent fonctionner **à l'identique** après l'implémentation :
+### 2.1 Filtrage par extension
 
-| Format | Colonnes | Mapping positionnel actuel | Priorité |
-|---|---|---|---|
-| PDF 3 col. (format principal) | 3 | col0→ref_modele, col1→commercial_ref, col2→third_col_choice | 🔴 Critique |
-| CSV 1 col. | 1 | col0→ref_modele | 🔴 Critique |
-| CSV 2 col. | 2 | col0→ref_modele, col1→commercial_ref | 🔴 Critique |
-| CSV 3 col. | 3 | col0→ref_modele, col1→commercial_ref, col2→third_col_choice | 🔴 Critique |
-| CSV 4+ col. | 4+ | col0→type, col1→fabricant, col2→ref_modele, col3→commercial_ref | 🔴 Critique |
+| Extension | Résultat |
+|---|---|
+| `.csv` | Accepté |
+| `.pdf` | Accepté |
+| Toute autre | Rejeté immédiatement (pas de dialogue) |
 
-**Règle absolue :**
-- Le mapping manuel ne s'applique **qu'aux fichiers non reconnus**
-- Un fichier reconnu ne passe **jamais** dans la logique de mapping, ni à l'affichage ni à l'import
-- Quand `Config.ENABLE_COLUMN_MAPPING = False`, `_parse_row_data()` se comporte exactement comme avant
+### 2.2 Mapping positionnel actuel selon le nombre de colonnes
+
+| Colonnes | Label affiché | Mapping par défaut (`_parse_row_data`) |
+|---|---|---|
+| 0 | ⛔ Format non reconnu | — import bloqué |
+| 1 | ✓ 1 colonne | `col0 → ref_modele` |
+| 2 | ✓ 2 colonnes | `col0 → ref_modele` · `col1 → commercial_ref` |
+| 3 (CSV) | ✓ 3 colonnes | `col0 → ref_modele` · `col1 → commercial_ref` · `col2 → third_col_choice` |
+| 3 (PDF) | ✓ 3 colonnes | `col0 → ref_modele` · `col1 → commercial_ref` · `col2 → third_col_choice` |
+| 4 | ✓ 4+ colonnes | `col0 → type` · `col1 → fabricant` · `col2 → ref_modele` · `col3 → commercial_ref` |
+| 5 | ✓ 4+ colonnes | idem 4 + `col4 → third_col_choice` |
+| 6+ | ✓ 4+ colonnes | idem 5 — **colonnes 6+ ignorées silencieusement** |
+
+**Règle absolue :** si l'utilisateur ne touche pas à l'option de mapping, ces correspondances s'appliquent **exactement comme aujourd'hui**, sans aucune modification de comportement.
 
 ---
 
@@ -55,23 +62,23 @@ Ces formats doivent fonctionner **à l'identique** après l'implémentation :
 
 ### 3.1 `ImportConfiguration` — nouveau champ
 
-`column_mapping` devient un dictionnaire indexé par nombre de colonnes, permettant des mappings différents selon la structure du fichier :
-
 ```python
 @dataclass
 class ImportConfiguration:
     # ... champs existants inchangés ...
 
-    # Mapping manuel : clé = nb colonnes, valeur = liste de destinations
-    # None = comportement positionnel actuel pour tous les fichiers
-    # Exemple : {4: ["type", "ref_modele", "ignore", "commercial_ref"],
+    # Mapping personnalisé par nombre de colonnes.
+    # None = comportement positionnel actuel pour tous les fichiers (défaut).
+    # Clé   : nombre de colonnes du groupe de fichiers
+    # Valeur : liste de N destinations (une par colonne)
+    # Exemple : {3: ["commercial_ref", "ref_modele", "ignore"],
     #            6: ["ref_modele", "commercial_ref", "type", "ignore", "ignore", "notes"]}
     column_mapping: Optional[Dict[int, List[str]]] = None
 ```
 
-### 3.2 Valeurs de mapping acceptées
+### 3.2 Destinations valides
 
-| Valeur string | Champ DB cible |
+| Valeur | Champ DB |
 |---|---|
 | `"type"` | Type d'appareil |
 | `"manufacturer"` | Fabricant |
@@ -84,117 +91,128 @@ class ImportConfiguration:
 ### 3.3 `Config` — nouveau flag
 
 ```python
-# Flag de feature : mapping manuel de colonnes (désactivé pendant développement)
+# Flag de feature : option de mapping de colonnes (désactivé pendant développement)
 ENABLE_COLUMN_MAPPING = False
 ```
 
 ---
 
-## 4. Classification des fichiers à l'ouverture du dialogue
+## 4. Comportement attendu par cas
 
-À l'ouverture de `ImportDialog`, chaque fichier est classé :
+### 4.1 Format reconnu — import standard (aucun changement)
+
+1. Format détecté → label "✓ Format reconnu : N colonnes" + description + aperçu (identique à aujourd'hui)
+2. Option discrète `▶ Adapter le mapping` — **repliée par défaut**
+3. L'utilisateur n'y touche pas → import identique à aujourd'hui
+
+### 4.2 Format reconnu — import avec mapping personnalisé
+
+1. L'utilisateur clique `▶ Adapter le mapping` → widget déplié, combos **pré-remplies** selon le mapping par défaut du format détecté
+2. L'utilisateur modifie une ou plusieurs combos
+3. `_validate_and_accept()` stocke le mapping dans `config.column_mapping`
+4. `_parse_row_data()` utilise ce mapping au lieu du positionnel
+
+### 4.3 Format non reconnu
+
+1. Bandeau rouge ⛔ affiché (déjà implémenté)
+2. Widget de mapping **déplié et non repliable** — toutes combos à `"— Ignorer —"`
+3. Bouton **Importer désactivé** tant qu'aucune colonne n'est assignée à `ref_modele`
+4. Dès qu'une colonne est assignée à `ref_modele` → bouton activé + bandeau passe en orange ⚠
+
+### 4.4 Multi-fichiers — même structure
+
+- Cas le plus fréquent (ex : 5 PDF du même fournisseur)
+- Un seul widget de mapping, appliqué à tous les fichiers du groupe
+- Comportement identique aux cas 4.1 / 4.3 selon si le format est reconnu ou non
+
+### 4.5 Multi-fichiers — structures hétérogènes
+
+Les fichiers sont regroupés par nombre de colonnes détecté. Chaque groupe a son propre widget :
 
 ```
-Pour chaque fichier :
-    detected_columns = len(sample_data[0])
-    si detected_columns dans {1, 2, 3, 4+} → RECONNU  (format positionnel connu)
-    sinon                                   → NON RECONNU (nécessite mapping)
+Groupe 1 — fichier1.pdf, fichier2.pdf  (3 colonnes — reconnu)
+    ▶ Adapter le mapping  ← replié par défaut
+
+Groupe 2 — fichier3.csv, fichier4.csv  (4 colonnes — reconnu)
+    ▶ Adapter le mapping  ← replié par défaut
+
+Groupe 3 — fichier5.csv  (7 colonnes — non reconnu)
+    ⛔ Mapping requis  ← déplié, obligatoire
 ```
 
-Cette classification pilote **l'affichage** (§5) et **l'import** (§6).
+Le bouton **Importer** reste désactivé tant que tous les groupes non reconnus n'ont pas `ref_modele` mappée.
 
 ---
 
 ## 5. Interface utilisateur
 
-### 5.1 Vue d'ensemble du dialogue
+### 5.1 Vue d'ensemble
 
-Le QGroupBox "Format reconnu et aperçu" est remplacé par une section structurée en deux blocs distincts, affichés seulement s'ils contiennent des fichiers :
+La section "Format reconnu et aperçu" existante est enrichie. Pour un import mono-fichier reconnu :
 
 ```
-┌─ Fichiers reconnus ─────────────────────────────────────────────────┐
-│  (affiché uniquement s'il y a au moins un fichier reconnu)          │
-│                                                                     │
-│  ✓ PDF — 3 colonnes : fichier1.pdf, fichier2.pdf                    │
+┌─ Format reconnu et aperçu ─────────────────────────────────────────┐
+│  ✓ PDF — 3 colonnes                                                 │
 │  • 3 colonnes → Réf. technique + Réf. commerciale + Description     │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  Col1           Col2           Col3                         │    │
-│  │  ============   ============   ============                 │    │
-│  │  REF001         COMM001        Description...               │    │
-│  │  REF002         COMM002        Description...               │    │
-│  └─────────────────────────────────────────────────────────────┘    │
+│  ┌─ aperçu ──────────────────────────────────────────────────────┐  │
+│  │  Col1           Col2           Col3                           │  │
+│  │  ====           ====           ====                           │  │
+│  │  REF001         COMM001        Description...                 │  │
+│  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
-│  ✓ CSV — 2 colonnes : fichier3.csv                                  │
-│  • 2 colonnes → Réf. Modèle + Réf. Commerciale                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  ...aperçu...                                               │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─ Fichiers non reconnus — mapping requis ────────────────────────────┐
-│  (affiché uniquement s'il y a au moins un fichier non reconnu)      │
-│                                                                     │
-│  ⛔  fichier4.csv, fichier5.csv  (4 colonnes)                       │
-│                                                                     │
-│  Correspondance des colonnes :                                      │
-│  Colonne 1  │  "VAL1A" / "VAL1B"  │  [▼ — Ignorer —          ]    │
-│  Colonne 2  │  "VAL2A" / "VAL2B"  │  [▼ — Ignorer —          ]    │
-│  Colonne 3  │  "VAL3A" / "VAL3B"  │  [▼ — Ignorer —          ]    │
-│  Colonne 4  │  "VAL4A" / "VAL4B"  │  [▼ — Ignorer —          ]    │
-│                                                                     │
-│  ⛔  fichier6.csv  (6 colonnes)                                     │
-│                                                                     │
-│  Correspondance des colonnes :                                      │
-│  Colonne 1  │  "AAA" / "BBB"      │  [▼ — Ignorer —          ]    │
-│  ...                                                                │
+│  ▶ Adapter le mapping                          ← discret, replié   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 Bloc "Fichiers reconnus"
-
-- Affiché **uniquement** s'il y a au moins un fichier reconnu
-- Regroupé par structure (même nb de colonnes + même type)
-- Pour chaque groupe : label de description du format + aperçu texte (comportement actuel conservé)
-- Lecture seule : pas d'interaction, juste visualisation avant import
-
-### 5.3 Bloc "Fichiers non reconnus"
-
-- Affiché **uniquement** s'il y a au moins un fichier non reconnu
-- Regroupé par nombre de colonnes détecté : un sous-bloc par groupe
-- Chaque sous-bloc contient :
-  - En-tête : `⛔ fichierA.csv, fichierB.csv (N colonnes)`
-  - Widget de mapping : une ligne par colonne, avec exemples de valeurs + QComboBox
-- Toutes les combos initialisées à `"— Ignorer —"`
-- Bouton **Importer désactivé** tant qu'au moins un groupe non reconnu n'a pas `ref_modele` mappée
-- Dès que tous les groupes ont `ref_modele` → bouton activé + en-tête passe à `⚠ fichierA.csv…` (orange)
-
-### 5.4 Structure d'une ligne de mapping
+Quand `▶ Adapter le mapping` est déplié :
 
 ```
-Colonne N  │  "exemple1" / "exemple2"  │  [▼ destination ]
+│  ▼ Adapter le mapping                                               │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  Colonne 1  │  "REF001" / "REF002"   │  [▼ Réf. Modèle   ]  │  │
+│  │  Colonne 2  │  "COMM001" / "COMM002" │  [▼ Réf. Comm.    ]  │  │
+│  │  Colonne 3  │  "Desc…" / "Desc…"    │  [▼ Ignorer       ]  │  │
+│  └─────────────────────────────────────────────────────────────┘   │
+```
+
+Pour un format non reconnu, même widget mais toujours déplié, titre `⛔ Mapping requis` :
+
+```
+│  ⛔ Mapping requis — ce fichier ne sera pas importé sans mapping    │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  Colonne 1  │  "???" / "???"         │  [▼ — Ignorer —   ]  │  │
+│  │  ...                                                        │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+```
+
+### 5.2 Structure d'une ligne de mapping
+
+```
+Colonne N  │  "exemple1" / "exemple2"  │  [▼ destination    ]
 ```
 
 - Colonne gauche : `Colonne N` en gras, largeur fixe
-- Colonne centre : 2 valeurs de `sample_data` (monospace, gris, tronquées à 18 car.), largeur fixe
-- Colonne droite : QComboBox avec les 7 destinations (§3.2) + `"— Ignorer —"` par défaut
+- Colonne centre : 2 valeurs tirées de `sample_data` (monospace, gris, tronquées à 18 car.)
+- Colonne droite : QComboBox avec les 7 destinations + `"— Ignorer —"` par défaut
 
-### 5.5 Validation inline
+### 5.3 Validation inline
 
-| Situation | Feedback visuel |
+| Situation | Feedback |
 |---|---|
-| Aucun `ref_modele` dans un groupe | En-tête rouge ⛔, bouton Importer désactivé |
-| `ref_modele` mappée dans tous les groupes | En-tête orange ⚠, bouton activé |
-| Doublon de destination dans un groupe (ex : 2×`ref_modele`) | Label d'avertissement sous le mapping du groupe, non bloquant |
+| Groupe non reconnu sans `ref_modele` | En-tête rouge ⛔, bouton Importer désactivé |
+| Groupe non reconnu avec `ref_modele` | En-tête orange ⚠, bouton activé |
+| Doublon de destination dans un groupe | Avertissement non bloquant sous le widget |
+| Tous les groupes reconnus, mapping non touché | Bouton activé, comportement actuel |
 
 ---
 
-## 6. Logique d'import — `_parse_row_data()`
+## 6. Logique de `_parse_row_data()`
 
 ```python
 def _parse_row_data(self, row, config):
     n = len(row)
 
-    # Si un mapping explicite existe pour ce nombre de colonnes → l'utiliser
+    # Si un mapping personnalisé existe pour ce nombre de colonnes → l'utiliser
     if config.column_mapping and n in config.column_mapping:
         data = {}
         for i, field in enumerate(config.column_mapping[n]):
@@ -203,49 +221,50 @@ def _parse_row_data(self, row, config):
         return data
 
     # Sinon : comportement POSITIONNEL ACTUEL inchangé (fallback)
-    # ... code existant intact, pas une ligne modifiée ...
+    # ... code existant intact, aucune ligne modifiée ...
 ```
 
-Le fallback positionnel est **le chemin par défaut** — il s'exécute pour tous les fichiers reconnus et quand `column_mapping` est `None`.
+Le fallback positionnel est le **chemin par défaut** — il s'exécute pour tous les fichiers dont le mapping n'a pas été personnalisé.
 
 ---
 
 ## 7. Plan d'implémentation par phases
 
 ### Phase 1 — Infrastructure (savepoint `v3.29.3`)
-**Objectif :** Préparer le socle sans rien casser. Flag désactivé. Aucun changement visible.
+**Objectif :** Préparer le socle. Flag désactivé, aucun changement visible.
 
 - [ ] Ajouter `column_mapping: Optional[Dict[int, List[str]]] = None` dans `ImportConfiguration`
 - [ ] Ajouter `Config.ENABLE_COLUMN_MAPPING = False`
 - [ ] Modifier `_parse_row_data()` : branchement `column_mapping[n]` si présent, sinon fallback
-- [ ] **Tous les tests non-régression §8.1 doivent passer**
-- [ ] Commit + tag savepoint `v3.29.3`
+- [ ] **Tous les tests §8.1 doivent passer**
+- [ ] Commit + tag `v3.29.3`
 
-### Phase 2 — Classification et affichage (savepoint `v3.29.4`)
-**Objectif :** Refactoriser `_analyze_formats_and_preview()` pour séparer reconnus / non reconnus.
+### Phase 2 — Classification et groupes (savepoint `v3.29.4`)
+**Objectif :** Regrouper les fichiers par structure, préparer l'affichage.
 
-- [ ] Créer `_classify_files()` → retourne `(recognized, unrecognized_groups)`
-- [ ] Refactoriser l'affichage en deux blocs (§5.1) — caché si `ENABLE_COLUMN_MAPPING = False`
-- [ ] Conserver l'affichage actuel intact quand le flag est `False`
+- [ ] Créer `_group_files_by_columns()` → `Dict[int, List[ImportFile]]`
+- [ ] Refactoriser `_analyze_formats_and_preview()` pour itérer sur les groupes
+- [ ] Conserver l'affichage actuel quand `ENABLE_COLUMN_MAPPING = False`
 - [ ] **Tous les tests §8.1 + §8.2 doivent passer**
-- [ ] Commit + tag savepoint `v3.29.4`
+- [ ] Commit + tag `v3.29.4`
 
 ### Phase 3 — Widget de mapping (savepoint `v3.29.5`)
-**Objectif :** Construire `MappingGroupWidget`, l'intégrer, gérer la validation.
+**Objectif :** Construire `MappingGroupWidget`, intégrer l'option discrète et le mode obligatoire.
 
-- [ ] Créer `MappingGroupWidget(QWidget)` : N lignes colonne/exemples/combo
-- [ ] Intégrer dans le bloc "non reconnus" pour chaque groupe
-- [ ] `_validate_and_accept()` : lire tous les groupes → construire `config.column_mapping`
-- [ ] Gestion de l'activation/désactivation du bouton Importer (§5.5)
+- [ ] Créer `MappingGroupWidget(QWidget)` : toggle discret + N lignes colonne/exemples/combo
+- [ ] Format reconnu : widget replié, pré-rempli selon mapping positionnel du format
+- [ ] Format non reconnu : widget déplié, non repliable, combos à "Ignorer"
+- [ ] `_validate_and_accept()` : construire `config.column_mapping` depuis les widgets modifiés
+- [ ] Gestion activation/désactivation bouton Importer (§5.3)
 - [ ] **Tous les tests §8.1 + §8.2 + §8.3 doivent passer**
-- [ ] Commit + tag savepoint `v3.29.5`
+- [ ] Commit + tag `v3.29.5`
 
 ### Phase 4 — Activation et release (release `v3.30.0`)
 **Objectif :** Activer le flag, tests end-to-end, documentation.
 
 - [ ] `Config.ENABLE_COLUMN_MAPPING = True`
 - [ ] Tests §8.4 avec fichiers réels
-- [ ] Vérification visuelle complète du dialogue
+- [ ] Vérification visuelle complète
 - [ ] Mise à jour `CHANGELOG.md` et `README.md`
 - [ ] Commit + tag `v3.30.0`
 
@@ -253,48 +272,51 @@ Le fallback positionnel est **le chemin par défaut** — il s'exécute pour tou
 
 ## 8. Tests de non-régression
 
-### 8.1 Tests Phase 1 — `_parse_row_data()` uniquement
+### 8.1 Phase 1 — `_parse_row_data()` uniquement
 
 | # | Scénario | Input | Résultat attendu |
 |---|---|---|---|
-| T1.1 | CSV 1 col, pas de mapping | `["REF001"]`, `column_mapping=None` | `ref_modele="REF001"` |
-| T1.2 | CSV 2 col, pas de mapping | `["REF001","COMM1"]`, `column_mapping=None` | `ref_modele="REF001"`, `commercial_ref="COMM1"` |
-| T1.3 | CSV 3 col, other_ref, pas de mapping | `["R","C","A"]`, `third_column_choice="other_ref"`, `column_mapping=None` | `ref_modele="R"`, `commercial_ref="C"`, `other_ref="A"` |
-| T1.4 | CSV 4 col, pas de mapping | `["Type","Fab","Ref","Comm"]`, `column_mapping=None` | `type="Type"`, `manufacturer="Fab"`, `ref_modele="Ref"`, `commercial_ref="Comm"` |
-| T1.5 | PDF 3 col, pas de mapping | `["R","C","D"]`, `column_mapping=None` | identique à T1.3 selon `third_column_choice` |
-| T1.6 | Mapping manuel 4 col | `["A","B","C","D"]`, `column_mapping={4:["ref_modele","commercial_ref","ignore","type"]}` | `ref_modele="A"`, `commercial_ref="B"`, `type="D"` |
+| T1.1 | 1 col, pas de mapping | `["REF001"]`, `column_mapping=None` | `ref_modele="REF001"` |
+| T1.2 | 2 col, pas de mapping | `["REF001","COMM1"]`, `column_mapping=None` | `ref_modele="REF001"`, `commercial_ref="COMM1"` |
+| T1.3 | 3 col, other_ref, pas de mapping | `["R","C","A"]`, `third_column_choice="other_ref"`, `column_mapping=None` | `ref_modele="R"`, `commercial_ref="C"`, `other_ref="A"` |
+| T1.4 | 4 col, pas de mapping | `["Type","Fab","Ref","Comm"]`, `column_mapping=None` | `type="Type"`, `manufacturer="Fab"`, `ref_modele="Ref"`, `commercial_ref="Comm"` |
+| T1.5 | PDF 3 col, pas de mapping | `["R","C","D"]`, `column_mapping=None` | identique à T1.3 |
+| T1.6 | Mapping personnalisé 4 col | `["A","B","C","D"]`, `column_mapping={4:["ref_modele","commercial_ref","ignore","type"]}` | `ref_modele="A"`, `commercial_ref="B"`, `type="D"` |
 | T1.7 | Mapping avec ignore | `["REF","X"]`, `column_mapping={2:["ref_modele","ignore"]}` | `ref_modele="REF"` uniquement |
-| T1.8 | Mapping pour N col absent (fallback) | `["A","B"]`, `column_mapping={4:["ref_modele","commercial_ref","ignore","type"]}` | fallback positionnel : `ref_modele="A"`, `commercial_ref="B"` |
+| T1.8 | Mapping pour N absent → fallback | `["A","B"]`, `column_mapping={4:["ref_modele","commercial_ref","ignore","type"]}` | fallback : `ref_modele="A"`, `commercial_ref="B"` |
+| T1.9 | Mapping présent mais vide pour N → fallback | `["A","B"]`, `column_mapping={}` | fallback : `ref_modele="A"`, `commercial_ref="B"` |
 
-### 8.2 Tests Phase 2 — Classification des fichiers
+### 8.2 Phase 2 — Groupement des fichiers
 
 | # | Scénario | Résultat attendu |
 |---|---|---|
-| T2.1 | Import seul — PDF 3 col | Bloc "reconnus" affiché, pas de bloc "non reconnus" |
-| T2.2 | Import seul — format inconnu 5 col | Bloc "non reconnus" affiché, pas de bloc "reconnus" |
-| T2.3 | Multi-fichiers — 2 PDF 3 col + 1 CSV 5 col inconnu | Les 2 blocs affichés |
-| T2.4 | Multi-fichiers — 2 CSV inconnus 4 col + 1 CSV inconnu 6 col | Bloc "non reconnus" avec 2 sous-groupes (4 col et 6 col) |
-| T2.5 | Multi-fichiers — tous reconnus | Seul le bloc "reconnus" affiché, comportement identique à aujourd'hui |
+| T2.1 | 1 fichier PDF 3 col | 1 groupe (3 col, reconnu) |
+| T2.2 | 3 fichiers PDF 3 col | 1 groupe (3 col, reconnu) |
+| T2.3 | 2 PDF 3 col + 1 CSV 5 col inconnu | 2 groupes (3 col reconnu + 5 col non reconnu) |
+| T2.4 | 2 CSV 4 col + 1 CSV 6 col | 2 groupes (4 col + 6 col, tous reconnus) |
+| T2.5 | 1 CSV 0 col (vide) | 1 groupe (0 col, non reconnu) |
 
-### 8.3 Tests Phase 3 — Widget de mapping
+### 8.3 Phase 3 — Widget de mapping
 
 | # | Scénario | Action | Résultat attendu |
 |---|---|---|---|
-| T3.1 | Fichier non reconnu ouvert | Observer | Toutes combos à "Ignorer", bouton Importer désactivé |
-| T3.2 | Mapper ref_modele sur col1 | Sélectionner dans combo | Bouton Importer activé, en-tête passe en orange |
-| T3.3 | 2 groupes non reconnus, mapper 1 seul | Mapper uniquement groupe 1 | Bouton reste désactivé (groupe 2 sans ref_modele) |
-| T3.4 | Doublon ref_modele dans même groupe | Mapper 2 colonnes → ref_modele | Avertissement non bloquant affiché |
-| T3.5 | Import PDF 3 col (reconnu) sans toucher au mapping | Importer | Données identiques à avant la feature |
+| T3.1 | Fichier reconnu, mapping non touché | Importer | Comportement identique à avant |
+| T3.2 | Fichier reconnu, ouvrir toggle | Cliquer `▶ Adapter le mapping` | Widget déplié, combos pré-remplies selon format détecté |
+| T3.3 | Fichier non reconnu | Ouvrir dialogue | Widget déplié non repliable, combos à "Ignorer", Importer désactivé |
+| T3.4 | Fichier non reconnu, mapper ref_modele | Sélectionner combo | Importer activé, bandeau orange |
+| T3.5 | 2 groupes non reconnus, mapper 1 seul | — | Importer reste désactivé |
+| T3.6 | Doublon ref_modele | Mapper 2 colonnes → ref_modele | Avertissement affiché, non bloquant |
+| T3.7 | PDF 3 col sans toucher mapping | Importer | Données en DB identiques à avant la feature |
 
-### 8.4 Tests Phase 4 — End-to-end avec fichiers réels
+### 8.4 Phase 4 — End-to-end
 
-| # | Fichier test | Validation |
+| # | Fichier | Validation |
 |---|---|---|
-| T4.1 | PDF fournisseur habituel (3 col) | Vérifier 5 enregistrements en DB = valeurs attendues |
-| T4.2 | CSV 2 col standard | Vérifier ref_modele + commercial_ref corrects |
-| T4.3 | CSV ordre inversé (commercial en col0) | Mapper manuellement, vérifier import correct |
-| T4.4 | CSV 5 col avec champs non standard | Mapper 3 colonnes utiles, ignorer les 2 autres |
-| T4.5 | Mix : 2 PDF reconnus + 1 CSV inconnu | PDF importés normalement + CSV avec mapping correct |
+| T4.1 | PDF fournisseur standard (3 col) | 5 enregistrements DB = valeurs attendues |
+| T4.2 | CSV 2 col standard | ref_modele + commercial_ref corrects |
+| T4.3 | CSV ordre inversé (commercial en col0) | Mapper manuellement, vérifier import |
+| T4.4 | CSV 7 col non reconnu | Mapper 4 colonnes utiles, ignorer les 3 autres |
+| T4.5 | Mix : 2 PDF reconnus + 1 CSV inconnu | PDF importés normalement + CSV avec mapping |
 
 ---
 
@@ -302,38 +324,35 @@ Le fallback positionnel est **le chemin par défaut** — il s'exécute pour tou
 
 | Savepoint | Tag git | Description |
 |---|---|---|
-| Stable actuel | `v3.29.2` | État avant tout développement — rollback ici si blocage |
-| Fin Phase 1 | `v3.29.3` | Infrastructure `column_mapping`, flag désactivé |
-| Fin Phase 2 | `v3.29.4` | Classification fichiers, affichage deux blocs, flag désactivé |
-| Fin Phase 3 | `v3.29.5` | Widget mapping complet, flag désactivé |
+| Stable actuel | `v3.29.2` | État avant tout développement |
+| Fin Phase 1 | `v3.29.3` | Infrastructure, flag désactivé |
+| Fin Phase 2 | `v3.29.4` | Groupement fichiers, flag désactivé |
+| Fin Phase 3 | `v3.29.5` | Widget complet, flag désactivé |
 | Release | `v3.30.0` | Flag activé, feature complète |
 
-**Rollback immédiat sans perte :**
 ```bash
-# Option 1 : retour git complet
-git checkout v3.29.2
-
-# Option 2 : désactivation du flag seul (sans rollback code)
-Config.ENABLE_COLUMN_MAPPING = False
+git checkout v3.29.2        # rollback complet
+# OU
+Config.ENABLE_COLUMN_MAPPING = False   # désactivation sans rollback
 ```
 
 ---
 
-## 10. Fichiers modifiés (périmètre)
+## 10. Périmètre des modifications
 
 | Fichier | Modifications |
 |---|---|
 | `src/core/config.py` | + `ENABLE_COLUMN_MAPPING = False` |
-| `src/core/import_manager.py` | + `_classify_files()`, `MappingGroupWidget`, refacto `_analyze_formats_and_preview()`, branchement `_parse_row_data()`, lecture mapping dans `_validate_and_accept()` |
+| `src/core/import_manager.py` | + `_group_files_by_columns()`, `MappingGroupWidget`, refacto `_analyze_formats_and_preview()`, branchement `_parse_row_data()`, lecture mapping `_validate_and_accept()` |
 | `CHANGELOG.md` | Entrées v3.29.3 → v3.30.0 |
 | `README.md` | Version + section Import |
 
 **Fichiers NON modifiés :**
-- `src/data/database_manager.py` — aucun changement DB
-- `src/ui/*` — aucun impact interface principale
-- `_execute_import()`, `_import_single_file()`, batch processing — **inchangés**
+- `src/data/database_manager.py`
+- `src/ui/*`
+- `_execute_import()`, `_import_single_file()`, batch processing
 
 ---
 
-*CDC v1.1 — mis à jour le 2026-03-16*
-*Changements v1.1 : scope restreint aux formats non reconnus uniquement ; gestion multi-fichiers par groupes de structure ; présentation des fichiers reconnus inchangée (lecture seule) ; 4 phases au lieu de 3.*
+*CDC v1.2 — mis à jour le 2026-03-16*
+*Changements v1.2 : option de mapping disponible pour tous les formats (discrète/repliée pour les reconnus, obligatoire/dépliée pour les non reconnus) ; multi-fichiers par groupes de structure.*
