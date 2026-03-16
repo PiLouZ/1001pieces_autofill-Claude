@@ -2270,7 +2270,7 @@ class MainWindow(QMainWindow):
 **Prérequis** : Python 3.10+ (`python3 --version` pour vérifier)
 
 1. **Double-cliquez sur `install.command`** — installe les dépendances (une seule fois)
-2. **Double-cliquez sur `1001pieces_autofill.command`** — lance l'application
+2. **Double-cliquez sur `1001pieces_autofill.app`** — lance l'application (sans console)
 
 > Aucune connexion internet nécessaire sur le poste cible (les wheels sont inclus).
 

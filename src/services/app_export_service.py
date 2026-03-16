@@ -91,6 +91,12 @@ class AppExportService(BaseService):
         def _on_finished(result):
             progress_dlg.close()
             if result['success']:
+                # Régénérer aussi le lanceur .app sur la machine source
+                spec = importlib.util.spec_from_file_location('export_app', _EXPORT_SCRIPT)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                mod.create_source_launcher()
+
                 MessageHelper.show_info(
                     parent,
                     f"✅ Export terminé avec succès !\n\n"
@@ -98,7 +104,7 @@ class AppExportService(BaseService):
                     f"Taille  : {result['size_mb']:.0f} Mo\n\n"
                     f"Sur le poste cible :\n"
                     f"  1. Double-clic sur install.command   (une seule fois)\n"
-                    f"  2. Double-clic sur 1001pieces_autofill.command",
+                    f"  2. Double-clic sur 1001pieces_autofill.app",
                     "Export réussi",
                 )
             else:

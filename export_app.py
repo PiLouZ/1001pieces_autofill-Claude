@@ -141,30 +141,58 @@ read -n 1 -s -r -p "Appuyez sur une touche pour fermer cette fenêtre…"
         script.chmod(0o755)
 
 
-def _write_launch_script(dest: Path):
-    """Crée 1001pieces_autofill.command (double-cliquable) sur la machine cible."""
-    content = """\
-#!/usr/bin/env bash
-# 1001pieces_autofill.command — Lancement (double-clic depuis le Finder)
-cd "$(dirname "$0")"
+def _compile_app_launcher(dest: Path, use_venv: bool) -> bool:
+    """
+    Compile le lanceur AppleScript en vrai bundle .app via osacompile.
 
-if [ ! -d "venv" ]; then
-    echo "⚠️  L'environnement virtuel est absent."
-    echo "   Double-cliquez d'abord sur install.command"
-    read -n 1 -s -r -p "Appuyez sur une touche pour fermer…"
-    exit 1
-fi
+    Le script AppleScript détecte son propre dossier parent au moment de
+    l'exécution (pas de chemin codé en dur). Il lance Python en arrière-plan
+    via un login shell pour bénéficier du PATH complet de l'utilisateur.
+    Aucune fenêtre Terminal n'est ouverte.
 
-# Lancer l'application en arrière-plan et fermer la console
-source venv/bin/activate
-python3 run.py &
-disown $!
-osascript -e 'tell application "Terminal" to close front window' > /dev/null 2>&1
-exit 0
+    Retourne True si succès.
+    """
+    import tempfile
+
+    if use_venv:
+        launch_cmd = "source venv/bin/activate && nohup python3 run.py > /dev/null 2>&1 &"
+    else:
+        launch_cmd = "nohup python3 run.py > /dev/null 2>&1 &"
+
+    # Le script est écrit dans un fichier temporaire pour éviter les problèmes
+    # d'échappement des guillemets avec les chemins contenant des espaces.
+    applescript = f"""\
+set appPath to POSIX path of (path to me)
+set appFolder to do shell script "dirname " & quoted form of appPath
+do shell script "/bin/bash -l -c 'cd " & quoted form of appFolder & " && {launch_cmd}'"
 """
-    script = dest / '1001pieces_autofill.command'
-    script.write_text(content, encoding='utf-8')
-    script.chmod(0o755)
+    app_path = dest / '1001pieces_autofill.app'
+
+    with tempfile.NamedTemporaryFile(suffix='.applescript', mode='w',
+                                     encoding='utf-8', delete=False) as f:
+        f.write(applescript)
+        tmp_path = f.name
+
+    try:
+        result = subprocess.run(
+            ['osacompile', '-o', str(app_path), tmp_path],
+            capture_output=True, text=True,
+        )
+        return result.returncode == 0
+    finally:
+        os.unlink(tmp_path)
+
+
+def create_source_launcher(project_root: Path | str | None = None) -> bool:
+    """
+    Crée (ou recrée) le lanceur 1001pieces_autofill.app dans le dossier du projet.
+    À appeler sur la machine source (sans venv).
+    Retourne True si succès.
+    """
+    if project_root is None:
+        project_root = ROOT
+    project_root = Path(project_root)
+    return _compile_app_launcher(project_root, use_venv=False)
 
 
 def _write_readme(dest: Path, export_date: str):
@@ -195,7 +223,7 @@ Aucune connexion internet nécessaire (les fichiers `.whl` sont inclus dans `whe
 
 ## Lancement
 
-**Double-cliquez sur `1001pieces_autofill.command`** dans le Finder.
+**Double-cliquez sur `1001pieces_autofill.app`** dans le Finder (aucune console).
 
 ---
 
@@ -208,7 +236,7 @@ Aucune connexion internet nécessaire (les fichiers `.whl` sont inclus dans `whe
 | `wheels/` | Dépendances pip pré-téléchargées |
 | `requirements_frozen.txt` | Versions exactes des dépendances |
 | `install.command` | Installation (double-clic, une seule fois) |
-| `1001pieces_autofill.command` | Lancement (double-clic) |
+| `1001pieces_autofill.app` | Lancement (double-clic, sans Terminal) |
 
 ---
 
@@ -268,11 +296,11 @@ def create_export(output_dir: Path | str | None = None,
                          "Vérifiez la connexion internet.",
             }
 
-        # ── 4. Scripts install / launch ──────────────────────────────────────
+        # ── 4. Script install + lanceur .app ─────────────────────────────────
         if progress_callback:
-            progress_callback("Génération des scripts install.sh et launch.sh…")
+            progress_callback("Génération du script install.command et du lanceur .app…")
         _write_install_script(dest)
-        _write_launch_script(dest)
+        _compile_app_launcher(dest, use_venv=True)
         _write_readme(dest, datetime.now().strftime('%d/%m/%Y %H:%M'))
 
         # ── 5. Calcul de la taille totale ────────────────────────────────────
