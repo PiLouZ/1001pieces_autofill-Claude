@@ -161,10 +161,17 @@ def _compile_app_launcher(dest: Path, use_venv: bool) -> bool:
 
     # Le script est écrit dans un fichier temporaire pour éviter les problèmes
     # d'échappement des guillemets avec les chemins contenant des espaces.
+    #
+    # Stratégie de quoting :
+    #   • quoted form of appFolder  → guillemets simples : '/chemin avec espaces'
+    #   • La commande bash -c est délimitée par des guillemets DOUBLES (\" ... \")
+    #     afin que les guillemets simples de quoted form puissent y être insérés
+    #     sans conflit.
+    #   Résultat : /bin/bash -l -c "cd '/chemin avec espaces' && ..."
     applescript = f"""\
 set appPath to POSIX path of (path to me)
 set appFolder to do shell script "dirname " & quoted form of appPath
-do shell script "/bin/bash -l -c 'cd " & quoted form of appFolder & " && {launch_cmd}'"
+do shell script "/bin/bash -l -c \\"cd " & quoted form of appFolder & " && {launch_cmd}\\""
 """
     app_path = dest / '1001pieces_autofill.app'
 
