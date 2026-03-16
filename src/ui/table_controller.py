@@ -575,8 +575,10 @@ class TableController:
             self._pending_prefetch_params = None
             self.prefetch_timer.stop()
 
-        # Panneau pièces : vider si aucun résultat (évite d'afficher les pièces du dernier appareil consulté)
-        if self.total_rows == 0 and hasattr(self.parent_window, 'pieces_panel_service'):
+        # Panneau pièces : vider si aucune ligne sélectionnée après chargement
+        # (couvre : 0 résultat, RAZ colonne, nouvelle recherche, tri — dans tous ces cas
+        #  la sélection est perdue et le panneau ne doit pas afficher les vieilles pièces)
+        if self.table.currentRow() < 0 and hasattr(self.parent_window, 'pieces_panel_service'):
             self.parent_window.pieces_panel_service.update_pieces_panel()
 
         # Performance logging
@@ -711,8 +713,8 @@ class TableController:
         if hasattr(self.parent_window, '_init_previous_values'):
             self.parent_window._init_previous_values()
 
-        # Panneau pièces : vider si aucun résultat (même logique que load_data)
-        if self.total_rows == 0 and hasattr(self.parent_window, 'pieces_panel_service'):
+        # Panneau pièces : vider si aucune ligne sélectionnée (même logique que load_data)
+        if self.table.currentRow() < 0 and hasattr(self.parent_window, 'pieces_panel_service'):
             self.parent_window.pieces_panel_service.update_pieces_panel()
 
         # Nettoyer et finaliser
