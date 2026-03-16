@@ -141,6 +141,62 @@ read -n 1 -s -r -p "Appuyez sur une touche pour fermer cette fenêtre…"
         script.chmod(0o755)
 
 
+def _inject_icon(app_path: Path, icon_png: Path) -> bool:
+    """
+    Convertit icon_png en .icns et l'injecte dans le bundle .app.
+    Utilise sips (redimensionnement) + iconutil (compilation icns).
+    Retourne True si succès.
+    """
+    import tempfile
+
+    iconset_dir = Path(tempfile.mkdtemp()) / 'app.iconset'
+    iconset_dir.mkdir()
+
+    try:
+        # Étape 1 — image carrée 1024×1024 (padding blanc si nécessaire)
+        square = iconset_dir.parent / 'square.png'
+        subprocess.run(['sips', '--padToHeightWidth', '1024', '1024',
+                        '--padColor', 'FFFFFF', str(icon_png), '-o', str(square)],
+                       capture_output=True)
+        subprocess.run(['sips', '-z', '1024', '1024', str(square), '-o', str(square)],
+                       capture_output=True)
+
+        # Étape 2 — générer toutes les tailles requises
+        sizes = [
+            ('icon_16x16.png',      16),   ('icon_16x16@2x.png',    32),
+            ('icon_32x32.png',      32),   ('icon_32x32@2x.png',     64),
+            ('icon_128x128.png',   128),   ('icon_128x128@2x.png',  256),
+            ('icon_256x256.png',   256),   ('icon_256x256@2x.png',  512),
+            ('icon_512x512.png',   512),   ('icon_512x512@2x.png', 1024),
+        ]
+        for filename, px in sizes:
+            subprocess.run(['sips', '-z', str(px), str(px), str(square),
+                            '--out', str(iconset_dir / filename)],
+                           capture_output=True)
+
+        # Étape 3 — compiler en .icns
+        icns_path = iconset_dir.parent / 'app_icon.icns'
+        result = subprocess.run(['iconutil', '-c', 'icns', str(iconset_dir),
+                                  '-o', str(icns_path)],
+                                 capture_output=True)
+        if result.returncode != 0:
+            return False
+
+        # Étape 4 — injecter dans le bundle
+        dest_icns = app_path / 'Contents' / 'Resources' / 'applet.icns'
+        shutil.copy2(icns_path, dest_icns)
+        return True
+
+    except Exception:
+        return False
+    finally:
+        shutil.rmtree(str(iconset_dir.parent), ignore_errors=True)
+
+
+# Chemin de l'icône PNG du projet (inclus dans les exports)
+_ICON_PNG = ROOT / 'app_icon.png'
+
+
 def _compile_app_launcher(dest: Path, use_venv: bool) -> bool:
     """
     Compile le lanceur AppleScript en vrai bundle .app via osacompile.
@@ -185,7 +241,13 @@ do shell script "/bin/bash -l -c \\"cd " & quoted form of appFolder & " && {laun
             ['osacompile', '-o', str(app_path), tmp_path],
             capture_output=True, text=True,
         )
-        return result.returncode == 0
+        if result.returncode != 0:
+            return False
+        # Injecter l'icône personnalisée si disponible
+        icon_png = dest / 'app_icon.png' if use_venv else _ICON_PNG
+        if icon_png.exists():
+            _inject_icon(app_path, icon_png)
+        return True
     finally:
         os.unlink(tmp_path)
 
