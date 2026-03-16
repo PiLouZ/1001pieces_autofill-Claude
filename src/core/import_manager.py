@@ -204,7 +204,32 @@ class ImportDialog(QDialog):
         self.format_desc_label = QLabel()
         self.format_desc_label.setStyleSheet("color: #6c757d; margin-left: 20px;")
         format_layout.addWidget(self.format_desc_label)
-        
+
+        # Bandeau d'alerte format non reconnu (masqué par défaut)
+        self.format_warning_widget = QWidget()
+        self.format_warning_widget.setStyleSheet(
+            "QWidget { background-color: #dc3545; border-radius: 6px; padding: 4px; }"
+        )
+        warning_layout = QVBoxLayout(self.format_warning_widget)
+        warning_layout.setContentsMargins(14, 10, 14, 10)
+        warning_layout.setSpacing(4)
+
+        warning_title = QLabel("⛔  Format non reconnu")
+        warning_title.setStyleSheet(
+            "color: white; font-weight: bold; font-size: 14px;"
+            "background: transparent;"
+        )
+        warning_layout.addWidget(warning_title)
+
+        warning_sub = QLabel("Ce fichier ne peut pas être importé.\nVérifiez qu'il s'agit d'un CSV ou PDF compatible.")
+        warning_sub.setStyleSheet(
+            "color: #ffe0e0; font-size: 11px; background: transparent;"
+        )
+        warning_layout.addWidget(warning_sub)
+
+        self.format_warning_widget.setVisible(False)
+        format_layout.addWidget(self.format_warning_widget)
+
         # Aperçu des données avec hauteur augmentée
         self.preview_text = QTextEdit()
         self.preview_text.setMinimumHeight(80)
@@ -457,10 +482,10 @@ class ImportDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
 
-        ok_btn = QPushButton("Importer")
-        ok_btn.setDefault(True)
-        ok_btn.clicked.connect(self._validate_and_accept)
-        buttons_layout.addWidget(ok_btn)
+        self.ok_btn = QPushButton("Importer")
+        self.ok_btn.setDefault(True)
+        self.ok_btn.clicked.connect(self._validate_and_accept)
+        buttons_layout.addWidget(self.ok_btn)
 
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
@@ -754,9 +779,8 @@ class ImportDialog(QDialog):
             types_str = ", ".join(file_types)
             info_text = f"📊 Fichiers détectés ({types_str}): {detected_columns} colonnes"
         
-        self.format_info_label.setText("Format reconnu:")
-        
         # Description du format
+        format_non_reconnu = False
         if detected_columns == 1:
             format_desc = "• 1 colonne → Réf. Modèle uniquement"
         elif detected_columns == 2:
@@ -769,9 +793,21 @@ class ImportDialog(QDialog):
         elif detected_columns >= 4:
             format_desc = "• 4+ colonnes → Format complet (Type, Fabricant, Réf. Modèle, Réf. Commerciale, ...)"
         else:
-            format_desc = "• Format non reconnu"
-        
-        self.format_desc_label.setText(format_desc)
+            format_desc = ""
+            format_non_reconnu = True
+
+        if format_non_reconnu:
+            self.format_info_label.setText("")
+            self.format_desc_label.setText("")
+            self.format_warning_widget.setVisible(True)
+            if hasattr(self, 'ok_btn'):
+                self.ok_btn.setEnabled(False)
+        else:
+            self.format_info_label.setText("Format reconnu:")
+            self.format_desc_label.setText(format_desc)
+            self.format_warning_widget.setVisible(False)
+            if hasattr(self, 'ok_btn'):
+                self.ok_btn.setEnabled(True)
         
         # Générer l'aperçu des données
         if sample_data:

@@ -220,13 +220,14 @@ class PiecesManagerWindow(QDialog):
             "Référence Pièce", "Libellé", "Nb", "Types d'Appareils", "Statut"
         ])
 
-        # Configuration du tableau
+        # Configuration du tableau — largeurs fixes, redimensionnables via poignées
         header = self.pieces_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.pieces_table.setColumnWidth(0, 130)   # Référence Pièce
+        self.pieces_table.setColumnWidth(1, 200)   # Libellé
+        self.pieces_table.setColumnWidth(2, 45)    # Nb
+        self.pieces_table.setColumnWidth(3, 200)   # Types d'Appareils
+        self.pieces_table.setColumnWidth(4, 100)   # Statut
 
         self.pieces_table.setAlternatingRowColors(True)
         self.pieces_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)

@@ -14,7 +14,7 @@ from .qt_imports import (
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
     QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser,
     QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont,
-    Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel
+    Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel, QSizePolicy
 )
 
 # Imports Python standard consolidés
@@ -465,16 +465,19 @@ class MainWindow(QMainWindow):
         """Créer le widget des pièces"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
         # Splitter vertical pour diviser en deux parties
         pieces_splitter = QSplitter(Qt.Vertical)
-        
+
         # Partie haute - Onglets pour les pièces
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)  # retire le double niveau de marges internes
+        top_layout.setSpacing(2)
         
         # ── En-tête : nom appareil + bouton rafraîchir ──────────────────────
         header_widget = QWidget()
+        header_widget.setFixedHeight(30)
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(4, 2, 4, 2)
         header_layout.setSpacing(4)
@@ -484,6 +487,8 @@ class MainWindow(QMainWindow):
             "color: #343a40; font-size: 11px;"
         )
         self.pieces_header_label.setWordWrap(False)
+        self.pieces_header_label.setMinimumWidth(0)
+        self.pieces_header_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         header_layout.addWidget(self.pieces_header_label, 1)
 
         self.pieces_count_label = QLabel("")

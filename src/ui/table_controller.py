@@ -159,7 +159,7 @@ class TableController:
         """Créer le widget complet du tableau avec barre de recherche, filtres et pagination"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
         # Barre de recherche supprimée d'ici - maintenant sous le tableau
         
         # Filtres par colonne prenant toute la largeur disponible

@@ -197,9 +197,10 @@ class PiecePickerDialog(QDialog):
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
 
         hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(0, 130)   # Référence
+        self._table.setColumnWidth(1, 270)   # Libellé
+        self._table.setColumnWidth(2, 90)    # Statut
         self._table.verticalHeader().setVisible(False)
         layout.addWidget(self._table)
 
