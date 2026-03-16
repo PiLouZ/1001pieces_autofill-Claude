@@ -15,7 +15,8 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QComboBox, QCheckBox,
                              QTextEdit, QGroupBox, QProgressDialog, QApplication,
                              QScrollArea, QWidget, QGridLayout, Qt, QTimer,
-                             QCompleter, QStringListModel, QRadioButton, QButtonGroup)
+                             QCompleter, QStringListModel, QRadioButton, QButtonGroup,
+                             QSizePolicy, pyqtSignal)
 
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
@@ -113,6 +114,170 @@ class ImportConfiguration:
         if self.obsolete_refs is None:
             self.obsolete_refs = []
 
+
+# ── MappingGroupWidget (v3.30.0) ─────────────────────────────────────────────
+
+class MappingGroupWidget(QWidget):
+    """
+    Widget de mapping pour un groupe de fichiers de même structure.
+    - Format reconnu  : toggle discret replié, combos pré-remplies selon format détecté
+    - Format non reconnu : toujours déplié, obligatoire avant import
+    """
+
+    mapping_changed = pyqtSignal()
+
+    FIELD_CHOICES = [
+        ("— Ignorer —",      "ignore"),
+        ("Réf. Modèle",      "ref_modele"),
+        ("Réf. Commerciale", "commercial_ref"),
+        ("Type d'appareil",  "type"),
+        ("Fabricant",        "manufacturer"),
+        ("Autre Référence",  "other_ref"),
+        ("Notes",            "notes"),
+    ]
+
+    def __init__(self, n_cols: int, files: list, sample_data: list,
+                 is_recognized: bool, default_mapping: list, parent=None):
+        super().__init__(parent)
+        self._n_cols = n_cols
+        self._is_recognized = is_recognized
+        self._is_modified = False   # True dès que l'utilisateur modifie une combo
+        self._combos = []
+        self._toggle_btn = None
+        self._status_label = None
+        self._expanded = not is_recognized  # non-reconnu = toujours déplié
+        self._build_ui(n_cols, files, sample_data, is_recognized, default_mapping)
+
+    # ── Construction UI ──────────────────────────────────────────────────────
+
+    def _build_ui(self, n_cols, files, sample_data, is_recognized, default_mapping):
+        import os
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 2, 0, 2)
+        outer.setSpacing(4)
+
+        file_names = self._format_file_names(files)
+        col_label = f"{n_cols} colonne{'s' if n_cols > 1 else ''}"
+
+        if is_recognized:
+            self._toggle_btn = QPushButton(
+                f"▶  Adapter le mapping  —  {file_names}  ({col_label})"
+            )
+            self._toggle_btn.setFlat(True)
+            self._toggle_btn.setCursor(Qt.PointingHandCursor)
+            self._toggle_btn.setStyleSheet(
+                "QPushButton { color: #0066cc; font-size: 11px; text-align: left;"
+                " padding: 2px 4px; border: none; background: transparent; }"
+                "QPushButton:hover { color: #004499; text-decoration: underline; }"
+            )
+            self._toggle_btn.clicked.connect(self._toggle)
+            outer.addWidget(self._toggle_btn)
+        else:
+            self._status_label = QLabel(
+                f"⛔  {file_names}  ({col_label}) — définissez la correspondance"
+            )
+            self._status_label.setStyleSheet(
+                "color: #dc3545; font-weight: bold; font-size: 11px; padding: 2px 0;"
+            )
+            outer.addWidget(self._status_label)
+
+        # Tableau de mapping
+        self._mapping_widget = QWidget()
+        self._mapping_widget.setStyleSheet(
+            "QWidget { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; }"
+        )
+        grid = QGridLayout(self._mapping_widget)
+        grid.setContentsMargins(8, 6, 8, 6)
+        grid.setSpacing(4)
+        grid.setColumnStretch(1, 1)
+
+        for i in range(n_cols):
+            lbl = QLabel(f"Colonne {i + 1}")
+            lbl.setStyleSheet(
+                "font-weight: bold; font-size: 11px; background: transparent; border: none;"
+            )
+            grid.addWidget(lbl, i, 0)
+
+            examples = []
+            for row in sample_data[:2]:
+                if i < len(row):
+                    val = str(row[i])[:18].strip()
+                    if val:
+                        examples.append(f'"{val}"')
+            ex_lbl = QLabel("  /  ".join(examples) if examples else "—")
+            ex_lbl.setStyleSheet(
+                "color: #6c757d; font-family: monospace; font-size: 10px;"
+                " background: transparent; border: none;"
+            )
+            ex_lbl.setMinimumWidth(0)
+            ex_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            grid.addWidget(ex_lbl, i, 1)
+
+            combo = QComboBox()
+            for label, value in self.FIELD_CHOICES:
+                combo.addItem(label, value)
+            target = default_mapping[i] if i < len(default_mapping) else "ignore"
+            for idx, (_, val) in enumerate(self.FIELD_CHOICES):
+                if val == target:
+                    combo.setCurrentIndex(idx)
+                    break
+            combo.currentIndexChanged.connect(self._on_combo_changed)
+            self._combos.append(combo)
+            grid.addWidget(combo, i, 2)
+
+        outer.addWidget(self._mapping_widget)
+        self._mapping_widget.setVisible(self._expanded)
+
+    # ── Comportement ─────────────────────────────────────────────────────────
+
+    def _toggle(self):
+        self._expanded = not self._expanded
+        self._mapping_widget.setVisible(self._expanded)
+        arrow = "▼" if self._expanded else "▶"
+        text = self._toggle_btn.text()
+        self._toggle_btn.setText(arrow + text[1:])
+
+    def _on_combo_changed(self):
+        self._is_modified = True
+        self._update_status()
+        self.mapping_changed.emit()
+
+    def _update_status(self):
+        """Met à jour la couleur du label pour les groupes non reconnus."""
+        if not self._is_recognized and self._status_label:
+            if self.has_ref_modele():
+                self._status_label.setStyleSheet(
+                    "color: #e67e22; font-weight: bold; font-size: 11px; padding: 2px 0;"
+                )
+            else:
+                self._status_label.setStyleSheet(
+                    "color: #dc3545; font-weight: bold; font-size: 11px; padding: 2px 0;"
+                )
+
+    # ── API publique ─────────────────────────────────────────────────────────
+
+    def get_mapping(self) -> list:
+        """Retourne la liste des destinations (une par colonne détectée)."""
+        return [combo.currentData() for combo in self._combos]
+
+    def has_ref_modele(self) -> bool:
+        return "ref_modele" in self.get_mapping()
+
+    def is_mandatory_and_incomplete(self) -> bool:
+        """True si le groupe est non reconnu ET sans ref_modele → bloque l'import."""
+        return not self._is_recognized and not self.has_ref_modele()
+
+    @staticmethod
+    def _format_file_names(files: list) -> str:
+        import os
+        names = [os.path.basename(f.path) for f in files[:3]]
+        result = ", ".join(names)
+        if len(files) > 3:
+            result += f" +{len(files) - 3}"
+        return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 class ImportDialog(QDialog):
     """Interface utilisateur pour configurer les imports"""
@@ -236,6 +401,14 @@ class ImportDialog(QDialog):
 
         self.format_warning_widget.setVisible(False)
         format_layout.addWidget(self.format_warning_widget)
+
+        # Conteneur de mapping de colonnes (v3.30.0 — masqué par défaut)
+        self.mapping_container = QWidget()
+        self.mapping_container_layout = QVBoxLayout(self.mapping_container)
+        self.mapping_container_layout.setContentsMargins(0, 4, 0, 0)
+        self.mapping_container_layout.setSpacing(6)
+        self.mapping_container.setVisible(False)
+        format_layout.addWidget(self.mapping_container)
 
         # Aperçu des données avec hauteur augmentée
         self.preview_text = QTextEdit()
@@ -732,6 +905,17 @@ class ImportDialog(QDialog):
                     if ref:
                         config.obsolete_refs.append(ref)
 
+        # Mapping de colonnes personnalisé (v3.30.0)
+        from .config import Config
+        if Config.ENABLE_COLUMN_MAPPING and hasattr(self, '_mapping_widgets') and self._mapping_widgets:
+            mapping = {}
+            for widget in self._mapping_widgets:
+                # Stocker si : groupe non reconnu (obligatoire) OU utilisateur a modifié
+                if not widget._is_recognized or widget._is_modified:
+                    mapping[widget._n_cols] = widget.get_mapping()
+            if mapping:
+                config.column_mapping = mapping
+
         self.result_config = config
         self.accept()
     
@@ -765,6 +949,15 @@ class ImportDialog(QDialog):
                 app_logger.warning("ImportManager non disponible pour analyser le format")
 
         return detected_columns, sample_data
+
+    def _update_import_button(self):
+        """Active/désactive le bouton Importer selon l'état des groupes non reconnus."""
+        from .config import Config
+        if not Config.ENABLE_COLUMN_MAPPING or not hasattr(self, '_mapping_widgets'):
+            return
+        all_ok = not any(w.is_mandatory_and_incomplete() for w in self._mapping_widgets)
+        if hasattr(self, 'ok_btn'):
+            self.ok_btn.setEnabled(all_ok)
 
     # ── Helpers groupement et mapping (v3.30.0) ──────────────────────────────
 
@@ -828,11 +1021,43 @@ class ImportDialog(QDialog):
             self._analyze_formats_and_preview_legacy()
             return
 
-        # Grouper les fichiers par structure (Phase 2+)
+        # Grouper les fichiers par structure
         self._file_groups = self._group_files_by_columns()
-        # Phase 3 : création des widgets de mapping par groupe
-        # En attendant, affichage legacy
-        self._analyze_formats_and_preview_legacy()
+
+        # Masquer les widgets legacy
+        self.format_info_label.setVisible(False)
+        self.format_desc_label.setVisible(False)
+        self.format_warning_widget.setVisible(False)
+        self.preview_text.setVisible(False)
+        self.third_col_widget.setVisible(False)
+        self.headers_checkbox.setVisible(False)
+
+        # Vider et afficher le conteneur de mapping
+        while self.mapping_container_layout.count():
+            item = self.mapping_container_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._mapping_widgets = []
+        self.mapping_container.setVisible(True)
+
+        # Créer un MappingGroupWidget par groupe (trié par nb colonnes)
+        for n_cols, files in sorted(self._file_groups.items()):
+            is_recognized = self._is_format_recognized(n_cols)
+            _, sample_data = self._safe_analyze_file_format(files[0])
+            default_mapping = self._get_default_mapping(n_cols, files)
+            widget = MappingGroupWidget(
+                n_cols=n_cols,
+                files=files,
+                sample_data=sample_data,
+                is_recognized=is_recognized,
+                default_mapping=default_mapping,
+                parent=self
+            )
+            widget.mapping_changed.connect(self._update_import_button)
+            self._mapping_widgets.append(widget)
+            self.mapping_container_layout.addWidget(widget)
+
+        self._update_import_button()
 
     def _analyze_formats_and_preview_legacy(self):
         """Comportement historique : analyse le premier fichier pour le format général"""
