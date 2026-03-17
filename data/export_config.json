@@ -6,7 +6,7 @@
     "columns": [
       {
         "header": "product",
-        "source": "{reference}"
+        "source": "{export_ref}"
       },
       {
         "header": "type",
