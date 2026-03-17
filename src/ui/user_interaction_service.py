@@ -58,7 +58,7 @@ def _strip_emoji(text: str) -> str:
 def _detect_action_type(message: str) -> str:
     """Déduire le type d'action à partir du contenu du message."""
     m = message.lower()
-    if any(k in m for k in ('suppression', 'supprimé', 'supprimée', '❌', 'erreur', 'error', 'échec')):
+    if any(k in m for k in ('suppression', 'supprimé', 'supprimée', '[err]', 'erreur', 'error', 'échec')):
         return 'delete'
     if any(k in m for k in ('export csv', 'html marques', 'html détails', 'export html', 'export {')):
         return 'export'
@@ -494,7 +494,7 @@ class UserInteractionService:
     def show_performance_indicator(self, message: str, duration_ms: Optional[int] = None) -> None:
         """Afficher un indicateur de performance"""
         if hasattr(self.main_window, 'perf_label'):
-            perf_message = f"⚡ {message} ({duration_ms}ms)" if duration_ms else f"⚡ {message}"
+            perf_message = f"{message} ({duration_ms}ms)" if duration_ms else message
             self.main_window.perf_label.setText(perf_message)
             if duration_ms is not None:
                 QTimer.singleShot(3000, lambda: self._reset_performance_indicator())
@@ -502,7 +502,7 @@ class UserInteractionService:
     def _reset_performance_indicator(self) -> None:
         """Remettre l'indicateur de performance à "Prêt" """
         if hasattr(self.main_window, 'perf_label'):
-            self.main_window.perf_label.setText("⚡ Prêt")
+            self.main_window.perf_label.setText("Prêt")
 
     # ── Utilitaires ────────────────────────────────────────────────────────────
 

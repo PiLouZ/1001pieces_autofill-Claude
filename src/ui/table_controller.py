@@ -1490,7 +1490,7 @@ class TableController:
         incomplete_layout.addStretch()  # Centrer le bouton
         
         # Bouton pour afficher seulement les lignes incomplètes
-        self.incomplete_filter_btn = QPushButton("📋 Lignes à traiter")
+        self.incomplete_filter_btn = QPushButton("Lignes à traiter")
         self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
         self.incomplete_filter_btn.setCheckable(True)
         self.incomplete_filter_btn.clicked.connect(self.parent_window._toggle_incomplete_filter)
@@ -1534,10 +1534,10 @@ class TableController:
                 self.incomplete_filter_btn.setChecked(show_incomplete_only)
 
                 if show_incomplete_only:
-                    self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
+                    self.incomplete_filter_btn.setText(f"Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
                     self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
                 else:
-                    self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
+                    self.incomplete_filter_btn.setText(f"{pluralize(incomplete_count, 'incomplète')}")
                     self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
             else:
                 self.incomplete_filter_btn.hide()

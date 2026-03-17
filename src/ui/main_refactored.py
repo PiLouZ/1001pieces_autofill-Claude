@@ -926,7 +926,7 @@ class MainWindow(QMainWindow):
         else:
             # Revenir en mode pagination
             self.use_pagination = True
-            self.show_all_btn.setText("📋 Toutes les lignes")
+            self.show_all_btn.setText("Toutes les lignes")
             self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
             if hasattr(self.table_controller, 'current_page'):
                 self.table_controller.current_page = 0
@@ -2025,10 +2025,10 @@ class MainWindow(QMainWindow):
                 self.incomplete_filter_btn.show()
                 from src.core.config import pluralize
                 if self.show_incomplete_only:
-                    self.incomplete_filter_btn.setText(f"📋 Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
+                    self.incomplete_filter_btn.setText(f"Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
                     self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
                 else:
-                    self.incomplete_filter_btn.setText(f"📋 {pluralize(incomplete_count, 'incomplète')}")
+                    self.incomplete_filter_btn.setText(f"{pluralize(incomplete_count, 'incomplète')}")
                     self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
             else:
                 self.incomplete_filter_btn.hide()
@@ -2792,7 +2792,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         context_menu.addSeparator()
         
         # Action pour copier les données
-        copy_action = QAction("📋 Copier", self)
+        copy_action = QAction("Copier", self)
         copy_action.triggered.connect(self._handle_copy)
         context_menu.addAction(copy_action)
         
@@ -2942,7 +2942,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         QApplication.clipboard().setText(clipboard_string)
 
         self.statusbar.showMessage(
-            f"📋 Copié: {len(clipboard_data)} ligne(s)",
+            f"Copié: {len(clipboard_data)} ligne(s)",
             Config.STATUS_MESSAGE_TIMEOUT
         )
 
