@@ -722,21 +722,35 @@ class ImportDialog(QDialog):
             file_label.setStyleSheet("font-weight: bold;")
             file_layout.addWidget(file_label)
             
-            # Référence (basée sur le nom du fichier, affichage conditionnel)
-            ref_display = QLabel(f"→ Réf: {file.suggested_reference}")
-            ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
-            ref_display.setMinimumWidth(150)
-            ref_display.setObjectName(f"ref_display_{file.path}")
-            file_layout.addWidget(ref_display)
-            
+            # Référence — éditable pour le clipboard, label pour les fichiers
+            if file.type == FileType.CLIPBOARD:
+                ref_lbl = QLabel("Référence:")
+                ref_lbl.setStyleSheet("font-weight: bold;")
+                ref_lbl.setMinimumWidth(80)
+                file_layout.addWidget(ref_lbl)
+                ref_input_edit = QLineEdit()
+                ref_input_edit.setPlaceholderText("Référence pièce (ex: AS6015830)")
+                ref_input_edit.setObjectName(f"ref_input_{file.path}")
+                ref_input_edit.setMinimumHeight(35)
+                ref_input_edit.setMinimumWidth(150)
+                ref_input_edit.setStyleSheet("padding: 5px; border: 2px solid #0066cc; border-radius: 4px;")
+                file_layout.addWidget(ref_input_edit)
+            else:
+                ref_display = QLabel(f"→ Réf: {file.suggested_reference}")
+                ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
+                ref_display.setMinimumWidth(150)
+                ref_display.setObjectName(f"ref_display_{file.path}")
+                file_layout.addWidget(ref_display)
+
             # Libellé/Description (modifiable)
             desc_label = QLabel("Libellé:")
             desc_label.setMinimumWidth(60)
             desc_label.setStyleSheet("font-weight: bold;")
             file_layout.addWidget(desc_label)
-            
+
             desc_input = QLineEdit()
-            desc_input.setPlaceholderText(f"Description pour {file.suggested_reference} (optionnel)")
+            desc_input.setPlaceholderText("Description de la pièce (optionnel)" if file.type == FileType.CLIPBOARD
+                                          else f"Description pour {file.suggested_reference} (optionnel)")
             desc_input.setText("")  # Vide par défaut
             desc_input.setObjectName(f"desc_{file.path}")
             desc_input.setMinimumHeight(35)
@@ -876,11 +890,13 @@ class ImportDialog(QDialog):
         auto_references_enabled = self.auto_file_references_checkbox.isChecked()
         
         for file in config.files:
-            # Référence = seulement si la case à cocher est activée
-            if auto_references_enabled:
+            # Référence — champ éditable pour le clipboard, sinon basé sur le fichier
+            if file.type == FileType.CLIPBOARD:
+                ref_input_edit = self.findChild(QLineEdit, f"ref_input_{file.path}")
+                config.individual_references[file.path] = ref_input_edit.text().strip() if ref_input_edit else ""
+            elif auto_references_enabled:
                 config.individual_references[file.path] = file.suggested_reference
             else:
-                # Pas de référence automatique, on laisse vide
                 config.individual_references[file.path] = ""
             
             # Libellé = ce que tape l'utilisateur (peut être vide)
