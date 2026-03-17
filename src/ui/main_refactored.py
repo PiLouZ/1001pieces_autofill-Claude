@@ -465,8 +465,8 @@ class MainWindow(QMainWindow):
         """Créer le widget des pièces"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        m = layout.contentsMargins()
+        layout.setContentsMargins(m.left(), 0, m.right(), m.bottom())
 
         # Splitter vertical pour diviser en deux parties
         pieces_splitter = QSplitter(Qt.Vertical)
