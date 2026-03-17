@@ -26,7 +26,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "encoding": "utf-8",
         "filename_pattern": "{term}_everyParts.csv",
         "columns": [
-            {"header": "product",              "source": "{ref_piece}"},
+            {"header": "product",              "source": "{search_term}"},
             {"header": "type",                 "source": "{type_app}"},
             {"header": "manufacturer",         "source": "{manufacturer}"},
             {"header": "modele_name",          "source": "{ref_modele} - {commercial_ref}"},
@@ -51,7 +51,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 # Variables disponibles dans les sources de colonnes et templates
 AVAILABLE_VARIABLES = [
-    "{ref_piece}", "{type_app}", "{manufacturer}",
+    "{search_term}", "{ref_piece}", "{type_app}", "{manufacturer}",
     "{ref_modele}", "{commercial_ref}", "{other_ref}"
 ]
 
@@ -179,7 +179,8 @@ class ExportConfigService(BaseService):
         type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
 
         context = {
-            'ref_piece':      ref_piece or search_term or '',
+            'search_term':    search_term or '',
+            'ref_piece':      ref_piece or '',
             'type_app':       type_app or '',
             'manufacturer':   manufacturer or '',
             'ref_modele':     ref_modele or '',

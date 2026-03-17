@@ -6,7 +6,7 @@
     "columns": [
       {
         "header": "product",
-        "source": "{ref_piece}"
+        "source": "{search_term}"
       },
       {
         "header": "type",
