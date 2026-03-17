@@ -1731,6 +1731,13 @@ class ImportManager:
             # MODIFICATION: Set GLOBAL pour détecter les doublons INTER-fichiers
             global_seen_device_refs = set()
 
+            # OPTIMISATION CACHE PARTAGÉ: Pré-charger les caches une seule fois
+            # pour tous les fichiers au lieu d'une requête par fichier
+            app_logger.info("📊 Pré-chargement du cache appareils (1× pour tous les fichiers)...")
+            shared_devices_cache = self._preload_existing_devices()
+            shared_autocomplete_cache = self._build_autocomplete_cache(shared_devices_cache)
+            app_logger.info(f"📊 Cache prêt: {len(shared_devices_cache)} appareils")
+
             # OPTIMISATION: Barre de progression NON-MODALE pour éviter les freezes
             progress = QProgressDialog(
             "Importation en cours...",
@@ -1757,8 +1764,9 @@ class ImportManager:
                 # OPTIMISATION: ProcessEvents après chaque update UI
                 QApplication.processEvents()
 
-                # Traiter le fichier avec gestion d'erreur
-                file_results = self._safe_import_single_file(file, config, global_seen_device_refs)
+                # Traiter le fichier avec gestion d'erreur (cache partagé pré-construit)
+                file_results = self._safe_import_single_file(file, config, global_seen_device_refs,
+                                                             shared_devices_cache, shared_autocomplete_cache)
 
                 if file_results:
                     results['successful_files'] += 1
@@ -1878,11 +1886,16 @@ class ImportManager:
                     app_logger.warning(f"Obsolète import non appliqué : {ref}")
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import fichier")
-    def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Optional[Dict[str, Any]]:
+    def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
+                                  shared_devices_cache: Optional[Dict] = None,
+                                  shared_autocomplete_cache: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         """Wrapper sécurisé pour _import_single_file avec gestion d'erreur intégrée"""
-        return self._import_single_file(file, config, file_seen_device_refs)
+        return self._import_single_file(file, config, file_seen_device_refs,
+                                        shared_devices_cache, shared_autocomplete_cache)
 
-    def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Dict[str, Any]:
+    def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
+                             shared_devices_cache: Optional[Dict] = None,
+                             shared_autocomplete_cache: Optional[Dict] = None) -> Dict[str, Any]:
         """Importer un fichier unique"""
         # Charger les données — clipboard utilise les données pré-chargées, fichiers relus depuis disque
         if file.type == FileType.CLIPBOARD and file.data is not None:
@@ -1920,11 +1933,13 @@ class ImportManager:
         
         if len(data) >= BATCH_THRESHOLD:
             return self._process_data_import_batch(
-                data, 
+                data,
                 references_and_labels,
                 config,
                 file,
-                file_seen_device_refs
+                file_seen_device_refs,
+                shared_devices_cache,
+                shared_autocomplete_cache
             )
         else:
             app_logger.debug("📝 Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
@@ -2058,8 +2073,10 @@ class ImportManager:
         
         return results
     
-    def _process_data_import_batch(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
-                                 config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
+    def _process_data_import_batch(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]],
+                                 config: ImportConfiguration, file: ImportFile, seen_device_refs: set,
+                                 shared_devices_cache: Optional[Dict] = None,
+                                 shared_autocomplete_cache: Optional[Dict] = None) -> Dict[str, Any]:
         """Version optimisée avec batch processing pour les gros imports"""
         
         results = {
@@ -2088,20 +2105,23 @@ class ImportManager:
         batch_progress.setMinimumDuration(500)  # Afficher après 0.5s seulement
         batch_progress.show()
         
-        # ÉTAPE 1: Pré-charger tous les appareils existants en mémoire (1 seule requête)
+        # ÉTAPE 1: Utiliser le cache partagé si fourni, sinon pré-charger (import fichier unique)
         batch_progress.setValue(0)
-        batch_progress.setLabelText("📊 Pré-chargement des appareils existants...")
-        QApplication.processEvents()
-        
-        existing_devices_cache = self._preload_existing_devices()
-        app_logger.debug("📊 BATCH: {len(existing_devices_cache)} appareils en cache")
-        
-        # Cache pour auto-complétion (Type + Fabricant par référence)
-        batch_progress.setLabelText("🧠 Construction cache auto-complétion...")
-        QApplication.processEvents()
-        
-        autocomplete_cache = self._build_autocomplete_cache(existing_devices_cache)
-        app_logger.debug("🧠 BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
+        if shared_devices_cache is not None:
+            existing_devices_cache = shared_devices_cache
+            autocomplete_cache = shared_autocomplete_cache or self._build_autocomplete_cache(existing_devices_cache)
+            app_logger.debug(f"📊 BATCH: Cache partagé utilisé ({len(existing_devices_cache)} appareils)")
+            batch_progress.setLabelText("📊 Cache partagé disponible — traitement en cours...")
+            QApplication.processEvents()
+        else:
+            batch_progress.setLabelText("📊 Pré-chargement des appareils existants...")
+            QApplication.processEvents()
+            existing_devices_cache = self._preload_existing_devices()
+            app_logger.debug("📊 BATCH: {len(existing_devices_cache)} appareils en cache")
+            batch_progress.setLabelText("🧠 Construction cache auto-complétion...")
+            QApplication.processEvents()
+            autocomplete_cache = self._build_autocomplete_cache(existing_devices_cache)
+            app_logger.debug("🧠 BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
         
         # ÉTAPE 2: Traitement en mémoire de toutes les lignes
         batch_progress.setValue(1)
