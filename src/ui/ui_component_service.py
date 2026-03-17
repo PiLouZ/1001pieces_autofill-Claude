@@ -10,6 +10,7 @@ Responsabilités:
 """
 
 from typing import Optional, Dict, Any
+import qtawesome as qta
 from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QWidget,
                              QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
                              Qt, QTimer, QFont)
@@ -76,7 +77,7 @@ class UIComponentService:
         seo_layout = QHBoxLayout()
         
         # Bouton Méta Title - 50% de la largeur
-        self.main_window.meta_title_btn = QPushButton("Méta Title")
+        self.main_window.meta_title_btn = QPushButton(qta.icon('fa5s.heading', color='#555555'), "Méta Title")
         self.main_window.meta_title_btn.clicked.connect(self.main_window._generate_meta_title)
         self.main_window.meta_title_btn.setEnabled(False)
         self.main_window.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (60 caractères max)")
@@ -84,7 +85,7 @@ class UIComponentService:
         seo_layout.addWidget(self.main_window.meta_title_btn, 1)  # stretch factor 1 = 50%
         
         # Bouton Méta Description - 50% de la largeur
-        self.main_window.meta_desc_btn = QPushButton("Méta Desc")
+        self.main_window.meta_desc_btn = QPushButton(qta.icon('fa5s.align-left', color='#555555'), "Méta Desc")
         self.main_window.meta_desc_btn.clicked.connect(self.main_window._generate_meta_description)
         self.main_window.meta_desc_btn.setEnabled(False)
         self.main_window.meta_desc_btn.setToolTip("Générer une méta description SEO aléatoire (150 caractères max)")
@@ -188,7 +189,7 @@ class UIComponentService:
         pagination_layout_2.addStretch()
         
         # Bouton pour afficher seulement les lignes incomplètes (centré)
-        incomplete_btn = QPushButton("Lignes à traiter")
+        incomplete_btn = QPushButton(qta.icon('fa5s.tasks', color='#555555'), "Lignes à traiter")
         incomplete_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
         incomplete_btn.setCheckable(True)
         incomplete_btn.clicked.connect(self.main_window._toggle_incomplete_filter)

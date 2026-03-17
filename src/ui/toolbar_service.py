@@ -41,13 +41,13 @@ class ToolbarService:
         self.main_window.addToolBar(toolbar)
 
         # Groupe Édition
-        self.main_window.undo_action = QAction(qta.icon('fa5s.undo'), "Annuler", self.main_window)
+        self.main_window.undo_action = QAction(qta.icon('fa5s.undo', color='#555555'), "Annuler", self.main_window)
         self.main_window.undo_action.setShortcut(QKeySequence.Undo)
         self.main_window.undo_action.setToolTip("Annuler la dernière action (Cmd+Z)")
         self.main_window.undo_action.triggered.connect(self.main_window._undo)
         toolbar.addAction(self.main_window.undo_action)
 
-        self.main_window.redo_action = QAction(qta.icon('fa5s.redo'), "Rétablir", self.main_window)
+        self.main_window.redo_action = QAction(qta.icon('fa5s.redo', color='#555555'), "Rétablir", self.main_window)
         self.main_window.redo_action.setShortcut(QKeySequence.Redo)
         self.main_window.redo_action.setToolTip("Rétablir l'action annulée (Cmd+Y)")
         self.main_window.redo_action.triggered.connect(self.main_window._redo)
@@ -56,13 +56,13 @@ class ToolbarService:
         self._add_toolbar_separator(toolbar)
 
         # Groupe Données
-        save_action = QAction(qta.icon('fa5s.save'), "Sauvegarder", self.main_window)
+        save_action = QAction(qta.icon('fa5s.save', color='#555555'), "Sauvegarder", self.main_window)
         save_action.setShortcut(QKeySequence.Save)
         save_action.setToolTip("Sauvegarder toutes les modifications (Cmd+S)")
         save_action.triggered.connect(getattr(self.main_window, '_manual_save', lambda: None))
         toolbar.addAction(save_action)
 
-        import_action = QAction(qta.icon('fa5s.file-import'), "Importer", self.main_window)
+        import_action = QAction(qta.icon('fa5s.file-import', color='#555555'), "Importer", self.main_window)
         import_action.setToolTip("Importer un fichier PDF ou CSV")
         import_action.triggered.connect(self.main_window._import_file)
         toolbar.addAction(import_action)
@@ -70,7 +70,7 @@ class ToolbarService:
         self._add_toolbar_separator(toolbar)
 
         # Accès direct Pièces
-        pieces_action = QAction(qta.icon('fa5s.puzzle-piece'), "Pièces", self.main_window)
+        pieces_action = QAction(qta.icon('fa5s.puzzle-piece', color='#555555'), "Pièces", self.main_window)
         pieces_action.setToolTip("Gérer les pièces détachées")
         pieces_action.triggered.connect(getattr(self.main_window, '_open_pieces_manager', lambda: None))
         toolbar.addAction(pieces_action)
@@ -84,12 +84,12 @@ class ToolbarService:
         self._add_toolbar_separator(toolbar)
 
         # Aide et diagnostic
-        logs_action = QAction(qta.icon('fa5s.scroll'), "Journal", self.main_window)
+        logs_action = QAction(qta.icon('fa5s.scroll', color='#555555'), "Journal", self.main_window)
         logs_action.setToolTip("Ouvrir le visualiseur de logs")
         logs_action.triggered.connect(getattr(self.main_window, '_open_log_viewer', lambda: None))
         toolbar.addAction(logs_action)
 
-        guide_action = QAction(qta.icon('fa5s.book'), "Guide", self.main_window)
+        guide_action = QAction(qta.icon('fa5s.book', color='#555555'), "Guide", self.main_window)
         guide_action.setToolTip("Guide d'utilisation et raccourcis clavier")
         guide_action.triggered.connect(getattr(self.main_window, '_show_local_guide', lambda: None))
         toolbar.addAction(guide_action)
@@ -97,7 +97,7 @@ class ToolbarService:
         self._add_toolbar_separator(toolbar)
 
         # Rafraîchir (discret, en fin)
-        refresh_action = QAction(qta.icon('fa5s.sync-alt'), "", self.main_window)
+        refresh_action = QAction(qta.icon('fa5s.sync-alt', color='#555555'), "", self.main_window)
         refresh_action.setShortcut("F5")
         refresh_action.setToolTip("Rafraîchir l'application (F5)")
         refresh_action.triggered.connect(getattr(self.main_window, '_refresh_application', lambda: None))

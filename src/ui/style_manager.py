@@ -3,13 +3,42 @@ Style Manager - Phase 2 Refactoring
 Gestion centralisée des styles et thèmes de l'application
 """
 
+import os
+import tempfile
+
+_combo_arrow_path: str = ""
+
+
+def _generate_combo_arrow() -> str:
+    """Génère une icône chevron-down via qtawesome, la sauve en PNG et retourne son chemin."""
+    global _combo_arrow_path
+    if _combo_arrow_path:
+        return _combo_arrow_path
+    try:
+        import qtawesome as qta
+        icon = qta.icon('fa5s.chevron-down', color='#6c757d')
+        pixmap = icon.pixmap(10, 10)
+        path = os.path.join(tempfile.gettempdir(), '1001pieces_combo_arrow.png')
+        pixmap.save(path)
+        _combo_arrow_path = path
+    except Exception:
+        _combo_arrow_path = ""
+    return _combo_arrow_path
+
+
 class StyleManager:
     """Gestionnaire centralisé des styles CSS modernes"""
-    
+
     @staticmethod
     def get_modern_style() -> str:
         """Retourner le style CSS moderne complet de l'application"""
-        return """
+        arrow_path = _generate_combo_arrow()
+        arrow_rule = (
+            f"image: url({arrow_path}); width: 10px; height: 10px; margin-right: 4px;"
+            if arrow_path else
+            "width: 8px; height: 8px; margin-right: 4px;"
+        )
+        style = """
         /* === RESET ET BASE === */
         QWidget {
             font-family: -apple-system, 'SF Pro Display', system-ui, 'Helvetica Neue', sans-serif;
@@ -144,11 +173,7 @@ class StyleManager:
         }
         
         QComboBox::down-arrow {
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 6px solid #6c757d;
-            margin-right: 8px;
+            %%ARROW_RULE%%
         }
         
         QComboBox QAbstractItemView {
@@ -473,3 +498,4 @@ class StyleManager:
 
         /* Transitions not supported in PyQt5 - removed */
         """
+        return style.replace('%%ARROW_RULE%%', arrow_rule)

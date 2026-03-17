@@ -76,6 +76,43 @@ from ..services.app_export_service import AppExportService
 from ..services.event_handlers_service import EventHandlersService
 from ..services.table_fill_service import TableFillService
 
+import qtawesome as qta
+
+
+class StatusLabel(QWidget):
+    """
+    Widget drop-in remplaçant QLabel dans la statusbar.
+    Expose setText/setStyleSheet identiques à QLabel pour compatibilité totale.
+    Affiche une icône qtawesome colorée à gauche du texte.
+    """
+
+    def __init__(self, icon_name: str, text: str, color: str = 'green', parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(4)
+        self._icon_name = icon_name
+        self._icon_label = QLabel()
+        self._text_label = QLabel(text)
+        layout.addWidget(self._icon_label)
+        layout.addWidget(self._text_label)
+        self._update_icon(color)
+
+    def setText(self, text: str) -> None:
+        self._text_label.setText(text)
+
+    def setStyleSheet(self, style: str) -> None:
+        self._text_label.setStyleSheet(style)
+        if 'orange' in style:
+            self._update_icon('orange')
+        else:
+            self._update_icon('green')
+
+    def _update_icon(self, color: str) -> None:
+        icon = qta.icon(self._icon_name, color=color)
+        self._icon_label.setPixmap(icon.pixmap(12, 12))
+
+
 class MainWindow(QMainWindow):
     """Fenêtre principale refactorisée"""
     
@@ -648,8 +685,7 @@ class MainWindow(QMainWindow):
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
         
-        self.save_indicator = QLabel(Config.get_message('save_success'))
-        self.save_indicator.setStyleSheet("color: green;")
+        self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
         self.statusbar.addPermanentWidget(self.save_indicator)
 
         # Feature Flag: AutoSaveManager - Initialisation retardée + Configuration indicateur UI
@@ -662,8 +698,7 @@ class MainWindow(QMainWindow):
             )
             self.auto_save_manager.setup_ui_indicator(self.save_indicator)
 
-        self.connection_indicator = QLabel(Config.get_message('connected'))
-        self.connection_indicator.setStyleSheet("color: green;")
+        self.connection_indicator = StatusLabel('fa5s.circle', Config.get_message('connected'), color='green')
         self.statusbar.addPermanentWidget(self.connection_indicator)
 
     def _init_connections(self):
@@ -2784,7 +2819,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         context_menu = QMenu(self)
         
         # Action pour supprimer les lignes
-        delete_action = QAction("🗑️ Supprimer la/les ligne(s) sélectionnée(s)", self)
+        delete_action = QAction("Supprimer la/les ligne(s) sélectionnée(s)", self)
         delete_action.triggered.connect(lambda: self._delete_selected_rows(selected_rows))
         context_menu.addAction(delete_action)
         

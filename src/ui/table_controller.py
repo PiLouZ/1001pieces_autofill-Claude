@@ -279,7 +279,11 @@ class TableController:
         
         # Barre de recherche SOUS le tableau (position correcte)
         search_layout2 = QHBoxLayout()
-        search_label2 = QLabel("🔍 Recherche par pièce:")
+        import qtawesome as qta
+        search_icon_label = QLabel()
+        search_icon_label.setPixmap(qta.icon('fa5s.search', color='#555555').pixmap(14, 14))
+        search_layout2.addWidget(search_icon_label, 0, Qt.AlignVCenter)
+        search_label2 = QLabel("Recherche par pièce:")
         search_layout2.addWidget(search_label2, 0, Qt.AlignVCenter)
 
         self.advanced_search_input = QLineEdit()
