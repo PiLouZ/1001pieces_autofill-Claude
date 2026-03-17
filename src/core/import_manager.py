@@ -508,6 +508,7 @@ class ImportDialog(QDialog):
             
             # Case à cocher alignée avec le champ Description
             self.apply_to_individual_checkbox = QCheckBox("Appliquer aux références individuelles")
+            self.apply_to_individual_checkbox.setChecked(True)
             self.apply_to_individual_checkbox.setStyleSheet("font-weight: bold;")
             self.apply_to_individual_checkbox.setToolTip("Applique automatiquement cette description à toutes les références individuelles")
             # Connecter la case à cocher pour dupliquer automatiquement le libellé
