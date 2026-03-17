@@ -142,6 +142,13 @@ class ToolbarService:
         paste_config_action.triggered.connect(self._configure_paste_cleanup)
         tools_menu.addAction(paste_config_action)
 
+        export_config_action = QAction("Configuration des exports…", self.main_window)
+        export_config_action.setToolTip("Personnaliser les colonnes CSV et les templates HTML d'export")
+        export_config_action.triggered.connect(
+            getattr(self.main_window, '_open_export_config', lambda: None)
+        )
+        tools_menu.addAction(export_config_action)
+
         tools_menu.addSeparator()
 
         fts5_action = QAction("Index de recherche FTS5", self.main_window)

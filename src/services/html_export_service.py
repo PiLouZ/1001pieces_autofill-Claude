@@ -9,43 +9,54 @@ import re
 
 class HtmlExportService:
     """Service centralisé pour la génération de contenu HTML d'export
-    
+
     Élimine la duplication massive entre:
     - data_exporter.py: _export_html_brands, _export_html_details, _generate_html_content
     - services/export_service.py: _generate_html_brands, _generate_html_details, _generate_html_content
+
+    Peut être configuré via ExportConfigService (injection par set_config_service).
+    Si aucun service de config n'est injecté, utilise les templates par défaut (zéro régression).
     """
-    
-    # Constantes centralisées
-    CHAR_LIMIT = 195000  # Limite de caractères pour le site web
-    
-    @staticmethod
-    def generate_html_brands(data: List[Tuple]) -> str:
-        """Générer liens HTML des marques (anciennement dupliqué dans 2 services)
-        
-        Args:
-            data: Données avec structure [product, manufacturer, ref_modele, commercial_ref, ...]
-            
-        Returns:
-            String HTML avec liens vers marques: '<a href="#brand">brand</a> <a href="#brand2">brand2</a>'
-        """
+
+    # Constante de limite de caractères (surpassée par la config si disponible)
+    CHAR_LIMIT = 195000
+
+    # Service de config injecté via set_config_service() depuis main_refactored.py
+    _config_service = None
+
+    @classmethod
+    def set_config_service(cls, config_service) -> None:
+        """Injecter le service de configuration des exports"""
+        cls._config_service = config_service
+
+    @classmethod
+    def generate_html_brands(cls, data: List[Tuple]) -> str:
+        """Générer liens HTML des marques selon la config (ou défauts si pas de config)"""
+        cfg = cls._config_service
+        brands_cfg = cfg.get_html_brands_config() if cfg else {}
+
+        link_template = brands_cfg.get('link_template', '<a href="#{marque}">{marque}</a>')
+        separator     = brands_cfg.get('separator',     ' ')
+
         brands = set()
-        
-        # Extraire les marques uniques
         for record in data:
             if len(record) >= 2:
-                manufacturer = record[1]  # Index 1 = manufacturer
+                manufacturer = record[1]
                 if manufacturer and manufacturer.strip():
                     brands.add(manufacturer.strip())
-        
-        # Générer les liens HTML
+
         html_links = []
         for brand in sorted(brands):
-            html_links.append(f'<a href="#{brand}">{brand}</a>')
-        
-        return ' '.join(html_links)
+            context = {'marque': brand}
+            if cfg:
+                html_links.append(cfg.render_html_template(link_template, context))
+            else:
+                html_links.append(link_template.replace('{marque}', brand))
+
+        return separator.join(html_links)
     
-    @staticmethod
-    def generate_html_details(data: List[Tuple]) -> str:
+    @classmethod
+    def generate_html_details(cls, data: List[Tuple]) -> str:
         """Générer HTML détaillé avec références par marque (anciennement dupliqué dans 2 services)
         
         Args:
@@ -68,73 +79,87 @@ class HtmlExportService:
                         'commercial_ref': commercial_ref or ''
                     })
         
+        # Limite de caractères depuis la config ou constante par défaut
+        cfg = cls._config_service
+        details_cfg = cfg.get_html_details_config() if cfg else {}
+        char_limit = details_cfg.get('char_limit', cls.CHAR_LIMIT)
+
         # Générer le HTML avec stratégies de fallback pour respecter la limite
         strategies = ['full', 'ref_modele', 'commercial_ref']
-        
+
         for strategy in strategies:
-            html_content = HtmlExportService._generate_html_content_with_strategy(brands_data, strategy)
-            
-            # Vérifier si on respecte la limite de caractères
+            html_content = HtmlExportService._generate_html_content_with_strategy(
+                brands_data, strategy, details_cfg if cfg else {}
+            )
             char_count = HtmlExportService.count_non_html_chars(html_content)
-            if char_count <= HtmlExportService.CHAR_LIMIT:
+            if char_count <= char_limit:
                 return html_content
-        
-        # Si aucune stratégie ne fonctionne, retourner message d'erreur
+
         return "<p>Données trop volumineuses pour l'affichage</p>"
     
     @staticmethod
-    def _generate_html_content_with_strategy(brands_data: Dict[str, List[Dict]], strategy: str) -> str:
-        """Générer contenu HTML avec stratégie spécifique (anciennement dupliqué dans 2 services)
-        
+    def _generate_html_content_with_strategy(
+        brands_data: Dict[str, List[Dict]],
+        strategy: str,
+        details_cfg: Dict = None
+    ) -> str:
+        """Générer contenu HTML avec stratégie spécifique.
+
         Args:
-            brands_data: Données groupées par marque
-            strategy: 'full', 'ref_modele' ou 'commercial_ref'
-            
-        Returns:
-            HTML généré selon la stratégie avec <div>&nbsp;</div> entre marques
+            brands_data:  Données groupées par marque
+            strategy:     'full', 'ref_modele' ou 'commercial_ref'
+            details_cfg:  Config HTML détails (templates) — None = défauts hardcodés
         """
+        if details_cfg is None:
+            details_cfg = {}
+
+        brand_header_tpl  = details_cfg.get('brand_header_template',
+                                            '<div id="{marque}"><b><u>{marque}</u></b></div>')
+        model_line_tpl    = details_cfg.get('model_line_template',
+                                            '<div>{ref_modele} - {ref_commerciale}</div>')
+        group_separator   = details_cfg.get('group_separator', '<div>&nbsp;</div>')
+
+        def _render(template: str, context: Dict) -> str:
+            for key, val in context.items():
+                template = template.replace('{' + key + '}', str(val or ''))
+            return template
+
         html_parts = []
-        
+
         for i, brand in enumerate(sorted(brands_data.keys())):
             models = brands_data[brand]
-            
-            # Ajouter div vide avant chaque marque sauf la première
+
             if i > 0:
-                html_parts.append('<div>&nbsp;</div>')
-            
-            # Collecter modèles selon la stratégie
+                html_parts.append(group_separator)
+
             models_to_display = set()
-            
+
             for model_info in models:
-                ref_modele = model_info['ref_modele']
+                ref_modele     = model_info['ref_modele']
                 commercial_ref = model_info['commercial_ref']
-                
+
                 if strategy == 'full':
-                    # Format complet: ref_modele - commercial_ref
                     modele_complet = f"{ref_modele} - {commercial_ref}".strip(' -')
                     if modele_complet and modele_complet != '-':
-                        models_to_display.add(modele_complet)
-                        
+                        models_to_display.add((ref_modele, commercial_ref, modele_complet))
                 elif strategy == 'ref_modele':
-                    # Seulement ref_modele
                     if ref_modele and ref_modele.strip():
-                        models_to_display.add(ref_modele.strip())
-                        
+                        models_to_display.add((ref_modele, '', ref_modele.strip()))
                 elif strategy == 'commercial_ref':
-                    # Seulement commercial_ref
                     if commercial_ref and commercial_ref.strip():
-                        models_to_display.add(commercial_ref.strip())
-            
-            # Ajouter la section de marque si elle a des modèles
+                        models_to_display.add(('', commercial_ref, commercial_ref.strip()))
+
             if models_to_display:
-                # En-tête de marque
-                html_parts.append(f'<div id="{brand}"><b><u>{brand}</u></b></div>')
-                
-                # Appareils de la marque (chacun dans sa div)
-                for model in sorted(models_to_display):
-                    html_parts.append(f'<div>{model}</div>')
-        
-        # Joindre toutes les parties HTML
+                html_parts.append(_render(brand_header_tpl, {'marque': brand}))
+
+                for ref_modele, ref_commerciale, _ in sorted(models_to_display, key=lambda x: x[2]):
+                    context = {
+                        'marque':          brand,
+                        'ref_modele':      ref_modele,
+                        'ref_commerciale': ref_commerciale,
+                    }
+                    html_parts.append(_render(model_line_tpl, context))
+
         return ''.join(html_parts)
     
     @staticmethod

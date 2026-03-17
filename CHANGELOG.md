@@ -4,6 +4,28 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.32.0] - 2026-03-17
+
+### ✨ Exports CSV et HTML configurables + refonte visuelle UI
+
+**Exports configurables — `ExportConfigService` + `ExportConfigDialog`**
+- Nouveau fichier `data/export_config.json` : configuration persistante des exports CSV et HTML
+- Colonnes CSV entièrement personnalisables : en-tête, source/assemblage de champs, ordre, séparateur, encodage, pattern du nom de fichier
+- Variables disponibles dans les sources : `{export_ref}`, `{ref_piece}`, `{type_app}`, `{manufacturer}`, `{ref_modele}`, `{commercial_ref}`, `{other_ref}`
+- Templates HTML configurables : lien marque, séparateur, en-tête de groupe, ligne modèle, séparateur de groupe
+- Dialogue accessible via **Outils → Configuration des exports…** avec onglets CSV / HTML et preview HTML en temps réel
+- Bouton "Réinitialiser les défauts" — les défauts reproduisent exactement le comportement précédent (zéro régression)
+
+**Refonte visuelle — icônes qtawesome**
+- `StatusLabel` : widget drop-in `QLabel` avec icône qtawesome dans la statusbar (`fa5s.save`, `fa5s.circle`)
+- Toolbar : 8 icônes gris `#555555` (undo, redo, save, import, pièces, journal, guide, refresh)
+- Boutons Méta Title (`fa5s.heading`), Méta Desc (`fa5s.align-left`), Lignes à traiter (`fa5s.tasks`)
+- Loupe champ de recherche par pièce remplacée par icône `fa5s.search`
+- `QComboBox::down-arrow` : chevron PNG généré via qtawesome (remplace le border-trick CSS inopérant dans Qt QSS)
+- Menu contextuel tableau : icônes supprimées (rendu natif macOS non stylisable)
+
+---
+
 ## [3.29.0] - 2026-03-16
 
 ### ✨ Gestion des liens pièces repensée — chips + picker
