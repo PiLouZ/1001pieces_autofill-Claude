@@ -67,7 +67,7 @@ class ExportConfigDialog(QDialog):
         # Explication variables disponibles
         vars_label = QLabel(
             "Variables disponibles dans la colonne Source : "
-            "{search_term}  {ref_piece}  {type_app}  {manufacturer}  {ref_modele}  {commercial_ref}  {other_ref}"
+            "{reference}  {ref_piece}  {type_app}  {manufacturer}  {ref_modele}  {commercial_ref}  {other_ref}"
         )
         vars_label.setStyleSheet("color: #6c757d; font-size: 12px;")
         vars_label.setWordWrap(True)
