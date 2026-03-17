@@ -1488,10 +1488,10 @@ class DatabaseManager:
             if assoc_count > 0:
                 return
             
-            app_logger.info("🔄 Début de la migration des pièces vers la nouvelle structure...")
+            app_logger.info(" Début de la migration des pièces vers la nouvelle structure...")
             
             # Étape 1: Sauvegarder les anciennes données
-            app_logger.info("📋 Sauvegarde des anciennes données...")
+            app_logger.info(" Sauvegarde des anciennes données...")
             
             # Adapter la requête selon les colonnes disponibles
             if 'description' in pieces_columns:
@@ -1506,7 +1506,7 @@ class DatabaseManager:
                 self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id) SELECT id, ref_piece, appareil_id FROM pieces")
             
             # Étape 2: Créer les nouvelles pièces uniques
-            app_logger.info("📦 Création des pièces uniques...")
+            app_logger.info(" Création des pièces uniques...")
             pieces_data = {}
             
             # Récupérer toutes les pièces avec leurs données
@@ -1530,7 +1530,7 @@ class DatabaseManager:
                     pieces_data[ref_piece] = {'description': None, 'created_at': None}
             
             # Étape 3: Recréer la table pieces avec la nouvelle structure
-            print("🔄 Recréation de la table pieces...")
+            print(" Recréation de la table pieces...")
             self.cursor.execute("DROP TABLE pieces")
             self.cursor.execute("""
                 CREATE TABLE pieces (
@@ -1550,10 +1550,10 @@ class DatabaseManager:
                     self.cursor.execute("INSERT INTO pieces (ref_piece, description) VALUES (?, ?)", 
                                       (ref_piece, data['description']))
             
-            app_logger.info(f"📦 {len(pieces_data)} pièces uniques créées")
+            app_logger.info(f" {len(pieces_data)} pièces uniques créées")
             
             # Étape 4: Créer les associations dans piece_associations
-            app_logger.info("🔗 Création des associations...")
+            app_logger.info(" Création des associations...")
             self.cursor.execute("""
                 INSERT INTO piece_associations (piece_id, appareil_id, created_at)
                 SELECT 
@@ -1566,9 +1566,9 @@ class DatabaseManager:
             """)
             
             associations_migrated = self.cursor.rowcount
-            app_logger.info(f"🔗 {associations_migrated} associations migrées")
+            app_logger.info(f" {associations_migrated} associations migrées")
             
-            app_logger.info("✅ Migration terminée avec succès")
+            app_logger.info("[OK] Migration terminée avec succès")
             
         except sqlite3.Error as e:
                         # En cas d'erreur, essayer de restaurer
@@ -1997,9 +1997,9 @@ class DatabaseManager:
         self.invalidate_search_cache(invalidate_total_count=True)
 
         if deleted_count > 0 and associations_deleted > 0:
-            app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
+            app_logger.info(f"[OK] {deleted_count} appareil(s) supprimé(s) avec {associations_deleted} association(s) de pièce(s)")
         elif deleted_count > 0:
-            app_logger.info(f"✅ {deleted_count} appareil(s) supprimé(s) (aucune association de pièce)")
+            app_logger.info(f"[OK] {deleted_count} appareil(s) supprimé(s) (aucune association de pièce)")
 
         # Phase 2.3: Invalider le cache après suppression d'appareils
         if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
@@ -2300,7 +2300,7 @@ class DatabaseManager:
             if cleaned:
                 clean_description = cleaned
 
-        app_logger.debug(f"  🔍 Traitement {ref_piece} avec description: '{clean_description}'")
+        app_logger.debug(f"   Traitement {ref_piece} avec description: '{clean_description}'")
         description_updated = False
 
         # Étape 1: Vérifier si la pièce existe déjà

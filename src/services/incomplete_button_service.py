@@ -62,7 +62,7 @@ class IncompleteButtonService(QObject):
         self.button = button
         if button:
             self.count_changed.connect(self._update_button_display)
-            app_logger.info("✅ Signal count_changed connecté à _update_button_display")
+            app_logger.info("[OK] Signal count_changed connecté à _update_button_display")
 
     def invalidate_cache(self, reason: str = "modification"):
         """Invalider le cache (à appeler lors des modifications de données)"""
@@ -101,7 +101,7 @@ class IncompleteButtonService(QObject):
         new_count = self._safe_count_incomplete_devices()
 
         if new_count is not None:
-            app_logger.info(f"📊 Comptage DB: {new_count} lignes incomplètes (filtre actif: {self.show_incomplete_only})")
+            app_logger.info(f" Comptage DB: {new_count} lignes incomplètes (filtre actif: {self.show_incomplete_only})")
 
             # Mettre à jour le cache
             old_count = self._cached_count
@@ -111,7 +111,7 @@ class IncompleteButtonService(QObject):
 
             # Émettre le signal si le compteur a changé
             if old_count != new_count:
-                app_logger.info(f"📈 Changement détecté: {old_count} → {new_count}, émission count_changed")
+                app_logger.info(f" Changement détecté: {old_count} → {new_count}, émission count_changed")
                 self.count_changed.emit(new_count)
 
             return new_count
@@ -134,11 +134,11 @@ class IncompleteButtonService(QObject):
 
             if self.show_incomplete_only:
                 # Filtre actif
-                self.button.setText(f"📋 Filtre actif, plus que {pluralize(count, 'ligne')}")
+                self.button.setText(f" Filtre actif, plus que {pluralize(count, 'ligne')}")
                 self.button.setToolTip(f"Filtre actif - {pluralize(count, 'ligne')} avec des champs vides")
             else:
                 # Filtre inactif
-                self.button.setText(f"📋 {pluralize(count, 'incomplète')}")
+                self.button.setText(f" {pluralize(count, 'incomplète')}")
                 self.button.setToolTip(f"Afficher uniquement les {pluralize(count, 'ligne')} avec des champs vides")
         else:
             # Réinitialiser le style normal
@@ -146,7 +146,7 @@ class IncompleteButtonService(QObject):
             self.button.hide()
             # Auto-désactiver le filtre si plus de lignes incomplètes
             if self.show_incomplete_only:
-                app_logger.info("🔄 Plus de lignes incomplètes - désactivation auto du filtre")
+                app_logger.info(" Plus de lignes incomplètes - désactivation auto du filtre")
                 self.show_incomplete_only = False
                 # Émettre le signal pour déclencher le rechargement des données
                 self.filter_auto_disabled.emit()

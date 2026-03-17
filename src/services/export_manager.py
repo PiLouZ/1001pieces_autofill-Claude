@@ -10,8 +10,8 @@ Responsabilités consolidées :
 - Gestion des erreurs harmonisée
 - Support des recherches simples et multiples
 
-🎯 Remplace : MainExportService, LegacyExportService, ExportService
-📈 Économie estimée : ~300 lignes de code dupliqué
+ Remplace : MainExportService, LegacyExportService, ExportService
+ Économie estimée : ~300 lignes de code dupliqué
 """
 
 import csv
@@ -280,7 +280,7 @@ class ExportManagerService:
     def _validate_search_term(self, search_term: str) -> bool:
         """Validation centralisée du terme de recherche"""
         if not search_term or not search_term.strip():
-            self._add_to_history("⚠️ Erreur export: Aucun terme de recherche saisi")
+            self._add_to_history("[!] Erreur export: Aucun terme de recherche saisi")
             return False
         return True
     
@@ -301,7 +301,7 @@ class ExportManagerService:
             )
 
         if not results:
-            self._add_to_history("⚠️ Export annulé: Aucun résultat trouvé pour cette recherche")
+            self._add_to_history("[!] Export annulé: Aucun résultat trouvé pour cette recherche")
             return False
 
         return True
@@ -548,6 +548,6 @@ class ExportManagerService:
     def _handle_error(self, error_message: str) -> None:
         """Gérer les erreurs de manière unifiée"""
         app_logger.error(error_message)
-        self._add_to_history(f"❌ {error_message}")
+        self._add_to_history(f"[ERR] {error_message}")
         if hasattr(self.main_window, '_show_error'):
             self.main_window._show_error(error_message)

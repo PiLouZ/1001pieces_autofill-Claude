@@ -101,7 +101,7 @@ class CamelotPDFExtractor:
             extraction_stats['total_pages'] = len(tables)
 
             if self.debug_mode:
-                print(f"🐪 Camelot: {len(tables)} tableaux détectés")
+                print(f" Camelot: {len(tables)} tableaux détectés")
 
             # Traiter chaque tableau (page)
             for i, table in enumerate(tables):

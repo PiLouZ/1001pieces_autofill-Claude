@@ -69,7 +69,7 @@ class SearchCacheInvalidationService:
 
             self.invalidation_stats['total_invalidations'] += 1
 
-            app_logger.info(f"🗑️ Cache de recherche invalidé: {reason} ({old_size} entrées supprimées)")
+            app_logger.info(f" Cache de recherche invalidé: {reason} ({old_size} entrées supprimées)")
 
             # Notifier les callbacks
             for callback in self.invalidation_callbacks:
@@ -84,7 +84,7 @@ class SearchCacheInvalidationService:
             self.invalidation_stats['import_invalidations'] += 1
             entries_cleared = self.invalidate_search_cache("import de données")
             
-            app_logger.info(f"📥 Cache invalidé après import: {import_results.get('associations_created', 0)} associations, "
+            app_logger.info(f" Cache invalidé après import: {import_results.get('associations_created', 0)} associations, "
                           f"{import_results.get('new_entries', 0)} nouveaux appareils")
             return entries_cleared
         return 0
@@ -96,7 +96,7 @@ class SearchCacheInvalidationService:
 
         # Ne logger que si l'invalidation a réellement eu lieu
         if entries_cleared > 0:
-            app_logger.info(f"🔧 Cache invalidé après {operation} pièce '{piece_ref}' ({device_count} appareils affectés)")
+            app_logger.info(f" Cache invalidé après {operation} pièce '{piece_ref}' ({device_count} appareils affectés)")
 
         return entries_cleared
     
@@ -107,7 +107,7 @@ class SearchCacheInvalidationService:
 
         # Ne logger que si l'invalidation a réellement eu lieu
         if entries_cleared > 0:
-            app_logger.info(f"📱 Cache invalidé après {operation} de {device_count} appareil(s)")
+            app_logger.info(f" Cache invalidé après {operation} de {device_count} appareil(s)")
 
         return entries_cleared
     

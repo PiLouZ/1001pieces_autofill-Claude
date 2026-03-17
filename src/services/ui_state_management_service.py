@@ -53,7 +53,7 @@ class UIStateManagementService(BaseService):
 
         self.log_operation("__init__", "UIStateManagementService initialisé", "info")
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur initialize_services")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur initialize_services")
     def initialize_services(self):
         """Initialiser les références vers les widgets principaux"""
         if not self.parent_window:
@@ -101,7 +101,7 @@ class UIStateManagementService(BaseService):
         self.visual_indicator_changed.emit("progress_bar", visible)
         self.log_operation("update_progress_visibility", f"Barre de progression: {'visible' if visible else 'cachée'}", "debug")
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur update_progress_value")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur update_progress_value")
     def update_progress_value(self, value: int):
         """Mettre à jour la valeur de la barre de progression"""
         self.current_progress_value = max(0, min(100, value))
@@ -111,7 +111,7 @@ class UIStateManagementService(BaseService):
 
         self.progress_updated.emit(self.current_progress_value)
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur set_button_states")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur set_button_states")
     def set_button_states(self, button_configs: dict):
         """Configurer l'état de plusieurs boutons
 
@@ -130,7 +130,7 @@ class UIStateManagementService(BaseService):
 
     # === CONFIGURATION DES PARAMÈTRES D'INTERFACE ===
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur configure_table_appearance")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur configure_table_appearance")
     def configure_table_appearance(self, font_size: int = None, alternate_colors: bool = None):
         """Configurer l'apparence du tableau"""
         if not self.table_widget:
@@ -149,7 +149,7 @@ class UIStateManagementService(BaseService):
             "alternate_colors": alternate_colors
         })
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur set_window_title_suffix")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur set_window_title_suffix")
     def set_window_title_suffix(self, suffix: str = ""):
         """Ajouter un suffixe au titre de la fenêtre"""
         if self.parent_window:
@@ -162,7 +162,7 @@ class UIStateManagementService(BaseService):
 
     # === GESTION DES SÉLECTIONS ET DES HANDLES ===
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur update_selection_state")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur update_selection_state")
     def update_selection_state(self, has_selection: bool, selection_count: int = 0):
         """Mettre à jour l'état basé sur la sélection actuelle"""
         # Configurer les boutons dépendant de la sélection
@@ -183,7 +183,7 @@ class UIStateManagementService(BaseService):
             "count": selection_count
         })
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur toggle_drag_handles_visibility")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur toggle_drag_handles_visibility")
     def toggle_drag_handles_visibility(self, visible: bool):
         """Basculer la visibilité des poignées de redimensionnement"""
         if self.table_widget and hasattr(self.table_widget, 'horizontalHeader'):
@@ -201,7 +201,7 @@ class UIStateManagementService(BaseService):
 
     # === OVERLAYS ET EFFETS VISUELS ===
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur show_loading_overlay")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur show_loading_overlay")
     def show_loading_overlay(self, message: str = "Chargement en cours..."):
         """Afficher un overlay de chargement"""
         if self.status_bar:
@@ -213,7 +213,7 @@ class UIStateManagementService(BaseService):
 
         QApplication.processEvents()
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur hide_loading_overlay")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur hide_loading_overlay")
     def hide_loading_overlay(self):
         """Masquer l'overlay de chargement"""
         if self.parent_window:
@@ -224,7 +224,7 @@ class UIStateManagementService(BaseService):
 
         QApplication.processEvents()
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur apply_visual_effect")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur apply_visual_effect")
     def apply_visual_effect(self, effect_type: str, target_widget: str = "table"):
         """Appliquer un effet visuel temporaire"""
         widget = getattr(self.parent_window, target_widget, None)
@@ -243,7 +243,7 @@ class UIStateManagementService(BaseService):
             # Effet de clignotement
             self._flash_widget(widget)
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur _flash_widget")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur _flash_widget")
     def _flash_widget(self, widget):
         """Effet de clignotement pour un widget"""
         original_style = widget.styleSheet()
@@ -254,18 +254,18 @@ class UIStateManagementService(BaseService):
 
     # === RAFRAÎCHISSEMENT GLOBAL ===
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur schedule_refresh")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur schedule_refresh")
     def schedule_refresh(self, delay_ms: int = 100):
         """Programmer un rafraîchissement différé de l'interface"""
         self.refresh_timer.stop()
         self.refresh_timer.start(delay_ms)
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur _delayed_refresh")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur _delayed_refresh")
     def _delayed_refresh(self):
         """Effectuer le rafraîchissement différé"""
         self.force_refresh_all_ui()
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur force_refresh_all_ui")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur force_refresh_all_ui")
     def force_refresh_all_ui(self):
         """Forcer le rafraîchissement complet de l'interface"""
         # Rafraîchir le tableau
@@ -280,9 +280,9 @@ class UIStateManagementService(BaseService):
         QApplication.processEvents()
 
         self.ui_refreshed.emit()
-        app_logger.debug("🔄 Rafraîchissement complet de l'interface")
+        app_logger.debug(" Rafraîchissement complet de l'interface")
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur reset_ui_state")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur reset_ui_state")
     def reset_ui_state(self):
         """Remettre l'interface dans son état par défaut"""
         # Remettre les indicateurs par défaut
@@ -301,7 +301,7 @@ class UIStateManagementService(BaseService):
         self.set_button_states(default_buttons)
 
         self.state_updated.emit("ui_reset", True)
-        app_logger.info("🔄 Interface remise à l'état par défaut")
+        app_logger.info(" Interface remise à l'état par défaut")
 
     # === UTILITAIRES ET GESTION D'ÉTAT ===
 
@@ -318,7 +318,7 @@ class UIStateManagementService(BaseService):
             ])
         }
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="❌ Erreur apply_state")
+    @handle_ui_operation_errors(return_value=None, log_prefix="[ERR] Erreur apply_state")
     def apply_state(self, state_dict: dict):
         """Appliquer un état d'interface"""
         if "sort_indicators_enabled" in state_dict:
@@ -330,4 +330,4 @@ class UIStateManagementService(BaseService):
         if "current_progress_value" in state_dict:
             self.update_progress_value(state_dict["current_progress_value"])
 
-        app_logger.debug("📊 État d'interface appliqué")
+        app_logger.debug(" État d'interface appliqué")

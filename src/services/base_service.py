@@ -36,7 +36,7 @@ class BaseService(QObject):
         self.dialog_service = None
         self.user_interaction_service = None
 
-        app_logger.info(f"✅ {self._service_name} initialisé")
+        app_logger.info(f"[OK] {self._service_name} initialisé")
 
     def initialize_services(self):
         """
@@ -44,7 +44,7 @@ class BaseService(QObject):
         Les services enfants définissent _required_services pour l'injection automatique
         """
         if not self.parent_window:
-            app_logger.warning(f"⚠️ {self._service_name}: parent_window non défini")
+            app_logger.warning(f"[!] {self._service_name}: parent_window non défini")
             return
 
         try:
@@ -53,7 +53,7 @@ class BaseService(QObject):
                 service = getattr(self.parent_window, service_name, None)
                 setattr(self, service_name, service)
                 if service is None:
-                    app_logger.warning(f"⚠️ Service '{service_name}' non trouvé pour {self._service_name}")
+                    app_logger.warning(f"[!] Service '{service_name}' non trouvé pour {self._service_name}")
 
             # Services communs toujours injectés
             self.dialog_service = getattr(self.parent_window, 'dialog_service', None)
@@ -63,10 +63,10 @@ class BaseService(QObject):
             if hasattr(self, '_initialize_specific_services'):
                 self._initialize_specific_services()
 
-            app_logger.info(f"🔧 {self._service_name}: Services initialisés")
+            app_logger.info(f" {self._service_name}: Services initialisés")
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur initialisation services {self._service_name}: {e}")
+            app_logger.error(f"[ERR] Erreur initialisation services {self._service_name}: {e}")
 
     def inject_required_services(self):
         """
@@ -74,7 +74,7 @@ class BaseService(QObject):
         Méthode séparée pour permettre l'appel depuis initialize_services() des enfants
         """
         if not self.parent_window:
-            app_logger.warning(f"⚠️ {self._service_name}: parent_window non défini pour injection")
+            app_logger.warning(f"[!] {self._service_name}: parent_window non défini pour injection")
             return
 
         try:
@@ -83,16 +83,16 @@ class BaseService(QObject):
                 service = getattr(self.parent_window, service_name, None)
                 setattr(self, service_name, service)
                 if service is None:
-                    app_logger.warning(f"⚠️ Service '{service_name}' non trouvé pour {self._service_name}")
+                    app_logger.warning(f"[!] Service '{service_name}' non trouvé pour {self._service_name}")
 
             # Services communs toujours injectés
             self.dialog_service = getattr(self.parent_window, 'dialog_service', None)
             self.user_interaction_service = getattr(self.parent_window, 'user_interaction_service', None)
 
-            app_logger.debug(f"🔧 {self._service_name}: Services injectés automatiquement")
+            app_logger.debug(f" {self._service_name}: Services injectés automatiquement")
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur injection services {self._service_name}: {e}")
+            app_logger.error(f"[ERR] Erreur injection services {self._service_name}: {e}")
 
     def handle_error(self, error: Exception, context: str, show_dialog: bool = True) -> None:
         """
@@ -104,7 +104,7 @@ class BaseService(QObject):
             show_dialog: Afficher une boîte de dialogue à l'utilisateur
         """
         try:
-            error_msg = f"❌ Erreur {context} dans {self._service_name}: {error}"
+            error_msg = f"[ERR] Erreur {context} dans {self._service_name}: {error}"
             app_logger.error(error_msg)
 
             # Émettre le signal d'erreur
@@ -119,7 +119,7 @@ class BaseService(QObject):
 
         except Exception as meta_error:
             # Erreur dans la gestion d'erreur - log seulement
-            app_logger.critical(f"💥 Erreur critique dans handle_error de {self._service_name}: {meta_error}")
+            app_logger.critical(f"[CRIT] Erreur critique dans handle_error de {self._service_name}: {meta_error}")
 
     def handle_error_with_return(self, error: Exception, context: str, return_value=None, show_dialog: bool = False):
         """
@@ -235,7 +235,7 @@ class DebounceTimer(QTimer):
         self.delay_ms = delay_ms
         self.callback = callback
 
-        app_logger.debug(f"🕐 DebounceTimer créé avec délai {delay_ms}ms")
+        app_logger.debug(f" DebounceTimer créé avec délai {delay_ms}ms")
 
     def trigger(self) -> None:
         """Déclencher le timer avec debounce"""
@@ -346,12 +346,12 @@ class ServiceFactory:
             # Initialiser les services automatiquement
             service.initialize_services()
 
-            app_logger.info(f"🏭 ServiceFactory: {service_class.__name__} créé et configuré")
+            app_logger.info(f" ServiceFactory: {service_class.__name__} créé et configuré")
 
             return service
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur création service {service_class.__name__}: {e}")
+            app_logger.error(f"[ERR] Erreur création service {service_class.__name__}: {e}")
             raise
 
     @staticmethod
@@ -367,8 +367,8 @@ class ServiceFactory:
             service.parent_window = parent_window
             service.initialize_services()
 
-            app_logger.debug(f"🔧 ServiceFactory: Dépendances injectées dans {service._service_name}")
+            app_logger.debug(f" ServiceFactory: Dépendances injectées dans {service._service_name}")
 
         except Exception as e:
-            app_logger.error(f"❌ Erreur injection dépendances {service._service_name}: {e}")
+            app_logger.error(f"[ERR] Erreur injection dépendances {service._service_name}: {e}")
             raise

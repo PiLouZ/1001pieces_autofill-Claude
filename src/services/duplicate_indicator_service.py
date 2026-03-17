@@ -75,7 +75,7 @@ class DuplicateIndicatorService(QObject):
         self.clean_action = clean_action
         if action_button and clean_action:
             self.duplicates_count_changed.connect(self._update_visual_indicators)
-            app_logger.info("✅ Signal duplicates_count_changed connecté à _update_visual_indicators")
+            app_logger.info("[OK] Signal duplicates_count_changed connecté à _update_visual_indicators")
 
     def invalidate_cache(self, reason: str = "modification"):
         """Invalider le cache (à appeler lors des modifications de données)"""
@@ -122,7 +122,7 @@ class DuplicateIndicatorService(QObject):
             nb_groups = len(duplicates_list)
             nb_total = sum(count for ref, count in duplicates_list)
 
-            app_logger.info(f"📊 Comptage doublons DB: {nb_groups} groupes, {nb_total} appareils total")
+            app_logger.info(f" Comptage doublons DB: {nb_groups} groupes, {nb_total} appareils total")
 
             # Mettre à jour le cache
             old_duplicates = self._cached_duplicates
@@ -132,7 +132,7 @@ class DuplicateIndicatorService(QObject):
 
             # Émettre le signal si le compteur a changé
             if old_duplicates != self._cached_duplicates:
-                app_logger.info(f"📈 Changement doublons détecté: {old_duplicates} → {self._cached_duplicates}")
+                app_logger.info(f" Changement doublons détecté: {old_duplicates} → {self._cached_duplicates}")
                 self.duplicates_count_changed.emit(nb_groups, nb_total)
 
             return self._cached_duplicates
@@ -144,16 +144,16 @@ class DuplicateIndicatorService(QObject):
     def _update_visual_indicators(self, nb_groups: int, nb_total: int):
         """Mettre à jour les indicateurs visuels"""
         if not self.action_button or not self.clean_action:
-            app_logger.warning("⚠️ Boutons non définis pour mise à jour indicateurs doublons")
+            app_logger.warning("[!] Boutons non définis pour mise à jour indicateurs doublons")
             return
 
         if nb_groups > 0:
             # Doublons détectés - Affichage en warning
-            app_logger.info(f"🔴 Doublons détectés: {nb_groups} groupes ({nb_total} appareils)")
+            app_logger.info(f" Doublons détectés: {nb_groups} groupes ({nb_total} appareils)")
 
             # Style du bouton Action
             self.action_button.setStyleSheet(self._warning_style)
-            self.action_button.setToolTip(f"⚠️ {nb_groups} groupes de doublons détectés ({nb_total} appareils)")
+            self.action_button.setToolTip(f"[!] {nb_groups} groupes de doublons détectés ({nb_total} appareils)")
 
             # Texte de l'action Nettoyer (éviter les emojis problématiques)
             from ..core.config import pluralize
@@ -165,7 +165,7 @@ class DuplicateIndicatorService(QObject):
 
         else:
             # Aucun doublon - Affichage normal
-            app_logger.info("✅ Aucun doublon détecté")
+            app_logger.info("[OK] Aucun doublon détecté")
 
             # Réinitialiser le style du bouton Action
             self.action_button.setStyleSheet(self._normal_style)

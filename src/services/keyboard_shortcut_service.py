@@ -166,7 +166,7 @@ class KeyboardShortcutService(BaseService):
     def _execute_shortcut_action(self, action_name: str, event: QKeyEvent, description: str) -> bool:
         """Exécuter l'action correspondant au raccourci"""
         if not self.parent_window:
-            app_logger.warning(f"⚠️ Impossible d'exécuter '{action_name}': parent_window non défini")
+            app_logger.warning(f"[!] Impossible d'exécuter '{action_name}': parent_window non défini")
             return False
 
         # Mapper les actions vers les méthodes du parent
@@ -199,7 +199,7 @@ class KeyboardShortcutService(BaseService):
                 if method and callable(method):
                     method()
                 else:
-                    app_logger.warning(f"⚠️ Méthode '{action_method}' non trouvée")
+                    app_logger.warning(f"[!] Méthode '{action_method}' non trouvée")
                     return False
 
             # Émettre le signal de raccourci traité
@@ -207,7 +207,7 @@ class KeyboardShortcutService(BaseService):
             app_logger.debug(f"⌨️ Raccourci exécuté: {description}")
             return True
         else:
-            app_logger.warning(f"⚠️ Action '{action_name}' non configurée")
+            app_logger.warning(f"[!] Action '{action_name}' non configurée")
             return False
 
     @safe_operation("_handle_find_shortcut")
@@ -232,13 +232,13 @@ class KeyboardShortcutService(BaseService):
             if direction == 'top':
                 # Aller à la première ligne
                 table.setCurrentCell(0, current_col)
-                app_logger.debug("🔝 Navigation: Première ligne atteinte")
+                app_logger.debug(" Navigation: Première ligne atteinte")
             elif direction == 'bottom':
                 # Aller à la dernière ligne
                 last_row = table.rowCount() - 1
                 if last_row >= 0:
                     table.setCurrentCell(last_row, current_col)
-                    app_logger.debug("🔻 Navigation: Dernière ligne atteinte")
+                    app_logger.debug(" Navigation: Dernière ligne atteinte")
 
     @safe_operation("_handle_navigation_shortcut")
     def _handle_navigation_shortcut(self, direction: str):
@@ -254,9 +254,9 @@ class KeyboardShortcutService(BaseService):
                 if not found_empty:
                     extreme_direction = 'top' if direction == 'up' else 'bottom'
                     self._handle_extreme_navigation(extreme_direction)
-                    app_logger.debug(f"🔄 Navigation hybride: aucune cellule vide → navigation extrême {extreme_direction}")
+                    app_logger.debug(f" Navigation hybride: aucune cellule vide → navigation extrême {extreme_direction}")
                 else:
-                    app_logger.debug(f"✅ Navigation hybride: cellule vide trouvée en direction {direction}")
+                    app_logger.debug(f"[OK] Navigation hybride: cellule vide trouvée en direction {direction}")
 
     @safe_operation("_handle_refresh_shortcut")
     def _handle_refresh_shortcut(self):
@@ -273,11 +273,11 @@ class KeyboardShortcutService(BaseService):
                 from ..core.config import Config
                 if Config.USE_ASYNC_LOAD_DATA:
                     # NOUVEAU: Version async (Phase 2d test pilote)
-                    app_logger.debug("🚀 F5 refresh: utilisation load_data_async()")
+                    app_logger.debug(" F5 refresh: utilisation load_data_async()")
                     table_controller.load_data_async(search_term)
                 else:
                     # ORIGINAL: Version sync (stable, fallback)
-                    app_logger.debug("🔄 F5 refresh: utilisation load_data() sync")
+                    app_logger.debug(" F5 refresh: utilisation load_data() sync")
                     table_controller.load_data(search_term)
 
     @safe_operation("_handle_clear_search_shortcut")
@@ -298,7 +298,7 @@ class KeyboardShortcutService(BaseService):
         else:
             self.function_key_shortcuts[key] = (action_name, description)
 
-        app_logger.debug(f"🔧 Raccourci enregistré: {description} ({action_name})")
+        app_logger.debug(f" Raccourci enregistré: {description} ({action_name})")
 
     @safe_operation("unregister_shortcut")
     def unregister_shortcut(self, key: int, with_modifier: bool = True):
@@ -308,7 +308,7 @@ class KeyboardShortcutService(BaseService):
         elif not with_modifier and key in self.function_key_shortcuts:
             del self.function_key_shortcuts[key]
 
-        app_logger.debug(f"🗑️ Raccourci supprimé: clé {key}")
+        app_logger.debug(f" Raccourci supprimé: clé {key}")
 
     def get_registered_shortcuts(self) -> Dict[str, Dict]:
         """Obtenir la liste des raccourcis enregistrés"""

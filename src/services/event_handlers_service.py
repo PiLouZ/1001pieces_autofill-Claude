@@ -25,28 +25,28 @@ class EventHandlersService:
     def on_search_started(self, data: Dict[str, Any]):
         """Gestionnaire événement début de recherche"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"🔍 Recherche en cours: '{data['term']}'...")
+            self.main_window.statusbar.showMessage(f" Recherche en cours: '{data['term']}'...")
     
     def on_search_completed(self, data: Dict[str, Any]):
         """Gestionnaire événement fin de recherche"""
         if hasattr(self.main_window, 'statusbar'):
             cache_info = " (cache)" if data.get('has_cache_hit') else ""
             self.main_window.statusbar.showMessage(
-                f"✅ Recherche terminée: {data['results_count']} résultats{cache_info}", 
+                f"[OK] Recherche terminée: {data['results_count']} résultats{cache_info}", 
                 3000
             )
     
     def on_search_error(self, data: Dict[str, Any]):
         """Gestionnaire événement erreur de recherche"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"❌ Erreur recherche: {data['error']}", 5000)
+            self.main_window.statusbar.showMessage(f"[ERR] Erreur recherche: {data['error']}", 5000)
     
     # === GESTIONNAIRES DE RECHERCHE AVANCÉE ===
     
     def on_advanced_search_started(self, term: str):
         """Gestionnaire début recherche avancée"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"🔍 Recherche avancée: '{term}'...")
+            self.main_window.statusbar.showMessage(f" Recherche avancée: '{term}'...")
     
     @handle_event_handler_errors()
     def on_advanced_search_completed(self, results, search_term: str):
@@ -58,7 +58,7 @@ class EventHandlersService:
     def on_advanced_search_error(self, error_msg: str):
         """Gestionnaire erreur recherche avancée"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"❌ {error_msg}", 5000)
+            self.main_window.statusbar.showMessage(f"[ERR] {error_msg}", 5000)
     
     def on_export_buttons_update(self, is_piece_search: bool):
         """Gestionnaire mise à jour boutons export selon recherche"""
@@ -73,33 +73,33 @@ class EventHandlersService:
     def on_export_started(self, data: Dict[str, Any]):
         """Gestionnaire événement début d'export"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"📤 Export {data['format']} en cours...")
+            self.main_window.statusbar.showMessage(f" Export {data['format']} en cours...")
     
     def on_export_completed(self, data: Dict[str, Any]):
         """Gestionnaire événement fin d'export"""
         if hasattr(self.main_window, 'statusbar'):
             self.main_window.statusbar.showMessage(
-                f"✅ Export terminé: {data['count']} lignes → {data['output_file']}", 
+                f"[OK] Export terminé: {data['count']} lignes → {data['output_file']}", 
                 5000
             )
     
     def on_export_error(self, data: Dict[str, Any]):
         """Gestionnaire événement erreur d'export"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"❌ Erreur export: {data['error']}", 5000)
+            self.main_window.statusbar.showMessage(f"[ERR] Erreur export: {data['error']}", 5000)
     
     # === GESTIONNAIRES D'IMPORT ===
     
     def on_import_started(self, data: Dict[str, Any]):
         """Gestionnaire événement début d'import"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"📥 Import de {data['file_count']} fichier(s)...")
+            self.main_window.statusbar.showMessage(f" Import de {data['file_count']} fichier(s)...")
     
     def on_import_completed(self, data: Dict[str, Any]):
         """Gestionnaire événement fin d'import"""
         if hasattr(self.main_window, 'statusbar'):
             self.main_window.statusbar.showMessage(
-                f"✅ Import terminé: {data['total_imported']} lignes traitées",
+                f"[OK] Import terminé: {data['total_imported']} lignes traitées",
                 5000
             )
 
@@ -132,4 +132,4 @@ class EventHandlersService:
     def on_import_error(self, data: Dict[str, Any]):
         """Gestionnaire événement erreur d'import"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f"❌ Erreur import: {data['error']}", 5000)
+            self.main_window.statusbar.showMessage(f"[ERR] Erreur import: {data['error']}", 5000)

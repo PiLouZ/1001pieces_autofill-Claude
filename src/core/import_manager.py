@@ -361,7 +361,7 @@ class ImportDialog(QDialog):
             row = i // files_per_row
             col = i % files_per_row
             
-            file_label = QLabel(f"📄 {file.filename}")
+            file_label = QLabel(f" {file.filename}")
             file_label.setStyleSheet("color: #495057; padding: 2px 0px;")
             file_label.setAlignment(Qt.AlignCenter)
             files_grid.addWidget(file_label, row, col)
@@ -716,7 +716,7 @@ class ImportDialog(QDialog):
             file_layout.setSpacing(8)  # Espacement réduit entre éléments
             
             # Nom du fichier (style original simplifié)
-            file_label = QLabel(f"📄 {file.filename}:")
+            file_label = QLabel(f" {file.filename}:")
             file_label.setMinimumWidth(200)
             file_label.setStyleSheet("font-weight: bold;")
             file_layout.addWidget(file_label)
@@ -1155,10 +1155,10 @@ class ImportDialog(QDialog):
         # Afficher les informations de format
         file_types = set(f.type.value.upper() for f in self.import_config.files)
         if len(self.import_config.files) == 1:
-            info_text = f"📊 Fichier {first_file.type.value.upper()} détecté: {detected_columns} colonnes"
+            info_text = f" Fichier {first_file.type.value.upper()} détecté: {detected_columns} colonnes"
         else:
             types_str = ", ".join(file_types)
-            info_text = f"📊 Fichiers détectés ({types_str}): {detected_columns} colonnes"
+            info_text = f" Fichiers détectés ({types_str}): {detected_columns} colonnes"
         
         # Description du format
         format_non_reconnu = False
@@ -1659,7 +1659,7 @@ class ImportManager:
 
         # Vérifier le cache
         if cache_key in self._file_metadata_cache:
-            app_logger.debug(f"🎯 Cache HIT: {os.path.basename(file_path)}")
+            app_logger.debug(f" Cache HIT: {os.path.basename(file_path)}")
             return self._file_metadata_cache[cache_key]
 
         # Cache MISS: Charger les données
@@ -1680,10 +1680,10 @@ class ImportManager:
                 # Supprimer la première entrée (la plus ancienne)
                 oldest_key = next(iter(self._file_metadata_cache))
                 del self._file_metadata_cache[oldest_key]
-                app_logger.debug(f"🗑️ Cache nettoyé: {len(self._file_metadata_cache)} entrées")
+                app_logger.debug(f" Cache nettoyé: {len(self._file_metadata_cache)} entrées")
 
             self._file_metadata_cache[cache_key] = data
-            app_logger.debug(f"💾 Mise en cache: {os.path.basename(file_path)}")
+            app_logger.debug(f" Mise en cache: {os.path.basename(file_path)}")
 
         return data
 
@@ -1695,7 +1695,7 @@ class ImportManager:
         """
         cache_size = len(self._file_metadata_cache)
         self._file_metadata_cache.clear()
-        app_logger.debug(f"🗑️ Cache vidé: {cache_size} entrées supprimées")
+        app_logger.debug(f" Cache vidé: {cache_size} entrées supprimées")
 
     def get_cache_stats(self) -> Dict[str, int]:
         """Obtenir les statistiques du cache"""
@@ -1726,17 +1726,17 @@ class ImportManager:
                 'file_details': []  # Nouveau: détails par fichier
             }
 
-            app_logger.info(f"📝 SYNC OPTIMISÉ: Import de {len(config.files)} fichiers")
+            app_logger.info(f" SYNC OPTIMISÉ: Import de {len(config.files)} fichiers")
 
             # MODIFICATION: Set GLOBAL pour détecter les doublons INTER-fichiers
             global_seen_device_refs = set()
 
             # OPTIMISATION CACHE PARTAGÉ: Pré-charger les caches une seule fois
             # pour tous les fichiers au lieu d'une requête par fichier
-            app_logger.info("📊 Pré-chargement du cache appareils (1× pour tous les fichiers)...")
+            app_logger.info(" Pré-chargement du cache appareils (1× pour tous les fichiers)...")
             shared_devices_cache = self._preload_existing_devices()
             shared_autocomplete_cache = self._build_autocomplete_cache(shared_devices_cache)
-            app_logger.info(f"📊 Cache prêt: {len(shared_devices_cache)} appareils")
+            app_logger.info(f" Cache prêt: {len(shared_devices_cache)} appareils")
 
             # OPTIMISATION: Barre de progression NON-MODALE pour éviter les freezes
             progress = QProgressDialog(
@@ -1755,7 +1755,7 @@ class ImportManager:
                 QApplication.processEvents()
 
                 if progress.wasCanceled():
-                    app_logger.info(f"⚠️ Import annulé par utilisateur à {i}/{len(config.files)}")
+                    app_logger.info(f"[!] Import annulé par utilisateur à {i}/{len(config.files)}")
                     break
 
                 progress.setValue(i)
@@ -1791,7 +1791,7 @@ class ImportManager:
             progress.setValue(len(config.files))
             progress.close()
 
-            app_logger.info(f"✅ SYNC TERMINÉ: {results['successful_files']}/{len(config.files)} fichiers importés")
+            app_logger.info(f"[OK] SYNC TERMINÉ: {results['successful_files']}/{len(config.files)} fichiers importés")
 
             # §6 Succession : appliquer les relations déclarées dans le dialogue
             self._apply_succession_from_config(config, results)
@@ -1942,7 +1942,7 @@ class ImportManager:
                 shared_autocomplete_cache
             )
         else:
-            app_logger.debug("📝 Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
+            app_logger.debug(" Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
             return self._process_data_import(
                 data, 
                 references_and_labels,  # Maintenant liste de tuples (ref, label)
@@ -2021,7 +2021,7 @@ class ImportManager:
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                app_logger.debug(f"  🔄 Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
+                app_logger.debug(f"   Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
                 # Trouver l'appareil existant et créer l'association même pour les doublons
                 device_data_dup = self._parse_row_data(row, config)
                 if device_data_dup:
@@ -2038,7 +2038,7 @@ class ImportManager:
                 continue  # L'appareil n'est pas recompté dans total_imported
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                app_logger.debug("✅ LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+                app_logger.debug("[OK] LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
             
             results['total_imported'] += 1
             
@@ -2110,22 +2110,22 @@ class ImportManager:
         if shared_devices_cache is not None:
             existing_devices_cache = shared_devices_cache
             autocomplete_cache = shared_autocomplete_cache or self._build_autocomplete_cache(existing_devices_cache)
-            app_logger.debug(f"📊 BATCH: Cache partagé utilisé ({len(existing_devices_cache)} appareils)")
-            batch_progress.setLabelText("📊 Cache partagé disponible — traitement en cours...")
+            app_logger.debug(f" BATCH: Cache partagé utilisé ({len(existing_devices_cache)} appareils)")
+            batch_progress.setLabelText(" Cache partagé disponible — traitement en cours...")
             QApplication.processEvents()
         else:
-            batch_progress.setLabelText("📊 Pré-chargement des appareils existants...")
+            batch_progress.setLabelText(" Pré-chargement des appareils existants...")
             QApplication.processEvents()
             existing_devices_cache = self._preload_existing_devices()
-            app_logger.debug("📊 BATCH: {len(existing_devices_cache)} appareils en cache")
-            batch_progress.setLabelText("🧠 Construction cache auto-complétion...")
+            app_logger.debug(" BATCH: {len(existing_devices_cache)} appareils en cache")
+            batch_progress.setLabelText(" Construction cache auto-complétion...")
             QApplication.processEvents()
             autocomplete_cache = self._build_autocomplete_cache(existing_devices_cache)
-            app_logger.debug("🧠 BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
+            app_logger.debug(" BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
         
         # ÉTAPE 2: Traitement en mémoire de toutes les lignes
         batch_progress.setValue(1)
-        batch_progress.setLabelText("💾 Analyse des données en mémoire...")
+        batch_progress.setLabelText(" Analyse des données en mémoire...")
         QApplication.processEvents()
         
         new_devices_batch = []
@@ -2144,7 +2144,7 @@ class ImportManager:
                 QApplication.processEvents()
                 # Vérifier si annulation demandée
                 if batch_progress.wasCanceled():
-                    app_logger.info(f"⚠️ Traitement batch annulé à la ligne {idx}/{len(data)}")
+                    app_logger.info(f"[!] Traitement batch annulé à la ligne {idx}/{len(data)}")
                     break
 
             if not row or not any(cell.strip() if cell is not None else False for cell in row):
@@ -2175,7 +2175,7 @@ class ImportManager:
             device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
-                app_logger.debug(f"  🔄 BATCH Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
+                app_logger.debug(f"   BATCH Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
                 # Trouver l'appareil dans le cache et préparer l'association
                 device_data_dup = self._parse_row_data(row, config)
                 if device_data_dup:
@@ -2187,7 +2187,7 @@ class ImportManager:
                 continue
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                app_logger.debug(f"✅ BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+                app_logger.debug(f"[OK] BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
 
             # Parser les données AVANT de compter total_imported
             device_data = self._parse_row_data(row, config)
@@ -2233,12 +2233,12 @@ class ImportManager:
             # Progress update optimisé (plus fréquent pour meilleure UX)
             if idx > 0 and idx % 25 == 0:  # Mise à jour toutes les 25 lignes
                 progress_percent = int((idx / total_rows) * 30)  # 30% pour cette étape
-                batch_progress.setLabelText(f"💾 Analyse: {idx}/{total_rows} lignes ({progress_percent}%)")
+                batch_progress.setLabelText(f" Analyse: {idx}/{total_rows} lignes ({progress_percent}%)")
                 QApplication.processEvents()
         
         # ÉTAPE 3: Batch operations sur la base
         batch_progress.setValue(2)
-        batch_progress.setLabelText(f"💿 Insertion de {len(new_devices_batch)} nouveaux appareils...")
+        batch_progress.setLabelText(f" Insertion de {len(new_devices_batch)} nouveaux appareils...")
         QApplication.processEvents()
         
         new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
@@ -2247,20 +2247,20 @@ class ImportManager:
         if len(new_devices_batch) != len(new_device_ids):
             app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
         if len(new_devices_batch) != len(new_device_ids):
-            app_logger.debug("❌ PROBLÈME: Discordance entre appareils créés et IDs récupérés!")
+            app_logger.debug("[ERR] PROBLÈME: Discordance entre appareils créés et IDs récupérés!")
             app_logger.debug("   new_devices_batch: {len(new_devices_batch)}")
             app_logger.debug("   new_device_ids: {len(new_device_ids)}")
             if new_device_ids:
                 app_logger.debug("   Premier ID: {new_device_ids[0]}, Dernier ID: {new_device_ids[-1]}")
         
-        batch_progress.setLabelText(f"🔄 Mise à jour de {len(existing_updates)} appareils existants...")
+        batch_progress.setLabelText(f" Mise à jour de {len(existing_updates)} appareils existants...")
         QApplication.processEvents()
         
         if existing_updates:
             self._batch_update_devices(existing_updates)
             
         batch_progress.setValue(3)
-        batch_progress.setLabelText(f"🔗 Création de {len(associations_batch)} associations...")
+        batch_progress.setLabelText(f" Création de {len(associations_batch)} associations...")
         QApplication.processEvents()
         
         # Analyser les associations qui ont besoin de nouveaux appareils
@@ -2279,7 +2279,7 @@ class ImportManager:
         
         # ALERTE si discordance entre lignes traitées et associations
         if results['total_imported'] != len(all_unique_indices):
-            app_logger.debug("❌ PROBLÈME MAJEUR: {results['total_imported']} lignes traitées mais seulement {len(all_unique_indices)} ont des associations!")
+            app_logger.debug("[ERR] PROBLÈME MAJEUR: {results['total_imported']} lignes traitées mais seulement {len(all_unique_indices)} ont des associations!")
             app_logger.debug("   Différence: {results['total_imported'] - len(all_unique_indices)} lignes sans association")
             # Créer l'ensemble attendu basé sur processed_line_index (0, 1, 2, ..., total_imported-1)
             expected_indices = set(range(results['total_imported']))
@@ -2289,7 +2289,7 @@ class ImportManager:
             
             # Debug supplémentaire: vérifier si references_and_labels est vide
             if not any(ref for ref, label in references_and_labels if ref):
-                app_logger.debug("   🚨 CAUSE PROBABLE: references_and_labels ne contient aucune référence valide!")
+                app_logger.debug("   [!!!] CAUSE PROBABLE: references_and_labels ne contient aucune référence valide!")
                 app_logger.debug("   references_and_labels: {references_and_labels}")
         
         if associations_batch:
@@ -2298,7 +2298,7 @@ class ImportManager:
             results['associations_existing'] += batch_results.get('existing', 0)
         
         batch_progress.setValue(4)
-        batch_progress.setLabelText("✅ Import terminé !")
+        batch_progress.setLabelText("[OK] Import terminé !")
         QApplication.processEvents()
         
         # Fermer le dialogue de progress
@@ -2308,7 +2308,7 @@ class ImportManager:
         if hasattr(self.db_manager, 'cache_invalidation'):
             self.db_manager.cache_invalidation.invalidate_after_import(results)
         
-        app_logger.debug("✅ BATCH: Terminé - {results['total_imported']} lignes traitées")
+        app_logger.debug("[OK] BATCH: Terminé - {results['total_imported']} lignes traitées")
         return results
     
     def _preload_existing_devices(self) -> Dict[str, Dict]:
@@ -2448,23 +2448,23 @@ class ImportManager:
                     if cursor.lastrowid is not None:
                         chunk_ids.append(cursor.lastrowid)
                     else:
-                        app_logger.debug("❌ Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
+                        app_logger.debug("[ERR] Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
                         conn.rollback()
                         return []
                 
                 all_new_ids.extend(chunk_ids)
-                app_logger.debug("✅ Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
+                app_logger.debug("[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
             
             conn.commit()
-            app_logger.debug("✅ BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
+            app_logger.debug("[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
             return all_new_ids
             
         except Exception as e:
             conn.rollback()
-            app_logger.debug("❌ BATCH: Erreur insertion: {e}")
-            app_logger.debug("❌ BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
+            app_logger.debug("[ERR] BATCH: Erreur insertion: {e}")
+            app_logger.debug("[ERR] BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
             import traceback
-            app_logger.debug("❌ BATCH: Stack trace: {traceback.format_exc()}")
+            app_logger.debug("[ERR] BATCH: Stack trace: {traceback.format_exc()}")
             return []
     
     def _batch_update_devices(self, updates_batch: List[Tuple[int, Dict[str, Any]]]):
@@ -2495,7 +2495,7 @@ class ImportManager:
             conn.commit()
         except Exception as e:
             conn.rollback()
-            app_logger.debug("❌ BATCH: Erreur mise à jour: {e}")
+            app_logger.debug("[ERR] BATCH: Erreur mise à jour: {e}")
     
     def _batch_create_associations(self, associations_batch: List[Tuple], new_device_ids: List[int]) -> Dict[str, int]:
         """Création en lot des associations pièces-appareils"""
@@ -2527,7 +2527,7 @@ class ImportManager:
                     device_id_mapping[cache_key] = device_id
                     new_device_counter += 1
                 else:
-                    app_logger.debug("⚠️ BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
+                    app_logger.debug("[!] BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
                     continue
             
             assoc_result = self._safe_create_association(reference, device_id, label)
@@ -2537,7 +2537,7 @@ class ImportManager:
                 else:
                     results['existing'] += 1
         
-        app_logger.debug("🔗 BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
+        app_logger.debug(" BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
         return results
     
     def _parse_row_data(self, row: List[str], config: ImportConfiguration) -> Optional[Dict[str, Any]]:
@@ -2629,7 +2629,7 @@ class ImportManager:
             params = list(update_data.values()) + [device_id]
 
             self.db_manager.execute_query(update_query, params)
-            app_logger.debug("🔄 Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
+            app_logger.debug(" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur insertion appareil")
     def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
@@ -2715,11 +2715,11 @@ class ImportManager:
             # Compléter seulement les champs vides
             if type_empty:
                 appareil_data['type'] = found_type
-                app_logger.debug("  ✅ Type complété: '' -> '{found_type}'")
+                app_logger.debug("  [OK] Type complété: '' -> '{found_type}'")
 
             if manufacturer_empty:
                 appareil_data['manufacturer'] = found_manufacturer
-                app_logger.debug("  ✅ Fabricant complété: '' -> '{found_manufacturer}'")
+                app_logger.debug("  [OK] Fabricant complété: '' -> '{found_manufacturer}'")
 
             return True
 
