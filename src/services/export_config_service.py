@@ -24,7 +24,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "csv": {
         "separator": ";",
         "encoding": "utf-8",
-        "filename_pattern": "{term}_everyParts.csv",
+        "filename_pattern": "{export_ref}_everyParts.csv",
         "columns": [
             {"header": "product",              "source": "{export_ref}"},
             {"header": "type",                 "source": "{type_app}"},

@@ -2,7 +2,7 @@
   "csv": {
     "separator": ";",
     "encoding": "utf-8",
-    "filename_pattern": "{term}_everyParts.csv",
+    "filename_pattern": "{export_ref}_everyParts.csv",
     "columns": [
       {
         "header": "product",

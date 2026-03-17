@@ -368,7 +368,7 @@ class DataExporter:
                 self.export_config_service.get_csv_filename_pattern()
                 if self.export_config_service else '{term}_everyParts.csv'
             )
-            filename = pattern.format(term=clean_term, timestamp=timestamp)
+            filename = pattern.format(export_ref=clean_term, timestamp=timestamp)
         else:
             filename = f"{clean_term}_{timestamp}.{export_format.lowercase}"
         

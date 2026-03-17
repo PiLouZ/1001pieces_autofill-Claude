@@ -131,7 +131,7 @@ class ExportConfigDialog(QDialog):
         self.csv_pattern_input = QLineEdit()
         self.csv_pattern_input.setToolTip(
             "Pattern du nom de fichier.\n"
-            "Variables : {term} (référence pièce), {timestamp} (date heure)"
+            "Variables : {export_ref} (référence export), {timestamp} (date heure)"
         )
         opts_layout.addWidget(self.csv_pattern_input, 1)
 
