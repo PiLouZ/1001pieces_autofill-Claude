@@ -1,0 +1,46 @@
+{
+  "csv": {
+    "separator": ";",
+    "encoding": "utf-8",
+    "filename_pattern": "{term}_everyParts.csv",
+    "columns": [
+      {
+        "header": "product",
+        "source": "{ref_piece}"
+      },
+      {
+        "header": "type",
+        "source": "{type_app}"
+      },
+      {
+        "header": "manufacturer",
+        "source": "{manufacturer}"
+      },
+      {
+        "header": "modele_name",
+        "source": "{ref_modele} - {commercial_ref}"
+      },
+      {
+        "header": "reference_modele",
+        "source": "{ref_modele}"
+      },
+      {
+        "header": "commercial_reference",
+        "source": "{commercial_ref}"
+      }
+    ]
+  },
+  "html": {
+    "brands": {
+      "link_template": "<a href=\"#{marque}\">{marque}</a>",
+      "separator": " ",
+      "char_limit": 195000
+    },
+    "details": {
+      "brand_header_template": "<div id=\"{marque}\"><b><u>{marque}</u></b></div>",
+      "model_line_template": "<div>{ref_modele} - {ref_commerciale}</div>",
+      "group_separator": "<div>&nbsp;</div>",
+      "char_limit": 195000
+    }
+  }
+}

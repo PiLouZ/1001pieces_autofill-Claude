@@ -153,7 +153,14 @@ class MainWindow(QMainWindow):
         """Initialiser les gestionnaires de base"""
         self.db_manager = DatabaseManager()
         self.validator = DataValidator()
-        self.exporter = DataExporter(self.db_manager)
+
+        # Service de config des exports (doit être créé avant DataExporter et HtmlExportService)
+        from ..services.export_config_service import ExportConfigService
+        from ..services.html_export_service import HtmlExportService as _HtmlExportService
+        self.export_config_service = ExportConfigService(self)
+        _HtmlExportService.set_config_service(self.export_config_service)
+
+        self.exporter = DataExporter(self.db_manager, self.export_config_service)
         self.device_manager = DeviceManager(self.db_manager)
     
     def _init_search_services(self):
@@ -2347,6 +2354,12 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
     def _show_local_guide(self):
         """Afficher un guide d'utilisation local en cas d'erreur"""
         self._safe_show_local_guide()
+
+    def _open_export_config(self):
+        """Ouvrir le dialogue de configuration des exports CSV + HTML"""
+        from .export_config_dialog import ExportConfigDialog
+        dialog = ExportConfigDialog(self.export_config_service, parent=self)
+        dialog.show()
 
     def _open_fts5_manager(self):
         """Ouvrir le gestionnaire d'index FTS5"""
