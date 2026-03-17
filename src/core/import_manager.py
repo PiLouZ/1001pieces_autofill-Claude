@@ -33,6 +33,7 @@ class FileType(Enum):
     """Types de fichiers supportés"""
     CSV = "csv"
     PDF = "pdf"
+    CLIPBOARD = "clipboard"  # Données issues du presse-papiers (v3.31.0)
 
 
 @dataclass
@@ -289,7 +290,8 @@ class ImportDialog(QDialog):
         self.result_config = None
         self.import_manager = import_manager  # PHASE 2.1: Référence à ImportManager pour chargement lazy
 
-        self.setWindowTitle("Configuration d'importation")
+        is_clipboard = any(f.type == FileType.CLIPBOARD for f in self.import_config.files)
+        self.setWindowTitle("Importer depuis le presse-papiers" if is_clipboard else "Configuration d'importation")
         self.setModal(True)
         self.setMinimumWidth(1000)
         self.setMinimumHeight(1000)
@@ -1414,6 +1416,37 @@ class ImportManager:
         # PHASE 1: Décision intelligente Async vs Sync avec fallback automatique
         return self._execute_import(config)
 
+    def import_from_clipboard(self, rows: List[List[str]], callback: Optional[Callable] = None) -> None:
+        """
+        Ouvrir ImportDialog alimenté par les données du presse-papiers (v3.31.0).
+        Même expérience que l'import de fichier : aperçu, mapping, référence de pièce.
+
+        Args:
+            rows: Données déjà parsées du presse-papiers
+            callback: Fonction appelée avec les résultats (mode non-bloquant)
+        """
+        import_file = ImportFile(
+            path="Collage",
+            type=FileType.CLIPBOARD,
+            suggested_reference="",
+            suggested_label="",
+            data=rows  # Données pré-chargées — le lazy loading les utilisera directement
+        )
+        config = ImportConfiguration(
+            files=[import_file],
+            import_type=ImportType.SINGLE_FILE
+        )
+        dialog = ImportDialog(self.parent_widget, config, import_manager=self)
+        if callback:
+            dialog.accepted.connect(lambda: self._on_import_dialog_accepted(dialog, callback))
+            dialog.rejected.connect(lambda: self._on_import_dialog_rejected(dialog, callback))
+            dialog.show()
+        else:
+            if dialog.exec_() == QDialog.Accepted:
+                config = dialog.get_configuration()
+                if config:
+                    return self._execute_import(config)
+
     def _on_import_dialog_accepted(self, dialog, callback):
         """
         Callback appelé quand le dialogue d'import est accepté (mode non-bloquant)
@@ -1851,8 +1884,10 @@ class ImportManager:
 
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Dict[str, Any]:
         """Importer un fichier unique"""
-        # Charger les données du fichier avec les méthodes unifiées
-        if file.type == FileType.CSV:
+        # Charger les données — priorité aux données déjà chargées (clipboard, pré-chargé)
+        if file.data is not None:
+            data = file.data
+        elif file.type == FileType.CSV:
             data = self.load_csv_data(file.path)
         elif file.type == FileType.PDF:
             # Import complet : extraction de TOUTES les pages (preview_mode=False par défaut)

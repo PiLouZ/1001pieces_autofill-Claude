@@ -2865,34 +2865,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         if not rows:
             return
 
-        # Préparer les données d'exemple pour l'aperçu
-        sample_data = self.paste_processor.prepare_sample_data(rows)
-
-        # Demander les options d'import avec la fenêtre unifiée et aperçu
-        import_type, ref_piece, third_column_choice, has_headers, libelle_piece = self._get_import_options_unified(detected_columns, None, "COLLAGE", sample_data)
-        if import_type is None:
-            return
-
-        # Le collage n'utilise pas import_type mais on récupère les autres paramètres
-        category = ""  # Pas de catégorie dans la fenêtre unifiée pour l'instant
-        total_rows = len(rows)
-
-        # Créer une barre de progression pour les gros imports (10K+ lignes)
-        progress_dialog = None
-        if total_rows >= 10000:
-            progress_dialog = QProgressDialog(
-                f"Import en cours... 0 / {total_rows} lignes",
-                "Annuler",
-                0, total_rows,
-                self
-            )
-            progress_dialog.setWindowTitle("Import de données")
-            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-            progress_dialog.show()
-            QApplication.processEvents()
-
-        # Traitement des données via le processeur spécialisé
-        self._safe_process_paste_batch(rows, ref_piece, third_column_choice, libelle_piece, category, total_rows, progress_dialog)
+        # Ouvrir ImportDialog avec les données du presse-papiers (v3.31.0)
+        self.import_manager.import_from_clipboard(rows, callback=self._on_import_complete)
 
     def _detect_paste_columns(self, clipboard_text: str) -> int:
         """Méthode de compatibilité - délègue au processeur"""
