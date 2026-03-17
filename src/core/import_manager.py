@@ -1884,8 +1884,8 @@ class ImportManager:
 
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set) -> Dict[str, Any]:
         """Importer un fichier unique"""
-        # Charger les données — priorité aux données déjà chargées (clipboard, pré-chargé)
-        if file.data is not None:
+        # Charger les données — clipboard utilise les données pré-chargées, fichiers relus depuis disque
+        if file.type == FileType.CLIPBOARD and file.data is not None:
             data = file.data
         elif file.type == FileType.CSV:
             data = self.load_csv_data(file.path)
