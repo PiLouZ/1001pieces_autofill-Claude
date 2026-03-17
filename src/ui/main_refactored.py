@@ -14,7 +14,7 @@ from .qt_imports import (
     QListWidget, QListWidgetItem, QFileDialog, QComboBox,
     QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser,
     QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont,
-    Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel, QSizePolicy
+    Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel, QSizePolicy, QFrame
 )
 
 # Imports Python standard consolidés
@@ -465,6 +465,8 @@ class MainWindow(QMainWindow):
         """Créer le widget des pièces"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # Splitter vertical pour diviser en deux parties
         pieces_splitter = QSplitter(Qt.Vertical)
@@ -560,16 +562,28 @@ class MainWindow(QMainWindow):
         history_widget = QWidget()
         history_layout = QVBoxLayout(history_widget)
         
-        # Titre moderne collé à la fenêtre historique
+        # Titre avec séparateurs latéraux : ───── Historique des opérations ─────
         history_header_layout = QHBoxLayout()
-        history_header_layout.setContentsMargins(0, 0, 0, 5)  # Collé au widget
-        
-        history_label = QLabel("📜 Historique des modifications")
+        history_header_layout.setContentsMargins(0, 4, 0, 4)
+        history_header_layout.setSpacing(6)
+
+        def _make_separator():
+            line = QFrame()
+            line.setFrameShape(QFrame.HLine)
+            line.setFrameShadow(QFrame.Plain)
+            line.setStyleSheet("color: #ced4da;")
+            return line
+
+        history_header_layout.addWidget(_make_separator(), 1)
+
+        history_label = QLabel("Historique des opérations")
         history_label.setObjectName("historyTitle")
+        history_label.setAlignment(Qt.AlignCenter)
+        history_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         history_header_layout.addWidget(history_label)
-        
-        # Le bouton rafraîchir est maintenant dans la toolbar
-        
+
+        history_header_layout.addWidget(_make_separator(), 1)
+
         history_layout.addLayout(history_header_layout)
         history_layout.setContentsMargins(8, 8, 8, 8)  # Padding moderne
         

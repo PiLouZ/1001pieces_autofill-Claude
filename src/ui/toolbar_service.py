@@ -31,159 +31,135 @@ class ToolbarService:
         self.clean_duplicates_action = None
         
     def setup_toolbar(self):
-        """Configurer la barre d'outils moderne (reproduction exacte de l'original)"""
+        """Configurer la barre d'outils"""
         toolbar = QToolBar()
         toolbar.setObjectName("modernToolbar")
-        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        toolbar.setMovable(False)  # Fixer la barre pour un look plus moderne
-        toolbar.setIconSize(QSize(20, 20))  # Icônes de taille uniforme
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        toolbar.setMovable(False)
         self.main_window.addToolBar(toolbar)
-        
-        # Groupe Actualisation
-        refresh_action = QAction("↻", self.main_window)
-        refresh_action.setShortcut("F5")
-        refresh_action.setToolTip("Rafraîchir l'application (F5)")
-        refresh_action.triggered.connect(getattr(self.main_window, '_refresh_application', lambda: None))
-        toolbar.addAction(refresh_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
+
         # Groupe Édition
-        self.main_window.undo_action = QAction("←", self.main_window)
+        self.main_window.undo_action = QAction("Annuler", self.main_window)
         self.main_window.undo_action.setShortcut(QKeySequence.Undo)
         self.main_window.undo_action.setToolTip("Annuler la dernière action (Cmd+Z)")
         self.main_window.undo_action.triggered.connect(self.main_window._undo)
         toolbar.addAction(self.main_window.undo_action)
-        
-        self.main_window.redo_action = QAction("→", self.main_window)
+
+        self.main_window.redo_action = QAction("Rétablir", self.main_window)
         self.main_window.redo_action.setShortcut(QKeySequence.Redo)
         self.main_window.redo_action.setToolTip("Rétablir l'action annulée (Cmd+Y)")
         self.main_window.redo_action.triggered.connect(self.main_window._redo)
         toolbar.addAction(self.main_window.redo_action)
-        
+
         self._add_toolbar_separator(toolbar)
-        
-        # Groupe Presse-papiers
-        copy_action = QAction("📋", self.main_window)
-        copy_action.setShortcut(QKeySequence.Copy)
-        copy_action.setToolTip("Copier la sélection (Cmd+C)")
-        copy_action.triggered.connect(getattr(self.main_window, '_handle_copy', lambda: None))
-        toolbar.addAction(copy_action)
-        
-        paste_action = QAction("📥", self.main_window)
-        paste_action.setShortcut(QKeySequence.Paste)
-        paste_action.setToolTip("Coller depuis le presse-papiers (Cmd+V)")
-        paste_action.triggered.connect(self.main_window._handle_paste)
-        toolbar.addAction(paste_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Sauvegarde
-        save_action = QAction("💾", self.main_window)
+
+        # Groupe Données
+        save_action = QAction("Sauvegarder", self.main_window)
         save_action.setShortcut(QKeySequence.Save)
         save_action.setToolTip("Sauvegarder toutes les modifications (Cmd+S)")
         save_action.triggered.connect(getattr(self.main_window, '_manual_save', lambda: None))
         toolbar.addAction(save_action)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Menus déroulants
-        self._setup_management_menu(toolbar)
-        self._setup_action_menu(toolbar)
-        
-        self._add_toolbar_separator(toolbar)
-        
-        # Groupe Outils
-        self._setup_tools_actions(toolbar)
-        
-        # Bouton Colonnes déplacé vers le menu Gestion
-        
-        return toolbar
-    
-    def _setup_management_menu(self, toolbar):
-        """Menu Gestion dans la toolbar"""
-        gestion_btn = QPushButton("Gestion")
-        gestion_btn.setObjectName("menuButton")
-        gestion_menu = QMenu()
-        
-        categories_action = QAction("🏷️ Catégories", self.main_window)
-        categories_action.triggered.connect(self.main_window._manage_categories)
-        gestion_menu.addAction(categories_action)
-        
-        pieces_action = QAction("🔧 Pièces", self.main_window)
-        pieces_action.triggered.connect(getattr(self.main_window, '_open_pieces_manager', lambda: None))
-        gestion_menu.addAction(pieces_action)
-        
-        gestion_menu.addSeparator()
-        
-        # Configuration du collage automatique
-        paste_config_action = QAction("📋 Configuration Collage", self.main_window)
-        paste_config_action.setToolTip("Configurer le nettoyage automatique des extensions collées")
-        paste_config_action.triggered.connect(self._configure_paste_cleanup)
-        gestion_menu.addAction(paste_config_action)
-        
-        # Configuration des colonnes (déplacé depuis la toolbar)
-        columns_action = QAction("☰ Colonnes", self.main_window)
-        columns_action.setToolTip("Configurer l'affichage des colonnes")
-        columns_action.triggered.connect(getattr(self.main_window, '_configure_columns', lambda: None))
-        gestion_menu.addAction(columns_action)
 
-        gestion_menu.addSeparator()
-
-        # Gestionnaire FTS5
-        fts5_action = QAction("🔍 Index de recherche FTS5", self.main_window)
-        fts5_action.setToolTip("Gérer l'index de recherche plein texte (FTS5)")
-        fts5_action.triggered.connect(getattr(self.main_window, '_open_fts5_manager', lambda: None))
-        gestion_menu.addAction(fts5_action)
-
-        gestion_menu.addSeparator()
-
-        export_action = QAction("📦 Exporter l'application…", self.main_window)
-        export_action.setToolTip("Créer un dossier portable pour installation sur une autre machine")
-        export_action.triggered.connect(getattr(self.main_window, '_export_application', lambda: None))
-        gestion_menu.addAction(export_action)
-
-        gestion_btn.setMenu(gestion_menu)
-        toolbar.addWidget(gestion_btn)
-    
-    def _setup_action_menu(self, toolbar):
-        """Menu Action dans la toolbar"""
-        action_btn = QPushButton("Action")
-        action_btn.setObjectName("menuButton")
-        action_menu = QMenu()
-
-        import_action = QAction("📈 Import", self.main_window)
+        import_action = QAction("Importer", self.main_window)
+        import_action.setToolTip("Importer un fichier PDF ou CSV")
         import_action.triggered.connect(self.main_window._import_file)
-        action_menu.addAction(import_action)
+        toolbar.addAction(import_action)
 
-        action_menu.addSeparator()
+        self._add_toolbar_separator(toolbar)
 
-        autocomplete_action = QAction("🗯️ Autocomplétion", self.main_window)
-        autocomplete_action.triggered.connect(self.main_window._fill_empty_fields)
-        action_menu.addAction(autocomplete_action)
+        # Accès direct Pièces
+        pieces_action = QAction("Pièces", self.main_window)
+        pieces_action.setToolTip("Gérer les pièces détachées")
+        pieces_action.triggered.connect(getattr(self.main_window, '_open_pieces_manager', lambda: None))
+        toolbar.addAction(pieces_action)
 
-        clean_action = QAction("🧹 Nettoyer les doublons", self.main_window)
-        clean_action.triggered.connect(self.main_window._clean_data)
-        action_menu.addAction(clean_action)
+        self._add_toolbar_separator(toolbar)
 
-        action_btn.setMenu(action_menu)
-        toolbar.addWidget(action_btn)
+        # Menus déroulants
+        self._setup_display_menu(toolbar)
+        self._setup_tools_menu(toolbar)
 
-        # Stocker les références pour les services externes
-        self.action_button = action_btn
-        self.clean_duplicates_action = clean_action
-    
-    def _setup_tools_actions(self, toolbar):
-        """Groupe Outils"""
-        logs_action = QAction("📊 Journal", self.main_window)
+        self._add_toolbar_separator(toolbar)
+
+        # Aide et diagnostic
+        logs_action = QAction("Journal", self.main_window)
         logs_action.setToolTip("Ouvrir le visualiseur de logs")
         logs_action.triggered.connect(getattr(self.main_window, '_open_log_viewer', lambda: None))
         toolbar.addAction(logs_action)
-        
-        guide_action = QAction("📖 Guide", self.main_window)
+
+        guide_action = QAction("Guide", self.main_window)
         guide_action.setToolTip("Guide d'utilisation et raccourcis clavier")
         guide_action.triggered.connect(getattr(self.main_window, '_show_local_guide', lambda: None))
         toolbar.addAction(guide_action)
+
+        self._add_toolbar_separator(toolbar)
+
+        # Rafraîchir (discret, en fin)
+        refresh_action = QAction("↺", self.main_window)
+        refresh_action.setShortcut("F5")
+        refresh_action.setToolTip("Rafraîchir l'application (F5)")
+        refresh_action.triggered.connect(getattr(self.main_window, '_refresh_application', lambda: None))
+        toolbar.addAction(refresh_action)
+
+        return toolbar
+    
+    def _setup_display_menu(self, toolbar):
+        """Menu Affichage — tout ce qui concerne la présentation des données"""
+        display_btn = QPushButton("Affichage")
+        display_btn.setObjectName("menuButton")
+        display_menu = QMenu()
+
+        columns_action = QAction("Colonnes", self.main_window)
+        columns_action.setToolTip("Configurer l'affichage des colonnes")
+        columns_action.triggered.connect(getattr(self.main_window, '_configure_columns', lambda: None))
+        display_menu.addAction(columns_action)
+
+        categories_action = QAction("Catégories", self.main_window)
+        categories_action.triggered.connect(self.main_window._manage_categories)
+        display_menu.addAction(categories_action)
+
+        display_btn.setMenu(display_menu)
+        toolbar.addWidget(display_btn)
+
+    def _setup_tools_menu(self, toolbar):
+        """Menu Outils — actions de maintenance et configuration"""
+        tools_btn = QPushButton("Outils")
+        tools_btn.setObjectName("menuButton")
+        tools_menu = QMenu()
+
+        autocomplete_action = QAction("Autocomplétion", self.main_window)
+        autocomplete_action.triggered.connect(self.main_window._fill_empty_fields)
+        tools_menu.addAction(autocomplete_action)
+
+        clean_action = QAction("Nettoyer les doublons", self.main_window)
+        clean_action.triggered.connect(self.main_window._clean_data)
+        tools_menu.addAction(clean_action)
+
+        paste_config_action = QAction("Configuration Collage", self.main_window)
+        paste_config_action.setToolTip("Configurer le nettoyage automatique des extensions collées")
+        paste_config_action.triggered.connect(self._configure_paste_cleanup)
+        tools_menu.addAction(paste_config_action)
+
+        tools_menu.addSeparator()
+
+        fts5_action = QAction("Index de recherche FTS5", self.main_window)
+        fts5_action.setToolTip("Gérer l'index de recherche plein texte (FTS5)")
+        fts5_action.triggered.connect(getattr(self.main_window, '_open_fts5_manager', lambda: None))
+        tools_menu.addAction(fts5_action)
+
+        tools_menu.addSeparator()
+
+        export_action = QAction("Exporter l'application…", self.main_window)
+        export_action.setToolTip("Créer un dossier portable pour installation sur une autre machine")
+        export_action.triggered.connect(getattr(self.main_window, '_export_application', lambda: None))
+        tools_menu.addAction(export_action)
+
+        tools_btn.setMenu(tools_menu)
+        toolbar.addWidget(tools_btn)
+
+        # Stocker les références pour les services externes (compatibilité)
+        self.action_button = tools_btn
+        self.clean_duplicates_action = clean_action
     
     def _add_toolbar_separator(self, toolbar):
         """Ajouter un séparateur dans la toolbar"""
