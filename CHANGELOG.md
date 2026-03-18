@@ -4,6 +4,50 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.33.0] - 2026-03-18
+
+### ✨ Gestionnaire de pièces — UX redesign + Import fluide
+
+**Gestionnaire de pièces — refonte complète de l'interface**
+- Layout 70/30 : tableau à gauche, panneau latéral à droite (supersession + équivalences)
+- Panneau latéral : 3 sections scrollables dans un QSplitter vertical (↳ Remplacée par / ↑ Remplace / ≡ Équivalences)
+- Chips `RefTagList` plats (style liste, sans fond bouton) — clic gauche = recherche dans le gestionnaire, clic droit = menu contextuel (Copier / Rechercher dans l'app principale)
+- Widget d'actions flottant unique (`ActionButtonWidget`) positionné par `cellEntered` — remplace N×3 QPushButton par ligne (performances)
+- Bouton obsolète (`fa5s.ban`) directement sur la ligne, dans les boutons d'action inline
+- Champ de recherche avec bouton RAZ (`fa5s.times`) et bouton actualiser (`fa5s.sync-alt`)
+- Sélection en gris clair au lieu du bleu natif
+- `PiecePickerDialog` : mode multi-sélection (`ExtendedSelection` + `selected_refs()`) — saisie `REF1 ; REF2` filtre et sélectionne automatiquement les correspondances
+- Chargement en deux phases : affichage immédiat (requête légère) + données complètes async (`QTimer.singleShot`)
+- Écran de chargement avec spinner qtawesome (`fa5s.circle-notch`) à l'ouverture de la fenêtre
+
+**Corrections gestionnaire de pièces**
+- Fix : sections panneau masquées lors du rechargement — `blockSignals(True/False)` autour de `setRowCount` + restauration via `selectRow()` (et non `setCurrentCell` qui ne sélectionne pas en `ExtendedSelection`)
+- Fix : filtres rapides non réinitialisés lors d'une recherche par clic sur un lien — `_search_in_manager` remet `_active_filter = 'all'`
+
+**ProgressDialog custom — `src/ui/progress_dialog.py`**
+- Remplace `QProgressDialog` natif (minimaliste) dans les 4 usages de l'app
+- Spinner `fa5s.circle-notch` animé en permanence (mode défini ou indéfini)
+- Barre de progression sobre 6px (#495057), compteur `N / M (X %)` automatique
+- Étape courante via `setLabelText()`, bouton Annuler optionnel + signal `canceled()`
+- API identique à `QProgressDialog` (drop-in : `setValue`, `wasCanceled`, `setRange`, etc.)
+
+**Import multi-fichiers — thread non-bloquant**
+- `_ImportWorker(QThread)` : exécute `_run_import_files()` hors du main thread (pattern identique à `_ExportWorker` existant)
+- Spinner fluide pendant tout l'import — le main thread n'est plus bloqué par SQLite/parsing
+- `_run_import_files(config, progress_cb, cancel_check)` : moteur pur sans UI, réutilisé par `_execute_import` (chemins sync) et `_ImportWorker` (chemin async)
+- `_process_data_import_batch` : suppression complète de `ProgressDialog` et `QApplication.processEvents()` internes — annulation propagée via `self._import_cancel_check`
+- `_on_import_dialog_accepted` + `_on_drag_drop_dialog_accepted` : passage au worker avec connexion `progress.canceled → worker.cancel()`
+- `QStackedWidget` ajouté à `qt_imports.py`
+
+**Corrections import**
+- Fix : champ référence pièce non éditable dans l'import collage (absent du dialogue)
+- Fix : checkbox "Appliquer aux références individuelles" désormais cochée par défaut dans l'import multi-ref
+
+**Bannière supersession**
+- Affichage des références sœurs (pièces ayant le même prédécesseur) dans la bannière mode `replacing`
+
+---
+
 ## [3.32.0] - 2026-03-17
 
 ### ✨ Exports CSV et HTML configurables + refonte visuelle UI
