@@ -677,12 +677,15 @@ class PiecesManagerWindow(QDialog):
         self.pieces_table.blockSignals(False)
 
         # Restaurer la sélection et les panneaux si la pièce courante est toujours visible
+        # selectRow() est utilisé (pas setCurrentCell) car en ExtendedSelection,
+        # setCurrentCell ne sélectionne pas réellement la ligne → selectedIndexes() resterait
+        # vide → has_selection = False → sections du panneau cachées à tort.
         ref = getattr(self, '_current_ref_piece', None)
         if ref:
             for row in range(self.pieces_table.rowCount()):
                 item = self.pieces_table.item(row, 0)
                 if item and (item.data(Qt.UserRole) or item.text()) == ref:
-                    self.pieces_table.setCurrentCell(row, 0)
+                    self.pieces_table.selectRow(row)
                     break
             self._refresh_succession_panel(ref)
             self._refresh_equivalence_panel(ref)
@@ -844,10 +847,11 @@ class PiecesManagerWindow(QDialog):
         self.search_input.setText(ref)
         self.search_input.setFocus()
         # La table est déjà repeuplée (textChanged synchrone) — chercher la ligne exacte
+        # selectRow() pour garantir que selectedIndexes() soit non-vide (voir _refresh_succession_panel)
         for row in range(self.pieces_table.rowCount()):
             item = self.pieces_table.item(row, 0)
             if item and (item.data(Qt.UserRole) or item.text()) == ref:
-                self.pieces_table.setCurrentCell(row, 0)
+                self.pieces_table.selectRow(row)
                 self.pieces_table.scrollToItem(item)
                 break
 
