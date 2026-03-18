@@ -835,8 +835,12 @@ class PiecesManagerWindow(QDialog):
 
     def _search_in_manager(self, ref: str):
         """Injecter une référence dans le champ de recherche du gestionnaire.
-        Après le filtrage (synchrone), sélectionne automatiquement la ligne
-        correspondant exactement à la référence pour mettre à jour les fieldsets."""
+        Réinitialise les filtres rapides pour s'assurer que la pièce est visible,
+        puis sélectionne automatiquement la ligne correspondante."""
+        # Réinitialiser le filtre actif → "Toutes" pour garantir la visibilité de la pièce
+        self._active_filter = 'all'
+        if hasattr(self, '_filter_btns'):
+            self._filter_btns['all'].setChecked(True)
         self.search_input.setText(ref)
         self.search_input.setFocus()
         # La table est déjà repeuplée (textChanged synchrone) — chercher la ligne exacte
