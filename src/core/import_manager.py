@@ -13,8 +13,8 @@ from datetime import datetime
 
 from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QComboBox, QCheckBox,
-                             QTextEdit, QGroupBox, QProgressDialog, QApplication,
-                             QScrollArea, QWidget, QGridLayout, Qt, QTimer,
+                             QTextEdit, QGroupBox, QApplication,
+                             QScrollArea, QWidget, QGridLayout, Qt, QTimer, QThread,
                              QCompleter, QStringListModel, QRadioButton, QButtonGroup,
                              QSizePolicy, pyqtSignal)
 
@@ -1250,6 +1250,38 @@ class ImportDialog(QDialog):
     
 
 
+class _ImportWorker(QThread):
+    """Thread d'import — exécute _run_import_files() hors du main thread.
+    Émet progress_updated pour mettre à jour la ProgressDialog sur le main thread,
+    et finished quand le traitement est terminé."""
+
+    progress_updated = pyqtSignal(int, int, str)   # value, maximum, label
+    finished         = pyqtSignal(dict)
+    error_occurred   = pyqtSignal(str)
+
+    def __init__(self, manager, config):
+        super().__init__()
+        self._manager  = manager
+        self._config   = config
+        self._canceled = False
+
+    def cancel(self):
+        self._canceled = True
+
+    def run(self):
+        try:
+            results = self._manager._run_import_files(
+                self._config,
+                progress_cb=lambda v, m, lbl: self.progress_updated.emit(v, m, lbl),
+                cancel_check=lambda: self._canceled,
+            )
+            self.finished.emit(results or {'total_files': 0, 'successful_files': 0,
+                                           'total_imported': 0, 'errors': []})
+        except Exception as e:
+            app_logger.error(f"_ImportWorker: {e}", exc_info=True)
+            self.error_occurred.emit(str(e))
+
+
 class ImportManager:
     """Gestionnaire unifié pour tous les types d'imports"""
     
@@ -1466,24 +1498,53 @@ class ImportManager:
 
     def _on_import_dialog_accepted(self, dialog, callback):
         """
-        Callback appelé quand le dialogue d'import est accepté (mode non-bloquant)
-
-        PHASE 2.2: Cette méthode permet au dialogue de se fermer sans bloquer le Finder
+        Callback appelé quand le dialogue d'import est accepté (mode non-bloquant).
+        Lance le traitement dans un _ImportWorker pour garder l'UI responsive.
         """
-        try:
-            config = dialog.get_configuration()
-            if config:
-                # Exécuter l'import avec mesure du temps de traitement
-                t0 = _time.perf_counter()
-                results = self._execute_import(config)
-                if results is not None:
-                    results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
-                # Appeler le callback avec les résultats
-                if callback:
-                    callback(results)
-        finally:
-            # Nettoyer le dialogue
+        config = dialog.get_configuration()
+        if not config:
+            if callback:
+                callback(None)
             dialog.deleteLater()
+            return
+
+        from ..ui.progress_dialog import ProgressDialog
+        t0       = _time.perf_counter()
+        n        = len(config.files)
+        progress = ProgressDialog("Importation en cours", "Annuler", 0, n, self.parent_widget)
+        progress.show()
+
+        worker = _ImportWorker(self, config)
+        self._import_worker = worker  # référence pour éviter la GC
+
+        worker.progress_updated.connect(
+            lambda v, m, lbl: (progress.setRange(0, m),
+                               progress.setValue(v),
+                               progress.setLabelText(lbl))
+        )
+        progress.canceled.connect(worker.cancel)
+
+        def _on_finished(results):
+            progress.close()
+            results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
+            if hasattr(self, 'main_window') and self.main_window:
+                self._trigger_post_import_updates()
+            if callback:
+                callback(results)
+            dialog.deleteLater()
+            self._import_worker = None
+
+        def _on_error(msg):
+            progress.close()
+            app_logger.error(f"Import worker : {msg}")
+            if callback:
+                callback(None)
+            dialog.deleteLater()
+            self._import_worker = None
+
+        worker.finished.connect(_on_finished)
+        worker.error_occurred.connect(_on_error)
+        worker.start()
 
     def _on_import_dialog_rejected(self, dialog, callback):
         """
@@ -1602,28 +1663,54 @@ class ImportManager:
 
     def _on_drag_drop_dialog_accepted(self, dialog, callback):
         """
-        Callback appelé quand le dialogue drag&drop est accepté (mode non-bloquant)
-
-        PHASE 2.2: Permet au drag&drop de ne pas bloquer le Finder
+        Callback appelé quand le dialogue drag&drop est accepté (mode non-bloquant).
+        Lance le traitement dans un _ImportWorker pour garder l'UI responsive.
         """
-        try:
-            config = dialog.get_configuration()
-            if config:
-                # Exécuter l'import avec mesure du temps de traitement
-                t0 = _time.perf_counter()
-                results = self._execute_import(config)
-
-                # Marquer comme drag&drop et enregistrer la durée
-                if results is not None:
-                    results['import_source'] = 'drag_drop'
-                    results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
-
-                # Appeler le callback avec les résultats
-                if callback:
-                    callback(results)
-        finally:
-            # Nettoyer le dialogue
+        config = dialog.get_configuration()
+        if not config:
+            if callback:
+                callback(None)
             dialog.deleteLater()
+            return
+
+        from ..ui.progress_dialog import ProgressDialog
+        t0       = _time.perf_counter()
+        n        = len(config.files)
+        progress = ProgressDialog("Importation en cours", "Annuler", 0, n, self.parent_widget)
+        progress.show()
+
+        worker = _ImportWorker(self, config)
+        self._import_worker = worker
+
+        worker.progress_updated.connect(
+            lambda v, m, lbl: (progress.setRange(0, m),
+                               progress.setValue(v),
+                               progress.setLabelText(lbl))
+        )
+        progress.canceled.connect(worker.cancel)
+
+        def _on_finished(results):
+            progress.close()
+            results['import_source'] = 'drag_drop'
+            results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
+            if hasattr(self, 'main_window') and self.main_window:
+                self._trigger_post_import_updates()
+            if callback:
+                callback(results)
+            dialog.deleteLater()
+            self._import_worker = None
+
+        def _on_error(msg):
+            progress.close()
+            app_logger.error(f"Import worker (drag-drop) : {msg}")
+            if callback:
+                callback(None)
+            dialog.deleteLater()
+            self._import_worker = None
+
+        worker.finished.connect(_on_finished)
+        worker.error_occurred.connect(_on_error)
+        worker.start()
 
     def _on_drag_drop_dialog_rejected(self, dialog, callback):
         """
@@ -1721,9 +1808,17 @@ class ImportManager:
             'max_entries': 50
         }
 
-    def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
-        """Exécuter l'import synchrone OPTIMISÉ pour responsivité UI"""
-        # OPTIMISATION CACHE: Suspendre les invalidations pendant tout l'import
+    def _run_import_files(self, config: ImportConfiguration,
+                          progress_cb=None, cancel_check=None) -> Dict[str, Any]:
+        """Moteur d'import pur — aucune opération UI.
+        Peut s'exécuter dans un QThread.
+
+        :param progress_cb: callable(value, maximum, label) pour les mises à jour UI
+        :param cancel_check: callable() → bool pour l'annulation
+        """
+        # Stocker le cancel_check pour les sous-méthodes (_process_data_import_batch, etc.)
+        self._import_cancel_check = cancel_check
+
         cache_service = getattr(self.db_manager, 'cache_invalidation', None)
         if cache_service:
             cache_service.suspend_invalidation(f"import de {len(config.files)} fichier(s)")
@@ -1740,93 +1835,89 @@ class ImportManager:
                 'manual_completion': 0,
                 'duplicates_in_file': 0,
                 'errors': [],
-                'file_details': []  # Nouveau: détails par fichier
+                'file_details': []
             }
 
-            app_logger.info(f" SYNC OPTIMISÉ: Import de {len(config.files)} fichiers")
-
-            # MODIFICATION: Set GLOBAL pour détecter les doublons INTER-fichiers
+            app_logger.info(f" Import de {len(config.files)} fichier(s)")
             global_seen_device_refs = set()
 
-            # OPTIMISATION CACHE PARTAGÉ: Pré-charger les caches une seule fois
-            # pour tous les fichiers au lieu d'une requête par fichier
-            app_logger.info(" Pré-chargement du cache appareils (1× pour tous les fichiers)...")
-            shared_devices_cache = self._preload_existing_devices()
-            shared_autocomplete_cache = self._build_autocomplete_cache(shared_devices_cache)
-            app_logger.info(f" Cache prêt: {len(shared_devices_cache)} appareils")
+            n = len(config.files)
+            if progress_cb:
+                progress_cb(0, n, "Pré-chargement du cache…")
 
-            # OPTIMISATION: Barre de progression NON-MODALE pour éviter les freezes
-            progress = QProgressDialog(
-            "Importation en cours...",
-            "Annuler",
-            0,
-            len(config.files),
-            self.parent_widget
-            )
-            progress.setWindowModality(Qt.NonModal)  # NON-MODAL = plus responsive
-            progress.setMinimumDuration(1000)  # Afficher après 1s seulement
-            progress.show()
+            shared_devices_cache      = self._preload_existing_devices()
+            shared_autocomplete_cache = self._build_autocomplete_cache(shared_devices_cache)
+            app_logger.info(f" Cache prêt : {len(shared_devices_cache)} appareils")
 
             for i, file in enumerate(config.files):
-                # OPTIMISATION: Plus d'appels à processEvents pour fluidité
-                QApplication.processEvents()
-
-                if progress.wasCanceled():
-                    app_logger.info(f"[!] Import annulé par utilisateur à {i}/{len(config.files)}")
+                if cancel_check and cancel_check():
+                    app_logger.info(f"[!] Import annulé à {i}/{n}")
                     break
 
-                progress.setValue(i)
-                progress.setLabelText(f"Import de {file.filename}... ({i+1}/{len(config.files)})")
+                if progress_cb:
+                    progress_cb(i, n, f"Import de {file.filename}… ({i+1}/{n})")
 
-                # OPTIMISATION: ProcessEvents après chaque update UI
-                QApplication.processEvents()
-
-                # Traiter le fichier avec gestion d'erreur (cache partagé pré-construit)
-                file_results = self._safe_import_single_file(file, config, global_seen_device_refs,
-                                                             shared_devices_cache, shared_autocomplete_cache)
+                file_results = self._safe_import_single_file(
+                    file, config, global_seen_device_refs,
+                    shared_devices_cache, shared_autocomplete_cache
+                )
 
                 if file_results:
                     results['successful_files'] += 1
-
-                    # Ajouter les détails du fichier
-                    file_detail = {
+                    results['file_details'].append({
                         'filename': file.filename,
-                        'lines_processed': file_results.get('total_lines_extracted', 0),  # Lignes extraites du fichier
+                        'lines_processed': file_results.get('total_lines_extracted', 0),
                         'type': 'PDF' if file.type.name == 'PDF' else 'CSV'
-                    }
-                    results['file_details'].append(file_detail)
-
-                    # Agréger les résultats (y compris les nouvelles métriques)
-                    for key in ['total_imported', 'matches_found', 'new_entries', 'associations_created', 'associations_existing', 'manual_completion', 'duplicates_in_file']:
+                    })
+                    for key in ['total_imported', 'matches_found', 'new_entries',
+                                'associations_created', 'associations_existing',
+                                'manual_completion', 'duplicates_in_file']:
                         results[key] += file_results.get(key, 0)
 
-                    # OPTIMISATION: Mise à jour intermédiaire tous les 5 fichiers
-                    if (i + 1) % 5 == 0:
-                        app_logger.info(f"⏳ Progression: {i+1}/{len(config.files)} fichiers traités")
-                        QApplication.processEvents()  # Permettre à l'UI de se rafraîchir
+            if progress_cb:
+                progress_cb(n, n, "Finalisation…")
 
-            progress.setValue(len(config.files))
-            progress.close()
+            app_logger.info(f"[OK] Import terminé : {results['successful_files']}/{n} fichiers")
 
-            app_logger.info(f"[OK] SYNC TERMINÉ: {results['successful_files']}/{len(config.files)} fichiers importés")
-
-            # §6 Succession : appliquer les relations déclarées dans le dialogue
             self._apply_succession_from_config(config, results)
 
-            # Phase 2.3: Invalider le cache après import complet
             if hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
-
-            # Phase 4: Déclencher sauvegarde événementielle + mise à jour bouton incomplet
-            if hasattr(self, 'main_window') and self.main_window:
-                self._trigger_post_import_updates()
 
             return results
 
         finally:
-            # OPTIMISATION CACHE: Reprendre les invalidations et invalider une seule fois
+            self._import_cancel_check = None
             if cache_service:
                 cache_service.resume_invalidation(force_invalidate=True)
+
+    def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
+        """Exécuter l'import de façon synchrone (chemins drag-drop et fallback).
+        Affiche une ProgressDialog sur le main thread avec processEvents()."""
+        from ..ui.progress_dialog import ProgressDialog
+
+        n        = len(config.files)
+        progress = ProgressDialog("Importation en cours", "Annuler", 0, n, self.parent_widget)
+        progress.show()
+
+        def _progress_cb(v, m, lbl):
+            progress.setRange(0, m)
+            progress.setValue(v)
+            progress.setLabelText(lbl)
+            QApplication.processEvents()
+
+        results = self._run_import_files(
+            config,
+            progress_cb=_progress_cb,
+            cancel_check=lambda: progress.wasCanceled(),
+        )
+
+        progress.close()
+
+        if hasattr(self, 'main_window') and self.main_window:
+            self._trigger_post_import_updates()
+
+        return results
     
     def _apply_succession_from_config(self, config: ImportConfiguration, results: Dict) -> None:
         """
@@ -2107,43 +2198,18 @@ class ImportManager:
             'total_lines_extracted': 0
         }
         
-        # Progress indicator spécialisé pour le mode batch
-        from ..ui.qt_imports import QProgressDialog, QApplication
-        from ..ui.qt_imports import Qt
-        
-        # OPTIMISATION: Progress dialog NON-MODAL pour responsivité
-        batch_progress = QProgressDialog(
-            f"Mode Batch - Traitement optimisé de {len(data)} lignes...",
-            "Annuler",
-            0, 4,  # 4 étapes principales
-            self.parent_widget
-        )
-        batch_progress.setWindowModality(Qt.NonModal)  # NON-MODAL = plus responsive
-        batch_progress.setMinimumDuration(500)  # Afficher après 0.5s seulement
-        batch_progress.show()
-        
         # ÉTAPE 1: Utiliser le cache partagé si fourni, sinon pré-charger (import fichier unique)
-        batch_progress.setValue(0)
+        cancel_check = getattr(self, '_import_cancel_check', None)
         if shared_devices_cache is not None:
             existing_devices_cache = shared_devices_cache
             autocomplete_cache = shared_autocomplete_cache or self._build_autocomplete_cache(existing_devices_cache)
             app_logger.debug(f" BATCH: Cache partagé utilisé ({len(existing_devices_cache)} appareils)")
-            batch_progress.setLabelText(" Cache partagé disponible — traitement en cours...")
-            QApplication.processEvents()
         else:
-            batch_progress.setLabelText(" Pré-chargement des appareils existants...")
-            QApplication.processEvents()
             existing_devices_cache = self._preload_existing_devices()
-            app_logger.debug(" BATCH: {len(existing_devices_cache)} appareils en cache")
-            batch_progress.setLabelText(" Construction cache auto-complétion...")
-            QApplication.processEvents()
             autocomplete_cache = self._build_autocomplete_cache(existing_devices_cache)
-            app_logger.debug(" BATCH: {len(autocomplete_cache)} références dans cache auto-complétion")
-        
+
         # ÉTAPE 2: Traitement en mémoire de toutes les lignes
-        batch_progress.setValue(1)
-        batch_progress.setLabelText(" Analyse des données en mémoire...")
-        QApplication.processEvents()
+        app_logger.debug(f" BATCH: Analyse de {len(data)} lignes…")
         
         new_devices_batch = []
         existing_updates = []
@@ -2156,11 +2222,9 @@ class ImportManager:
         total_rows = len(data)
         
         for idx, row in enumerate(data):
-            # OPTIMISATION: ProcessEvents plus fréquent pour très gros volumes
-            if idx > 0 and idx % 10 == 0:  # Toutes les 10 lignes au lieu de la frequency config
-                QApplication.processEvents()
-                # Vérifier si annulation demandée
-                if batch_progress.wasCanceled():
+            # Vérifier si annulation demandée tous les 10 éléments
+            if idx > 0 and idx % 10 == 0:
+                if cancel_check and cancel_check():
                     app_logger.info(f"[!] Traitement batch annulé à la ligne {idx}/{len(data)}")
                     break
 
@@ -2247,16 +2311,11 @@ class ImportManager:
             # Incrémenter le compteur des lignes réellement traitées
             processed_line_index += 1
 
-            # Progress update optimisé (plus fréquent pour meilleure UX)
-            if idx > 0 and idx % 25 == 0:  # Mise à jour toutes les 25 lignes
-                progress_percent = int((idx / total_rows) * 30)  # 30% pour cette étape
-                batch_progress.setLabelText(f" Analyse: {idx}/{total_rows} lignes ({progress_percent}%)")
-                QApplication.processEvents()
-        
+            if idx > 0 and idx % 100 == 0:
+                app_logger.debug(f" BATCH: {idx}/{total_rows} lignes analysées")
+
         # ÉTAPE 3: Batch operations sur la base
-        batch_progress.setValue(2)
-        batch_progress.setLabelText(f" Insertion de {len(new_devices_batch)} nouveaux appareils...")
-        QApplication.processEvents()
+        app_logger.debug(f" BATCH: Insertion de {len(new_devices_batch)} nouveaux appareils…")
         
         new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
         
@@ -2270,16 +2329,12 @@ class ImportManager:
             if new_device_ids:
                 app_logger.debug("   Premier ID: {new_device_ids[0]}, Dernier ID: {new_device_ids[-1]}")
         
-        batch_progress.setLabelText(f" Mise à jour de {len(existing_updates)} appareils existants...")
-        QApplication.processEvents()
-        
+        app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
         if existing_updates:
             self._batch_update_devices(existing_updates)
-            
-        batch_progress.setValue(3)
-        batch_progress.setLabelText(f" Création de {len(associations_batch)} associations...")
-        QApplication.processEvents()
-        
+
+        app_logger.debug(f" BATCH: Création de {len(associations_batch)} associations…")
+
         # Analyser les associations qui ont besoin de nouveaux appareils
         new_device_associations = [assoc for assoc in associations_batch if not assoc[3]]  # existing_id est None
         existing_device_associations = [assoc for assoc in associations_batch if assoc[3]]  # existing_id existe
@@ -2314,18 +2369,11 @@ class ImportManager:
             results['associations_created'] += batch_results.get('created', 0)
             results['associations_existing'] += batch_results.get('existing', 0)
         
-        batch_progress.setValue(4)
-        batch_progress.setLabelText("[OK] Import terminé !")
-        QApplication.processEvents()
-        
-        # Fermer le dialogue de progress
-        batch_progress.close()
-        
         # Phase 2.3: Invalider le cache après import batch
         if hasattr(self.db_manager, 'cache_invalidation'):
             self.db_manager.cache_invalidation.invalidate_after_import(results)
-        
-        app_logger.debug("[OK] BATCH: Terminé - {results['total_imported']} lignes traitées")
+
+        app_logger.debug(f"[OK] BATCH: Terminé — {results['total_imported']} lignes traitées")
         return results
     
     def _preload_existing_devices(self) -> Dict[str, Dict]:
