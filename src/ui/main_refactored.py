@@ -510,7 +510,7 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         m = layout.contentsMargins()
-        layout.setContentsMargins(m.left(), 0, m.right(), m.bottom())
+        layout.setContentsMargins(m.left(), 0, m.right(), 0)
 
         # Splitter vertical pour diviser en deux parties
         pieces_splitter = QSplitter(Qt.Vertical)
@@ -629,7 +629,7 @@ class MainWindow(QMainWindow):
         history_header_layout.addWidget(_make_separator(), 1)
 
         history_layout.addLayout(history_header_layout)
-        history_layout.setContentsMargins(8, 8, 8, 8)  # Padding moderne
+        history_layout.setContentsMargins(8, 12, 8, 0)  # Padding moderne, sans marge basse
         
         self.history_list = QTextBrowser()
         self.history_list.setOpenExternalLinks(False)  # Gérer les liens nous-mêmes

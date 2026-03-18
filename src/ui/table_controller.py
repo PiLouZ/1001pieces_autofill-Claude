@@ -130,6 +130,7 @@ class TableController:
         self._supersession_mode = ''          # 'superseded' | 'replacing' | ''
         self._supersession_predecessors = []  # prédécesseurs dans le mode "replacing"
         self._supersession_expand = False     # True = inclure les appareils des prédécesseurs
+        self._supersession_siblings = []      # Autres prédécesseurs de la ref courante (sœurs)
         # Équivalence : term fait partie d'un groupe d'équivalence
         self._equivalence_expand = False      # True = inclure les appareils des équivalents
         self._equivalence_term = None
@@ -160,7 +161,8 @@ class TableController:
         widget = QWidget()
         layout = QVBoxLayout(widget)
         m = layout.contentsMargins()
-        layout.setContentsMargins(m.left(), 0, m.right(), m.bottom())
+        layout.setContentsMargins(m.left(), 0, m.right(), 0)
+        layout.setSpacing(6)
 
         # Barre de recherche supprimée d'ici - maintenant sous le tableau
         
@@ -363,6 +365,7 @@ class TableController:
         self.supersession_banner_label.setStyleSheet("color: #795548; font-size: 12px; border: none; background: transparent;")
         self.supersession_banner_label.setTextFormat(Qt.RichText)
         self.supersession_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+        self.supersession_banner_label.setWordWrap(False)
         self.supersession_banner_label.linkActivated.connect(lambda _: self._show_supersession_popup())
         banner_layout.addWidget(self.supersession_banner_label)
         banner_layout.addStretch()
@@ -400,6 +403,7 @@ class TableController:
         )
         self.equivalence_banner_label.setTextFormat(Qt.RichText)
         self.equivalence_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+        self.equivalence_banner_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.equivalence_banner_label.linkActivated.connect(lambda _: self._show_equivalence_popup())
         equiv_banner_layout.addWidget(self.equivalence_banner_label)
         equiv_banner_layout.addStretch()
@@ -514,6 +518,19 @@ class TableController:
         if self._supersession_bypass and isinstance(effective_search_term, dict):
             effective_search_term = dict(effective_search_term)
             effective_search_term['bypass_supersession'] = True
+
+        # Injecter les références sœurs en mode "superseded" sans bypass
+        # (tous les prédécesseurs de la ref courante, ex : REF_B et REF_C quand on cherche REF_A)
+        if (not self._supersession_bypass
+                and self._supersession_siblings
+                and self._supersession_mode == 'superseded'
+                and isinstance(effective_search_term, dict)):
+            effective_search_term = dict(effective_search_term)
+            existing = list(effective_search_term.get('expand_predecessors', []))
+            for r in self._supersession_siblings:
+                if r not in existing:
+                    existing.append(r)
+            effective_search_term['expand_predecessors'] = existing
 
         # Injecter les prédécesseurs si expansion active (mode "replacing")
         if self._supersession_expand and self._supersession_predecessors and isinstance(effective_search_term, dict):
@@ -928,6 +945,7 @@ class TableController:
         pagination_widget = QWidget()
         self.pagination_widget = pagination_widget
         pagination_layout = QHBoxLayout(pagination_widget)
+        pagination_layout.setContentsMargins(4, 2, 4, 0)
         
         # Bouton page précédente
         self.prev_button = QPushButton("◀ Précédent")
@@ -1263,13 +1281,28 @@ class TableController:
             # Cas A : term est une ancienne réf. (chaîne forward > 1 élément)
             chain = self.db_manager.get_supersession_chain(term)
             if len(chain) > 1:
+                ref_current = chain[-1]
+                all_preds = self.db_manager.get_all_predecessors(ref_current)
+                siblings = [r for r in all_preds if r != term]
+                siblings_are_new = siblings and set(siblings) != set(self._supersession_siblings)
                 self._supersession_mode = 'superseded'
                 self._supersession_term = term
                 self._supersession_chain = chain
                 self._supersession_predecessors = []
+                self._supersession_siblings = siblings
                 self._update_supersession_banner()
                 self.supersession_banner.setVisible(True)
                 self._check_equivalence_banner(term)
+                # Les sœurs sont calculées APRÈS le premier chargement → relancer la requête
+                # is_search=False pour ne pas rappeler _check_supersession_banner (évite boucle infinie)
+                if siblings_are_new:
+                    self.load_data(self.current_search_term, is_search=False)
+                    # Mettre à jour la statusbar avec le total réel (sœurs incluses)
+                    if hasattr(self.parent_window, 'statusbar'):
+                        self.parent_window.statusbar.showMessage(
+                            f"✅ Recherche terminée : {self.total_rows} résultats (chaîne complète)",
+                            Config.STATUS_MESSAGE_TIMEOUT
+                        )
                 return
 
             # Cas B : term est une réf. courante qui remplace d'autres
@@ -1298,6 +1331,7 @@ class TableController:
         self._supersession_term = None
         self._supersession_chain = []
         self._supersession_predecessors = []
+        self._supersession_siblings = []
         if hasattr(self, 'supersession_banner'):
             self.supersession_banner.setVisible(False)
 
@@ -1313,7 +1347,16 @@ class TableController:
                 self.supersession_banner_label.setText(f"⚠ Résultats pour '{term}' uniquement (ancienne réf.)")
                 self.supersession_bypass_btn.setText("Voir toute la chaîne →")
             else:
-                self.supersession_banner_label.setText("⚠ Ancienne réf. : " + " → ".join(chain) + " (courante)")
+                sibs = getattr(self, '_supersession_siblings', [])
+                if sibs:
+                    sibs_disp, sibs_tip = _truncate_refs(sibs)
+                    sibs_html = _link_banner(sibs_disp, sibs_tip, "#795548")
+                    text = "⚠ Ancienne réf. : " + " → ".join(chain) + f" (courante) — ainsi que : {sibs_html}"
+                    self.supersession_banner_label.setText(f'<span style="white-space:nowrap;">{text}</span>')
+                    if sibs_tip:
+                        self.supersession_banner_label.setToolTip(sibs_tip)
+                else:
+                    self.supersession_banner_label.setText("⚠ Ancienne réf. : " + " → ".join(chain) + " (courante)")
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
 
         elif self._supersession_mode == 'replacing':
