@@ -10,7 +10,8 @@ API publique identique à QProgressDialog pour minimiser les changements côté 
 """
 
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                          QPushButton, QProgressBar, Qt, QSize, QSizePolicy)
+                          QPushButton, QProgressBar, Qt, QSize, QSizePolicy,
+                          pyqtSignal)
 import qtawesome as qta
 
 
@@ -21,6 +22,8 @@ class ProgressDialog(QDialog):
 
     Remplace QProgressDialog partout dans l'app avec une API compatible.
     """
+
+    canceled = pyqtSignal()   # émis quand l'utilisateur clique Annuler
 
     def __init__(self, title: str, cancel_button_text: str | None,
                  minimum: int, maximum: int, parent=None):
@@ -151,6 +154,7 @@ class ProgressDialog(QDialog):
 
     def _on_cancel(self):
         self._canceled = True
+        self.canceled.emit()
         self.close()
 
     def _update_counter(self):
