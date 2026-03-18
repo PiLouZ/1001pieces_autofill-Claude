@@ -11,7 +11,8 @@ Responsabilités:
 
 import os
 from typing import List, Optional, Dict, Any, Tuple
-from .qt_imports import QProgressDialog, QApplication, Qt
+from .qt_imports import QApplication, Qt
+from .progress_dialog import ProgressDialog
 from src.core.logger import app_logger
 
 
@@ -246,15 +247,15 @@ class FileProcessingService:
             app_logger.error(f"Erreur traitement fichier PDF {file_path}: {e}")
             return None
     
-    def _create_file_progress_dialog(self, total_files: int) -> QProgressDialog:
+    def _create_file_progress_dialog(self, total_files: int) -> 'ProgressDialog':
         """
         Créer une barre de progression pour le traitement des fichiers
-        
+
         Args:
             total_files: Nombre total de fichiers à traiter
-            
+
         Returns:
-            QProgressDialog configuré
+            ProgressDialog configuré
         """
         progress_dialog = self.main_window._create_progress_dialog(
             "Import PDF", 
@@ -263,30 +264,26 @@ class FileProcessingService:
         )
         return progress_dialog
     
-    def _create_lines_progress_dialog(self, total_lines: int) -> Optional[QProgressDialog]:
+    def _create_lines_progress_dialog(self, total_lines: int) -> 'Optional[ProgressDialog]':
         """
         Créer une barre de progression pour le traitement des lignes (si nécessaire)
-        
+
         Args:
             total_lines: Nombre total de lignes à traiter
-            
+
         Returns:
-            QProgressDialog ou None si pas nécessaire
+            ProgressDialog ou None si pas nécessaire
         """
         if total_lines < 1000:  # Seulement pour les gros imports
             return None
             
-        lines_progress = QProgressDialog(
-            f"Traitement des lignes... 0 / {total_lines}",
-            "Annuler",
-            0, total_lines,
+        lines_progress = ProgressDialog(
+            "Traitement des données", "Annuler", 0, total_lines,
             self.main_window
         )
-        lines_progress.setWindowTitle("Traitement des données")
-        lines_progress.setWindowModality(Qt.WindowModality.WindowModal)
         lines_progress.show()
         QApplication.processEvents()
-        
+
         return lines_progress
     
     def _finalize_pdf_import(self, results: Dict[str, Any], ref_piece: str, 

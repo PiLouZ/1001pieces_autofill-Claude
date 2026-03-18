@@ -14,7 +14,8 @@ import importlib.util
 import pathlib
 
 from .base_service import BaseService
-from ..ui.qt_imports import QThread, pyqtSignal, QFileDialog, QProgressDialog, Qt
+from ..ui.qt_imports import QThread, pyqtSignal, QFileDialog, Qt
+from ..ui.progress_dialog import ProgressDialog
 from ..ui.message_helper import MessageHelper
 from ..core.logger import app_logger
 
@@ -74,11 +75,7 @@ class AppExportService(BaseService):
             return
 
         # ── Barre de progression ─────────────────────────────────────────────
-        progress_dlg = QProgressDialog("Export en cours…", None, 0, 0, parent)
-        progress_dlg.setWindowTitle("📦 Export de l'application")
-        progress_dlg.setWindowModality(Qt.WindowModal)
-        progress_dlg.setMinimumWidth(420)
-        progress_dlg.setCancelButton(None)
+        progress_dlg = ProgressDialog("Export de l'application", None, 0, 0, parent)
         progress_dlg.show()
 
         # ── Thread d'export ──────────────────────────────────────────────────

@@ -13,7 +13,7 @@ from datetime import datetime
 
 from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QComboBox, QCheckBox,
-                             QTextEdit, QGroupBox, QProgressDialog, QApplication,
+                             QTextEdit, QGroupBox, QApplication,
                              QScrollArea, QWidget, QGridLayout, Qt, QTimer,
                              QCompleter, QStringListModel, QRadioButton, QButtonGroup,
                              QSizePolicy, pyqtSignal)
@@ -1756,15 +1756,11 @@ class ImportManager:
             app_logger.info(f" Cache prêt: {len(shared_devices_cache)} appareils")
 
             # OPTIMISATION: Barre de progression NON-MODALE pour éviter les freezes
-            progress = QProgressDialog(
-            "Importation en cours...",
-            "Annuler",
-            0,
-            len(config.files),
-            self.parent_widget
+            from ..ui.progress_dialog import ProgressDialog
+            progress = ProgressDialog(
+                "Importation en cours", "Annuler", 0, len(config.files),
+                self.parent_widget
             )
-            progress.setWindowModality(Qt.NonModal)  # NON-MODAL = plus responsive
-            progress.setMinimumDuration(1000)  # Afficher après 1s seulement
             progress.show()
 
             for i, file in enumerate(config.files):
@@ -2108,18 +2104,13 @@ class ImportManager:
         }
         
         # Progress indicator spécialisé pour le mode batch
-        from ..ui.qt_imports import QProgressDialog, QApplication
-        from ..ui.qt_imports import Qt
-        
-        # OPTIMISATION: Progress dialog NON-MODAL pour responsivité
-        batch_progress = QProgressDialog(
-            f"Mode Batch - Traitement optimisé de {len(data)} lignes...",
-            "Annuler",
-            0, 4,  # 4 étapes principales
+        from ..ui.qt_imports import QApplication
+        from ..ui.progress_dialog import ProgressDialog
+
+        batch_progress = ProgressDialog(
+            f"Import batch — {len(data)} lignes", "Annuler", 0, 4,
             self.parent_widget
         )
-        batch_progress.setWindowModality(Qt.NonModal)  # NON-MODAL = plus responsive
-        batch_progress.setMinimumDuration(500)  # Afficher après 0.5s seulement
         batch_progress.show()
         
         # ÉTAPE 1: Utiliser le cache partagé si fourni, sinon pré-charger (import fichier unique)
