@@ -11,7 +11,7 @@ from typing import Optional
 from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
                           QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
-                          QCursor, QTimer)
+                          QCursor, QTimer, QApplication)
 from src.core.logger import app_logger
 
 
@@ -205,35 +205,83 @@ class PieceRelationsPopup(QDialog):
 # ── Helpers label ───────────────────────────────────────────────────────────────
 
 def _make_relation_label(prefix: str, refs_str: str, color: str,
-                          click_callback, max_inline: int = 2) -> QLabel:
+                          click_callback, search_callback=None,
+                          max_inline: int = 2) -> QLabel:
     """
     Crée un QLabel pour une ligne de relation (↳/↑/≡).
-    Si les refs sont tronquées, le '… +N' est un lien cliquable HTML.
+    - Si search_callback est fourni, chaque ref individuelle est un lien cliquable.
+    - Le '… +N' (liste tronquée) ouvre toujours le popup via click_callback.
     """
     parts = _parse_refs(refs_str)
     if not parts:
         return None
 
-    style = f"color: {color}; font-style: italic; font-size: 10px;"
+    style = (f"color: {color}; font-style: italic; font-size: 10px;"
+             " background: transparent; border: none;")
 
-    if len(parts) <= max_inline:
-        lbl = QLabel(f"{prefix}  {', '.join(parts)}")
+    def _ref_link(ref: str, hovered: str = '') -> str:
+        deco = 'underline' if ref == hovered else 'none'
+        return (f"<a href='ref://{ref}' style='color:{color};font-style:italic;"
+                f"font-size:10px;text-decoration:{deco};'>{ref}</a>")
+
+    def _build_html(shown: list, n_more: int, hovered_href: str = '') -> str:
+        hovered_ref = hovered_href[6:] if hovered_href.startswith('ref://') else ''
+        parts_html  = ', '.join(_ref_link(r, hovered_ref) for r in shown)
+        text = f"{prefix}  {parts_html}"
+        if n_more:
+            text += (f"  <a href='#popup' style='color:{color}; font-style:italic; font-size:9px;"
+                     f"text-decoration:none; border-bottom:1px dashed {color};'>"
+                     f"… +{n_more}</a>")
+        return text
+
+    def _on_link(href: str):
+        if href.startswith('ref://') and search_callback:
+            search_callback(href[6:])
+        elif href == '#popup':
+            click_callback()
+
+    shown_refs = parts[:max_inline]
+    n_more_    = len(parts) - max_inline if len(parts) > max_inline else 0
+
+    def _make_interactive_label(html: str, shown: list, n_more: int) -> QLabel:
+        """Créer un QLabel interactif avec hover-underline et menu clic-droit 'Copier'."""
+        lbl = QLabel(html)
+        lbl.setTextFormat(Qt.RichText)
+        lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
         lbl.setStyleSheet(style)
+
+        _last_hovered = ['']
+
+        def _on_hover(href: str):
+            _last_hovered[0] = href
+            lbl.setText(_build_html(shown, n_more, href))
+
+        def _show_ctx_menu(pos):
+            menu = QMenu(lbl)
+            hovered_ref = (_last_hovered[0][6:]
+                           if _last_hovered[0].startswith('ref://') else None)
+            targets = [hovered_ref] if hovered_ref else shown
+            for r in targets:
+                action = menu.addAction(f"Copier  {r}")
+                action.triggered.connect(
+                    lambda checked, _r=r: QApplication.clipboard().setText(_r))
+            menu.exec_(lbl.mapToGlobal(pos))
+
+        lbl.setContextMenuPolicy(Qt.CustomContextMenu)
+        lbl.customContextMenuRequested.connect(_show_ctx_menu)
+        lbl.linkHovered.connect(_on_hover)
+        lbl.linkActivated.connect(_on_link)
         return lbl
 
-    shown    = ', '.join(parts[:max_inline])
-    n_more   = len(parts) - max_inline
-    link_html = (
-        f"<a href='#' style='color:{color}; font-style:italic; font-size:9px;"
-        f"text-decoration:none; border-bottom:1px dashed {color};'>"
-        f"… +{n_more}</a>"
-    )
-    lbl = QLabel(f"{prefix}  {shown}  {link_html}")
-    lbl.setTextFormat(Qt.RichText)
-    lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
-    lbl.setStyleSheet(style)
-    lbl.linkActivated.connect(lambda _href: click_callback())
-    return lbl
+    if len(parts) <= max_inline:
+        if search_callback:
+            return _make_interactive_label(_build_html(shown_refs, 0), shown_refs, 0)
+        else:
+            lbl = QLabel(f"{prefix}  {', '.join(parts)}")
+            lbl.setStyleSheet(style)
+            return lbl
+
+    return _make_interactive_label(_build_html(shown_refs, n_more_), shown_refs, n_more_)
 
 
 # ── Widget item pièce ───────────────────────────────────────────────────────────
@@ -293,21 +341,45 @@ class PieceItemWidget(QWidget):
 
         # Ligne 3 : direction de supersession
         if status == 'superseded' and ref_new:
-            lbl = QLabel(f"↳ Remplacée par  {ref_new}")
-            lbl.setStyleSheet("color: #e67e22; font-style: italic; font-size: 10px;")
+            _color_sup = '#e67e22'
+            _base_html = (lambda deco='none': (
+                f"↳ Remplacée par  <a href='ref://{ref_new}' style='color:{_color_sup};"
+                f"font-style:italic;font-size:10px;text-decoration:{deco};'>{ref_new}</a>"))
+            lbl = QLabel(_base_html())
+            lbl.setTextFormat(Qt.RichText)
+            lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+            lbl.setStyleSheet(f"color: {_color_sup}; font-style: italic; font-size: 10px;"
+                              " background: transparent; border: none;")
+            lbl.linkHovered.connect(
+                lambda href, l=lbl, b=_base_html:
+                l.setText(b('underline') if href else b('none')))
+            lbl.linkActivated.connect(
+                lambda href, r=ref_new: self._search_ref_in_main(r)
+                if href.startswith('ref://') else None)
+
+            def _sup_ctx_menu(pos, lbl=lbl, r=ref_new):
+                menu = QMenu(lbl)
+                action = menu.addAction(f"Copier  {r}")
+                action.triggered.connect(lambda: QApplication.clipboard().setText(r))
+                menu.exec_(lbl.mapToGlobal(pos))
+            lbl.setContextMenuPolicy(Qt.CustomContextMenu)
+            lbl.customContextMenuRequested.connect(_sup_ctx_menu)
+
             text_layout.addWidget(lbl)
             extra_lines += 1
 
         if refs_old:  # peut coexister avec is_obsolete
             lbl = _make_relation_label(
-                "↑ Remplace", refs_old, "#2980b9", self._show_relations_popup)
+                "↑ Remplace", refs_old, "#2980b9",
+                self._show_relations_popup, self._search_ref_in_main)
             text_layout.addWidget(lbl)
             extra_lines += 1
 
         # Ligne 4 : équivalences (toujours affichée si présente)
         if equivalents:
             lbl = _make_relation_label(
-                "≡ Équiv.", equivalents, "#8e44ad", self._show_relations_popup)
+                "≡ Équiv.", equivalents, "#8e44ad",
+                self._show_relations_popup, self._search_ref_in_main)
             text_layout.addWidget(lbl)
             extra_lines += 1
 
@@ -374,6 +446,15 @@ class PieceItemWidget(QWidget):
         """Afficher le popup de synthèse des relations de cette pièce."""
         popup = PieceRelationsPopup(self.ref_piece, self._status_info, self)
         popup.show_at_cursor()
+
+    def _search_ref_in_main(self, ref: str):
+        """Injecter une ref dans la recherche principale (sans copie automatique).
+        Utilise QTimer.singleShot pour éviter un use-after-free si ce widget est
+        détruit lors du rafraîchissement déclenché par le setText."""
+        from .qt_imports import QTimer
+        mw = self._main_window()
+        if mw and hasattr(mw, 'search_input'):
+            QTimer.singleShot(0, lambda: mw.search_input.setText(ref))
 
     def _search_piece(self):
         """Lancer une recherche des appareils compatibles dans le champ principal."""

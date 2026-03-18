@@ -15,7 +15,8 @@ from PyQt5.QtWidgets import (
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
     QDoubleSpinBox, QSlider, QProgressBar, QDateEdit,
-    QTimeEdit, QDateTimeEdit, QCalendarWidget, QSizePolicy
+    QTimeEdit, QDateTimeEdit, QCalendarWidget, QSizePolicy,
+    QStackedWidget
 )
 
 # Core Qt
@@ -53,7 +54,7 @@ __all__ = [
     'QAbstractItemView', 'QListWidget', 'QListWidgetItem', 'QTreeWidget', 'QTreeWidgetItem', 'QComboBox', 'QCheckBox',
     'QInputDialog', 'QMessageBox', 'QFileDialog', 'QProgressDialog', 'QDialogButtonBox',
     'QToolBar', 'QAction', 'QStatusBar', 'QSplitter', 'QTabWidget',
-    'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy',
+    'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy', 'QStackedWidget',
     
     # Core
     'Qt', 'QTimer', 'QSettings', 'QEvent', 'QSize', 'QRect', 'QPoint',

@@ -8,9 +8,11 @@ from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QCheckBox, QApplication, QWidget, QMenu, QAction,
                            Qt, QTimer, pyqtSignal, QColor, QPainter,
                            QGroupBox, QButtonGroup, QInputDialog, QComboBox, QFont,
-                           QFrame)
+                           QFrame, QSize, QCursor, QPalette, QSizePolicy,
+                           QEvent, QPoint, QStackedWidget)
 import sqlite3
 from typing import List, Tuple, Dict
+import qtawesome as qta
 
 from ..core.config import Config
 from ..utils.error_handler import handle_ui_errors
@@ -19,67 +21,70 @@ from .pieces_list_service import PieceRelationsPopup, _parse_refs, _truncate_ref
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 class ActionButtonWidget(QWidget):
-    """Widget contenant les boutons d'action pour chaque ligne"""
-    
-    editRequested = pyqtSignal(int)
-    deleteRequested = pyqtSignal(int)
-    
+    """Widget contenant les boutons d'action (icônes sans fond) pour chaque ligne du tableau"""
+
+    editRequested    = pyqtSignal(int)
+    deleteRequested  = pyqtSignal(int)
+    obsoleteRequested = pyqtSignal(int)
+
     def __init__(self, row_index: int, parent=None):
         super().__init__(parent)
         self.row_index = row_index
-        self.setFixedSize(120, 30)
-        
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 2, 5, 2)
-        layout.setSpacing(3)
-        
-        # Bouton éditer
-        edit_btn = QPushButton("Modifier")
-        edit_btn.setFixedSize(60, 25)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.setAlignment(Qt.AlignCenter)
+
+        # Bouton éditer — icône bleue, fond transparent
+        edit_btn = QPushButton()
+        edit_btn.setIcon(qta.icon('fa5s.edit', color='#1565C0'))
+        edit_btn.setIconSize(QSize(13, 13))
+        edit_btn.setFixedSize(22, 22)
+        edit_btn.setFlat(True)
         edit_btn.setToolTip("Modifier cette pièce")
-        edit_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {Config.Colors.PRIMARY};
-                color: white;
-                border: none;
-                border-radius: 3px;
-                font-size: 12px;
-            }}
-            QPushButton:hover {{
-                background-color: {Config.Colors.PRIMARY_HOVER};
-            }}
-        """)
+        edit_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; }"
+            "QPushButton:hover { background: rgba(21,101,192,0.12); border-radius: 3px; }"
+        )
         edit_btn.clicked.connect(lambda: self.editRequested.emit(self.row_index))
         layout.addWidget(edit_btn)
-        
-        # Bouton supprimer 
-        delete_btn = QPushButton("Suppr")
-        delete_btn.setFixedSize(50, 25)
+
+        # Bouton obsolète — icône orange, fond transparent
+        obsolete_btn = QPushButton()
+        obsolete_btn.setIcon(qta.icon('fa5s.ban', color='#e67e22'))
+        obsolete_btn.setIconSize(QSize(13, 13))
+        obsolete_btn.setFixedSize(22, 22)
+        obsolete_btn.setFlat(True)
+        obsolete_btn.setToolTip("Marquer obsolète / retirer l'obsolescence")
+        obsolete_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; }"
+            "QPushButton:hover { background: rgba(230,126,34,0.12); border-radius: 3px; }"
+        )
+        obsolete_btn.clicked.connect(lambda: self.obsoleteRequested.emit(self.row_index))
+        layout.addWidget(obsolete_btn)
+
+        # Bouton supprimer — icône rouge, fond transparent
+        delete_btn = QPushButton()
+        delete_btn.setIcon(qta.icon('fa5s.trash-alt', color='#c62828'))
+        delete_btn.setIconSize(QSize(13, 13))
+        delete_btn.setFixedSize(22, 22)
+        delete_btn.setFlat(True)
         delete_btn.setToolTip("Supprimer cette pièce")
-        delete_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {Config.Colors.DANGER};
-                color: white;
-                border: none;
-                border-radius: 3px;
-                font-size: 12px;
-            }}
-            QPushButton:hover {{
-                background-color: {Config.Colors.DANGER_HOVER};
-            }}
-        """)
+        delete_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; }"
+            "QPushButton:hover { background: rgba(198,40,40,0.12); border-radius: 3px; }"
+        )
         delete_btn.clicked.connect(lambda: self.deleteRequested.emit(self.row_index))
         layout.addWidget(delete_btn)
-        
-        layout.addStretch()
 
 class PiecesTableWidget(QTableWidget):
-    """Table widget personnalisé (boutons d'action au survol désactivés)"""
-    
+    """Table widget personnalisé avec curseur contextuel sur la colonne Statut"""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.action_widgets = {}
-        # self.setMouseTracking(True)  # DÉSACTIVÉ - Boutons de survol supprimés
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
         
     def enterEvent(self, event):
         """Souris entre dans le widget"""
@@ -93,10 +98,7 @@ class PiecesTableWidget(QTableWidget):
             widget.hide()
     
     def mouseMoveEvent(self, event):
-        """Gérer le survol des lignes - DÉSACTIVÉ"""
         super().mouseMoveEvent(event)
-        # BOUTONS DE SURVOL SUPPRIMÉS - Plus d'affichage des boutons d'action
-        return
     
     def _show_action_buttons_for_row(self, row: int):
         """Afficher les boutons d'action pour une ligne - DÉSACTIVÉ"""
@@ -138,10 +140,13 @@ class PiecesManagerWindow(QDialog):
         self.db_manager = db_manager
         self.setWindowTitle("Gestionnaire des pièces - 1001pieces.com")
         self.setModal(False)
-        self.resize(1000, 700)
+        # Taille adaptée à l'écran disponible
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(min(1300, screen.width() - 80), min(800, screen.height() - 80))
         
         self._init_ui()
-        self._load_pieces_data()
+        # Afficher la fenêtre d'abord, charger les données après le premier rendu
+        QTimer.singleShot(50, self._load_pieces_data)
         
     def _init_ui(self):
         """Initialiser l'interface utilisateur"""
@@ -169,9 +174,29 @@ class PiecesManagerWindow(QDialog):
         self.search_input.textChanged.connect(self._filter_pieces)
         search_layout.addWidget(self.search_input)
 
-        refresh_btn = QPushButton("🔄")
-        refresh_btn.setFixedWidth(32)
-        refresh_btn.setToolTip("Actualiser")
+        clear_search_btn = QPushButton()
+        clear_search_btn.setIcon(qta.icon('fa5s.times', color='#888888'))
+        clear_search_btn.setIconSize(QSize(11, 11))
+        clear_search_btn.setFixedSize(26, 26)
+        clear_search_btn.setFlat(True)
+        clear_search_btn.setToolTip("Effacer la recherche")
+        clear_search_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
+        )
+        clear_search_btn.clicked.connect(lambda: self.search_input.clear())
+        search_layout.addWidget(clear_search_btn)
+
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#555555'))
+        refresh_btn.setIconSize(QSize(13, 13))
+        refresh_btn.setFixedSize(26, 26)
+        refresh_btn.setFlat(True)
+        refresh_btn.setToolTip("Actualiser (F5)")
+        refresh_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
+        )
         refresh_btn.clicked.connect(self._load_pieces_data)
         search_layout.addWidget(refresh_btn)
 
@@ -217,19 +242,32 @@ class PiecesManagerWindow(QDialog):
         self.pieces_table = PiecesTableWidget()
         self.pieces_table.setColumnCount(5)
         self.pieces_table.setHorizontalHeaderLabels([
-            "Référence Pièce", "Libellé", "Nb", "Types d'Appareils", "Statut"
+            "Référence Pièce", "Libellé", "Nb", "Types d'Appareils", ""
         ])
 
-        # Configuration du tableau — largeurs fixes, redimensionnables via poignées
+        # Configuration du tableau — Libellé en stretch pour remplir la largeur disponible
         header = self.pieces_table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.pieces_table.setColumnWidth(0, 130)   # Référence Pièce
-        self.pieces_table.setColumnWidth(1, 200)   # Libellé
-        self.pieces_table.setColumnWidth(2, 45)    # Nb
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Référence
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)      # Libellé (le plus large)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)        # Nb
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Types d'Appareils
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)        # Actions
+        self.pieces_table.setColumnWidth(0, 140)   # Référence Pièce
+        self.pieces_table.setColumnWidth(2, 65)    # Nb (6 chiffres minimum)
         self.pieces_table.setColumnWidth(3, 200)   # Types d'Appareils
-        self.pieces_table.setColumnWidth(4, 100)   # Statut
+        self.pieces_table.setColumnWidth(4, 84)    # Actions (3 boutons inline)
 
         self.pieces_table.setAlternatingRowColors(True)
+        self.pieces_table.setStyleSheet("""
+            QTableWidget::item:selected {
+                background-color: #e0e0e0;
+                color: #212121;
+            }
+            QTableWidget::item:selected:focus {
+                background-color: #d5d5d5;
+                color: #212121;
+            }
+        """)
         self.pieces_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.pieces_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.pieces_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -237,29 +275,78 @@ class PiecesManagerWindow(QDialog):
         self.pieces_table.currentItemChanged.connect(lambda cur, prev: self._on_piece_selected())
         self.pieces_table.itemDoubleClicked.connect(self._on_double_click_piece)
 
-        layout.addWidget(self.pieces_table, 1)
+        # ── Layout principal : splitter table | panneau latéral ────────────────
+        self.details_text = QTextEdit()  # conservé pour compatibilité interne
 
-        # Zone de détails masquée — conservée pour compatibilité interne
-        self.details_text = QTextEdit()
+        main_splitter = QSplitter(Qt.Horizontal)
+        main_splitter.setChildrenCollapsible(False)
 
-        # ── Panneau Succession ────────────────────────────────────────────
-        succession_group = QGroupBox("Succession de référence")
-        succession_layout = QVBoxLayout()
-        succession_layout.setSpacing(6)
+        # ── Gauche : tableau (avec écran de chargement initial) ──────────────
+        self._table_stack = QStackedWidget()
 
-        # Message contextuel (état vide / multi-sélection / obsolète)
+        # Page 0 : spinner de chargement
+        loading_page = QWidget()
+        loading_layout = QVBoxLayout(loading_page)
+        loading_layout.setAlignment(Qt.AlignCenter)
+        loading_layout.setSpacing(10)
+
+        spinner_btn = QPushButton()
+        spinner_btn.setFlat(True)
+        spinner_btn.setEnabled(False)
+        spinner_btn.setFixedSize(48, 48)
+        spinner_btn.setIconSize(QSize(32, 32))
+        spinner_btn.setIcon(qta.icon('fa5s.circle-notch', color='#888888',
+                                     animation=qta.Spin(spinner_btn)))
+        spinner_btn.setStyleSheet("border: none; background: transparent;")
+        loading_layout.addWidget(spinner_btn, 0, Qt.AlignCenter)
+
+        loading_lbl = QLabel("Chargement en cours…")
+        loading_lbl.setStyleSheet("color: #888888; font-size: 12px;")
+        loading_lbl.setAlignment(Qt.AlignCenter)
+        loading_layout.addWidget(loading_lbl, 0, Qt.AlignCenter)
+
+        self._table_stack.addWidget(loading_page)    # index 0 : chargement
+        self._table_stack.addWidget(self.pieces_table)  # index 1 : tableau
+        self._table_stack.setCurrentIndex(0)
+
+        main_splitter.addWidget(self._table_stack)
+
+        # ── Droite : panneau de détail ────────────────────────────────────────
+        side_panel = QWidget()
+        side_panel.setMinimumWidth(280)
+        side_layout = QVBoxLayout(side_panel)
+        side_layout.setContentsMargins(6, 4, 4, 4)
+        side_layout.setSpacing(6)
+
+        # En-tête : référence sélectionnée
+        self.panel_header_label = QLabel("—")
+        self.panel_header_label.setStyleSheet(
+            "font-size: 13px; font-weight: bold; color: #2c3e50;"
+            " padding: 4px 6px; background: #f8f9fa;"
+            " border: 1px solid #dee2e6; border-radius: 4px;"
+        )
+        self.panel_header_label.setWordWrap(True)
+        side_layout.addWidget(self.panel_header_label)
+
+        # Label statut (héritage : met à jour le statut succession)
         self.succession_status_label = QLabel("Sélectionnez une pièce pour voir son statut.")
-        self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+        self.succession_status_label.setStyleSheet("color: #555555; font-size: 11px;")
         self.succession_status_label.setWordWrap(True)
-        succession_layout.addWidget(self.succession_status_label)
+        side_layout.addWidget(self.succession_status_label)
 
-        # ── Widget mono-sélection (chips + boutons +) ─────────────────────
-        self.succ_single_widget = QWidget()
-        single_succ_layout = QVBoxLayout(self.succ_single_widget)
-        single_succ_layout.setContentsMargins(0, 4, 0, 0)
-        single_succ_layout.setSpacing(4)
+        # ── 3 sections égales ─────────────────────────────────────────────────
+        sections_splitter = QSplitter(Qt.Vertical)
+        sections_splitter.setChildrenCollapsible(False)
 
-        # Sub-section "↳ Remplacée par"
+        # Section "↳ Remplacée par"
+        superseded_section = QFrame()
+        superseded_section.setFrameShape(QFrame.StyledPanel)
+        superseded_section.setObjectName("superseded_section")
+        self.superseded_section = superseded_section
+        sup_sec_layout = QVBoxLayout(superseded_section)
+        sup_sec_layout.setContentsMargins(6, 4, 6, 4)
+        sup_sec_layout.setSpacing(3)
+
         superseded_hdr = QHBoxLayout()
         lbl_sup = QLabel("↳ Remplacée par")
         lbl_sup.setStyleSheet("color: #e67e22; font-weight: bold; font-size: 11px;")
@@ -273,20 +360,22 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_superseded.setFlat(True)
         self.btn_mark_superseded.clicked.connect(self._on_mark_superseded)
         superseded_hdr.addWidget(self.btn_mark_superseded)
-        single_succ_layout.addLayout(superseded_hdr)
+        sup_sec_layout.addLayout(superseded_hdr)
 
         self.superseded_by_tag_list = RefTagList()
+        self.superseded_by_tag_list.enable_full_height_mode()
         self.superseded_by_tag_list.ref_removed.connect(self._on_remove_superseded_by)
-        self.superseded_by_tag_list.setVisible(False)
-        single_succ_layout.addWidget(self.superseded_by_tag_list)
+        sup_sec_layout.addWidget(self.superseded_by_tag_list, 1)
+        sections_splitter.addWidget(superseded_section)
 
-        # Séparateur
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: #dee2e6;")
-        single_succ_layout.addWidget(sep)
+        # Section "↑ Remplace"
+        replaces_section = QFrame()
+        replaces_section.setFrameShape(QFrame.StyledPanel)
+        self.replaces_section = replaces_section
+        rep_sec_layout = QVBoxLayout(replaces_section)
+        rep_sec_layout.setContentsMargins(6, 4, 6, 4)
+        rep_sec_layout.setSpacing(3)
 
-        # Sub-section "↑ Remplace"
         replaces_hdr = QHBoxLayout()
         lbl_rep = QLabel("↑ Remplace")
         lbl_rep.setStyleSheet("color: #2980b9; font-weight: bold; font-size: 11px;")
@@ -300,50 +389,26 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_replaces.setFlat(True)
         self.btn_mark_replaces.clicked.connect(self._on_mark_replaces)
         replaces_hdr.addWidget(self.btn_mark_replaces)
-        single_succ_layout.addLayout(replaces_hdr)
+        rep_sec_layout.addLayout(replaces_hdr)
 
         self.replaces_tag_list = RefTagList()
+        self.replaces_tag_list.enable_full_height_mode()
         self.replaces_tag_list.ref_removed.connect(self._on_remove_replaces)
-        self.replaces_tag_list.setVisible(False)
-        single_succ_layout.addWidget(self.replaces_tag_list)
+        rep_sec_layout.addWidget(self.replaces_tag_list, 1)
+        sections_splitter.addWidget(replaces_section)
 
-        succession_layout.addWidget(self.succ_single_widget)
-        self.succ_single_widget.setVisible(False)
+        # Section "≡ Équivalences"
+        equiv_section = QFrame()
+        equiv_section.setFrameShape(QFrame.StyledPanel)
+        self.equiv_section = equiv_section
+        eq_sec_layout = QVBoxLayout(equiv_section)
+        eq_sec_layout.setContentsMargins(6, 4, 6, 4)
+        eq_sec_layout.setSpacing(3)
 
-        # Ligne d'actions communes (obsolète + annuler pour multi-sélection)
-        succ_action_row = QHBoxLayout()
-        self.btn_mark_obsolete = QPushButton("Marquer obsolète")
-        self.btn_mark_obsolete.setToolTip("Marquer cette référence comme obsolète (aucun remplacement)")
-        self.btn_mark_obsolete.setEnabled(False)
-        self.btn_mark_obsolete.setStyleSheet("QPushButton { color: #E05252; }")
-        self.btn_mark_obsolete.clicked.connect(self._on_mark_obsolete)
-        succ_action_row.addWidget(self.btn_mark_obsolete)
-
-        self.btn_cancel_succession = QPushButton("Annuler la succession")
-        self.btn_cancel_succession.setToolTip("Supprimer tous les liens de succession pour les pièces sélectionnées")
-        self.btn_cancel_succession.setEnabled(False)
-        self.btn_cancel_succession.clicked.connect(self._on_cancel_succession)
-        self.btn_cancel_succession.setVisible(False)  # visible uniquement en multi-sélection
-        succ_action_row.addWidget(self.btn_cancel_succession)
-
-        succ_action_row.addStretch()
-        succession_layout.addLayout(succ_action_row)
-        succession_group.setLayout(succession_layout)
-        layout.addWidget(succession_group)
-
-        # ── Panneau Équivalences ───────────────────────────────────────────
-        equiv_group = QGroupBox("Équivalences")
-        equiv_layout = QVBoxLayout()
-        equiv_layout.setSpacing(4)
-
-        # Message contextuel (état vide / multi-sélection)
-        self.equiv_status_label = QLabel("Sélectionnez une pièce pour voir ses équivalences.")
-        self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
-        self.equiv_status_label.setWordWrap(True)
-        equiv_layout.addWidget(self.equiv_status_label)
-
-        # Header + bouton ajouter
         equiv_hdr = QHBoxLayout()
+        lbl_eq = QLabel("≡ Équivalences")
+        lbl_eq.setStyleSheet("color: #8e44ad; font-weight: bold; font-size: 11px;")
+        equiv_hdr.addWidget(lbl_eq)
         equiv_hdr.addStretch()
         self.btn_link_equiv = QPushButton("+ Ajouter une équivalence…")
         self.btn_link_equiv.setStyleSheet(
@@ -354,65 +419,132 @@ class PiecesManagerWindow(QDialog):
         self.btn_link_equiv.setEnabled(False)
         self.btn_link_equiv.clicked.connect(self._on_link_equiv)
         equiv_hdr.addWidget(self.btn_link_equiv)
-        equiv_layout.addLayout(equiv_hdr)
+        eq_sec_layout.addLayout(equiv_hdr)
 
-        # Liste chips équivalences
+        self.equiv_status_label = QLabel("")
+        self.equiv_status_label.setStyleSheet("color: #555555; font-size: 11px;")
+        self.equiv_status_label.setWordWrap(True)
+        self.equiv_status_label.setVisible(False)  # caché jusqu'au premier rafraîchissement
+        eq_sec_layout.addWidget(self.equiv_status_label)
+
         self.equiv_tag_list = RefTagList()
+        self.equiv_tag_list.enable_full_height_mode()
         self.equiv_tag_list.ref_removed.connect(self._on_remove_equiv)
-        self.equiv_tag_list.setVisible(False)
-        equiv_layout.addWidget(self.equiv_tag_list)
+        eq_sec_layout.addWidget(self.equiv_tag_list, 1)
+        sections_splitter.addWidget(equiv_section)
 
-        # Bouton "Retirer du groupe" conservé pour multi-sélection
+        # succ_single_widget : wrapper fantôme gardé pour la compatibilité
+        self.succ_single_widget = QWidget()
+        self.succ_single_widget.setVisible(False)  # never shown, kept for compat
+
+        side_layout.addWidget(sections_splitter, 1)
+
+        # btn_mark_obsolete : conservé comme widget orphelin pour la compatibilité
+        # avec _refresh_succession_panel (setEnabled / setText) — non affiché dans l'UI
+        # (redondant avec le bouton inline dans chaque ligne du tableau)
+        self.btn_mark_obsolete = QPushButton("Marquer obsolète")
+        self.btn_mark_obsolete.setEnabled(False)
+        self.btn_mark_obsolete.clicked.connect(self._on_mark_obsolete)
+
+        # ── Ligne d'actions communes ──────────────────────────────────────────
+        succ_action_row = QHBoxLayout()
+        self.btn_cancel_succession = QPushButton("Annuler la succession")
+        self.btn_cancel_succession.setToolTip("Supprimer tous les liens de succession pour les pièces sélectionnées")
+        self.btn_cancel_succession.setEnabled(False)
+        self.btn_cancel_succession.setStyleSheet("font-size: 11px;")
+        self.btn_cancel_succession.clicked.connect(self._on_cancel_succession)
+        self.btn_cancel_succession.setVisible(False)
+        succ_action_row.addWidget(self.btn_cancel_succession)
+
         self.btn_unlink_equiv = QPushButton("Retirer du groupe")
         self.btn_unlink_equiv.setToolTip("Retirer la pièce sélectionnée de son groupe d'équivalence")
         self.btn_unlink_equiv.setEnabled(False)
-        self.btn_unlink_equiv.setStyleSheet("QPushButton { color: #E05252; }")
-        self.btn_unlink_equiv.setVisible(False)  # visible uniquement en multi-sélection
+        self.btn_unlink_equiv.setStyleSheet("QPushButton { color: #E05252; font-size: 11px; }")
+        self.btn_unlink_equiv.setVisible(False)
         self.btn_unlink_equiv.clicked.connect(self._on_unlink_equiv)
-        equiv_layout.addWidget(self.btn_unlink_equiv)
+        succ_action_row.addWidget(self.btn_unlink_equiv)
 
-        equiv_group.setLayout(equiv_layout)
-        layout.addWidget(equiv_group)
+        succ_action_row.addStretch()
+        side_layout.addLayout(succ_action_row)
+
+        # Clic gauche sur une référence dans les fieldsets → recherche dans le gestionnaire
+        self.superseded_by_tag_list.ref_clicked.connect(self._search_in_manager)
+        self.replaces_tag_list.ref_clicked.connect(self._search_in_manager)
+        self.equiv_tag_list.ref_clicked.connect(self._search_in_manager)
+        # Clic droit → menu contextuel (copier / rechercher dans l'app principale)
+        self.superseded_by_tag_list.ref_right_clicked.connect(self._on_chip_right_click)
+        self.replaces_tag_list.ref_right_clicked.connect(self._on_chip_right_click)
+        self.equiv_tag_list.ref_right_clicked.connect(self._on_chip_right_click)
 
         # Référence courante sélectionnée (pour les callbacks)
         self._current_ref_piece = None
+
+        main_splitter.addWidget(side_panel)
+        # Taille initiale : 70% tableau / 30% panneau latéral
+        main_splitter.setStretchFactor(0, 7)
+        main_splitter.setStretchFactor(1, 3)
+
+        layout.addWidget(main_splitter, 1)
 
         # Boutons d'action
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
 
-        search_app_btn = QPushButton("🔍 Chercher dans l'app")
+        search_app_btn = QPushButton("Chercher dans l'app")
+        search_app_btn.setIcon(qta.icon('fa5s.search', color='#555555'))
         search_app_btn.setToolTip("Injecter la référence sélectionnée dans la recherche principale")
         search_app_btn.clicked.connect(self._search_in_main_app)
         buttons_layout.addWidget(search_app_btn)
 
         export_btn = QPushButton("Exporter la liste")
+        export_btn.setIcon(qta.icon('fa5s.file-export', color='#555555'))
         export_btn.clicked.connect(self._export_pieces)
         buttons_layout.addWidget(export_btn)
-        
-        edit_btn = QPushButton("Modifier pièce")
-        edit_btn.setToolTip("Modifier la référence et le libellé de la pièce sélectionnée")
-        edit_btn.clicked.connect(self._edit_selected_piece)
-        edit_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.PRIMARY}; color: white; }}")
-        buttons_layout.addWidget(edit_btn)
-        
-        delete_btn = QPushButton("Supprimer pièce(s)")
-        delete_btn.setToolTip("Supprimer les références de pièces sélectionnées (Ctrl+Clic pour sélection multiple)")
-        delete_btn.clicked.connect(self._delete_selected_pieces)
-        delete_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.DANGER}; color: white; }}")
-        buttons_layout.addWidget(delete_btn)
-        
+
         close_btn = QPushButton("Fermer")
         close_btn.clicked.connect(self.close)
         buttons_layout.addWidget(close_btn)
         
         layout.addLayout(buttons_layout)
-        
+
         self.setLayout(layout)
+
+        # ── Widget d'actions flottant (un seul, positionné sur la ligne survolée) ──
+        self._floating_actions = ActionButtonWidget(-1)
+        self._floating_actions.setParent(self.pieces_table.viewport())
+        self._floating_actions.setVisible(False)
+        self._floating_actions.editRequested.connect(self._edit_piece_at_row)
+        self._floating_actions.deleteRequested.connect(self._delete_at_row_or_selection)
+        self._floating_actions.obsoleteRequested.connect(self._on_obsolete_at_row)
+
+        self.pieces_table.setMouseTracking(True)
+        self.pieces_table.viewport().setMouseTracking(True)
+        self.pieces_table.cellEntered.connect(self._on_cell_entered)
+        self.pieces_table.verticalScrollBar().valueChanged.connect(
+            lambda: self._floating_actions.setVisible(False))
+        self.pieces_table.viewport().installEventFilter(self)
+        self._floating_actions.installEventFilter(self)
         
     @handle_ui_errors(log_prefix="Erreur chargement pièces", show_message=True)
     def _load_pieces_data(self, checked=False):
-        """Charger les données des pièces"""
+        """Phase 1 : chargement rapide (ref + libellé uniquement, sans jointures).
+        Affiche la liste immédiatement, puis déclenche le chargement complet."""
+        query_fast = """
+        SELECT p.ref_piece, p.description, 0, NULL, COALESCE(p.is_phantom, 0)
+        FROM pieces p
+        ORDER BY p.ref_piece ASC
+        """
+        results = self.db_manager.execute_query(query_fast) or []
+        self.all_pieces_data = results
+        self.all_statuses = {}
+        self.stats_label.setText(f"{len(results)} référence(s) — chargement des données…")
+        self._update_table_display()
+        # Phase 2 : données complètes après le premier rendu
+        QTimer.singleShot(0, self._load_pieces_data_full)
+
+    @handle_ui_errors(log_prefix="Erreur chargement complet pièces", show_message=True)
+    def _load_pieces_data_full(self, checked=False):
+        """Phase 2 : chargement complet avec comptages, types et statuts de succession."""
         query = """
         SELECT
             p.ref_piece,
@@ -426,8 +558,7 @@ class PiecesManagerWindow(QDialog):
         GROUP BY p.id, p.ref_piece, p.description, p.is_phantom
         ORDER BY nb_appareils DESC, p.ref_piece ASC
         """
-
-        results = self.db_manager.execute_query(query)
+        results = self.db_manager.execute_query(query) or []
 
         total_pieces = len(results)
         orphan_pieces = len([r for r in results if r[2] == 0])
@@ -443,15 +574,46 @@ class PiecesManagerWindow(QDialog):
             f"{pluralize(total_associations, 'association')}"
         )
 
-        # Stocker les données et les statuts pour le filtrage
         self.all_pieces_data = results
         all_refs = [r[0] for r in results if r[0]]
         self.all_statuses = self.db_manager.get_pieces_statuses_batch(all_refs)
         self._update_table_display()
-            
+
+    # ── Widget d'actions flottant ─────────────────────────────────────────────
+
+    def _on_cell_entered(self, row: int, col: int):
+        """Positionner le widget d'actions flottant sur la ligne survolée."""
+        idx = self.pieces_table.model().index(row, 4)
+        rect = self.pieces_table.visualRect(idx)
+        self._floating_actions.row_index = row
+        self._floating_actions.move(rect.topLeft())
+        self._floating_actions.setFixedSize(rect.width(), rect.height())
+        self._floating_actions.setVisible(True)
+        self._floating_actions.raise_()
+
+    def eventFilter(self, obj, event):
+        """Gérer le survol entre le tableau et le widget d'actions flottant."""
+        if obj is self.pieces_table.viewport() and event.type() == QEvent.Leave:
+            # Cacher le widget flottant seulement si le curseur ne se trouve pas dessus
+            cursor_pos = self.pieces_table.viewport().mapFromGlobal(QCursor.pos())
+            if not self._floating_actions.geometry().contains(cursor_pos):
+                self._floating_actions.setVisible(False)
+        elif obj is self._floating_actions and event.type() == QEvent.Leave:
+            self._floating_actions.setVisible(False)
+        return super().eventFilter(obj, event)
+
     def _update_table_display(self):
-        """Mettre à jour l'affichage du tableau avec filtrage"""
+        """Mettre à jour l'affichage du tableau avec filtrage.
+        Les signaux sont bloqués pendant la reconstruction pour éviter que
+        setRowCount() ne déclenche itemSelectionChanged → sections cachées."""
+        # Remplacer l'écran de chargement par le tableau au premier appel
+        if hasattr(self, '_table_stack') and self._table_stack.currentIndex() == 0:
+            self._table_stack.setCurrentIndex(1)
+
         filtered_data = self._get_filtered_data()
+        if hasattr(self, '_floating_actions'):
+            self._floating_actions.setVisible(False)
+        self.pieces_table.blockSignals(True)
         self.pieces_table.setRowCount(len(filtered_data))
         statuses = getattr(self, 'all_statuses', {})
 
@@ -502,45 +664,26 @@ class PiecesManagerWindow(QDialog):
                 nb_item.setToolTip(f"Pièce associée à {pluralize(nb_appareils, 'appareil')}")
             self.pieces_table.setItem(row_idx, 2, nb_item)
 
-            # ── Colonne 3 : types d'appareils ─────────────────────────────
-            types_display = types_appareils or "—"
-            if len(types_display) > 50:
-                types_display = types_display[:47] + "…"
+            # ── Colonne 3 : types d'appareils — espace après les virgules ──
+            types_display = (types_appareils or "—").replace(",", ", ")
+            if len(types_display) > 55:
+                types_display = types_display[:52] + "…"
             types_item = QTableWidgetItem(types_display)
-            types_item.setToolTip(types_appareils or "Aucun type")
+            types_item.setToolTip((types_appareils or "Aucun type").replace(",", ", "))
             self.pieces_table.setItem(row_idx, 3, types_item)
 
-            # ── Colonne 4 : statut ────────────────────────────────────────
-            if is_phantom:
-                status_text  = "👻 Fantôme"
-                status_color = QColor(150, 150, 150)
-            elif status == 'superseded':
-                status_text  = f"↳ → {status_info.get('ref_new', '')}"
-                status_color = QColor(230, 126, 34)
-            elif status == 'obsolete' or is_obsolete:
-                status_text  = "⚠ Obsolète"
-                status_color = QColor(192, 57, 43)
-            elif status == 'replacing':
-                refs_old = status_info.get('refs_old', '')
-                status_text  = f"↑ Remplace"
-                status_color = QColor(41, 128, 185)
-                if refs_old:
-                    status_text += f" {refs_old}"
-            elif status_info.get('equivalents'):
-                equivs = status_info.get('equivalents', '')
-                status_text  = f"≡ {equivs}"
-                status_color = QColor(142, 68, 173)
-            else:
-                status_text  = "✓"
-                status_color = QColor(52, 168, 83)
-            status_item = QTableWidgetItem(status_text)
-            status_item.setForeground(status_color)
-            status_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-            self.pieces_table.setItem(row_idx, 4, status_item)
+            # Colonne 4 : actions gérées par le widget flottant (_floating_actions)
 
-        # Rafraîchir les panneaux latéraux si une pièce est toujours sélectionnée
+        self.pieces_table.blockSignals(False)
+
+        # Restaurer la sélection et les panneaux si la pièce courante est toujours visible
         ref = getattr(self, '_current_ref_piece', None)
         if ref:
+            for row in range(self.pieces_table.rowCount()):
+                item = self.pieces_table.item(row, 0)
+                if item and (item.data(Qt.UserRole) or item.text()) == ref:
+                    self.pieces_table.setCurrentCell(row, 0)
+                    break
             self._refresh_succession_panel(ref)
             self._refresh_equivalence_panel(ref)
             
@@ -614,18 +757,138 @@ class PiecesManagerWindow(QDialog):
         if not ref_item:
             return
         ref = ref_item.data(Qt.UserRole) or ref_item.text()
+        self._inject_ref_in_search(ref)
+
+    def _make_status_cell_widget(self, row_idx: int, prefix: str, refs: list,
+                                  color: str, ref_piece: str, status_info: dict) -> QLabel:
+        """Créer un QLabel avec refs cliquables pour la colonne Statut.
+        Soulignement dynamique via linkHovered (le survol souligne uniquement la ref survolée).
+        Clic = copie dans le presse-papier + injection dans la recherche principale."""
+        MAX_INLINE = 2
+
+        # Couleur de fond alternée (correspondant aux lignes du tableau)
+        palette = self.pieces_table.palette()
+        bg = (palette.color(QPalette.AlternateBase).name()
+              if row_idx % 2 == 1
+              else palette.color(QPalette.Base).name())
+
+        lbl = QLabel()
+        lbl.setStyleSheet(f"background: {bg}; padding: 2px 6px; border: none;")
+        lbl.setTextFormat(Qt.RichText)
+        lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+        lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+
+        refs_shown = refs[:MAX_INLINE]
+        n_more     = len(refs) - MAX_INLINE if len(refs) > MAX_INLINE else 0
+
+        def _build_html(hovered_href: str = ''):
+            parts = []
+            for r in refs_shown:
+                deco = 'underline' if f'ref://{r}' == hovered_href else 'none'
+                parts.append(
+                    f"<a href='ref://{r}' style='color:{color};font-weight:bold;"
+                    f"font-size:11px;text-decoration:{deco};'>{r}</a>")
+            refs_html = ' '.join(parts)
+            popup_html = ''
+            if n_more:
+                popup_html = (f" <a href='#popup' style='color:{color};font-size:10px;"
+                              f"text-decoration:none;border-bottom:1px dashed {color};'>"
+                              f"… +{n_more}</a>")
+            return (f"<span style='color:{color};font-size:11px;'>{prefix}</span>"
+                    f" {refs_html}{popup_html}")
+
+        _last_hovered = ['']  # conteneur mutable pour la closure
+
+        lbl.setText(_build_html())
+
+        def _on_hover(href: str):
+            _last_hovered[0] = href
+            lbl.setText(_build_html(href))
+
+        def _on_link(href: str, _rp=ref_piece, _si=status_info):
+            if href.startswith('ref://'):
+                self._search_in_manager(href[6:])
+            elif href == '#popup':
+                popup = PieceRelationsPopup(_rp, _si, self)
+                popup.show_at_cursor()
+
+        def _show_context_menu(pos):
+            """Clic droit : copier la référence ou rechercher dans l'app."""
+            menu = QMenu(lbl)
+            hovered_ref = (_last_hovered[0][6:]
+                           if _last_hovered[0].startswith('ref://') else None)
+            targets = [hovered_ref] if hovered_ref else refs_shown
+            for r in targets:
+                copy_action = menu.addAction(f"Copier  {r}")
+                copy_action.triggered.connect(
+                    lambda checked, _r=r: QApplication.clipboard().setText(_r))
+                search_action = menu.addAction(f"Rechercher dans l'app  {r}")
+                search_action.triggered.connect(
+                    lambda checked, _r=r: self._inject_ref_in_search(_r))
+            menu.exec_(lbl.mapToGlobal(pos))
+
+        lbl.setContextMenuPolicy(Qt.CustomContextMenu)
+        lbl.customContextMenuRequested.connect(_show_context_menu)
+        lbl.linkHovered.connect(_on_hover)
+        lbl.linkActivated.connect(_on_link)
+        return lbl
+
+    def _search_in_manager(self, ref: str):
+        """Injecter une référence dans le champ de recherche du gestionnaire.
+        Après le filtrage (synchrone), sélectionne automatiquement la ligne
+        correspondant exactement à la référence pour mettre à jour les fieldsets."""
+        self.search_input.setText(ref)
+        self.search_input.setFocus()
+        # La table est déjà repeuplée (textChanged synchrone) — chercher la ligne exacte
+        for row in range(self.pieces_table.rowCount()):
+            item = self.pieces_table.item(row, 0)
+            if item and (item.data(Qt.UserRole) or item.text()) == ref:
+                self.pieces_table.setCurrentCell(row, 0)
+                self.pieces_table.scrollToItem(item)
+                break
+
+    def _inject_ref_in_search(self, ref: str):
+        """Injecter la référence dans la recherche principale (fenêtre principale de l'app)."""
         parent = self.parent()
         if parent and hasattr(parent, 'search_input'):
             parent.search_input.setText(ref)
             parent.search_input.setFocus()
             parent.activateWindow()
-        
+
+    def _on_chip_right_click(self, ref: str):
+        """Clic droit sur un chip de fieldset : copier ou rechercher dans l'app."""
+        menu = QMenu(self)
+        copy_action = menu.addAction(f"Copier  {ref}")
+        copy_action.triggered.connect(lambda: QApplication.clipboard().setText(ref))
+        search_action = menu.addAction(f"Rechercher dans l'app  {ref}")
+        search_action.triggered.connect(lambda: self._inject_ref_in_search(ref))
+        menu.exec_(QCursor.pos())
+
+
+    def _delete_at_row_or_selection(self, row: int):
+        """Supprimer la pièce à la ligne, ou toute la sélection si la ligne en fait partie."""
+        selected_rows = list(set([item.row() for item in self.pieces_table.selectedItems()]))
+        if len(selected_rows) > 1 and row in selected_rows:
+            self._delete_selected_pieces()
+        else:
+            self._delete_piece_at_row(row)
+
+    def _on_obsolete_at_row(self, row: int):
+        """Marquer/retirer l'obsolescence pour la pièce à la ligne donnée."""
+        item = self.pieces_table.item(row, 0)
+        if not item:
+            return
+        ref = item.data(Qt.UserRole) or item.text()
+        self.pieces_table.setCurrentCell(row, 0)
+        self._on_mark_obsolete()
+
     def _on_piece_selected(self):
         """Quand une pièce est sélectionnée"""
         current_row = self.pieces_table.currentRow()
         if current_row < 0:
             self.details_text.clear()
             self._current_ref_piece = None
+            self.panel_header_label.setText("—")
             self._refresh_succession_panel(None)
             self._refresh_equivalence_panel(None)
             return
@@ -636,9 +899,25 @@ class PiecesManagerWindow(QDialog):
 
         ref_piece = ref_item.data(Qt.UserRole) or ref_item.text()
         self._current_ref_piece = ref_piece
+        self._update_panel_header(ref_piece)
         self._load_piece_details(ref_piece)
         self._refresh_succession_panel(ref_piece)
         self._refresh_equivalence_panel(ref_piece)
+
+    def _update_panel_header(self, ref_piece: str):
+        """Mettre à jour l'en-tête du panneau latéral avec la pièce sélectionnée."""
+        if not ref_piece:
+            self.panel_header_label.setText("—")
+            return
+        desc = ""
+        for row in getattr(self, 'all_pieces_data', []):
+            if row[0] == ref_piece:
+                desc = row[1] or ""
+                break
+        if desc:
+            self.panel_header_label.setText(f"{ref_piece}  ·  {desc}")
+        else:
+            self.panel_header_label.setText(ref_piece)
         
     @handle_ui_errors(log_prefix="Erreur chargement détails pièce", show_message=False)
     def _load_piece_details(self, ref_piece):
@@ -702,7 +981,8 @@ class PiecesManagerWindow(QDialog):
         if not has_selection or ref_piece is None:
             self.succession_status_label.setText("Sélectionnez une pièce pour voir son statut.")
             self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
-            self.succ_single_widget.setVisible(False)
+            self.superseded_section.setVisible(False)
+            self.replaces_section.setVisible(False)
             self.btn_cancel_succession.setVisible(False)
             self.btn_cancel_succession.setEnabled(False)
             return
@@ -712,7 +992,8 @@ class PiecesManagerWindow(QDialog):
             self.succession_status_label.setText(
                 f"{n} pièces sélectionnées — les actions s'appliquent à toutes.")
             self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
-            self.succ_single_widget.setVisible(False)
+            self.superseded_section.setVisible(False)
+            self.replaces_section.setVisible(False)
             self.btn_mark_superseded.setEnabled(True)
             self.btn_mark_replaces.setEnabled(True)
             self.btn_cancel_succession.setVisible(True)
@@ -760,7 +1041,8 @@ class PiecesManagerWindow(QDialog):
             'equivalents': ", ".join(equivalents) if equivalents else None,
         }
 
-        self.succ_single_widget.setVisible(True)
+        self.superseded_section.setVisible(True)
+        self.replaces_section.setVisible(True)
         self.btn_cancel_succession.setVisible(False)  # chips suffisent en mono-sélection
 
     def _on_mark_superseded(self):
@@ -808,22 +1090,24 @@ class PiecesManagerWindow(QDialog):
         dlg = PiecePickerDialog(
             self.db_manager, self,
             exclude_ref=refs[0] if len(refs) == 1 else None,
-            title=f"Référence remplacée par {label}"
+            title=f"Référence(s) remplacée(s) par {label}",
+            multi_select=True
         )
         if dlg.exec_() != QDialog.Accepted:
             return
-        ref_old = dlg.selected_ref()
-        if not ref_old:
+        refs_old = dlg.selected_refs()
+        if not refs_old:
             return
 
         errors = []
         details_lines = []
-        for ref_new in refs:
-            success, error = self.db_manager.add_supersession(ref_old, ref_new)
-            if success:
-                details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
-            else:
-                errors.append(f"{ref_old} → {ref_new} : {error}")
+        for ref_old in refs_old:
+            for ref_new in refs:
+                success, error = self.db_manager.add_supersession(ref_old, ref_new)
+                if success:
+                    details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
+                else:
+                    errors.append(f"{ref_old} → {ref_new} : {error}")
 
         if details_lines:
             self._notify_history("Succession :\n" + "\n".join(details_lines))
@@ -938,6 +1222,7 @@ class PiecesManagerWindow(QDialog):
         if not has_selection or ref_piece is None:
             self.equiv_status_label.setText("Sélectionnez une pièce pour voir ses équivalences.")
             self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.equiv_status_label.setVisible(True)
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(False)
             return
@@ -946,6 +1231,7 @@ class PiecesManagerWindow(QDialog):
         if n > 1:
             self.equiv_status_label.setText(f"{n} pièces sélectionnées.")
             self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.equiv_status_label.setVisible(True)
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(True)
             self.btn_unlink_equiv.setEnabled(True)
@@ -956,14 +1242,15 @@ class PiecesManagerWindow(QDialog):
         if equivs:
             self.equiv_tag_list.set_refs(equivs, '#8e44ad')
             self.equiv_status_label.setText("")
+            self.equiv_status_label.setVisible(False)
             # Stocker pour la popup relations
             if hasattr(self, '_relations_popup_data'):
                 self._relations_popup_data['equivalents'] = ", ".join(equivs)
             self.btn_unlink_equiv.setVisible(False)
         else:
             self.equiv_tag_list.set_refs([])
-            self.equiv_status_label.setText("Aucune équivalence")
-            self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.equiv_status_label.setText("")
+            self.equiv_status_label.setVisible(False)
             self.btn_unlink_equiv.setVisible(False)
 
     def _on_link_equiv(self):
@@ -974,20 +1261,28 @@ class PiecesManagerWindow(QDialog):
         dlg = PiecePickerDialog(
             self.db_manager, self,
             exclude_ref=ref_piece,
-            title=f"Référence équivalente à '{ref_piece}'"
+            title=f"Référence(s) équivalente(s) à '{ref_piece}'",
+            multi_select=True
         )
         if dlg.exec_() != QDialog.Accepted:
             return
-        ref_b = dlg.selected_ref()
-        if not ref_b:
+        refs_b = dlg.selected_refs()
+        if not refs_b:
             return
-        success = self.db_manager.add_equivalence(ref_piece, ref_b)
-        if success:
-            self._notify_history(f"Équivalence :\n==> '{ref_piece}' ≡ '{ref_b}'")
+        errors = []
+        details_lines = []
+        for ref_b in refs_b:
+            success = self.db_manager.add_equivalence(ref_piece, ref_b)
+            if success:
+                details_lines.append(f"==> '{ref_piece}' ≡ '{ref_b}'")
+            else:
+                errors.append(f"Impossible de créer l'équivalence pour : {ref_b}")
+        if details_lines:
+            self._notify_history("Équivalence :\n" + "\n".join(details_lines))
             self._refresh_equivalence_panel(ref_piece)
             self._update_table_display()
-        else:
-            QMessageBox.warning(self, "Erreur", f"Impossible de créer l'équivalence pour : {ref_b}")
+        if errors:
+            QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
     def _on_unlink_equiv(self):
         """Retirer la pièce courante de son groupe d'équivalence (multi-sélection)."""

@@ -24,7 +24,9 @@ class RefTagList(QWidget):
     Signal ref_removed(str) émis quand l'utilisateur clique ✕.
     """
 
-    ref_removed = pyqtSignal(str)
+    ref_removed       = pyqtSignal(str)
+    ref_clicked       = pyqtSignal(str)   # émis au clic gauche sur le texte de la référence
+    ref_right_clicked = pyqtSignal(str)   # émis au clic droit sur le texte de la référence
     MAX_HEIGHT = 124  # ~4 chips visibles avant scroll
 
     def __init__(self, parent=None):
@@ -51,6 +53,7 @@ class RefTagList(QWidget):
         outer.addWidget(self._scroll)
 
         self._refs = []
+        self._full_height_mode = False
         self.setVisible(False)
 
     # ── API publique ─────────────────────────────────────────────────────────
@@ -77,14 +80,18 @@ class RefTagList(QWidget):
             row_widget = self._make_row(ref, desc, color)
             self._layout.addWidget(row_widget)
 
-        # Hauteur adaptive : limitée à MAX_HEIGHT, ascenseur si plus
+        # Ancrer les chips en haut de la zone (évite l'étirement vertical)
+        self._layout.addStretch()
+
         n = len(refs)
-        if n == 0:
-            self.setVisible(False)
-        else:
-            natural_h = n * 31 + 4  # 28px chip + 3px spacing + marges
-            self._scroll.setFixedHeight(min(natural_h, self.MAX_HEIGHT))
-            self.setVisible(True)
+        if not self._full_height_mode:
+            if n == 0:
+                self.setVisible(False)
+            else:
+                natural_h = n * 31 + 4
+                self._scroll.setFixedHeight(min(natural_h, self.MAX_HEIGHT))
+                self.setVisible(True)
+        # else: in full_height_mode, always visible, height managed by parent layout
 
     def get_refs(self) -> list:
         return list(self._refs)
@@ -92,14 +99,22 @@ class RefTagList(QWidget):
     def is_empty(self) -> bool:
         return len(self._refs) == 0
 
+    def enable_full_height_mode(self):
+        """Mode hauteur libre : le widget remplit l'espace disponible (panneau latéral)."""
+        from .qt_imports import QSizePolicy
+        self._full_height_mode = True
+        self.setVisible(True)
+        self._scroll.setMaximumHeight(16777215)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+
     # ── Interne ──────────────────────────────────────────────────────────────
 
     def _make_row(self, ref: str, desc: str, color: str) -> QWidget:
         row = QWidget()
         row.setStyleSheet(
-            "QWidget { background: #f8f9fa; border: 1px solid #dee2e6;"
-            "border-radius: 4px; } "
-            "QWidget:hover { background: #e9ecef; border-color: #adb5bd; }"
+            "QWidget { background: transparent; border: none;"
+            "border-bottom: 1px solid #eeeeee; } "
+            "QWidget:hover { background: #f5f5f5; }"
         )
         row.setFixedHeight(28)
 
@@ -107,12 +122,29 @@ class RefTagList(QWidget):
         h.setContentsMargins(8, 3, 6, 3)
         h.setSpacing(6)
 
-        # Référence en monospace bold coloré
+        # Référence en monospace bold coloré — cliquable (copie + recherche)
         ref_lbl = QLabel(ref)
         ref_lbl.setStyleSheet(
             f"color: {color}; font-weight: bold; font-size: 11px;"
             "font-family: monospace; background: transparent; border: none;"
         )
+        ref_lbl.setCursor(Qt.PointingHandCursor)
+        ref_lbl.setToolTip(f"Cliquer pour rechercher '{ref}'")
+        ref_lbl.enterEvent  = lambda event, lbl=ref_lbl, c=color: lbl.setStyleSheet(
+            f"color: {c}; font-weight: bold; font-size: 11px;"
+            "font-family: monospace; background: transparent; border: none;"
+            "text-decoration: underline;"
+        )
+        ref_lbl.leaveEvent  = lambda event, lbl=ref_lbl, c=color: lbl.setStyleSheet(
+            f"color: {c}; font-weight: bold; font-size: 11px;"
+            "font-family: monospace; background: transparent; border: none;"
+        )
+        def _ref_mouse_press(event, r=ref):
+            if event.button() == Qt.LeftButton:
+                self.ref_clicked.emit(r)
+            elif event.button() == Qt.RightButton:
+                self.ref_right_clicked.emit(r)
+        ref_lbl.mousePressEvent = _ref_mouse_press
         h.addWidget(ref_lbl)
 
         # Description en gris (si disponible)
@@ -156,11 +188,14 @@ class PiecePickerDialog(QDialog):
     """
 
     def __init__(self, db_manager, parent=None, exclude_ref: Optional[str] = None,
-                 title: str = "Sélectionner une pièce"):
+                 title: str = "Sélectionner une pièce",
+                 multi_select: bool = False):
         super().__init__(parent)
         self.db_manager = db_manager
         self.exclude_ref = exclude_ref
+        self._multi_select = multi_select
         self._selected_ref: Optional[str] = None
+        self._selected_refs: List[str] = []
         self._all_rows: list = []  # cache des données
 
         self.setWindowTitle(title)
@@ -190,7 +225,10 @@ class PiecePickerDialog(QDialog):
         self._table.setHorizontalHeaderLabels(["Référence", "Libellé", "Statut"])
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        sel_mode = (QTableWidget.SelectionMode.ExtendedSelection
+                    if self._multi_select
+                    else QTableWidget.SelectionMode.SingleSelection)
+        self._table.setSelectionMode(sel_mode)
         self._table.setAlternatingRowColors(True)
         self._table.setSortingEnabled(True)
         self._table.itemDoubleClicked.connect(self._on_double_click)
@@ -215,7 +253,7 @@ class PiecePickerDialog(QDialog):
         # Boutons OK / Annuler
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self._ok_btn = QPushButton("Sélectionner")
+        self._ok_btn = QPushButton("Sélectionner (plusieurs avec Ctrl/⇧)" if self._multi_select else "Sélectionner")
         self._ok_btn.setEnabled(False)
         self._ok_btn.setDefault(True)
         self._ok_btn.clicked.connect(self.accept)
@@ -289,8 +327,30 @@ class PiecePickerDialog(QDialog):
     # ── Filtrage ─────────────────────────────────────────────────────────────
 
     def _filter(self, text: str):
-        """Filtrer la liste et mettre à jour le hint fantôme."""
+        """Filtrer la liste et mettre à jour le hint fantôme.
+
+        En mode multi_select, la saisie « REF1; REF2 » filtre les lignes
+        correspondantes et les sélectionne automatiquement toutes.
+        """
         t = text.lower().strip()
+
+        # Mode multi-ref : termes séparés par « ; »
+        if self._multi_select and ';' in t:
+            parts = [p.strip() for p in t.split(';') if p.strip()]
+            filtered = [
+                r for r in self._all_rows
+                if any(p in (r[0] or '').lower() or p in (r[1] or '').lower()
+                       for p in parts)
+            ]
+            self._populate(filtered)
+            if filtered:
+                self._table.selectAll()   # → déclenche _on_selection_changed
+            else:
+                self._table.clearSelection()
+                self._selected_ref = None
+            self._update_ok_btn()
+            return
+
         if not t:
             self._populate(self._all_rows)
         else:
@@ -308,13 +368,15 @@ class PiecePickerDialog(QDialog):
     # ── Sélection tableau ────────────────────────────────────────────────────
 
     def _on_selection_changed(self):
-        selected = self._table.selectedItems()
-        if selected:
-            row = self._table.currentRow()
+        selected_rows = sorted(set(item.row() for item in self._table.selectedItems()))
+        self._selected_refs = []
+        for row in selected_rows:
             ref_item = self._table.item(row, 0)
-            self._selected_ref = ref_item.data(Qt.UserRole) if ref_item else None
-        else:
-            self._selected_ref = None
+            if ref_item:
+                ref = ref_item.data(Qt.UserRole)
+                if ref:
+                    self._selected_refs.append(ref)
+        self._selected_ref = self._selected_refs[0] if self._selected_refs else None
         self._update_ok_btn()
 
     def _on_double_click(self, item):
@@ -338,6 +400,12 @@ class PiecePickerDialog(QDialog):
 
         self._ok_btn.setEnabled(has_selection or has_text)
 
+        # En mode multi-select : afficher le nombre de sélections dans le bouton
+        if self._multi_select and len(self._selected_refs) > 1:
+            self._ok_btn.setText(f"Sélectionner ({len(self._selected_refs)})")
+        elif self._multi_select:
+            self._ok_btn.setText("Sélectionner (plusieurs avec Ctrl/⇧)")
+
         # Hint fantôme : visible quand texte saisi mais aucune ligne sélectionnée
         if has_text and not has_selection:
             self._phantom_hint.setText(f"↵  Utiliser « {text} » comme nouvelle référence fantôme")
@@ -348,9 +416,12 @@ class PiecePickerDialog(QDialog):
     # ── API publique ─────────────────────────────────────────────────────────
 
     def selected_ref(self) -> Optional[str]:
-        """
-        Retourne la référence à utiliser :
-        - ligne sélectionnée dans le tableau si présente
-        - sinon le texte brut du champ de recherche (nouvelle référence fantôme)
-        """
+        """Retourne la première référence sélectionnée (ou le texte brut saisi)."""
         return self._selected_ref or self._search_input.text().strip() or None
+
+    def selected_refs(self) -> List[str]:
+        """Retourne toutes les références sélectionnées (mode multi_select)."""
+        if self._selected_refs:
+            return list(self._selected_refs)
+        text = self._search_input.text().strip()
+        return [text] if text else []
