@@ -2239,11 +2239,11 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage guide local")
     def _safe_show_local_guide(self):
         """Afficher un guide d'utilisation local (version protégée)"""
-        from .qt_imports import QDialog, QVBoxLayout, QTextEdit, QPushButton
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("📖 Guide d'utilisation - 1001pieces.com")
-        dialog.resize(800, 600)
+        dialog.setWindowTitle("Guide d'utilisation - 1001pieces.com")
+        dialog.resize(820, 640)
 
         layout = QVBoxLayout()
 
@@ -2251,103 +2251,155 @@ class MainWindow(QMainWindow):
         guide_text = QTextEdit()
         guide_text.setReadOnly(True)
         guide_content = """
-# Guide d'utilisation - 1001pieces.com
+<html><head><style>
+  body  { font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 13px;
+          color: #212529; padding: 10px 14px; }
+  h1    { font-size: 17px; color: #212529; margin: 0 0 10px 0; }
+  h2    { font-size: 14px; color: #343a40; margin: 18px 0 4px 0;
+          border-bottom: 1px solid #dee2e6; padding-bottom: 3px; }
+  h3    { font-size: 12px; color: #495057; margin: 10px 0 3px 0; }
+  ul,ol { margin: 3px 0; padding-left: 20px; }
+  li    { margin: 2px 0; }
+  b     { color: #343a40; }
+  code  { background: #f1f3f5; padding: 1px 4px; border-radius: 3px;
+          font-size: 12px; font-family: monospace; }
+  table { border-collapse: collapse; margin: 6px 0 10px 0; }
+  th    { background: #f8f9fa; padding: 4px 10px; font-size: 12px;
+          border: 1px solid #dee2e6; text-align: left; }
+  td    { padding: 3px 10px; font-size: 12px; border: 1px solid #dee2e6;
+          vertical-align: top; }
+  td.key { font-family: monospace; font-weight: bold; white-space: nowrap;
+           background: #f8f9fa; }
+  hr    { border: none; border-top: 1px solid #dee2e6; margin: 12px 0; }
+  .note { background: #f8f9fa; border-left: 3px solid #adb5bd;
+          padding: 6px 10px; margin: 8px 0; font-size: 12px; color: #495057; }
+</style></head><body>
 
-## 🚀 Démarrage rapide
+<h1>Guide d'utilisation — 1001pieces.com</h1>
 
-### Import de données
-1. **Import de fichiers** : Utilisez le bouton "📈 Import" ou glissez/déposez un fichier CSV ou PDF sur le tableau
-2. **Collage** : Copiez des données depuis Excel/Calc et collez avec Cmd+V
-3. **Référence de pièce** : Lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier
+<h2>Démarrage rapide</h2>
 
-### Navigation et édition
-- **Double-clic** sur une cellule pour l'éditer
-- **Entrée** : Valider et descendre à la cellule suivante
-- **Suppr / Retour arrière** : Effacer les cellules sélectionnées
+<h3>Import de données</h3>
+<ol>
+  <li><b>Import de fichiers</b> : bouton Import dans la barre d'outils, ou glisser/déposer un CSV ou PDF sur le tableau</li>
+  <li><b>Collage</b> : copiez des données depuis Excel/Calc et collez avec Cmd+V</li>
+  <li><b>Référence de pièce</b> : lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier</li>
+</ol>
 
-### Gestion des pièces
-- **Gestionnaire de pièces** : Accessible via Gestion → Pièces
-- **Sélection multiple** : Cmd+Clic pour sélectionner plusieurs pièces à supprimer
+<h3>Navigation et édition</h3>
+<ul>
+  <li><b>Double-clic</b> sur une cellule pour l'éditer</li>
+  <li><b>Entrée</b> : valider et descendre à la cellule suivante</li>
+  <li><b>Suppr / Retour arrière</b> : effacer les cellules sélectionnées</li>
+</ul>
 
-### Fonctionnalités avancées
-- **Glisser/Déposer** : Déposez des fichiers CSV directement sur le tableau
-- **Auto-complétion** : Les champs vides sont automatiquement complétés via Action → Autocomplétion
-- **Recherche avancée** : Utilisez `&&` (ET) et `||` (OU) dans la barre de recherche
+<h3>Gestion des pièces</h3>
+<ul>
+  <li><b>Gestionnaire de pièces</b> : accessible via Gestion → Pièces</li>
+  <li><b>Sélection multiple</b> : Cmd+Clic pour sélectionner plusieurs pièces</li>
+</ul>
 
----
+<h3>Fonctionnalités avancées</h3>
+<ul>
+  <li><b>Glisser/Déposer</b> : déposez des fichiers CSV directement sur le tableau</li>
+  <li><b>Auto-complétion</b> : champs vides complétés automatiquement via Action → Autocomplétion</li>
+  <li><b>Recherche avancée</b> : utilisez <code>&amp;&amp;</code> (ET) et <code>||</code> (OU) dans la barre de recherche</li>
+</ul>
 
-## ⌨️ Raccourcis clavier
+<hr/>
 
-### Édition
-| Raccourci | Action |
-|-----------|--------|
-| Cmd+N | Ajouter une nouvelle ligne |
-| Cmd+Z | Annuler la dernière action |
-| Cmd+Y | Rétablir l'action annulée |
-| Cmd+C | Copier la sélection |
-| Cmd+V | Coller depuis le presse-papiers |
-| Cmd+S | Sauvegarder toutes les modifications |
-| Cmd+D | Afficher les valeurs existantes de la colonne (autocomplétion) |
+<h2>Raccourcis clavier</h2>
 
-### Navigation
-| Raccourci | Action |
-|-----------|--------|
-| Cmd+↑ | Aller à la cellule vide précédente (ou tout en haut) |
-| Cmd+↓ | Aller à la cellule vide suivante (ou tout en bas) |
-| Ctrl+→ | Page suivante |
-| Ctrl+← | Page précédente |
-| Ctrl+Début | Première page |
-| Ctrl+Fin | Dernière page |
+<h3>Édition</h3>
+<table>
+  <tr><th>Raccourci</th><th>Action</th></tr>
+  <tr><td class="key">Cmd+N</td><td>Ajouter une nouvelle ligne</td></tr>
+  <tr><td class="key">Cmd+Z</td><td>Annuler la dernière action</td></tr>
+  <tr><td class="key">Cmd+Y</td><td>Rétablir l'action annulée</td></tr>
+  <tr><td class="key">Cmd+C</td><td>Copier la sélection</td></tr>
+  <tr><td class="key">Cmd+V</td><td>Coller depuis le presse-papiers</td></tr>
+  <tr><td class="key">Cmd+S</td><td>Sauvegarder toutes les modifications</td></tr>
+  <tr><td class="key">Cmd+D</td><td>Afficher les valeurs existantes de la colonne (autocomplétion)</td></tr>
+</table>
 
-### Recherche et affichage
-| Raccourci | Action |
-|-----------|--------|
-| Cmd+F | Ouvrir la barre de recherche |
-| Échap | Effacer la recherche |
-| F5 | Actualiser l'affichage |
-| F12 | Ouvrir le visualiseur de logs |
+<h3>Navigation</h3>
+<table>
+  <tr><th>Raccourci</th><th>Action</th></tr>
+  <tr><td class="key">Cmd+Haut</td><td>Aller à la cellule vide précédente (ou tout en haut)</td></tr>
+  <tr><td class="key">Cmd+Bas</td><td>Aller à la cellule vide suivante (ou tout en bas)</td></tr>
+  <tr><td class="key">Ctrl+Droite</td><td>Page suivante</td></tr>
+  <tr><td class="key">Ctrl+Gauche</td><td>Page précédente</td></tr>
+  <tr><td class="key">Ctrl+Début</td><td>Première page</td></tr>
+  <tr><td class="key">Ctrl+Fin</td><td>Dernière page</td></tr>
+</table>
 
----
+<h3>Recherche et affichage</h3>
+<table>
+  <tr><th>Raccourci</th><th>Action</th></tr>
+  <tr><td class="key">Cmd+F</td><td>Ouvrir la barre de recherche</td></tr>
+  <tr><td class="key">Échap</td><td>Effacer la recherche</td></tr>
+  <tr><td class="key">F5</td><td>Actualiser l'affichage</td></tr>
+  <tr><td class="key">F12</td><td>Ouvrir le visualiseur de logs</td></tr>
+</table>
 
-## Dépannage
+<hr/>
 
-### Problèmes d'import
-- Vérifiez l'encodage du fichier (UTF-8 recommandé)
-- Assurez-vous que le fichier CSV a au moins 2 colonnes
-- Première ligne = en-têtes (ignorée lors de l'import)
+<h2>Dépannage</h2>
 
-### Performance
-- L'application pagine automatiquement les gros datasets
-- Utilisez les filtres de colonnes pour affiner l'affichage
+<h3>Problèmes d'import</h3>
+<ul>
+  <li>Vérifiez l'encodage du fichier (UTF-8 recommandé)</li>
+  <li>Assurez-vous que le fichier CSV a au moins 2 colonnes</li>
+  <li>Première ligne = en-têtes (ignorée lors de l'import)</li>
+</ul>
 
-## Déploiement sur une autre machine
+<h3>Performance</h3>
+<ul>
+  <li>L'application pagine automatiquement les gros datasets</li>
+  <li>Utilisez les filtres de colonnes pour affiner l'affichage</li>
+</ul>
 
-### Générer le dossier d'export
-1. Menu **Gestion → Exporter l'application…**
-2. Choisissez un dossier de destination (Bureau recommandé)
-3. Patientez 1-2 minutes (téléchargement des dépendances)
-4. Un dossier `1001pieces_export_YYYYMMDD_HHMM/` est créé
+<hr/>
 
-### Sur le poste cible (macOS)
-**Prérequis** : Python 3.10+ (`python3 --version` pour vérifier)
+<h2>Déploiement sur une autre machine</h2>
 
-1. **Double-cliquez sur `install.command`** — installe les dépendances (une seule fois)
-2. **Double-cliquez sur `1001pieces_autofill.app`** — lance l'application (sans console)
+<h3>Générer le dossier d'export</h3>
+<ol>
+  <li>Menu <b>Gestion → Exporter l'application…</b></li>
+  <li>Choisissez un dossier de destination (Bureau recommandé)</li>
+  <li>Patientez 1-2 minutes (téléchargement des dépendances)</li>
+  <li>Un dossier <code>1001pieces_export_YYYYMMDD_HHMM/</code> est créé</li>
+</ol>
 
-> Aucune connexion internet nécessaire sur le poste cible (les wheels sont inclus).
+<h3>Sur le poste cible (macOS)</h3>
+<p><b>Prérequis</b> : Python 3.10+ (<code>python3 --version</code> pour vérifier)</p>
+<ol>
+  <li><b>Double-cliquez sur <code>install.command</code></b> — installe les dépendances (une seule fois)</li>
+  <li><b>Double-cliquez sur <code>1001pieces_autofill.app</code></b> — lance l'application</li>
+</ol>
+<div class="note">Aucune connexion internet nécessaire sur le poste cible (les wheels sont inclus).</div>
 
----
+<hr/>
 
-## Support
-En cas de problème, consultez les logs via "Journal" dans la barre d'outils.
-        """
-        guide_text.setMarkdown(guide_content)
+<h2>Support</h2>
+<p>En cas de problème, consultez les logs via <b>Journal</b> dans la barre d'outils.</p>
+
+</body></html>
+"""
+        guide_text.setHtml(guide_content)
         layout.addWidget(guide_text)
 
         # Bouton de fermeture
         close_button = QPushButton("Fermer")
+        close_button.setStyleSheet(
+            "QPushButton { padding: 2px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
+        )
         close_button.clicked.connect(dialog.close)
-        layout.addWidget(close_button)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(close_button)
+        layout.addLayout(btn_row)
 
         dialog.setLayout(layout)
         dialog.exec_()
