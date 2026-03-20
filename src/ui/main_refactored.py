@@ -2544,17 +2544,18 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur configuration colonnes")
     def _safe_configure_columns(self):
         """Helper sécurisé pour configurer les colonnes"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel, QSize
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Configuration des colonnes")
-        dialog.resize(400, 300)
+        dialog.resize(360, 300)
 
         layout = QVBoxLayout(dialog)
+        layout.setSpacing(6)
 
         # Titre
-        title_label = QLabel("Choisissez les colonnes à afficher :")
-        title_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 10px;")
+        title_label = QLabel("Colonnes à afficher :")
+        title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #343a40;")
         layout.addWidget(title_label)
 
         # Checkboxes pour chaque colonne
@@ -2562,27 +2563,36 @@ class MainWindow(QMainWindow):
         for col in Config.COLUMN_CONFIG:
             checkbox = QCheckBox(col['name'])
             checkbox.setChecked(self.visible_columns[col['index']])
-            checkbox.setEnabled(not col['mandatory'])  # Les colonnes obligatoires ne peuvent pas être cachées
+            checkbox.setEnabled(not col['mandatory'])
             if col['mandatory']:
                 checkbox.setToolTip("Cette colonne est obligatoire et ne peut pas être cachée")
             checkboxes[col['index']] = checkbox
             layout.addWidget(checkbox)
 
         # Boutons
+        _compact = "QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
         button_layout = QHBoxLayout()
 
         reset_btn = QPushButton("Réinitialiser")
+        reset_btn.setStyleSheet(_compact)
         reset_btn.clicked.connect(lambda: self._reset_column_defaults(checkboxes))
         button_layout.addWidget(reset_btn)
 
         button_layout.addStretch()
 
         cancel_btn = QPushButton("Annuler")
+        cancel_btn.setStyleSheet(_compact)
         cancel_btn.clicked.connect(dialog.reject)
         button_layout.addWidget(cancel_btn)
 
         apply_btn = QPushButton("Appliquer")
-        apply_btn.setObjectName("primaryBtn")
+        apply_btn.setIcon(qta.icon('fa5s.check', color='white'))
+        apply_btn.setIconSize(QSize(12, 12))
+        apply_btn.setStyleSheet(
+            "QPushButton { background-color: #28a745; color: white;"
+            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
+            "QPushButton:hover { background-color: #218838; }"
+        )
         apply_btn.clicked.connect(lambda: self._apply_column_config(checkboxes, dialog))
         button_layout.addWidget(apply_btn)
 
