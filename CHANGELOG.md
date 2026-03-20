@@ -30,6 +30,8 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - Fix `user_interaction_service` : suppression dead-code `'📊 import' in m`
 - Fix `main_refactored` : marqueur `"📊 Import"` → `"Import"` en génération ET détection (couplage brisé)
 - Fix `main_refactored` : `"📄 Fichier PDF"` → `"Fichier PDF"` en génération et détection
+- Fix guide d'utilisation : `setMarkdown()` → `setHtml()` — tableaux de raccourcis clavier correctement rendus (support tables GFM limité dans Qt5) ; emojis retirés des titres de section
+- Fix dialogue Colonnes (Affichage → Colonnes) : boutons Réinitialiser/Annuler stylés compact ; Appliquer en vert `#28a745` + `fa5s.check`
 - Nettoyage `database_manager` : suppression commentaires `print` et méthode morte `analyze_piece_duplicates`
 
 ---
