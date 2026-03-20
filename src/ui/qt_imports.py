@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QHeaderView,
     QAbstractItemView, QListWidget, QListWidgetItem, QTreeWidget, QTreeWidgetItem, QComboBox, QCheckBox,
     QInputDialog, QMessageBox, QFileDialog, QProgressDialog, QDialogButtonBox,
-    QToolBar, QAction, QStatusBar, QSplitter, QTabWidget,
+    QToolBar, QToolButton, QAction, QStatusBar, QSplitter, QTabWidget,
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
     QDoubleSpinBox, QSlider, QProgressBar, QDateEdit,
@@ -53,7 +53,7 @@ __all__ = [
     'QTableWidget', 'QTableWidgetItem', 'QTableWidgetSelectionRange', 'QHeaderView',
     'QAbstractItemView', 'QListWidget', 'QListWidgetItem', 'QTreeWidget', 'QTreeWidgetItem', 'QComboBox', 'QCheckBox',
     'QInputDialog', 'QMessageBox', 'QFileDialog', 'QProgressDialog', 'QDialogButtonBox',
-    'QToolBar', 'QAction', 'QStatusBar', 'QSplitter', 'QTabWidget',
+    'QToolBar', 'QToolButton', 'QAction', 'QStatusBar', 'QSplitter', 'QTabWidget',
     'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy', 'QStackedWidget',
     
     # Core

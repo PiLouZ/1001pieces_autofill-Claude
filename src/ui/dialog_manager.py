@@ -3,11 +3,12 @@
 Résout le conflit entre les deux DialogService existants
 """
 
+import qtawesome as qta
 from typing import Optional, Dict, Any, List, Union
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QComboBox, QCheckBox, QTextEdit, QListWidget, QListWidgetItem,
-    QInputDialog, Qt, QFont
+    QInputDialog, Qt, QFont, QSize
 )
 from .message_helper import MessageHelper
 from ..core.constants import Messages, UIConfig
@@ -177,11 +178,11 @@ class ImportOptionsDialog(QDialog):
     def _get_info_text(self) -> str:
         """Obtenir le texte d'information selon le type d'import"""
         if self.import_method == "CSV":
-            return f"📊 Fichier CSV détecté : {self.detected_columns} colonnes"
+            return f"Fichier CSV détecté : {self.detected_columns} colonnes"
         elif self.import_method == "PDF":
-            return f"📄 Données PDF détectées : {self.detected_columns} colonnes"
+            return f"Données PDF détectées : {self.detected_columns} colonnes"
         else:  # COLLAGE
-            return f"📋 Données collées détectées : {self.detected_columns} colonnes"
+            return f"Données collées détectées : {self.detected_columns} colonnes"
     
     def _create_import_options(self, layout):
         """Créer les options d'import"""
@@ -222,14 +223,15 @@ class ImportOptionsDialog(QDialog):
         self.ok_button.clicked.connect(self.accept)
         
         cancel_button = QPushButton("Annuler")
+        cancel_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_button.clicked.connect(self.reject)
-        
+
         button_layout.addStretch()
         button_layout.addWidget(cancel_button)
         button_layout.addWidget(self.ok_button)
-        
+
         layout.addLayout(button_layout)
-    
+
     def _init_values(self):
         """Initialiser les valeurs par défaut"""
         if self.default_ref_piece:
@@ -326,10 +328,13 @@ class ReferenceSelectionDialog(QDialog):
         button_layout = QHBoxLayout()
         
         select_button = QPushButton("Sélectionner")
-        select_button.setStyleSheet(UIConfig.STYLE_SUCCESS_BUTTON)
+        select_button.setIcon(qta.icon('fa5s.check', color='white'))
+        select_button.setIconSize(QSize(11, 11))
+        select_button.setStyleSheet("QPushButton { background-color: #28a745; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:hover { background-color: #218838; }")
         select_button.clicked.connect(self._on_select_clicked)
-        
+
         cancel_button = QPushButton("Annuler")
+        cancel_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_button.clicked.connect(self.reject)
         
         button_layout.addStretch()

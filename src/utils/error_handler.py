@@ -619,9 +619,9 @@ class ErrorReporter:
     def get_summary(self) -> str:
         """Obtenir un résumé des opérations"""
         if not self.errors:
-            return f"✅ Toutes les opérations réussies ({self.successes}/{self.total_operations})"
-        
-        summary = f"📊 Résumé: {self.successes} succès, {len(self.errors)} échecs sur {self.total_operations} opérations\n\n"
+            return f"Toutes les opérations réussies ({self.successes}/{self.total_operations})"
+
+        summary = f"Résumé: {self.successes} succès, {len(self.errors)} échecs sur {self.total_operations} opérations\n\n"
         
         for i, error in enumerate(self.errors, 1):
             summary += f"{i}. {error['operation']}: {error['error']}\n"

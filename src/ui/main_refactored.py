@@ -9,12 +9,12 @@ from typing import Optional, Dict, Any, List, Tuple
 from .qt_imports import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
-    QInputDialog, QMessageBox, QLineEdit, QTableWidgetSelectionRange,
-    QToolBar, QAction, QStatusBar, QSplitter, QTabWidget,
-    QListWidget, QListWidgetItem, QFileDialog, QComboBox,
-    QProgressDialog, QCheckBox, QMenu, QDialog, QCompleter, QTextEdit, QTextBrowser,
-    QKeySequence, QPainter, QPen, QColor, QDragEnterEvent, QDropEvent, QBrush, QKeyEvent, QFont,
-    Qt, QTimer, QSettings, QEvent, QSize, QMimeData, QUrl, QStringListModel, QSizePolicy, QFrame
+    QMessageBox, QLineEdit,
+    QAction, QStatusBar, QSplitter, QTabWidget,
+    QListWidgetItem, QFileDialog, QComboBox,
+    QCheckBox, QMenu, QDialog, QTextEdit, QTextBrowser,
+    QColor,
+    Qt, QTimer, QSettings, QEvent, QMimeData, QUrl, QSizePolicy, QFrame, QSize
 )
 
 # Imports Python standard consolidés
@@ -356,7 +356,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         """Initialiser l'interface utilisateur moderne"""
-        self.setWindowTitle("📊 " + Config.WINDOW_TITLE)
+        self.setWindowTitle(Config.WINDOW_TITLE)
         self.resize(Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT)
         self.setAcceptDrops(True)  # Activer le glisser/déposer pour les fichiers CSV
         
@@ -790,6 +790,7 @@ class MainWindow(QMainWindow):
             new_input = PasteInterceptor(self, self.paste_cleanup_service)
             new_input.setText(text)
             new_input.setPlaceholderText(placeholder)
+            new_input.setClearButtonEnabled(True)  # Bouton × natif intégré au champ
             
             # Remplacer dans le layout
             if parent and hasattr(parent, 'layout') and parent.layout():
@@ -958,11 +959,11 @@ class MainWindow(QMainWindow):
         if self.use_pagination:
             # Passer en mode "Toutes les lignes"
             message = (f"Voulez-vous afficher toutes les {self.total_rows} lignes?\n\n"
-                      "⚠️ Cela peut être lent si vous avez beaucoup de données.")
+                      "Cela peut être lent si vous avez beaucoup de données.")
 
             if MessageHelper.ask_question(self, message, "Afficher toutes les lignes"):
                 self.use_pagination = False
-                self.show_all_btn.setText("📄 Pagination")
+                self.show_all_btn.setText("Pagination")
                 self.show_all_btn.setToolTip("Revenir à l'affichage paginé")
                 self.table_controller.load_data()
         else:
@@ -1499,22 +1500,22 @@ class MainWindow(QMainWindow):
         """Formater les messages pour un affichage optimisé dans l'historique"""
         
         # Si c'est un message d'import PDF, appliquer le formatage spécialisé
-        if "📊 Import" in message:
+        if message.startswith("Import"):
             lines = message.strip().split('\n')
             formatted_lines = []
-            
+
             for i, line in enumerate(lines):
                 if not line.strip():
                     continue
-                
+
                 # En-tête d'import : garder tel quel mais sans timestamp redondant
-                if line.startswith("📊 Import"):
+                if line.startswith("Import"):
                     formatted_lines.append(line)
                     continue
                 
                 # Messages PDF : enlever les préfixes de fichier et nettoyer
-                if "📄 Fichier PDF" in line and "lignes extraites" in line:
-                    # Format: "📄 Fichier PDF filename.pdf: N lignes extraites"
+                if "Fichier PDF" in line and "lignes extraites" in line:
+                    # Format: "Fichier PDF filename.pdf : N lignes extraites"
                     # On veut garder juste cette information
                     formatted_lines.append(line)
                     continue
@@ -1692,16 +1693,16 @@ class MainWindow(QMainWindow):
             self.user_interaction_service.show_error(error_msg)
 
         if result.completed_count > 0:
-            self.user_interaction_service.show_info(f"✅ Auto-complétion réussie !\n\n"
-                           f"🎯 {result.completed_count} ligne(s) complétée(s)\n"
-                           f"📊 {result.total_rows_processed} ligne(s) traitée(s)")
+            self.user_interaction_service.show_info(f"Auto-complétion réussie !\n\n"
+                           f"{result.completed_count} ligne(s) complétée(s)\n"
+                           f"{result.total_rows_processed} ligne(s) traitée(s)")
             self.user_interaction_service.add_to_history(
                 f"Autocomplétion: {result.completed_count} appareil(s) complété(s) "
                 f"sur {result.total_rows_processed} traité(s)"
             )
             self._auto_save()
         else:
-            self.user_interaction_service.show_info("ℹ️ Aucun champ à compléter automatiquement.\n\n"
+            self.user_interaction_service.show_info("Aucun champ à compléter automatiquement.\n\n"
                            "Tous les appareils ont déjà un Type et un Fabricant, "
                            "ou aucune référence similaire n'a été trouvée.")
 
@@ -1798,7 +1799,7 @@ class MainWindow(QMainWindow):
         total_processed = results.get('total_imported', 0) + results.get('duplicates_skipped', 0)
         
         # Nouveau format unifié
-        summary = f"📊 Résumé de l'import {method} :\n"
+        summary = f"Import {method} — résumé :\n"
         summary += f"  Total {total_processed} lignes traitées\n"
         
         # Nouveaux appareils
@@ -1846,7 +1847,7 @@ class MainWindow(QMainWindow):
     
     def _generate_console_summary(self, results, ref_piece, source, pdf_files_info=None):
         """Générer la synthèse dans le format console standardisé"""
-        summary = f"📊 Import {source}"
+        summary = f"Import {source}"
         if ref_piece:
             summary += f" (pièce: {ref_piece})"
         summary += ":\n"
@@ -1854,7 +1855,7 @@ class MainWindow(QMainWindow):
         # Si c'est un import PDF et qu'on a des informations sur les fichiers, les ajouter
         if pdf_files_info:
             for file_info in pdf_files_info:
-                summary += f"📄 Fichier PDF {file_info['filename']}: {file_info['lines_extracted']} lignes extraites\n"
+                summary += f"Fichier PDF {file_info['filename']} : {file_info['lines_extracted']} lignes extraites\n"
         
         # Ligne principale - total des lignes du fichier original
         # Le vrai total = lignes traitées + doublons ignorés dans le fichier
@@ -1969,16 +1970,16 @@ class MainWindow(QMainWindow):
 
         # Déterminer le type d'import et ajouter le nom de fichier
         if results.get('total_files', 0) > 1:
-            import_type = f"📊 Import Multi-fichiers ({results['total_files']} fichiers)"
+            import_type = f"Import Multi-fichiers ({results['total_files']} fichiers)"
         else:
             # Pour l'import simple, récupérer le nom du fichier
             file_details = results.get('file_details', [])
             if file_details:
                 first_file = file_details[0]
                 filename = first_file.get('filename', 'fichier')
-                import_type = f"📊 Import {filename}"
+                import_type = f"Import {filename}"
             else:
-                import_type = "📊 Import"
+                import_type = "Import"
 
         # Commencer le résumé
         summary = f"{import_type}:\n"
@@ -1987,13 +1988,13 @@ class MainWindow(QMainWindow):
         if results.get('total_files', 0) > 1:
             file_details = results.get('file_details', [])
             for detail in file_details:
-                summary += f"📄 Fichier {detail['type']} {detail['filename']}: {detail['lines_processed']} lignes extraites\n"
+                summary += f"Fichier {detail['type']} {detail['filename']} : {detail['lines_processed']} lignes extraites\n"
         else:
             # Pour l'import simple, afficher aussi le détail du fichier
             file_details = results.get('file_details', [])
             if file_details:
                 detail = file_details[0]
-                summary += f"📄 Fichier {detail['type']}: {detail['lines_processed']} lignes extraites\n"
+                summary += f"Fichier {detail['type']} : {detail['lines_processed']} lignes extraites\n"
 
         # Calculer le total des lignes extraites de tous les fichiers
         file_details = results.get('file_details', [])
@@ -2265,7 +2266,7 @@ class MainWindow(QMainWindow):
 - **Suppr / Retour arrière** : Effacer les cellules sélectionnées
 
 ### Gestion des pièces
-- **Gestionnaire de pièces** : Accessible via Gestion → 🔧 Pièces
+- **Gestionnaire de pièces** : Accessible via Gestion → Pièces
 - **Sélection multiple** : Cmd+Clic pour sélectionner plusieurs pièces à supprimer
 
 ### Fonctionnalités avancées
@@ -2308,7 +2309,7 @@ class MainWindow(QMainWindow):
 
 ---
 
-## 🔧 Dépannage
+## Dépannage
 
 ### Problèmes d'import
 - Vérifiez l'encodage du fichier (UTF-8 recommandé)
@@ -2319,10 +2320,10 @@ class MainWindow(QMainWindow):
 - L'application pagine automatiquement les gros datasets
 - Utilisez les filtres de colonnes pour affiner l'affichage
 
-## 📦 Déploiement sur une autre machine
+## Déploiement sur une autre machine
 
 ### Générer le dossier d'export
-1. Menu **Gestion → 📦 Exporter l'application…**
+1. Menu **Gestion → Exporter l'application…**
 2. Choisissez un dossier de destination (Bureau recommandé)
 3. Patientez 1-2 minutes (téléchargement des dépendances)
 4. Un dossier `1001pieces_export_YYYYMMDD_HHMM/` est créé
@@ -2337,8 +2338,8 @@ class MainWindow(QMainWindow):
 
 ---
 
-## 📞 Support
-En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outils.
+## Support
+En cas de problème, consultez les logs via "Journal" dans la barre d'outils.
         """
         guide_text.setMarkdown(guide_content)
         layout.addWidget(guide_text)
@@ -2372,7 +2373,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         from ..core.config import Config
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("🔍 Index de recherche FTS5")
+        dialog.setWindowTitle("Index de recherche FTS5")
         dialog.setModal(True)
         dialog.resize(480, 280)
 
@@ -2389,7 +2390,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             "L'index FTS5 accélère drastiquement les recherches en remplaçant les\n"
             "requêtes <code>LIKE '%terme%'</code> (full table scan) par une recherche\n"
             "indexée par trigrammes. Résultat : ~10× plus rapide sur 600k enregistrements.\n\n"
-            "<b>⚠️ La construction prend ~2 secondes. L'application reste responsive.</b>"
+            "<b>La construction prend ~2 secondes. L'application reste responsive.</b>"
         )
         info_label = QLabel(info_text)
         info_label.setWordWrap(True)
@@ -2402,10 +2403,10 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                 active = Config.USE_FTS5
                 if populated:
                     count = self.db_manager.get_fts5_row_count()
-                    active_str = "✅ Actif" if active else "⚠️ Construit mais non activé"
+                    active_str = "Actif" if active else "Construit mais non activé"
                     return f"Statut : {active_str} — {count:,} enregistrements indexés".replace(",", " ")
                 else:
-                    return "Statut : ❌ Index non construit"
+                    return "Statut : Index non construit"
             except Exception as e:
                 return f"Statut : Erreur — {e}"
 
@@ -2418,21 +2419,26 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         # Boutons
         buttons_layout = QHBoxLayout()
 
-        rebuild_btn = QPushButton("⚙️ Construire / Reconstruire l'index")
+        rebuild_btn = QPushButton("Construire / Reconstruire l'index")
+        rebuild_btn.setIcon(qta.icon('fa5s.cog', color='#495057'))
+        rebuild_btn.setIconSize(QSize(12, 12))
         rebuild_btn.setToolTip("Lance la construction complète de l'index FTS5 (~2 secondes)")
 
         def do_rebuild():
             rebuild_btn.setEnabled(False)
-            rebuild_btn.setText("⏳ Construction en cours…")
+            rebuild_btn.setText("Construction en cours…")
+            rebuild_btn.setIcon(qta.icon('fa5s.circle-notch', color='#495057',
+                                         animation=qta.Spin(rebuild_btn)))
             QApplication.processEvents()
 
             try:
                 count = self.db_manager.rebuild_fts5()
                 Config.USE_FTS5 = True
                 status_label.setText(
-                    f"Statut : ✅ Actif — {count:,} enregistrements indexés".replace(",", " ")
+                    f"Statut : Actif — {count:,} enregistrements indexés".replace(",", " ")
                 )
-                rebuild_btn.setText("✅ Index construit")
+                rebuild_btn.setText("Index construit")
+                rebuild_btn.setIcon(qta.icon('fa5s.check', color='#27ae60'))
                 if hasattr(self, 'statusBar'):
                     self.statusBar().showMessage(
                         f"Index FTS5 construit ({count:,} enregistrements) — Recherche accélérée activée".replace(",", " "),
@@ -2440,7 +2446,8 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
                     )
             except Exception as e:
                 rebuild_btn.setEnabled(True)
-                rebuild_btn.setText("⚙️ Construire / Reconstruire l'index")
+                rebuild_btn.setText("Construire / Reconstruire l'index")
+                rebuild_btn.setIcon(qta.icon('fa5s.cog', color='#495057'))
                 QMessageBox.critical(dialog, "Erreur FTS5", f"Échec de la construction de l'index :\n{e}")
 
         rebuild_btn.clicked.connect(do_rebuild)
@@ -2488,7 +2495,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("⚙️ Configuration des colonnes")
+        dialog.setWindowTitle("Configuration des colonnes")
         dialog.resize(400, 300)
 
         layout = QVBoxLayout(dialog)
@@ -2703,7 +2710,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
         layout = QVBoxLayout()
         
         # Information sur le PDF
-        info_label = QLabel("📄 Données PDF détectées: 3 colonnes (Réf. technique, Réf. commerciale, Description)")
+        info_label = QLabel("Données PDF détectées : 3 colonnes (Réf. technique, Réf. commerciale, Description)")
         info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
         layout.addWidget(info_label)
         
@@ -2780,7 +2787,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             
             # Créer ou mettre à jour le label d'overlay
             if not hasattr(self, 'drag_overlay_label'):
-                self.drag_overlay_label = QLabel("📁 Déposer votre fichier CSV/PDF ici", self.table)
+                self.drag_overlay_label = QLabel("Déposer votre fichier CSV/PDF ici", self.table)
                 self.drag_overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.drag_overlay_label.setStyleSheet("""
                     QLabel {
@@ -2911,7 +2918,7 @@ En cas de problème, consultez les logs via "📊 Journal" dans la barre d'outil
             QMessageBox.warning(
                 self,
                 "Format de données invalide",
-                "❌ Format de collage invalide !\n\n"
+                "Format de collage invalide !\n\n"
                 "Le collage nécessite au minimum 1 colonne :\n"
                 "• 1 colonne : Référence modèle\n"
                 "• 2 colonnes : Référence modèle + Référence commerciale\n"

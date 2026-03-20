@@ -5,12 +5,11 @@ Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QTableWidgetItem, QLabel, QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
-                           QCheckBox, QApplication, QWidget, QMenu, QAction,
-                           Qt, QTimer, pyqtSignal, QColor, QPainter,
-                           QGroupBox, QButtonGroup, QInputDialog, QComboBox, QFont,
+                           QApplication, QWidget, QMenu,
+                           Qt, QTimer, pyqtSignal, QColor,
+                           QButtonGroup, QInputDialog, QComboBox, QFont,
                            QFrame, QSize, QCursor, QPalette, QSizePolicy,
-                           QEvent, QPoint, QStackedWidget)
-import sqlite3
+                           QEvent, QPoint, QStackedWidget, QProgressBar)
 from typing import List, Tuple, Dict
 import qtawesome as qta
 
@@ -43,8 +42,9 @@ class ActionButtonWidget(QWidget):
         edit_btn.setFlat(True)
         edit_btn.setToolTip("Modifier cette pièce")
         edit_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; }"
-            "QPushButton:hover { background: rgba(21,101,192,0.12); border-radius: 3px; }"
+            "QPushButton { border: none; background: transparent; padding: 0; margin: 0; outline: none; }"
+            "QPushButton:hover { border: none; background: rgba(21,101,192,0.12); border-radius: 3px; outline: none; padding: 0; }"
+            "QPushButton:pressed { border: none; background: rgba(21,101,192,0.20); border-radius: 3px; }"
         )
         edit_btn.clicked.connect(lambda: self.editRequested.emit(self.row_index))
         layout.addWidget(edit_btn)
@@ -57,8 +57,9 @@ class ActionButtonWidget(QWidget):
         obsolete_btn.setFlat(True)
         obsolete_btn.setToolTip("Marquer obsolète / retirer l'obsolescence")
         obsolete_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; }"
-            "QPushButton:hover { background: rgba(230,126,34,0.12); border-radius: 3px; }"
+            "QPushButton { border: none; background: transparent; padding: 0; margin: 0; outline: none; }"
+            "QPushButton:hover { border: none; background: rgba(230,126,34,0.12); border-radius: 3px; outline: none; padding: 0; }"
+            "QPushButton:pressed { border: none; background: rgba(230,126,34,0.20); border-radius: 3px; }"
         )
         obsolete_btn.clicked.connect(lambda: self.obsoleteRequested.emit(self.row_index))
         layout.addWidget(obsolete_btn)
@@ -71,8 +72,9 @@ class ActionButtonWidget(QWidget):
         delete_btn.setFlat(True)
         delete_btn.setToolTip("Supprimer cette pièce")
         delete_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; }"
-            "QPushButton:hover { background: rgba(198,40,40,0.12); border-radius: 3px; }"
+            "QPushButton { border: none; background: transparent; padding: 0; margin: 0; outline: none; }"
+            "QPushButton:hover { border: none; background: rgba(198,40,40,0.12); border-radius: 3px; outline: none; padding: 0; }"
+            "QPushButton:pressed { border: none; background: rgba(198,40,40,0.20); border-radius: 3px; }"
         )
         delete_btn.clicked.connect(lambda: self.deleteRequested.emit(self.row_index))
         layout.addWidget(delete_btn)
@@ -171,21 +173,9 @@ class PiecesManagerWindow(QDialog):
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Référence ou libellé… (utiliser ; pour plusieurs refs)")
+        self.search_input.setClearButtonEnabled(True)  # Bouton × natif intégré au champ
         self.search_input.textChanged.connect(self._filter_pieces)
         search_layout.addWidget(self.search_input)
-
-        clear_search_btn = QPushButton()
-        clear_search_btn.setIcon(qta.icon('fa5s.times', color='#888888'))
-        clear_search_btn.setIconSize(QSize(11, 11))
-        clear_search_btn.setFixedSize(26, 26)
-        clear_search_btn.setFlat(True)
-        clear_search_btn.setToolTip("Effacer la recherche")
-        clear_search_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
-        )
-        clear_search_btn.clicked.connect(lambda: self.search_input.clear())
-        search_layout.addWidget(clear_search_btn)
 
         refresh_btn = QPushButton()
         refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#555555'))
@@ -211,25 +201,34 @@ class PiecesManagerWindow(QDialog):
         self._active_filter = 'all'
 
         _filter_defs = [
-            ('all',        'Toutes'),
-            ('orphan',     'Orphelines 🔴'),
-            ('phantom',    'Fantômes 👻'),
-            ('superseded', 'Remplacées →'),
-            ('obsolete',   'Obsolètes ⚠'),
-            ('replacing',  'Remplaçantes ↑'),
-            ('equivalent', 'Équivalentes ≡'),
-            ('current',    'Courantes ✓'),
+            ('all',        'Toutes',        'fa5s.list',                    '#495057'),
+            ('orphan',     'Orphelines',    'fa5s.unlink',                  '#c0392b'),
+            ('phantom',    'Fantômes',      'fa5s.ghost',                   '#7f8c8d'),
+            ('superseded', 'Remplacées',    'fa5s.long-arrow-alt-right',    '#e67e22'),
+            ('obsolete',   'Obsolètes',     'fa5s.exclamation-triangle',    '#e67e22'),
+            ('replacing',  'Remplaçantes',  'fa5s.level-up-alt',            '#2980b9'),
+            ('equivalent', 'Équivalentes',  'fa5s.exchange-alt',            '#8e44ad'),
+            ('current',    'Courantes',     'fa5s.check-circle',            '#27ae60'),
         ]
+        def _make_icon_toggle(b, iname, icolor):
+            def _on_toggled(checked):
+                b.setIcon(qta.icon(iname, color='white' if checked else icolor))
+            return _on_toggled
+
         self._filter_btns = {}
-        for i, (key, label) in enumerate(_filter_defs):
+        for i, (key, label, icon_name, icon_color) in enumerate(_filter_defs):
             btn = QPushButton(label)
+            is_checked = (key == 'all')
+            btn.setIcon(qta.icon(icon_name, color='white' if is_checked else icon_color))
+            btn.setIconSize(QSize(11, 11))
             btn.setCheckable(True)
-            btn.setChecked(key == 'all')
+            btn.setChecked(is_checked)
             btn.setProperty('filter_key', key)
             btn.setStyleSheet("""
                 QPushButton { padding: 2px 6px; font-size: 11px; }
                 QPushButton:checked { background-color: #495057; color: white; border-radius: 3px; }
             """)
+            btn.toggled.connect(_make_icon_toggle(btn, icon_name, icon_color))
             self._filter_group.addButton(btn, i)
             filter_layout.addWidget(btn)
             self._filter_btns[key] = btn
@@ -288,22 +287,37 @@ class PiecesManagerWindow(QDialog):
         loading_page = QWidget()
         loading_layout = QVBoxLayout(loading_page)
         loading_layout.setAlignment(Qt.AlignCenter)
-        loading_layout.setSpacing(10)
+        loading_layout.setSpacing(16)
 
+        # Spinner + titre en ligne horizontale
+        spinner_row = QHBoxLayout()
+        spinner_row.setAlignment(Qt.AlignCenter)
+        spinner_row.setSpacing(10)
         spinner_btn = QPushButton()
         spinner_btn.setFlat(True)
         spinner_btn.setEnabled(False)
-        spinner_btn.setFixedSize(48, 48)
-        spinner_btn.setIconSize(QSize(32, 32))
-        spinner_btn.setIcon(qta.icon('fa5s.circle-notch', color='#888888',
+        spinner_btn.setFixedSize(28, 28)
+        spinner_btn.setIconSize(QSize(22, 22))
+        spinner_btn.setIcon(qta.icon('fa5s.circle-notch', color='#495057',
                                      animation=qta.Spin(spinner_btn)))
         spinner_btn.setStyleSheet("border: none; background: transparent;")
-        loading_layout.addWidget(spinner_btn, 0, Qt.AlignCenter)
+        spinner_row.addWidget(spinner_btn)
+        title_lbl = QLabel("Chargement des pièces…")
+        title_lbl.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")
+        spinner_row.addWidget(title_lbl)
+        loading_layout.addLayout(spinner_row)
 
-        loading_lbl = QLabel("Chargement en cours…")
-        loading_lbl.setStyleSheet("color: #888888; font-size: 12px;")
-        loading_lbl.setAlignment(Qt.AlignCenter)
-        loading_layout.addWidget(loading_lbl, 0, Qt.AlignCenter)
+        # Barre de progression fine indéterminée
+        loading_bar = QProgressBar()
+        loading_bar.setRange(0, 0)
+        loading_bar.setTextVisible(False)
+        loading_bar.setFixedHeight(6)
+        loading_bar.setMaximumWidth(400)
+        loading_bar.setStyleSheet("""
+            QProgressBar { border: none; border-radius: 3px; background: #e9ecef; }
+            QProgressBar::chunk { border-radius: 3px; background: #495057; }
+        """)
+        loading_layout.addWidget(loading_bar, 0, Qt.AlignHCenter)
 
         self._table_stack.addWidget(loading_page)    # index 0 : chargement
         self._table_stack.addWidget(self.pieces_table)  # index 1 : tableau
@@ -566,10 +580,10 @@ class PiecesManagerWindow(QDialog):
         total_associations = sum(r[2] for r in results)
 
         from src.core.config import pluralize
-        phantom_str = f"  •  {pluralize(phantom_pieces, 'fantôme')} 👻" if phantom_pieces else ""
+        phantom_str = f"  •  {pluralize(phantom_pieces, 'fantôme')}" if phantom_pieces else ""
         self.stats_label.setText(
             f"{pluralize(total_pieces, 'référence')}  •  "
-            f"{pluralize(orphan_pieces, 'orpheline')} 🔴"
+            f"{pluralize(orphan_pieces, 'orpheline')}"
             f"{phantom_str}  •  "
             f"{pluralize(total_associations, 'association')}"
         )
@@ -1369,6 +1383,17 @@ class PiecesManagerWindow(QDialog):
 
             QMessageBox.information(self, "Export réussi", f"Liste exportée vers:\n{filename}")
     
+    def _do_delete_piece(self, ref_piece: str):
+        """Suppression effective d'une pièce : associations puis pièce (sans commit — l'appelant commite)."""
+        self.db_manager.cursor.execute(
+            "DELETE FROM piece_associations WHERE piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)",
+            [ref_piece]
+        )
+        self.db_manager.cursor.execute(
+            "DELETE FROM pieces WHERE ref_piece = ?",
+            [ref_piece]
+        )
+
     @handle_ui_errors(log_prefix="Erreur suppression pièces", show_message=True)
     def _delete_selected_pieces(self, checked=False):
         """Supprimer les références de pièces sélectionnées"""
@@ -1425,8 +1450,7 @@ class PiecesManagerWindow(QDialog):
 
         # Supprimer chaque pièce
         for ref_piece, nb_appareils in pieces_to_delete:
-            query = Config.get_query('delete_piece_by_ref')
-            result = self.db_manager.execute_query(query, [ref_piece])
+            self._do_delete_piece(ref_piece)
             deleted_count += 1
             deleted_associations += nb_appareils
 
@@ -1465,6 +1489,48 @@ class PiecesManagerWindow(QDialog):
             summary = f"Suppression de la pièce '{ref_piece}' ({pluralize(nb_associations, 'association')})"
             self.parent().user_interaction_service.add_to_history(summary)
     
+    def _do_edit_piece(self, current_ref: str, current_desc: str):
+        """Logique commune d'édition d'une pièce : dialogue, validation, mise à jour DB, historique."""
+        dialog = PieceEditDialog(self, current_ref, current_desc)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        new_ref, new_desc = dialog.get_values()
+
+        if not new_ref:
+            QMessageBox.warning(self, "Erreur", "La référence ne peut pas être vide.")
+            return
+
+        # Vérifier si la nouvelle référence existe déjà (si elle a changé)
+        if new_ref != current_ref:
+            existing = self.db_manager.execute_query(
+                "SELECT id FROM pieces WHERE ref_piece = ?", [new_ref]
+            )
+            if existing:
+                QMessageBox.warning(
+                    self, "Référence existante",
+                    f"La référence '{new_ref}' existe déjà. Veuillez choisir une référence différente."
+                )
+                return
+
+        self.db_manager.cursor.execute(
+            "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?",
+            (new_ref, new_desc, current_ref)
+        )
+        self.db_manager.conn.commit()
+        self._load_pieces_data()
+
+        if hasattr(self.parent(), 'user_interaction_service'):
+            changes = []
+            if new_ref != current_ref:
+                changes.append(f"référence: '{current_ref}' → '{new_ref}'")
+            if new_desc != current_desc:
+                changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
+            if changes:
+                self.parent().user_interaction_service.add_to_history(
+                    "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
+                )
+
     @handle_ui_errors(log_prefix="Erreur modification pièce", show_message=True)
     def _edit_selected_piece(self, checked=False):
         """Modifier la pièce sélectionnée"""
@@ -1473,49 +1539,14 @@ class PiecesManagerWindow(QDialog):
             QMessageBox.warning(self, "Aucune sélection", "Veuillez sélectionner une pièce à modifier.")
             return
 
-        # Obtenir les données actuelles de la pièce
         ref_item = self.pieces_table.item(current_row, 0)
-        desc_item = self.pieces_table.item(current_row, 1)
-
         if not ref_item:
             return
 
         current_ref = ref_item.data(Qt.UserRole) or ref_item.text()
+        desc_item = self.pieces_table.item(current_row, 1)
         current_desc = desc_item.text() if desc_item else ""
-
-        # Créer une boîte de dialogue d'édition
-        dialog = PieceEditDialog(self, current_ref, current_desc)
-        if dialog.exec_() == QDialog.Accepted:
-            new_ref, new_desc = dialog.get_values()
-
-            # Vérifier si la nouvelle référence existe déjà (si elle a changé)
-            if new_ref != current_ref:
-                existing_query = "SELECT id FROM pieces WHERE ref_piece = ?"
-                existing_result = self.db_manager.execute_query(existing_query, [new_ref])
-                if existing_result:
-                    QMessageBox.warning(self, "Référence existante",
-                                      f"La référence '{new_ref}' existe déjà. Veuillez choisir une référence différente.")
-                    return
-
-            # Mettre à jour la pièce
-            update_query = "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?"
-            self.db_manager.cursor.execute(update_query, (new_ref, new_desc, current_ref))
-            self.db_manager.conn.commit()
-
-            # Recharger les données
-            self._load_pieces_data()
-
-            # Ajouter à l'historique de la fenêtre principale
-            if hasattr(self.parent(), 'user_interaction_service'):
-                changes = []
-                if new_ref != current_ref:
-                    changes.append(f"référence: '{current_ref}' → '{new_ref}'")
-                if new_desc != current_desc:
-                    changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
-
-                if changes:
-                    summary = "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
-                    self.parent().user_interaction_service.add_to_history(summary)
+        self._do_edit_piece(current_ref, current_desc)
 
     @handle_ui_errors(log_prefix="Erreur modification pièce (row)", show_message=True)
     def _edit_piece_at_row(self, row: int):
@@ -1523,45 +1554,14 @@ class PiecesManagerWindow(QDialog):
         if row < 0 or row >= self.pieces_table.rowCount():
             return
 
-        # Obtenir les données de la ligne
         ref_item = self.pieces_table.item(row, 0)
-        desc_item = self.pieces_table.item(row, 1)
-
         if not ref_item:
             return
 
         current_ref = ref_item.data(Qt.UserRole) or ref_item.text()
+        desc_item = self.pieces_table.item(row, 1)
         current_desc = desc_item.text() if desc_item else ""
-
-        # Ouvrir le dialogue d'édition
-        dialog = PieceEditDialog(self, current_ref, current_desc)
-        if dialog.exec_() == QDialog.Accepted:
-            new_ref = dialog.ref_input.text().strip()
-            new_desc = dialog.desc_input.text().strip()
-
-            if not new_ref:
-                QMessageBox.warning(self, "Erreur", "La référence ne peut pas être vide.")
-                return
-
-            # Mettre à jour la pièce
-            query_update = "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?"
-            self.db_manager.cursor.execute(query_update, (new_ref, new_desc, current_ref))
-            self.db_manager.conn.commit()
-
-            # Recharger les données
-            self._load_pieces_data()
-
-            # Ajouter à l'historique si parent supporte cette méthode
-            if hasattr(self.parent(), 'user_interaction_service'):
-                changes = []
-                if new_ref != current_ref:
-                    changes.append(f"référence: '{current_ref}' → '{new_ref}'")
-                if new_desc != current_desc:
-                    changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
-
-                if changes:
-                    summary = "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
-                    self.parent().user_interaction_service.add_to_history(summary)
+        self._do_edit_piece(current_ref, current_desc)
 
     @handle_ui_errors(log_prefix="Erreur suppression pièce (row)", show_message=True)
     def _delete_piece_at_row(self, row: int):
@@ -1587,22 +1587,13 @@ class PiecesManagerWindow(QDialog):
         )
 
         if reply == QMessageBox.Yes:
-            # Supprimer les associations d'abord
-            query_assoc = "DELETE FROM piece_associations WHERE piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)"
-            self.db_manager.cursor.execute(query_assoc, [ref_piece])
+            nb_item = self.pieces_table.item(row, 2)
+            nb_appareils = int(nb_item.text()) if nb_item and nb_item.text().isdigit() else 0
 
-            # Puis supprimer la pièce
-            query_piece = "DELETE FROM pieces WHERE ref_piece = ?"
-            self.db_manager.cursor.execute(query_piece, [ref_piece])
-
+            self._do_delete_piece(ref_piece)
             self.db_manager.conn.commit()
-
-            # Recharger les données
             self._load_pieces_data()
-
-            # Ajouter à l'historique
-            if hasattr(self.parent(), 'user_interaction_service'):
-                self.parent().user_interaction_service.add_to_history(f"Suppression de la pièce: {ref_piece}")
+            self._add_to_main_history(ref_piece, nb_appareils)
 
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""

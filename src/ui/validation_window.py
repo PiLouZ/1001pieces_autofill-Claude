@@ -2,10 +2,12 @@
 Fenêtre interactive de validation et détection d'incohérences
 """
 
+import qtawesome as qta
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
-    QTextEdit, QWidget, QTabWidget, QTreeWidget, QTreeWidgetItem, Qt
+    QTextEdit, QWidget, QTabWidget, QTreeWidget, QTreeWidgetItem
 )
+from .qt_imports import QSize
 from ..utils.error_handler import handle_ui_errors, handle_database_operation_errors
 from ..utils.text_utils import clean_display_text
 
@@ -15,7 +17,7 @@ class ValidationWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
-        self.setWindowTitle("🔍 Validation et Incohérences - Interface Interactive")
+        self.setWindowTitle("Validation et Incohérences")
         self.resize(1000, 700)
         self.setModal(False)  # Permettre interaction avec la fenêtre principale
         
@@ -34,14 +36,20 @@ class ValidationWindow(QDialog):
         # En-tête avec statistiques
         header_layout = QHBoxLayout()
         
-        self.stats_label = QLabel("📊 Chargement des données...")
-        self.stats_label.setStyleSheet("font-weight: bold; font-size: 16px; color: #007bff; padding: 10px;")
+        self.stats_label = QLabel("Chargement des données…")
+        self.stats_label.setStyleSheet("color: #007bff; font-weight: bold; font-size: 11px; padding: 4px;")
         header_layout.addWidget(self.stats_label)
         
         header_layout.addStretch()
         
         # Bouton rafraîchir
-        refresh_btn = QPushButton("🔄 Actualiser")
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#555555'))
+        refresh_btn.setIconSize(QSize(13, 13))
+        refresh_btn.setFixedSize(26, 26)
+        refresh_btn.setFlat(True)
+        refresh_btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }")
+        refresh_btn.setToolTip("Actualiser")
         refresh_btn.clicked.connect(self._load_data)
         header_layout.addWidget(refresh_btn)
         
@@ -49,15 +57,15 @@ class ValidationWindow(QDialog):
         
         # Filtres par type d'erreur
         filter_layout = QHBoxLayout()
-        filter_layout.addWidget(QLabel("📂 Filtrer par type:"))
-        
+        filter_layout.addWidget(QLabel("Filtrer par type :"))
+
         self.filter_combo = QComboBox()
         self.filter_combo.addItems([
             "Tout afficher",
-            "🔧 Problèmes de validation",
-            "🔄 Références avec variations",
-            "📋 Références en doublon",
-            "❌ Champs critiques vides"
+            "Problèmes de validation",
+            "Références avec variations",
+            "Références en doublon",
+            "Champs critiques vides"
         ])
         self.filter_combo.currentTextChanged.connect(self._apply_filter)
         filter_layout.addWidget(self.filter_combo)
@@ -70,46 +78,22 @@ class ValidationWindow(QDialog):
         
         # Onglet Vue d'ensemble
         self.overview_tab = self._create_overview_tab()
-        self.tab_widget.addTab(self.overview_tab, "📊 Vue d'ensemble")
-        
+        self.tab_widget.addTab(self.overview_tab, qta.icon('fa5s.chart-bar', color='#495057'), "Vue d'ensemble")
+
         # Onglet Détails
         self.details_tab = self._create_details_tab()
-        self.tab_widget.addTab(self.details_tab, "🔍 Détails")
+        self.tab_widget.addTab(self.details_tab, qta.icon('fa5s.search', color='#495057'), "Détails")
         
         layout.addWidget(self.tab_widget)
         
         # Boutons d'action
         action_layout = QHBoxLayout()
         
-        # Raccourcis de recherche (masqués temporairement car redondants avec onglet Détails)
-        # search_layout = QVBoxLayout()
-        # search_layout.addWidget(QLabel("🔎 Raccourcis de recherche:"))
-        # 
-        # search_buttons_layout = QHBoxLayout()
-        # 
-        # search_orphaned_btn = QPushButton("🔗 Pièces orphelines")
-        # search_orphaned_btn.clicked.connect(lambda: self._quick_search("orphaned"))
-        # search_buttons_layout.addWidget(search_orphaned_btn)
-        # 
-        # search_duplicates_btn = QPushButton("📋 Doublons")
-        # search_duplicates_btn.clicked.connect(lambda: self._quick_search("duplicates"))
-        # search_buttons_layout.addWidget(search_duplicates_btn)
-        # 
-        # search_empty_btn = QPushButton("❌ Champs vides")
-        # search_empty_btn.clicked.connect(lambda: self._quick_search("empty"))
-        # search_buttons_layout.addWidget(search_empty_btn)
-        # 
-        # search_inconsistencies_btn = QPushButton("⚠️ Incohérences")
-        # search_inconsistencies_btn.clicked.connect(lambda: self._quick_search("inconsistencies"))
-        # search_buttons_layout.addWidget(search_inconsistencies_btn)
-        # 
-        # search_layout.addLayout(search_buttons_layout)
-        # action_layout.addLayout(search_layout)
-        
         action_layout.addStretch()
         
         # Bouton fermer
         close_btn = QPushButton("Fermer")
+        close_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         close_btn.clicked.connect(self.close)
         action_layout.addWidget(close_btn)
         
@@ -141,9 +125,9 @@ class ValidationWindow(QDialog):
         stats_layout = QHBoxLayout(stats_widget)
         
         # Cartes de statistiques
-        self.validation_card = self._create_stat_card("🔧 Validation", "0", "#28a745")
-        self.inconsistency_card = self._create_stat_card("🔄 Incohérences", "0", "#ffc107")
-        self.critical_card = self._create_stat_card("❌ Critiques", "0", "#dc3545")
+        self.validation_card = self._create_stat_card("Validation", "0", "#28a745")
+        self.inconsistency_card = self._create_stat_card("Incohérences", "0", "#ffc107")
+        self.critical_card = self._create_stat_card("Critiques", "0", "#dc3545")
         
         stats_layout.addWidget(self.validation_card)
         stats_layout.addWidget(self.inconsistency_card)
@@ -183,7 +167,7 @@ class ValidationWindow(QDialog):
         layout.setContentsMargins(15, 15, 15, 15)
         
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #6c757d;")
+        title_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #6c757d;")
         layout.addWidget(title_label)
         
         value_label = QLabel(value)
@@ -259,7 +243,7 @@ class ValidationWindow(QDialog):
         self.critical_card.value_label.setText(str(total_critical))
         
         # Mise à jour du label des stats
-        self.stats_label.setText(f"📊 {total_validation} problèmes de validation • {total_inconsistencies} incohérences • {total_critical} critiques")
+        self.stats_label.setText(f"{total_validation} problèmes de validation  •  {total_inconsistencies} incohérences  •  {total_critical} critiques")
         
         # Mise à jour du résumé
         self._update_summary()
@@ -270,14 +254,14 @@ class ValidationWindow(QDialog):
     def _update_summary(self):
         """Mettre à jour le résumé"""
         lines = []
-        lines.append("🔍 RAPPORT DE VALIDATION ET INCOHÉRENCES")
+        lines.append("RAPPORT DE VALIDATION ET INCOHÉRENCES")
         lines.append("=" * 50)
         lines.append("")
-        
+
         # Validation
-        lines.append("📋 VALIDATION DE LA BASE:")
+        lines.append("VALIDATION DE LA BASE:")
         if self.validation_data.get('duplicate_refs', 0) > 0:
-            lines.append(f"  📋 {self.validation_data['duplicate_refs']} référence(s) en doublon")
+            lines.append(f"  {self.validation_data['duplicate_refs']} référence(s) en doublon")
 
             # Lister les références en doublon (par ref_modele)
             duplicates = self._get_duplicates_for_summary()
@@ -289,17 +273,17 @@ class ValidationWindow(QDialog):
                 if len(duplicates) > 10:
                     lines.append(f"     ... et {len(duplicates) - 10} autres références")
         if self.validation_data.get('empty_critical', 0) > 0:
-            lines.append(f"  ❌ {self.validation_data['empty_critical']} appareil(s) sans type ni fabricant")
-        
+            lines.append(f"  {self.validation_data['empty_critical']} appareil(s) sans type ni fabricant")
+
         if sum(self.validation_data.values()) == 0:
-            lines.append("  ✅ Aucun problème de validation")
-        
+            lines.append("  Aucun problème de validation")
+
         lines.append("")
-        
+
         # Incohérences
-        lines.append("📋 INCOHÉRENCES:")
+        lines.append("INCOHÉRENCES:")
         if self.inconsistency_data and len(self.inconsistency_data) > 0:
-            lines.append(f"  🔍 {len(self.inconsistency_data)} référence(s) avec valeurs différentes")
+            lines.append(f"  {len(self.inconsistency_data)} référence(s) avec valeurs différentes")
             lines.append("")
             
             # Détailler les incohérences
@@ -314,7 +298,7 @@ class ValidationWindow(QDialog):
             if len(self.inconsistency_data) > 5:
                 lines.append(f"  ... et {len(self.inconsistency_data) - 5} autres références")
         else:
-            lines.append("  ✅ Aucune incohérence détectée")
+            lines.append("  Aucune incohérence détectée")
         
         self.summary_text.setPlainText("\n".join(lines))
     
@@ -323,20 +307,20 @@ class ValidationWindow(QDialog):
         self.details_tree.clear()
         
         # Appliquer le filtrage selon la sélection
-        show_validation = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "📋 Références en doublon", "❌ Champs critiques vides"]
-        show_inconsistencies = self.current_filter in ["Tout afficher", "🔄 Références avec variations"]
+        show_validation = self.current_filter in ["Tout afficher", "Problèmes de validation", "Références en doublon", "Champs critiques vides"]
+        show_inconsistencies = self.current_filter in ["Tout afficher", "Références avec variations"]
         
         # Ajouter les problèmes de validation
         if show_validation and sum(self.validation_data.values()) > 0:
-            validation_item = QTreeWidgetItem(["🔧 Problèmes de validation", "", str(sum(self.validation_data.values())), ""])
+            validation_item = QTreeWidgetItem(["Problèmes de validation", "", str(sum(self.validation_data.values())), ""])
             
             # Filtres spécifiques
-            show_duplicates = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "📋 Références en doublon"]
-            show_empty = self.current_filter in ["Tout afficher", "🔧 Problèmes de validation", "❌ Champs critiques vides"]
+            show_duplicates = self.current_filter in ["Tout afficher", "Problèmes de validation", "Références en doublon"]
+            show_empty = self.current_filter in ["Tout afficher", "Problèmes de validation", "Champs critiques vides"]
             
             if show_duplicates and self.validation_data.get('duplicate_refs', 0) > 0:
                 duplicate_item = QTreeWidgetItem([
-                    "📋 Références en doublon",
+                    "Références en doublon",
                     f"{self.validation_data['duplicate_refs']} références dupliquées",
                     str(self.validation_data['duplicate_refs']),
                     "Rechercher"
@@ -348,7 +332,7 @@ class ValidationWindow(QDialog):
                     clean_ref = clean_display_text(ref_modele)
 
                     duplicate_detail = QTreeWidgetItem([
-                        f"📋 {clean_ref}",
+                        f"{clean_ref}",
                         f"{count} appareils avec cette référence",
                         str(count),
                         "Rechercher"
@@ -368,7 +352,7 @@ class ValidationWindow(QDialog):
             
             if show_empty and self.validation_data.get('empty_critical', 0) > 0:
                 empty_item = QTreeWidgetItem([
-                    "❌ Champs critiques vides", 
+                    "Champs critiques vides",
                     f"{self.validation_data['empty_critical']} appareils sans type ni fabricant", 
                     str(self.validation_data['empty_critical']), 
                     "Rechercher"
@@ -383,7 +367,7 @@ class ValidationWindow(QDialog):
         # Ajouter les incohérences
         if show_inconsistencies and self.inconsistency_data:
             inconsistency_item = QTreeWidgetItem([
-                "⚠️ Incohérences", 
+                "Incohérences",
                 f"{len(self.inconsistency_data)} références avec variations", 
                 str(len(self.inconsistency_data)), 
                 ""
@@ -427,13 +411,13 @@ class ValidationWindow(QDialog):
         if search_type == "duplicates":
             # Rechercher les doublons - recherche générale
             self.parent_window.search_input.clear()
-            self.parent_window.statusbar.showMessage("📋 Voir l'onglet Détails pour les références en doublon", 3000)
+            self.parent_window.statusbar.showMessage("Voir l'onglet Détails pour les références en doublon", 3000)
 
         elif search_type == "empty":
             # Rechercher les champs vides en utilisant le filtre incomplet
             if hasattr(self.parent_window, 'incomplete_filter_btn'):
                 self.parent_window.incomplete_filter_btn.click()
-                self.parent_window.statusbar.showMessage("❌ Filtrage des lignes incomplètes activé", 3000)
+                self.parent_window.statusbar.showMessage("Filtrage des lignes incomplètes activé", 3000)
 
         elif search_type == "inconsistencies":
             # Afficher la première incohérence trouvée
@@ -442,7 +426,7 @@ class ValidationWindow(QDialog):
                 clean_first_ref = clean_display_text(first_ref)
                 self.parent_window.search_input.setText(clean_first_ref)
                 self.parent_window.load_data(first_ref)
-                self.parent_window.statusbar.showMessage(f"🔍 Recherche de '{first_ref}' (première incohérence)", 3000)
+                self.parent_window.statusbar.showMessage(f"Recherche de '{first_ref}' (première incohérence)", 3000)
 
     def _on_item_double_clicked(self, item, column):
         """Gérer le double-clic sur un élément"""
@@ -455,8 +439,8 @@ class ValidationWindow(QDialog):
                 self._quick_search("empty")
             elif item.parent() and ("Incohérences" in item.parent().text(0) or "doublon" in item.parent().text(0)):
                 # Recherche d'une référence spécifique (incohérences ou doublons)
-                ref_modele = item.text(0).replace("📋 ", "")
+                ref_modele = item.text(0)
                 clean_ref_modele = clean_display_text(ref_modele)
                 self.parent_window.search_input.setText(clean_ref_modele)
                 self.parent_window.load_data(clean_ref_modele)
-                self.parent_window.statusbar.showMessage(f"🔍 Recherche de '{clean_ref_modele}'", 3000)
+                self.parent_window.statusbar.showMessage(f"Recherche de '{clean_ref_modele}'", 3000)

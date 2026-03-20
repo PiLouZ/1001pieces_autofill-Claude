@@ -4,10 +4,12 @@ Centralise la logique d'affichage et d'interaction pour la prévisualisation de 
 """
 
 from typing import Dict, List, Any, Optional
+import qtawesome as qta
 from ..ui.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QGroupBox, QTabWidget,
-    QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication, QMessageBox
+    QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication, QMessageBox,
+    QSize
 )
 from ..ui.qt_imports import Qt, QObject, pyqtSignal
 from ..ui.qt_imports import QFont, QKeyEvent
@@ -47,7 +49,7 @@ class KeyboardTreeWidget(QTreeWidget):
             menu = QMenu(self)
 
             # Action pour copier la valeur de la cellule
-            copy_action = QAction("📋 Copier", self)
+            copy_action = QAction("Copier", self)
             copy_action.triggered.connect(lambda: self._copy_cell_value(item, self.currentColumn()))
             menu.addAction(copy_action)
 
@@ -75,14 +77,17 @@ class CleanupStatsWidget(QWidget):
         layout = QHBoxLayout(self)
         
         # Statistiques principales
-        self.devices_stats = QLabel("📱 0 groupes d'appareils (0 appareils concernés)")
-        self.pieces_stats = QLabel("🔧 0 pièces dupliquées")
-        self.inconsistencies_stats = QLabel("📋 0 incohérences potentielles")
-        self.savings_stats = QLabel("💾 Économie potentielle: 0 appareils, 0 pièces")
-        
+        self.devices_stats = QLabel("0 groupes d'appareils (0 appareils concernés)")
+        self.pieces_stats = QLabel("0 pièces dupliquées")
+        self.inconsistencies_stats = QLabel("0 incohérences potentielles")
+        self.savings_stats = QLabel("Économie potentielle : 0 appareils, 0 pièces")
+
         # Style
         for label in [self.devices_stats, self.pieces_stats, self.inconsistencies_stats, self.savings_stats]:
-            label.setStyleSheet("padding: 8px; background: #f8f9fa; border-radius: 4px; margin: 2px;")
+            label.setStyleSheet(
+                "padding: 5px 8px; background: #f8f9fa; border-radius: 4px; margin: 2px;"
+                " color: #495057; font-size: 11px;"
+            )
             
         layout.addWidget(self.devices_stats)
         layout.addWidget(self.pieces_stats)
@@ -92,21 +97,21 @@ class CleanupStatsWidget(QWidget):
     def update_stats(self, statistics: Dict[str, Any]):
         """Mettre à jour les statistiques affichées"""
         self.devices_stats.setText(
-            f"📱 {statistics.get('total_duplicate_devices', 0)} groupes "
+            f"{statistics.get('total_duplicate_devices', 0)} groupes "
             f"({statistics.get('total_affected_devices', 0)} appareils concernés)"
         )
 
         self.pieces_stats.setText(
-            f"🔧 {statistics.get('total_duplicate_pieces', 0)} pièces dupliquées "
+            f"{statistics.get('total_duplicate_pieces', 0)} pièces dupliquées "
             f"({statistics.get('total_affected_pieces', 0)} occurrences)"
         )
 
         self.inconsistencies_stats.setText(
-            f"📋 {statistics.get('total_potential_inconsistencies', 0)} incohérences potentielles"
+            f"{statistics.get('total_potential_inconsistencies', 0)} incohérences potentielles"
         )
 
         self.savings_stats.setText(
-            f"💾 Économie potentielle: {statistics.get('potential_savings_devices', 0)} appareils, "
+            f"Économie potentielle : {statistics.get('potential_savings_devices', 0)} appareils, "
             f"{statistics.get('potential_savings_pieces', 0)} pièces"
         )
 
@@ -128,14 +133,30 @@ class DuplicateDevicesWidget(QWidget):
         # En-tête avec actions
         header_layout = QHBoxLayout()
         
+        _compact_style = (
+            "QPushButton { padding: 2px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
+        )
+
         self.select_all_btn = QPushButton("Tout sélectionner")
+        self.select_all_btn.setStyleSheet(_compact_style)
         self.select_none_btn = QPushButton("Tout désélectionner")
-        self.auto_select_most_pieces_btn = QPushButton("Sélectionner automatiquement (+ de pièces)")
-        self.auto_select_newest_btn = QPushButton("Sélectionner automatiquement (+ récents)")
+        self.select_none_btn.setStyleSheet(_compact_style)
+        self.auto_select_most_pieces_btn = QPushButton("Auto (+ de pièces)")
+        self.auto_select_most_pieces_btn.setToolTip("Sélectionner automatiquement l'appareil avec le plus de pièces")
+        self.auto_select_most_pieces_btn.setStyleSheet(_compact_style)
+        self.auto_select_newest_btn = QPushButton("Auto (+ récents)")
+        self.auto_select_newest_btn.setToolTip("Sélectionner automatiquement les appareils les plus récents")
+        self.auto_select_newest_btn.setStyleSheet(_compact_style)
 
         # Boutons pour décisions sur doublons
-        self.mark_distinct_btn = QPushButton("✅ Marquer comme distincts")
-        self.mark_distinct_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        self.mark_distinct_btn = QPushButton("Marquer comme distincts")
+        self.mark_distinct_btn.setIcon(qta.icon('fa5s.check-double', color='white'))
+        self.mark_distinct_btn.setIconSize(QSize(11, 11))
+        self.mark_distinct_btn.setStyleSheet(
+            "QPushButton { background-color: #28a745; color: white; font-weight: bold;"
+            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
+        )
         self.mark_distinct_btn.setEnabled(False)
 
         header_layout.addWidget(self.select_all_btn)
@@ -361,7 +382,7 @@ class DuplicateDevicesWidget(QWidget):
 
     def _mark_selected_as_distinct(self):
         """Marquer le groupe sélectionné comme distinct"""
-        app_logger.info("🔍 BOUTON 'Marquer comme distincts' cliqué")
+        app_logger.info("BOUTON 'Marquer comme distincts' cliqué")
         current_item = self.devices_tree.currentItem()
 
         # Trouver le groupe parent si on a sélectionné un enfant
@@ -523,7 +544,7 @@ class CleanupUIService(BaseService):
         widgets = {}
         
         # Label de titre
-        widgets['title'] = QLabel("🔍 Analyse des doublons en cours...")
+        widgets['title'] = QLabel("Analyse des doublons en cours…")
         widgets['title'].setStyleSheet("font-size: 18px; font-weight: bold; color: #007bff; padding: 10px;")
         
         # Barre de progression
@@ -544,12 +565,12 @@ class CleanupUIService(BaseService):
         if 'status' in widgets:
             widgets['status'].setText(message)
         if 'title' in widgets and progress == 100:
-            widgets['title'].setText("✅ Analyse terminée - Résultats disponibles")
+            widgets['title'].setText("Analyse terminée — résultats disponibles")
             
     def show_analysis_error(self, widgets: Dict[str, QWidget], error_message: str):
         """Afficher une erreur d'analyse"""
         if 'title' in widgets:
-            widgets['title'].setText("❌ Erreur lors de l'analyse")
+            widgets['title'].setText("Erreur lors de l'analyse")
             widgets['title'].setStyleSheet("font-size: 18px; font-weight: bold; color: #dc3545; padding: 10px;")
         if 'status' in widgets:
             widgets['status'].setText(f"Erreur: {error_message}")
@@ -572,18 +593,37 @@ class DistinctReferencesWidget(QWidget):
 
         # En-tête avec explication
         header_label = QLabel(
-            "🏷️ Références marquées comme distinctes\n"
-            "Ces références ne seront plus proposées comme doublons potentiels."
+            "Références marquées comme distinctes — "
+            "ces références ne seront plus proposées comme doublons potentiels."
         )
-        header_label.setStyleSheet("font-size: 14px; padding: 10px; background-color: #e7f3ff; border-radius: 5px;")
+        header_label.setStyleSheet(
+            "font-size: 11px; padding: 6px 10px; color: #495057;"
+            " background-color: #e7f3ff; border-radius: 4px;"
+        )
+        header_label.setWordWrap(True)
         layout.addWidget(header_label)
 
         # Boutons d'action
         buttons_layout = QHBoxLayout()
 
-        self.refresh_btn = QPushButton("🔄 Actualiser")
-        self.remove_btn = QPushButton("🗑️ Retirer sélection")
-        self.remove_btn.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        self.refresh_btn = QPushButton()
+        self.refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#555555'))
+        self.refresh_btn.setIconSize(QSize(13, 13))
+        self.refresh_btn.setFixedSize(26, 26)
+        self.refresh_btn.setFlat(True)
+        self.refresh_btn.setToolTip("Actualiser")
+        self.refresh_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
+        )
+
+        self.remove_btn = QPushButton("Retirer la sélection")
+        self.remove_btn.setIcon(qta.icon('fa5s.trash-alt', color='white'))
+        self.remove_btn.setIconSize(QSize(11, 11))
+        self.remove_btn.setStyleSheet(
+            "QPushButton { background-color: #dc3545; color: white; font-weight: bold;"
+            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
+        )
         self.remove_btn.setEnabled(False)
 
         buttons_layout.addWidget(self.refresh_btn)
@@ -737,19 +777,47 @@ class ActionHistoryWidget(QWidget):
 
         # En-tête avec explication
         header_label = QLabel(
-            "📋 Historique des actions de nettoyage\n"
-            "Synthèse de toutes les actions de fusion et nettoyage effectuées."
+            "Historique des actions de nettoyage — "
+            "synthèse de toutes les actions de fusion et nettoyage effectuées."
         )
-        header_label.setStyleSheet("font-size: 14px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;")
+        header_label.setStyleSheet(
+            "font-size: 11px; padding: 6px 10px; color: #495057;"
+            " background-color: #f8f9fa; border-radius: 4px;"
+        )
+        header_label.setWordWrap(True)
         layout.addWidget(header_label)
+
+        _flat_btn_style = (
+            "QPushButton { border: none; background: transparent; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
+        )
 
         # Boutons d'action
         buttons_layout = QHBoxLayout()
 
-        self.refresh_btn = QPushButton("🔄 Actualiser")
-        self.clear_btn = QPushButton("🗑️ Vider l'historique")
-        self.clear_btn.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
-        self.export_btn = QPushButton("📄 Exporter")
+        self.refresh_btn = QPushButton()
+        self.refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#555555'))
+        self.refresh_btn.setIconSize(QSize(13, 13))
+        self.refresh_btn.setFixedSize(26, 26)
+        self.refresh_btn.setFlat(True)
+        self.refresh_btn.setToolTip("Actualiser")
+        self.refresh_btn.setStyleSheet(_flat_btn_style)
+
+        self.clear_btn = QPushButton("Vider l'historique")
+        self.clear_btn.setIcon(qta.icon('fa5s.trash-alt', color='white'))
+        self.clear_btn.setIconSize(QSize(11, 11))
+        self.clear_btn.setStyleSheet(
+            "QPushButton { background-color: #dc3545; color: white; font-weight: bold;"
+            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
+        )
+
+        self.export_btn = QPushButton("Exporter")
+        self.export_btn.setIcon(qta.icon('fa5s.file-export', color='#555555'))
+        self.export_btn.setIconSize(QSize(11, 11))
+        self.export_btn.setStyleSheet(
+            "QPushButton { padding: 2px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
+        )
 
         buttons_layout.addWidget(self.refresh_btn)
         buttons_layout.addWidget(self.clear_btn)

@@ -406,19 +406,19 @@ class ImportExportService(BaseService):
 
         summary = f"""Import terminé avec succès !
 
-📊 Statistiques:
+Statistiques:
 • Total traité: {stats.get('total_processed', 0)}
 • Ajoutés: {stats.get('added', 0)}
 • Mis à jour: {stats.get('updated', 0)}
 • Ignorés: {stats.get('skipped', 0)}
 • Erreurs: {stats.get('errors', 0)}
 
-⏱️ Durée: {result.get('duration', 'N/A')}
-📁 Fichier: {result.get('file_path', 'N/A')}
+Durée: {result.get('duration', 'N/A')}
+Fichier: {result.get('file_path', 'N/A')}
 """
 
         if result.get('warnings'):
-            summary += f"\n⚠️ Avertissements: {len(result['warnings'])}"
+            summary += f"\nAvertissements: {len(result['warnings'])}"
 
         return summary
 

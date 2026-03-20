@@ -3,6 +3,7 @@ PiecePickerDialog : dialog de sélection de pièce avec recherche en temps réel
 RefTagList        : widget de liste de références supprimables (chips).
 """
 
+import qtawesome as qta
 from typing import Optional, List
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
                           QLabel, QPushButton, QLineEdit, QTableWidget,
@@ -254,10 +255,14 @@ class PiecePickerDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self._ok_btn = QPushButton("Sélectionner (plusieurs avec Ctrl/⇧)" if self._multi_select else "Sélectionner")
+        self._ok_btn.setIcon(qta.icon('fa5s.check', color='white'))
+        self._ok_btn.setIconSize(QSize(11, 11))
+        self._ok_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:disabled { background-color: #adb5bd; }")
         self._ok_btn.setEnabled(False)
         self._ok_btn.setDefault(True)
         self._ok_btn.clicked.connect(self.accept)
         cancel_btn = QPushButton("Annuler")
+        cancel_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(self._ok_btn)
         btn_row.addWidget(cancel_btn)
@@ -308,7 +313,7 @@ class PiecePickerDialog(QDialog):
 
             # Col 2 : statut
             if is_phantom:
-                status_text = "👻 Fantôme"
+                status_text = "Fantôme"
                 status_color = QColor(150, 150, 150)
             elif is_obsolete:
                 status_text = "⚠ Obsolète"

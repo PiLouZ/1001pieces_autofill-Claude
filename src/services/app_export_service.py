@@ -96,7 +96,7 @@ class AppExportService(BaseService):
 
                 MessageHelper.show_info(
                     parent,
-                    f"✅ Export terminé avec succès !\n\n"
+                    f"Export terminé avec succès !\n\n"
                     f"Dossier : {result['path']}\n"
                     f"Taille  : {result['size_mb']:.0f} Mo\n\n"
                     f"Sur le poste cible :\n"

@@ -64,7 +64,7 @@ def _detect_action_type(message: str) -> str:
         return 'export'
     if 'export' in m and any(k in m for k in ('lignes', 'résultats', 'marques', 'format')):
         return 'export'
-    if '📊 import' in m or 'lignes extraites' in m or 'appareils créés' in m or 'appareils :' in m:
+    if 'lignes extraites' in m or 'appareils créés' in m or 'appareils :' in m:
         return 'import'
     if 'import' in m and any(k in m for k in ('csv', 'pdf', 'collage', 'créés', 'traités')):
         return 'import'

@@ -8,6 +8,7 @@ Responsabilités:
 """
 
 from typing import Optional
+import qtawesome as qta
 from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
                           QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
@@ -388,7 +389,9 @@ class PieceItemWidget(QWidget):
         outer.addWidget(text_widget, 1)
 
         # ── Boutons hover ─────────────────────────────────────────────────
-        self._search_btn = self._make_btn("🔍", "#28a745", "#1e7e34", "Rechercher les appareils compatibles")
+        self._search_btn = self._make_btn("", "#28a745", "#1e7e34", "Rechercher les appareils compatibles")
+        self._search_btn.setIcon(qta.icon('fa5s.search', color='white'))
+        self._search_btn.setIconSize(QSize(10, 10))
         self._edit_btn   = self._make_btn("✎",  "#007bff", "#0056b3", "Modifier cette pièce")
         self._delete_btn = self._make_btn("×",  "#dc3545", "#c82333", "Supprimer cette pièce")
 
@@ -540,7 +543,10 @@ class PiecesListService:
             return  # Rien de spécial à proposer pour sélection simple
 
         menu = QMenu(self.main_window)
-        delete_all = menu.addAction("🗑️ Supprimer de tous les appareils sélectionnés")
+        delete_all = menu.addAction(
+            qta.icon('fa5s.trash-alt', color='#c0392b'),
+            "Supprimer de tous les appareils sélectionnés"
+        )
         delete_all.triggered.connect(
             lambda: self.main_window._delete_piece_from_selected(item)
         )

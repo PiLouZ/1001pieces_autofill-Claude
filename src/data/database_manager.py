@@ -512,7 +512,6 @@ class DatabaseManager:
         # Vérifier si la table pieces existe
         self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'")
         if not self.cursor.fetchone():
-            # print("Table pieces n'existe pas, skip ajout colonnes")
             return
 
         self.cursor.execute("PRAGMA table_info(pieces)")
@@ -520,7 +519,6 @@ class DatabaseManager:
 
         # Si la table n'a pas de colonne 'appareil_id', elle a déjà la nouvelle structure
         if 'appareil_id' not in existing_columns:
-            # print("Table pieces déjà avec nouvelle structure, skip ajout colonnes")
             return
 
         # Ajouter la colonne description si elle n'existe pas
@@ -557,7 +555,6 @@ class DatabaseManager:
             
             if 'appareil_id' not in pieces_columns:
                 # Nouvelle structure déjà en place, skip
-                # print("Table pieces déjà avec nouvelle structure, skip contrainte unique")
                 return
             
             # Ancienne structure - vérifier si la contrainte unique existe déjà
@@ -2761,25 +2758,6 @@ class DatabaseManager:
         self.cursor.execute(query)
         result = self.cursor.fetchone()
         return result[0] if result else 0
-    
-    @handle_database_errors(title="Erreur analyse doublons pièces")
-    def analyze_piece_duplicates(self) -> List[Tuple]:
-        """Analyser les doublons de pièces en détail (nouvelle structure)"""
-        # Analyser les doublons d'associations
-        query = """
-            SELECT
-                p.ref_piece,
-                pa.appareil_id,
-                COUNT(*) as count
-            FROM piece_associations pa
-            JOIN pieces p ON pa.piece_id = p.id
-            WHERE p.ref_piece IS NOT NULL AND p.ref_piece != ''
-            GROUP BY pa.piece_id, pa.appareil_id
-            HAVING COUNT(*) > 1
-            ORDER BY count DESC, p.ref_piece, pa.appareil_id
-        """
-        self.cursor.execute(query)
-        return self.cursor.fetchall()
     
     @handle_database_errors(title="Erreur récupération catégories")
     def get_categories(self) -> List[str]:

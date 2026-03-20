@@ -168,8 +168,7 @@ class ComplexDialogs:
 
         # Information sur les colonnes détectées
         if detected_columns:
-            icon = {"CSV": "📊", "PDF": "📄", "PASTE": "📋"}.get(import_method, "📋")
-            info_label = QLabel(f"{icon} Données {import_method} détectées : {detected_columns} colonnes")
+            info_label = QLabel(f"Données {import_method} détectées : {detected_columns} colonnes")
             info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
             layout.addWidget(info_label)
 

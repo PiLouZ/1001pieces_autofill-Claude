@@ -3,10 +3,10 @@ Gestion centralisée du tableau, filtres, pagination et tri
 """
 
 from typing import List, Dict, Optional, Tuple, Any
-from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
-                            QTableWidgetItem, QLineEdit, QComboBox, QPushButton,
-                            QLabel, QProgressDialog, QApplication, QHeaderView,
-                            Qt, QTimer, QThread, pyqtSignal, QObject, QColor, QBrush,
+from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout,
+                            QTableWidgetItem, QLineEdit, QComboBox, QPushButton, QToolButton,
+                            QLabel,
+                            Qt, QTimer, QThread, pyqtSignal,
                             QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView)
 
 from ..core.config import Config
@@ -166,6 +166,10 @@ class TableController:
 
         # Barre de recherche supprimée d'ici - maintenant sous le tableau
         
+        # Hauteurs naturelles selon le widget de référence de chaque ligne (macOS-safe)
+        _filter_btn_h = QComboBox().sizeHint().height()   # ligne filtres — dominée par QComboBox (32px)
+        _search_btn_h = QLineEdit().sizeHint().height()   # ligne recherche — dominée par QLineEdit (21px)
+
         # Filtres par colonne prenant toute la largeur disponible
         filter_widget = QWidget()
         filter_layout = QHBoxLayout(filter_widget)
@@ -221,7 +225,7 @@ class TableController:
 
         # Bouton RAZ pour vider tous les filtres colonne
         raz_btn = QPushButton("×")
-        raz_btn.setFixedWidth(32)
+        raz_btn.setFixedSize(28, _filter_btn_h)
         raz_btn.setToolTip("Réinitialiser tous les filtres")
         raz_btn.setStyleSheet("""
             QPushButton {
@@ -230,9 +234,7 @@ class TableController:
                 border: 1px solid #c62828;
                 border-radius: 3px;
                 font-weight: bold;
-                font-size: 16px;
-                min-height: 0px;
-                max-height: 22px;
+                font-size: 14px;
                 padding: 0px;
             }
             QPushButton:hover {
@@ -243,7 +245,7 @@ class TableController:
             }
         """)
         raz_btn.clicked.connect(self._clear_all_column_filters)
-        filter_layout.addWidget(raz_btn)
+        filter_layout.addWidget(raz_btn, 0, Qt.AlignVCenter)
 
         layout.addWidget(filter_widget)
         
@@ -290,17 +292,18 @@ class TableController:
 
         self.advanced_search_input = QLineEdit()
         self.advanced_search_input.setPlaceholderText("Référence pièce (ex: AS6015830, ou plusieurs: ref1 || ref2)...")
+        self.advanced_search_input.setClearButtonEnabled(True)  # Bouton × natif intégré au champ
         # Sera connecté par MainWindow à AdvancedSearchService
         # self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
         search_layout2.addWidget(self.advanced_search_input, 1, Qt.AlignVCenter)
 
         # Bouton historique des recherches
-        self.history_btn = QPushButton("▾")
-        self.history_btn.setFixedWidth(28)
-        self.history_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.history_btn = QToolButton()
+        self.history_btn.setText("▾")
+        self.history_btn.setFixedSize(28, _search_btn_h)
         self.history_btn.setToolTip("Historique des recherches")
         self.history_btn.setStyleSheet("""
-            QPushButton {
+            QToolButton {
                 background-color: #546e7a;
                 color: white;
                 border: 1px solid #37474f;
@@ -309,13 +312,13 @@ class TableController:
                 font-size: 13px;
                 padding: 0px;
             }
-            QPushButton:hover {
+            QToolButton:hover {
                 background-color: #37474f;
             }
-            QPushButton:pressed {
+            QToolButton:pressed {
                 background-color: #263238;
             }
-            QPushButton:disabled {
+            QToolButton:disabled {
                 background-color: #b0bec5;
                 border-color: #90a4ae;
             }
@@ -323,37 +326,13 @@ class TableController:
         self.history_btn.setEnabled(False)  # Désactivé jusqu'à ce qu'il y ait un historique
         self.history_btn.clicked.connect(self._show_search_history)
         search_layout2.addWidget(self.history_btn, 0, Qt.AlignVCenter)
-
-        clear_search_btn = QPushButton("×")
-        clear_search_btn.setFixedWidth(32)
-        # Expanding vertical: le bouton s'aligne automatiquement sur la hauteur de l'input
-        clear_search_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        clear_search_btn.setToolTip("Effacer la recherche par pièce")
-        clear_search_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e53935;
-                color: white;
-                border: 1px solid #c62828;
-                border-radius: 3px;
-                font-weight: bold;
-                font-size: 16px;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: #c62828;
-            }
-            QPushButton:pressed {
-                background-color: #b71c1c;
-            }
-        """)
-        clear_search_btn.clicked.connect(self._clear_advanced_search)
-        search_layout2.addWidget(clear_search_btn, 0, Qt.AlignVCenter)
         
         layout.addLayout(search_layout2)
 
         # Bandeau de notification supersession (caché par défaut)
         self.supersession_banner = QWidget()
         self.supersession_banner.setVisible(False)
+        self.supersession_banner.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.supersession_banner.setStyleSheet(
             "QWidget { background-color: #FFF8E1; border: 1px solid #FFD54F; border-radius: 3px; }"
         )
@@ -366,6 +345,7 @@ class TableController:
         self.supersession_banner_label.setTextFormat(Qt.RichText)
         self.supersession_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
         self.supersession_banner_label.setWordWrap(False)
+        self.supersession_banner_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.supersession_banner_label.linkActivated.connect(lambda _: self._show_supersession_popup())
         banner_layout.addWidget(self.supersession_banner_label)
         banner_layout.addStretch()
@@ -688,7 +668,7 @@ class TableController:
 
         # Optionnel: Indicateur visuel de chargement
         if hasattr(self.parent_window, 'statusbar'):
-            self.parent_window.statusbar.showMessage("🔄 Chargement des données...")
+            self.parent_window.statusbar.showMessage("Chargement des données…")
 
         self.query_worker.start()
 
@@ -743,7 +723,7 @@ class TableController:
         # Nettoyer et finaliser
         self.loading_in_progress = False
         if hasattr(self.parent_window, 'statusbar'):
-            self.parent_window.statusbar.showMessage(f"✅ {len(records)} lignes chargées", Config.STATUS_MESSAGE_TIMEOUT)
+            self.parent_window.statusbar.showMessage(f"{len(records)} lignes chargées", Config.STATUS_MESSAGE_TIMEOUT)
 
         app_logger.debug(f"load_data_async terminé: {len(records)} résultats")
 
@@ -753,7 +733,7 @@ class TableController:
         self.loading_in_progress = False
         self.table.setRowCount(0)
         if hasattr(self.parent_window, 'statusbar'):
-            self.parent_window.statusbar.showMessage(f"❌ Erreur DB: {error_msg}", Config.STATUS_MESSAGE_TIMEOUT)
+            self.parent_window.statusbar.showMessage(f"Erreur DB : {error_msg}", Config.STATUS_MESSAGE_TIMEOUT)
 
     @handle_table_operations_errors(log_prefix="Erreur mise à jour numéros de lignes")
     def _update_row_numbers(self):
@@ -970,6 +950,53 @@ class TableController:
         self.page_size_combo = QComboBox()
         self.page_size_combo.addItems(["100", "250", "500", "1000", "2000", "Tout"])
         self.page_size_combo.setCurrentText("100")
+        self.page_size_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #bdbdbd;
+                border-radius: 3px;
+                padding: 2px 4px 2px 8px;
+                background-color: white;
+                color: #333333;
+                min-width: 65px;
+            }
+            QComboBox:hover {
+                border-color: #0078d4;
+            }
+            QComboBox:focus {
+                border-color: #0078d4;
+                outline: none;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                width: 8px;
+                height: 8px;
+            }
+        """)
+        # Style du dropdown appliqué directement sur la view (plus fiable sur macOS)
+        self.page_size_combo.view().setStyleSheet("""
+            QAbstractItemView {
+                background-color: white;
+                border: 1px solid #bdbdbd;
+                outline: none;
+            }
+            QAbstractItemView::item {
+                background-color: white;
+                color: #333333;
+                padding: 4px 12px;
+                min-height: 20px;
+            }
+            QAbstractItemView::item:hover {
+                background-color: #eeeeee;
+                color: #333333;
+            }
+            QAbstractItemView::item:selected {
+                background-color: #e0e0e0;
+                color: #333333;
+            }
+        """)
         # Changement de taille géré par NavigationService
         pagination_layout.addWidget(self.page_size_combo)
         
@@ -1297,10 +1324,13 @@ class TableController:
                 # is_search=False pour ne pas rappeler _check_supersession_banner (évite boucle infinie)
                 if siblings_are_new:
                     self.load_data(self.current_search_term, is_search=False)
+                    # Rafraîchir la bannière après le fill_table (le layout connaît maintenant la vraie largeur)
+                    self._update_supersession_banner()
+                    self.supersession_banner.updateGeometry()
                     # Mettre à jour la statusbar avec le total réel (sœurs incluses)
                     if hasattr(self.parent_window, 'statusbar'):
                         self.parent_window.statusbar.showMessage(
-                            f"✅ Recherche terminée : {self.total_rows} résultats (chaîne complète)",
+                            f"Recherche terminée : {self.total_rows} résultats (chaîne complète)",
                             Config.STATUS_MESSAGE_TIMEOUT
                         )
                 return
@@ -1344,19 +1374,19 @@ class TableController:
         if self._supersession_mode == 'superseded':
             chain = self._supersession_chain
             if self._supersession_bypass:
-                self.supersession_banner_label.setText(f"⚠ Résultats pour '{term}' uniquement (ancienne réf.)")
+                self.supersession_banner_label.setText(f"⚠\uFE0E Résultats pour '{term}' uniquement (ancienne réf.)")
                 self.supersession_bypass_btn.setText("Voir toute la chaîne →")
             else:
                 sibs = getattr(self, '_supersession_siblings', [])
                 if sibs:
                     sibs_disp, sibs_tip = _truncate_refs(sibs)
                     sibs_html = _link_banner(sibs_disp, sibs_tip, "#795548")
-                    text = "⚠ Ancienne réf. : " + " → ".join(chain) + f" (courante) — ainsi que : {sibs_html}"
-                    self.supersession_banner_label.setText(f'<span style="white-space:nowrap;">{text}</span>')
+                    text = "⚠\uFE0E Ancienne réf. : " + " → ".join(chain) + f" (courante) — ainsi que : {sibs_html}"
+                    self.supersession_banner_label.setText(text)
                     if sibs_tip:
                         self.supersession_banner_label.setToolTip(sibs_tip)
                 else:
-                    self.supersession_banner_label.setText("⚠ Ancienne réf. : " + " → ".join(chain) + " (courante)")
+                    self.supersession_banner_label.setText("⚠\uFE0E Ancienne réf. : " + " → ".join(chain) + " (courante)")
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
 
         elif self._supersession_mode == 'replacing':
@@ -1365,11 +1395,11 @@ class TableController:
             label_refs = _link_banner(preds_disp, preds_tip, "#795548")
             if self._supersession_expand:
                 self.supersession_banner_label.setText(
-                    f"⚠ Résultats étendus — '{term}' remplace : {label_refs}")
+                    f"⚠\uFE0E Résultats étendus — '{term}' remplace : {label_refs}")
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
             else:
                 self.supersession_banner_label.setText(
-                    f"⚠ '{term}' remplace : {label_refs}")
+                    f"⚠\uFE0E '{term}' remplace : {label_refs}")
                 self.supersession_bypass_btn.setText("Voir aussi les appareils des réfs remplacées")
             self.supersession_banner_label.setToolTip(preds_tip if preds_tip else "")
 

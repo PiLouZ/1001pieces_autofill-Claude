@@ -746,7 +746,7 @@ class DatabaseOperationsService(BaseService):
         if hasattr(self.parent_window, 'save_indicator') and self.parent_window.save_indicator:
             if saved:
                 self.parent_window.save_indicator.setStyleSheet("color: green;")
-                self.parent_window.save_indicator.setText("✓ Sauvegardé")
+                self.parent_window.save_indicator.setText("Sauvegardé")
             else:
                 self.parent_window.save_indicator.setStyleSheet("color: orange;")
                 self.parent_window.save_indicator.setText("● Non sauvegardé")

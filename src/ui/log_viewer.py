@@ -3,13 +3,21 @@ Interface de visualisation des logs pour l'application 1001pieces
 Permet d'analyser les logs en temps réel et de diagnostiquer les problèmes
 """
 
+import qtawesome as qta
 from .qt_imports import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QComboBox, 
-    QPushButton, QLabel, QSpinBox, QTabWidget, QWidget,
+    QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QComboBox,
+    QPushButton, QLabel, QSpinBox, QStackedWidget, QButtonGroup, QFrame, QWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
 )
-from .qt_imports import QTimer, Qt
+from .qt_imports import QTimer, Qt, QSize
 from .qt_imports import QFont, QTextCharFormat, QColor
+
+
+def _make_icon_toggle(btn, icon_name, icon_color):
+    """Factory pour le toggle d'icône bouton nav."""
+    def _on_toggled(checked):
+        btn.setIcon(qta.icon(icon_name, color='white' if checked else icon_color))
+    return _on_toggled
 import json
 import os
 from datetime import datetime
@@ -66,50 +74,91 @@ class LogViewer(QDialog):
         control_layout.addWidget(self.filter_input)
         
         # Boutons
-        self.refresh_button = QPushButton("Actualiser")
+        self.refresh_button = QPushButton()
+        self.refresh_button.setIcon(qta.icon('fa5s.sync-alt', color='#555555'))
+        self.refresh_button.setIconSize(QSize(13, 13))
+        self.refresh_button.setFixedSize(26, 26)
+        self.refresh_button.setFlat(True)
+        self.refresh_button.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }")
+        self.refresh_button.setToolTip("Actualiser")
         self.refresh_button.clicked.connect(self.load_logs)
         control_layout.addWidget(self.refresh_button)
-        
+
         self.auto_refresh_button = QPushButton("Auto-actualisation: ON")
+        self.auto_refresh_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         self.auto_refresh_button.clicked.connect(self.toggle_auto_refresh)
         control_layout.addWidget(self.auto_refresh_button)
-        
+
         self.clear_button = QPushButton("Effacer")
+        self.clear_button.setIcon(qta.icon('fa5s.trash-alt', color='#dc3545'))
+        self.clear_button.setIconSize(QSize(11, 11))
+        self.clear_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         self.clear_button.clicked.connect(self.clear_logs)
         control_layout.addWidget(self.clear_button)
         
         layout.addLayout(control_layout)
-        
-        # Onglets pour différentes vues
-        self.tabs = QTabWidget()
-        
-        # Onglet logs bruts
+
+        # Barre de navigation (remplace QTabWidget)
+        nav_layout = QHBoxLayout()
+        nav_layout.setSpacing(4)
+        self._nav_group = QButtonGroup(self)
+        self._nav_group.setExclusive(True)
+        self._nav_stack = QStackedWidget()
+
+        _nav_defs = [
+            ("Logs Bruts",         'fa5s.list',     '#2980b9'),
+            ("Auto-complétion",    'fa5s.magic',    '#e67e22'),
+            ("Opérations Données", 'fa5s.database', '#8e44ad'),
+        ]
+        for i, (label, icon_name, icon_color) in enumerate(_nav_defs):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            is_first = (i == 0)
+            btn.setIcon(qta.icon(icon_name, color='white' if is_first else icon_color))
+            btn.setIconSize(QSize(12, 12))
+            btn.setStyleSheet(
+                "QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }"
+                "QPushButton:checked { background-color: #495057; color: white; }"
+            )
+            btn.toggled.connect(
+                lambda checked, idx=i: self._nav_stack.setCurrentIndex(idx) if checked else None
+            )
+            btn.toggled.connect(_make_icon_toggle(btn, icon_name, icon_color))
+            self._nav_group.addButton(btn, i)
+            nav_layout.addWidget(btn)
+        nav_layout.addStretch()
+        layout.addLayout(nav_layout)
+
+        nav_sep = QFrame()
+        nav_sep.setFrameShape(QFrame.HLine)
+        nav_sep.setStyleSheet("color: #dee2e6;")
+        layout.addWidget(nav_sep)
+
+        # Page 0 : Logs bruts
         self.raw_logs_tab = QWidget()
-        raw_layout = QVBoxLayout()
+        raw_layout = QVBoxLayout(self.raw_logs_tab)
         self.raw_logs_text = QTextEdit()
         self.raw_logs_text.setFont(QFont("Courier", 10))
         self.raw_logs_text.setReadOnly(True)
         raw_layout.addWidget(self.raw_logs_text)
-        self.raw_logs_tab.setLayout(raw_layout)
-        self.tabs.addTab(self.raw_logs_tab, "Logs Bruts")
-        
-        # Onglet auto-complétion
+        self._nav_stack.addWidget(self.raw_logs_tab)
+
+        # Page 1 : Auto-complétion
         self.autocomplete_tab = QWidget()
-        autocomplete_layout = QVBoxLayout()
+        autocomplete_layout = QVBoxLayout(self.autocomplete_tab)
         self.autocomplete_table = QTableWidget()
         self.autocomplete_table.setColumnCount(8)
         self.autocomplete_table.setHorizontalHeaderLabels([
-            "Timestamp", "Row ID", "Références", "Correspondances", 
+            "Timestamp", "Row ID", "Références", "Correspondances",
             "Type Avant", "Type Après", "Fabricant Avant", "Fabricant Après"
         ])
         self.autocomplete_table.horizontalHeader().setStretchLastSection(True)
         autocomplete_layout.addWidget(self.autocomplete_table)
-        self.autocomplete_tab.setLayout(autocomplete_layout)
-        self.tabs.addTab(self.autocomplete_tab, "Auto-complétion")
-        
-        # Onglet opérations données
+        self._nav_stack.addWidget(self.autocomplete_tab)
+
+        # Page 2 : Opérations données
         self.data_ops_tab = QWidget()
-        data_ops_layout = QVBoxLayout()
+        data_ops_layout = QVBoxLayout(self.data_ops_tab)
         self.data_ops_table = QTableWidget()
         self.data_ops_table.setColumnCount(6)
         self.data_ops_table.setHorizontalHeaderLabels([
@@ -117,10 +166,12 @@ class LogViewer(QDialog):
         ])
         self.data_ops_table.horizontalHeader().setStretchLastSection(True)
         data_ops_layout.addWidget(self.data_ops_table)
-        self.data_ops_tab.setLayout(data_ops_layout)
-        self.tabs.addTab(self.data_ops_tab, "Opérations Données")
-        
-        layout.addWidget(self.tabs)
+        self._nav_stack.addWidget(self.data_ops_tab)
+
+        layout.addWidget(self._nav_stack)
+
+        # Activer le premier onglet
+        self._nav_group.button(0).setChecked(True)
         
         # Barre de statut
         self.status_label = QLabel("Prêt")
@@ -183,7 +234,7 @@ class LogViewer(QDialog):
                 continue
             
             # Détecter le début d'une section d'import
-            if "📊 Import" in line and " | INFO     | " in line:
+            if " | INFO     | Import " in line and " | INFO     | " in line:
                 in_import_section = True
                 timestamp_part = line.split(" | INFO     | ")[0]
                 message_part = line.split(" | INFO     | ")[1]
@@ -195,14 +246,14 @@ class LogViewer(QDialog):
                 continue
             
             # Messages PDF dans le contexte d'import
-            if in_import_section and "📄 Fichier PDF" in line and "lignes extraites" in line:
+            if in_import_section and "Fichier PDF" in line and "lignes extraites" in line:
                 parts = line.split(" | INFO     | ")
                 if len(parts) >= 2:
                     formatted_lines.append(parts[1])
                     continue
             
             # Messages PDF hors contexte d'import (normaux)
-            if not in_import_section and "📄 Fichier PDF" in line and "lignes extraites" in line:
+            if not in_import_section and "Fichier PDF" in line and "lignes extraites" in line:
                 parts = line.split(" | INFO     | ")
                 if len(parts) >= 2:
                     formatted_lines.append(parts[1])
@@ -232,7 +283,7 @@ class LogViewer(QDialog):
                 
             # Détecter la fin de la section d'import
             if in_import_section and not any(keyword in line for keyword in 
-                                           ["📄 Fichier PDF", "Lignes traitées", "Appareils", "Associations", "==> "]):
+                                           ["Fichier PDF", "Lignes traitées", "Appareils", "Associations", "==> "]):
                 in_import_section = False
             
             # Autres messages : garder tel quel

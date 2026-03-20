@@ -175,7 +175,7 @@ class MappingGroupWidget(QWidget):
             outer.addWidget(self._toggle_btn)
         else:
             self._status_label = QLabel(
-                f"⛔  {file_names}  ({col_label}) — définissez la correspondance"
+                f"{file_names}  ({col_label}) — définissez la correspondance"
             )
             self._status_label.setStyleSheet(
                 "color: #dc3545; font-weight: bold; font-size: 11px; padding: 2px 0;"
@@ -392,7 +392,7 @@ class ImportDialog(QDialog):
         warning_layout.setContentsMargins(14, 10, 14, 10)
         warning_layout.setSpacing(4)
 
-        warning_title = QLabel("⛔  Format non reconnu")
+        warning_title = QLabel("Format non reconnu")
         warning_title.setStyleSheet(
             "color: white; font-weight: bold; font-size: 14px;"
             "background: transparent;"

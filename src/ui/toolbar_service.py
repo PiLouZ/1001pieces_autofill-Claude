@@ -176,7 +176,7 @@ class ToolbarService:
     
     def _configure_paste_cleanup(self):
         """Configurer le service de nettoyage du collage"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton, QSize
         
         class PasteConfigDialog(QDialog):
             def __init__(self, parent=None):
@@ -189,8 +189,8 @@ class ToolbarService:
                 layout = QVBoxLayout()
                 
                 # Titre explicatif
-                title = QLabel("📋 Configuration du nettoyage automatique du collage")
-                title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 10px;")
+                title = QLabel("Configuration du nettoyage automatique du collage")
+                title.setStyleSheet("font-weight: bold; font-size: 11px; margin-bottom: 10px;")
                 layout.addWidget(title)
                 
                 explanation = QLabel(
@@ -246,18 +246,24 @@ class ToolbarService:
                 # Boutons
                 buttons_layout = QHBoxLayout()
                 
-                clear_memory_btn = QPushButton("🗑️ Effacer mémoire")
+                import qtawesome as qta
+                clear_memory_btn = QPushButton("Effacer mémoire")
+                clear_memory_btn.setIcon(qta.icon('fa5s.trash-alt', color='#dc3545'))
+                clear_memory_btn.setIconSize(QSize(11, 11))
+                clear_memory_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
                 clear_memory_btn.setToolTip("Effacer tous les choix mémorisés")
                 clear_memory_btn.clicked.connect(self.clear_memory)
                 buttons_layout.addWidget(clear_memory_btn)
-                
+
                 buttons_layout.addStretch()
-                
+
                 ok_btn = QPushButton("OK")
+                ok_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
                 ok_btn.clicked.connect(self.accept)
                 buttons_layout.addWidget(ok_btn)
-                
+
                 cancel_btn = QPushButton("Annuler")
+                cancel_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
                 cancel_btn.clicked.connect(self.reject)
                 buttons_layout.addWidget(cancel_btn)
                 

@@ -4,6 +4,36 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.34.0] - 2026-03-20
+
+### Harmonisation UI — suppression des emojis et unification du style
+
+**Suppression des emojis dans toute l'interface**
+- Remplacement systématique par des icônes `qtawesome` (`fa5s.*`) ou suppression sans perte sémantique (la couleur ou le contexte assure la lisibilité)
+- Périmètre complet : dialogues, menus contextuels, labels, boutons, messages utilisateur, résumés d'import, fenêtres de résultats
+
+**Navigation (QTabWidget → QStackedWidget + QButtonGroup)**
+- `cleanup_preview_refactored` : onglets remplacés par une barre de navigation checkable (style identique aux filtres `pieces_manager`)
+- `export_config_dialog` : onglets CSV/HTML remplacés ; bouton Enregistrer en vert `#28a745` + `fa5s.save`
+- `log_viewer` : 3 onglets (Logs Bruts / Auto-complétion / Opérations Données) remplacés par nav bar
+
+**Boutons et icônes**
+- `pieces_manager` : filtres rapides — icône blanche quand le bouton est coché (factory `_make_icon_toggle` pour éviter le piège de closure en boucle)
+- `pieces_manager` : widget de chargement inline (spinner 28×28 + titre bold + barre 6 px indéterminée) — remplace le spinner 48×48 centré
+- `duplicates_manager` : refonte complète des boutons (compact + icônes qtawesome), labels stats `font-size: 11px`
+- `pieces_list_service` : bouton texte `"🔍"` → `fa5s.search` ; entrée menu contextuel → `fa5s.trash-alt`
+- `cleanup_ui_service` : boutons des 4 widgets simplifiés et mis en style compact
+
+**Corrections**
+- Fix `log_viewer` : détection section import `"📊 Import"` → `" | INFO     | Import "` (cohérence avec les messages actuellement générés)
+- Fix `log_viewer` : détection `"📄 Fichier PDF"` → `"Fichier PDF"` (×4 occurrences)
+- Fix `user_interaction_service` : suppression dead-code `'📊 import' in m`
+- Fix `main_refactored` : marqueur `"📊 Import"` → `"Import"` en génération ET détection (couplage brisé)
+- Fix `main_refactored` : `"📄 Fichier PDF"` → `"Fichier PDF"` en génération et détection
+- Nettoyage `database_manager` : suppression commentaires `print` et méthode morte `analyze_piece_duplicates`
+
+---
+
 ## [3.33.0] - 2026-03-18
 
 ### ✨ Gestionnaire de pièces — UX redesign + Import fluide

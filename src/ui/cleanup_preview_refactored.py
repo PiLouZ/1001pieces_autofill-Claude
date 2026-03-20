@@ -4,10 +4,11 @@ Utilise les services DuplicatesAnalysisService et CleanupUIService
 """
 
 from .qt_imports import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-    QTabWidget, QWidget, QMessageBox
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QStackedWidget, QButtonGroup, QFrame, QWidget, QMessageBox, QProgressBar, QSizePolicy, QSize
 )
 from .qt_imports import Qt
+import qtawesome as qta
 
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager
@@ -23,7 +24,7 @@ class CleanupPreviewDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
-        self.setWindowTitle("🧹 Prévisualisation du Nettoyage des Doublons")
+        self.setWindowTitle("Prévisualisation du Nettoyage des Doublons")
         self.resize(1400, 900)
         self.setModal(True)
         
@@ -37,7 +38,9 @@ class CleanupPreviewDialog(QDialog):
         self.user_choice = None
 
         # Widgets
-        self.progress_widgets = {}
+        self._loading_widget = None
+        self._loading_step_label = None
+        self._loading_bar = None
         self.stats_widget = None
         self.devices_widget = None
         self.pieces_widget = None
@@ -47,30 +50,63 @@ class CleanupPreviewDialog(QDialog):
         
         self._init_ui()
         self._connect_signals()
-        
-        # Démarrer l'analyse
         self.analysis_service.start_analysis()
         
     def _init_ui(self):
         """Initialiser l'interface utilisateur"""
         layout = QVBoxLayout(self)
-        
-        # Widgets de progression
-        self.progress_widgets = self.ui_service.create_progress_widget()
-        
-        # En-tête avec progression
-        header_layout = QVBoxLayout()
-        header_layout.addWidget(self.progress_widgets['title'])
-        header_layout.addWidget(self.progress_widgets['progress_bar'])
-        header_layout.addWidget(self.progress_widgets['status'])
-        layout.addLayout(header_layout)
-        
+
+        # Widget de chargement inline (visible pendant l'analyse)
+        self._loading_widget = QWidget()
+        self._loading_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        loading_layout = QVBoxLayout(self._loading_widget)
+        loading_layout.setAlignment(Qt.AlignCenter)
+        loading_layout.setSpacing(16)
+
+        # Spinner + titre
+        spinner_row = QHBoxLayout()
+        spinner_row.setAlignment(Qt.AlignCenter)
+        spinner_row.setSpacing(10)
+        spinner_btn = QPushButton()
+        spinner_btn.setFlat(True)
+        spinner_btn.setEnabled(False)
+        spinner_btn.setFixedSize(28, 28)
+        spinner_btn.setIconSize(QSize(22, 22))
+        spinner_btn.setIcon(qta.icon('fa5s.circle-notch', color='#495057',
+                                     animation=qta.Spin(spinner_btn)))
+        spinner_btn.setStyleSheet("border: none; background: transparent;")
+        spinner_row.addWidget(spinner_btn)
+        title_lbl = QLabel("Analyse des doublons en cours…")
+        title_lbl.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")
+        spinner_row.addWidget(title_lbl)
+        loading_layout.addLayout(spinner_row)
+
+        # Étape courante
+        self._loading_step_label = QLabel("Initialisation…")
+        self._loading_step_label.setAlignment(Qt.AlignCenter)
+        self._loading_step_label.setStyleSheet("color: #6c757d; font-size: 11px;")
+        loading_layout.addWidget(self._loading_step_label)
+
+        # Barre de progression fine
+        self._loading_bar = QProgressBar()
+        self._loading_bar.setRange(0, 100)
+        self._loading_bar.setValue(0)
+        self._loading_bar.setTextVisible(False)
+        self._loading_bar.setFixedHeight(6)
+        self._loading_bar.setMaximumWidth(400)
+        self._loading_bar.setStyleSheet("""
+            QProgressBar { border: none; border-radius: 3px; background: #e9ecef; }
+            QProgressBar::chunk { border-radius: 3px; background: #495057; }
+        """)
+        loading_layout.addWidget(self._loading_bar, 0, Qt.AlignHCenter)
+        layout.addWidget(self._loading_widget)
+
         # Widget principal (masqué pendant l'analyse)
         self.main_widget = QWidget()
         self.main_widget.setVisible(False)
         self._init_main_widget()
         layout.addWidget(self.main_widget)
-        
+
         # Boutons de contrôle
         self._init_control_buttons()
         layout.addLayout(self.control_layout)
@@ -78,48 +114,113 @@ class CleanupPreviewDialog(QDialog):
     def _init_main_widget(self):
         """Initialiser le widget principal avec les résultats"""
         main_layout = QVBoxLayout(self.main_widget)
-        
+
         # Statistiques
         self.stats_widget = self.ui_service.create_stats_widget()
         main_layout.addWidget(self.stats_widget)
-        
-        # Onglets
-        self.tab_widget = QTabWidget()
-        
-        # Onglet Appareils en doublon
-        self.devices_widget = self.ui_service.create_devices_widget()
-        self.devices_widget.history_callback = self.add_to_history  # Passer la callback pour l'historique
-        self.tab_widget.addTab(self.devices_widget, "📱 Appareils en doublon")
-        
-        # Onglet Pièces dupliquées
-        self.pieces_widget = self.ui_service.create_pieces_widget()
-        self.tab_widget.addTab(self.pieces_widget, "🔧 Pièces dupliquées")
 
-        # Onglet Références distinctes
+        # Définition des sections de navigation
+        _nav_defs = [
+            ('fa5s.mobile-alt', '#2980b9', 'Appareils en doublon'),
+            ('fa5s.cog',        '#e67e22', 'Pièces dupliquées'),
+            ('fa5s.tag',        '#8e44ad', 'Références distinctes'),
+            ('fa5s.history',    '#6c757d', 'Historique'),
+        ]
+
+        # Créer les widgets de contenu dans l'ordre
+        self.devices_widget = self.ui_service.create_devices_widget()
+        self.devices_widget.history_callback = self.add_to_history
+
+        self.pieces_widget = self.ui_service.create_pieces_widget()
+
         self.distinct_widget = self.ui_service.create_distinct_references_widget()
         self.distinct_widget.set_db_manager(self.db_manager)
-        self.tab_widget.addTab(self.distinct_widget, "🏷️ Références distinctes")
 
-        # Onglet Historique des actions
         self.history_widget = self.ui_service.create_history_widget()
         self.history_widget.set_db_manager(self.db_manager)
-        self.tab_widget.addTab(self.history_widget, "📋 Historique")
 
-        main_layout.addWidget(self.tab_widget)
+        _pages = [
+            self.devices_widget,
+            self.pieces_widget,
+            self.distinct_widget,
+            self.history_widget,
+        ]
+
+        # Stack de contenu
+        self._nav_stack = QStackedWidget()
+        for widget in _pages:
+            self._nav_stack.addWidget(widget)
+
+        # Barre de navigation (boutons checkables exclusifs)
+        nav_bar = QHBoxLayout()
+        nav_bar.setSpacing(2)
+        nav_bar.setContentsMargins(0, 4, 0, 4)
+
+        self._nav_group = QButtonGroup(self)
+        self._nav_group.setExclusive(True)
+
+        def _make_nav_toggle(b, iname, icolor):
+            def _on_toggled(checked):
+                b.setIcon(qta.icon(iname, color='white' if checked else icolor))
+            return _on_toggled
+
+        for i, (icon_name, icon_color, label) in enumerate(_nav_defs):
+            btn = QPushButton(label)
+            is_first = (i == 0)
+            btn.setIcon(qta.icon(icon_name, color='white' if is_first else icon_color))
+            btn.setIconSize(QSize(12, 12))
+            btn.setCheckable(True)
+            btn.setChecked(is_first)
+            btn.setStyleSheet("""
+                QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }
+                QPushButton:checked { background-color: #495057; color: white; }
+            """)
+            btn.toggled.connect(_make_nav_toggle(btn, icon_name, icon_color))
+            btn.toggled.connect(
+                lambda checked, idx=i: self._nav_stack.setCurrentIndex(idx) if checked else None
+            )
+            self._nav_group.addButton(btn, i)
+            nav_bar.addWidget(btn)
+
+        nav_bar.addStretch()
+        main_layout.addLayout(nav_bar)
+
+        # Séparateur fin
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setStyleSheet("color: #dee2e6;")
+        main_layout.addWidget(separator)
+
+        main_layout.addWidget(self._nav_stack)
         
     def _init_control_buttons(self):
         """Initialiser les boutons de contrôle"""
         self.control_layout = QHBoxLayout()
         
         # Boutons d'action
-        self.preview_btn = QPushButton("📋 Prévisualiser les changements")
-        self.apply_btn = QPushButton("✅ Appliquer le nettoyage")
-        self.cancel_btn = QPushButton("❌ Annuler")
-        
-        # Style
-        self.preview_btn.setStyleSheet("QPushButton { background-color: #007bff; color: white; padding: 8px 16px; border-radius: 4px; }")
-        self.apply_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; }")
-        self.cancel_btn.setStyleSheet("QPushButton { background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; }")
+        self.preview_btn = QPushButton("Prévisualiser")
+        self.preview_btn.setIcon(qta.icon('fa5s.eye', color='white'))
+        self.preview_btn.setIconSize(QSize(12, 12))
+        self.preview_btn.setStyleSheet(
+            "QPushButton { background-color: #007bff; color: white;"
+            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
+        )
+
+        self.apply_btn = QPushButton("Appliquer le nettoyage")
+        self.apply_btn.setIcon(qta.icon('fa5s.check', color='white'))
+        self.apply_btn.setIconSize(QSize(12, 12))
+        self.apply_btn.setStyleSheet(
+            "QPushButton { background-color: #28a745; color: white;"
+            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
+        )
+
+        self.cancel_btn = QPushButton("Annuler")
+        self.cancel_btn.setIcon(qta.icon('fa5s.times', color='white'))
+        self.cancel_btn.setIconSize(QSize(12, 12))
+        self.cancel_btn.setStyleSheet(
+            "QPushButton { background-color: #6c757d; color: white;"
+            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
+        )
         
         # Initialement désactivés
         self.preview_btn.setEnabled(False)
@@ -148,16 +249,19 @@ class CleanupPreviewDialog(QDialog):
         
     def _on_analysis_progress(self, progress: int, message: str):
         """Gérer la progression de l'analyse"""
-        self.ui_service.update_progress(self.progress_widgets, progress, message)
+        if self._loading_bar:
+            self._loading_bar.setValue(progress)
+        if self._loading_step_label:
+            self._loading_step_label.setText(message)
         
     @handle_cleanup_preview_errors()
     def _on_analysis_completed(self, results: dict):
         """Gérer la fin de l'analyse"""
         self.analysis_results = results
 
-        # Masquer la progression
-        for widget in self.progress_widgets.values():
-            widget.setVisible(False)
+        # Masquer le chargement, afficher les résultats
+        if self._loading_widget:
+            self._loading_widget.setVisible(False)
 
         # Afficher les résultats
         self.main_widget.setVisible(True)
@@ -181,7 +285,8 @@ class CleanupPreviewDialog(QDialog):
             
     def _on_analysis_error(self, error_message: str):
         """Gérer les erreurs d'analyse"""
-        self.ui_service.show_analysis_error(self.progress_widgets, error_message)
+        if self._loading_widget:
+            self._loading_widget.setVisible(False)
         show_error(self, "Erreur d'analyse", f"Erreur lors de l'analyse des doublons:\n{error_message}")
         
     def _update_buttons_state(self):
@@ -209,7 +314,7 @@ class CleanupPreviewDialog(QDialog):
         if self.devices_widget:
             merge_groups = self.devices_widget.get_merge_groups()
             if merge_groups:
-                preview_text += f"📱 APPAREILS À FUSIONNER ({len(merge_groups)} groupes):\n"
+                preview_text += f"APPAREILS À FUSIONNER ({len(merge_groups)} groupes) :\n"
                 for group in merge_groups:
                     master_id = group['master_id']
                     duplicate_ids = group['duplicate_ids']
@@ -220,7 +325,7 @@ class CleanupPreviewDialog(QDialog):
         if self.pieces_widget:
             selected_pieces = self.pieces_widget.get_selected_pieces()
             if selected_pieces:
-                preview_text += f"🔧 PIÈCES DUPLIQUÉES À NETTOYER ({len(selected_pieces)} références):\n"
+                preview_text += f"PIÈCES DUPLIQUÉES À NETTOYER ({len(selected_pieces)} références) :\n"
                 for ref_piece in selected_pieces[:10]:  # Montrer les 10 premières
                     preview_text += f"  • {ref_piece}\n"
                 if len(selected_pieces) > 10:

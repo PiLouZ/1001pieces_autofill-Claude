@@ -2,13 +2,14 @@
 Gestionnaire des références en doublon avec interface de fusion et correction
 """
 
+import qtawesome as qta
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
     QGroupBox, QComboBox, QLineEdit, QCheckBox, QMessageBox, QProgressBar
 )
 from .qt_imports import Qt, QTimer
-from .qt_imports import QFont
+from .qt_imports import QFont, QSize
 from src.core.logger import app_logger
 from src.utils.error_handler import handle_ui_errors, handle_database_operation_errors
 from src.utils.text_utils import clean_display_text
@@ -19,7 +20,7 @@ class DuplicatesManager(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
-        self.setWindowTitle("🔄 Gestionnaire des Références en Doublon")
+        self.setWindowTitle("Gestionnaire des Références en Doublon")
         self.resize(1200, 800)
         self.setModal(False)
         
@@ -37,20 +38,29 @@ class DuplicatesManager(QDialog):
         
         # En-tête avec statistiques
         header_layout = QHBoxLayout()
-        self.stats_label = QLabel("📊 Chargement des doublons...")
-        self.stats_label.setStyleSheet("font-weight: bold; font-size: 16px; color: #dc3545; padding: 10px;")
+        self.stats_label = QLabel("Chargement des doublons…")
+        self.stats_label.setStyleSheet("color: #dc3545; font-weight: bold; font-size: 11px; padding: 4px;")
         header_layout.addWidget(self.stats_label)
         
         header_layout.addStretch()
         
         # Boutons d'action rapide
-        refresh_btn = QPushButton("🔄 Actualiser")
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#555555'))
+        refresh_btn.setIconSize(QSize(13, 13))
+        refresh_btn.setFixedSize(26, 26)
+        refresh_btn.setFlat(True)
+        refresh_btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }")
+        refresh_btn.setToolTip("Actualiser")
         refresh_btn.clicked.connect(self._load_duplicates)
         header_layout.addWidget(refresh_btn)
-        
-        auto_merge_btn = QPushButton("🤖 Fusion auto (identiques)")
+
+        auto_merge_btn = QPushButton("Fusion auto")
+        auto_merge_btn.setIcon(qta.icon('fa5s.magic', color='white'))
+        auto_merge_btn.setIconSize(QSize(11, 11))
+        auto_merge_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; font-weight: bold; padding: 3px 10px; font-size: 11px; border-radius: 3px; }")
+        auto_merge_btn.setToolTip("Fusionner automatiquement tous les appareils strictement identiques")
         auto_merge_btn.clicked.connect(self._auto_merge_identical)
-        auto_merge_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
         header_layout.addWidget(auto_merge_btn)
         
         layout.addLayout(header_layout)
@@ -75,6 +85,7 @@ class DuplicatesManager(QDialog):
         button_layout.addStretch()
         
         close_btn = QPushButton("Fermer")
+        close_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         close_btn.clicked.connect(self.close)
         button_layout.addWidget(close_btn)
         
@@ -82,12 +93,12 @@ class DuplicatesManager(QDialog):
     
     def _create_duplicates_list(self):
         """Créer le panneau de liste des doublons"""
-        group_box = QGroupBox("📋 Groupes de Références en Doublon")
+        group_box = QGroupBox("Groupes de Références en Doublon")
         layout = QVBoxLayout(group_box)
         
         # Filtre de recherche
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("🔍 Recherche:"))
+        search_layout.addWidget(QLabel("Recherche :"))
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Filtrer par référence (ex: 3000240000)...")
         self.search_input.textChanged.connect(self._filter_duplicates)
@@ -116,7 +127,7 @@ class DuplicatesManager(QDialog):
     
     def _create_details_panel(self):
         """Créer le panneau de détails et actions"""
-        group_box = QGroupBox("🔧 Détails et Actions")
+        group_box = QGroupBox("Détails et Actions")
         layout = QVBoxLayout(group_box)
         
         # Info sur le groupe sélectionné
@@ -151,21 +162,28 @@ class DuplicatesManager(QDialog):
         # Actions sur le groupe sélectionné
         actions_layout = QHBoxLayout()
         
-        self.merge_selected_btn = QPushButton("🔗 Fusionner sélectionnés")
+        self.merge_selected_btn = QPushButton("Fusionner")
+        self.merge_selected_btn.setIcon(qta.icon('fa5s.compress-arrows-alt', color='white'))
+        self.merge_selected_btn.setIconSize(QSize(11, 11))
+        self.merge_selected_btn.setStyleSheet("QPushButton { background-color: #007bff; color: white; padding: 3px 10px; font-size: 11px; border-radius: 3px; } QPushButton:disabled { background-color: #adb5bd; }")
         self.merge_selected_btn.clicked.connect(self._merge_selected_devices)
         self.merge_selected_btn.setEnabled(False)
-        self.merge_selected_btn.setStyleSheet("background-color: #007bff; color: white;")
         actions_layout.addWidget(self.merge_selected_btn)
-        
-        self.view_in_main_btn = QPushButton("👁️ Voir dans tableau principal")
+
+        self.view_in_main_btn = QPushButton("Voir dans tableau")
+        self.view_in_main_btn.setIcon(qta.icon('fa5s.eye', color='#495057'))
+        self.view_in_main_btn.setIconSize(QSize(11, 11))
+        self.view_in_main_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         self.view_in_main_btn.clicked.connect(self._view_selected_in_main)
         self.view_in_main_btn.setEnabled(False)
         actions_layout.addWidget(self.view_in_main_btn)
-        
-        self.delete_selected_btn = QPushButton("🗑️ Supprimer sélectionnés")
+
+        self.delete_selected_btn = QPushButton("Supprimer")
+        self.delete_selected_btn.setIcon(qta.icon('fa5s.trash-alt', color='white'))
+        self.delete_selected_btn.setIconSize(QSize(11, 11))
+        self.delete_selected_btn.setStyleSheet("QPushButton { background-color: #dc3545; color: white; padding: 3px 10px; font-size: 11px; border-radius: 3px; } QPushButton:disabled { background-color: #adb5bd; }")
         self.delete_selected_btn.clicked.connect(self._delete_selected_devices)
         self.delete_selected_btn.setEnabled(False)
-        self.delete_selected_btn.setStyleSheet("background-color: #dc3545; color: white;")
         actions_layout.addWidget(self.delete_selected_btn)
         
         layout.addLayout(actions_layout)
@@ -244,11 +262,11 @@ class DuplicatesManager(QDialog):
         filtered_groups = self.duplicates_table.rowCount()
         if filtered_groups == total_groups:
             self.stats_label.setText(
-                f"📊 {total_groups} références en doublon • {total_duplicates} appareils dupliqués"
+                f"{total_groups} références en doublon  •  {total_duplicates} appareils dupliqués"
             )
         else:
             self.stats_label.setText(
-                f"📊 {filtered_groups}/{total_groups} références affichées (utilisez la recherche pour filtrer)"
+                f"{filtered_groups}/{total_groups} références affichées"
             )
     
     def _filter_duplicates(self):
@@ -319,15 +337,15 @@ class DuplicatesManager(QDialog):
             return
         
         info_lines = []
-        info_lines.append("ℹ️ INFORMATIONS SUR LE GROUPE DE DOUBLONS")
+        info_lines.append("INFORMATIONS SUR LE GROUPE DE DOUBLONS")
         info_lines.append("=" * 50)
-        
+
         device_count = self.devices_table.rowCount()
-        info_lines.append(f"📊 Nombre d'appareils: {device_count}")
-        
+        info_lines.append(f"Nombre d'appareils: {device_count}")
+
         if device_count > 1:
             info_lines.append("")
-            info_lines.append("🔧 ACTIONS POSSIBLES:")
+            info_lines.append("ACTIONS POSSIBLES:")
             info_lines.append("• Sélectionnez plusieurs appareils et cliquez 'Fusionner' pour les combiner")
             info_lines.append("• Utilisez 'Voir dans tableau principal' pour localiser dans l'interface")
             info_lines.append("• 'Supprimer sélectionnés' pour éliminer les doublons indésirables")
@@ -417,7 +435,7 @@ class DuplicatesManager(QDialog):
 
             # Message de confirmation
             self.parent_window.statusbar.showMessage(
-                f"🔍 Recherche de l'appareil ID {device_id} dans le tableau principal", 3000
+                f"Recherche de l'appareil ID {device_id} dans le tableau principal", 3000
             )
     
     def _delete_selected_devices(self):

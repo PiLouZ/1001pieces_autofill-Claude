@@ -45,25 +45,25 @@ class PasteResultsService:
             total_rows: Nombre total de lignes traitées
         """
         # Créer un résumé détaillé pour l'affichage
-        summary_lines = [f"📥 **Résumé du collage** ({total_rows} lignes traitées)", ""]
+        summary_lines = [f"Résumé du collage ({total_rows} lignes traitées)", ""]
 
         if inserted_count > 0:
-            summary_lines.append(f"✅ **Nouveaux appareils créés**: {inserted_count}")
+            summary_lines.append(f"Nouveaux appareils créés : {inserted_count}")
         if updated_count > 0:
-            summary_lines.append(f"🔄 **Appareils mis à jour**: {updated_count}")
+            summary_lines.append(f"Appareils mis à jour : {updated_count}")
         if associations_created > 0:
-            summary_lines.append(f"🔗 **Associations créées**: {associations_created}")
+            summary_lines.append(f"Associations créées : {associations_created}")
         if descriptions_updated > 0:
-            summary_lines.append(f"📝 **Descriptions mises à jour**: {descriptions_updated}")
+            summary_lines.append(f"Descriptions mises à jour : {descriptions_updated}")
         if duplicates_skipped > 0:
-            summary_lines.append(f"⚠️ **Doublons ignorés**: {duplicates_skipped}")
+            summary_lines.append(f"Doublons ignorés : {duplicates_skipped}")
         if manual_completion_count > 0:
-            summary_lines.append(f"✋ **Nécessitent complétion manuelle**: {manual_completion_count}")
+            summary_lines.append(f"Nécessitent complétion manuelle : {manual_completion_count}")
         if ignored_count > 0:
-            summary_lines.append(f"❌ **Lignes ignorées**: {ignored_count}")
+            summary_lines.append(f"Lignes ignorées : {ignored_count}")
 
         if inserted_count == 0 and updated_count == 0 and associations_created == 0:
-            summary_lines.append("ℹ️ **Aucune modification apportée**")
+            summary_lines.append("Aucune modification apportée")
 
         summary_text = "\n".join(summary_lines)
 
@@ -110,9 +110,9 @@ class PasteResultsService:
             summary_parts.append(f"{manual_completion_count} nécessite(nt) complétion")
 
         if summary_parts:
-            summary = f"📥 Collage '{ref_piece}': {', '.join(summary_parts)} ({total_rows} lignes traitées)"
+            summary = f"Collage '{ref_piece}': {', '.join(summary_parts)} ({total_rows} lignes traitées)"
         else:
-            summary = f"📥 Collage '{ref_piece}': {total_rows} lignes traitées (aucune modification)"
+            summary = f"Collage '{ref_piece}': {total_rows} lignes traitées (aucune modification)"
 
         # Ajouter à l'historique
         if hasattr(self.main_window, 'user_interaction_service'):
