@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.34.0] - 2026-03-23
+
+### Audit TheAuditor — sécurité et qualité (session 2026-03-23)
+
+**Fixes appliqués suite au premier audit SAST complet :**
+- `database_manager.py` : `hashlib.md5` → `hashlib.sha256` pour les clés de cache (`SearchCache._make_key`, `_make_load_cache_key`) — MD5 cryptographiquement cassé même pour usage non-sécurité
+- `database_manager.py` : validation whitelist du `column_name` dans `_add_column_to_pieces` et `_add_column_to_appareils` — défense en profondeur sur les `ALTER TABLE` dynamiques (source déjà contrôlée par `Config.DB_HEADERS`)
+- `import_manager.py` : renommage `global_seen_device_refs` → `seen_device_refs` — variable locale de méthode mal nommée (pas un `global` Python)
+- `import_manager.py` : ajout `worker.wait()` dans les callbacks `_on_finished` et `_on_error` des deux chemins d'import (dialogue + drag-drop) — fin de thread garantie avant libération de référence
+- `app_export_service.py` : ajout `self._worker.wait()` + `self._worker = None` dans `_on_finished` — cycle de vie du thread d'export proprement clos
+
+**Bilan audit :**
+- 0 cycle d'imports — architecture saine
+- Taint analysis non fonctionnelle (bug interne TheAuditor `no such column: target_var`)
+- ~1400 findings classés faux positifs documentés (hardcoded-secrets sur string constants, `.connect()` Qt, triggers SQLite, `datetime.now()` local intentionnel, unbounded-query COUNT/lookups/exports)
+
+---
+
 ## [3.34.0] - 2026-03-20
 
 ### Harmonisation UI — suppression des emojis et unification du style
