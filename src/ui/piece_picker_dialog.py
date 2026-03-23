@@ -91,8 +91,12 @@ class RefTagList(QWidget):
             if n == 0:
                 self.setVisible(False)
             else:
-                natural_h = (n * 24 + 4) if self._compact else (n * 31 + 4)
-                self._scroll.setFixedHeight(min(natural_h, self.MAX_HEIGHT))
+                if self._compact:
+                    # Hauteur exacte issue du layout — évite la formule approximative et le scrollbar
+                    h = self._layout.sizeHint().height()
+                    self._scroll.setFixedHeight(max(h, 10))
+                else:
+                    self._scroll.setFixedHeight(min(n * 31 + 4, self.MAX_HEIGHT))
                 self.setVisible(True)
         # else: in full_height_mode, always visible, height managed by parent layout
 
