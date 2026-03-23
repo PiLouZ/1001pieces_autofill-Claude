@@ -948,7 +948,7 @@ class TableController:
         
         self.page_size_combo = QComboBox()
         self.page_size_combo.addItems(["100", "250", "500", "1000", "2000", "Tout"])
-        self.page_size_combo.setCurrentText("100")
+        self.page_size_combo.setCurrentText(str(UIConfig.DEFAULT_PAGE_SIZE))
         self.page_size_combo.setStyleSheet("""
             QComboBox {
                 border: 1px solid #bdbdbd;
