@@ -1,6 +1,6 @@
 # 1001pieces_autofill — Gestionnaire d'Appareils
 
-Application de gestion de pièces détachées et d'appareils électroménagers. Interface PyQt5, base SQLite de 598 000+ enregistrements, recherche plein-texte FTS5, gestion de la supersession de références. **v3.29.0**
+Application de gestion de pièces détachées et d'appareils électroménagers. Interface PyQt5, base SQLite, recherche plein-texte FTS5, gestion de la supersession de références. **v3.34.0**
 
 ## Lancement
 
@@ -58,7 +58,7 @@ python3 run.py
 │       └── seo_generator.py
 │
 ├── data/
-│   └── appareils.db              # Base SQLite (~598 000 enregistrements)
+│   └── appareils.db              # Base SQLite
 │
 └── docs/
     ├── cdc_supersession_pieces.md   # Cahier des charges supersession (v1.0)
@@ -69,7 +69,7 @@ python3 run.py
 ## Fonctionnalités
 
 ### Base de données
-- **598 000+ enregistrements** — pagination virtuelle (100 lignes affichées, scroll infini)
+- **Pagination virtuelle** — 100 lignes affichées, scroll infini (conçu pour des centaines de milliers d'enregistrements)
 - **FTS5 trigram** — index plein-texte sur toutes les colonnes appareils (`USE_FTS5=True`)
 - **Sauvegarde événementielle** — latence <100ms (EventDrivenSaveService)
 - **Cache adaptatif** — invalidation sélective après modification/import
@@ -92,15 +92,26 @@ python3 run.py
 - **Alerte obsolescence** — dialogue listant les appareils concernés avant marquage
 - **Import avec succession** — déclaration directe dans le dialogue d'import (champs autocompletés, checkbox obsolète)
 
+### Export
+- **Exports CSV et HTML configurables** — `ExportConfigService` + dialogue dédié (Outils → Configuration des exports…)
+- **Colonnes CSV personnalisables** — en-tête, source/assemblage de champs, ordre, séparateur, encodage, pattern du nom de fichier
+- **Templates HTML configurables** — lien marque, séparateur, en-tête de groupe, preview en temps réel
+- **Configuration persistante** — `data/export_config.json`, bouton "Réinitialiser les défauts"
+- **Export cohérent avec les bannières** — export exactement ce qui est affiché selon la bannière active (supersession, équivalence)
+
 ### Import
 - **PDF** — extraction Camelot-Py avec lazy loading (0 freeze)
 - **CSV** — détection automatique délimiteur et format
 - **Drag & Drop** — multi-fichiers simultané
+- **Import non-bloquant** — `_ImportWorker(QThread)` : SQLite et parsing hors du main thread, spinner fluide
 - **Succession à l'import** — "cette réf. remplace" / "remplacée par" + radio "Courante" multi-fichiers
+- **Mapping de colonnes** — `ENABLE_COLUMN_MAPPING = True` : correspondance personnalisable colonnes CSV → champs DB
 
 ### Interface
 - **Historique structuré** — badges colorés MOD/IMP/EXP/SUP/ANN/PIC/SYS, agrégation `×N appareils`
 - **Dialogues non-bloquants** — `show()` + callbacks (Finder ne freeze plus)
+- **ProgressDialog custom** — spinner animé, barre 6px, compteur `N/M (X%)`, bouton Annuler optionnel
+- **Icônes qtawesome** — `fa5s.*` dans toute l'interface (toolbar, boutons, statuts, menus)
 - **Undo/Redo** — historique d'actions annulables
 - **Doublons** — détection visuelle + interface hiérarchique de fusion
 - **Drag handle** — duplication vers le bas par double-clic
