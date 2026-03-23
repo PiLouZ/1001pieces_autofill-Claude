@@ -810,11 +810,10 @@ class TableController:
                     text = self.parent_window.search_input.text().strip()
                     search_term = text if text else None
 
-            # Convertir Qt.SortOrder en string pour la DB
-            sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
-
-            # Appeler load_data avec les bonnes valeurs
-            self._load_data_with_sort(search_term, self.current_sort_column, sort_order_str)
+            # Passer par load_data (is_search=False) pour conserver toutes les injections :
+            # bypass_supersession, expand_predecessors (sœurs), expand_equivalents.
+            # current_sort_column / current_sort_order sont déjà mis à jour par _on_header_click.
+            self.load_data(self.current_search_term, is_search=False)
             self._update_sort_indicators()
         finally:
             # Nettoyer le flag de tri en cours
@@ -1056,7 +1055,7 @@ class TableController:
             try:
                 self.page_size = int(size_text)
             except ValueError:
-                self.page_size = 100
+                self.page_size = 500
         
         self.current_page = 1  # Reset à la première page
         # Utiliser le terme de recherche persistant pour changement taille page

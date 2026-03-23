@@ -46,7 +46,7 @@ class Config:
     LONG_STATUS_MESSAGE_TIMEOUT = 3000  # ms
     
     # Performance et pagination
-    DEFAULT_PAGE_SIZE = 1000  # Lignes par page
+    DEFAULT_PAGE_SIZE = 500   # Lignes par page
     MAX_DISPLAY_ROWS = 2000   # Maximum sans pagination
     # Optimisations Phase 2 - Interface
     CHUNK_SIZE = 500          # Taille des chunks pour setItem optimisé

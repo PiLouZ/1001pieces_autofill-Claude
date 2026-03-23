@@ -101,7 +101,7 @@ class UIConfig:
     COLOR_INFO = "#17a2b8"
     
     # Pagination
-    DEFAULT_PAGE_SIZE = 100
+    DEFAULT_PAGE_SIZE = 500
     COLOR_PRIMARY = "#007bff"
     COLOR_SECONDARY = "#6c757d"
     
