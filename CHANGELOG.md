@@ -4,6 +4,39 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.36.0] - 2026-03-23
+
+### Cleanup — Audit code mort (vulture + TheAuditor)
+
+Nettoyage systématique suite à un audit complet du code base. Aucune régression fonctionnelle.
+
+**Code inaccessible / méthodes jamais appelées**
+- `import_service.py` — suppression `return validation_results` inaccessible (après un `return` existant) + méthode stub `get_import_history` jamais appelée
+- `seo_service.py` — suppression `validate_seo_data`, `get_seo_stats`, `_format_piece_description` (jamais appelées depuis l'extérieur)
+- `pieces_list_service.py` — suppression fonction `_truncate_refs_str` orpheline (import supprimé en v3.35.0)
+- `seo_generator.py` — suppression constante `EXCLUDED_WORDS` orpheline (méthode consommatrice supprimée en v3.35.0)
+
+**Paramètres fantômes**
+- `table_widget_service.py` — `error_context` → `_error_context` (présent dans signature + callers, jamais lu dans le corps)
+- `paste_data_processor.py` — `decisions_cache` → `_decisions_cache` (même pattern)
+
+**Classes jamais instanciées**
+- `pieces_manager.py` — suppression `PieceSuccessionDialog` (150 lignes — dialog de succession doublon de la bannière `table_controller.py`, jamais connecté à l'UI)
+- `base_service.py` — suppression `ServiceFactory` (pattern d'injection non adopté — tous les services créés directement dans `main_refactored.py`)
+
+**Imports inutilisés**
+- `pieces_manager.py` — `QComboBox`, `QInputDialog`, `QPoint`, `QSizePolicy`, `_parse_refs`, `_link_if_truncated`
+
+**Variable inutilisée**
+- `pieces_manager.py` — `_on_cell_entered(row, col)` → `(row, _col)`
+
+**Robustesse DB**
+- `database_manager.py` — `_setup_fts5_triggers` : ajout `try/except sqlite3.Error` — si un trigger FTS5 échoue à la création, l'erreur est désormais loguée et levée (le moteur n'échouait pas silencieusement)
+
+**Bilan** : −332 lignes nettes sur 8 fichiers.
+
+---
+
 ## [3.35.0] - 2026-03-23
 
 ### UI — RefTagList compact (mode deux chemins)

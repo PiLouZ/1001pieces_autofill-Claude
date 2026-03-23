@@ -7,16 +7,16 @@ from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
                            QApplication, QWidget, QMenu,
                            Qt, QTimer, pyqtSignal, QColor,
-                           QButtonGroup, QInputDialog, QComboBox, QFont,
-                           QFrame, QSize, QCursor, QPalette, QSizePolicy,
-                           QEvent, QPoint, QStackedWidget, QProgressBar)
+                           QButtonGroup, QFont,
+                           QFrame, QSize, QCursor, QPalette,
+                           QEvent, QStackedWidget, QProgressBar)
 from typing import List, Tuple, Dict
 import qtawesome as qta
 
 from ..core.config import Config
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
-from .pieces_list_service import PieceRelationsPopup, _parse_refs, _link_if_truncated, _format_piece_edit_history
+from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 class ActionButtonWidget(QWidget):
@@ -598,7 +598,7 @@ class PiecesManagerWindow(QDialog):
 
     # ── Widget d'actions flottant ─────────────────────────────────────────────
 
-    def _on_cell_entered(self, row: int, col: int):
+    def _on_cell_entered(self, row: int, _col: int):
         """Positionner le widget d'actions flottant sur la ligne survolée."""
         idx = self.pieces_table.model().index(row, 4)
         rect = self.pieces_table.visualRect(idx)
@@ -1647,153 +1647,3 @@ class PieceEditDialog(QDialog):
     def get_values(self):
         """Retourner les valeurs saisies"""
         return self.ref_input.text().strip(), self.desc_input.text().strip()
-
-
-class PieceSuccessionDialog(QDialog):
-    """
-    Dialogue de gestion de la succession pour une référence pièce.
-    Utilisable depuis le gestionnaire de pièces ou la liste des pièces associées.
-    """
-
-    def __init__(self, parent, db_manager, ref_piece: str, history_callback=None):
-        super().__init__(parent)
-        self.db_manager = db_manager
-        self.ref_piece = ref_piece
-        self.history_callback = history_callback  # callable(message) ou None
-
-        self.setWindowTitle(f"Succession — {ref_piece}")
-        self.setModal(True)
-        self.resize(480, 200)
-        self._init_ui()
-        self._refresh()
-
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-
-        # Statut + chaîne
-        self.status_label = QLabel()
-        self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet("font-size: 12px;")
-        layout.addWidget(self.status_label)
-
-        # Boutons d'action
-        btn_layout = QHBoxLayout()
-
-        self.btn_superseded = QPushButton("Remplacée par…")
-        self.btn_superseded.clicked.connect(self._on_mark_superseded)
-        btn_layout.addWidget(self.btn_superseded)
-
-        self.btn_obsolete = QPushButton("Marquer obsolète")
-        self.btn_obsolete.setStyleSheet("QPushButton { color: #E05252; }")
-        self.btn_obsolete.clicked.connect(self._on_mark_obsolete)
-        btn_layout.addWidget(self.btn_obsolete)
-
-        self.btn_cancel_succ = QPushButton("Annuler la succession")
-        self.btn_cancel_succ.clicked.connect(self._on_cancel_succession)
-        btn_layout.addWidget(self.btn_cancel_succ)
-
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-
-        # Fermer
-        close_layout = QHBoxLayout()
-        close_layout.addStretch()
-        close_btn = QPushButton("Fermer")
-        close_btn.clicked.connect(self.accept)
-        close_layout.addWidget(close_btn)
-        layout.addLayout(close_layout)
-
-    def _refresh(self):
-        """Mettre à jour l'affichage du statut."""
-        status_info = self.db_manager.get_piece_status(self.ref_piece)
-        status = status_info['status']
-        is_obsolete = status_info['is_obsolete']
-        ref_new = status_info.get('ref_new')
-
-        self.btn_obsolete.setText("Retirer l'obsolescence" if is_obsolete else "Marquer obsolète")
-        predecessors = self.db_manager.get_all_predecessors(self.ref_piece)
-
-        if status == 'superseded':
-            text = f"↳ Remplacée par  {ref_new}"
-            if is_obsolete:
-                text += "  (⚠ obsolète)"
-            self.status_label.setText(text)
-            self.status_label.setStyleSheet("color: #e67e22; font-size: 12px; font-weight: bold;")
-            self.btn_cancel_succ.setEnabled(True)
-        elif status == 'obsolete':
-            self.status_label.setText("⚠ Obsolète — aucun remplacement")
-            self.status_label.setStyleSheet("color: #c0392b; font-size: 12px; font-weight: bold;")
-            self.btn_cancel_succ.setEnabled(False)
-        elif predecessors:
-            refs_old = ", ".join(predecessors)
-            self.status_label.setText(f"↑ Remplace  {refs_old}")
-            self.status_label.setStyleSheet("color: #2980b9; font-size: 12px; font-weight: bold;")
-            self.btn_cancel_succ.setEnabled(False)
-        else:
-            self.status_label.setText("✓ Référence courante")
-            self.status_label.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
-            self.btn_cancel_succ.setEnabled(False)
-
-    def _on_mark_superseded(self):
-        dlg = PiecePickerDialog(
-            self.db_manager, self,
-            exclude_ref=self.ref_piece,
-            title=f"Référence qui remplace '{self.ref_piece}'"
-        )
-        if dlg.exec_() != QDialog.Accepted:
-            return
-        ref_new = dlg.selected_ref()
-        if not ref_new:
-            return
-        success, error = self.db_manager.add_supersession(self.ref_piece, ref_new)
-        if success:
-            self._send_history(f"Succession :\n==> '{self.ref_piece}' → '{ref_new}'")
-            self._refresh()
-        else:
-            QMessageBox.warning(self, "Erreur de succession", error)
-
-    def _on_mark_obsolete(self):
-        appareils = self.db_manager.get_appareils_for_piece_ref(self.ref_piece)
-        msg = f"Marquer '{self.ref_piece}' comme obsolète (aucun remplacement) ?"
-        if appareils:
-            lines = [f"  • {mfr or '?'} {ref_mod or '?'} ({type_ or '?'})" for type_, mfr, ref_mod in appareils[:10]]
-            if len(appareils) > 10:
-                lines.append(f"  … et {len(appareils) - 10} autre(s)")
-            msg += "\n\nAppareils concernés :\n" + "\n".join(lines)
-        confirm = QMessageBox.question(
-            self, "Marquer comme obsolète", msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
-        is_obsolete = self.db_manager.get_piece_status(self.ref_piece)['is_obsolete']
-        if is_obsolete:
-            ok = self.db_manager.unmark_obsolete(self.ref_piece)
-            msg_history = f"Succession :\n==> '{self.ref_piece}' → plus obsolète"
-        else:
-            ok = self.db_manager.mark_obsolete(self.ref_piece)
-            msg_history = f"Succession :\n==> '{self.ref_piece}' → obsolète"
-        if ok:
-            self._send_history(msg_history)
-            self._refresh()
-        else:
-            QMessageBox.warning(self, "Erreur", "Impossible de modifier le statut d'obsolescence.")
-
-    def _on_cancel_succession(self):
-        confirm = QMessageBox.question(
-            self, "Annuler la succession",
-            f"Supprimer le lien de succession pour '{self.ref_piece}' ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
-        self.db_manager.remove_supersession(self.ref_piece)
-        self._send_history(f"Succession :\n==> '{self.ref_piece}' → (succession annulée)")
-        self._refresh()
-
-    def _send_history(self, message: str):
-        if self.history_callback:
-            try:
-                self.history_callback(message)
-            except Exception:
-                pass

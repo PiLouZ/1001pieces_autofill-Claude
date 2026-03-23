@@ -180,10 +180,3 @@ class ImportService(BaseService):
             'size': file_size,
             'estimated_records': estimated_records
         }
-        
-        return validation_results
-    
-    def get_import_history(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Obtenir l'historique des imports récents"""
-        # Cette méthode pourrait être étendue pour stocker l'historique dans la DB
-        return []

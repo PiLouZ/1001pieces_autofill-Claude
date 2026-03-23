@@ -357,7 +357,7 @@ class PasteDataProcessor:
 
     @handle_database_operation_errors(return_value={'created': False, 'exists': False, 'description_updated': False}, log_prefix="Erreur création association pièce")
     def _create_piece_association(self, device_id: int, ref_piece: str,
-                                libelle_piece: str = "", decisions_cache: Dict = None) -> Dict:
+                                libelle_piece: str = "", _decisions_cache: Dict = None) -> Dict:
         """
         Créer une association entre un appareil et une pièce
 
@@ -365,7 +365,6 @@ class PasteDataProcessor:
             device_id: ID de l'appareil
             ref_piece: Référence de la pièce
             libelle_piece: Libellé de la pièce (optionnel)
-            decisions_cache: Cache des décisions utilisateur
 
         Returns:
             Dict avec le statut de l'opération

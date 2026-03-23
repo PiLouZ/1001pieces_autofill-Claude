@@ -43,12 +43,6 @@ class SEOGenerator:
         "Nouvelle référence {reference} (remplace {ref_old}) — {description} pour {type_appareil} {fabricants}, livraison rapide",
     ]
     
-    # Mots à exclure pour optimiser la longueur (comme dans script.js)
-    EXCLUDED_WORDS = [
-        "électroménager", "électroménagers", "appareils", "appareil", 
-        "pièces", "pièce", "détachées", "détachée", "de", "du", "des", "la", "le", "les"
-    ]
-    
     # Mots de liaison à supprimer en priorité pour préserver les marques
     FILLER_WORDS = [
         "pour", "de", "des", "du", "la", "le", "les", "d'", "l'",
