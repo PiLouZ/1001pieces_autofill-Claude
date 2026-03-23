@@ -1839,7 +1839,7 @@ class ImportManager:
             }
 
             app_logger.info(f" Import de {len(config.files)} fichier(s)")
-            global_seen_device_refs = set()
+            seen_device_refs = set()
 
             n = len(config.files)
             if progress_cb:
@@ -1858,7 +1858,7 @@ class ImportManager:
                     progress_cb(i, n, f"Import de {file.filename}… ({i+1}/{n})")
 
                 file_results = self._safe_import_single_file(
-                    file, config, global_seen_device_refs,
+                    file, config, seen_device_refs,
                     shared_devices_cache, shared_autocomplete_cache
                 )
 

@@ -56,7 +56,7 @@ class SearchCache:
             'filters': column_filters,
             'sort': sort_info
         }
-        return hashlib.md5(str(key_data).encode()).hexdigest()
+        return hashlib.sha256(str(key_data).encode()).hexdigest()
     
     def get(self, search_term: str, column_filters: Dict = None, sort_info: Tuple = None) -> Optional[List]:
         """Récupérer du cache"""
@@ -534,14 +534,22 @@ class DatabaseManager:
 
     @handle_sqlite_column_errors(log_message="Erreur ajout colonne pieces")
     def _add_column_to_pieces(self, column_name: str) -> bool:
-        """Ajouter une colonne à la table pieces avec gestion d'erreur factorисée"""
+        """Ajouter une colonne à la table pieces avec gestion d'erreur factorисée.
+        column_name doit être un identifiant SQL valide (lettres, chiffres, _)."""
+        import re
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_ ]*$', column_name):
+            raise ValueError(f"Nom de colonne invalide : '{column_name}'")
         self.cursor.execute(f"ALTER TABLE pieces ADD COLUMN {column_name} TEXT")
         app_logger.info(f"Colonne '{column_name}' ajoutée à la table pieces")
         return True
 
     @handle_sqlite_column_errors(log_message="Erreur ajout colonne appareils")
     def _add_column_to_appareils(self, column_name: str) -> bool:
-        """Ajouter une colonne à la table appareils avec gestion d'erreur factorисée"""
+        """Ajouter une colonne à la table appareils avec gestion d'erreur factorисée.
+        column_name doit être un identifiant SQL valide (lettres, chiffres, _, espaces)."""
+        import re
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_ ]*$', column_name):
+            raise ValueError(f"Nom de colonne invalide : '{column_name}'")
         self.cursor.execute(f"ALTER TABLE appareils ADD COLUMN [{column_name}] TEXT")
         app_logger.info(f"Colonne '{column_name}' ajoutée à la table appareils")
         return True
@@ -1629,7 +1637,7 @@ class DatabaseManager:
             str(sorted(column_filters.items()) if column_filters else []),
             limit, offset, sort_column, sort_order, incomplete_filter
         )
-        return hashlib.md5(str(key).encode()).hexdigest()
+        return hashlib.sha256(str(key).encode()).hexdigest()
 
     def invalidate_search_cache(self, invalidate_total_count: bool = False):
         """Vider le cache de recherche après toute modification de données.
