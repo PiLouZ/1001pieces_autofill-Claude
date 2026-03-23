@@ -1265,34 +1265,38 @@ class DatabaseManager:
         new_values = ', '.join(f'new.[{h}]' for h in Config.DB_HEADERS)
         old_values = ', '.join(f'old.[{h}]' for h in Config.DB_HEADERS)
 
-        # Trigger INSERT
-        self.cursor.execute(f"""
-            CREATE TRIGGER IF NOT EXISTS appareils_fts_ai
-            AFTER INSERT ON appareils BEGIN
-                INSERT INTO appareils_fts(rowid, {col_names})
-                VALUES (new.id, {new_values});
-            END
-        """)
+        try:
+            # Trigger INSERT
+            self.cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS appareils_fts_ai
+                AFTER INSERT ON appareils BEGIN
+                    INSERT INTO appareils_fts(rowid, {col_names})
+                    VALUES (new.id, {new_values});
+                END
+            """)
 
-        # Trigger DELETE
-        self.cursor.execute(f"""
-            CREATE TRIGGER IF NOT EXISTS appareils_fts_ad
-            AFTER DELETE ON appareils BEGIN
-                INSERT INTO appareils_fts(appareils_fts, rowid, {col_names})
-                VALUES ('delete', old.id, {old_values});
-            END
-        """)
+            # Trigger DELETE
+            self.cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS appareils_fts_ad
+                AFTER DELETE ON appareils BEGIN
+                    INSERT INTO appareils_fts(appareils_fts, rowid, {col_names})
+                    VALUES ('delete', old.id, {old_values});
+                END
+            """)
 
-        # Trigger UPDATE (delete old entry + insert new)
-        self.cursor.execute(f"""
-            CREATE TRIGGER IF NOT EXISTS appareils_fts_au
-            AFTER UPDATE ON appareils BEGIN
-                INSERT INTO appareils_fts(appareils_fts, rowid, {col_names})
-                VALUES ('delete', old.id, {old_values});
-                INSERT INTO appareils_fts(rowid, {col_names})
-                VALUES (new.id, {new_values});
-            END
-        """)
+            # Trigger UPDATE (delete old entry + insert new)
+            self.cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS appareils_fts_au
+                AFTER UPDATE ON appareils BEGIN
+                    INSERT INTO appareils_fts(appareils_fts, rowid, {col_names})
+                    VALUES ('delete', old.id, {old_values});
+                    INSERT INTO appareils_fts(rowid, {col_names})
+                    VALUES (new.id, {new_values});
+                END
+            """)
+        except sqlite3.Error as e:
+            app_logger.error(f"Erreur création triggers FTS5 — l'index ne sera pas maintenu automatiquement : {e}")
+            raise
 
     def rebuild_fts5(self, progress_callback=None) -> int:
         """Peupler (ou repeupler) l'index FTS5 depuis la table appareils.
