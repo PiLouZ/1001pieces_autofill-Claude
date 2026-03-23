@@ -529,6 +529,14 @@ class PieceManagementService:
         btn_layout.addWidget(ok_btn)
         root_layout.addWidget(btn_container)
 
+        # Entrée → Enregistrer (setDefault), jamais les boutons secondaires
+        ok_btn.setDefault(True)
+        cancel_btn.setAutoDefault(False)
+        btn_obsolete.setAutoDefault(False)
+        btn_superseded.setAutoDefault(False)
+        btn_replaces.setAutoDefault(False)
+        btn_link_equiv.setAutoDefault(False)
+
         # Connexions
         ok_btn.clicked.connect(dialog.accept)
         cancel_btn.clicked.connect(dialog.reject)

@@ -1629,10 +1629,12 @@ class PieceEditDialog(QDialog):
         buttons_layout.addStretch()
         
         cancel_btn = QPushButton("Annuler")
+        cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
-        
+
         save_btn = QPushButton("Sauvegarder")
+        save_btn.setDefault(True)
         save_btn.clicked.connect(self.accept)
         save_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.SUCCESS_LIGHT}; color: white; }}")
         buttons_layout.addWidget(save_btn)
