@@ -91,18 +91,20 @@ class RefTagList(QWidget):
             if n == 0:
                 self.setVisible(False)
             else:
-                if self._compact:
-                    # Hauteur exacte issue du layout — évite la formule approximative et le scrollbar
-                    h = self._layout.sizeHint().height()
-                    self._scroll.setFixedHeight(max(h, 10))
-                else:
+                if not self._compact:
                     self._scroll.setFixedHeight(min(n * 31 + 4, self.MAX_HEIGHT))
+                # compact : AdjustToContents gère la hauteur automatiquement
                 self.setVisible(True)
         # else: in full_height_mode, always visible, height managed by parent layout
 
     def set_compact(self, compact: bool):
-        """Mode compact : hauteur réduite au strict minimum, sans stretch sous les chips."""
+        """Mode compact : hauteur pilotée par le contenu, sans scrollbar interne.
+        La scroll area parente (dialogue) gère l'overflow global."""
         self._compact = compact
+        if compact:
+            from PyQt5.QtWidgets import QAbstractScrollArea
+            self._scroll.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
+            self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
     def get_refs(self) -> list:
         return list(self._refs)
