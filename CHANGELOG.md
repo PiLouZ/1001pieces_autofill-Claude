@@ -4,6 +4,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.35.0] - 2026-03-23
+
+### UI — RefTagList compact (mode deux chemins)
+
+- `piece_picker_dialog.py` : implémentation two-path dans `RefTagList` — chemin plat (`QWidget` + `QVBoxLayout`, sans `QScrollArea`) activé par `set_compact(True)` → suppression définitive des espaces excessifs au-dessus/dessous des listes de chips dans le dialogue "Éditer la pièce"
+- Indentation 16 px sur le chemin compact pour meilleure lisibilité
+- Le chemin `QScrollArea` (gestionnaire, panneau latéral) est inchangé — zéro régression
+
+### SEO — Refonte complète du moteur de génération de métadonnées
+
+**Nettoyage du code mort**
+- `seo_generator.py` : suppression de `_select_fabricants_for_title` et `_smart_truncate_title` (jamais appelées)
+- `seo_service.py` : suppression de `_get_search_data_from_current_data`, `_get_search_data_for_existing_reference`, `_get_search_data_fallback`, `_get_search_data_for_reference` (~130 lignes)
+
+**Conscience de l'obsolescence (supersession)**
+- `_resolve_supersession()` : détecte si la ref recherchée est obsolète via `get_supersession_chain()` et résout la chaîne jusqu'à la ref courante
+- `_enrich_with_supersession_data()` : réinterroge les fabricants/type de la ref courante et fusionne avec les données existantes
+- `SEOGenerator` : paramètre `ref_obsolete` sur `generate_meta_title` et `generate_meta_description`
+- Méta title obsolète : format `[ref_old]→[ref_current] description type marques` (fallback sur format normal si trop long)
+- 4 nouveaux templates `META_DESCRIPTION_SUPERSEDED_TEMPLATES` qui incluent `{ref_old}` pour capter les deux refs dans les SERP
+- Fix bug critique : `chain[-1][1]` (caractère) → `chain[-1]` (string) + `len(chain) > 1` au lieu de `if chain` — évitait de déclencher le chemin supersession sur toutes les refs
+
+**Optimisations qualité SEO**
+- Tri des fabricants par fréquence décroissante (marque la plus compatible en premier) — remplace le tri alphabétique dans les 3 chemins de collecte
+- Comptage des modèles compatibles : `_count_compatible_models(refs)` via la query `count_devices_for_piece` existante — passé au générateur
+- 4 nouveaux templates `META_DESCRIPTION_COMPATIBLE_TEMPLATES` avec `{n_modeles}` ("Commandez… compatible avec 196 modèles…"), tous démarrés par un verbe d'action
+- Suppression du tiret séparateur dans le méta title (`[ref] - [desc]` → `[ref] [desc]`) — libère 3 chars pour une marque supplémentaire ; `_maximize_brands_in_title` mis à jour en conséquence
+- `_normalize_type()` + dictionnaire `TYPE_NORMALIZATION` : normalise les variantes orthographiques du type d'appareil avant injection (ex: `"lave vaisselle"` → `"lave-vaisselle"`)
+- 2 nouveaux templates action dans `META_DESCRIPTION_TEMPLATES` : `"Réparez votre {type_appareil}…"` et `"En panne ? …"`
+- `_adjust_first_char(s, upper)` : remplace `.capitalize()` et `.lower()` — préserve les majuscules internes (sigles, marques) ; normalise les libellés entièrement en majuscules
+- Héritage des fabricants/types des prédécesseurs dans les 3 chemins de collecte via `get_all_predecessors()`
+
+---
+
 ## [3.34.0] - 2026-03-23
 
 ### Audit TheAuditor — sécurité et qualité (session 2026-03-23)

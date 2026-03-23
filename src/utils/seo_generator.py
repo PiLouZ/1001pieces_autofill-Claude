@@ -21,7 +21,26 @@ class SEOGenerator:
         "Obtenez {description} {reference} pour {type_appareil} {fabricants} et réparez facilement vos appareils",
         "Achetez {description} {reference} pour {type_appareil} {fabricants} et redonnez vie à vos appareils électroménagers",
         "Retrouvez {description} {reference} pour {type_appareil} {fabricants} pour réparer vos appareils électroménagers",
-        "Découvrez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste pièces détachées"
+        "Découvrez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste pièces détachées",
+        "Réparez votre {type_appareil} {fabricants} avec {description} {reference} — livraison rapide chez votre spécialiste",
+        "En panne ? {description} {reference} pour {type_appareil} {fabricants} disponible chez votre réparateur agréé",
+    ]
+
+    # Templates avec comptage de modèles compatibles (utilisés quand n_modeles > 0)
+    META_DESCRIPTION_COMPATIBLE_TEMPLATES = [
+        "Commandez {description} {reference} — compatible avec {n_modeles} modèles {type_appareil} {fabricants}",
+        "Trouvez {description} {reference} compatible avec {n_modeles} modèles {type_appareil} {fabricants}",
+        "Achetez {description} {reference} — pièce compatible avec {n_modeles} appareils {fabricants}",
+        "Réparez votre {type_appareil} {fabricants} : {description} {reference}, compatible {n_modeles} modèles",
+    ]
+
+    # Templates spécifiques aux pièces remplacées (ref_old → ref_current)
+    # {ref_old} = ancienne référence recherchée, {reference} = référence courante
+    META_DESCRIPTION_SUPERSEDED_TEMPLATES = [
+        "Vous cherchez {ref_old} ? La référence actuelle est {reference} — commandez {description} pour {type_appareil} {fabricants}",
+        "Référence {ref_old} remplacée par {reference} — {description} pour {type_appareil} {fabricants} chez votre spécialiste",
+        "L'ancienne réf. {ref_old} est désormais {reference} — trouvez {description} pour {type_appareil} {fabricants}",
+        "Nouvelle référence {reference} (remplace {ref_old}) — {description} pour {type_appareil} {fabricants}, livraison rapide",
     ]
     
     # Mots à exclure pour optimiser la longueur (comme dans script.js)
@@ -36,6 +55,24 @@ class SEOGenerator:
         "avec", "sans", "sur", "sous", "dans", "par", "et"
     ]
     
+    # Normalisation des types d'appareils (variantes orthographiques → forme canonique)
+    TYPE_NORMALIZATION = {
+        "lave linge": "lave-linge",
+        "lave vaisselle": "lave-vaisselle",
+        "seche linge": "sèche-linge",
+        "sèche linge": "sèche-linge",
+        "seche-linge": "sèche-linge",
+        "micro ondes": "micro-ondes",
+        "four micro ondes": "four micro-ondes",
+        "four micro-ondes": "four micro-ondes",
+        "refrigerateur": "réfrigérateur",
+        "congelateur": "congélateur",
+        "lave-vaisselle posable": "lave-vaisselle",
+        "lave-linge frontal": "lave-linge",
+        "lave-linge hublot": "lave-linge",
+        "lave-linge top": "lave-linge top",
+    }
+
     # Remplacements pour raccourcir (ordre de priorité par gain de caractères)
     WORD_REPLACEMENTS = {
         "réfrigérateur": "frigo",        # -7 caractères
@@ -52,35 +89,71 @@ class SEOGenerator:
     
     def __init__(self):
         self.last_generation_info = {}
+
+    def _normalize_type(self, type_appareil: str) -> str:
+        """
+        Normalise le type d'appareil : forme canonique + première lettre minuscule.
+        Corrige les variantes orthographiques (espaces/tirets, accents manquants).
+        """
+        t = type_appareil.strip().lower()
+        for variant, canonical in self.TYPE_NORMALIZATION.items():
+            if t == variant:
+                return canonical
+        return t
+
+    def _adjust_first_char(self, s: str, upper: bool) -> str:
+        """
+        Ajuste uniquement le premier caractère du libellé.
+        - upper=True  → première lettre en majuscule (méta title)
+        - upper=False → première lettre en minuscule (méta description)
+        Si toute la chaîne est en majuscules (ex: "MOTEUR DE POMPE"),
+        normalise d'abord en minuscules avant d'ajuster.
+        Les majuscules internes (sigles, marques) sont préservées.
+        """
+        if not s:
+            return s
+        if s == s.upper() and any(c.isalpha() for c in s):
+            s = s.lower()
+        return (s[0].upper() + s[1:]) if upper else (s[0].lower() + s[1:])
     
     @handle_seo_generation_errors()
     def generate_meta_title(self, reference: str, description: str, type_appareil: str,
-                           fabricants: List[str], max_length: int = 60) -> Dict[str, any]:
+                           fabricants: List[str], max_length: int = 60,
+                           ref_obsolete: Optional[str] = None) -> Dict[str, any]:
         """
-        Générer un méta title optimisé avec priorité à l'inclusion d'au moins 1 marque
-        Format: [Référence pièce] - [Description pièce] pour [type appareil] [Fabricant]
+        Générer un méta title optimisé avec priorité à l'inclusion d'au moins 1 marque.
+        Format normal   : [ref] - [description] pour [type] [marques]
+        Format obsolète : [ref_old]→[ref_current] [description] [type] [marques]
+                          (fallback sur format normal si trop long)
         """
-        # Nettoyer et formater les données
         reference_clean = reference.strip()
-        description_clean = description.strip().capitalize()
-        type_clean = type_appareil.strip().lower()
+        description_clean = self._adjust_first_char(description.strip(), upper=True)
+        type_clean = self._normalize_type(type_appareil)
 
-        # Étape 1: Maximiser le nombre de marques pour atteindre ~60 caractères
-        fabricants_optimaux = self._maximize_brands_in_title(fabricants, reference_clean,
-                                                           description_clean, type_clean, max_length)
-
-        # Construire le titre de base avec le maximum de fabricants possible
-        base_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
-
-        # Étape 2: Optimiser si le titre dépasse 60 caractères
-        if len(base_title) > max_length:
-            # Essayer sans " - " (gagne 3 caractères)
-            compact_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricants_optimaux}"
-            if len(compact_title) <= max_length:
-                base_title = compact_title
+        # ── Format supersession : [ref_old]→[ref_current] … ──────────────────
+        if ref_obsolete:
+            ref_old_clean = ref_obsolete.strip()
+            prefix = f"{ref_old_clean}→{reference_clean}"
+            remaining = max_length - len(prefix) - 1
+            if remaining >= 10:
+                fabricants_optimaux = self._maximize_brands_in_title(
+                    fabricants, prefix, description_clean, type_clean,
+                    max_length - len(prefix) - 1
+                )
+                base_title = f"{prefix} {description_clean} {type_clean} {fabricants_optimaux}".strip()
+                if len(base_title) > max_length:
+                    base_title = self._optimize_title_with_brands(base_title, fabricants_optimaux, max_length)
             else:
-                # Appliquer les optimisations intelligentes tout en gardant les marques
-                base_title = self._optimize_title_with_brands(compact_title, fabricants_optimaux, max_length)
+                ref_obsolete = None  # Préfixe trop long → format normal
+
+        # ── Format normal (sans tiret séparateur) ─────────────────────────────
+        if not ref_obsolete:
+            fabricants_optimaux = self._maximize_brands_in_title(
+                fabricants, reference_clean, description_clean, type_clean, max_length
+            )
+            base_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricants_optimaux}"
+            if len(base_title) > max_length:
+                base_title = self._optimize_title_with_brands(base_title, fabricants_optimaux, max_length)
 
         # Informations de génération
         original_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
@@ -92,7 +165,8 @@ class SEOGenerator:
             'fabricants_used': fabricants_optimaux,
             'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
             'total_fabricants_available': len(fabricants),
-            'brand_guaranteed': bool(fabricants_optimaux.strip())
+            'brand_guaranteed': bool(fabricants_optimaux.strip()),
+            'superseded': bool(ref_obsolete),
         }
 
         self.last_generation_info['title'] = generation_info
@@ -105,40 +179,49 @@ class SEOGenerator:
     
     @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
-                                 fabricants: List[str], max_length: int = 150) -> Dict[str, any]:
+                                 fabricants: List[str], max_length: int = 150,
+                                 ref_obsolete: Optional[str] = None,
+                                 n_modeles: int = 0) -> Dict[str, any]:
         """
-        Générer une méta description aléatoire
-        Format: [Phrase] {description} {reference} pour {type appareil} {fabricants} [phrase]
+        Générer une méta description aléatoire.
+        - ref_obsolete : utilise les templates supersession (ancienne + nouvelle ref)
+        - n_modeles > 0 : utilise les templates de compatibilité (X modèles compatibles)
         """
-        # Nettoyer et formater les données
         reference_clean = reference.strip()
-        description_clean = description.strip().lower()
-        type_clean = type_appareil.strip().lower()
+        description_clean = self._adjust_first_char(description.strip(), upper=False)
+        type_clean = self._normalize_type(type_appareil)
 
-        # Ajouter l'article approprié (votre/vos) devant la description
         article = self._get_article(description_clean)
         description_with_article = f"{article} {description_clean}"
 
-        # Sélectionner un template aléatoire
-        template = random.choice(self.META_DESCRIPTION_TEMPLATES)
+        # ── Choisir le pool de templates selon le contexte ───────────────────
+        if ref_obsolete:
+            template = random.choice(self.META_DESCRIPTION_SUPERSEDED_TEMPLATES)
+        elif n_modeles > 0:
+            template = random.choice(self.META_DESCRIPTION_COMPATIBLE_TEMPLATES)
+        else:
+            template = random.choice(self.META_DESCRIPTION_TEMPLATES)
 
-        # Sélectionner les fabricants selon l'espace disponible
-        fabricants_str = self._select_fabricants_for_description(fabricants, template,
-                                                               reference_clean, description_clean,
-                                                               type_clean, max_length)
+        fabricants_str = self._select_fabricants_for_description(
+            fabricants, template, reference_clean, description_clean, type_clean, max_length
+        )
 
-        # Construire la description
-        description_text = template.format(
+        # ── Instancier le template ────────────────────────────────────────────
+        fmt_kwargs = dict(
             description=description_with_article,
             reference=reference_clean,
             type_appareil=type_clean,
-            fabricants=fabricants_str
+            fabricants=fabricants_str,
         )
+        if ref_obsolete:
+            fmt_kwargs['ref_old'] = ref_obsolete.strip()
+        if n_modeles > 0:
+            fmt_kwargs['n_modeles'] = n_modeles
 
-        # Appliquer la troncature intelligente si nécessaire
+        description_text = template.format(**fmt_kwargs)
+
         final_description = self._smart_truncate_description(description_text, max_length)
 
-        # Informations de génération
         generation_info = {
             'template_used': template,
             'original_length': len(description_text),
@@ -146,7 +229,9 @@ class SEOGenerator:
             'truncated': len(final_description) < len(description_text),
             'within_limit': len(final_description) <= max_length,
             'fabricants_used': fabricants_str,
-            'fabricants_count': len(fabricants)
+            'fabricants_count': len(fabricants),
+            'superseded': bool(ref_obsolete),
+            'n_modeles': n_modeles,
         }
 
         self.last_generation_info['description'] = generation_info
@@ -167,8 +252,8 @@ class SEOGenerator:
         unique_fabricants = list(set(f.strip() for f in fabricants if f.strip()))
         unique_fabricants.sort(key=len)  # Marques courtes d'abord
         
-        # Calculer l'espace disponible pour les marques
-        base_without_brands = f"{reference} - {description} pour {type_appareil} "
+        # Calculer l'espace disponible pour les marques (format sans tiret séparateur)
+        base_without_brands = f"{reference} {description} pour {type_appareil} "
         available_space = max_length - len(base_without_brands)
         
         # Construire la liste des marques optimale
@@ -307,50 +392,6 @@ class SEOGenerator:
         # Troncature brute
         return title[:max_length]
 
-    def _select_fabricants_for_title(self, fabricants: List[str], reference: str, 
-                                   description: str, type_appareil: str, max_length: int) -> str:
-        """Sélectionner le maximum de fabricants possibles dans un ordre aléatoire pour le titre"""
-        if not fabricants:
-            return ""
-        
-        # Calculer l'espace disponible pour les fabricants
-        base_format = f"{reference} - {description} pour {type_appareil} "
-        available_space = max_length - len(base_format)
-        
-        if available_space <= 0:
-            return ""
-        
-        # Mélanger les fabricants de façon aléatoire et supprimer les doublons
-        unique_fabricants = list(set(fabricants))
-        random.shuffle(unique_fabricants)
-        
-        # Construire la liste des fabricants selon l'espace disponible
-        result_fabricants = []
-        current_length = 0
-        
-        for i, fabricant in enumerate(unique_fabricants):
-            fabricant_clean = fabricant.strip()
-            if i == 0:
-                needed_length = len(fabricant_clean)
-            else:
-                needed_length = len(" " + fabricant_clean)  # Espace au lieu de virgule-espace
-            
-            if current_length + needed_length <= available_space:
-                result_fabricants.append(fabricant_clean)
-                current_length += needed_length
-            else:
-                break
-        
-        if not result_fabricants:
-            # Au moins essayer de mettre le premier fabricant même tronqué (sans ...)
-            first_fabricant = unique_fabricants[0][:available_space]
-            return first_fabricant if len(first_fabricant) > 0 else ""
-        
-        # Pas de "..." - juste utiliser l'espace au maximum
-        result_str = " ".join(result_fabricants)  # Espaces au lieu de virgules
-        
-        return result_str
-    
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description: str, type_appareil: str, 
                                          max_length: int) -> str:
@@ -393,34 +434,6 @@ class SEOGenerator:
             
         return result_str
     
-    def _smart_truncate_title(self, title: str, max_length: int) -> str:
-        """Troncature intelligente pour le titre"""
-        if len(title) <= max_length:
-            return title
-        
-        # D'abord, essayer de supprimer les mots exclus
-        words = title.split()
-        for excluded_word in self.EXCLUDED_WORDS:
-            while len(" ".join(words)) > max_length and excluded_word in [w.lower() for w in words]:
-                # Trouver et supprimer le premier mot exclu
-                for i, word in enumerate(words):
-                    if word.lower() == excluded_word.lower():
-                        words.pop(i)
-                        break
-        
-        # Ensuite, appliquer les remplacements
-        current_title = " ".join(words)
-        for original, replacement in self.WORD_REPLACEMENTS.items():
-            if original in current_title.lower() and len(current_title) > max_length:
-                current_title = current_title.replace(original, replacement)
-                current_title = current_title.replace(original.capitalize(), replacement)
-        
-        # Si toujours trop long, tronquer sans ellipse (gagner 3 chars)
-        if len(current_title) > max_length:
-            current_title = current_title[:max_length]
-        
-        return current_title
-    
     def _smart_truncate_description(self, description: str, max_length: int) -> str:
         """Troncature intelligente pour la description (sans ellipse)"""
         if len(description) <= max_length:
@@ -435,11 +448,15 @@ class SEOGenerator:
         
         return truncated  # Sans "..." pour gagner 3 caractères
     
-    def get_random_description_variant(self, reference: str, description: str, 
-                                     type_appareil: str, fabricants: List[str], 
-                                     max_length: int = 150) -> Dict[str, any]:
+    def get_random_description_variant(self, reference: str, description: str,
+                                     type_appareil: str, fabricants: List[str],
+                                     max_length: int = 150,
+                                     ref_obsolete: Optional[str] = None,
+                                     n_modeles: int = 0) -> Dict[str, any]:
         """Générer une nouvelle variante aléatoire de description"""
-        return self.generate_meta_description(reference, description, type_appareil, fabricants, max_length)
+        return self.generate_meta_description(
+            reference, description, type_appareil, fabricants, max_length, ref_obsolete, n_modeles
+        )
     
     def _get_article(self, description: str) -> str:
         """

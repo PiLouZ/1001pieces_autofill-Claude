@@ -34,11 +34,11 @@ class RefTagList(QWidget):
         super().__init__(parent)
         self._compact = False
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(0, 0, 0, 0)
+        self._outer.setSpacing(0)
 
-        # Zone scrollable
+        # ── Chemin normal : QScrollArea (gestionnaire, panneau pièces) ────
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.NoFrame)
@@ -52,7 +52,16 @@ class RefTagList(QWidget):
         self._layout.setSpacing(3)
 
         self._scroll.setWidget(self._content)
-        outer.addWidget(self._scroll)
+        self._outer.addWidget(self._scroll)
+
+        # ── Chemin compact : QWidget plat sans QScrollArea ────────────────
+        self._flat = QWidget()
+        self._flat.setStyleSheet("background: transparent;")
+        self._flat_layout = QVBoxLayout(self._flat)
+        self._flat_layout.setContentsMargins(16, 0, 0, 0)
+        self._flat_layout.setSpacing(0)
+        self._flat.setVisible(False)
+        self._outer.addWidget(self._flat)
 
         self._refs = []
         self._full_height_mode = False
@@ -69,42 +78,53 @@ class RefTagList(QWidget):
         :param color: couleur du texte de la référence
         :param descriptions: dict {ref: description} optionnel pour affichage inline
         """
-        # Nettoyer les widgets précédents
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
         self._refs = list(refs)
+        n = len(refs)
 
-        for ref in refs:
-            desc = (descriptions or {}).get(ref, '')
-            row_widget = self._make_row(ref, desc, color)
-            self._layout.addWidget(row_widget)
+        if self._compact:
+            # ── Chemin plat : pas de QScrollArea ─────────────────────────────
+            while self._flat_layout.count():
+                item = self._flat_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
 
-        # Ancrer les chips en haut (évite l'étirement vertical) — sauf en mode compact
-        if not self._compact:
+            for ref in refs:
+                desc = (descriptions or {}).get(ref, '')
+                row_widget = self._make_row(ref, desc, color)
+                self._flat_layout.addWidget(row_widget)
+
+            if not self._full_height_mode:
+                self._flat.setVisible(n > 0)
+                self.setVisible(n > 0)
+        else:
+            # ── Chemin normal : QScrollArea ───────────────────────────────────
+            while self._layout.count():
+                item = self._layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+
+            for ref in refs:
+                desc = (descriptions or {}).get(ref, '')
+                row_widget = self._make_row(ref, desc, color)
+                self._layout.addWidget(row_widget)
+
             self._layout.addStretch()
 
-        n = len(refs)
-        if not self._full_height_mode:
-            if n == 0:
-                self.setVisible(False)
-            else:
-                if not self._compact:
+            if not self._full_height_mode:
+                if n == 0:
+                    self.setVisible(False)
+                else:
                     self._scroll.setFixedHeight(min(n * 31 + 4, self.MAX_HEIGHT))
-                # compact : AdjustToContents gère la hauteur automatiquement
-                self.setVisible(True)
-        # else: in full_height_mode, always visible, height managed by parent layout
+                    self.setVisible(True)
+        # else full_height_mode : toujours visible, hauteur gérée par le layout parent
 
     def set_compact(self, compact: bool):
-        """Mode compact : hauteur pilotée par le contenu, sans scrollbar interne.
+        """Mode compact : chemin plat sans QScrollArea.
         La scroll area parente (dialogue) gère l'overflow global."""
         self._compact = compact
         if compact:
-            from PyQt5.QtWidgets import QAbstractScrollArea
-            self._scroll.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
-            self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._scroll.setVisible(False)
+            self._flat.setVisible(False)  # sera montré par set_refs si n > 0
 
     def get_refs(self) -> list:
         return list(self._refs)
