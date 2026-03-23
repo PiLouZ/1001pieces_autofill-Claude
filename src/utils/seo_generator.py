@@ -242,9 +242,14 @@ class SEOGenerator:
         if not fabricants:
             return ""
         
-        # Dédupliquer et trier les fabricants par longueur (plus courts d'abord pour en avoir plus)
-        unique_fabricants = list(set(f.strip() for f in fabricants if f.strip()))
-        unique_fabricants.sort(key=len)  # Marques courtes d'abord
+        # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
+        seen: set = set()
+        unique_fabricants = []
+        for f in fabricants:
+            f = f.strip()
+            if f and f not in seen:
+                seen.add(f)
+                unique_fabricants.append(f)
         
         # Calculer l'espace disponible pour les marques (format sans tiret séparateur)
         base_without_brands = f"{reference} {description} pour {type_appareil} "
@@ -402,9 +407,14 @@ class SEOGenerator:
         if available_space <= 0:
             return ""
         
-        # Mélanger les fabricants de façon aléatoire et supprimer les doublons
-        unique_fabricants = list(set(fabricants))
-        random.shuffle(unique_fabricants)
+        # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
+        seen: set = set()
+        unique_fabricants = []
+        for f in fabricants:
+            f_clean = f.strip() if isinstance(f, str) else f
+            if f_clean and f_clean not in seen:
+                seen.add(f_clean)
+                unique_fabricants.append(f_clean)
         
         # Construire la liste des fabricants selon l'espace disponible
         result_fabricants = []
