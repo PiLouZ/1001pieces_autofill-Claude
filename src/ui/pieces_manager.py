@@ -493,21 +493,32 @@ class PiecesManagerWindow(QDialog):
         layout.addWidget(main_splitter, 1)
 
         # Boutons d'action
+        _btn_style = (
+            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+        )
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
 
         search_app_btn = QPushButton("Chercher dans l'app")
         search_app_btn.setIcon(qta.icon('fa5s.search', color='#555555'))
+        search_app_btn.setIconSize(QSize(12, 12))
         search_app_btn.setToolTip("Injecter la référence sélectionnée dans la recherche principale")
+        search_app_btn.setStyleSheet(_btn_style)
         search_app_btn.clicked.connect(self._search_in_main_app)
         buttons_layout.addWidget(search_app_btn)
 
         export_btn = QPushButton("Exporter la liste")
         export_btn.setIcon(qta.icon('fa5s.file-export', color='#555555'))
+        export_btn.setIconSize(QSize(12, 12))
+        export_btn.setStyleSheet(_btn_style)
         export_btn.clicked.connect(self._export_pieces)
         buttons_layout.addWidget(export_btn)
 
         close_btn = QPushButton("Fermer")
+        close_btn.setIcon(qta.icon('fa5s.times', color='#495057'))
+        close_btn.setIconSize(QSize(12, 12))
+        close_btn.setStyleSheet(_btn_style)
         close_btn.clicked.connect(self.close)
         buttons_layout.addWidget(close_btn)
         

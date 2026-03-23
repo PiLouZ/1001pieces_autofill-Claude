@@ -2470,9 +2470,14 @@ class MainWindow(QMainWindow):
         # Boutons
         buttons_layout = QHBoxLayout()
 
+        _compact = (
+            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+        )
         rebuild_btn = QPushButton("Construire / Reconstruire l'index")
         rebuild_btn.setIcon(qta.icon('fa5s.cog', color='#495057'))
         rebuild_btn.setIconSize(QSize(12, 12))
+        rebuild_btn.setStyleSheet(_compact)
         rebuild_btn.setToolTip("Lance la construction complète de l'index FTS5 (~2 secondes)")
 
         def do_rebuild():
@@ -2507,6 +2512,9 @@ class MainWindow(QMainWindow):
         buttons_layout.addStretch()
 
         close_btn = QPushButton("Fermer")
+        close_btn.setIcon(qta.icon('fa5s.times', color='#495057'))
+        close_btn.setIconSize(QSize(12, 12))
+        close_btn.setStyleSheet(_compact)
         close_btn.clicked.connect(dialog.accept)
         buttons_layout.addWidget(close_btn)
 

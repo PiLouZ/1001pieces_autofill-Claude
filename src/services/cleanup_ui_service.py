@@ -440,10 +440,16 @@ class DuplicatePiecesWidget(QWidget):
         layout = QVBoxLayout(self)
         
         # Actions
+        _compact = (
+            "QPushButton { padding: 2px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
+        )
         actions_layout = QHBoxLayout()
         self.select_all_pieces_btn = QPushButton("Tout sélectionner")
+        self.select_all_pieces_btn.setStyleSheet(_compact)
         self.select_none_pieces_btn = QPushButton("Tout désélectionner")
-        
+        self.select_none_pieces_btn.setStyleSheet(_compact)
+
         actions_layout.addWidget(self.select_all_pieces_btn)
         actions_layout.addWidget(self.select_none_pieces_btn)
         actions_layout.addStretch()

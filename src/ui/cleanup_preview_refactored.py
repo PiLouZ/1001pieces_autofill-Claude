@@ -24,7 +24,7 @@ class CleanupPreviewDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
-        self.setWindowTitle("Prévisualisation du Nettoyage des Doublons")
+        self.setWindowTitle("Nettoyage des doublons")
         self.resize(1400, 900)
         self.setModal(True)
         

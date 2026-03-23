@@ -163,7 +163,8 @@ class PieceManagementService:
         # Dialog pour éditer la référence et le libellé
         from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                                  QPushButton, QGroupBox, QInputDialog, QMessageBox,
-                                 QFrame, QScrollArea, QWidget, QApplication)
+                                 QFrame, QScrollArea, QWidget, QApplication, QSize)
+        import qtawesome as qta
 
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle("Éditer la pièce")
@@ -171,13 +172,37 @@ class PieceManagementService:
 
         # Hauteur max = écran disponible - marges de fenêtre
         screen_h = QApplication.primaryScreen().availableGeometry().height()
-        dialog.resize(520, min(560, screen_h - 80))
+        dialog.resize(520, min(580, screen_h - 80))
         dialog.setMaximumHeight(screen_h - 60)
 
-        # Layout racine : scroll + boutons fixes
+        # Layout racine : en-tête fixe + scroll + boutons fixes
         root_layout = QVBoxLayout(dialog)
         root_layout.setSpacing(0)
         root_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ── Bandeau d'en-tête ─────────────────────────────────────────────
+        header = QWidget()
+        header.setStyleSheet("background: #f8f9fa; border-bottom: 1px solid #dee2e6;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(12, 8, 12, 8)
+        header_layout.setSpacing(8)
+
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(qta.icon('fa5s.puzzle-piece', color='#495057').pixmap(16, 16))
+        header_layout.addWidget(icon_lbl)
+
+        ref_header_lbl = QLabel(ref_piece)
+        ref_header_lbl.setStyleSheet(
+            "font-family: monospace; font-weight: bold; font-size: 13px; color: #212529;"
+        )
+        header_layout.addWidget(ref_header_lbl)
+
+        succ_status = QLabel()
+        succ_status.setStyleSheet("font-size: 11px; padding: 1px 6px; border-radius: 3px;")
+        header_layout.addWidget(succ_status)
+
+        header_layout.addStretch()
+        root_layout.addWidget(header)
 
         # ── Zone scrollable ───────────────────────────────────────────────
         scroll = QScrollArea()
@@ -188,7 +213,7 @@ class PieceManagementService:
         scroll_content = QWidget()
         layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(12, 12, 12, 8)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
         scroll.setWidget(scroll_content)
         root_layout.addWidget(scroll, 1)
@@ -199,83 +224,88 @@ class PieceManagementService:
         sep.setStyleSheet("color: #dee2e6;")
         root_layout.addWidget(sep)
 
-        # Référence
-        ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence:"))
-        ref_input = QLineEdit(ref_piece)
-        ref_layout.addWidget(ref_input)
-        layout.addLayout(ref_layout)
+        # ── Champs Référence / Libellé ────────────────────────────────────
+        def _field_row(label_text, value):
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setFixedWidth(70)
+            lbl.setStyleSheet("font-size: 11px; color: #495057;")
+            inp = QLineEdit(value)
+            inp.setStyleSheet("font-size: 11px;")
+            row.addWidget(lbl)
+            row.addWidget(inp)
+            return row, inp
 
-        # Libellé
-        libelle_layout = QHBoxLayout()
-        libelle_layout.addWidget(QLabel("Libellé:"))
-        libelle_input = QLineEdit(current_libelle)
-        libelle_layout.addWidget(libelle_input)
-        layout.addLayout(libelle_layout)
+        ref_row, ref_input = _field_row("Référence", ref_piece)
+        layout.addLayout(ref_row)
+        libelle_row, libelle_input = _field_row("Libellé", current_libelle)
+        layout.addLayout(libelle_row)
+
+        # ── Helper : header de section plat (style gestionnaire) ─────────
+        def _section_sep(color='#dee2e6'):
+            s = QFrame()
+            s.setFrameShape(QFrame.HLine)
+            s.setStyleSheet(f"color: {color};")
+            return s
+
+        def _section_header(label_text, color, btn_text, btn_color):
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 4, 0, 0)
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(
+                f"color: {color}; font-weight: bold; font-size: 11px;"
+            )
+            row.addWidget(lbl)
+            row.addStretch()
+            btn = QPushButton(btn_text)
+            btn.setStyleSheet(
+                f"QPushButton {{ color: {btn_color}; font-size: 11px; border: none; }}"
+                f"QPushButton:hover {{ text-decoration: underline; }}"
+            )
+            btn.setFlat(True)
+            row.addWidget(btn)
+            return row, btn
+
+        layout.addWidget(_section_sep())
 
         # ── Section Succession ────────────────────────────────────────────
-        succ_group = QGroupBox("Succession de référence")
-        succ_layout = QVBoxLayout()
-        succ_layout.setSpacing(6)
-
-        # Message d'état (obsolète / ✓ / rien)
-        succ_status = QLabel()
-        succ_status.setWordWrap(True)
-        succ_status.setStyleSheet("font-size: 12px;")
-        succ_layout.addWidget(succ_status)
+        succ_hdr_lbl = QLabel("Succession")
+        succ_hdr_lbl.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #495057; margin-top: 2px;"
+        )
+        layout.addWidget(succ_hdr_lbl)
 
         # Sub-section "↳ Remplacée par"
-        superseded_hdr = QHBoxLayout()
-        lbl_sup = QLabel("↳ Remplacée par")
-        lbl_sup.setStyleSheet("color: #e67e22; font-weight: bold; font-size: 11px;")
-        superseded_hdr.addWidget(lbl_sup)
-        superseded_hdr.addStretch()
-        btn_superseded = QPushButton("+ Déclarer remplacée par…")
-        btn_superseded.setStyleSheet(
-            "QPushButton { color: #e67e22; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
+        sup_row, btn_superseded = _section_header(
+            "↳ Remplacée par", "#e67e22", "+ Déclarer remplacée par…", "#e67e22"
         )
-        btn_superseded.setFlat(True)
-        superseded_hdr.addWidget(btn_superseded)
-        succ_layout.addLayout(superseded_hdr)
+        layout.addLayout(sup_row)
 
         superseded_by_tags = RefTagList()
-        succ_layout.addWidget(superseded_by_tags)
-
-        # Séparateur
-        sep_s = QFrame()
-        sep_s.setFrameShape(QFrame.HLine)
-        sep_s.setStyleSheet("color: #dee2e6;")
-        succ_layout.addWidget(sep_s)
+        layout.addWidget(superseded_by_tags)
 
         # Sub-section "↑ Remplace"
-        replaces_hdr = QHBoxLayout()
-        lbl_rep = QLabel("↑ Remplace")
-        lbl_rep.setStyleSheet("color: #2980b9; font-weight: bold; font-size: 11px;")
-        replaces_hdr.addWidget(lbl_rep)
-        replaces_hdr.addStretch()
-        btn_replaces = QPushButton("+ Ajouter une référence remplacée…")
-        btn_replaces.setStyleSheet(
-            "QPushButton { color: #2980b9; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
+        rep_row, btn_replaces = _section_header(
+            "↑ Remplace", "#2980b9", "+ Ajouter une référence remplacée…", "#2980b9"
         )
-        btn_replaces.setFlat(True)
-        replaces_hdr.addWidget(btn_replaces)
-        succ_layout.addLayout(replaces_hdr)
+        layout.addLayout(rep_row)
 
         replaces_tags = RefTagList()
-        succ_layout.addWidget(replaces_tags)
+        layout.addWidget(replaces_tags)
 
-        # Bouton obsolète
+        # Bouton obsolète — compact, icône ban
         succ_action_row = QHBoxLayout()
         btn_obsolete = QPushButton("Marquer obsolète")
-        btn_obsolete.setStyleSheet("QPushButton { color: #E05252; }")
+        btn_obsolete.setIcon(qta.icon('fa5s.ban', color='#c0392b'))
+        btn_obsolete.setIconSize(QSize(11, 11))
+        btn_obsolete.setStyleSheet(
+            "QPushButton { color: #c0392b; font-size: 11px; border: none; padding: 2px 4px; }"
+            "QPushButton:hover { text-decoration: underline; }"
+        )
+        btn_obsolete.setFlat(True)
         succ_action_row.addWidget(btn_obsolete)
         succ_action_row.addStretch()
-        succ_layout.addLayout(succ_action_row)
-
-        succ_group.setLayout(succ_layout)
-        layout.addWidget(succ_group)
+        layout.addLayout(succ_action_row)
 
         db = self.main_window.db_manager
 
@@ -296,15 +326,31 @@ class PieceManagementService:
             # Chips "Remplace" (N prédécesseurs)
             replaces_tags.set_refs(predecessors, '#2980b9')
 
-            # Message d'état
+            # Badge statut dans le bandeau d'en-tête
             if is_obsolete:
-                succ_status.setText("⚠ Obsolète")
-                succ_status.setStyleSheet("color: #c0392b; font-size: 12px; font-weight: bold;")
-            elif not ref_new and not predecessors:
-                succ_status.setText("✓ Référence courante")
-                succ_status.setStyleSheet("color: #34A853; font-size: 12px; font-weight: bold;")
+                succ_status.setText("Obsolète")
+                succ_status.setStyleSheet(
+                    "font-size: 11px; color: #c0392b; font-weight: bold;"
+                    " background: #fdecea; border-radius: 3px; padding: 1px 6px;"
+                )
+            elif ref_new:
+                succ_status.setText("Remplacée")
+                succ_status.setStyleSheet(
+                    "font-size: 11px; color: #e67e22; font-weight: bold;"
+                    " background: #fef5e7; border-radius: 3px; padding: 1px 6px;"
+                )
+            elif predecessors:
+                succ_status.setText("Remplaçante")
+                succ_status.setStyleSheet(
+                    "font-size: 11px; color: #2980b9; font-weight: bold;"
+                    " background: #ebf5fb; border-radius: 3px; padding: 1px 6px;"
+                )
             else:
-                succ_status.setText("")
+                succ_status.setText("Courante")
+                succ_status.setStyleSheet(
+                    "font-size: 11px; color: #27ae60; font-weight: bold;"
+                    " background: #eafaf1; border-radius: 3px; padding: 1px 6px;"
+                )
 
         def _on_superseded():
             pick = PiecePickerDialog(db, dialog, exclude_ref=ref_piece,
@@ -380,34 +426,22 @@ class PieceManagementService:
         _refresh_succ()  # initialisation
 
         # ── Section Équivalences ────────────────────────────────────────────
-        equiv_group = QGroupBox("Équivalences")
-        equiv_layout = QVBoxLayout()
-        equiv_layout.setSpacing(6)
+        layout.addWidget(_section_sep())
 
-        # Message d'état
+        equiv_row, btn_link_equiv = _section_header(
+            "≡ Équivalences", "#8e44ad", "+ Ajouter une équivalence…", "#8e44ad"
+        )
+        layout.addLayout(equiv_row)
+
         equiv_status = QLabel()
         equiv_status.setWordWrap(True)
-        equiv_status.setStyleSheet("color: #555555; font-size: 12px;")
-        equiv_layout.addWidget(equiv_status)
+        equiv_status.setStyleSheet("color: #6c757d; font-size: 11px;")
+        layout.addWidget(equiv_status)
 
-        # Header + bouton ajouter
-        equiv_hdr = QHBoxLayout()
-        equiv_hdr.addStretch()
-        btn_link_equiv = QPushButton("+ Ajouter une équivalence…")
-        btn_link_equiv.setStyleSheet(
-            "QPushButton { color: #8e44ad; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
-        )
-        btn_link_equiv.setFlat(True)
-        equiv_hdr.addWidget(btn_link_equiv)
-        equiv_layout.addLayout(equiv_hdr)
-
-        # Chips équivalences
         equiv_tags = RefTagList()
-        equiv_layout.addWidget(equiv_tags)
+        layout.addWidget(equiv_tags)
 
-        equiv_group.setLayout(equiv_layout)
-        layout.addWidget(equiv_group)
+        layout.addStretch()
 
         def _refresh_equiv():
             equivs = db.get_equivalents(ref_piece)
@@ -443,14 +477,31 @@ class PieceManagementService:
         equiv_tags.ref_removed.connect(_on_remove_equiv)
         _refresh_equiv()  # initialisation
 
-        # ── Boutons OK / Annuler — hors scroll, toujours visibles ───────────
+        # ── Boutons Enregistrer / Annuler — hors scroll, toujours visibles ─
         btn_container = QWidget()
         btn_layout = QHBoxLayout(btn_container)
         btn_layout.setContentsMargins(12, 8, 12, 12)
-        ok_btn = QPushButton("OK")
+        btn_layout.addStretch()
+
         cancel_btn = QPushButton("Annuler")
-        btn_layout.addWidget(ok_btn)
+        cancel_btn.setIcon(qta.icon('fa5s.times', color='#495057'))
+        cancel_btn.setIconSize(QSize(11, 11))
+        cancel_btn.setStyleSheet(
+            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+        )
+
+        ok_btn = QPushButton("Enregistrer")
+        ok_btn.setIcon(qta.icon('fa5s.check', color='white'))
+        ok_btn.setIconSize(QSize(11, 11))
+        ok_btn.setStyleSheet(
+            "QPushButton { background-color: #28a745; color: white;"
+            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
+            "QPushButton:hover { background-color: #218838; }"
+        )
+
         btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(ok_btn)
         root_layout.addWidget(btn_container)
 
         # Connexions
