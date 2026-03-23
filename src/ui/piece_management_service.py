@@ -13,7 +13,7 @@ Responsabilités:
 from typing import Optional, List, Dict, Any, Set
 from .qt_imports import QListWidgetItem, QMessageBox
 from .qt_imports import Qt, QFrame
-from .pieces_list_service import _link_if_truncated, PieceRelationsPopup
+from .pieces_list_service import _link_if_truncated, PieceRelationsPopup, _format_piece_edit_history
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 from src.core.config import Config
@@ -504,18 +504,9 @@ class PieceManagementService:
                 self.main_window.pieces_panel_service.update_pieces_panel()
                 self.main_window._refresh_pieces_count_column()
 
-                # Construire un message d'historique détaillé
-                changes = []
-                if ref_piece != new_ref:
-                    changes.append(f"référence: '{ref_piece}' → '{new_ref}'")
-                if current_libelle != new_libelle:
-                    old_display = f"'{current_libelle}'" if current_libelle else "vide"
-                    new_display = f"'{new_libelle}'" if new_libelle else "vide"
-                    changes.append(f"libellé: {old_display} → {new_display}")
-
-                if changes:
-                    summary = "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
-                    self.main_window.user_interaction_service.add_to_history(summary)
+                msg = _format_piece_edit_history(ref_piece, new_ref, current_libelle, new_libelle)
+                if msg:
+                    self.main_window.user_interaction_service.add_to_history(msg)
 
                 self.main_window.user_interaction_service.show_status_message(
                     f"Pièce modifiée avec succès", Config.STATUS_MESSAGE_TIMEOUT

@@ -52,6 +52,22 @@ def _parse_refs(refs_str: str) -> list:
     return [r.strip() for r in refs_str.split(',') if r.strip()]
 
 
+def _format_piece_edit_history(old_ref: str, new_ref: str,
+                                old_desc: str, new_desc: str) -> str | None:
+    """Construit le message d'historique pour une édition de pièce.
+    Retourne None si aucun champ n'a changé."""
+    changes = []
+    if old_ref != new_ref:
+        changes.append(f"référence: '{old_ref}' → '{new_ref}'")
+    old_d = old_desc or ""
+    new_d = new_desc or ""
+    if old_d != new_d:
+        changes.append(f"libellé: '{old_d or '(vide)'}' → '{new_d or '(vide)'}'")
+    if not changes:
+        return None
+    return "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
+
+
 # ── Popup de synthèse des relations ────────────────────────────────────────────
 
 class PieceRelationsPopup(QDialog):

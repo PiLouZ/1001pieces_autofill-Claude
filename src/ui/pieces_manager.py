@@ -16,7 +16,7 @@ import qtawesome as qta
 from ..core.config import Config
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
-from .pieces_list_service import PieceRelationsPopup, _parse_refs, _link_if_truncated
+from .pieces_list_service import PieceRelationsPopup, _parse_refs, _link_if_truncated, _format_piece_edit_history
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 class ActionButtonWidget(QWidget):
@@ -1493,6 +1493,11 @@ class PiecesManagerWindow(QDialog):
             QMessageBox.warning(self, "Erreur", "La référence ne peut pas être vide.")
             return
 
+        if any(char in new_ref for char in ['||', '&&']):
+            QMessageBox.warning(self, "Erreur",
+                                "La référence ne peut pas contenir les caractères '||' ou '&&'.")
+            return
+
         # Vérifier si la nouvelle référence existe déjà (si elle a changé)
         if new_ref != current_ref:
             existing = self.db_manager.execute_query(
@@ -1513,15 +1518,9 @@ class PiecesManagerWindow(QDialog):
         self._load_pieces_data()
 
         if hasattr(self.parent(), 'user_interaction_service'):
-            changes = []
-            if new_ref != current_ref:
-                changes.append(f"référence: '{current_ref}' → '{new_ref}'")
-            if new_desc != current_desc:
-                changes.append(f"libellé: '{current_desc or '(vide)'}' → '{new_desc or '(vide)'}'")
-            if changes:
-                self.parent().user_interaction_service.add_to_history(
-                    "Pièce modifiée:\n" + "\n".join(f"==> {c}" for c in changes)
-                )
+            msg = _format_piece_edit_history(current_ref, new_ref, current_desc, new_desc)
+            if msg:
+                self.parent().user_interaction_service.add_to_history(msg)
 
     @handle_ui_errors(log_prefix="Erreur modification pièce", show_message=True)
     def _edit_selected_piece(self, checked=False):
