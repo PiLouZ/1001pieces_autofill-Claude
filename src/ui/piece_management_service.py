@@ -213,7 +213,7 @@ class PieceManagementService:
         scroll_content = QWidget()
         layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(12, 12, 12, 8)
-        layout.setSpacing(10)
+        layout.setSpacing(4)
 
         scroll.setWidget(scroll_content)
         root_layout.addWidget(scroll, 1)
@@ -268,33 +268,14 @@ class PieceManagementService:
 
         layout.addWidget(_section_sep())
 
-        # ── Section Succession ────────────────────────────────────────────
+        # ── Titre Succession + bouton obsolète sur la même ligne ──────────
+        succ_hdr_row = QHBoxLayout()
+        succ_hdr_row.setContentsMargins(0, 4, 0, 0)
         succ_hdr_lbl = QLabel("Succession")
-        succ_hdr_lbl.setStyleSheet(
-            "font-size: 11px; font-weight: bold; color: #495057; margin-top: 2px;"
-        )
-        layout.addWidget(succ_hdr_lbl)
+        succ_hdr_lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #495057;")
+        succ_hdr_row.addWidget(succ_hdr_lbl)
+        succ_hdr_row.addStretch()
 
-        # Sub-section "↳ Remplacée par"
-        sup_row, btn_superseded = _section_header(
-            "↳ Remplacée par", "#e67e22", "+ Déclarer remplacée par…", "#e67e22"
-        )
-        layout.addLayout(sup_row)
-
-        superseded_by_tags = RefTagList()
-        layout.addWidget(superseded_by_tags)
-
-        # Sub-section "↑ Remplace"
-        rep_row, btn_replaces = _section_header(
-            "↑ Remplace", "#2980b9", "+ Ajouter une référence remplacée…", "#2980b9"
-        )
-        layout.addLayout(rep_row)
-
-        replaces_tags = RefTagList()
-        layout.addWidget(replaces_tags)
-
-        # Bouton obsolète — compact, icône ban
-        succ_action_row = QHBoxLayout()
         btn_obsolete = QPushButton("Marquer obsolète")
         btn_obsolete.setIcon(qta.icon('fa5s.ban', color='#c0392b'))
         btn_obsolete.setIconSize(QSize(11, 11))
@@ -303,9 +284,34 @@ class PieceManagementService:
             "QPushButton:hover { text-decoration: underline; }"
         )
         btn_obsolete.setFlat(True)
-        succ_action_row.addWidget(btn_obsolete)
-        succ_action_row.addStretch()
-        layout.addLayout(succ_action_row)
+        succ_hdr_row.addWidget(btn_obsolete)
+        layout.addLayout(succ_hdr_row)
+
+        # ── Conteneur Succession compact ──────────────────────────────────
+        succ_container = QWidget()
+        succ_inner = QVBoxLayout(succ_container)
+        succ_inner.setContentsMargins(8, 2, 0, 2)
+        succ_inner.setSpacing(2)
+
+        sup_row, btn_superseded = _section_header(
+            "↳ Remplacée par", "#e67e22", "+ Déclarer remplacée par…", "#e67e22"
+        )
+        sup_row.setContentsMargins(0, 0, 0, 0)
+        succ_inner.addLayout(sup_row)
+
+        superseded_by_tags = RefTagList()
+        succ_inner.addWidget(superseded_by_tags)
+
+        rep_row, btn_replaces = _section_header(
+            "↑ Remplace", "#2980b9", "+ Ajouter une référence remplacée…", "#2980b9"
+        )
+        rep_row.setContentsMargins(0, 4, 0, 0)
+        succ_inner.addLayout(rep_row)
+
+        replaces_tags = RefTagList()
+        succ_inner.addWidget(replaces_tags)
+
+        layout.addWidget(succ_container)
 
         db = self.main_window.db_manager
 
@@ -423,6 +429,21 @@ class PieceManagementService:
         superseded_by_tags.ref_removed.connect(_on_remove_superseded_by)
         replaces_tags.ref_removed.connect(_on_remove_replaces)
         btn_obsolete.clicked.connect(_on_obsolete)
+
+        # Clic sur une référence → ouvrir (ou mettre au premier plan) le gestionnaire
+        def _open_in_manager(ref: str):
+            from .pieces_manager import PiecesManagerWindow
+            mw = self.main_window
+            if not hasattr(mw, 'pieces_manager') or not mw.pieces_manager:
+                mw.pieces_manager = PiecesManagerWindow(mw, mw.db_manager)
+            mw.pieces_manager.show()
+            mw.pieces_manager.raise_()
+            mw.pieces_manager.activateWindow()
+            mw.pieces_manager._search_in_manager(ref)
+
+        superseded_by_tags.ref_clicked.connect(_open_in_manager)
+        replaces_tags.ref_clicked.connect(_open_in_manager)
+
         _refresh_succ()  # initialisation
 
         # ── Section Équivalences ────────────────────────────────────────────
@@ -475,6 +496,7 @@ class PieceManagementService:
 
         btn_link_equiv.clicked.connect(_on_link_equiv)
         equiv_tags.ref_removed.connect(_on_remove_equiv)
+        equiv_tags.ref_clicked.connect(_open_in_manager)
         _refresh_equiv()  # initialisation
 
         # ── Boutons Enregistrer / Annuler — hors scroll, toujours visibles ─
