@@ -8,10 +8,9 @@ Responsabilités:
 - Logique de validation et de cohérence des données
 """
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from .qt_imports import QDialog
-from src.core.config import Config
 from src.core.logger import app_logger
 from src.utils.error_handler import handle_data_management_errors
 
@@ -89,161 +88,77 @@ class DataManagementService:
 
         return False
     
+    @handle_data_management_errors(return_value=None)
     def _try_auto_complete_device(self, db_id: int, device_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Tenter l'auto-complétion d'un appareil spécifique
-        
+        Tenter l'auto-complétion d'un appareil spécifique.
+        Correspondance exacte uniquement sur les références non vides.
+        Sélectionne la combinaison type+fabricant la plus fréquente en base.
+
         Args:
             db_id: ID de l'appareil en base
             device_data: Données actuelles de l'appareil
-            
+
         Returns:
             Dict avec les champs complétés ou None si aucune complétion
         """
-        ref_modele = device_data.get('ref_modele', '').strip()
-        commercial_ref = device_data.get('commercial_ref', '').strip()
         current_type = device_data.get('type', '').strip()
         current_manufacturer = device_data.get('manufacturer', '').strip()
-        
-        # Aucune référence pour faire l'auto-complétion
-        if not ref_modele and not commercial_ref:
-            return None
-        
-        # Déjà complet
+
         if current_type and current_manufacturer:
             return None
-        
-        # Chercher des appareils similaires avec Type ET Fabricant renseignés
-        similar_devices = self._find_similar_complete_devices(ref_modele, commercial_ref)
-        
-        if not similar_devices:
+
+        ref_modele = device_data.get('ref_modele', '').strip()
+        commercial_ref = device_data.get('commercial_ref', '').strip()
+
+        if not ref_modele and not commercial_ref:
             return None
-        
-        # Prendre les valeurs les plus fréquentes
-        best_match = self._select_best_completion_match(similar_devices)
-        
+
+        # Construire la condition uniquement sur les références non vides
+        conditions = []
+        params = []
+        if ref_modele:
+            conditions.append('ref_modele = ?')
+            params.append(ref_modele)
+        if commercial_ref:
+            conditions.append('commercial_ref = ?')
+            params.append(commercial_ref)
+
+        where_clause = ' OR '.join(conditions)
+        query = f"""
+            SELECT type, manufacturer, COUNT(*) as freq
+            FROM appareils
+            WHERE ({where_clause})
+              AND type IS NOT NULL AND type != ''
+              AND manufacturer IS NOT NULL AND manufacturer != ''
+            GROUP BY type, manufacturer
+            ORDER BY freq DESC
+            LIMIT 1
+        """
+
+        rows = self.db_manager.execute_query(query, params)
+        if not rows:
+            return None
+
+        found_type, found_manufacturer = rows[0][0], rows[0][1]
+
         updates = {}
         completed_fields = []
-        
-        # Compléter Type si manquant
-        if not current_type and best_match.get('type'):
-            updates['type'] = best_match['type']
+
+        if not current_type and found_type:
+            updates['type'] = found_type
             completed_fields.append('Type')
-        
-        # Compléter Fabricant si manquant
-        if not current_manufacturer and best_match.get('manufacturer'):
-            updates['manufacturer'] = best_match['manufacturer']
+
+        if not current_manufacturer and found_manufacturer:
+            updates['manufacturer'] = found_manufacturer
             completed_fields.append('Fabricant')
-        
-        # Appliquer les mises à jour
+
         if updates and self.main_window:
             success = self.main_window._update_device_info(db_id, updates)
             if success:
                 return {'fields': completed_fields, 'values': updates}
-        
+
         return None
-    
-    def _find_similar_complete_devices(self, ref_modele: str, commercial_ref: str) -> List[Dict[str, Any]]:
-        """
-        Trouver des appareils similaires avec Type ET Fabricant complets
-        """
-        similar_devices = []
-        
-        return self._safe_search_similar_devices(ref_modele, commercial_ref, similar_devices)
-
-    @handle_data_management_errors(return_value=[])
-    def _safe_search_similar_devices(self, ref_modele: str, commercial_ref: str, similar_devices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Rechercher des appareils similaires de manière sécurisée"""
-        # Stratégie 1: Recherche par préfixes de référence
-        search_patterns = []
-
-        if ref_modele:
-            # Extraire différents patterns de la référence
-            patterns = self._extract_reference_patterns(ref_modele)
-            search_patterns.extend(patterns)
-
-        if commercial_ref:
-            patterns = self._extract_reference_patterns(commercial_ref)
-            search_patterns.extend(patterns)
-
-        # Chercher pour chaque pattern
-        for pattern in search_patterns:
-            if len(pattern) >= 3:  # Pattern minimum
-                query = """
-                    SELECT type, manufacturer, ref_modele, commercial_ref, COUNT(*) as frequency
-                    FROM appareils
-                    WHERE (type IS NOT NULL AND type != '')
-                      AND (manufacturer IS NOT NULL AND manufacturer != '')
-                      AND (ref_modele LIKE ? OR commercial_ref LIKE ?)
-                    GROUP BY type, manufacturer
-                    ORDER BY frequency DESC
-                    LIMIT 10
-                """
-                pattern_like = f"{pattern}%"
-                rows = self.db_manager.execute_query(query, (pattern_like, pattern_like))
-
-                for row in rows:
-                    similar_devices.append({
-                        'type': row[0],
-                        'manufacturer': row[1],
-                        'frequency': row[4]
-                    })
-        
-        return similar_devices
-    
-    def _extract_reference_patterns(self, reference: str) -> List[str]:
-        """
-        Extraire des patterns utiles d'une référence pour la recherche
-        """
-        if not reference:
-            return []
-        
-        patterns = []
-        ref_clean = reference.strip().upper()
-        
-        # Pattern: premiers caractères (marque/série)
-        if len(ref_clean) >= 3:
-            patterns.append(ref_clean[:3])
-        if len(ref_clean) >= 4:
-            patterns.append(ref_clean[:4])
-        if len(ref_clean) >= 5:
-            patterns.append(ref_clean[:5])
-        
-        # Pattern: avant les chiffres (pour extraire marque)
-        import re
-        match = re.match(r'^([A-Z]+)', ref_clean)
-        if match and len(match.group(1)) >= 2:
-            patterns.append(match.group(1))
-        
-        # Pattern: avant tirets ou espaces
-        parts = re.split(r'[-\s]+', ref_clean)
-        if parts and len(parts[0]) >= 2:
-            patterns.append(parts[0])
-        
-        return list(set(patterns))  # Dédupliquer
-    
-    def _select_best_completion_match(self, similar_devices: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Sélectionner le meilleur match pour l'auto-complétion
-        """
-        if not similar_devices:
-            return {}
-        
-        # Regrouper par type + fabricant et compter les occurrences
-        combinations = {}
-        for device in similar_devices:
-            key = (device.get('type', ''), device.get('manufacturer', ''))
-            if key not in combinations:
-                combinations[key] = {'count': 0, 'type': device['type'], 'manufacturer': device['manufacturer']}
-            combinations[key]['count'] += device.get('frequency', 1)
-        
-        # Prendre la combinaison la plus fréquente
-        best_combination = max(combinations.values(), key=lambda x: x['count'])
-        
-        return {
-            'type': best_combination['type'],
-            'manufacturer': best_combination['manufacturer']
-        }
     
     @handle_data_management_errors()
     def prepare_data_cleaning(self) -> Optional[Dict[str, Any]]:

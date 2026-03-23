@@ -2745,54 +2745,59 @@ class ImportManager:
     
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur auto-completion")
     def _try_auto_complete(self, appareil_data: dict) -> bool:
-        """Essayer de compléter automatiquement Type et Fabricant à partir des références
+        """Compléter automatiquement Type et Fabricant à partir des références.
+        Correspondance exacte uniquement sur les références non vides.
+        Sélectionne la combinaison type+fabricant la plus fréquente en base.
 
         Returns:
-            bool: True si l'auto-complétion a réussi, False sinon
+            bool: True si au moins un champ a été complété
         """
-        # Vérifier d'abord si les champs sont vides
         type_empty = not appareil_data.get('type', '').strip()
         manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
 
-        # Si les deux champs sont remplis, pas besoin d'auto-complétion
         if not type_empty and not manufacturer_empty:
             return False
 
-        # Récupérer les références principales pour la recherche
+        # Construire la condition uniquement sur les références non vides
         ref_modele = appareil_data.get('ref_modele', '').strip()
         commercial_ref = appareil_data.get('commercial_ref', '').strip()
 
         if not ref_modele and not commercial_ref:
-            return False  # Aucune référence principale pour faire la recherche
+            return False
 
-        # Chercher dans la base des appareils existants avec les références principales
-        query = """
-            SELECT type, manufacturer
+        conditions = []
+        params = []
+        if ref_modele:
+            conditions.append('ref_modele = ?')
+            params.append(ref_modele)
+        if commercial_ref:
+            conditions.append('commercial_ref = ?')
+            params.append(commercial_ref)
+
+        where_clause = ' OR '.join(conditions)
+        query = f"""
+            SELECT type, manufacturer, COUNT(*) as freq
             FROM appareils
-            WHERE (ref_modele = ? OR commercial_ref = ?)
-            AND type IS NOT NULL AND type != ''
-            AND manufacturer IS NOT NULL AND manufacturer != ''
+            WHERE ({where_clause})
+              AND type IS NOT NULL AND type != ''
+              AND manufacturer IS NOT NULL AND manufacturer != ''
+            GROUP BY type, manufacturer
+            ORDER BY freq DESC
             LIMIT 1
         """
 
-        results = self.db_manager.execute_query(query, [ref_modele, commercial_ref])
+        results = self.db_manager.execute_query(query, params)
 
         if results:
-            found_type, found_manufacturer = results[0]
-
-
-            # Compléter seulement les champs vides
+            found_type, found_manufacturer = results[0][0], results[0][1]
             if type_empty:
                 appareil_data['type'] = found_type
-                app_logger.debug("  [OK] Type complété: '' -> '{found_type}'")
-
+                app_logger.debug(f"  [OK] Type complété: '' -> '{found_type}'")
             if manufacturer_empty:
                 appareil_data['manufacturer'] = found_manufacturer
-                app_logger.debug("  [OK] Fabricant complété: '' -> '{found_manufacturer}'")
-
+                app_logger.debug(f"  [OK] Fabricant complété: '' -> '{found_manufacturer}'")
             return True
 
-        # Aucune correspondance trouvée
         return False
 
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mises à jour post-import")

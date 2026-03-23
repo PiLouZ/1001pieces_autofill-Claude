@@ -183,46 +183,61 @@ class DeviceManager(BaseService):
     @safe_operation(operation_name="try_auto_complete", default_return=False)
     def try_auto_complete(self, device_data: Dict[str, str]) -> bool:
         """
-        Tentative d'auto-complétion des données de l'appareil
+        Tentative d'auto-complétion des données de l'appareil (Type et Fabricant).
+        Correspondance exacte uniquement sur les références non vides.
+        Sélectionne la combinaison type+fabricant la plus fréquente en base.
 
         Args:
-            device_data: Données de l'appareil à compléter
+            device_data: Données de l'appareil à compléter (modifié en place)
 
         Returns:
-            bool: True si auto-complétion réussie
+            bool: True si au moins un champ a été complété
         """
-        # Tentative d'auto-complétion basée sur ref_modele
-        ref_modele = device_data.get('ref_modele', '').strip()
-        if not ref_modele:
+        type_empty = not device_data.get('type', '').strip()
+        manufacturer_empty = not device_data.get('manufacturer', '').strip()
+
+        if not type_empty and not manufacturer_empty:
             return False
 
-        # Rechercher des appareils similaires pour auto-complétion
-        query = """
-            SELECT type, manufacturer, COUNT(*) as count
+        # Construire la condition uniquement sur les références non vides
+        ref_modele = device_data.get('ref_modele', '').strip()
+        commercial_ref = device_data.get('commercial_ref', '').strip()
+
+        if not ref_modele and not commercial_ref:
+            return False
+
+        conditions = []
+        params = []
+        if ref_modele:
+            conditions.append('ref_modele = ?')
+            params.append(ref_modele)
+        if commercial_ref:
+            conditions.append('commercial_ref = ?')
+            params.append(commercial_ref)
+
+        where_clause = ' OR '.join(conditions)
+        query = f"""
+            SELECT type, manufacturer, COUNT(*) as freq
             FROM appareils
-            WHERE ref_modele = ? AND type IS NOT NULL AND manufacturer IS NOT NULL
+            WHERE ({where_clause})
+              AND type IS NOT NULL AND type != ''
+              AND manufacturer IS NOT NULL AND manufacturer != ''
             GROUP BY type, manufacturer
-            ORDER BY count DESC
+            ORDER BY freq DESC
             LIMIT 1
         """
 
-        result = self.db_manager.execute_query(query, [ref_modele])
+        result = self.db_manager.execute_query(query, params)
 
-        if result and len(result) > 0:
-            row = result[0]
-            suggested_type = row[0]
-            suggested_manufacturer = row[1]
-
-            # Auto-compléter si les champs sont manquants
+        if result:
+            found_type, found_manufacturer = result[0][0], result[0][1]
             updated = False
-            if not device_data.get('type', '').strip() and suggested_type:
-                device_data['type'] = suggested_type
+            if type_empty and found_type:
+                device_data['type'] = found_type
                 updated = True
-
-            if not device_data.get('fabricant', '').strip() and suggested_manufacturer:
-                device_data['fabricant'] = suggested_manufacturer
+            if manufacturer_empty and found_manufacturer:
+                device_data['manufacturer'] = found_manufacturer
                 updated = True
-
             return updated
 
         return False
@@ -239,7 +254,7 @@ class DeviceManager(BaseService):
             bool: True si complétion manuelle nécessaire
         """
         # Champs essentiels qui doivent être remplis
-        essential_fields = ['type', 'fabricant']
+        essential_fields = ['type', 'manufacturer']
 
         for field in essential_fields:
             value = device_data.get(field, '').strip()

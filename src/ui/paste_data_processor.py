@@ -403,44 +403,6 @@ class PasteDataProcessor:
         else:
             return {'created': False, 'exists': False, 'description_updated': False}
 
-    @safe_operation(operation_name="auto-complétion", default_return=False)
-    def _try_auto_complete(self, device_data: Dict[str, str]) -> bool:
-        """
-        Tentative d'auto-complétion des données de l'appareil
-
-        Args:
-            device_data: Données de l'appareil à compléter
-
-        Returns:
-            bool: True si complétion réussie, False sinon
-        """
-        # Rechercher des appareils similaires pour auto-complétion
-        if not device_data.get('type') or not device_data.get('manufacturer'):
-            ref_modele = device_data.get('ref_modele', '')
-            commercial_ref = device_data.get('commercial_ref', '')
-
-            if ref_modele or commercial_ref:
-                # Chercher des appareils avec des références similaires
-                search_query = """
-                    SELECT type, manufacturer FROM appareils
-                    WHERE (ref_modele LIKE ? OR commercial_ref LIKE ?)
-                    AND type IS NOT NULL AND type != ''
-                    AND manufacturer IS NOT NULL AND manufacturer != ''
-                    LIMIT 1
-                """
-
-                like_ref = f"%{ref_modele[:5]}%" if len(ref_modele) >= 5 else f"%{commercial_ref[:5]}%"
-                result = self.db_manager.execute_query(search_query, [like_ref, like_ref])
-
-                if result:
-                    if not device_data.get('type'):
-                        device_data['type'] = result[0][0]
-                    if not device_data.get('manufacturer'):
-                        device_data['manufacturer'] = result[0][1]
-                    return True
-
-        return False
-
     def _needs_manual_completion(self, device_data: Dict[str, str]) -> bool:
         """
         Vérifier si l'appareil nécessite une complétion manuelle
