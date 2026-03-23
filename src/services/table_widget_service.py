@@ -185,14 +185,13 @@ class CustomTableWidget(QTableWidget):
         dialog.exec_()
 
     @handle_autocompletion_errors(return_value=[])
-    def _execute_autocomplete_query(self, query_key: str, params: tuple = (), error_context: str = "récupération données") -> List[str]:
+    def _execute_autocomplete_query(self, query_key: str, params: tuple = (), _error_context: str = "récupération données") -> List[str]:
         """
         Méthode générique pour exécuter les requêtes d'auto-complétion
 
         Args:
             query_key: Clé de la requête dans Config.QUERIES
             params: Paramètres pour la requête (tuple)
-            error_context: Contexte d'erreur pour le logging
 
         Returns:
             List[str]: Liste des valeurs récupérées

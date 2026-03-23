@@ -16,23 +16,6 @@ from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
 from src.core.logger import app_logger
 
 
-def _truncate_refs_str(refs_str: str, max_inline: int = 2) -> tuple:
-    """
-    Parse une string de refs séparées par virgules et tronque si nécessaire.
-    Retourne (display_str, full_tooltip).
-    - display_str : "REF1, REF2 … +N" si > max_inline, sinon la string complète.
-    - full_tooltip : string complète si tronquée, sinon "".
-    """
-    if not refs_str:
-        return "", ""
-    parts = [r.strip() for r in refs_str.split(',') if r.strip()]
-    full = ", ".join(parts)
-    if len(parts) <= max_inline:
-        return full, ""
-    shown = ", ".join(parts[:max_inline])
-    return f"{shown}  … +{len(parts) - max_inline}", full
-
-
 def _link_if_truncated(disp: str, tip: str, color: str) -> str:
     """
     Si tip est non-vide (liste tronquée), remplace le '… +N' de disp par un lien HTML.

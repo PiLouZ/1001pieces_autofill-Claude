@@ -441,40 +441,6 @@ class SEOService:
         if hasattr(self.main_window, 'meta_desc_btn'):
             self.main_window.meta_desc_btn.setEnabled(is_piece_search)
     
-    @handle_seo_data_errors(return_value=False, title="Erreur validation données SEO")
-    def validate_seo_data(self, search_data: Dict[str, any]) -> bool:
-        """
-        Valider les données avant génération SEO
-        """
-        # Vérifications de base
-        if not search_data:
-            return False
-
-        if not search_data.get('reference'):
-            return False
-
-        if not search_data.get('description'):
-            return False
-
-        # Vérifier la longueur de la référence
-        if len(search_data['reference']) < 2:
-            return False
-
-        return True
-    
-    @handle_seo_data_errors(return_value={'seo_generator_available': False, 'current_search_valid': False, 'multi_reference_detected': False}, title="Erreur récupération stats SEO")
-    def get_seo_stats(self) -> Dict[str, any]:
-        """
-        Récupérer des statistiques sur l'utilisation SEO
-        """
-        stats = {
-            'seo_generator_available': hasattr(self, 'seo_generator') and self.seo_generator is not None,
-            'current_search_valid': self._get_current_search_data() is not None,
-            'multi_reference_detected': len(self._get_multi_reference_terms()) > 0
-        }
-
-        return stats
-    
     @handle_seo_generation_errors()
     def cleanup(self) -> None:
         """
@@ -483,34 +449,6 @@ class SEOService:
         # Nettoyer le générateur SEO si nécessaire
         if hasattr(self.seo_generator, 'cleanup'):
             self.seo_generator.cleanup()
-    
-    @handle_seo_data_errors(return_value="", title="Erreur formatage description pièce")
-    def _format_piece_description(self, libelle: str) -> str:
-        """
-        Formater la description de pièce avec article et première lettre en minuscule
-        Transforme 'Portillon freezer' en 'portillon freezer' avec article approprié
-
-        Args:
-            libelle: Le libellé brut de la pièce (ex: 'Portillon freezer')
-
-        Returns:
-            str: La description formatée (ex: 'portillon freezer')
-        """
-        if not libelle:
-            return ""
-
-        # Nettoyer le libellé
-        clean_libelle = libelle.strip()
-        if not clean_libelle:
-            return ""
-
-        # Mettre la première lettre en minuscule uniquement
-        if len(clean_libelle) >= 1:
-            formatted = clean_libelle[0].lower() + clean_libelle[1:] if len(clean_libelle) > 1 else clean_libelle.lower()
-        else:
-            formatted = clean_libelle
-
-        return formatted
     
     @handle_seo_data_errors()
     def _get_current_search_data_for_reference(self, specific_reference: str) -> Optional[Dict[str, any]]:
