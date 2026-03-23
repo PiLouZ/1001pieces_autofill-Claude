@@ -43,7 +43,6 @@ class KeyboardTreeWidget(QTreeWidget):
         item = self.itemAt(event.pos())
         if item and item.parent() is not None:  # C'est un appareil (pas un groupe)
             from ..ui.qt_imports import QMenu, QAction
-            from ..ui.qt_imports import QClipboard
             from ..ui.qt_imports import QApplication
 
             menu = QMenu(self)

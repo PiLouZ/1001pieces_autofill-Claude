@@ -1,6 +1,6 @@
 """
-🎯 Module centralisé des imports PyQt5
-Élimine la duplication des imports dans 29 fichiers du projet
+Module centralisé des imports PyQt5
+Élimine la duplication des imports dans les fichiers du projet
 """
 
 # Widgets principaux
@@ -14,9 +14,7 @@ from PyQt5.QtWidgets import (
     QToolBar, QToolButton, QAction, QStatusBar, QSplitter, QTabWidget,
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
-    QDoubleSpinBox, QSlider, QProgressBar, QDateEdit,
-    QTimeEdit, QDateTimeEdit, QCalendarWidget, QSizePolicy,
-    QStackedWidget
+    QProgressBar, QSizePolicy, QStackedWidget
 )
 
 # Core Qt
@@ -24,19 +22,13 @@ from PyQt5.QtCore import (
     Qt, QTimer, QSettings, QEvent, QSize, QRect, QPoint,
     QMimeData, QUrl, QThread, QRunnable, QThreadPool,
     QObject, pyqtSignal, pyqtSlot, QVariant, QModelIndex,
-    QAbstractTableModel, QSortFilterProxyModel, QStringListModel, QByteArray,
-    QIODevice, QTextStream, QFile, QDir, QFileInfo,
-    QStandardPaths, QCoreApplication, QPropertyAnimation,
-    QEasingCurve, QParallelAnimationGroup
+    QAbstractTableModel, QStringListModel
 )
 
 # GUI et graphiques
 from PyQt5.QtGui import (
     QKeySequence, QPainter, QPen, QColor, QBrush, QKeyEvent,
-    QFont, QPixmap, QIcon, QImage, QPalette, QCursor,
-    QValidator, QIntValidator, QDoubleValidator, QRegExpValidator,
-    QTextCursor, QTextDocument, QTextCharFormat, QSyntaxHighlighter,
-    QClipboard, QDrag, QDropEvent, QDragEnterEvent, QDragMoveEvent
+    QFont, QPixmap, QIcon, QImage, QPalette, QCursor
 )
 
 # Types d'événements Qt couramment utilisés

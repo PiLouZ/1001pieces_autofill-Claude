@@ -422,7 +422,7 @@ class TableController:
             return
         # QTableView : signaux via selectionModel()
         self.table.selectionModel().selectionChanged.connect(
-            lambda selected, deselected: on_selection_changed_callback()
+            lambda selected, _: on_selection_changed_callback()
         )
         self.table.selectionModel().currentChanged.connect(
             lambda current, previous: on_selection_changed_callback()

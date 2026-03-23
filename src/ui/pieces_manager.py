@@ -16,7 +16,7 @@ import qtawesome as qta
 from ..core.config import Config
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
-from .pieces_list_service import PieceRelationsPopup, _parse_refs, _truncate_refs_str, _link_if_truncated
+from .pieces_list_service import PieceRelationsPopup, _parse_refs, _link_if_truncated
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 class ActionButtonWidget(QWidget):
@@ -106,14 +106,6 @@ class PiecesTableWidget(QTableWidget):
         """Afficher les boutons d'action pour une ligne - DÉSACTIVÉ"""
         # BOUTONS DE SURVOL SUPPRIMÉS - Méthode désactivée
         return
-        
-        # Calculer la position (colonne des actions - dernière colonne)
-        if self.columnCount() > 0:
-            column = self.columnCount() - 1
-            rect = self.visualItemRect(self.item(row, column))
-            widget.move(rect.right() - widget.width() - 5, rect.top() + 2)
-            widget.show()
-            widget.raise_()
     
     def _on_edit_requested(self, row: int):
         """Signal émis quand édition demandée"""
@@ -271,7 +263,7 @@ class PiecesManagerWindow(QDialog):
         self.pieces_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.pieces_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.pieces_table.itemSelectionChanged.connect(self._on_piece_selected)
-        self.pieces_table.currentItemChanged.connect(lambda cur, prev: self._on_piece_selected())
+        self.pieces_table.currentItemChanged.connect(lambda *_: self._on_piece_selected())
         self.pieces_table.itemDoubleClicked.connect(self._on_double_click_piece)
 
         # ── Layout principal : splitter table | panneau latéral ────────────────

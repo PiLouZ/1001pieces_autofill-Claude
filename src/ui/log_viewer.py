@@ -10,7 +10,7 @@ from .qt_imports import (
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
 )
 from .qt_imports import QTimer, Qt, QSize
-from .qt_imports import QFont, QTextCharFormat, QColor
+from .qt_imports import QFont, QColor
 
 
 def _make_icon_toggle(btn, icon_name, icon_color):

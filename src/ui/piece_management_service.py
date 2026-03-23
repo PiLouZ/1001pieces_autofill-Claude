@@ -13,7 +13,7 @@ Responsabilités:
 from typing import Optional, List, Dict, Any, Set
 from .qt_imports import QListWidgetItem, QMessageBox
 from .qt_imports import Qt, QFrame
-from .pieces_list_service import _truncate_refs_str, _link_if_truncated, PieceRelationsPopup
+from .pieces_list_service import _link_if_truncated, PieceRelationsPopup
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 from src.core.config import Config
@@ -336,7 +336,7 @@ class PieceManagementService:
             else:
                 QMessageBox.warning(dialog, "Erreur de succession", error)
 
-        def _on_remove_superseded_by(ref_new_chip: str):
+        def _on_remove_superseded_by(_ref_new_chip: str):
             db.remove_supersession(ref_piece)
             _succ_history(f"Succession :\n==> '{ref_piece}' → (succession annulée)")
             _refresh_succ()

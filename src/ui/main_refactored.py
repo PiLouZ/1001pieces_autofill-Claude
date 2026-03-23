@@ -27,16 +27,16 @@ from datetime import datetime
 from .message_helper import MessageHelper, CommonMessages, show_success, show_error, ask_confirmation
 from .dialog_manager import DialogManager
 from ..utils.error_handler import (
-    handle_errors, handle_database_errors, SafeOperation,
+    handle_errors, handle_database_errors,
     handle_ui_errors, handle_ui_column_errors,
     handle_database_operation_errors, handle_ui_operation_errors,
     handle_table_operations_errors, handle_navigation_errors,
     handle_export_errors, handle_import_errors, handle_validation_errors,
-    handle_file_errors, handle_log_viewer_errors, handle_export_operation_errors,
+    handle_file_errors, handle_log_viewer_errors,
     handle_data_management_errors, handle_drag_operation_errors,
     handle_event_handler_errors, handle_ui_update_errors
 )
-from ..core.constants import UIConfig, Messages, DatabaseConfig, FileExtensions
+from ..core.constants import UIConfig, Messages, DatabaseConfig
 
 from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
@@ -716,8 +716,7 @@ class MainWindow(QMainWindow):
         """Configure l'interception du collage pour le champ de recherche"""
         from .qt_imports import QLineEdit
         from .qt_imports import QEvent
-        from .qt_imports import QClipboard
-        
+
         class PasteInterceptor(QLineEdit):
             def __init__(self, parent_window, paste_service):
                 super().__init__()
