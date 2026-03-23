@@ -87,6 +87,8 @@ class AppExportService(BaseService):
 
         def _on_finished(result):
             progress_dlg.close()
+            self._worker.wait()
+            self._worker = None
             if result['success']:
                 # Régénérer aussi le lanceur .app sur la machine source
                 spec = importlib.util.spec_from_file_location('export_app', _EXPORT_SCRIPT)

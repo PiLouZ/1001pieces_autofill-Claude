@@ -1526,6 +1526,7 @@ class ImportManager:
 
         def _on_finished(results):
             progress.close()
+            worker.wait()
             results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
             if hasattr(self, 'main_window') and self.main_window:
                 self._trigger_post_import_updates()
@@ -1536,6 +1537,7 @@ class ImportManager:
 
         def _on_error(msg):
             progress.close()
+            worker.wait()
             app_logger.error(f"Import worker : {msg}")
             if callback:
                 callback(None)
@@ -1691,6 +1693,7 @@ class ImportManager:
 
         def _on_finished(results):
             progress.close()
+            worker.wait()
             results['import_source'] = 'drag_drop'
             results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
             if hasattr(self, 'main_window') and self.main_window:
@@ -1702,6 +1705,7 @@ class ImportManager:
 
         def _on_error(msg):
             progress.close()
+            worker.wait()
             app_logger.error(f"Import worker (drag-drop) : {msg}")
             if callback:
                 callback(None)
