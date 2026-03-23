@@ -34,6 +34,20 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - Fix dialogue Colonnes (Affichage → Colonnes) : boutons Réinitialiser/Annuler stylés compact ; Appliquer en vert `#28a745` + `fa5s.check`
 - Nettoyage `database_manager` : suppression commentaires `print` et méthode morte `analyze_piece_duplicates`
 
+**Audit code mort — vulture (session 2026-03-23)**
+- `qt_imports.py` : suppression de 30+ re-exports non utilisés dans le codebase (QtWidgets, QtCore, QtGui)
+- `main_refactored.py` : suppression des imports morts `SafeOperation`, `handle_export_operation_errors`, `FileExtensions`, `QClipboard` (local)
+- `cleanup_ui_service.py` : suppression import `QClipboard` inutilisé (le corps utilise `QApplication.clipboard()`)
+- `log_viewer.py` : suppression import `QTextCharFormat` inutilisé
+- `pieces_manager.py` : suppression `_truncate_refs_str` de l'import, suppression code mort après `return`, `lambda *_` pour paramètres ignorés
+- `piece_management_service.py` : suppression `_truncate_refs_str` de l'import, préfixe `_` sur paramètre ignoré `_ref_new_chip`
+- `table_controller.py` : `lambda selected, _` pour le paramètre `deselected` ignoré
+
+**Refacto — factorisation logique d'édition de pièce**
+- `pieces_list_service.py` : ajout `_format_piece_edit_history()` — fonction partagée pour construire le message d'historique lors d'une édition de pièce
+- `pieces_manager._do_edit_piece` : utilise `_format_piece_edit_history()` + ajout validation caractères `||`/`&&` (alignement avec `piece_management_service`)
+- `piece_management_service.edit_piece` : utilise `_format_piece_edit_history()` — suppression des 8 lignes de construction manuelle dupliquée
+
 ---
 
 ## [3.33.0] - 2026-03-18
