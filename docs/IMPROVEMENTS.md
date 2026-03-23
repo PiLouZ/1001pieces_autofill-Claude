@@ -14,12 +14,12 @@ Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 | 1 | Perf | N+1 queries dans `pieces_count_service` | Faible | Élevé | ✅ |
 | 2 | Perf | `processEvents()` dans une boucle | Faible | Élevé | ✅ |
 | 3 | Perf | Recherche linéaire `find_row_by_db_id()` | Faible | Moyen | ✅ |
-| 4 | Perf | `load_data()` + `count_data()` séquentiels | Moyen | Moyen | ✅ |
+| 4 | Perf | `load_data()` + `count_data()` séquentiels | Moyen | Moyen | ⬜ |
 | 5 | Perf | Requêtes LIKE `%terme%` sans index | Élevé | Moyen | ✅ |
 | 6 | Perf | Pas de virtual scrolling (fetchMore) | Élevé | Moyen | ✅ |
-| 7 | UX | Message "aucun résultat" | Faible | Moyen | ✅ |
-| 8 | UX | Masquer la pagination si inutile | Faible | Faible | ✅ |
-| 9 | UX | Notification filtre incomplets désactivé | Faible | Faible | ✅ |
+| 7 | UX | Message "aucun résultat" | Faible | Moyen | ⬜ |
+| 8 | UX | Masquer la pagination si inutile | Faible | Faible | ⬜ |
+| 9 | UX | Notification filtre incomplets désactivé | Faible | Faible | ⬜ |
 | 10 | UX | Raccourcis clavier non documentés | Faible | Faible | ✅ |
 
 ---
@@ -28,7 +28,7 @@ Légende : ⬜ À faire · 🔄 En cours · ✅ Terminé · ⚠️ Bloqué
 
 ---
 
-### 1 — N+1 queries dans `pieces_count_service` ⬜
+### 1 — N+1 queries dans `pieces_count_service` ✅
 
 **Catégorie** : Performance
 **Effort** : Faible · **Impact** : Élevé
@@ -50,7 +50,7 @@ Puis mapper les résultats en mémoire vers les lignes du tableau.
 
 ---
 
-### 2 — `processEvents()` dans une boucle ⬜
+### 2 — `processEvents()` dans une boucle ✅
 
 **Catégorie** : Performance
 **Effort** : Faible · **Impact** : Élevé
@@ -66,7 +66,7 @@ Déplacer le `QApplication.processEvents()` **après** la boucle, pas à l'inté
 
 ---
 
-### 3 — Recherche linéaire `find_row_by_db_id()` ⬜
+### 3 — Recherche linéaire `find_row_by_db_id()` ✅
 
 **Catégorie** : Performance
 **Effort** : Faible · **Impact** : Moyen
@@ -187,7 +187,7 @@ Afficher un message dans la barre de statut ou un toast bref :
 
 ---
 
-### 10 — Raccourcis clavier non documentés ⬜
+### 10 — Raccourcis clavier non documentés ✅
 
 **Catégorie** : UX
 **Effort** : Faible · **Impact** : Faible
@@ -204,4 +204,4 @@ Option B : panneau d'aide `?` listant tous les raccourcis disponibles
 
 ---
 
-*Dernière mise à jour : 2026-03-11*
+*Dernière mise à jour : 2026-03-23*
