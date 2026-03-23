@@ -300,6 +300,7 @@ class PieceManagementService:
         succ_inner.addLayout(sup_row)
 
         superseded_by_tags = RefTagList()
+        superseded_by_tags.set_compact(True)
         succ_inner.addWidget(superseded_by_tags)
 
         rep_row, btn_replaces = _section_header(
@@ -309,6 +310,7 @@ class PieceManagementService:
         succ_inner.addLayout(rep_row)
 
         replaces_tags = RefTagList()
+        replaces_tags.set_compact(True)
         succ_inner.addWidget(replaces_tags)
 
         layout.addWidget(succ_container)
@@ -460,6 +462,7 @@ class PieceManagementService:
         layout.addWidget(equiv_status)
 
         equiv_tags = RefTagList()
+        equiv_tags.set_compact(True)
         layout.addWidget(equiv_tags)
 
         layout.addStretch()

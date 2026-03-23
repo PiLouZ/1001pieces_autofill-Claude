@@ -32,6 +32,7 @@ class RefTagList(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._compact = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -81,18 +82,23 @@ class RefTagList(QWidget):
             row_widget = self._make_row(ref, desc, color)
             self._layout.addWidget(row_widget)
 
-        # Ancrer les chips en haut de la zone (évite l'étirement vertical)
-        self._layout.addStretch()
+        # Ancrer les chips en haut (évite l'étirement vertical) — sauf en mode compact
+        if not self._compact:
+            self._layout.addStretch()
 
         n = len(refs)
         if not self._full_height_mode:
             if n == 0:
                 self.setVisible(False)
             else:
-                natural_h = n * 31 + 4
+                natural_h = (n * 24 + 4) if self._compact else (n * 31 + 4)
                 self._scroll.setFixedHeight(min(natural_h, self.MAX_HEIGHT))
                 self.setVisible(True)
         # else: in full_height_mode, always visible, height managed by parent layout
+
+    def set_compact(self, compact: bool):
+        """Mode compact : hauteur réduite au strict minimum, sans stretch sous les chips."""
+        self._compact = compact
 
     def get_refs(self) -> list:
         return list(self._refs)
