@@ -10,28 +10,32 @@ from .error_handler import handle_seo_generation_errors
 class SEOGenerator:
     """Générateur de métadonnées SEO pour pièces détachées électroménager"""
     
-    # Variantes pour les méta descriptions (inspiré du script.js)
+    # Pool unique de méta descriptions (18 templates — angles variés)
     META_DESCRIPTION_TEMPLATES = [
-        "Commandez {description} {reference} pour {type_appareil} {fabricants} chez un spécialiste des pièces détachées électroménager",
-        "Obtenez {description} {reference} pour {type_appareil} {fabricants} auprès d'un expert des pièces détachées",
-        "Achetez {description} {reference} pour {type_appareil} {fabricants} chez un fournisseur fiable de pièces détachées",
-        "Découvrez {description} {reference} pour {type_appareil} {fabricants} et réparez vos appareils électroménagers facilement",
-        "Trouvez {description} {reference} pour {type_appareil} {fabricants} chez le spécialiste de la réparation électroménager",
-        "Commandez {description} {reference} pour {type_appareil} {fabricants} chez un expert de la réparation d'appareils",
-        "Obtenez {description} {reference} pour {type_appareil} {fabricants} et réparez facilement vos appareils",
-        "Achetez {description} {reference} pour {type_appareil} {fabricants} et redonnez vie à vos appareils électroménagers",
-        "Retrouvez {description} {reference} pour {type_appareil} {fabricants} pour réparer vos appareils électroménagers",
-        "Découvrez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste pièces détachées",
+        # Achat direct
+        "Commandez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste pièces détachées",
+        "Achetez {description} {reference} pour {type_appareil} {fabricants} — livraison rapide, retour facile",
+        "Trouvez {description} {reference} pour {type_appareil} {fabricants} chez un expert de la réparation électroménager",
+        "Découvrez {description} {reference} pour {type_appareil} {fabricants} chez le spécialiste de la pièce détachée",
+        # Réparation
         "Réparez votre {type_appareil} {fabricants} avec {description} {reference} — livraison rapide chez votre spécialiste",
-        "En panne ? {description} {reference} pour {type_appareil} {fabricants} disponible chez votre réparateur agréé",
-    ]
-
-    # Templates avec comptage de modèles compatibles (utilisés quand n_modeles > 0)
-    META_DESCRIPTION_COMPATIBLE_TEMPLATES = [
-        "Commandez {description} {reference} — compatible avec {n_modeles} modèles {type_appareil} {fabricants}",
-        "Trouvez {description} {reference} compatible avec {n_modeles} modèles {type_appareil} {fabricants}",
-        "Achetez {description} {reference} — pièce compatible avec {n_modeles} appareils {fabricants}",
-        "Réparez votre {type_appareil} {fabricants} : {description} {reference}, compatible {n_modeles} modèles",
+        "Retrouvez {description} {reference} pour {type_appareil} {fabricants} et réparez votre appareil vous-même",
+        "Redonnez vie à votre {type_appareil} {fabricants} avec {description} {reference} — pièce disponible immédiatement",
+        # Stock / disponibilité
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce d'origine, expédition rapide",
+        "{description_cap} {reference} en stock pour {type_appareil} {fabricants} — commandez chez votre spécialiste électroménager",
+        "{description_cap} {reference} — pièce détachée disponible pour {type_appareil} {fabricants}, expédition rapide",
+        # Question / besoin
+        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} est disponible chez votre réparateur agréé",
+        "Besoin de {description} {reference} pour {type_appareil} {fabricants} ? Trouvez-la chez votre spécialiste",
+        "Votre {type_appareil} {fabricants} tombe en panne ? {description_cap} {reference} est la solution — commandez maintenant",
+        "Panne sur votre {type_appareil} {fabricants} ? Remplacez {description} avec la référence {reference} chez votre spécialiste",
+        # Réparer plutôt que remplacer
+        "Évitez le remplacement — réparez votre {type_appareil} {fabricants} avec {description} {reference} chez votre spécialiste",
+        "Réparer plutôt que jeter : {description} {reference} pour {type_appareil} {fabricants} chez votre expert pièces détachées",
+        # DIY
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — réparez facilement votre appareil sans faire appel à un technicien",
+        "Faites-le vous-même : {description} {reference} pour {type_appareil} {fabricants}, la réparation à portée de main",
     ]
 
     # Templates spécifiques aux pièces remplacées (ref_old → ref_current)
@@ -191,8 +195,6 @@ class SEOGenerator:
         # ── Choisir le pool de templates selon le contexte ───────────────────
         if ref_obsolete:
             template = random.choice(self.META_DESCRIPTION_SUPERSEDED_TEMPLATES)
-        elif n_modeles > 0:
-            template = random.choice(self.META_DESCRIPTION_COMPATIBLE_TEMPLATES)
         else:
             template = random.choice(self.META_DESCRIPTION_TEMPLATES)
 
@@ -203,14 +205,13 @@ class SEOGenerator:
         # ── Instancier le template ────────────────────────────────────────────
         fmt_kwargs = dict(
             description=description_with_article,
+            description_cap=self._adjust_first_char(description_with_article, upper=True),
             reference=reference_clean,
             type_appareil=type_clean,
             fabricants=fabricants_str,
         )
         if ref_obsolete:
             fmt_kwargs['ref_old'] = ref_obsolete.strip()
-        if n_modeles > 0:
-            fmt_kwargs['n_modeles'] = n_modeles
 
         description_text = template.format(**fmt_kwargs)
 
