@@ -472,166 +472,145 @@ class ImportDialog(QDialog):
         format_layout.addWidget(self.mapping_container)
 
         format_group.setLayout(format_layout)
+        format_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout.addWidget(format_group)
         
         # Section référence commune (pour multi-fichiers)
         if self.import_config.import_type == ImportType.MULTI_FILE:
             ref_group = QGroupBox("Référence commune optionnelle")
             ref_layout = QVBoxLayout()
-            
-            # Texte d'explication avec hauteur augmentée
-            ref_info = QLabel("💡 La référence commune sera associée à TOUS les appareils importés")
-            ref_info.setStyleSheet("color: #666; font-style: italic; margin-bottom: 10px; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
-            ref_info.setMinimumHeight(50)
-            ref_info.setWordWrap(True)
-            ref_layout.addWidget(ref_info)
-            
-            # Champs référence et libellé sur une seule ligne
-            fields_layout = QHBoxLayout()
-            
-            # Référence commune (1/4 de la largeur)
-            ref_label = QLabel("Référence:")
-            ref_label.setStyleSheet("font-weight: bold;")
-            ref_label.setMinimumWidth(80)
-            fields_layout.addWidget(ref_label)
-            
+            ref_layout.setSpacing(6)
+
+            # Ligne 1 : Référence (largeur fixe) + icône info
+            row_ref = QHBoxLayout()
+            row_ref.setSpacing(6)
+            ref_lbl = QLabel("Référence:")
+            ref_lbl.setStyleSheet("font-weight: bold;")
+            ref_lbl.setFixedWidth(90)
+            row_ref.addWidget(ref_lbl)
             self.common_ref_input = QLineEdit()
-            self.common_ref_input.setPlaceholderText("GAUxxxxxx, FARxxxxxxx")
-            self.common_ref_input.setMinimumHeight(35)
-            fields_layout.addWidget(self.common_ref_input, 1)  # 1 part
-            
-            # Libellé/Description (3/4 de la largeur)
-            desc_label = QLabel("Description:")
-            desc_label.setStyleSheet("font-weight: bold; margin-left: 15px;")
-            desc_label.setMinimumWidth(80)
-            fields_layout.addWidget(desc_label)
-            
+            self.common_ref_input.setPlaceholderText("GAUxxxxxx")
+            self.common_ref_input.setFixedWidth(170)  # ~20 caractères
+            row_ref.addWidget(self.common_ref_input)
+            try:
+                import qtawesome as qta
+                info_btn = QPushButton()
+                info_btn.setIcon(qta.icon('fa5s.info-circle', color='#0066cc'))
+                info_btn.setIconSize(QSize(13, 13))
+                info_btn.setFixedSize(20, 20)
+                info_btn.setFlat(True)
+                info_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
+                info_btn.setToolTip(
+                    "La référence commune sera associée à TOUS les appareils importés.\n"
+                    "Elle sera créée et enregistrée dans la base de données\n"
+                    "comme toute autre référence de pièce."
+                )
+                row_ref.addWidget(info_btn)
+            except Exception:
+                pass
+            row_ref.addStretch()
+            ref_layout.addLayout(row_ref)
+
+            # Ligne 2 : Description + checkbox
+            row_desc = QHBoxLayout()
+            row_desc.setSpacing(8)
+            desc_lbl2 = QLabel("Description:")
+            desc_lbl2.setStyleSheet("font-weight: bold;")
+            desc_lbl2.setFixedWidth(90)
+            row_desc.addWidget(desc_lbl2)
             self.common_ref_description = QLineEdit()
-            self.common_ref_description.setPlaceholderText("Description lisible (ex: Lot pièces lave-vaisselle mars 2024)")
-            self.common_ref_description.setMinimumHeight(35)
-            fields_layout.addWidget(self.common_ref_description, 3)  # 3 parts
-            
-            ref_layout.addLayout(fields_layout)
-            
-            # Layout pour aligner la case à cocher avec le champ Description
-            checkbox_layout = QHBoxLayout()
-            checkbox_layout.setContentsMargins(0, 5, 0, 0)
-            
-            # Espace vide pour aligner avec le début du champ Description
-            spacer_left = QWidget()
-            spacer_left.setFixedWidth(95)  # Largeur du label "Référence:" (80px) + margin (15px)
-            checkbox_layout.addWidget(spacer_left)
-            
-            # Case à cocher alignée avec le champ Description
-            self.apply_to_individual_checkbox = QCheckBox("Appliquer aux références individuelles")
-            self.apply_to_individual_checkbox.setChecked(True)
-            self.apply_to_individual_checkbox.setStyleSheet("font-weight: bold;")
-            self.apply_to_individual_checkbox.setToolTip("Applique automatiquement cette description à toutes les références individuelles")
-            # Connecter la case à cocher pour dupliquer automatiquement le libellé
-            self.apply_to_individual_checkbox.stateChanged.connect(self._on_apply_to_individual_changed)
-            # Connecter le champ de description commun pour mise à jour en temps réel
+            self.common_ref_description.setPlaceholderText("Ex : Lot pièces lave-vaisselle mars 2024")
             self.common_ref_description.textChanged.connect(self._on_common_description_changed)
-            checkbox_layout.addWidget(self.apply_to_individual_checkbox)
-            
-            # Espace vide à droite pour équilibrer
-            checkbox_layout.addStretch()
-            
-            ref_layout.addLayout(checkbox_layout)
-            
+            row_desc.addWidget(self.common_ref_description)
+            self.apply_to_individual_checkbox = QCheckBox("Appliquer aux réf. individuelles")
+            self.apply_to_individual_checkbox.setChecked(True)
+            self.apply_to_individual_checkbox.setStyleSheet("font-size: 11px;")
+            self.apply_to_individual_checkbox.setToolTip(
+                "Duplique automatiquement cette description dans tous les champs libellé individuels"
+            )
+            self.apply_to_individual_checkbox.stateChanged.connect(self._on_apply_to_individual_changed)
+            row_desc.addWidget(self.apply_to_individual_checkbox)
+            ref_layout.addLayout(row_desc)
+
             ref_group.setLayout(ref_layout)
             layout.addWidget(ref_group)
         
-        # Section références individuelles par fichier avec ascenseur
-        individual_group = QGroupBox("Références individuelles par fichier")
-        individual_layout = QVBoxLayout()
-        
-        # Info et option de génération automatique des références
-        info_and_option_layout = QVBoxLayout()
-        info_and_option_layout.setContentsMargins(0, 0, 0, 0)
-        info_and_option_layout.setSpacing(8)
-        
-        individual_info = QLabel("💡 Génération automatique des références de pièces basées sur les noms de fichiers")
-        individual_info.setStyleSheet("color: #666; font-style: italic; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
-        individual_info.setWordWrap(True)
-        info_and_option_layout.addWidget(individual_info)
-        
-        # Case à cocher pour activer/désactiver les références automatiques
-        self.auto_file_references_checkbox = QCheckBox("Associer automatiquement les noms de fichiers comme références de pièces")
-        self.auto_file_references_checkbox.setToolTip("Si coché, chaque fichier génère automatiquement une référence de pièce basée sur son nom.\nSi décoché, seuls les données contenues dans les fichiers sont importées.")
-        self.auto_file_references_checkbox.setStyleSheet("font-weight: bold; color: #333; margin-left: 10px;")
-        
-        # Définir la valeur par défaut selon le type de fichiers
-        has_pdf = any(f.type == FileType.PDF for f in self.import_config.files)
-        has_csv = any(f.type == FileType.CSV for f in self.import_config.files)
-        
-        if has_pdf and not has_csv:
-            # Que des PDF -> coché par défaut
-            self.auto_file_references_checkbox.setChecked(True)
-        elif has_csv and not has_pdf:
-            # Que des CSV -> décoché par défaut  
-            self.auto_file_references_checkbox.setChecked(False)
-        else:
-            # Mélange -> coché par défaut (plus sûr)
-            self.auto_file_references_checkbox.setChecked(True)
-        
-        # Connecter pour mettre à jour l'affichage
-        self.auto_file_references_checkbox.stateChanged.connect(self._on_auto_references_changed)
-        info_and_option_layout.addWidget(self.auto_file_references_checkbox)
-        
-        individual_layout.addLayout(info_and_option_layout)
-        
-        # Zone scrollable pour les références individuelles - ADAPTATIVE
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # Ascenseur selon besoin
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Pas d'ascenseur horizontal
-        
-        # Calculer la hauteur adaptative selon le nombre de fichiers
-        num_files = len(self.import_config.files)
-        line_height = 45  # Hauteur fixe par ligne (fichier) sans espacement
-        base_height = 40   # Hauteur de base réduite pour les marges (20px top + 20px bottom)
-        calculated_height = base_height + (num_files * line_height)
-        
-        scroll_area.setMinimumHeight(80)
-        scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
-        scroll_widget = QWidget()
-        scroll_widget.setObjectName("scroll_content")
-        
-        self.individual_refs_widget = QVBoxLayout(scroll_widget)
-        self.individual_refs_widget.setContentsMargins(10, 10, 10, 10)  # Marges adaptées
-        self.individual_refs_widget.setSpacing(0)  # Pas d'espacement entre les lignes pour optimiser l'espace
-        self.individual_refs_widget.setAlignment(Qt.AlignTop)  # Aligner en haut au lieu du centre
-        
-        # Liste pour garder les références des champs de description individuels
         self.individual_desc_fields = []
-        
-        scroll_area.setWidget(scroll_widget)
-        
-        individual_layout.addWidget(scroll_area)
-        individual_group.setLayout(individual_layout)
-        individual_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(individual_group, 1)  # stretch=1 → prend l'espace vertical disponible
-        
-        # Section aperçu des données supprimée pour améliorer la lisibilité
-        
-        # Section succession (fichier unique uniquement)
-        self.succ_replaces_input = None
-        self.succ_replaced_by_input = None
-        self._succ_button_group = None
-        self._succ_radio_files = []
-        self._equiv_checkboxes = []    # [(QCheckBox, ImportFile), ...]
-        self._obsolete_checkbox = None # Fichier unique : checkbox "Marquer obsolète"
-        self._obsolete_checkboxes = [] # Multi-fichiers : [(QCheckBox, ImportFile), ...]
 
         if len(self.import_config.files) == 1:
-            # Section succession repliable par défaut
+            # ── Section "Référence de pièce" compacte (fichier unique) ──────────
+            file = self.import_config.files[0]
+            ref_group = QGroupBox("Référence de pièce")
+            ref_group_layout = QVBoxLayout()
+            ref_group_layout.setSpacing(8)
+
+            # Ligne : Réf.
+            ref_row = QHBoxLayout()
+            ref_row_lbl = QLabel("Réf.:")
+            ref_row_lbl.setStyleSheet("font-weight: bold;")
+            ref_row_lbl.setFixedWidth(70)
+            ref_row.addWidget(ref_row_lbl)
+            if file.type == FileType.CLIPBOARD:
+                ref_input_edit = QLineEdit()
+                ref_input_edit.setPlaceholderText("Référence pièce (ex: AS6015830)")
+                ref_input_edit.setObjectName(f"ref_input_{file.path}")
+                ref_input_edit.setStyleSheet("padding: 5px; border: 2px solid #0066cc; border-radius: 4px;")
+                ref_row.addWidget(ref_input_edit)
+            else:
+                ref_display = QLabel(f"→ Réf: {file.suggested_reference or '—'}")
+                ref_display.setStyleSheet(
+                    "color: #0066cc; background-color: #f0f8ff; padding: 4px 8px;"
+                    " border: 1px solid #ddd; border-radius: 4px; font-weight: bold;"
+                )
+                ref_display.setObjectName(f"ref_display_{file.path}")
+                ref_row.addWidget(ref_display)
+            ref_group_layout.addLayout(ref_row)
+
+            # Ligne : Libellé
+            desc_row = QHBoxLayout()
+            desc_row_lbl = QLabel("Libellé:")
+            desc_row_lbl.setStyleSheet("font-weight: bold;")
+            desc_row_lbl.setFixedWidth(70)
+            desc_row.addWidget(desc_row_lbl)
+            desc_input = QLineEdit()
+            desc_input.setPlaceholderText("Description optionnelle")
+            desc_input.setObjectName(f"desc_{file.path}")
+            desc_row.addWidget(desc_input)
+            ref_group_layout.addLayout(desc_row)
+            self.individual_desc_fields.append(desc_input)
+
+            # Checkbox obsolète — toujours visible dans la section principale
+            self._obsolete_checkbox = QCheckBox("Marquer comme obsolète (pièce plus fabriquée)")
+            self._obsolete_checkbox.setToolTip(
+                "Cochez si cette pièce est obsolète (plus fabriquée).\n"
+                "Elle restera visible mais sera marquée Obsolète."
+            )
+            self._obsolete_checkbox.setStyleSheet("color: #c0392b; font-size: 11px;")
+            ref_group_layout.addWidget(self._obsolete_checkbox)
+
+            ref_group.setLayout(ref_group_layout)
+            layout.addWidget(ref_group)
+
+            # Checkbox masquée toujours cochée — pour compatibilité _validate_and_accept
+            self.auto_file_references_checkbox = QCheckBox()
+            self.auto_file_references_checkbox.setChecked(True)
+            self.auto_file_references_checkbox.setVisible(False)
+            layout.addWidget(self.auto_file_references_checkbox)
+
+            # ── Section succession repliable (liens entre réfs uniquement) ──────
+            self.succ_replaces_input = None
+            self.succ_replaced_by_input = None
+            self._succ_button_group = None
+            self._succ_radio_files = []
+            self._equiv_checkboxes = []
+            self._obsolete_checkboxes = []
+
             succ_container = QWidget()
             succ_container_layout = QVBoxLayout(succ_container)
             succ_container_layout.setContentsMargins(0, 0, 0, 0)
             succ_container_layout.setSpacing(4)
 
-            self._succ_toggle_btn = QPushButton("▶  Succession (optionnel)")
+            self._succ_toggle_btn = QPushButton("▼  Succession (optionnel)")
             self._succ_toggle_btn.setFlat(True)
             self._succ_toggle_btn.setCursor(Qt.PointingHandCursor)
             self._succ_toggle_btn.setStyleSheet(
@@ -644,13 +623,13 @@ class ImportDialog(QDialog):
 
             self._succ_content = QWidget()
             self._succ_content.setStyleSheet(
-                "QWidget { background: #fffde7; border: 1px solid #f0e68c; border-radius: 4px; }"
+                "QWidget { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; }"
             )
             succ_layout = QVBoxLayout(self._succ_content)
             succ_layout.setContentsMargins(12, 8, 12, 8)
             succ_layout.setSpacing(6)
 
-            succ_info = QLabel("💡 Déclarez ici si cette référence est liée à une succession de pièces déjà en base.")
+            succ_info = QLabel("Déclarez ici si cette référence est liée à une succession de pièces déjà en base.")
             succ_info.setStyleSheet(
                 "color: #666; font-style: italic; padding: 4px; background: transparent; border: none;"
             )
@@ -665,6 +644,7 @@ class ImportDialog(QDialog):
             self.succ_replaces_input = QLineEdit()
             self.succ_replaces_input.setPlaceholderText("Ancienne réf. remplacée par cette réf. (ex : REF123)")
             self.succ_replaces_input.setMinimumHeight(30)
+            self.succ_replaces_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px;")
             row1.addWidget(self.succ_replaces_input)
             succ_layout.addLayout(row1)
 
@@ -676,25 +656,81 @@ class ImportDialog(QDialog):
             self.succ_replaced_by_input = QLineEdit()
             self.succ_replaced_by_input.setPlaceholderText("Nouvelle réf. qui remplace cette réf. (ex : REF456)")
             self.succ_replaced_by_input.setMinimumHeight(30)
+            self.succ_replaced_by_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px;")
             row2.addWidget(self.succ_replaced_by_input)
             succ_layout.addLayout(row2)
 
-            row3 = QHBoxLayout()
-            self._obsolete_checkbox = QCheckBox("Marquer cette référence comme obsolète")
-            self._obsolete_checkbox.setToolTip(
-                "Cochez si cette pièce est obsolète (plus fabriquée).\n"
-                "Elle restera visible mais affichera ⚠ Obsolète."
-            )
-            self._obsolete_checkbox.setStyleSheet(
-                "color: #c0392b; font-size: 11px; background: transparent; border: none;"
-            )
-            row3.addWidget(self._obsolete_checkbox)
-            row3.addStretch()
-            succ_layout.addLayout(row3)
-
-            self._succ_content.setVisible(False)
+            self._succ_content.setVisible(True)
             succ_container_layout.addWidget(self._succ_content)
             layout.addWidget(succ_container)
+            layout.addStretch(1)  # absorbe l'espace restant → format_group reste à hauteur naturelle
+
+        else:
+            # ── Mode multi-fichiers — scroll area références individuelles ───────
+            self.succ_replaces_input = None
+            self.succ_replaced_by_input = None
+            self._succ_button_group = None
+            self._succ_radio_files = []
+            self._equiv_checkboxes = []
+            self._obsolete_checkbox = None
+            self._obsolete_checkboxes = []
+
+            individual_group = QGroupBox("Références individuelles par fichier")
+            individual_layout = QVBoxLayout()
+
+            info_and_option_layout = QVBoxLayout()
+            info_and_option_layout.setContentsMargins(0, 0, 0, 0)
+            info_and_option_layout.setSpacing(8)
+
+            individual_info = QLabel("Génération automatique des références de pièces basées sur les noms de fichiers")
+            individual_info.setStyleSheet("color: #666; font-style: italic; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
+            individual_info.setWordWrap(True)
+            info_and_option_layout.addWidget(individual_info)
+
+            self.auto_file_references_checkbox = QCheckBox("Associer automatiquement les noms de fichiers comme références de pièces")
+            self.auto_file_references_checkbox.setToolTip(
+                "Si coché, chaque fichier génère automatiquement une référence de pièce basée sur son nom.\n"
+                "Si décoché, seuls les données contenues dans les fichiers sont importées."
+            )
+            self.auto_file_references_checkbox.setStyleSheet("font-weight: bold; color: #333; margin-left: 10px;")
+
+            has_pdf = any(f.type == FileType.PDF for f in self.import_config.files)
+            has_csv = any(f.type == FileType.CSV for f in self.import_config.files)
+
+            if has_pdf and not has_csv:
+                self.auto_file_references_checkbox.setChecked(True)
+            elif has_csv and not has_pdf:
+                self.auto_file_references_checkbox.setChecked(False)
+            else:
+                self.auto_file_references_checkbox.setChecked(True)
+
+            self.auto_file_references_checkbox.stateChanged.connect(self._on_auto_references_changed)
+            info_and_option_layout.addWidget(self.auto_file_references_checkbox)
+
+            individual_layout.addLayout(info_and_option_layout)
+
+            scroll_area = QScrollArea()
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+            scroll_area.setMinimumHeight(80)
+            scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            scroll_widget = QWidget()
+            scroll_widget.setObjectName("scroll_content")
+
+            self.individual_refs_widget = QVBoxLayout(scroll_widget)
+            self.individual_refs_widget.setContentsMargins(10, 10, 10, 10)
+            self.individual_refs_widget.setSpacing(6)  # espacement entre cartes
+            self.individual_refs_widget.setAlignment(Qt.AlignTop)
+
+            scroll_area.setWidget(scroll_widget)
+
+            individual_layout.addWidget(scroll_area)
+            individual_group.setLayout(individual_layout)
+            individual_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            layout.addWidget(individual_group, 1)
 
         # Boutons
         buttons_layout = QHBoxLayout()
@@ -744,92 +780,103 @@ class ImportDialog(QDialog):
         # Analyser les formats et remplir l'aperçu
         self._analyze_formats_and_preview()
         
-        # Références individuelles par fichier - FORMAT ORIGINAL : UNE LIGNE PAR PIÈCE
-        for i, file in enumerate(self.import_config.files):
+        # Références individuelles par fichier — multi-fichiers uniquement
+        # (fichier unique : champs créés dans _setup_ui, section "Référence de pièce")
+        for i, file in (enumerate(self.import_config.files) if len(self.import_config.files) > 1 else []):
             
-            # Créer un widget conteneur pour chaque ligne avec hauteur fixe
+            # ── Carte 2 lignes par fichier ───────────────────────────────────
             file_container = QWidget()
-            file_container.setFixedHeight(45)  # Hauteur fixe pour éviter les chevauchements
-            file_container.setContentsMargins(0, 0, 0, 0)
-            
-            # UNE SEULE ligne horizontale par fichier (format original simplifié)
-            file_layout = QHBoxLayout(file_container)
-            file_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)  # Aligner à gauche et en haut
-            file_layout.setContentsMargins(5, 5, 5, 5)  # Marges pour l'espacement
-            file_layout.setSpacing(8)  # Espacement réduit entre éléments
-            
-            # Nom du fichier (style original simplifié)
-            file_label = QLabel(f" {file.filename}:")
-            file_label.setMinimumWidth(200)
-            file_label.setStyleSheet("font-weight: bold;")
-            file_layout.addWidget(file_label)
-            
-            # Référence — éditable pour le clipboard, label pour les fichiers
+            file_container.setStyleSheet(
+                "QWidget { background: white; border: 1px solid #e9ecef; border-radius: 4px; }"
+            )
+            card_layout = QVBoxLayout(file_container)
+            card_layout.setContentsMargins(10, 6, 10, 6)
+            card_layout.setSpacing(4)
+
+            # Ligne 1 : référence (gauche) + nom de fichier (droite, flex)
+            row1 = QHBoxLayout()
+            row1.setSpacing(8)
+
             if file.type == FileType.CLIPBOARD:
-                ref_lbl = QLabel("Référence:")
-                ref_lbl.setStyleSheet("font-weight: bold;")
-                ref_lbl.setMinimumWidth(80)
-                file_layout.addWidget(ref_lbl)
                 ref_input_edit = QLineEdit()
                 ref_input_edit.setPlaceholderText("Référence pièce (ex: AS6015830)")
                 ref_input_edit.setObjectName(f"ref_input_{file.path}")
-                ref_input_edit.setMinimumHeight(35)
-                ref_input_edit.setMinimumWidth(150)
-                ref_input_edit.setStyleSheet("padding: 5px; border: 2px solid #0066cc; border-radius: 4px;")
-                file_layout.addWidget(ref_input_edit)
+                ref_input_edit.setFixedWidth(200)
+                ref_input_edit.setStyleSheet(
+                    "padding: 3px 6px; border: 2px solid #0066cc; border-radius: 4px; background: white;"
+                )
+                row1.addWidget(ref_input_edit)
             else:
                 ref_display = QLabel(f"→ Réf: {file.suggested_reference}")
-                ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
-                ref_display.setMinimumWidth(150)
+                ref_display.setStyleSheet(
+                    "color: #0066cc; background-color: #f0f8ff; padding: 3px 8px;"
+                    " border: 1px solid #ddd; border-radius: 4px; font-weight: bold; font-size: 11px;"
+                )
                 ref_display.setObjectName(f"ref_display_{file.path}")
-                file_layout.addWidget(ref_display)
+                row1.addWidget(ref_display)
 
-            # Libellé/Description (modifiable)
-            desc_label = QLabel("Libellé:")
-            desc_label.setMinimumWidth(60)
-            desc_label.setStyleSheet("font-weight: bold;")
-            file_layout.addWidget(desc_label)
+            file_label = QLabel(file.filename)
+            file_label.setStyleSheet(
+                "font-weight: bold; font-size: 12px; background: transparent; border: none;"
+            )
+            file_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            row1.addWidget(file_label, 1)
+
+            card_layout.addLayout(row1)
+
+            # Ligne 2 : libellé + flags (Courante / Équivalente / Obsolète)
+            row2 = QHBoxLayout()
+            row2.setSpacing(8)
+
+            desc_lbl = QLabel("Libellé:")
+            desc_lbl.setStyleSheet(
+                "font-size: 11px; color: #495057; background: transparent; border: none;"
+            )
+            desc_lbl.setFixedWidth(50)
+            row2.addWidget(desc_lbl)
 
             desc_input = QLineEdit()
-            desc_input.setPlaceholderText("Description de la pièce (optionnel)" if file.type == FileType.CLIPBOARD
-                                          else f"Description pour {file.suggested_reference} (optionnel)")
-            desc_input.setText("")  # Vide par défaut
+            desc_input.setPlaceholderText(
+                "Description de la pièce (optionnel)" if file.type == FileType.CLIPBOARD
+                else f"Description pour {file.suggested_reference} (optionnel)"
+            )
+            desc_input.setText("")
             desc_input.setObjectName(f"desc_{file.path}")
-            desc_input.setMinimumHeight(35)
-            desc_input.setStyleSheet("padding: 5px; border: 2px solid #ccc; border-radius: 4px;")
-            file_layout.addWidget(desc_input)
-            
-            # Stocker la référence du champ pour la duplication automatique
+            desc_input.setStyleSheet(
+                "padding: 3px 6px; border: 1px solid #ced4da; border-radius: 4px;"
+                " font-size: 11px; background: white;"
+            )
+            row2.addWidget(desc_input, 1)
             self.individual_desc_fields.append(desc_input)
 
-            # Radio "Courante" + case "Équivalente" pour multi-fichiers
             if self.import_config.import_type == ImportType.MULTI_FILE:
                 if self._succ_button_group is None:
                     self._succ_button_group = QButtonGroup(self)
                     self._succ_button_group.setExclusive(True)
+
                 radio = QRadioButton("Courante")
                 radio.setToolTip("Désigner cette réf. comme courante — les autres lui seront successées à l'import")
-                radio.setStyleSheet("font-size: 11px; color: #495057;")
+                radio.setStyleSheet("font-size: 11px; color: #495057; background: transparent; border: none;")
                 self._succ_button_group.addButton(radio, i)
                 self._succ_radio_files.append(file)
-                file_layout.addWidget(radio)
+                row2.addWidget(radio)
 
                 equiv_check = QCheckBox("Équivalente")
                 equiv_check.setToolTip(
                     "Marquer cette réf. comme équivalente à la pièce courante\n"
                     "(même fonction, fabricant différent — les deux restent valides)"
                 )
-                equiv_check.setStyleSheet("font-size: 11px; color: #6c757d;")
+                equiv_check.setStyleSheet("font-size: 11px; color: #6c757d; background: transparent; border: none;")
                 self._equiv_checkboxes.append((equiv_check, file))
-                file_layout.addWidget(equiv_check)
+                row2.addWidget(equiv_check)
 
                 obs_check = QCheckBox("Obsolète")
-                obs_check.setToolTip("Marquer cette référence comme obsolète (⚠ plus fabriquée)")
-                obs_check.setStyleSheet("font-size: 11px; color: #c0392b;")
+                obs_check.setToolTip("Marquer cette référence comme obsolète (plus fabriquée)")
+                obs_check.setStyleSheet("font-size: 11px; color: #c0392b; background: transparent; border: none;")
                 self._obsolete_checkboxes.append((obs_check, file))
-                file_layout.addWidget(obs_check)
+                row2.addWidget(obs_check)
 
-            # Ajouter le conteneur avec hauteur fixe au lieu du layout directement
+            card_layout.addLayout(row2)
             self.individual_refs_widget.addWidget(file_container)
 
         # Initialiser l'affichage des références selon l'état par défaut de la case à cocher
