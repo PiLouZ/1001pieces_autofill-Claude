@@ -386,30 +386,7 @@ class ImportDialog(QDialog):
         """Créer l'interface utilisateur"""
         layout = QVBoxLayout()
         
-        # Section fichiers avec layout en grille (max 5 colonnes)
-        files_group = QGroupBox("Fichiers à importer")
-        files_main_layout = QVBoxLayout()
-        files_main_layout.setContentsMargins(6, 2, 6, 4)
-        files_main_layout.setSpacing(2)
-
-        # Utiliser un layout en grille pour tous les cas avec max 5 colonnes
-        files_grid = QGridLayout()
-        files_per_row = min(5, max(1, len(self.import_config.files)))
-        
-        for i, file in enumerate(self.import_config.files):
-            row = i // files_per_row
-            col = i % files_per_row
-            
-            file_label = QLabel(f" {file.filename}")
-            file_label.setStyleSheet("color: #495057; padding: 2px 0px;")
-            file_label.setAlignment(Qt.AlignCenter)
-            files_grid.addWidget(file_label, row, col)
-        
-        files_main_layout.addLayout(files_grid)
-        files_group.setLayout(files_main_layout)
-        layout.addWidget(files_group)
-        
-        # Section format reconnu et aperçu des données (repositionnée ici)
+        # Section format reconnu et aperçu des données
         format_group = QGroupBox("Format reconnu et aperçu")
         format_layout = QVBoxLayout()
         format_layout.setSpacing(4)
