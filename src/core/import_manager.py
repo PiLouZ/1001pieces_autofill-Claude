@@ -1072,24 +1072,6 @@ class ImportDialog(QDialog):
         return ''.join(c for c in s if unicodedata.category(c) != 'Mn').strip()
 
     @staticmethod
-    def _is_pdf_standard_format(sample_data: list) -> bool:
-        """
-        True si la 1ère ligne correspond exactement aux headers du PDF standard 1001pièces :
-        « Réf. technique / Réf. commerciale / Description »
-        """
-        if not sample_data or len(sample_data[0]) < 3:
-            return False
-        norm = ImportDialog._normalize_header
-        c0 = norm(sample_data[0][0])
-        c1 = norm(sample_data[0][1])
-        c2 = norm(sample_data[0][2])
-        return (
-            ('ref' in c0 and 'technique' in c0) and
-            ('ref' in c1 and 'commercial' in c1) and
-            'description' in c2
-        )
-
-    @staticmethod
     def _detect_csv_header_mapping(sample_data: list, n_cols: int) -> Optional[List[str]]:
         """
         Analyse la 1ère ligne pour détecter des entêtes CSV/collage connues.
@@ -1133,14 +1115,13 @@ class ImportDialog(QDialog):
     @staticmethod
     def _is_format_recognized(n_cols: int, files: list, sample_data: list) -> bool:
         """
-        Format reconnu = PDF 3 colonnes avec les headers standard 1001pièces uniquement.
+        Format reconnu = PDF 3 colonnes (Réf. technique / Réf. commerciale / Description).
+        Note : l'extracteur PDF supprime la ligne d'entête avant de retourner les données,
+        donc on ne peut pas vérifier les headers dans sample_data. On se base sur
+        FileType.PDF + n_cols == 3, ce qui identifie de façon fiable le format 1001pièces.
         Tout autre format nécessite validation explicite du mapping par l'utilisateur.
         """
-        if n_cols != 3:
-            return False
-        if not any(f.type == FileType.PDF for f in files):
-            return False
-        return ImportDialog._is_pdf_standard_format(sample_data)
+        return n_cols == 3 and any(f.type == FileType.PDF for f in files)
 
     def _get_format_description(self, n_cols: int, files: list) -> str:
         """Description textuelle du format pour un groupe de fichiers."""
