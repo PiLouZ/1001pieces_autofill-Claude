@@ -51,13 +51,11 @@ class SEOGenerator:
         "Ancienne référence {ref_old}, nouvelle référence {reference} — {description} pour {type_appareil} {fabricants} chez votre spécialiste",
     ]
     
-    # Templates méta titles (6 variantes — format normal)
+    # Templates méta titles (4 variantes — format normal)
     META_TITLE_TEMPLATES = [
         "{reference} {description} pour {type_appareil} {fabricants}",
         "{reference} — {description} {type_appareil} {fabricants}",
-        "{description} {reference} — {type_appareil} {fabricants}",
         "{type_appareil} {fabricants} — {description} {reference}",
-        "{description} {reference} {type_appareil} {fabricants}",
         "Pièce {reference} — {description} {type_appareil} {fabricants}",
     ]
 
