@@ -17,7 +17,7 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QTextEdit, QGroupBox, QApplication,
                              QScrollArea, QWidget, QGridLayout, Qt, QTimer, QThread,
                              QCompleter, QStringListModel, QRadioButton, QButtonGroup,
-                             QSizePolicy, pyqtSignal)
+                             QSizePolicy, QSize, pyqtSignal)
 
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
@@ -719,12 +719,38 @@ class ImportDialog(QDialog):
 
         # Boutons
         buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+
+        try:
+            import qtawesome as qta
+            cancel_icon = qta.icon('fa5s.times', color='#495057')
+            import_icon = qta.icon('fa5s.file-import', color='white')
+        except Exception:
+            cancel_icon = None
+            import_icon = None
 
         cancel_btn = QPushButton("Annuler")
+        if cancel_icon:
+            cancel_btn.setIcon(cancel_icon)
+            cancel_btn.setIconSize(QSize(11, 11))
+        cancel_btn.setStyleSheet(
+            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+        )
+        cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
 
         self.ok_btn = QPushButton("Importer")
+        if import_icon:
+            self.ok_btn.setIcon(import_icon)
+            self.ok_btn.setIconSize(QSize(11, 11))
+        self.ok_btn.setStyleSheet(
+            "QPushButton { background-color: #28a745; color: white;"
+            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
+            "QPushButton:hover { background-color: #218838; }"
+            "QPushButton:disabled { background-color: #94d3a2; color: #e9f7ec; }"
+        )
         self.ok_btn.setDefault(True)
         self.ok_btn.clicked.connect(self._validate_and_accept)
         buttons_layout.addWidget(self.ok_btn)
