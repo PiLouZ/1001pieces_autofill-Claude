@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple, Callable
 from enum import Enum
 import os
 import time as _time
+import unicodedata
 import warnings
 from datetime import datetime
 
@@ -138,10 +139,12 @@ class MappingGroupWidget(QWidget):
     ]
 
     def __init__(self, n_cols: int, files: list, sample_data: list,
-                 is_recognized: bool, default_mapping: list, parent=None):
+                 is_recognized: bool, default_mapping: list,
+                 headers_detected: bool = False, parent=None):
         super().__init__(parent)
         self._n_cols = n_cols
         self._is_recognized = is_recognized
+        self._headers_detected = headers_detected
         self._is_modified = False   # True dès que l'utilisateur modifie une combo
         self._combos = []
         self._toggle_btn = None
@@ -174,13 +177,45 @@ class MappingGroupWidget(QWidget):
             self._toggle_btn.clicked.connect(self._toggle)
             outer.addWidget(self._toggle_btn)
         else:
-            self._status_label = QLabel(
-                f"{file_names}  ({col_label}) — définissez la correspondance"
+            # ── Bandeau d'avertissement proéminent ───────────────────────────
+            banner = QWidget()
+            banner.setStyleSheet(
+                "QWidget { background: #fff3cd; border: 1px solid #ffc107;"
+                " border-radius: 4px; }"
             )
+            banner_layout = QHBoxLayout(banner)
+            banner_layout.setContentsMargins(8, 6, 8, 6)
+            banner_layout.setSpacing(6)
+
+            title_col = QVBoxLayout()
+            title_col.setSpacing(1)
+
+            warn_lbl = QLabel(f"Vérifiez le mapping des colonnes — {file_names}  ({col_label})")
+            warn_lbl.setStyleSheet(
+                "color: #856404; font-weight: bold; font-size: 11px;"
+                " background: transparent; border: none;"
+            )
+            title_col.addWidget(warn_lbl)
+
+            if self._headers_detected:
+                hint_lbl = QLabel("Entêtes détectées automatiquement — confirmez la correspondance avant d'importer")
+            else:
+                hint_lbl = QLabel("Format non standard — assignez au moins la colonne Réf. Modèle")
+            hint_lbl.setStyleSheet(
+                "color: #856404; font-size: 10px; background: transparent; border: none;"
+            )
+            title_col.addWidget(hint_lbl)
+
+            banner_layout.addLayout(title_col, 1)
+            outer.addWidget(banner)
+
+            # Label de statut dynamique (rouge/orange selon état du mapping)
+            self._status_label = QLabel()
             self._status_label.setStyleSheet(
-                "color: #dc3545; font-weight: bold; font-size: 11px; padding: 2px 0;"
+                "color: #dc3545; font-size: 10px; padding: 1px 0;"
             )
             outer.addWidget(self._status_label)
+            self._update_status()
 
         # Tableau de mapping
         self._mapping_widget = QWidget()
@@ -245,15 +280,17 @@ class MappingGroupWidget(QWidget):
         self.mapping_changed.emit()
 
     def _update_status(self):
-        """Met à jour la couleur du label pour les groupes non reconnus."""
+        """Met à jour le label de statut dynamique pour les groupes non reconnus."""
         if not self._is_recognized and self._status_label:
             if self.has_ref_modele():
+                self._status_label.setText("Réf. Modèle assignée — mapping prêt")
                 self._status_label.setStyleSheet(
-                    "color: #e67e22; font-weight: bold; font-size: 11px; padding: 2px 0;"
+                    "color: #28a745; font-size: 10px; padding: 1px 0;"
                 )
             else:
+                self._status_label.setText("Réf. Modèle non assignée — import bloqué")
                 self._status_label.setStyleSheet(
-                    "color: #dc3545; font-weight: bold; font-size: 11px; padding: 2px 0;"
+                    "color: #dc3545; font-size: 10px; padding: 1px 0;"
                 )
 
     # ── API publique ─────────────────────────────────────────────────────────
@@ -1028,9 +1065,82 @@ class ImportDialog(QDialog):
         return groups
 
     @staticmethod
-    def _is_format_recognized(n_cols: int) -> bool:
-        """Un format est reconnu si le nombre de colonnes est >= 1."""
-        return n_cols >= 1
+    def _normalize_header(s: str) -> str:
+        """Normalise un header : minuscules, sans accents, sans ponctuation de fin."""
+        s = str(s).lower().strip().strip('.')
+        s = unicodedata.normalize('NFD', s)
+        return ''.join(c for c in s if unicodedata.category(c) != 'Mn').strip()
+
+    @staticmethod
+    def _is_pdf_standard_format(sample_data: list) -> bool:
+        """
+        True si la 1ère ligne correspond exactement aux headers du PDF standard 1001pièces :
+        « Réf. technique / Réf. commerciale / Description »
+        """
+        if not sample_data or len(sample_data[0]) < 3:
+            return False
+        norm = ImportDialog._normalize_header
+        c0 = norm(sample_data[0][0])
+        c1 = norm(sample_data[0][1])
+        c2 = norm(sample_data[0][2])
+        return (
+            ('ref' in c0 and 'technique' in c0) and
+            ('ref' in c1 and 'commercial' in c1) and
+            'description' in c2
+        )
+
+    @staticmethod
+    def _detect_csv_header_mapping(sample_data: list, n_cols: int) -> Optional[List[str]]:
+        """
+        Analyse la 1ère ligne pour détecter des entêtes CSV/collage connues.
+        Retourne la liste de fields détectés, ou None si rien n'est reconnu.
+        """
+        if not sample_data or not sample_data[0]:
+            return None
+        first_row = sample_data[0]
+        norm = ImportDialog._normalize_header
+
+        synonyms: Dict[str, List[str]] = {
+            'ref_modele':     ['ref_modele', 'ref modele', 'refmodele',
+                               'ref technique', 'ref. technique', 'reference technique',
+                               'ref. modele', 'reference modele', 'modele'],
+            'commercial_ref': ['commercial_ref', 'ref commerciale', 'ref. commerciale',
+                               'reference commerciale', 'ref comm', 'commercial'],
+            'manufacturer':   ['fabricant', 'manufacturer', 'marque', 'brand'],
+            'type':           ['type', "type d'appareil", 'type appareil'],
+            'other_ref':      ['autre ref', 'autre reference', 'other_ref', 'autre', 'ref2'],
+            'notes':          ['notes', 'note', 'commentaire', 'description', 'libelle'],
+        }
+        norm_synonyms = {
+            field: [norm(s) for s in syns]
+            for field, syns in synonyms.items()
+        }
+
+        mapping = []
+        detected_any = False
+        for cell in first_row[:n_cols]:
+            cell_norm = norm(str(cell))
+            field = 'ignore'
+            for field_name, syns in norm_synonyms.items():
+                if cell_norm in syns:
+                    field = field_name
+                    detected_any = True
+                    break
+            mapping.append(field)
+
+        return mapping if detected_any else None
+
+    @staticmethod
+    def _is_format_recognized(n_cols: int, files: list, sample_data: list) -> bool:
+        """
+        Format reconnu = PDF 3 colonnes avec les headers standard 1001pièces uniquement.
+        Tout autre format nécessite validation explicite du mapping par l'utilisateur.
+        """
+        if n_cols != 3:
+            return False
+        if not any(f.type == FileType.PDF for f in files):
+            return False
+        return ImportDialog._is_pdf_standard_format(sample_data)
 
     def _get_format_description(self, n_cols: int, files: list) -> str:
         """Description textuelle du format pour un groupe de fichiers."""
@@ -1046,22 +1156,32 @@ class ImportDialog(QDialog):
             return "• 4+ colonnes → Format complet (Type, Fabricant, Réf. Modèle, Réf. Commerciale, ...)"
         return ""
 
-    def _get_default_mapping(self, n_cols: int, files: list) -> List[str]:
+    def _get_default_mapping(self, n_cols: int, files: list,
+                             sample_data: list = None) -> Tuple[List[str], bool]:
         """
-        Retourne le mapping positionnel par défaut pour un groupe.
-        Utilisé pour pré-remplir les combos du widget de mapping (Phase 3).
+        Retourne (mapping, headers_detected) pour un groupe.
+        - Pour CSV/Collage : tente la détection d'entêtes ; si réussie → mapping inféré
+          et headers_detected=True pour avertir l'utilisateur de vérifier.
+        - Sinon : mapping positionnel par défaut, headers_detected=False.
         """
+        # Pour CSV et collage : tenter la détection d'entêtes
+        if sample_data and any(f.type in (FileType.CSV, FileType.CLIPBOARD) for f in files):
+            detected = self._detect_csv_header_mapping(sample_data, n_cols)
+            if detected:
+                return detected, True
+
+        # Mapping positionnel par défaut
         if n_cols == 1:
-            return ["ref_modele"]
+            return ["ref_modele"], False
         elif n_cols == 2:
-            return ["ref_modele", "commercial_ref"]
+            return ["ref_modele", "commercial_ref"], False
         elif n_cols == 3:
-            return ["ref_modele", "commercial_ref", "ignore"]
+            return ["ref_modele", "commercial_ref", "ignore"], False
         elif n_cols >= 4:
             mapping = ["type", "manufacturer", "ref_modele", "commercial_ref"]
             mapping += ["ignore"] * (n_cols - 4)
-            return mapping
-        return ["ignore"] * max(n_cols, 1)
+            return mapping, False
+        return ["ignore"] * max(n_cols, 1), False
 
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -1110,8 +1230,9 @@ class ImportDialog(QDialog):
 
         # ── Options : third_col_widget si groupe reconnu à 3 colonnes ──
         has_3col_recognized = any(
-            n == 3 and self._is_format_recognized(n)
-            for n in self._file_groups
+            self._is_format_recognized(n, files, self._safe_analyze_file_format(files[0])[1])
+            for n, files in self._file_groups.items()
+            if n == 3
         )
         if has_3col_recognized:
             has_pdf_3col = any(
@@ -1143,15 +1264,16 @@ class ImportDialog(QDialog):
 
         # Créer un MappingGroupWidget par groupe (trié par nb colonnes)
         for n_cols, files in sorted(self._file_groups.items()):
-            is_recognized = self._is_format_recognized(n_cols)
             _, sample_data = self._safe_analyze_file_format(files[0])
-            default_mapping = self._get_default_mapping(n_cols, files)
+            is_recognized = self._is_format_recognized(n_cols, files, sample_data)
+            default_mapping, headers_detected = self._get_default_mapping(n_cols, files, sample_data)
             widget = MappingGroupWidget(
                 n_cols=n_cols,
                 files=files,
                 sample_data=sample_data,
                 is_recognized=is_recognized,
                 default_mapping=default_mapping,
+                headers_detected=headers_detected,
                 parent=self
             )
             widget.mapping_changed.connect(self._update_import_button)
