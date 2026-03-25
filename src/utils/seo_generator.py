@@ -218,7 +218,8 @@ class SEOGenerator:
             template = random.choice(self.META_DESCRIPTION_TEMPLATES)
 
         fabricants_str = self._select_fabricants_for_description(
-            fabricants, template, reference_clean, description_clean, type_clean, max_length
+            fabricants, template, reference_clean, description_with_article, type_clean, max_length,
+            ref_old=ref_obsolete
         )
 
         # ── Instancier le template ────────────────────────────────────────────
@@ -320,7 +321,7 @@ class SEOGenerator:
             return optimized_title
         
         # Étape 3: Si toujours trop long, réduire le nombre de marques
-        optimized_title = self._reduce_brands_if_needed(optimized_title, max_length)
+        optimized_title = self._reduce_brands_if_needed(optimized_title, max_length, required_brands)
 
         # Étape 4: Troncature intelligente en dernier recours
         return self._smart_truncate_with_brands(optimized_title, required_brands, max_length)
@@ -350,35 +351,24 @@ class SEOGenerator:
                 
         return " ".join(result_words)
     
-    def _reduce_brands_if_needed(self, title: str, max_length: int) -> str:
-        """Réduire le nombre de marques si le titre est encore trop long"""
-        if len(title) <= max_length:
+    def _reduce_brands_if_needed(self, title: str, max_length: int, required_brands: str = "") -> str:
+        """Réduire à une seule marque si le titre contient plusieurs marques et est encore trop long"""
+        if len(title) <= max_length or not required_brands:
             return title
 
-        # Séparer le titre en parties
-        parts = title.split()
-        if len(parts) < 4:  # Pas assez de parties à optimiser
-            return title
+        brands = [b for b in required_brands.split() if b]
+        if len(brands) <= 1:
+            return title  # Une seule marque déjà — rien à réduire
 
-        # Trouver où commencent les marques (après le type d'appareil)
-        reduced_title = self._safe_find_and_reduce_brands(parts)
-        if reduced_title:
-            return reduced_title
+        # Garder uniquement la première marque : localiser sa position dans le titre
+        first_brand = brands[0]
+        pos = title.find(first_brand)
+        if pos >= 0:
+            candidate = title[:pos + len(first_brand)].strip()
+            if candidate:
+                return candidate
 
-        return title[:max_length]  # Troncature brute en dernier recours
-
-    @handle_seo_generation_errors()
-    def _safe_find_and_reduce_brands(self, parts: list) -> str:
-        """Trouver l'index 'pour' et réduire les marques de manière sécurisée"""
-        # Format: "référence description pour type marque1 marque2 marque3"
-        if "pour" not in parts:
-            return None
-        type_index = parts.index("pour") + 1  # Position du type d'appareil
-        if type_index + 1 < len(parts):  # Il y a des marques après le type
-            # Garder le titre jusqu'au type + une seule marque
-            reduced_title = " ".join(parts[:type_index + 2])  # référence + desc + pour + type + 1 marque
-            return reduced_title
-        return None
+        return title
     
     def _smart_truncate_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
         """Troncature intelligente en essayant de garder au moins une marque"""
@@ -401,21 +391,30 @@ class SEOGenerator:
         return title[:max_length]
 
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
-                                         reference: str, description: str, type_appareil: str, 
-                                         max_length: int) -> str:
-        """Sélectionner le maximum de fabricants possibles dans un ordre aléatoire pour la description"""
+                                         reference: str, description_with_article: str,
+                                         type_appareil: str, max_length: int,
+                                         ref_old: Optional[str] = None) -> str:
+        """Sélectionner le maximum de fabricants possibles pour la description"""
         if not fabricants:
             return ""
-        
-        # Estimer la longueur de base du template
-        base_length = len(template) - len("{description}") - len("{reference}") - len("{type_appareil}") - len("{fabricants}")
-        base_length += len(description) + len(reference) + len(type_appareil)
-        
+
+        # Calculer l'espace disponible : rendu du template sans les marques, avec les vraies valeurs
+        description_cap = self._adjust_first_char(description_with_article, upper=True)
+        fmt_kwargs = dict(
+            description=description_with_article,
+            description_cap=description_cap,
+            reference=reference,
+            type_appareil=type_appareil,
+            fabricants="",
+        )
+        if ref_old:
+            fmt_kwargs['ref_old'] = ref_old
+        base_length = len(template.format(**fmt_kwargs))
         available_space = max_length - base_length
-        
+
         if available_space <= 0:
             return ""
-        
+
         # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
         seen: set = set()
         unique_fabricants = []
@@ -424,28 +423,26 @@ class SEOGenerator:
             if f_clean and f_clean not in seen:
                 seen.add(f_clean)
                 unique_fabricants.append(f_clean)
-        
+
         # Construire la liste des fabricants selon l'espace disponible
         result_fabricants = []
         current_length = 0
-        
+
         for i, fabricant in enumerate(unique_fabricants):
             fabricant_clean = fabricant.strip()
-            needed_length = len(fabricant_clean) if i == 0 else len(" " + fabricant_clean)  # Espace au lieu de virgule-espace
-            
+            needed_length = len(fabricant_clean) if i == 0 else len(" " + fabricant_clean)
+
             if current_length + needed_length <= available_space:
                 result_fabricants.append(fabricant_clean)
                 current_length += needed_length
             else:
                 break
-        
+
         if not result_fabricants:
             first_fabricant = unique_fabricants[0][:available_space]
-            return first_fabricant if len(first_fabricant) > 0 else ""
-        
-        result_str = " ".join(result_fabricants)  # Espaces au lieu de virgules, sans ...
-            
-        return result_str
+            return first_fabricant if first_fabricant else ""
+
+        return " ".join(result_fabricants)
     
     def _smart_truncate_description(self, description: str, max_length: int) -> str:
         """Troncature intelligente pour la description (sans ellipse)"""
@@ -482,23 +479,25 @@ class SEOGenerator:
     
     def _get_article(self, description: str) -> str:
         """
-        Détermine l'article approprié (votre/vos) selon la description
-        Inspiré de la fonction getArticle() du script.js
+        Détermine l'article possessif (votre/vos) selon la description.
+        Détecte le pluriel via des signaux explicites uniquement — évite les faux positifs
+        sur les mots singuliers finissant par 's' ou 'x' (sonde, soupape, flux, corps…).
         """
-        # Diviser la description en mots
-        first_word = description.split(' ')[0] if description else ""
-        
-        # Vérifier si c'est probablement au pluriel
+        if not description:
+            return 'votre'
+        desc_lower = description.lower()
+        first_word = desc_lower.split()[0]
+
         is_plural = (
-            first_word.endswith('s') or 
-            first_word.endswith('x') or
-            first_word.startswith('des ') or
-            'pompes' in description.lower() or
-            'joints' in description.lower() or
-            'filtres' in description.lower() or
-            'pièces' in description.lower()
+            desc_lower.startswith('des ') or              # article indéfini pluriel explicite
+            first_word[0].isdigit() or                    # "3 joints", "2 filtres"
+            any(w in desc_lower for w in [                # mots spécifiquement pluriels
+                'pompes', 'joints', 'filtres', 'pièces',
+                'écrous', 'roulements', 'ressorts', 'brosses',
+                'clips', 'courroies', 'lames', 'plaques',
+            ])
         )
-        
+
         return 'vos' if is_plural else 'votre'
     
     def get_last_generation_info(self) -> Dict[str, any]:
