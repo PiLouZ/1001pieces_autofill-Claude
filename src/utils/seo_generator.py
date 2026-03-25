@@ -18,20 +18,20 @@ class SEOGenerator:
         "Trouvez {description} {reference} pour {type_appareil} {fabricants} chez un expert de la réparation électroménager",
         "Découvrez {description} {reference} pour {type_appareil} {fabricants} chez le spécialiste de la pièce détachée",
         # Réparation
-        "Réparez votre {type_appareil} {fabricants} avec {description} {reference} — livraison rapide chez votre spécialiste",
+        "Réparez votre {type_appareil} {fabricants} avec {description} {reference} — commandez en ligne, livraison rapide",
         "Retrouvez {description} {reference} pour {type_appareil} {fabricants} et réparez votre appareil vous-même",
-        "Redonnez vie à votre {type_appareil} {fabricants} avec {description} {reference} — pièce disponible immédiatement",
+        "Redonnez vie à un {type_appareil} {fabricants} avec {description} {reference} — pièce disponible immédiatement",
         # Stock / disponibilité
         "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce d'origine, expédition rapide",
         "{description_cap} {reference} en stock pour {type_appareil} {fabricants} — commandez chez votre spécialiste électroménager",
         "{description_cap} {reference} — pièce détachée disponible pour {type_appareil} {fabricants}, expédition rapide",
         # Question / besoin
         "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} est disponible chez votre réparateur agréé",
-        "Besoin de {description} {reference} pour {type_appareil} {fabricants} ? Trouvez-la chez votre spécialiste",
-        "Votre {type_appareil} {fabricants} tombe en panne ? {description_cap} {reference} est la solution — commandez maintenant",
-        "Panne sur votre {type_appareil} {fabricants} ? Remplacez {description} avec la référence {reference} chez votre spécialiste",
+        "Besoin de {description} {reference} pour {type_appareil} {fabricants} ? Trouvez cette pièce chez votre spécialiste",
+        "Votre {type_appareil} {fabricants} en panne ? Commandez {description} {reference} — la bonne pièce, livrée rapidement",
+        "Panne sur votre {type_appareil} {fabricants} ? Commandez {description} {reference} — expédition rapide",
         # Réparer plutôt que remplacer
-        "Évitez le remplacement — réparez votre {type_appareil} {fabricants} avec {description} {reference} chez votre spécialiste",
+        "Évitez le remplacement — commandez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste",
         "Réparer plutôt que jeter : {description} {reference} pour {type_appareil} {fabricants} chez votre expert pièces détachées",
         # DIY
         "{description_cap} {reference} pour {type_appareil} {fabricants} — réparez facilement votre appareil sans faire appel à un technicien",
@@ -45,8 +45,29 @@ class SEOGenerator:
         "Référence {ref_old} remplacée par {reference} — {description} pour {type_appareil} {fabricants} chez votre spécialiste",
         "L'ancienne réf. {ref_old} est désormais {reference} — trouvez {description} pour {type_appareil} {fabricants}",
         "Nouvelle référence {reference} (remplace {ref_old}) — {description} pour {type_appareil} {fabricants}, livraison rapide",
+        "Vous recherchez {ref_old} ? Elle a été remplacée par {reference} — {description} pour {type_appareil} {fabricants}",
+        "{ref_old} n'existe plus : commandez {description} sous la référence {reference} pour {type_appareil} {fabricants}",
+        "La pièce {ref_old} est désormais référencée {reference} — {description} pour {type_appareil} {fabricants}, en stock",
+        "Ancienne référence {ref_old}, nouvelle référence {reference} — {description} pour {type_appareil} {fabricants} chez votre spécialiste",
     ]
     
+    # Templates méta titles (6 variantes — format normal)
+    META_TITLE_TEMPLATES = [
+        "{reference} {description} pour {type_appareil} {fabricants}",
+        "{reference} — {description} {type_appareil} {fabricants}",
+        "{description} {reference} — {type_appareil} {fabricants}",
+        "{type_appareil} {fabricants} — {description} {reference}",
+        "{description} {reference} {type_appareil} {fabricants}",
+        "Pièce {reference} — {description} {type_appareil} {fabricants}",
+    ]
+
+    # Templates méta titles pour pièces remplacées (3 variantes)
+    META_TITLE_SUPERSEDED_TEMPLATES = [
+        "{ref_old}→{reference} {description} {type_appareil} {fabricants}",
+        "Réf. {ref_old}→{reference} — {description} {type_appareil} {fabricants}",
+        "{description} {type_appareil} {fabricants} ({ref_old}→{reference})",
+    ]
+
     # Mots de liaison à supprimer en priorité pour préserver les marques
     FILLER_WORDS = [
         "pour", "de", "des", "du", "la", "le", "les", "d'", "l'",
@@ -71,18 +92,19 @@ class SEOGenerator:
         "lave-linge top": "lave-linge top",
     }
 
-    # Remplacements pour raccourcir (ordre de priorité par gain de caractères)
+    # Remplacements pour raccourcir les titres trop longs (dernier recours avant troncature)
+    # Ordre de priorité : gain de caractères décroissant
     WORD_REPLACEMENTS = {
-        "réfrigérateur": "frigo",        # -7 caractères
-        "lave-vaisselle": "LV",          # -11 caractères  
-        "lave-linge": "LL",              # -7 caractères
-        "sèche-linge": "SL",             # -8 caractères
-        "micro-ondes": "micro-onde",     # -1 caractère
+        "lave-vaisselle": "lave-vais.",  # -6 caractères (LV trop cryptique pour le grand public)
+        "sèche-linge": "sèche-ling.",   # -4 caractères
+        "réfrigérateur": "frigo",       # -7 caractères (terme courant)
+        "lave-linge": "lave-ling.",     # -3 caractères
+        "congélateur": "congélo",       # -4 caractères (terme courant)
         "électroménager": "électromén.", # -3 caractères
         "électroménagers": "électromén.", # -4 caractères
-        "cuisinière": "cuisin.",         # -4 caractères
-        "congélateur": "congélo",        # -4 caractères
-        "aspirateur": "aspiro",          # -4 caractères
+        "cuisinière": "cuisin.",        # -4 caractères
+        "aspirateur": "aspiro",         # -4 caractères
+        "micro-ondes": "micro-onde",    # -1 caractère
     }
     
     def __init__(self):
@@ -120,45 +142,44 @@ class SEOGenerator:
                            ref_obsolete: Optional[str] = None) -> Dict[str, any]:
         """
         Générer un méta title optimisé avec priorité à l'inclusion d'au moins 1 marque.
-        Format normal   : [ref] - [description] pour [type] [marques]
-        Format obsolète : [ref_old]→[ref_current] [description] [type] [marques]
-                          (fallback sur format normal si trop long)
+        Choisit aléatoirement parmi META_TITLE_TEMPLATES (normal) ou
+        META_TITLE_SUPERSEDED_TEMPLATES (supersession).
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=True)
         type_clean = self._normalize_type(type_appareil)
 
-        # ── Format supersession : [ref_old]→[ref_current] … ──────────────────
+        # ── Choisir le template selon le contexte ─────────────────────────────
         if ref_obsolete:
-            ref_old_clean = ref_obsolete.strip()
-            prefix = f"{ref_old_clean}→{reference_clean}"
-            remaining = max_length - len(prefix) - 1
-            if remaining >= 10:
-                fabricants_optimaux = self._maximize_brands_in_title(
-                    fabricants, prefix, description_clean, type_clean,
-                    max_length - len(prefix) - 1
-                )
-                base_title = f"{prefix} {description_clean} {type_clean} {fabricants_optimaux}".strip()
-                if len(base_title) > max_length:
-                    base_title = self._optimize_title_with_brands(base_title, fabricants_optimaux, max_length)
-            else:
-                ref_obsolete = None  # Préfixe trop long → format normal
-
-        # ── Format normal (sans tiret séparateur) ─────────────────────────────
-        if not ref_obsolete:
-            fabricants_optimaux = self._maximize_brands_in_title(
-                fabricants, reference_clean, description_clean, type_clean, max_length
+            template = random.choice(self.META_TITLE_SUPERSEDED_TEMPLATES)
+            template_kwargs = dict(
+                reference=reference_clean,
+                description=description_clean,
+                type_appareil=type_clean,
+                ref_old=ref_obsolete.strip(),
             )
-            base_title = f"{reference_clean} {description_clean} pour {type_clean} {fabricants_optimaux}"
-            if len(base_title) > max_length:
-                base_title = self._optimize_title_with_brands(base_title, fabricants_optimaux, max_length)
+        else:
+            template = random.choice(self.META_TITLE_TEMPLATES)
+            template_kwargs = dict(
+                reference=reference_clean,
+                description=description_clean,
+                type_appareil=type_clean,
+            )
 
-        # Informations de génération
-        original_title = f"{reference_clean} - {description_clean} pour {type_clean} {fabricants_optimaux}"
+        fabricants_optimaux = self._maximize_brands_in_title(
+            fabricants, template, max_length, **template_kwargs
+        )
+
+        raw_title = template.format(fabricants=fabricants_optimaux, **template_kwargs).strip()
+        base_title = raw_title
+        if len(raw_title) > max_length:
+            base_title = self._optimize_title_with_brands(raw_title, fabricants_optimaux, max_length)
+
         generation_info = {
-            'original_length': len(original_title),
+            'template_used': template,
+            'original_length': len(raw_title),
             'final_length': len(base_title),
-            'truncated': len(base_title) < len(original_title),
+            'truncated': len(base_title) < len(raw_title),
             'within_limit': len(base_title) <= max_length,
             'fabricants_used': fabricants_optimaux,
             'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
@@ -237,12 +258,12 @@ class SEOGenerator:
             'info': generation_info
         }
     
-    def _maximize_brands_in_title(self, fabricants: List[str], reference: str, 
-                                description: str, type_appareil: str, max_length: int) -> str:
-        """Maximiser le nombre de marques dans le titre pour atteindre ~60 caractères"""
+    def _maximize_brands_in_title(self, fabricants: List[str], template: str,
+                                max_length: int, **template_kwargs) -> str:
+        """Maximiser le nombre de marques dans le titre selon le template choisi"""
         if not fabricants:
             return ""
-        
+
         # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
         seen: set = set()
         unique_fabricants = []
@@ -251,41 +272,30 @@ class SEOGenerator:
             if f and f not in seen:
                 seen.add(f)
                 unique_fabricants.append(f)
-        
-        # Calculer l'espace disponible pour les marques (format sans tiret séparateur)
-        base_without_brands = f"{reference} {description} pour {type_appareil} "
-        available_space = max_length - len(base_without_brands)
-        
+
+        # Calculer l'espace disponible : longueur du template sans les marques
+        base_length = len(template.format(fabricants="", **template_kwargs))
+        available_space = max_length - base_length
+
         # Construire la liste des marques optimale
         selected_brands = []
         current_length = 0
-        
+
         for brand in unique_fabricants:
-            # Calculer la longueur si on ajoute cette marque
-            if selected_brands:
-                # Ajouter un espace entre les marques
-                new_length = current_length + 1 + len(brand)
-            else:
-                # Première marque
-                new_length = len(brand)
-            
-            # Si ça rentre, ajouter la marque
+            new_length = current_length + (1 if selected_brands else 0) + len(brand)
             if new_length <= available_space:
                 selected_brands.append(brand)
                 current_length = new_length
+            elif selected_brands:
+                break
             else:
-                # Si on a déjà au moins une marque, on s'arrête
-                if selected_brands:
-                    break
-                # Si même la première marque ne rentre pas, la prendre quand même
-                else:
-                    selected_brands.append(brand)
-                    break
-        
-        # Si aucune marque sélectionnée, prendre au moins la première
+                # Même la première marque déborde — on la prend quand même (garantie de présence)
+                selected_brands.append(brand)
+                break
+
         if not selected_brands and unique_fabricants:
             selected_brands = [unique_fabricants[0]]
-        
+
         return " ".join(selected_brands)
     
     def _optimize_title_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
@@ -461,6 +471,15 @@ class SEOGenerator:
         """Générer une nouvelle variante aléatoire de description"""
         return self.generate_meta_description(
             reference, description, type_appareil, fabricants, max_length, ref_obsolete, n_modeles
+        )
+
+    def get_random_title_variant(self, reference: str, description: str,
+                                type_appareil: str, fabricants: List[str],
+                                max_length: int = 60,
+                                ref_obsolete: Optional[str] = None) -> Dict[str, any]:
+        """Générer une nouvelle variante aléatoire de méta title"""
+        return self.generate_meta_title(
+            reference, description, type_appareil, fabricants, max_length, ref_obsolete
         )
     
     def _get_article(self, description: str) -> str:
