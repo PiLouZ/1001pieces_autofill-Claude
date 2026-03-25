@@ -215,7 +215,6 @@ class MappingGroupWidget(QWidget):
                 "color: #dc3545; font-size: 10px; padding: 1px 0;"
             )
             outer.addWidget(self._status_label)
-            self._update_status()
 
         # Tableau de mapping
         self._mapping_widget = QWidget()
@@ -264,6 +263,9 @@ class MappingGroupWidget(QWidget):
 
         outer.addWidget(self._mapping_widget)
         self._mapping_widget.setVisible(self._expanded)
+
+        # Mettre à jour le statut APRÈS que les combos soient construits
+        self._update_status()
 
     # ── Comportement ─────────────────────────────────────────────────────────
 
