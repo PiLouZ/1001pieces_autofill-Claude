@@ -522,15 +522,38 @@ class ImportDialog(QDialog):
             self.common_ref_description.setPlaceholderText("Ex : Lot pièces lave-vaisselle mars 2024")
             self.common_ref_description.textChanged.connect(self._on_common_description_changed)
             row_desc.addWidget(self.common_ref_description)
-            self.apply_to_individual_checkbox = QCheckBox("Appliquer aux réf. individuelles")
+            ref_layout.addLayout(row_desc)
+
+            # Ligne 3 : cases "tout appliquer" sur une seule ligne
+            row_apply_all = QHBoxLayout()
+            row_apply_all.setSpacing(16)
+            row_apply_all.addSpacing(90)  # aligne avec l'input description
+            self.apply_to_individual_checkbox = QCheckBox("Appliquer libellé")
             self.apply_to_individual_checkbox.setChecked(True)
             self.apply_to_individual_checkbox.setStyleSheet("font-size: 11px;")
             self.apply_to_individual_checkbox.setToolTip(
                 "Duplique automatiquement cette description dans tous les champs libellé individuels"
             )
             self.apply_to_individual_checkbox.stateChanged.connect(self._on_apply_to_individual_changed)
-            row_desc.addWidget(self.apply_to_individual_checkbox)
-            ref_layout.addLayout(row_desc)
+            row_apply_all.addWidget(self.apply_to_individual_checkbox)
+
+            self._apply_all_equiv_checkbox = QCheckBox("Toutes équivalentes")
+            self._apply_all_equiv_checkbox.setStyleSheet("font-size: 11px; color: #6c757d;")
+            self._apply_all_equiv_checkbox.setToolTip(
+                "Cocher toutes les références importées comme équivalentes entre elles"
+            )
+            self._apply_all_equiv_checkbox.stateChanged.connect(self._on_apply_all_equiv_changed)
+            row_apply_all.addWidget(self._apply_all_equiv_checkbox)
+
+            self._apply_all_obs_checkbox = QCheckBox("Toutes obsolètes")
+            self._apply_all_obs_checkbox.setStyleSheet("font-size: 11px; color: #c0392b;")
+            self._apply_all_obs_checkbox.setToolTip(
+                "Cocher toutes les références importées comme obsolètes"
+            )
+            self._apply_all_obs_checkbox.stateChanged.connect(self._on_apply_all_obs_changed)
+            row_apply_all.addWidget(self._apply_all_obs_checkbox)
+            row_apply_all.addStretch()
+            ref_layout.addLayout(row_apply_all)
 
             ref_group.setLayout(ref_layout)
             layout.addWidget(ref_group)
@@ -931,6 +954,16 @@ class ImportDialog(QDialog):
             for desc_field in self.individual_desc_fields:
                 desc_field.setText("")
     
+    def _on_apply_all_equiv_changed(self, state):
+        """Coche/décoche toutes les cases 'Équivalente' individuelles."""
+        for check, _ in getattr(self, '_equiv_checkboxes', []):
+            check.setChecked(state == Qt.Checked)
+
+    def _on_apply_all_obs_changed(self, state):
+        """Coche/décoche toutes les cases 'Obsolète' individuelles."""
+        for check, _ in getattr(self, '_obsolete_checkboxes', []):
+            check.setChecked(state == Qt.Checked)
+
     def _on_common_description_changed(self, text):
         """Met à jour automatiquement les champs individuels si la case est cochée"""
         if self.apply_to_individual_checkbox.isChecked():

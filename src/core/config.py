@@ -347,8 +347,7 @@ class Config:
         {"index": 3, "name": "Référence Commerciale", "db_field": "commercial_ref", "visible": True, "mandatory": True},
         {"index": 4, "name": "Autre Référence", "db_field": "other_ref", "visible": True, "mandatory": True},
         {"index": 5, "name": "Catégorie", "db_field": "category", "visible": False, "mandatory": False},
-        {"index": 6, "name": "Notes", "db_field": "notes", "visible": False, "mandatory": False},
-        {"index": 7, "name": "Nb Pièces", "db_field": None, "visible": True, "mandatory": False}
+        {"index": 6, "name": "Notes", "db_field": "notes", "visible": False, "mandatory": False}
     ]
     
     # Raccourcis clavier

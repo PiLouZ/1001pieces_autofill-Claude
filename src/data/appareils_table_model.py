@@ -10,8 +10,9 @@ Usage :
     view.setModel(model)
 """
 
-from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, pyqtSignal
-from PyQt5.QtGui import QBrush, QColor
+from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QRectF, QSize, pyqtSignal
+from PyQt5.QtGui import QBrush, QColor, QPainter
+from PyQt5.QtWidgets import QStyle, QStyledItemDelegate
 
 from src.core.config import Config
 
@@ -222,3 +223,60 @@ class AppareillsTableModel(QAbstractTableModel):
                 self.index(self._display_count - 1, len(self._headers) - 1),
                 [Qt.BackgroundRole]
             )
+
+
+class PiecesCountDelegate(QStyledItemDelegate):
+    """Peint un badge pill coloré dans la colonne Nb Pièces.
+
+    - count > 0 → vert #27ae60
+    - count == 0 → orange #e67e22
+    Gère la sélection : fond highlight Qt quand la cellule est sélectionnée.
+    """
+
+    _COLOR_HAS_PIECES = QColor("#27ae60")
+    _COLOR_NO_PIECES  = QColor("#e67e22")
+    _COLOR_BG         = QColor(248, 248, 248)
+
+    def paint(self, painter, option, index):
+        painter.save()
+
+        # Fond : couleur sélection ou gris très clair (même que BackgroundRole)
+        if option.state & QStyle.State_Selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+        else:
+            painter.fillRect(option.rect, self._COLOR_BG)
+
+        # Valeur
+        try:
+            count = int(index.data(Qt.DisplayRole) or 0)
+        except (ValueError, TypeError):
+            count = 0
+
+        badge_color = self._COLOR_HAS_PIECES if count > 0 else self._COLOR_NO_PIECES
+
+        # Geometry du badge pill (centré dans la cellule)
+        badge_w, badge_h = 34, 18
+        cx = option.rect.center().x()
+        cy = option.rect.center().y()
+        badge_rect = QRectF(cx - badge_w / 2, cy - badge_h / 2, badge_w, badge_h)
+
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QBrush(badge_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(badge_rect, 9, 9)
+
+        # Texte blanc centré
+        if option.state & QStyle.State_Selected:
+            painter.setPen(option.palette.highlightedText().color())
+        else:
+            painter.setPen(QColor("white"))
+        font = painter.font()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(badge_rect.toRect(), Qt.AlignCenter, str(count))
+
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        return QSize(50, 26)

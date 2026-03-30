@@ -979,13 +979,13 @@ class MainWindow(QMainWindow):
         return self.cell_editing_service.navigate_to_empty_cell(direction)
 
     @handle_ui_errors(log_prefix="Erreur affichage valeurs colonne", show_message=True)
-    def _show_column_values_list(self):
+    def _show_column_values_list(self, prefill: str = ""):
         """Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D) - Délégation au service"""
         current_item = self.table.currentItem()
         current_col = self.table.currentColumn()
 
         selected_value = self.autocompletion_service.show_column_values_dialog(
-            self.table, current_item, current_col
+            self.table, current_item, current_col, prefill=prefill
         )
 
         if selected_value is not None:
@@ -1237,8 +1237,17 @@ class MainWindow(QMainWindow):
     def _safe_position_drag_handle_at_selection(self, selected):
         """Positionner le drag handle à la sélection"""
         # selected = liste de QModelIndex (depuis selectionModel().selectedIndexes())
-        bottom_row = max(idx.row() for idx in selected)
-        right_col = max(idx.column() for idx in selected)
+        # Filtrer les colonnes masquées pour éviter que visualRect() retourne un rect invalide
+        visible_indexes = [idx for idx in selected if not self.table.isColumnHidden(idx.column())]
+        if not visible_indexes:
+            self.drag_handle.hide()
+            return
+        bottom_row = max(idx.row() for idx in visible_indexes)
+        right_col = max(idx.column() for idx in visible_indexes)
+        # Masquer la poignée sur les colonnes où le drag est interdit
+        if right_col in {2, 3, 4}:
+            self.drag_handle.hide()
+            return
         model_idx = self.table.model().index(bottom_row, right_col)
         rect = self.table.visualRect(model_idx)
 
@@ -2898,30 +2907,74 @@ class MainWindow(QMainWindow):
     
     def _show_table_context_menu(self, position):
         """Afficher le menu contextuel du tableau"""
-        # Vérifier qu'il y a des lignes sélectionnées
         selected_rows = list(set([item.row() for item in self.table.selectedItems()]))
-        
         if not selected_rows:
             return
-        
-        # Créer le menu contextuel
+
+        clicked_index = self.table.indexAt(position)
         context_menu = QMenu(self)
-        
-        # Action pour supprimer les lignes
+
+        # — Copier la valeur de la cellule cliquée ——————————————
+        if clicked_index.isValid():
+            cell_value = (self.table.model().data(clicked_index, Qt.DisplayRole) or "")
+            copy_cell_action = QAction("Copier la valeur de la cellule", self)
+            copy_cell_action.triggered.connect(
+                lambda checked=False, v=cell_value: QApplication.clipboard().setText(v)
+            )
+            context_menu.addAction(copy_cell_action)
+
+        # — Copier toute la ligne (tab-séparé) ———————————————————
+        if len(selected_rows) == 1:
+            row = selected_rows[0]
+            mdl = self.table.model()
+            row_values = [
+                mdl.data(mdl.index(row, c), Qt.DisplayRole) or ""
+                for c in range(mdl.columnCount())
+            ]
+            row_text = "\t".join(row_values)
+            copy_row_action = QAction("Copier toute la ligne", self)
+            copy_row_action.triggered.connect(
+                lambda checked=False, t=row_text: QApplication.clipboard().setText(t)
+            )
+            context_menu.addAction(copy_row_action)
+
+        # — Copier la sélection complète (comportement existant) ——
+        copy_action = QAction("Copier la sélection", self)
+        copy_action.triggered.connect(self._handle_copy)
+        context_menu.addAction(copy_action)
+
+        # — Filtrer sur la valeur de la cellule ———————————————————
+        if clicked_index.isValid():
+            col = clicked_index.column()
+            cell_value = (self.table.model().data(clicked_index, Qt.DisplayRole) or "")
+            has_filter_widget = col in getattr(self.table_controller, 'filter_widgets', {})
+            if has_filter_widget and cell_value:
+                label = cell_value if len(cell_value) <= 22 else cell_value[:20] + "…"
+                filter_action = QAction(f"Filtrer sur \"{label}\"", self)
+                filter_action.triggered.connect(
+                    lambda checked=False, c=col, v=cell_value: self._set_column_filter(c, v)
+                )
+                context_menu.addAction(filter_action)
+
+        context_menu.addSeparator()
+
+        # — Supprimer ——————————————————————————————————————————————
         delete_action = QAction("Supprimer la/les ligne(s) sélectionnée(s)", self)
         delete_action.triggered.connect(lambda: self._delete_selected_rows(selected_rows))
         context_menu.addAction(delete_action)
-        
-        # Ajouter un séparateur
-        context_menu.addSeparator()
-        
-        # Action pour copier les données
-        copy_action = QAction("Copier", self)
-        copy_action.triggered.connect(self._handle_copy)
-        context_menu.addAction(copy_action)
-        
-        # Afficher le menu
+
         context_menu.exec_(self.table.mapToGlobal(position))
+
+    def _set_column_filter(self, col: int, value: str):
+        """Injecte une valeur dans le widget filtre de la colonne correspondante."""
+        from PyQt5.QtWidgets import QComboBox, QLineEdit
+        widget = self.table_controller.filter_widgets.get(col)
+        if widget is None:
+            return
+        if isinstance(widget, QComboBox):
+            widget.lineEdit().setText(value)
+        elif isinstance(widget, QLineEdit):
+            widget.setText(value)
     
     def _delete_selected_rows(self, selected_rows):
         """Supprimer les lignes sélectionnées"""

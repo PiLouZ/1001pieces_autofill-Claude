@@ -9,8 +9,8 @@ Phase 2 de la migration QTableWidget → QTableView.
 Production : non activé tant que Config.USE_TABLE_VIEW = False.
 """
 
-from PyQt5.QtWidgets import QTableView, QApplication, QTableWidgetItem
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QTableView, QApplication, QTableWidgetItem, QAbstractItemView, QHeaderView
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QKeyEvent, QPainter, QColor, QFont
 
 
@@ -55,6 +55,94 @@ class CustomTableView(QTableView):
        migrés de continuer à fonctionner. Supprimées progressivement en Phase 4.
     """
 
+    # ── Colonne figée à droite ───────────────────────────────────────────────
+
+    def freeze_right_column(self, col: int, delegate=None):
+        """Fige la colonne `col` à droite, hors scroll horizontal.
+
+        Crée une vue secondaire superposée sur le bord droit du tableau.
+        Le viewport est placé EN DESSOUS via stackUnder() pour que la vue
+        figée reste visible. Sync scroll vertical bidirectionnel.
+        """
+        self._frozen_col = col
+        self._frozen_col_width = self.columnWidth(col)
+
+        # Vue secondaire partagée
+        frozen = QTableView(self)
+        frozen.setModel(self.model())
+        frozen.setSelectionModel(self.selectionModel())
+
+        frozen.setFocusPolicy(Qt.NoFocus)
+        frozen.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        from PyQt5.QtWidgets import QFrame
+        frozen.setFrameShape(QFrame.NoFrame)
+        frozen.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        frozen.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        frozen.verticalHeader().hide()
+        frozen.horizontalHeader().setSectionResizeMode(col, QHeaderView.Fixed)
+
+        if delegate:
+            frozen.setItemDelegateForColumn(col, delegate)
+
+        # N'afficher que la colonne figée
+        self._apply_frozen_col_visibility(frozen, col)
+
+        # Masquer dans la vue principale
+        self.hideColumn(col)
+
+        # Sync scroll vertical bidirectionnel
+        self.verticalScrollBar().valueChanged.connect(frozen.verticalScrollBar().setValue)
+        frozen.verticalScrollBar().valueChanged.connect(self.verticalScrollBar().setValue)
+
+        # Ré-appliquer la visibilité après reset du modèle (load_records)
+        self.model().modelReset.connect(lambda: self._apply_frozen_col_visibility(frozen, col))
+        self.model().modelReset.connect(lambda: self.hideColumn(col))
+
+        self._frozen_view = frozen
+        # Réserver col_w + vsb_w pixels à droite pour la colonne figée et l'ascenseur
+        vsb_w = self.verticalScrollBar().sizeHint().width()
+        self.setViewportMargins(0, 0, self._frozen_col_width + vsb_w, 0)
+        # Clé : mettre le viewport EN DESSOUS de la vue figée (z-order correct)
+        self.viewport().stackUnder(frozen)
+        # Recalcul de la géométrie après initialisation du layout
+        QTimer.singleShot(0, self._update_frozen_geometry)
+
+    def _apply_frozen_col_visibility(self, frozen_view: QTableView, frozen_col: int):
+        """Masque toutes les colonnes sauf frozen_col dans frozen_view."""
+        model = self.model()
+        if model is None:
+            return
+        for c in range(model.columnCount()):
+            if c != frozen_col:
+                frozen_view.hideColumn(c)
+            else:
+                frozen_view.showColumn(c)
+        frozen_view.setColumnWidth(frozen_col, self._frozen_col_width)
+
+    def _update_frozen_geometry(self):
+        """Repositionne la vue figée au bord droit du tableau.
+
+        x = self.width() - fw - col_w correspond exactement au bord droit du
+        viewport après setViewportMargins(0, 0, col_w, 0), indépendamment du
+        moment où la marge est appliquée par le layout.
+        """
+        if not hasattr(self, '_frozen_view') or not hasattr(self, '_frozen_col_width'):
+            return
+        col_w = self._frozen_col_width
+        fw = self.frameWidth()
+        vsb_w = self.verticalScrollBar().sizeHint().width()
+        x = self.width() - fw - col_w - vsb_w
+        y = fw
+        w = col_w
+        h = self.viewport().height() + self.horizontalHeader().height()
+        self._frozen_view.setGeometry(x, y, w, h)
+        self._frozen_view.setColumnWidth(self._frozen_col, col_w)
+        self._frozen_view.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_frozen_geometry()
+
     def paintEvent(self, event):
         """Affiche un message centré quand le modèle est vide."""
         super().paintEvent(event)
@@ -91,8 +179,11 @@ class CustomTableView(QTableView):
             return
 
         # Cmd+D (macOS) / Ctrl+D (Windows/Linux) — popup auto-complétion
+        # Non applicable sur Référence Modèle (col 2) et Référence Commerciale (col 3)
         is_cmd = event.modifiers() & (Qt.MetaModifier | Qt.ControlModifier)
         if is_cmd and key == Qt.Key_D:
+            if self.currentIndex().column() in {2, 3}:
+                return
             parent = self.parent()
             while parent:
                 if hasattr(parent, '_show_column_values_list'):
@@ -111,7 +202,60 @@ class CustomTableView(QTableView):
                     self.setFocus()
             return
 
+        # F2 — ouvre l'éditeur, curseur en fin de texte (contenu préservé)
+        if key == Qt.Key_F2:
+            idx = self.currentIndex()
+            if idx.isValid() and model and model.flags(idx) & Qt.ItemIsEditable:
+                self.edit(idx)
+            return
+
+        # Frappe sur cellule vide → ouvre l'éditeur et insère le caractère
+        if (event.text() and event.text()[0].isprintable()
+                and not (event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))):
+            idx = self.currentIndex()
+            if idx.isValid() and model and model.flags(idx) & Qt.ItemIsEditable:
+                cell_value = model.data(idx, Qt.DisplayRole) or ""
+                if not cell_value:
+                    char = event.text()
+                    if idx.column() in {0, 1}:   # Type et Fabricant → popup Cmd+D pré-filtrée
+                        parent = self.parent()
+                        while parent:
+                            if hasattr(parent, '_show_column_values_list'):
+                                parent._show_column_values_list(prefill=char)
+                                return
+                            parent = parent.parent()
+                        return
+                    # Autres colonnes vides → éditeur direct
+                    self._pending_key_char = char
+                    self.edit(idx)
+                    QTimer.singleShot(0, self._init_editor_with_char)
+                    return
+
         super().keyPressEvent(event)
+
+    def _init_editor_with_char(self):
+        """Injecte le caractère en attente dans le QLineEdit éditeur actif."""
+        from PyQt5.QtWidgets import QLineEdit
+        char = getattr(self, '_pending_key_char', None)
+        self._pending_key_char = None
+        if char is None:
+            return
+        fw = self.focusWidget()
+        if isinstance(fw, QLineEdit):
+            fw.setText(char)
+            fw.setCursorPosition(len(char))
+
+    def mousePressEvent(self, event):
+        """Clic simple sur la cellule courante → ouvre l'éditeur (Option B)."""
+        from PyQt5.QtCore import Qt as _Qt
+        if event.button() == _Qt.LeftButton:
+            idx = self.indexAt(event.pos())
+            if (idx.isValid()
+                    and idx == self.currentIndex()
+                    and self.model()
+                    and self.model().flags(idx) & _Qt.ItemIsEditable):
+                self.edit(idx)
+        super().mousePressEvent(event)
 
     # ── Helpers de rétro-compatibilité ──────────────────────────────────────
     # Permettent aux services existants de continuer à fonctionner en Phase 3

@@ -7,7 +7,8 @@ from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout,
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton, QToolButton,
                             QLabel,
                             Qt, QTimer, QThread, pyqtSignal,
-                            QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView)
+                            QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView,
+                            QHeaderView)
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -254,7 +255,7 @@ class TableController:
         self.filter_layout = filter_layout
         
         # Tableau principal — QTableView + AppareillsTableModel
-        from ..data.appareils_table_model import AppareillsTableModel
+        from ..data.appareils_table_model import AppareillsTableModel, PiecesCountDelegate
         from .custom_table_view import CustomTableView
         self.model = AppareillsTableModel(self.parent_window)
         self.table = CustomTableView()
@@ -264,6 +265,12 @@ class TableController:
         # Configuration QTableView
         self.table.setAcceptDrops(True)
         self.table.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
+
+        # Comportement tableur : 2e clic sur cellule sélectionnée → édition
+        self.table.setEditTriggers(
+            QAbstractItemView.DoubleClicked |
+            QAbstractItemView.EditKeyPressed
+        )
 
         # Tri géré manuellement (désactiver le tri automatique Qt)
         self.table.setSortingEnabled(False)
@@ -278,7 +285,15 @@ class TableController:
 
         # Définir les largeurs par défaut des colonnes
         self._set_default_column_widths()
-        
+
+        # Colonne Nb Pièces figée à droite (badge pill, hors scroll horizontal)
+        self.table.freeze_right_column(len(Config.DB_HEADERS), PiecesCountDelegate(self.table))
+        # Réf. Modèle et Réf. Commerciale s'ajustent automatiquement à la largeur du tableau
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(2, QHeaderView.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.Stretch)
+
         layout.addWidget(self.table)
         
         # Barre de recherche SOUS le tableau (position correcte)
@@ -342,12 +357,23 @@ class TableController:
 
         self.supersession_banner_label = QLabel()
         self.supersession_banner_label.setStyleSheet("color: #795548; font-size: 12px; border: none; background: transparent;")
-        self.supersession_banner_label.setTextFormat(Qt.RichText)
-        self.supersession_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+        self.supersession_banner_label.setTextFormat(Qt.PlainText)
         self.supersession_banner_label.setWordWrap(False)
-        self.supersession_banner_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.supersession_banner_label.linkActivated.connect(lambda _: self._show_supersession_popup())
         banner_layout.addWidget(self.supersession_banner_label)
+
+        # Bouton overflow "… +N" — visible uniquement quand les refs sont tronquées.
+        # Séparé du label pour éviter le bug d'alignement Qt (RichText + <a href>
+        # active le moteur QTextDocument qui ignore Qt.AlignVCenter sur le label).
+        self.supersession_overflow_btn = QPushButton()
+        self.supersession_overflow_btn.setFlat(True)
+        self.supersession_overflow_btn.setStyleSheet(
+            "QPushButton { color: #795548; font-size: 12px; border: none; background: transparent; padding: 0px; }"
+            "QPushButton:hover { color: #4e342e; text-decoration: underline; }"
+        )
+        self.supersession_overflow_btn.setCursor(Qt.PointingHandCursor)
+        self.supersession_overflow_btn.setVisible(False)
+        self.supersession_overflow_btn.clicked.connect(lambda: self._show_supersession_popup())
+        banner_layout.addWidget(self.supersession_overflow_btn)
         banner_layout.addStretch()
 
         self.supersession_bypass_btn = QPushButton()
@@ -764,7 +790,7 @@ class TableController:
             1: 124,  # Fabricant
             2: 150,  # Référence Modèle
             3: 214,  # Référence Commerciale
-            4: 166,  # Autre Référence
+            4: 120,  # Autre Référence
             5: 100,  # Catégorie (peut être cachée)
             6: 200,  # Notes (peut être cachée)
             7: 52,   # Nb Pièces
@@ -1374,33 +1400,49 @@ class TableController:
             chain = self._supersession_chain
             if self._supersession_bypass:
                 self.supersession_banner_label.setText(f"⚠\uFE0E Résultats pour '{term}' uniquement (ancienne réf.)")
+                self.supersession_overflow_btn.setVisible(False)
                 self.supersession_bypass_btn.setText("Voir toute la chaîne →")
             else:
                 sibs = getattr(self, '_supersession_siblings', [])
                 if sibs:
                     sibs_disp, sibs_tip = _truncate_refs(sibs)
-                    sibs_html = _link_banner(sibs_disp, sibs_tip, "#795548")
-                    text = "⚠\uFE0E Ancienne réf. : " + " → ".join(chain) + f" (courante) — ainsi que : {sibs_html}"
-                    self.supersession_banner_label.setText(text)
+                    prefix = "⚠\uFE0E Ancienne réf. : " + " → ".join(chain) + " (courante) — ainsi que : "
                     if sibs_tip:
-                        self.supersession_banner_label.setToolTip(sibs_tip)
+                        # Tronqué : le label reçoit le texte de base, le bouton le "… +N"
+                        base_disp, overflow = sibs_disp.rsplit('… +', 1)
+                        self.supersession_banner_label.setText(prefix + base_disp)
+                        self.supersession_overflow_btn.setText(f"… +{overflow}")
+                        self.supersession_overflow_btn.setToolTip(sibs_tip)
+                        self.supersession_overflow_btn.setVisible(True)
+                    else:
+                        self.supersession_banner_label.setText(prefix + sibs_disp)
+                        self.supersession_overflow_btn.setVisible(False)
                 else:
                     self.supersession_banner_label.setText("⚠\uFE0E Ancienne réf. : " + " → ".join(chain) + " (courante)")
+                    self.supersession_overflow_btn.setVisible(False)
+                self.supersession_banner_label.setToolTip("")
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
 
         elif self._supersession_mode == 'replacing':
             preds = self._supersession_predecessors
             preds_disp, preds_tip = _truncate_refs(preds)
-            label_refs = _link_banner(preds_disp, preds_tip, "#795548")
             if self._supersession_expand:
-                self.supersession_banner_label.setText(
-                    f"⚠\uFE0E Résultats étendus — '{term}' remplace : {label_refs}")
+                prefix = f"⚠\uFE0E Résultats étendus — '{term}' remplace : "
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
             else:
-                self.supersession_banner_label.setText(
-                    f"⚠\uFE0E '{term}' remplace : {label_refs}")
+                prefix = f"⚠\uFE0E '{term}' remplace : "
                 self.supersession_bypass_btn.setText("Voir aussi les appareils des réfs remplacées")
-            self.supersession_banner_label.setToolTip(preds_tip if preds_tip else "")
+            if preds_tip:
+                # Tronqué : séparer base et overflow
+                base_disp, overflow = preds_disp.rsplit('… +', 1)
+                self.supersession_banner_label.setText(prefix + base_disp)
+                self.supersession_overflow_btn.setText(f"… +{overflow}")
+                self.supersession_overflow_btn.setToolTip(preds_tip)
+                self.supersession_overflow_btn.setVisible(True)
+            else:
+                self.supersession_banner_label.setText(prefix + preds_disp)
+                self.supersession_overflow_btn.setVisible(False)
+            self.supersession_banner_label.setToolTip("")
 
     def _toggle_supersession_bypass(self):
         """Basculer l'état du bouton selon le mode actif."""

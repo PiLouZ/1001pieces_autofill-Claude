@@ -5,7 +5,8 @@ Gère les fenêtres d'autocomplétion et la récupération des valeurs
 
 from typing import List, Optional
 from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                            QPushButton, QListWidget, QListWidgetItem, QMessageBox, QWidget, Qt)
+                            QPushButton, QListWidget, QListWidgetItem, QMessageBox, QWidget, Qt,
+                            QTimer)
 from ..data.database_manager import DatabaseManager
 from ..core.logger import app_logger
 from ..core.config import Config
@@ -20,7 +21,7 @@ class AutoCompletionService(BaseService):
         self.db_manager = db_manager
         self.parent_widget = parent_widget
     
-    def show_column_values_dialog(self, table_widget, current_item, current_col) -> Optional[str]:
+    def show_column_values_dialog(self, table_widget, current_item, current_col, prefill: str = "") -> Optional[str]:
         """
         Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D)
 
@@ -36,11 +37,13 @@ class AutoCompletionService(BaseService):
         if not db_field:
             return None
 
-        current_value = self._get_current_cell_edit_value(table_widget, current_item, current_col)
+        current_value = prefill if prefill else self._get_current_cell_edit_value(table_widget, current_item, current_col)
         col_label = Config.UI_HEADERS[current_col] if current_col < len(Config.UI_HEADERS) else "Colonne"
         title = f"Valeurs — {col_label}"
         label = f"Sélectionner ou saisir une valeur pour « {col_label} » :"
-        return self._show_autocompletion_dialog(title, label, db_field, current_value)
+        # Pré-sélectionner le texte existant (Cmd+D normal), pas lors d'un préfixe de frappe
+        select_all = not bool(prefill)
+        return self._show_autocompletion_dialog(title, label, db_field, current_value, select_all=select_all)
     
     @handle_autocompletion_errors(return_value="")
     def _get_current_cell_edit_value(self, table_widget, current_item, current_col):
@@ -71,7 +74,7 @@ class AutoCompletionService(BaseService):
         # Méthode 4: Valeur par défaut depuis l'item
         return current_item.text() if current_item else ""
     
-    def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "") -> Optional[str]:
+    def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "", select_all: bool = True) -> Optional[str]:
         """Afficher une fenêtre d'auto-complétion dédiée avec navigation clavier"""
         dialog = QDialog(self.parent_widget)
         dialog.setWindowTitle(title)
@@ -94,9 +97,9 @@ class AutoCompletionService(BaseService):
         layout.addWidget(values_list)
         
         # Récupérer les valeurs de la base de données et configurer l'interface
-        return self._safe_configure_dialog_interface(dialog, layout, input_field, values_list, db_field, current_value)
+        return self._safe_configure_dialog_interface(dialog, layout, input_field, values_list, db_field, current_value, select_all=select_all)
 
-    def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value):
+    def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value, select_all: bool = True):
         """Configurer l'interface du dialogue de manière sécurisée"""
         # Récupérer les valeurs de la base de données
         all_values = self.db_manager.get_column_values(db_field)
@@ -225,7 +228,13 @@ class AutoCompletionService(BaseService):
         
         # Focus sur le champ de saisie
         input_field.setFocus()
-        input_field.selectAll()
+        # Différé : macOS applique son propre selectAll après setFocus().
+        # On surcharge ce comportement dans la prochaine itération de l'event loop.
+        if select_all:
+            QTimer.singleShot(0, input_field.selectAll)
+        else:
+            QTimer.singleShot(0, lambda: (input_field.deselect(),
+                                          input_field.setCursorPosition(len(input_field.text()))))
         
         # Afficher le dialogue
         if dialog.exec_() == QDialog.Accepted:
