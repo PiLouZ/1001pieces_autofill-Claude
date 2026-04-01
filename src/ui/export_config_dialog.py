@@ -11,7 +11,7 @@ from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QFrame, Qt, QFont, QSizePolicy, QSize
+    QMessageBox, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox
 )
 from src.core.logger import app_logger
 
@@ -111,7 +111,11 @@ class ExportConfigDialog(QDialog):
         # Explication variables disponibles
         vars_label = QLabel(
             "Variables disponibles dans la colonne Source : "
-            "{export_ref}  {ref_piece}  {type_app}  {manufacturer}  {ref_modele}  {commercial_ref}  {other_ref}"
+            "{export_ref}  {ref_piece}  {type_app}  {manufacturer}  "
+            "{ref_modele}  {commercial_ref}  {other_ref}  "
+            "{modele_complet}  {separateur}\n"
+            "  {modele_complet} = ref. modèle + commerciale fusionnées (tiret absent si l'une est vide)\n"
+            "  {separateur}     = \" - \" si les deux références sont présentes, \"\" sinon"
         )
         vars_label.setStyleSheet("color: #6c757d; font-size: 12px;")
         vars_label.setWordWrap(True)
@@ -229,13 +233,41 @@ class ExportConfigDialog(QDialog):
         self.html_brand_header_tpl = QLineEdit()
         left_layout.addWidget(self.html_brand_header_tpl)
 
-        left_layout.addWidget(QLabel("Ligne modèle  ({marque} · {ref_modele} · {ref_commerciale}) :"))
+        vars_detail_lbl = QLabel(
+            "Variables ligne modèle : "
+            "{modele_complet}  {ref_modele}  {ref_commerciale}  {separateur}  {marque}\n"
+            "  {modele_complet} = référence modèle + commerciale fusionnées (tiret retiré si l'une est vide)\n"
+            "  {separateur}     = \" - \" si les deux références sont présentes, \"\" sinon"
+        )
+        vars_detail_lbl.setStyleSheet("color: #6c757d; font-size: 11px;")
+        vars_detail_lbl.setWordWrap(True)
+        left_layout.addWidget(vars_detail_lbl)
+
+        left_layout.addWidget(QLabel("Ligne modèle :"))
         self.html_model_line_tpl = QLineEdit()
         left_layout.addWidget(self.html_model_line_tpl)
 
         left_layout.addWidget(QLabel("Séparateur entre groupes :"))
         self.html_group_sep = QLineEdit()
         left_layout.addWidget(self.html_group_sep)
+
+        # Limite de caractères HTML détails
+        char_limit_layout = QHBoxLayout()
+        char_limit_layout.addWidget(QLabel("Limite de caractères :"))
+        self.html_char_limit_spin = QSpinBox()
+        self.html_char_limit_spin.setRange(10000, 2000000)
+        self.html_char_limit_spin.setSingleStep(5000)
+        self.html_char_limit_spin.setSuffix(" car.")
+        self.html_char_limit_spin.setToolTip(
+            "Nombre maximum de caractères visibles dans l'export HTML Détails.\n"
+            "Si dépassé, les données sont réduites progressivement :\n"
+            "  1. Toutes les références (modèle + commerciale)\n"
+            "  2. Référence modèle uniquement\n"
+            "  3. Référence commerciale uniquement"
+        )
+        char_limit_layout.addWidget(self.html_char_limit_spin)
+        char_limit_layout.addStretch()
+        left_layout.addLayout(char_limit_layout)
 
         preview_btn = QPushButton("Prévisualiser")
         preview_btn.setIcon(qta.icon('fa5s.eye', color='#495057'))
@@ -317,6 +349,7 @@ class ExportConfigDialog(QDialog):
         self.html_brand_header_tpl.setText(details_cfg.get('brand_header_template', ''))
         self.html_model_line_tpl.setText(details_cfg.get('model_line_template', ''))
         self.html_group_sep.setText(details_cfg.get('group_separator', ''))
+        self.html_char_limit_spin.setValue(details_cfg.get('char_limit', 195000))
 
         self._update_html_preview()
 
@@ -401,10 +434,16 @@ class ExportConfigDialog(QDialog):
                 detail_parts.append(group_sep)
             detail_parts.append(render(brand_header, {'marque': brand}))
             for m in brands_data[brand]:
+                ref_m = m['ref_modele']
+                ref_c = m['commercial_ref']
+                modele_complet = f"{ref_m} - {ref_c}".strip(' -') if (ref_m and ref_c) else (ref_m or ref_c or '')
+                separateur = ' - ' if (ref_m and ref_c) else ''
                 detail_parts.append(render(model_line, {
-                    'marque': brand,
-                    'ref_modele': m['ref_modele'],
-                    'ref_commerciale': m['commercial_ref'],
+                    'marque':          brand,
+                    'ref_modele':      ref_m,
+                    'ref_commerciale': ref_c,
+                    'modele_complet':  modele_complet,
+                    'separateur':      separateur,
                 }))
         detail_html = ''.join(detail_parts)
 
@@ -449,7 +488,7 @@ class ExportConfigDialog(QDialog):
                     "brand_header_template": self.html_brand_header_tpl.text(),
                     "model_line_template":   self.html_model_line_tpl.text(),
                     "group_separator":       self.html_group_sep.text(),
-                    "char_limit":    self.export_config_service.get_html_details_config().get('char_limit', 195000)
+                    "char_limit":            self.html_char_limit_spin.value()
                 }
             }
         }

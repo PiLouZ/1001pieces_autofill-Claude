@@ -152,11 +152,14 @@ class HtmlExportService:
             if models_to_display:
                 html_parts.append(_render(brand_header_tpl, {'marque': brand}))
 
-                for ref_modele, ref_commerciale, _ in sorted(models_to_display, key=lambda x: x[2]):
+                for ref_modele, ref_commerciale, modele_complet in sorted(models_to_display, key=lambda x: x[2]):
+                    separateur = ' - ' if (ref_modele and ref_commerciale) else ''
                     context = {
                         'marque':          brand,
                         'ref_modele':      ref_modele,
                         'ref_commerciale': ref_commerciale,
+                        'modele_complet':  modele_complet,
+                        'separateur':      separateur,
                     }
                     html_parts.append(_render(model_line_tpl, context))
 

@@ -29,7 +29,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             {"header": "product",              "source": "{export_ref}"},
             {"header": "type",                 "source": "{type_app}"},
             {"header": "manufacturer",         "source": "{manufacturer}"},
-            {"header": "modele_name",          "source": "{ref_modele} - {commercial_ref}"},
+            {"header": "modele_name",          "source": "{modele_complet}"},
             {"header": "reference_modele",     "source": "{ref_modele}"},
             {"header": "commercial_reference", "source": "{commercial_ref}"}
         ]
@@ -42,7 +42,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
         "details": {
             "brand_header_template": "<div id=\"{marque}\"><b><u>{marque}</u></b></div>",
-            "model_line_template":   "<div>{ref_modele} - {ref_commerciale}</div>",
+            "model_line_template":   "<div>{modele_complet}</div>",
             "group_separator":       "<div>&nbsp;</div>",
             "char_limit":            195000
         }
@@ -52,12 +52,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 # Variables disponibles dans les sources de colonnes et templates
 AVAILABLE_VARIABLES = [
     "{export_ref}", "{ref_piece}", "{type_app}", "{manufacturer}",
-    "{ref_modele}", "{commercial_ref}", "{other_ref}"
+    "{ref_modele}", "{commercial_ref}", "{other_ref}",
+    "{modele_complet}", "{separateur}"
 ]
 
 AVAILABLE_HTML_VARIABLES = {
     "brands":  ["{marque}"],
-    "details": ["{marque}", "{ref_modele}", "{ref_commerciale}"]
+    "details": ["{marque}", "{ref_modele}", "{ref_commerciale}", "{modele_complet}", "{separateur}"]
 }
 
 
@@ -178,14 +179,21 @@ class ExportConfigService(BaseService):
         """
         type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
 
+        ref_m = ref_modele or ''
+        ref_c = commercial_ref or ''
+        modele_complet = f"{ref_m} - {ref_c}".strip(' -') if (ref_m and ref_c) else (ref_m or ref_c)
+        separateur = ' - ' if (ref_m and ref_c) else ''
+
         context = {
-            'export_ref':    search_term or '',
+            'export_ref':     search_term or '',
             'ref_piece':      ref_piece or '',
             'type_app':       type_app or '',
             'manufacturer':   manufacturer or '',
-            'ref_modele':     ref_modele or '',
-            'commercial_ref': commercial_ref or '',
+            'ref_modele':     ref_m,
+            'commercial_ref': ref_c,
             'other_ref':      other_ref or '',
+            'modele_complet': modele_complet,
+            'separateur':     separateur,
         }
 
         return [
