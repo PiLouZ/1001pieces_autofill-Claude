@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.36.0"
+    VERSION = "3.36.1"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -335,17 +335,17 @@ class Config:
     # Structure de la base de données (SANS pieces_count pour simplifier)
     DB_HEADERS = ["type", "manufacturer", "ref_modele", "commercial_ref", "other_ref", "category", "notes"]
     UI_HEADERS = [
-        "Type", "Fabricant", "Référence Modèle",
-        "Référence Commerciale", "Autre Référence", "Catégorie", "Notes", "Nb Pièces"
+        "Type", "Fabricant", "Référence modèle",
+        "Référence commerciale", "Autre référence", "Catégorie", "Notes", "Nb pièces"
     ]
     
     # Configuration des colonnes (index, nom, visible par défaut)
     COLUMN_CONFIG = [
         {"index": 0, "name": "Type", "db_field": "type", "visible": True, "mandatory": True},
         {"index": 1, "name": "Fabricant", "db_field": "manufacturer", "visible": True, "mandatory": True},
-        {"index": 2, "name": "Référence Modèle", "db_field": "ref_modele", "visible": True, "mandatory": True},
-        {"index": 3, "name": "Référence Commerciale", "db_field": "commercial_ref", "visible": True, "mandatory": True},
-        {"index": 4, "name": "Autre Référence", "db_field": "other_ref", "visible": True, "mandatory": True},
+        {"index": 2, "name": "Référence modèle", "db_field": "ref_modele", "visible": True, "mandatory": True},
+        {"index": 3, "name": "Référence commerciale", "db_field": "commercial_ref", "visible": True, "mandatory": True},
+        {"index": 4, "name": "Autre référence", "db_field": "other_ref", "visible": True, "mandatory": True},
         {"index": 5, "name": "Catégorie", "db_field": "category", "visible": False, "mandatory": False},
         {"index": 6, "name": "Notes", "db_field": "notes", "visible": False, "mandatory": False}
     ]

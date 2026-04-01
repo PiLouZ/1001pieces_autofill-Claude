@@ -952,22 +952,43 @@ class TableController:
         pagination_layout = QHBoxLayout(pagination_widget)
         pagination_layout.setContentsMargins(4, 2, 4, 0)
         
+        _btn_style = (
+            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+        )
+
         # Bouton page précédente
         self.prev_button = QPushButton("◀ Précédent")
+        self.prev_button.setStyleSheet(_btn_style)
         # Navigation gérée par NavigationService
         pagination_layout.addWidget(self.prev_button)
-        
+
         # Label page actuelle
         self.page_label = QLabel("Page 1 sur 1")
         pagination_layout.addWidget(self.page_label)
-        
+
         # Bouton page suivante
         self.next_button = QPushButton("Suivant ▶")
+        self.next_button.setStyleSheet(_btn_style)
         # Navigation gérée par NavigationService
         pagination_layout.addWidget(self.next_button)
         
         pagination_layout.addStretch()
-        
+
+        self.size_label = QLabel(f"Total: {self.total_rows} lignes")
+        pagination_layout.addWidget(self.size_label)
+
+        # Séparateur visuel
+        from PyQt5.QtWidgets import QFrame
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Plain)
+        separator.setStyleSheet("color: #ced4da;")
+        separator.setFixedHeight(14)
+        pagination_layout.addSpacing(6)
+        pagination_layout.addWidget(separator)
+        pagination_layout.addSpacing(6)
+
         # Sélecteur taille de page
         size_label = QLabel("Lignes par page:")
         pagination_layout.addWidget(size_label)
@@ -1024,10 +1045,7 @@ class TableController:
         """)
         # Changement de taille géré par NavigationService
         pagination_layout.addWidget(self.page_size_combo)
-        
-        self.size_label = QLabel(f"Total: {self.total_rows} lignes")
-        pagination_layout.addWidget(self.size_label)
-        
+
         layout.addWidget(pagination_widget)
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour pagination")
