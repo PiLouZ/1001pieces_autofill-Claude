@@ -196,10 +196,35 @@ class PieceRelationsPopup(QDialog):
         Le QTimer.singleShot(0) diffère l'affichage d'un tick pour que le clic
         qui a déclenché l'appel soit entièrement consommé avant l'ouverture —
         évite la fermeture immédiate du Qt.Popup sur les parents de haut niveau.
+        Le popup est replié au-dessus / à gauche du curseur s'il déborderait de l'écran.
         """
-        pos = QCursor.pos()
-        self.move(pos.x() + 4, pos.y() + 4)
-        QTimer.singleShot(0, self.show)
+        cursor_pos = QCursor.pos()
+
+        def _do_show():
+            self.adjustSize()
+            pw = self.width()  or self.WIDTH
+            ph = self.height() or self.MAX_HEIGHT
+
+            screen = QApplication.screenAt(cursor_pos)
+            if screen is None:
+                screen = QApplication.primaryScreen()
+            avail = screen.availableGeometry()
+
+            x = cursor_pos.x() + 4
+            y = cursor_pos.y() + 4
+
+            if x + pw > avail.right():
+                x = cursor_pos.x() - pw - 4
+            if y + ph > avail.bottom():
+                y = cursor_pos.y() - ph - 4
+
+            x = max(avail.left(), x)
+            y = max(avail.top(), y)
+
+            self.move(x, y)
+            self.show()
+
+        QTimer.singleShot(0, _do_show)
 
 
 # ── Helpers label ───────────────────────────────────────────────────────────────
