@@ -2,6 +2,8 @@
 Gestion centralisée du tableau, filtres, pagination et tri
 """
 
+import html as _html
+
 from typing import List, Dict, Optional, Tuple, Any
 from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout,
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton, QToolButton,
@@ -357,8 +359,10 @@ class TableController:
 
         self.supersession_banner_label = QLabel()
         self.supersession_banner_label.setStyleSheet("color: #795548; font-size: 12px; border: none; background: transparent;")
-        self.supersession_banner_label.setTextFormat(Qt.PlainText)
+        self.supersession_banner_label.setTextFormat(Qt.RichText)
+        self.supersession_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
         self.supersession_banner_label.setWordWrap(False)
+        self.supersession_banner_label.linkActivated.connect(self._on_supersession_ref_clicked)
         banner_layout.addWidget(self.supersession_banner_label)
 
         # Bouton overflow "… +N" — visible uniquement quand les refs sont tronquées.
@@ -1408,25 +1412,61 @@ class TableController:
         if hasattr(self, 'supersession_banner'):
             self.supersession_banner.setVisible(False)
 
+    def _on_supersession_ref_clicked(self, ref: str):
+        """Déclencher une nouvelle recherche en cliquant sur une référence dans la bannière."""
+        if hasattr(self.parent_window, 'search_input'):
+            self.parent_window.search_input.setText(ref)
+
+    @staticmethod
+    def _make_linked_refs(refs: list, max_inline: int = 3) -> tuple:
+        """Variante de _truncate_refs qui enveloppe les refs visibles en liens HTML.
+
+        Retourne (html_inline, tooltip_plain) :
+        - html_inline  : refs inline avec <a href>, tronquées si > max_inline
+        - tooltip_plain : liste complète en texte brut si tronquée, sinon ""
+        """
+        if not refs:
+            return "", ""
+        style = 'color:#5D4037;text-decoration:underline;'
+        full_plain = ", ".join(refs)
+        shown = refs[:max_inline]
+        linked = ", ".join(
+            f'<a href="{_html.escape(r, quote=True)}" style="{style}">{_html.escape(r)}</a>'
+            for r in shown
+        )
+        if len(refs) > max_inline:
+            return f"{linked}  … +{len(refs) - max_inline}", full_plain
+        return linked, ""
+
     def _update_supersession_banner(self):
         """Mettre à jour le texte et le bouton du bandeau selon le mode et l'état."""
         if not hasattr(self, 'supersession_banner_label'):
             return
         term = self._supersession_term or ''
 
+        def _link_chain(chain):
+            """Chaîne de supersession avec chaque ref cliquable, séparée par →"""
+            style = 'color:#5D4037;text-decoration:underline;'
+            return " → ".join(
+                f'<a href="{_html.escape(r, quote=True)}" style="{style}">{_html.escape(r)}</a>'
+                for r in chain
+            )
+
         if self._supersession_mode == 'superseded':
             chain = self._supersession_chain
             if self._supersession_bypass:
-                self.supersession_banner_label.setText(f"⚠\uFE0E Résultats pour '{term}' uniquement (ancienne réf.)")
+                self.supersession_banner_label.setText(
+                    f"⚠\uFE0E Résultats pour '{_html.escape(term)}' uniquement (ancienne réf.)"
+                )
                 self.supersession_overflow_btn.setVisible(False)
                 self.supersession_bypass_btn.setText("Voir toute la chaîne →")
             else:
+                chain_html = _link_chain(chain)
                 sibs = getattr(self, '_supersession_siblings', [])
                 if sibs:
-                    sibs_disp, sibs_tip = _truncate_refs(sibs)
-                    prefix = "⚠\uFE0E Ancienne réf. : " + " → ".join(chain) + " (courante) — ainsi que : "
+                    sibs_disp, sibs_tip = self._make_linked_refs(sibs)
+                    prefix = f"⚠\uFE0E Ancienne réf. : {chain_html} (courante) — ainsi que : "
                     if sibs_tip:
-                        # Tronqué : le label reçoit le texte de base, le bouton le "… +N"
                         base_disp, overflow = sibs_disp.rsplit('… +', 1)
                         self.supersession_banner_label.setText(prefix + base_disp)
                         self.supersession_overflow_btn.setText(f"… +{overflow}")
@@ -1436,22 +1476,23 @@ class TableController:
                         self.supersession_banner_label.setText(prefix + sibs_disp)
                         self.supersession_overflow_btn.setVisible(False)
                 else:
-                    self.supersession_banner_label.setText("⚠\uFE0E Ancienne réf. : " + " → ".join(chain) + " (courante)")
+                    self.supersession_banner_label.setText(
+                        f"⚠\uFE0E Ancienne réf. : {chain_html} (courante)"
+                    )
                     self.supersession_overflow_btn.setVisible(False)
                 self.supersession_banner_label.setToolTip("")
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
 
         elif self._supersession_mode == 'replacing':
             preds = self._supersession_predecessors
-            preds_disp, preds_tip = _truncate_refs(preds)
+            preds_disp, preds_tip = self._make_linked_refs(preds)
             if self._supersession_expand:
-                prefix = f"⚠\uFE0E Résultats étendus — '{term}' remplace : "
+                prefix = f"⚠\uFE0E Résultats étendus — '{_html.escape(term)}' remplace : "
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
             else:
-                prefix = f"⚠\uFE0E '{term}' remplace : "
+                prefix = f"⚠\uFE0E '{_html.escape(term)}' remplace : "
                 self.supersession_bypass_btn.setText("Voir aussi les appareils des réfs remplacées")
             if preds_tip:
-                # Tronqué : séparer base et overflow
                 base_disp, overflow = preds_disp.rsplit('… +', 1)
                 self.supersession_banner_label.setText(prefix + base_disp)
                 self.supersession_overflow_btn.setText(f"… +{overflow}")
