@@ -1976,7 +1976,7 @@ class MainWindow(QMainWindow):
         # Section Appareils (format exact)
         summary += "Appareils :\n"
         summary += f"     ==> Créés : {results.get('new_entries', 0)}\n"
-        summary += f"     ==> Complétion automatique : {results.get('matches_found', 0)}\n"
+        summary += f"     ==> Déjà en base : {results.get('matches_found', 0)}\n"
         summary += f"     ==> À compléter : {results.get('manual_completion', 0)}\n"
         summary += f"     ==> Doublons traités : {results.get('duplicates_in_file', 0)}\n"
 

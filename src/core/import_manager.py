@@ -1447,6 +1447,39 @@ class _ImportWorker(QThread):
     finished         = pyqtSignal(dict)
     error_occurred   = pyqtSignal(str)
 
+    def __init__(self, manager, config, dry_run=False):
+        super().__init__()
+        self._manager  = manager
+        self._config   = config
+        self._canceled = False
+        self._dry_run  = dry_run
+
+    def cancel(self):
+        self._canceled = True
+
+    def run(self):
+        try:
+            results = self._manager._run_import_files(
+                self._config,
+                progress_cb=lambda v, m, lbl: self.progress_updated.emit(v, m, lbl),
+                cancel_check=lambda: self._canceled,
+                dry_run=self._dry_run,
+            )
+            self.finished.emit(results or {'total_files': 0, 'successful_files': 0,
+                                           'total_imported': 0, 'errors': []})
+        except Exception as e:
+            app_logger.error(f"_ImportWorker: {e}", exc_info=True)
+            self.error_occurred.emit(str(e))
+
+
+class _ImportPreviewWorker(QThread):
+    """Thread d'analyse dry-run — même pipeline que _ImportWorker mais sans écriture DB.
+    Émet preview_ready avec les comptages simulés pour ImportPreviewDialog."""
+
+    progress_updated = pyqtSignal(int, int, str)
+    preview_ready    = pyqtSignal(dict)
+    error_occurred   = pyqtSignal(str)
+
     def __init__(self, manager, config):
         super().__init__()
         self._manager  = manager
@@ -1462,12 +1495,110 @@ class _ImportWorker(QThread):
                 self._config,
                 progress_cb=lambda v, m, lbl: self.progress_updated.emit(v, m, lbl),
                 cancel_check=lambda: self._canceled,
+                dry_run=True,
             )
-            self.finished.emit(results or {'total_files': 0, 'successful_files': 0,
-                                           'total_imported': 0, 'errors': []})
+            self.preview_ready.emit(results or {})
         except Exception as e:
-            app_logger.error(f"_ImportWorker: {e}", exc_info=True)
+            app_logger.error(f"_ImportPreviewWorker: {e}", exc_info=True)
             self.error_occurred.emit(str(e))
+
+
+class ImportPreviewDialog(QDialog):
+    """
+    Dialogue de prévisualisation avant import (dry-run).
+    Affiche les comptages simulés et laisse l'utilisateur confirmer ou annuler.
+    Utilise show() + signaux (pas exec_()) pour éviter le freeze macOS.
+    """
+
+    confirmed = pyqtSignal()
+    cancelled = pyqtSignal()
+
+    def __init__(self, results: dict, config, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Prévisualisation de l'import")
+        self.setModal(True)
+        self.setMinimumWidth(380)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # ── Titre fichier(s) ──────────────────────────────────────────────
+        file_details = results.get('file_details', [])
+        if len(file_details) == 1:
+            title_text = f"<b>{file_details[0]['filename']}</b>"
+        elif len(file_details) > 1:
+            title_text = f"<b>{len(file_details)} fichiers</b>"
+        else:
+            title_text = "<b>Import</b>"
+
+        title_lbl = QLabel(title_text)
+        title_lbl.setStyleSheet("font-size: 13px; color: #2c3e50;")
+        layout.addWidget(title_lbl)
+
+        # ── Tableau de comptages ──────────────────────────────────────────
+        grid_widget = QWidget()
+        grid_widget.setStyleSheet(
+            "background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;"
+        )
+        grid = QGridLayout(grid_widget)
+        grid.setContentsMargins(12, 10, 12, 10)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(6)
+
+        rows_data = [
+            ("Appareils à créer",          results.get('new_entries', 0),        '#2ecc71'),
+            ("Déjà en base",               results.get('matches_found', 0),      '#3498db'),
+            ("À compléter manuellement",   results.get('manual_completion', 0),  '#e67e22'),
+            ("Doublons traités",           results.get('duplicates_in_file', 0), '#95a5a6'),
+            ("Associations pièces",        results.get('associations_created', 0),'#9b59b6'),
+        ]
+
+        for i, (label, count, color) in enumerate(rows_data):
+            lbl = QLabel(label)
+            lbl.setStyleSheet("font-size: 11px; color: #555; background: transparent; border: none;")
+            count_lbl = QLabel(f"<b>{count:,}</b>".replace(',', ' '))
+            count_lbl.setStyleSheet(
+                f"font-size: 12px; color: {color}; background: transparent; border: none;"
+            )
+            count_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            grid.addWidget(lbl,       i, 0)
+            grid.addWidget(count_lbl, i, 1)
+
+        layout.addWidget(grid_widget)
+
+        # Note sur les associations (approximation)
+        note = QLabel("* Associations estimées (nouveaux appareils × références)")
+        note.setStyleSheet("font-size: 10px; color: #999;")
+        layout.addWidget(note)
+
+        # ── Boutons ───────────────────────────────────────────────────────
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch()
+
+        cancel_btn = QPushButton("Annuler")
+        cancel_btn.clicked.connect(self._on_cancel)
+        btn_bar.addWidget(cancel_btn)
+
+        confirm_btn = QPushButton("Confirmer l'import")
+        confirm_btn.setDefault(True)
+        confirm_btn.setStyleSheet(
+            "QPushButton { background: #2ecc71; color: white; font-weight: bold;"
+            " border-radius: 4px; padding: 4px 14px; }"
+            "QPushButton:hover { background: #27ae60; }"
+        )
+        confirm_btn.clicked.connect(self._on_confirm)
+        btn_bar.addWidget(confirm_btn)
+
+        layout.addLayout(btn_bar)
+
+    def _on_confirm(self):
+        self.confirmed.emit()
+        self.close()
+
+    def _on_cancel(self):
+        self.cancelled.emit()
+        self.close()
 
 
 class ImportManager:
@@ -1684,26 +1815,15 @@ class ImportManager:
                 if config:
                     return self._execute_import(config)
 
-    def _on_import_dialog_accepted(self, dialog, callback):
-        """
-        Callback appelé quand le dialogue d'import est accepté (mode non-bloquant).
-        Lance le traitement dans un _ImportWorker pour garder l'UI responsive.
-        """
-        config = dialog.get_configuration()
-        if not config:
-            if callback:
-                callback(None)
-            dialog.deleteLater()
-            return
-
+    def _launch_real_import(self, config, callback, t0, dialog=None, source='import'):
+        """Lance le vrai _ImportWorker après confirmation (ou directement si pas de preview)."""
         from ..ui.progress_dialog import ProgressDialog
-        t0       = _time.perf_counter()
         n        = len(config.files)
         progress = ProgressDialog("Importation en cours", "Annuler", 0, n, self.parent_widget)
         progress.show()
 
         worker = _ImportWorker(self, config)
-        self._import_worker = worker  # référence pour éviter la GC
+        self._import_worker = worker
 
         worker.progress_updated.connect(
             lambda v, m, lbl: (progress.setRange(0, m),
@@ -1716,25 +1836,93 @@ class ImportManager:
             progress.close()
             worker.wait()
             results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
+            if source == 'drag_drop':
+                results['import_source'] = 'drag_drop'
             if hasattr(self, 'main_window') and self.main_window:
                 self._trigger_post_import_updates()
             if callback:
                 callback(results)
-            dialog.deleteLater()
+            if dialog:
+                dialog.deleteLater()
             self._import_worker = None
 
         def _on_error(msg):
             progress.close()
             worker.wait()
-            app_logger.error(f"Import worker : {msg}")
+            app_logger.error(f"Import worker ({source}) : {msg}")
             if callback:
                 callback(None)
-            dialog.deleteLater()
+            if dialog:
+                dialog.deleteLater()
             self._import_worker = None
 
         worker.finished.connect(_on_finished)
         worker.error_occurred.connect(_on_error)
         worker.start()
+
+    def _launch_preview(self, config, callback, t0, dialog=None, source='import'):
+        """Étape dry-run : analyse sans écriture, puis ImportPreviewDialog, puis import réel."""
+        from ..ui.progress_dialog import ProgressDialog
+        n        = len(config.files)
+        progress = ProgressDialog("Analyse en cours…", "Annuler", 0, n, self.parent_widget)
+        progress.show()
+
+        preview_worker = _ImportPreviewWorker(self, config)
+        self._preview_worker = preview_worker
+
+        preview_worker.progress_updated.connect(
+            lambda v, m, lbl: (progress.setRange(0, m),
+                               progress.setValue(v),
+                               progress.setLabelText(lbl))
+        )
+        progress.canceled.connect(preview_worker.cancel)
+
+        def _on_preview_ready(results):
+            progress.close()
+            preview_worker.wait()
+            self._preview_worker = None
+
+            preview_dlg = ImportPreviewDialog(results, config, self.parent_widget)
+
+            def _on_confirmed():
+                self._launch_real_import(config, callback, t0, dialog=dialog, source=source)
+
+            def _on_cancelled():
+                if callback:
+                    callback(None)
+                if dialog:
+                    dialog.deleteLater()
+
+            preview_dlg.confirmed.connect(_on_confirmed)
+            preview_dlg.cancelled.connect(_on_cancelled)
+            preview_dlg.show()
+
+        def _on_preview_error(msg):
+            progress.close()
+            preview_worker.wait()
+            self._preview_worker = None
+            # Fallback : lancer l'import directement sans preview
+            app_logger.warning(f"Preview worker erreur ({msg}) — import direct")
+            self._launch_real_import(config, callback, t0, dialog=dialog, source=source)
+
+        preview_worker.preview_ready.connect(_on_preview_ready)
+        preview_worker.error_occurred.connect(_on_preview_error)
+        preview_worker.start()
+
+    def _on_import_dialog_accepted(self, dialog, callback):
+        """
+        Callback appelé quand le dialogue d'import est accepté (mode non-bloquant).
+        Lance d'abord une analyse dry-run (ImportPreviewDialog), puis le vrai import.
+        """
+        config = dialog.get_configuration()
+        if not config:
+            if callback:
+                callback(None)
+            dialog.deleteLater()
+            return
+
+        t0 = _time.perf_counter()
+        self._launch_preview(config, callback, t0, dialog=dialog, source='import')
 
     def _on_import_dialog_rejected(self, dialog, callback):
         """
@@ -1854,7 +2042,7 @@ class ImportManager:
     def _on_drag_drop_dialog_accepted(self, dialog, callback):
         """
         Callback appelé quand le dialogue drag&drop est accepté (mode non-bloquant).
-        Lance le traitement dans un _ImportWorker pour garder l'UI responsive.
+        Lance d'abord une analyse dry-run (ImportPreviewDialog), puis le vrai import.
         """
         config = dialog.get_configuration()
         if not config:
@@ -1863,46 +2051,8 @@ class ImportManager:
             dialog.deleteLater()
             return
 
-        from ..ui.progress_dialog import ProgressDialog
-        t0       = _time.perf_counter()
-        n        = len(config.files)
-        progress = ProgressDialog("Importation en cours", "Annuler", 0, n, self.parent_widget)
-        progress.show()
-
-        worker = _ImportWorker(self, config)
-        self._import_worker = worker
-
-        worker.progress_updated.connect(
-            lambda v, m, lbl: (progress.setRange(0, m),
-                               progress.setValue(v),
-                               progress.setLabelText(lbl))
-        )
-        progress.canceled.connect(worker.cancel)
-
-        def _on_finished(results):
-            progress.close()
-            worker.wait()
-            results['import_source'] = 'drag_drop'
-            results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
-            if hasattr(self, 'main_window') and self.main_window:
-                self._trigger_post_import_updates()
-            if callback:
-                callback(results)
-            dialog.deleteLater()
-            self._import_worker = None
-
-        def _on_error(msg):
-            progress.close()
-            worker.wait()
-            app_logger.error(f"Import worker (drag-drop) : {msg}")
-            if callback:
-                callback(None)
-            dialog.deleteLater()
-            self._import_worker = None
-
-        worker.finished.connect(_on_finished)
-        worker.error_occurred.connect(_on_error)
-        worker.start()
+        t0 = _time.perf_counter()
+        self._launch_preview(config, callback, t0, dialog=dialog, source='drag_drop')
 
     def _on_drag_drop_dialog_rejected(self, dialog, callback):
         """
@@ -2001,18 +2151,20 @@ class ImportManager:
         }
 
     def _run_import_files(self, config: ImportConfiguration,
-                          progress_cb=None, cancel_check=None) -> Dict[str, Any]:
+                          progress_cb=None, cancel_check=None,
+                          dry_run: bool = False) -> Dict[str, Any]:
         """Moteur d'import pur — aucune opération UI.
         Peut s'exécuter dans un QThread.
 
         :param progress_cb: callable(value, maximum, label) pour les mises à jour UI
         :param cancel_check: callable() → bool pour l'annulation
+        :param dry_run: si True, analyse sans aucune écriture en base
         """
         # Stocker le cancel_check pour les sous-méthodes (_process_data_import_batch, etc.)
         self._import_cancel_check = cancel_check
 
         cache_service = getattr(self.db_manager, 'cache_invalidation', None)
-        if cache_service:
+        if cache_service and not dry_run:
             cache_service.suspend_invalidation(f"import de {len(config.files)} fichier(s)")
 
         try:
@@ -2051,7 +2203,8 @@ class ImportManager:
 
                 file_results = self._safe_import_single_file(
                     file, config, seen_device_refs,
-                    shared_devices_cache, shared_autocomplete_cache
+                    shared_devices_cache, shared_autocomplete_cache,
+                    dry_run=dry_run,
                 )
 
                 if file_results:
@@ -2071,9 +2224,10 @@ class ImportManager:
 
             app_logger.info(f"[OK] Import terminé : {results['successful_files']}/{n} fichiers")
 
-            self._apply_succession_from_config(config, results)
+            if not dry_run:
+                self._apply_succession_from_config(config, results)
 
-            if hasattr(self.db_manager, 'cache_invalidation'):
+            if not dry_run and hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
 
             return results
@@ -2188,14 +2342,17 @@ class ImportManager:
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import fichier")
     def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
                                   shared_devices_cache: Optional[Dict] = None,
-                                  shared_autocomplete_cache: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
+                                  shared_autocomplete_cache: Optional[Dict] = None,
+                                  dry_run: bool = False) -> Optional[Dict[str, Any]]:
         """Wrapper sécurisé pour _import_single_file avec gestion d'erreur intégrée"""
         return self._import_single_file(file, config, file_seen_device_refs,
-                                        shared_devices_cache, shared_autocomplete_cache)
+                                        shared_devices_cache, shared_autocomplete_cache,
+                                        dry_run=dry_run)
 
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
                              shared_devices_cache: Optional[Dict] = None,
-                             shared_autocomplete_cache: Optional[Dict] = None) -> Dict[str, Any]:
+                             shared_autocomplete_cache: Optional[Dict] = None,
+                             dry_run: bool = False) -> Dict[str, Any]:
         """Importer un fichier unique"""
         # Charger les données — clipboard utilise les données pré-chargées, fichiers relus depuis disque
         if file.type == FileType.CLIPBOARD and file.data is not None:
@@ -2230,8 +2387,9 @@ class ImportManager:
         # Effectuer l'import des données - Mode batch pour gros volumes
         # Seuil pour activer le mode batch optimisé (réduit pour meilleure performance)
         BATCH_THRESHOLD = 50  # lignes - batch dès 50 lignes pour optimisation immédiate
-        
-        if len(data) >= BATCH_THRESHOLD:
+
+        # En dry_run, toujours utiliser le batch (chemin propre : classification séparée des écritures)
+        if dry_run or len(data) >= BATCH_THRESHOLD:
             return self._process_data_import_batch(
                 data,
                 references_and_labels,
@@ -2239,7 +2397,8 @@ class ImportManager:
                 file,
                 file_seen_device_refs,
                 shared_devices_cache,
-                shared_autocomplete_cache
+                shared_autocomplete_cache,
+                dry_run=dry_run,
             )
         else:
             app_logger.debug(" Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
@@ -2340,14 +2499,15 @@ class ImportManager:
                 seen_device_refs.add(device_key)
                 app_logger.debug("[OK] LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
             
-            results['total_imported'] += 1
-            
             # Traiter la ligne selon le mode d'import
             device_data = self._parse_row_data(row, config)
-            
+
             if not device_data:
                 continue
-            
+
+            # Compter APRÈS parse pour cohérence avec le chemin batch
+            results['total_imported'] += 1
+
             # Insérer ou trouver l'appareil
             device_id = self._insert_or_find_device(device_data)
             
@@ -2376,8 +2536,10 @@ class ImportManager:
     def _process_data_import_batch(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]],
                                  config: ImportConfiguration, file: ImportFile, seen_device_refs: set,
                                  shared_devices_cache: Optional[Dict] = None,
-                                 shared_autocomplete_cache: Optional[Dict] = None) -> Dict[str, Any]:
-        """Version optimisée avec batch processing pour les gros imports"""
+                                 shared_autocomplete_cache: Optional[Dict] = None,
+                                 dry_run: bool = False) -> Dict[str, Any]:
+        """Version optimisée avec batch processing pour les gros imports.
+        Si dry_run=True : classification uniquement, aucune écriture en base."""
         
         results = {
             'total_imported': 0,
@@ -2506,64 +2668,41 @@ class ImportManager:
             if idx > 0 and idx % 100 == 0:
                 app_logger.debug(f" BATCH: {idx}/{total_rows} lignes analysées")
 
-        # ÉTAPE 3: Batch operations sur la base
-        app_logger.debug(f" BATCH: Insertion de {len(new_devices_batch)} nouveaux appareils…")
-        
-        new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
-        
-        # Vérifier la correspondance IDs vs appareils
-        if len(new_devices_batch) != len(new_device_ids):
-            app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
-        if len(new_devices_batch) != len(new_device_ids):
-            app_logger.debug("[ERR] PROBLÈME: Discordance entre appareils créés et IDs récupérés!")
-            app_logger.debug("   new_devices_batch: {len(new_devices_batch)}")
-            app_logger.debug("   new_device_ids: {len(new_device_ids)}")
-            if new_device_ids:
-                app_logger.debug("   Premier ID: {new_device_ids[0]}, Dernier ID: {new_device_ids[-1]}")
-        
-        app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
-        if existing_updates:
-            self._batch_update_devices(existing_updates)
+        # ÉTAPE 3: Batch operations sur la base (ignorées en dry_run)
+        if not dry_run:
+            app_logger.debug(f" BATCH: Insertion de {len(new_devices_batch)} nouveaux appareils…")
 
-        app_logger.debug(f" BATCH: Création de {len(associations_batch)} associations…")
+            new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
 
-        # Analyser les associations qui ont besoin de nouveaux appareils
-        new_device_associations = [assoc for assoc in associations_batch if not assoc[3]]  # existing_id est None
-        existing_device_associations = [assoc for assoc in associations_batch if assoc[3]]  # existing_id existe
-        
-        # Calculer le nombre d'appareils uniques concernés par les nouvelles associations
-        unique_new_device_indices = set(assoc[2] for assoc in new_device_associations)  # assoc[2] = data_index
-        unique_existing_device_indices = set(assoc[2] for assoc in existing_device_associations)
-        all_unique_indices = unique_new_device_indices | unique_existing_device_indices
-        
-        # Log détaillé pour débogage si nécessaire
-        app_logger.info(f"Associations: {len(associations_batch)} total ({len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants)")
-        app_logger.info(f"Correspondance: {len(new_devices_batch)} nouveaux appareils = {len(unique_new_device_indices)} indices uniques")
-        app_logger.info(f"Vérification: {results['total_imported']} lignes traitées vs {len(all_unique_indices)} lignes avec associations")
-        
-        # ALERTE si discordance entre lignes traitées et associations
-        if results['total_imported'] != len(all_unique_indices):
-            app_logger.debug("[ERR] PROBLÈME MAJEUR: {results['total_imported']} lignes traitées mais seulement {len(all_unique_indices)} ont des associations!")
-            app_logger.debug("   Différence: {results['total_imported'] - len(all_unique_indices)} lignes sans association")
-            # Créer l'ensemble attendu basé sur processed_line_index (0, 1, 2, ..., total_imported-1)
-            expected_indices = set(range(results['total_imported']))
-            missing_indices = expected_indices - all_unique_indices
-            if missing_indices:
-                app_logger.debug("   Indices manquants (premières 10): {sorted(list(missing_indices))[:10]}")
-            
-            # Debug supplémentaire: vérifier si references_and_labels est vide
-            if not any(ref for ref, label in references_and_labels if ref):
-                app_logger.debug("   [!!!] CAUSE PROBABLE: references_and_labels ne contient aucune référence valide!")
-                app_logger.debug("   references_and_labels: {references_and_labels}")
-        
-        if associations_batch:
-            batch_results = self._batch_create_associations(associations_batch, new_device_ids)
-            results['associations_created'] += batch_results.get('created', 0)
-            results['associations_existing'] += batch_results.get('existing', 0)
-        
-        # Phase 2.3: Invalider le cache après import batch
-        if hasattr(self.db_manager, 'cache_invalidation'):
-            self.db_manager.cache_invalidation.invalidate_after_import(results)
+            if len(new_devices_batch) != len(new_device_ids):
+                app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
+
+            app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
+            if existing_updates:
+                self._batch_update_devices(existing_updates)
+
+            app_logger.debug(f" BATCH: Création de {len(associations_batch)} associations…")
+
+            new_device_associations     = [a for a in associations_batch if not a[3]]
+            existing_device_associations = [a for a in associations_batch if a[3]]
+            unique_new      = set(a[2] for a in new_device_associations)
+            unique_existing = set(a[2] for a in existing_device_associations)
+            all_unique      = unique_new | unique_existing
+            app_logger.info(f"Associations: {len(associations_batch)} total ({len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants)")
+            app_logger.info(f"Vérification: {results['total_imported']} lignes traitées vs {len(all_unique)} lignes avec associations")
+
+            if associations_batch:
+                batch_results = self._batch_create_associations(associations_batch, new_device_ids)
+                results['associations_created'] += batch_results.get('created', 0)
+                results['associations_existing'] += batch_results.get('existing', 0)
+
+            if hasattr(self.db_manager, 'cache_invalidation'):
+                self.db_manager.cache_invalidation.invalidate_after_import(results)
+        else:
+            # Dry-run : approximer les associations (nouveaux appareils × refs valides)
+            valid_refs_count = sum(1 for ref, _ in references_and_labels if ref)
+            results['associations_created'] = len(new_devices_batch) * valid_refs_count
+            results['associations_existing'] = 0
 
         app_logger.debug(f"[OK] BATCH: Terminé — {results['total_imported']} lignes traitées")
         return results
