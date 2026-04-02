@@ -444,9 +444,14 @@ class HistoryViewDialog(QDialog):
             details = []
 
         if self._active_popup is not None:
-            self._active_popup.close()
+            try:
+                self._active_popup.close()
+            except RuntimeError:
+                pass  # objet C++ déjà supprimé par WA_DeleteOnClose
+            self._active_popup = None
 
         self._active_popup = HistoryDetailPopup(title, details, action_type, parent=self)
+        self._active_popup.destroyed.connect(lambda: setattr(self, '_active_popup', None))
         self._active_popup.show_at_cursor()
 
     def _on_filter_changed(self):
