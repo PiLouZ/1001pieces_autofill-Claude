@@ -76,7 +76,7 @@ class HistoryService(BaseService):
                     if new_value is None:
                         new_value = m.group(2)
 
-            self.db_manager.execute_query(
+            self.db_manager.execute_insert(
                 """
                 INSERT INTO modifications_history
                     (timestamp, action_type, title, details,

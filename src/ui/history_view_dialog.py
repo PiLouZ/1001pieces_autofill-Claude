@@ -210,9 +210,9 @@ class HistoryViewDialog(QDialog):
             type_item.setForeground(QColor(color))
             self._table.setItem(r, 1, type_item)
 
-            # Description : toujours le titre, enrichi du nombre de champs pour les edits multi
+            # Description : titre, enrichi du nombre de champs uniquement pour les éditions multi-champs
             description = title or ''
-            if details_json:
+            if action_type == 'edit' and details_json:
                 try:
                     details = json.loads(details_json)
                     if isinstance(details, list) and len(details) > 1:
