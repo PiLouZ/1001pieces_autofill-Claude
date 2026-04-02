@@ -22,7 +22,7 @@ from ..utils.error_handler import (
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
-from .pieces_list_service import PieceRelationsPopup, _link_if_truncated as _link_banner
+from .pieces_list_service import PieceRelationsPopup
 
 def _truncate_refs(refs: list, max_inline: int = 3) -> tuple:
     """
@@ -357,7 +357,6 @@ class TableController:
         # Bandeau de notification supersession (caché par défaut)
         self.supersession_banner = QWidget()
         self.supersession_banner.setVisible(False)
-        self.supersession_banner.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.supersession_banner.setStyleSheet(
             "QWidget { background-color: #FFF8E1; border: 1px solid #FFD54F; border-radius: 3px; }"
         )
@@ -369,7 +368,6 @@ class TableController:
         self.supersession_banner_label.setStyleSheet("color: #795548; font-size: 12px; border: none; background: transparent;")
         self.supersession_banner_label.setTextFormat(Qt.RichText)
         self.supersession_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
-        self.supersession_banner_label.setWordWrap(False)
         self.supersession_banner_label.linkActivated.connect(self._on_supersession_ref_clicked)
         banner_layout.addWidget(self.supersession_banner_label)
 
@@ -421,9 +419,23 @@ class TableController:
         )
         self.equivalence_banner_label.setTextFormat(Qt.RichText)
         self.equivalence_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
-        self.equivalence_banner_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.equivalence_banner_label.linkActivated.connect(lambda _: self._show_equivalence_popup())
+        # Pas de setAlignment : RichText + <a href> active QTextDocument qui ignore AlignVCenter.
+        # Le centrage vertical est assuré par le HBoxLayout parent.
+        self.equivalence_banner_label.linkActivated.connect(self._on_equivalence_ref_clicked)
         equiv_banner_layout.addWidget(self.equivalence_banner_label)
+
+        # Bouton overflow "… +N" — visible uniquement quand les refs sont tronquées.
+        # Séparé du label pour éviter le bug d'alignement Qt (même raison que supersession_overflow_btn).
+        self.equivalence_overflow_btn = QPushButton()
+        self.equivalence_overflow_btn.setFlat(True)
+        self.equivalence_overflow_btn.setStyleSheet(
+            "QPushButton { color: #6A1B9A; font-size: 12px; border: none; background: transparent; padding: 0px; }"
+            "QPushButton:hover { color: #4A148C; text-decoration: underline; }"
+        )
+        self.equivalence_overflow_btn.setCursor(Qt.PointingHandCursor)
+        self.equivalence_overflow_btn.setVisible(False)
+        self.equivalence_overflow_btn.clicked.connect(lambda: self._show_equivalence_popup())
+        equiv_banner_layout.addWidget(self.equivalence_overflow_btn)
         equiv_banner_layout.addStretch()
 
         self.equivalence_expand_btn = QPushButton()
@@ -1415,8 +1427,13 @@ class TableController:
         if hasattr(self.parent_window, 'search_input'):
             self.parent_window.search_input.setText(ref)
 
+    def _on_equivalence_ref_clicked(self, ref: str):
+        """Déclencher une nouvelle recherche en cliquant sur une référence dans la bannière équivalence."""
+        if hasattr(self.parent_window, 'search_input'):
+            self.parent_window.search_input.setText(ref)
+
     @staticmethod
-    def _make_linked_refs(refs: list, max_inline: int = 3) -> tuple:
+    def _make_linked_refs(refs: list, max_inline: int = 3, link_color: str = '#5D4037') -> tuple:
         """Variante de _truncate_refs qui enveloppe les refs visibles en liens HTML.
 
         Retourne (html_inline, tooltip_plain) :
@@ -1425,7 +1442,7 @@ class TableController:
         """
         if not refs:
             return "", ""
-        style = 'color:#5D4037;text-decoration:underline;'
+        style = f'color:{link_color};text-decoration:underline;'
         full_plain = ", ".join(refs)
         shown = refs[:max_inline]
         linked = ", ".join(
@@ -1442,6 +1459,10 @@ class TableController:
             return
         term = self._supersession_term or ''
 
+        def _t(html: str) -> str:
+            """Supprime les marges de bloc de QTextDocument pour éviter le décalage vertical."""
+            return f"<p style='margin:0;padding:0;'>{html}</p>"
+
         def _link_chain(chain):
             """Chaîne de supersession avec chaque ref cliquable, séparée par →"""
             style = 'color:#5D4037;text-decoration:underline;'
@@ -1453,9 +1474,9 @@ class TableController:
         if self._supersession_mode == 'superseded':
             chain = self._supersession_chain
             if self._supersession_bypass:
-                self.supersession_banner_label.setText(
-                    f"⚠\uFE0E Résultats pour '{_html.escape(term)}' uniquement (ancienne réf.)"
-                )
+                self.supersession_banner_label.setText(_t(
+                    f"▲ Résultats pour '{_html.escape(term)}' uniquement (ancienne réf.)"
+                ))
                 self.supersession_overflow_btn.setVisible(False)
                 self.supersession_bypass_btn.setText("Voir toute la chaîne →")
             else:
@@ -1463,20 +1484,20 @@ class TableController:
                 sibs = getattr(self, '_supersession_siblings', [])
                 if sibs:
                     sibs_disp, sibs_tip = self._make_linked_refs(sibs)
-                    prefix = f"⚠\uFE0E Ancienne réf. : {chain_html} (courante) — ainsi que : "
+                    prefix = f"▲ Ancienne réf. : {chain_html} (courante) — ainsi que : "
                     if sibs_tip:
                         base_disp, overflow = sibs_disp.rsplit('… +', 1)
-                        self.supersession_banner_label.setText(prefix + base_disp)
+                        self.supersession_banner_label.setText(_t(prefix + base_disp))
                         self.supersession_overflow_btn.setText(f"… +{overflow}")
                         self.supersession_overflow_btn.setToolTip(sibs_tip)
                         self.supersession_overflow_btn.setVisible(True)
                     else:
-                        self.supersession_banner_label.setText(prefix + sibs_disp)
+                        self.supersession_banner_label.setText(_t(prefix + sibs_disp))
                         self.supersession_overflow_btn.setVisible(False)
                 else:
-                    self.supersession_banner_label.setText(
-                        f"⚠\uFE0E Ancienne réf. : {chain_html} (courante)"
-                    )
+                    self.supersession_banner_label.setText(_t(
+                        f"▲ Ancienne réf. : {chain_html} (courante)"
+                    ))
                     self.supersession_overflow_btn.setVisible(False)
                 self.supersession_banner_label.setToolTip("")
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
@@ -1485,19 +1506,19 @@ class TableController:
             preds = self._supersession_predecessors
             preds_disp, preds_tip = self._make_linked_refs(preds)
             if self._supersession_expand:
-                prefix = f"⚠\uFE0E Résultats étendus — '{_html.escape(term)}' remplace : "
+                prefix = f"▲ Résultats étendus — '{_html.escape(term)}' remplace : "
                 self.supersession_bypass_btn.setText(f"Voir uniquement '{term}'")
             else:
-                prefix = f"⚠\uFE0E '{_html.escape(term)}' remplace : "
+                prefix = f"▲ '{_html.escape(term)}' remplace : "
                 self.supersession_bypass_btn.setText("Voir aussi les appareils des réfs remplacées")
             if preds_tip:
                 base_disp, overflow = preds_disp.rsplit('… +', 1)
-                self.supersession_banner_label.setText(prefix + base_disp)
+                self.supersession_banner_label.setText(_t(prefix + base_disp))
                 self.supersession_overflow_btn.setText(f"… +{overflow}")
                 self.supersession_overflow_btn.setToolTip(preds_tip)
                 self.supersession_overflow_btn.setVisible(True)
             else:
-                self.supersession_banner_label.setText(prefix + preds_disp)
+                self.supersession_banner_label.setText(_t(prefix + preds_disp))
                 self.supersession_overflow_btn.setVisible(False)
             self.supersession_banner_label.setToolTip("")
 
@@ -1544,19 +1565,23 @@ class TableController:
         if not hasattr(self, 'equivalence_banner_label'):
             return
         term = self._equivalence_term or ''
-        equivs_disp, equivs_tip = _truncate_refs(self._equivalence_group)
-        label_refs = _link_banner(equivs_disp, equivs_tip, "#6A1B9A")
+        equivs_disp, equivs_tip = self._make_linked_refs(self._equivalence_group, link_color='#6A1B9A')
         if self._equivalence_expand:
-            self.equivalence_banner_label.setText(
-                f"≡ Résultats étendus — '{term}' · équivalents inclus : {label_refs}"
-            )
+            prefix = f"≡ Résultats étendus — '{_html.escape(term)}' · équivalents inclus : "
             self.equivalence_expand_btn.setText(f"Voir uniquement '{term}'")
         else:
-            self.equivalence_banner_label.setText(
-                f"≡ '{term}' a des équivalents : {label_refs}"
-            )
+            prefix = f"≡ '{_html.escape(term)}' a des équivalents : "
             self.equivalence_expand_btn.setText("Voir aussi les appareils des équivalents")
-        self.equivalence_banner_label.setToolTip(equivs_tip if equivs_tip else "")
+        if equivs_tip:
+            base_disp, overflow = equivs_disp.rsplit('… +', 1)
+            self.equivalence_banner_label.setText(prefix + base_disp)
+            self.equivalence_overflow_btn.setText(f"… +{overflow}")
+            self.equivalence_overflow_btn.setToolTip(equivs_tip)
+            self.equivalence_overflow_btn.setVisible(True)
+        else:
+            self.equivalence_banner_label.setText(prefix + equivs_disp)
+            self.equivalence_overflow_btn.setVisible(False)
+        self.equivalence_banner_label.setToolTip("")
 
     def _toggle_equivalence_expand(self):
         """Basculer l'inclusion des équivalents dans la recherche."""
