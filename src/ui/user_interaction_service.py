@@ -346,6 +346,10 @@ class UserInteractionService:
 
         self._refresh_display()
 
+        # Persistance inter-sessions (silencieuse si le service n'est pas disponible)
+        if hasattr(self.main_window, 'history_service'):
+            self.main_window.history_service.persist(entry)
+
     def _refresh_display(self) -> None:
         """Reconstruire et afficher le HTML de l'historique."""
         if hasattr(self.main_window, 'history_list'):

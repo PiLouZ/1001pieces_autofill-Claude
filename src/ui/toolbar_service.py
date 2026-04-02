@@ -149,6 +149,11 @@ class ToolbarService:
         )
         tools_menu.addAction(export_config_action)
 
+        history_action = QAction("Historique des modifications…", self.main_window)
+        history_action.setToolTip("Consulter l'historique persistant des modifications")
+        history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))
+        tools_menu.addAction(history_action)
+
         tools_menu.addSeparator()
 
         fts5_action = QAction("Index de recherche FTS5", self.main_window)
