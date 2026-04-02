@@ -707,6 +707,10 @@ class MainWindow(QMainWindow):
         self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
         self.statusbar.addPermanentWidget(self.save_indicator)
 
+        # Connecter l'indicateur au service de sauvegarde événementielle (créé avant la statusbar)
+        if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+            self.event_driven_save_service.save_indicator = self.save_indicator
+
         # Feature Flag: AutoSaveManager - Initialisation retardée + Configuration indicateur UI
         if Config.USE_NEW_AUTO_SAVE_MANAGER:
             from ..services.auto_save_manager import AutoSaveManager
