@@ -636,7 +636,7 @@ class MainWindow(QMainWindow):
         history_open_btn.setFlat(True)
         history_open_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
         history_open_btn.clicked.connect(self._open_history_view)
-        history_header_layout.addWidget(history_open_btn)
+        history_header_layout.addWidget(history_open_btn, 0, Qt.AlignVCenter)
 
         history_header_layout.addWidget(_make_separator(), 1)
 
