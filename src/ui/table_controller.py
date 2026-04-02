@@ -10,7 +10,7 @@ from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel,
                             Qt, QTimer, QThread, pyqtSignal,
                             QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView,
-                            QHeaderView)
+                            QHeaderView, QCompleter, QStringListModel)
 
 from ..core.config import Config
 from ..core.logger import app_logger
@@ -202,9 +202,17 @@ class TableController:
                         border-color: #0078d4;
                     }
                 """)
+                # Autocomplétion différée : suggestions chargées à la frappe (≥ 2 chars)
+                completer = QCompleter(QStringListModel(), filter_combo)
+                completer.setCompletionMode(QCompleter.PopupCompletion)
+                completer.setCaseSensitivity(Qt.CaseInsensitive)
+                completer.setMaxVisibleItems(20)
+                filter_combo.setCompleter(completer)
+                filter_combo.lineEdit().textEdited.connect(
+                    lambda text, col=i, c=completer: self._update_filter_completions(col, text, c)
+                )
                 filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 self.filter_widgets[i] = filter_combo
-                self._populate_dropdown_values(filter_combo, i)
                 filter_layout.addWidget(filter_combo, 1)  # stretch factor 1
             else:
                 # Champs texte avec même style que les dropdowns
@@ -1128,35 +1136,25 @@ class TableController:
             # Nettoyer
             self.pending_column_filter = None
     
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur peuplement dropdown")
-    def _populate_dropdown_values(self, combo_widget: QComboBox, column_index: int):
-        """Peupler les valeurs du dropdown avec les données uniques de la BDD"""
-        # Déterminer le champ de base de données selon l'index de colonne
-        if column_index == 0:  # Type
-            db_field = "type"
-        elif column_index == 1:  # Fabricant
-            db_field = "manufacturer"
-        else:
-            return  # Ne pas traiter d'autres colonnes
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur autocomplétion filtre")
+    def _update_filter_completions(self, column: int, text: str, completer: QCompleter):
+        """Mettre à jour les suggestions du QCompleter selon la saisie (≥ 2 chars).
 
-        # Requête pour obtenir les valeurs distinctes, non vides, triées
-        query = f"""
-            SELECT DISTINCT {db_field}
-            FROM appareils
-            WHERE {db_field} IS NOT NULL AND {db_field} != ''
-            ORDER BY {db_field}
+        La requête LIKE '%text%' est indexée sur les colonnes type/manufacturer.
+        LIMIT 20 : évite de surcharger le popup sur des termes courts.
         """
+        if len(text.strip()) < 2:
+            completer.model().setStringList([])
+            return
 
-        results = self.db_manager.execute_query(query)
-
-        # Ajouter une option vide en premier
-        combo_widget.addItem("")
-
-        # Ajouter les valeurs uniques
-        for row in results:
-            value = row[0]
-            if value and value.strip():  # S'assurer que la valeur n'est pas vide
-                combo_widget.addItem(value.strip())
+        db_field = "type" if column == 0 else "manufacturer"
+        results = self.db_manager.execute_query(
+            f"SELECT DISTINCT [{db_field}] FROM appareils "
+            f"WHERE [{db_field}] LIKE ? AND [{db_field}] != '' "
+            f"ORDER BY [{db_field}] LIMIT 20",
+            [f"%{text}%"]
+        )
+        completer.model().setStringList([row[0] for row in results if row[0]])
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage filtres colonnes")
     def clear_column_filters(self):
