@@ -117,6 +117,9 @@ class DatabaseSetupMixin:
         # Migration des données vers la nouvelle structure
         self._migrate_pieces_to_new_structure()
 
+        # Table d'historique des modifications (persistance inter-sessions)
+        self._setup_modifications_history_table()
+
         # Infrastructure FTS5 (table + triggers) — population via rebuild_fts5()
         self._setup_fts5()
 
@@ -406,5 +409,31 @@ class DatabaseSetupMixin:
             except Exception:
                 pass
             raise DatabaseError(f"Erreur lors de la migration des pièces: {e}")
+
+    def _setup_modifications_history_table(self):
+        """Créer la table d'historique persistant des modifications utilisateur."""
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS modifications_history (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp   TEXT    NOT NULL,
+                action_type TEXT    NOT NULL,
+                title       TEXT    NOT NULL,
+                details     TEXT,
+                device_ref  TEXT,
+                field_name  TEXT,
+                old_value   TEXT,
+                new_value   TEXT,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Index pour les requêtes de consultation (filtre par type, tri par date)
+        self.cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mh_timestamp
+            ON modifications_history(timestamp DESC)
+        """)
+        self.cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mh_action_type
+            ON modifications_history(action_type)
+        """)
 
     # ── Fin Setup & Migrations ───────────────────────────────────────────────

@@ -69,6 +69,7 @@ from .seo_service import SEOService
 from .pieces_list_service import PiecesListService
 from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 from ..services.grouped_history_service import GroupedHistoryService
+from ..services.history_service import HistoryService
 from ..services.drag_handle_service import DragHandle, DragHandleService
 from ..services.undo_manager import UndoRedoManager
 from ..services.app_export_service import AppExportService
@@ -230,6 +231,7 @@ class MainWindow(QMainWindow):
         # Services spécialisés
         self.user_interaction_service = UserInteractionService(self)
         self.grouped_history_service = GroupedHistoryService(self.user_interaction_service)
+        self.history_service = HistoryService(self)
         self.piece_management_service = PieceManagementService(self)
         self.seo_service = SEOService(self)
         self.pieces_list_service = PiecesListService(self)
@@ -2367,6 +2369,12 @@ class MainWindow(QMainWindow):
         """Ouvrir le dialogue de configuration des exports CSV + HTML"""
         from .export_config_dialog import ExportConfigDialog
         dialog = ExportConfigDialog(self.export_config_service, parent=self)
+        dialog.show()
+
+    def _open_history_view(self):
+        """Ouvrir le dialogue de consultation de l'historique persistant."""
+        from .history_view_dialog import HistoryViewDialog
+        dialog = HistoryViewDialog(self.history_service, parent=self)
         dialog.show()
 
     def _open_fts5_manager(self):
