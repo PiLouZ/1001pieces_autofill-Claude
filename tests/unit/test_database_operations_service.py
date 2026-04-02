@@ -412,7 +412,7 @@ class TestDatabaseOperationsService:
         database_service._update_save_indicators(True)
 
         database_service.parent_window.save_indicator.setStyleSheet.assert_called_with("color: green;")
-        database_service.parent_window.save_indicator.setText.assert_called_with("✓ Sauvegardé")
+        database_service.parent_window.save_indicator.setText.assert_called_with("Sauvegardé")
         database_service.parent_window.statusbar.showMessage.assert_called_with("Données sauvegardées", 2000)
 
         # Reset mocks
