@@ -628,6 +628,15 @@ class MainWindow(QMainWindow):
         history_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         history_header_layout.addWidget(history_label)
 
+        history_open_btn = QPushButton()
+        history_open_btn.setIcon(qta.icon('fa5s.external-link-alt', color='#999'))
+        history_open_btn.setIconSize(QSize(10, 10))
+        history_open_btn.setFixedSize(18, 18)
+        history_open_btn.setToolTip("Ouvrir l'historique persistant")
+        history_open_btn.setFlat(True)
+        history_open_btn.clicked.connect(self._open_history_view)
+        history_header_layout.addWidget(history_open_btn)
+
         history_header_layout.addWidget(_make_separator(), 1)
 
         history_layout.addLayout(history_header_layout)

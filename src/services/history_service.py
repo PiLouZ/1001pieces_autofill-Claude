@@ -8,6 +8,7 @@ Fournit aussi l'API de lecture pour HistoryViewDialog.
 """
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -60,19 +61,29 @@ class HistoryService(BaseService):
             if devices:
                 device_ref = devices[0] if isinstance(devices[0], str) else None
 
-            # Pour un edit mono-champ, agg_key = (field, new_value)
+            # Pour un edit mono-champ, agg_key = (field, new_value) — strings
+            # Pour un edit multi-champs, agg_key = tuple de tuples → ignorer
             agg_key = entry.get('agg_key')
-            if agg_key and isinstance(agg_key, tuple) and len(agg_key) == 2:
+            if (agg_key and isinstance(agg_key, tuple) and len(agg_key) == 2
+                    and isinstance(agg_key[0], str)):
                 field_name, new_value = agg_key
 
-            # Extraire old_value depuis la première ligne de details
-            if details_raw and isinstance(details_raw, list) and details_raw:
+            # Extraire old_value depuis la première ligne de details (multi-champs)
+            if details_raw and isinstance(details_raw, list):
                 first_detail = details_raw[0] if isinstance(details_raw[0], str) else ''
                 # Format : "==> Champ : 'old' → 'new'"
-                import re
                 m = re.search(r"'(.*)'\s*→\s*'(.*)'", first_detail)
                 if m:
                     old_value = m.group(1)
+                    if new_value is None:
+                        new_value = m.group(2)
+
+            # Fallback : extraire old_value depuis le titre (mono-champ absorbe tout dans title)
+            # Format titre : "[Field]  'old' → 'new'"
+            if old_value is None and title:
+                m = re.search(r"'(.*)'\s*→\s*'(.*)'", title)
+                if m:
+                    old_value = m.group(1)  # peut être '' si le champ était vide
                     if new_value is None:
                         new_value = m.group(2)
 
