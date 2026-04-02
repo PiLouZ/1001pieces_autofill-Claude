@@ -71,7 +71,11 @@ class CustomTableWidget(QTableWidget):
         
         # Appeler la méthode parent pour les autres touches
         super().keyPressEvent(event)
-    
+
+    def keyboardSearch(self, search: str):
+        """Désactiver la navigation type-ahead native de QAbstractItemView."""
+        pass
+
     def _show_completion_popup(self, editor_text: Optional[str] = None):
         """Afficher popup avec auto-complétion avancée via Cmd+D"""
         current_item = self.currentItem()

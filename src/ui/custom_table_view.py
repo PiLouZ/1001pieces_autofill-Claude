@@ -233,6 +233,10 @@ class CustomTableView(QTableView):
 
         super().keyPressEvent(event)
 
+    def keyboardSearch(self, search: str):
+        """Désactiver la navigation type-ahead native de QAbstractItemView."""
+        pass
+
     def _init_editor_with_char(self):
         """Injecte le caractère en attente dans le QLineEdit éditeur actif."""
         from PyQt5.QtWidgets import QLineEdit
