@@ -180,6 +180,13 @@ class MainWindow(QMainWindow):
         # Services d'import conservés
         self.import_service = ImportService(self.db_manager)
 
+        # import_manager et file_processing_service créés en premier
+        # car les initialize_services() suivants en ont besoin via parent_window
+        self.import_manager = ImportManager(self.db_manager, parent_widget=self)
+
+        from .file_processing_service import FileProcessingService
+        self.file_processing_service = FileProcessingService(self)
+
         # PHASE 3.2 : Service unifié d'import/export (avec feature flag)
         if Config.USE_NEW_IMPORT_EXPORT_SERVICE:
             from ..services.import_export_service import ImportExportService
@@ -212,11 +219,6 @@ class MainWindow(QMainWindow):
             self.keyboard_shortcut_service.initialize_services()
         else:
             self.keyboard_shortcut_service = None
-
-        self.import_manager = ImportManager(self.db_manager, parent_widget=self)
-        
-        from .file_processing_service import FileProcessingService
-        self.file_processing_service = FileProcessingService(self)
     
     def _init_business_services(self):
         """Initialiser les services métier"""

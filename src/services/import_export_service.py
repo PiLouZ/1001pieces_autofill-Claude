@@ -192,23 +192,15 @@ class ImportExportService(BaseService):
             app_logger.error(f"Fichier non trouvé: {file_path}")
             return
 
-        # Utiliser le nouveau ImportManager si disponible
-        if self.import_manager and hasattr(self.import_manager, 'import_file'):
+        if self.import_manager:
             app_logger.info(f"Import CSV via ImportManager: {file_path}")
-
-            # Obtenir les options d'import
-            options = self._get_import_options_unified()
-            if not options:
-                return  # Utilisateur a annulé
-
-            # Déléguer à ImportManager
-            result = self.import_manager.import_file(file_path, options)
-            self._show_import_results_new(result)
-
+            self.import_manager.import_files(
+                [file_path],
+                show_dialog=True,
+                callback=self.parent_window._on_import_complete
+            )
         else:
-            # Fallback vers méthode legacy
-            app_logger.warning("ImportManager non disponible, utilisation méthode legacy")
-            self._import_csv_legacy(file_path)
+            app_logger.error("ImportManager non disponible")
 
     def import_pdf_from_path(self, file_path: str):
         """Délégation au FileProcessingService"""
@@ -218,7 +210,7 @@ class ImportExportService(BaseService):
     def _safe_import_pdf_from_path(self, file_path: str):
         """Helper sécurisé pour import PDF"""
         if self.file_processing_service:
-            self.file_processing_service.process_pdf_file(file_path)
+            self.file_processing_service.import_pdf_files(file_path)
         else:
             app_logger.error("FileProcessingService non disponible")
 
