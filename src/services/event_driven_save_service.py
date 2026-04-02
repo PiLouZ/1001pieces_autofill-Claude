@@ -93,6 +93,9 @@ class EventDrivenSaveService(BaseService):
             app_logger.error("save_cell_immediately: Table widget non disponible")
             return False
 
+        # Signaler la sauvegarde en cours
+        self._update_save_indicator_pending()
+
         # Créer un set avec la cellule modifiée pour utiliser l'API existante
         modified_cells = {(row, col)}
 
@@ -134,6 +137,7 @@ class EventDrivenSaveService(BaseService):
 
         total_changes = getattr(result, 'inserted_count', 0) + getattr(result, 'updated_count', 0)
         app_logger.debug(f"Sauvegarde événementielle après collage: {total_changes} modifications")
+        self._update_save_indicator_pending()
 
         # Après un collage, les données sont déjà commitées en base
         # On peut forcer un auto_save pour s'assurer que les transactions en attente sont terminées
@@ -172,6 +176,7 @@ class EventDrivenSaveService(BaseService):
         success = self.database_operations_service.auto_save()
 
         if success:
+            self._update_save_indicator_success()
             self._update_incomplete_button_after_operation()
             app_logger.debug(f"Sauvegarde événementielle réussie pour {event_type}")
         else:
@@ -200,6 +205,7 @@ class EventDrivenSaveService(BaseService):
         success = self.database_operations_service.auto_save()
 
         if success:
+            self._update_save_indicator_success()
             app_logger.debug(f"Sauvegarde événementielle réussie après suppression")
         else:
             app_logger.warning(f"Échec sauvegarde événementielle après suppression")
@@ -211,20 +217,27 @@ class EventDrivenSaveService(BaseService):
     # ================================
 
     @handle_save_service_errors()
+    def _update_save_indicator_pending(self):
+        """Afficher 'Sauvegarde…' (orange) avant l'écriture en base"""
+        if self.save_indicator:
+            self.save_indicator.setText("Sauvegarde…")
+            self.save_indicator.setStyleSheet("color: orange;")
+
+    @handle_save_service_errors()
     def _update_save_indicator_success(self):
         """Mettre à jour l'indicateur de sauvegarde en cas de succès"""
         if self.save_indicator:
             self.save_indicator.setText(Config.get_message('save_success'))
             self.save_indicator.setStyleSheet("color: green;")
 
-            # Remettre l'indicateur à l'état normal après un délai
+            # Effacer l'indicateur après 2s (retour à l'état discret)
             QTimer.singleShot(2000, lambda: self._reset_save_indicator())
 
     @handle_save_service_errors()
     def _reset_save_indicator(self):
-        """Remettre l'indicateur de sauvegarde à l'état normal"""
+        """Effacer l'indicateur de sauvegarde (état discret)"""
         if self.save_indicator:
-            self.save_indicator.setText(Config.get_message('connected'))
+            self.save_indicator.setText("")
             self.save_indicator.setStyleSheet("color: green;")
 
     @handle_save_service_errors()
