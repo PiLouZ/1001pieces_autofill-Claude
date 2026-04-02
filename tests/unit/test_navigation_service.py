@@ -67,7 +67,7 @@ class TestNavigationService:
         """Test initialisation du service"""
         assert navigation_service.table_controller == mock_table_controller
         assert navigation_service.current_page == 1
-        assert navigation_service.page_size == 100  # UIConfig.DEFAULT_PAGE_SIZE
+        assert navigation_service.page_size == 500  # Config.DEFAULT_PAGE_SIZE
         assert navigation_service.total_rows == 0
 
     def test_set_pagination_widgets(self, navigation_service, mock_widgets):
