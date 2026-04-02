@@ -492,11 +492,14 @@ class ExportManagerService:
         return None
     
     def _get_export_data(self, search_data_term: Union[str, Dict]) -> List:
-        """Récupérer les données d'export"""
-        if isinstance(search_data_term, dict):
-            return self.main_window.db_manager.get_export_data(search_data_term)
-        else:
-            return self.main_window.db_manager.get_export_data(search_data_term)
+        """Récupérer les données d'export en respectant les filtres colonnes actifs."""
+        column_filters = self._get_active_column_filters()
+        incomplete_filter = getattr(self.main_window, 'show_incomplete_only', False)
+        return self.main_window.db_manager.get_export_data(
+            search_data_term,
+            column_filters=column_filters or None,
+            incomplete_filter=incomplete_filter,
+        )
     
     def _get_active_column_filters(self) -> Dict[int, str]:
         """Récupérer les filtres de colonnes actifs"""
