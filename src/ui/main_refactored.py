@@ -634,6 +634,7 @@ class MainWindow(QMainWindow):
         history_open_btn.setFixedSize(18, 18)
         history_open_btn.setToolTip("Ouvrir l'historique persistant")
         history_open_btn.setFlat(True)
+        history_open_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
         history_open_btn.clicked.connect(self._open_history_view)
         history_header_layout.addWidget(history_open_btn)
 
