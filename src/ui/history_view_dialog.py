@@ -99,7 +99,7 @@ class HistoryViewDialog(QDialog):
         self._table = QTableWidget()
         self._table.setColumnCount(7)
         self._table.setHorizontalHeaderLabels(
-            ['Date', 'Type', 'Appareil', 'Champ', 'Ancienne valeur', 'Nouvelle valeur', 'Détails']
+            ['Date', 'Type', 'Description', 'Appareil', 'Champ', 'Ancienne valeur', 'Nouvelle valeur']
         )
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -111,11 +111,11 @@ class HistoryViewDialog(QDialog):
         hh = self._table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Date
         hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Type
-        hh.setSectionResizeMode(2, QHeaderView.Stretch)            # Appareil
-        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Champ
-        hh.setSectionResizeMode(4, QHeaderView.Stretch)            # Ancienne
-        hh.setSectionResizeMode(5, QHeaderView.Stretch)            # Nouvelle
-        hh.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Détails
+        hh.setSectionResizeMode(2, QHeaderView.Stretch)            # Description
+        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Appareil
+        hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Champ
+        hh.setSectionResizeMode(5, QHeaderView.Stretch)            # Ancienne
+        hh.setSectionResizeMode(6, QHeaderView.Stretch)            # Nouvelle
 
         layout.addWidget(self._table)
 
@@ -210,23 +210,21 @@ class HistoryViewDialog(QDialog):
             type_item.setForeground(QColor(color))
             self._table.setItem(r, 1, type_item)
 
-            self._set_item(r, 2, device_ref or '')
-            self._set_item(r, 3, field_name or '')
-            self._set_item(r, 4, old_val or '')
-            self._set_item(r, 5, new_val or '')
-
-            # Détails : compter les lignes JSON
-            details_count = ''
+            # Description : toujours le titre, enrichi du nombre de champs pour les edits multi
+            description = title or ''
             if details_json:
                 try:
                     details = json.loads(details_json)
                     if isinstance(details, list) and len(details) > 1:
-                        details_count = f"{len(details)} champs"
-                    elif isinstance(details, list) and details:
-                        details_count = title  # mono-champ, titre suffit
+                        description = f"{title} — {len(details)} champs"
                 except Exception:
-                    details_count = '…'
-            self._set_item(r, 6, details_count)
+                    pass
+            self._set_item(r, 2, description)
+
+            self._set_item(r, 3, device_ref or '')
+            self._set_item(r, 4, field_name or '')
+            self._set_item(r, 5, old_val or '')
+            self._set_item(r, 6, new_val or '')
 
     def _set_item(self, row: int, col: int, text: str):
         item = QTableWidgetItem(str(text))
