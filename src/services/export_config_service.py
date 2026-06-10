@@ -58,7 +58,7 @@ AVAILABLE_VARIABLES = [
 
 AVAILABLE_HTML_VARIABLES = {
     "brands":  ["{marque}"],
-    "details": ["{marque}", "{ref_modele}", "{ref_commerciale}", "{modele_complet}", "{separateur}"]
+    "details": ["{marque}", "{ref_modele}", "{ref_commerciale}", "{other_ref}", "{modele_complet}", "{separateur}"]
 }
 
 

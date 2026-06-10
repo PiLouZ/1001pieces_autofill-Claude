@@ -387,12 +387,30 @@ class ExportManagerService:
             nb_marques = len(set(row[1] for row in data if len(row) > 1 and row[1]))
             self._add_to_history(f"HTML Marques: {nb_marques} marques exportées dans le presse-papier")
         else:
-            # Détecter complet vs partiel (filtres col 2 = Réf Modèle, col 3 = Réf Commerciale)
+            # Détecter complet vs partiel : filtres de recherche actifs (col 2 = Réf Modèle,
+            # col 3 = Réf Commerciale) ET/OU troncature liée à la limite de caractères HTML
             active_filters = self._get_active_column_filters()
             if 2 in active_filters:
-                scope = "[partiel - Référence Modèle]"
+                filter_scope = "Référence Modèle"
             elif 3 in active_filters:
-                scope = "[partiel - Référence Commerciale]"
+                filter_scope = "Référence Commerciale"
+            else:
+                filter_scope = None
+
+            strategy = HtmlExportService.last_strategy_used
+            if strategy == 'ref_modele':
+                truncation_note = "références modèle uniquement, limite de caractères atteinte"
+            elif strategy == 'commercial_ref':
+                truncation_note = "références commerciales uniquement, limite de caractères atteinte"
+            else:
+                truncation_note = None
+
+            if filter_scope and truncation_note:
+                scope = f"[partiel - {filter_scope} ; {truncation_note}]"
+            elif filter_scope:
+                scope = f"[partiel - {filter_scope}]"
+            elif truncation_note:
+                scope = f"[partiel - {truncation_note}]"
             else:
                 scope = "[complet]"
             self._add_to_history(f"HTML Détails: {len(data)} résultats exportés dans le presse-papier {scope}")

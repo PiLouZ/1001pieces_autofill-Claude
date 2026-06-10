@@ -4,6 +4,110 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.38.2] - 2026-06-10
+
+### Export HTML Détails — étiquette complet/partiel + variable {other_ref}
+
+- `html_export_service.py` : nouvel attribut `last_strategy_used` ('full' / 'ref_modele' / 'commercial_ref') exposant la stratégie de repli réellement utilisée par `generate_html_details()` pour respecter la limite de caractères
+- `export_manager.py` : l'historique des opérations distingue désormais `[complet]`, `[partiel - <filtre colonne>]` et `[partiel - ... limite de caractères atteinte]` selon les filtres actifs ET la troncature effective (auparavant, un export tronqué par la limite de caractères pouvait être étiqueté `[complet]`)
+- `{other_ref}` ("Autre référence") ajouté aux variables disponibles pour le template "Ligne modèle" de l'export HTML Détails (`Outils > Configuration des exports`) — propagé depuis `record[4]` jusqu'au rendu, templates par défaut inchangés (zéro régression)
+
+---
+
+## [3.38.1] - 2026-06-10
+
+### Fix — fenêtre "Nettoyer les doublons" : crash et lenteur
+
+- Déconnexion des signaux du worker d'analyse si l'arrêt à la fermeture dépasse 3s, pour éviter un crash (signal vers objet Qt détruit)
+- Remplacement d'un `exec_()` imbriqué par `show()` (boîte "Aperçu des changements")
+- Désactivation de la phase d'analyse des incohérences potentielles (produit cartésien sur 650k lignes, n'alimentait qu'un compteur statistique jamais affiché)
+
+---
+
+## [3.38.0] - 2026-06-10
+
+### Fix — refresh, export CSV, recherche supersession, méta SEO, perf import/sauvegarde
+
+- Aperçu (dry-run) avant import désormais optionnel via case à cocher (décoché par défaut)
+- Méta SEO : suppression de l'abréviation incorrecte "cuisin." et de l'affichage ref ancienne→nouvelle
+- Export CSV : réutilisation de `build_effective_search_term()` pour reproduire le périmètre du tableau
+- Recherche : expansion équivalents/prédécesseurs activée par défaut, toggle bannières corrigé
+- Refresh F5 : invalidation du `prefetch_cache` après ajout/modification/suppression
+- Sauvegarde drag & drop multi-lignes : un seul batch SQL au lieu d'un par cellule (fluidité sur 7000+ lignes)
+- Import PDF : extraction par lots de pages avec progression visible (fichiers volumineux, 800+ pages)
+- Suppression de `DatabaseWorker` (code mort)
+
+---
+
+## [3.37.4] - 2026-06-09
+
+### Fix — import CSV/PDF via menu : injection services + noms méthodes
+
+- `main_refactored.py` : `import_manager` et `file_processing_service` créés avant les `initialize_services()` qui en dépendent (bug d'ordre d'initialisation)
+- `import_export_service.py` : `process_pdf_file` → `import_pdf_files` (méthode inexistante)
+- `import_export_service.py` : `import_manager.import_file` → `import_files` avec callback (mauvais nom + mauvaise signature)
+
+Les 3 bugs étaient masqués silencieusement par `@safe_operation`.
+
+---
+
+## [3.37.3] - 2026-06-09
+
+### Fix — désactiver navigation type-ahead clavier dans le tableau
+
+Override `keyboardSearch()` dans `CustomTableView` (et `CustomTableWidget` par cohérence) pour neutraliser la sélection automatique sur frappe alphanumérique de `QAbstractItemView`.
+
+---
+
+## [3.37.2] - 2026-06-09
+
+### Fix — bannière supersession/équivalence : refs cliquables + centrage vertical
+
+- Bannière équivalence : refs individuelles cliquables via `_make_linked_refs` (comme supersession)
+- Bannière équivalence : `equivalence_overflow_btn` séparé du label (workaround Qt RichText/AlignVCenter)
+- Suppression des réglages (`setAlignment`, `setSizePolicy(Maximum)`, `setWordWrap(False)`) qui cassaient le centrage avec `QTextDocument`
+- `_t()` wrapper `<p style='margin:0'>` pour éliminer les marges `QTextDocument`
+- `_make_linked_refs` : paramètre `link_color` optionnel (brun supersession, violet équivalence)
+- `_on_equivalence_ref_clicked` : nouvelle méthode miroir de `_on_supersession_ref_clicked`
+
+---
+
+## [3.37.1] - 2026-06-08
+
+### Fix — indicateur sauvegarde : connexion après création de la statusbar
+
+`EventDrivenSaveService` initialisé avant `_setup_statusbar` → `save_indicator` restait `None`. Connexion explicite depuis `_setup_statusbar` après création du widget.
+
+---
+
+## [3.37.0] - 2026-06-08
+
+### Feat — F7 : prévisualisation dry-run avant import
+
+- `_ImportPreviewWorker` : même pipeline que `_ImportWorker` avec `dry_run=True`
+- `_run_import_files(dry_run)` : propagation vers `safe_import_single_file` → batch
+- `_process_data_import_batch(dry_run)` : ÉTAPE 2 (classification) inchangée, ÉTAPE 3 (écritures) skippée
+- `ImportPreviewDialog` : affiche `new_entries`/`matches_found`/`manual_completion`/`duplicates`/`associations`
+- `_launch_preview` + `_launch_real_import` : helpers partagés (évite duplication import/drag&drop)
+- Label "Complétion automatique" → "Déjà en base" (plus précis)
+
+---
+
+## [3.36.1] à [3.36.9] - 2026-03-24 à 2026-04-02
+
+### Pagination, en-têtes de colonnes et historique des opérations
+
+- **3.36.1** — Pagination : boutons harmonisés, ordre Total/Lignes par page, séparateur vertical. En-têtes de colonnes en capitalisation française (Référence modèle, Référence commerciale, Autre référence, Nb pièces)
+- **3.36.2** — `PieceRelationsPopup` : repositionnement intelligent hors bords d'écran
+- **3.36.3** — `HistoryViewDialog` : colonne "Détails" remplacée par "Description" (titre lisible pour imports/exports/suppressions, suffixe "— N champs" pour les éditions multi-champs)
+- **3.36.4** — `HistoryService` : fix critique de persistance (`execute_query` → `execute_insert`, les entrées disparaissaient au redémarrage faute de commit)
+- **3.36.5** — `HistoryService` : extraction `old_value` pour les éditions mono-champ, fix `agg_key` multi-champs, bouton raccourci vers `HistoryViewDialog`
+- **3.36.6 / 3.36.7** — Bouton historique : suppression bordure, alignement vertical centré
+- **3.36.8** — `HistoryViewDialog` : popup de détails à la façon `PieceRelationsPopup` (Qt.Popup, repositionnement intelligent, sections groupées)
+- **3.36.9** — `HistoryDetailPopup` : fix crash `RuntimeError` sur `WA_DeleteOnClose`
+
+---
+
 ## [3.36.0] - 2026-03-23
 
 ### Cleanup — Audit code mort (vulture + TheAuditor)

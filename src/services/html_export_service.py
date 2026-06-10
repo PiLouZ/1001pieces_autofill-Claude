@@ -21,6 +21,11 @@ class HtmlExportService:
     # Constante de limite de caractères (surpassée par la config si disponible)
     CHAR_LIMIT = 195000
 
+    # Stratégie utilisée lors du dernier appel à generate_html_details()
+    # ('full', 'ref_modele' ou 'commercial_ref') — permet à l'appelant de
+    # savoir si une troncature a eu lieu pour respecter la limite de caractères
+    last_strategy_used = 'full'
+
     # Service de config injecté via set_config_service() depuis main_refactored.py
     _config_service = None
 
@@ -72,11 +77,13 @@ class HtmlExportService:
                 manufacturer = record[1]  # Index 1 = manufacturer
                 ref_modele = record[2]    # Index 2 = ref_modele
                 commercial_ref = record[3] # Index 3 = commercial_ref
-                
+                other_ref = record[4] if len(record) >= 5 else ''  # Index 4 = other_ref
+
                 if manufacturer and manufacturer.strip():
                     brands_data[manufacturer].append({
                         'ref_modele': ref_modele or '',
-                        'commercial_ref': commercial_ref or ''
+                        'commercial_ref': commercial_ref or '',
+                        'other_ref': other_ref or ''
                     })
         
         # Limite de caractères depuis la config ou constante par défaut
@@ -93,8 +100,10 @@ class HtmlExportService:
             )
             char_count = HtmlExportService.count_non_html_chars(html_content)
             if char_count <= char_limit:
+                cls.last_strategy_used = strategy
                 return html_content
 
+        cls.last_strategy_used = 'commercial_ref'
         return "<p>Données trop volumineuses pour l'affichage</p>"
     
     @staticmethod
@@ -137,27 +146,29 @@ class HtmlExportService:
             for model_info in models:
                 ref_modele     = model_info['ref_modele']
                 commercial_ref = model_info['commercial_ref']
+                other_ref      = model_info['other_ref']
 
                 if strategy == 'full':
                     modele_complet = f"{ref_modele} - {commercial_ref}".strip(' -')
                     if modele_complet and modele_complet != '-':
-                        models_to_display.add((ref_modele, commercial_ref, modele_complet))
+                        models_to_display.add((ref_modele, commercial_ref, other_ref, modele_complet))
                 elif strategy == 'ref_modele':
                     if ref_modele and ref_modele.strip():
-                        models_to_display.add((ref_modele, '', ref_modele.strip()))
+                        models_to_display.add((ref_modele, '', other_ref, ref_modele.strip()))
                 elif strategy == 'commercial_ref':
                     if commercial_ref and commercial_ref.strip():
-                        models_to_display.add(('', commercial_ref, commercial_ref.strip()))
+                        models_to_display.add(('', commercial_ref, other_ref, commercial_ref.strip()))
 
             if models_to_display:
                 html_parts.append(_render(brand_header_tpl, {'marque': brand}))
 
-                for ref_modele, ref_commerciale, modele_complet in sorted(models_to_display, key=lambda x: x[2]):
+                for ref_modele, ref_commerciale, other_ref, modele_complet in sorted(models_to_display, key=lambda x: x[3]):
                     separateur = ' - ' if (ref_modele and ref_commerciale) else ''
                     context = {
                         'marque':          brand,
                         'ref_modele':      ref_modele,
                         'ref_commerciale': ref_commerciale,
+                        'other_ref':       other_ref,
                         'modele_complet':  modele_complet,
                         'separateur':      separateur,
                     }

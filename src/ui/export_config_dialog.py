@@ -235,8 +235,9 @@ class ExportConfigDialog(QDialog):
 
         vars_detail_lbl = QLabel(
             "Variables ligne modèle : "
-            "{modele_complet}  {ref_modele}  {ref_commerciale}  {separateur}  {marque}\n"
+            "{modele_complet}  {ref_modele}  {ref_commerciale}  {other_ref}  {separateur}  {marque}\n"
             "  {modele_complet} = référence modèle + commerciale fusionnées (tiret retiré si l'une est vide)\n"
+            "  {other_ref}      = autre référence\n"
             "  {separateur}     = \" - \" si les deux références sont présentes, \"\" sinon"
         )
         vars_detail_lbl.setStyleSheet("color: #6c757d; font-size: 11px;")
