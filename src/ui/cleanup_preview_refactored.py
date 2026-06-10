@@ -353,7 +353,11 @@ class CleanupPreviewDialog(QDialog):
         close_btn.clicked.connect(dialog.accept)
         layout.addWidget(close_btn)
 
-        dialog.exec_()
+        # show() + WA_DeleteOnClose au lieu de exec_() (évite une boucle d'événements
+        # imbriquée pendant que l'analyse tourne en arrière-plan)
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.setModal(True)
+        dialog.show()
             
     @handle_cleanup_preview_errors()
     def _apply_cleanup(self, checked=False):

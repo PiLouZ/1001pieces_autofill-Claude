@@ -53,10 +53,12 @@ class DuplicatesAnalysisWorker(QThread):
             if not self.should_stop:
                 results['duplicate_pieces'] = self._find_duplicate_pieces()
                 
-            # Phase 3: Analyse des incohérences potentielles
+            # Phase 3: Analyse des incohérences potentielles - DÉSACTIVÉE par défaut
+            # Le produit cartésien appareils x appareils (650k lignes) rend cette
+            # requête extrêmement lente à l'ouverture de la fenêtre, pour un résultat
+            # qui n'alimente qu'un compteur statistique ("X incohérences potentielles")
             self.progress_updated.emit(70, "Analyse des incohérences potentielles...")
-            if not self.should_stop:
-                results['potential_inconsistencies'] = self._find_potential_inconsistencies()
+            results['potential_inconsistencies'] = []
                 
             # Phase 4: Calcul des statistiques
             self.progress_updated.emit(90, "Calcul des statistiques...")
@@ -300,7 +302,24 @@ class DuplicatesAnalysisService(BaseService):
         """Arrêter l'analyse en cours"""
         if self.analysis_worker and self.analysis_worker.isRunning():
             self.analysis_worker.stop()
-            self.analysis_worker.wait(3000)  # Attendre 3 secondes max
+            if not self.analysis_worker.wait(3000):  # Attendre 3 secondes max
+                # Le thread est toujours actif (requête SQL longue en cours) :
+                # déconnecter ses signaux pour éviter un crash si le thread
+                # émet vers des objets déjà détruits (fenêtre fermée entre temps),
+                # et le laisser se terminer seul en arrière-plan
+                app_logger.warning("DuplicatesAnalysisWorker toujours actif après 3s, déconnexion des signaux")
+                try:
+                    self.analysis_worker.progress_updated.disconnect()
+                except TypeError:
+                    pass
+                try:
+                    self.analysis_worker.analysis_completed.disconnect()
+                except TypeError:
+                    pass
+                try:
+                    self.analysis_worker.analysis_error.disconnect()
+                except TypeError:
+                    pass
             
     def _on_analysis_completed(self, results: Dict[str, Any]):
         """Gérer la fin d'analyse"""
