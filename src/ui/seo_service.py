@@ -71,7 +71,6 @@ class SEOService:
             description=search_data['description'],
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
-            ref_obsolete=ref_obsolete,
         )
         # n_modeles non utilisé dans le title (pas assez de place) mais compté pour info
 
@@ -145,7 +144,6 @@ class SEOService:
             description=search_data['description'],
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
-            ref_obsolete=ref_obsolete,
             n_modeles=n_modeles,
         )
 

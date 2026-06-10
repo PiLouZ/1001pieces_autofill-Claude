@@ -120,6 +120,13 @@ class TableController:
         self.prefetch_cache = {}  # {cache_key: records}
         self.prefetch_worker = None  # Worker distinct de query_worker pour ne pas bloquer load_data_async
         self._prefetch_db_manager = None  # Connexion SQLite dédiée au prefetch (évite partage de connexion)
+
+        # Vider le cache de préchargement à chaque invalidation (ajout/modif/suppression)
+        # pour éviter qu'une page rechargée (F5) ne réaffiche des lignes obsolètes/supprimées
+        if hasattr(self.db_manager, 'cache_invalidation'):
+            self.db_manager.cache_invalidation.register_invalidation_callback(
+                lambda reason: self.prefetch_cache.clear()
+            )
         self._pending_prefetch_params = None
         self.prefetch_timer = QTimer()
         self.prefetch_timer.setSingleShot(True)
@@ -479,6 +486,53 @@ class TableController:
         )
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur chargement données tableau")
+    def build_effective_search_term(self, search_term: str = None):
+        """
+        Construire le terme de recherche effectif (parsing && / || + injection des
+        flags de supersession/équivalence actifs sur le tableau : bypass_supersession,
+        expand_predecessors, expand_equivalents).
+
+        Centralisé ici pour que d'autres consommateurs (ex: export) reproduisent
+        exactement le même périmètre de résultats que celui affiché dans le tableau.
+        """
+        # SOLUTION FINALE: Parser avec SearchService directement sans condition (UNIVERSALE)
+        effective_search_term = search_term
+        if search_term and isinstance(search_term, str) and hasattr(self.parent_window, 'search_service'):
+            # Toujours parser avec SearchService pour uniformité && et ||
+            parsed_term = self.parent_window.search_service.parse_advanced_search(search_term)
+            if parsed_term:  # Si parsing réussi, utiliser le terme parsé
+                effective_search_term = parsed_term
+
+        # Injecter le flag bypass supersession si actif (mode "superseded")
+        if self._supersession_bypass and isinstance(effective_search_term, dict):
+            effective_search_term = dict(effective_search_term)
+            effective_search_term['bypass_supersession'] = True
+
+        # Injecter les références sœurs en mode "superseded" sans bypass
+        # (tous les prédécesseurs de la ref courante, ex : REF_B et REF_C quand on cherche REF_A)
+        if (not self._supersession_bypass
+                and self._supersession_siblings
+                and self._supersession_mode == 'superseded'
+                and isinstance(effective_search_term, dict)):
+            effective_search_term = dict(effective_search_term)
+            existing = list(effective_search_term.get('expand_predecessors', []))
+            for r in self._supersession_siblings:
+                if r not in existing:
+                    existing.append(r)
+            effective_search_term['expand_predecessors'] = existing
+
+        # Injecter les prédécesseurs si expansion active (mode "replacing")
+        if self._supersession_expand and self._supersession_predecessors and isinstance(effective_search_term, dict):
+            effective_search_term = dict(effective_search_term)
+            effective_search_term['expand_predecessors'] = self._supersession_predecessors
+
+        # Injecter les équivalents si expansion active
+        if self._equivalence_expand and self._equivalence_group and isinstance(effective_search_term, dict):
+            effective_search_term = dict(effective_search_term)
+            effective_search_term['expand_equivalents'] = self._equivalence_group
+
+        return effective_search_term
+
     def load_data(self, search_term: str = None, is_search: bool = False):
         """Charger les données dans le tableau avec pagination et filtres"""
         import time
@@ -536,41 +590,7 @@ class TableController:
         else:
             incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
 
-        # SOLUTION FINALE: Parser avec SearchService directement sans condition (UNIVERSALE)
-        effective_search_term = search_term
-        if search_term and isinstance(search_term, str) and hasattr(self.parent_window, 'search_service'):
-            # Toujours parser avec SearchService pour uniformité && et ||
-            parsed_term = self.parent_window.search_service.parse_advanced_search(search_term)
-            if parsed_term:  # Si parsing réussi, utiliser le terme parsé
-                effective_search_term = parsed_term
-
-        # Injecter le flag bypass supersession si actif (mode "superseded")
-        if self._supersession_bypass and isinstance(effective_search_term, dict):
-            effective_search_term = dict(effective_search_term)
-            effective_search_term['bypass_supersession'] = True
-
-        # Injecter les références sœurs en mode "superseded" sans bypass
-        # (tous les prédécesseurs de la ref courante, ex : REF_B et REF_C quand on cherche REF_A)
-        if (not self._supersession_bypass
-                and self._supersession_siblings
-                and self._supersession_mode == 'superseded'
-                and isinstance(effective_search_term, dict)):
-            effective_search_term = dict(effective_search_term)
-            existing = list(effective_search_term.get('expand_predecessors', []))
-            for r in self._supersession_siblings:
-                if r not in existing:
-                    existing.append(r)
-            effective_search_term['expand_predecessors'] = existing
-
-        # Injecter les prédécesseurs si expansion active (mode "replacing")
-        if self._supersession_expand and self._supersession_predecessors and isinstance(effective_search_term, dict):
-            effective_search_term = dict(effective_search_term)
-            effective_search_term['expand_predecessors'] = self._supersession_predecessors
-
-        # Injecter les équivalents si expansion active
-        if self._equivalence_expand and self._equivalence_group and isinstance(effective_search_term, dict):
-            effective_search_term = dict(effective_search_term)
-            effective_search_term['expand_equivalents'] = self._equivalence_group
+        effective_search_term = self.build_effective_search_term(search_term)
 
         # Compter le total avec le terme unifié
         self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
@@ -1376,10 +1396,10 @@ class TableController:
                 self._supersession_siblings = siblings
                 self._update_supersession_banner()
                 self.supersession_banner.setVisible(True)
-                self._check_equivalence_banner(term)
+                equiv_is_new = self._check_equivalence_banner(term)
                 # Les sœurs sont calculées APRÈS le premier chargement → relancer la requête
                 # is_search=False pour ne pas rappeler _check_supersession_banner (évite boucle infinie)
-                if siblings_are_new:
+                if siblings_are_new or equiv_is_new:
                     self.load_data(self.current_search_term, is_search=False)
                     # Rafraîchir la bannière après le fill_table (le layout connaît maintenant la vraie largeur)
                     self._update_supersession_banner()
@@ -1395,17 +1415,28 @@ class TableController:
             # Cas B : term est une réf. courante qui remplace d'autres
             predecessors = self.db_manager.get_all_predecessors(term)
             if predecessors:
+                is_new_term = term != self._supersession_term
                 self._supersession_mode = 'replacing'
                 self._supersession_term = term
                 self._supersession_chain = []
                 self._supersession_predecessors = predecessors
+                if is_new_term:
+                    # Par défaut, une nouvelle recherche inclut les appareils des prédécesseurs
+                    self._supersession_expand = True
                 self._update_supersession_banner()
                 self.supersession_banner.setVisible(True)
-                self._check_equivalence_banner(term)
+                equiv_is_new = self._check_equivalence_banner(term)
+                if is_new_term or equiv_is_new:
+                    # Le 1er chargement a eu lieu sans expansion (flag pas encore connu) → relancer
+                    self.load_data(self.current_search_term, is_search=False)
+                    self._update_supersession_banner()
                 return
 
             self._hide_supersession_banner()
-            self._check_equivalence_banner(term)
+            if self._check_equivalence_banner(term):
+                # 1er chargement sans expansion (flag pas encore connu) → relancer
+                self.load_data(self.current_search_term, is_search=False)
+                self._update_equivalence_banner()
         except Exception:
             self._hide_supersession_banner()
             self._hide_equivalence_banner()
@@ -1533,24 +1564,35 @@ class TableController:
 
     # ── Bannière d'équivalence ───────────────────────────────────────────────
 
-    def _check_equivalence_banner(self, term: str):
-        """Afficher le bandeau équivalence si le terme appartient à un groupe."""
+    def _check_equivalence_banner(self, term: str) -> bool:
+        """
+        Afficher le bandeau équivalence si le terme appartient à un groupe.
+        Retourne True si l'expansion par défaut vient d'être (re)activée pour un
+        nouveau groupe — signal pour l'appelant qu'un rechargement est nécessaire.
+        """
         if not hasattr(self, 'equivalence_banner'):
-            return
+            return False
         if not term or '||' in term or '&&' in term:
             self._hide_equivalence_banner()
-            return
+            return False
         try:
             equivalents = self.db_manager.get_equivalents(term)
             if equivalents:
+                group_is_new = set(equivalents) != set(self._equivalence_group)
                 self._equivalence_term = term
                 self._equivalence_group = equivalents
+                if group_is_new:
+                    # Par défaut, une nouvelle recherche inclut les appareils des équivalents
+                    self._equivalence_expand = True
                 self._update_equivalence_banner()
                 self.equivalence_banner.setVisible(True)
+                return group_is_new
             else:
                 self._hide_equivalence_banner()
+                return False
         except Exception:
             self._hide_equivalence_banner()
+            return False
 
     def _hide_equivalence_banner(self):
         """Cacher le bandeau équivalence et réinitialiser l'état."""

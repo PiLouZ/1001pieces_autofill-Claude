@@ -1423,21 +1423,24 @@ class MainWindow(QMainWindow):
                 cache_service.suspend_invalidation("drag & drop - lignes modifiées")
 
         try:
-            saved_count = 0
-            cells_to_clean = []  # Cellules à nettoyer de modified_cells
+            cells_to_clean = [
+                (row, col)
+                for row in modified_rows
+                for col in range(start_col, end_col + 1)
+            ]
 
-            for row in modified_rows:
-                for col in range(start_col, end_col + 1):
-                    if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
-                        new_value = self._get_cell_text(row, col)
-                        self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
-                        saved_count += 1
-                        cells_to_clean.append((row, col))
+            if cells_to_clean and hasattr(self, 'database_operations_service') and self.database_operations_service:
+                self.event_driven_save_service._update_save_indicator_pending()
 
-            # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
-            if hasattr(self, 'modified_cells') and cells_to_clean:
-                for cell_coords in cells_to_clean:
-                    self.modified_cells.discard(cell_coords)
+                updates_by_db_id = self.database_operations_service._convert_modified_cells_to_updates(cells_to_clean)
+                success = self.database_operations_service.save_cells_batch(updates_by_db_id)
+
+                if success:
+                    self.event_driven_save_service._update_save_indicator_success()
+                    # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
+                    if hasattr(self, 'modified_cells'):
+                        for cell_coords in cells_to_clean:
+                            self.modified_cells.discard(cell_coords)
 
         finally:
             # Reprendre les invalidations avec une invalidation globale

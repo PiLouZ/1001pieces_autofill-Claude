@@ -86,6 +86,9 @@ class ImportConfiguration:
     third_column_choice: str = "ignore"
     has_headers: bool = False
 
+    # Aperçu (dry-run) avant import définitif — désactivé par défaut (trop lent)
+    show_preview: bool = False
+
     # Succession déclarée lors de l'import (optionnel)
     succession_replaces: Optional[str] = None       # Réf existante que cette réf remplace (ref_old=existing, ref_new=imported)
     succession_replaced_by: Optional[str] = None    # Réf existante qui remplace cette réf (ref_old=imported, ref_new=existing)
@@ -757,6 +760,12 @@ class ImportDialog(QDialog):
 
         # Boutons
         buttons_layout = QHBoxLayout()
+
+        self.preview_checkbox = QCheckBox("Aperçu avant import (vérification détaillée, plus lent)")
+        self.preview_checkbox.setChecked(False)
+        self.preview_checkbox.setToolTip("Affiche un récapitulatif détaillé (créations/mises à jour) avant l'écriture définitive en base")
+        buttons_layout.addWidget(self.preview_checkbox)
+
         buttons_layout.addStretch()
 
         try:
@@ -1039,6 +1048,8 @@ class ImportDialog(QDialog):
         
         if hasattr(self, 'headers_checkbox'):
             config.has_headers = self.headers_checkbox.isChecked()
+
+        config.show_preview = self.preview_checkbox.isChecked()
         
         # Ancienne configuration (pour compatibilité si nécessaire)
         config.label_config = LabelConfiguration()
@@ -1677,7 +1688,8 @@ class ImportManager:
         # Si on arrive ici, aucun encodage n'a fonctionné
         raise ValueError(f"Impossible de lire le fichier CSV: {file_path} (fichier introuvable ou format invalide)")
     
-    def load_pdf_data(self, file_path: str, max_rows: Optional[int] = None, preview_mode: bool = False) -> List[List[str]]:
+    def load_pdf_data(self, file_path: str, max_rows: Optional[int] = None, preview_mode: bool = False,
+                      progress_cb: Optional[Callable] = None, cancel_check: Optional[Callable] = None) -> List[List[str]]:
         """
         Méthode unifiée pour le chargement PDF avec limite optionnelle
 
@@ -1699,7 +1711,8 @@ class ImportManager:
         try:
             from src.data.pdf_extractor_camelot import CamelotPDFExtractor
             extractor = CamelotPDFExtractor()
-            data = extractor.extract_data(file_path, preview_mode=preview_mode)
+            data = extractor.extract_data(file_path, preview_mode=preview_mode,
+                                            progress_cb=progress_cb, cancel_check=cancel_check)
 
             if not data:
                 return []
@@ -1922,7 +1935,10 @@ class ImportManager:
             return
 
         t0 = _time.perf_counter()
-        self._launch_preview(config, callback, t0, dialog=dialog, source='import')
+        if config.show_preview:
+            self._launch_preview(config, callback, t0, dialog=dialog, source='import')
+        else:
+            self._launch_real_import(config, callback, t0, dialog=dialog, source='import')
 
     def _on_import_dialog_rejected(self, dialog, callback):
         """
@@ -2052,7 +2068,10 @@ class ImportManager:
             return
 
         t0 = _time.perf_counter()
-        self._launch_preview(config, callback, t0, dialog=dialog, source='drag_drop')
+        if config.show_preview:
+            self._launch_preview(config, callback, t0, dialog=dialog, source='drag_drop')
+        else:
+            self._launch_real_import(config, callback, t0, dialog=dialog, source='drag_drop')
 
     def _on_drag_drop_dialog_rejected(self, dialog, callback):
         """
@@ -2201,10 +2220,21 @@ class ImportManager:
                 if progress_cb:
                     progress_cb(i, n, f"Import de {file.filename}… ({i+1}/{n})")
 
+                pdf_progress_cb = None
+                if progress_cb and file.type == FileType.PDF:
+                    # Sous-résolution pour faire avancer la barre PENDANT l'extraction
+                    # d'un même fichier (sinon elle reste bloquée sur i/n)
+                    PDF_SUBSCALE = 1000
+
+                    def pdf_progress_cb(page, total_pages, _i=i, _n=n, _file=file):
+                        sub_value = _i * PDF_SUBSCALE + int((page / total_pages) * PDF_SUBSCALE)
+                        progress_cb(sub_value, _n * PDF_SUBSCALE,
+                                    f"Extraction de {_file.filename} : page {page}/{total_pages} ({_i+1}/{_n})")
+
                 file_results = self._safe_import_single_file(
                     file, config, seen_device_refs,
                     shared_devices_cache, shared_autocomplete_cache,
-                    dry_run=dry_run,
+                    dry_run=dry_run, pdf_progress_cb=pdf_progress_cb,
                 )
 
                 if file_results:
@@ -2343,16 +2373,18 @@ class ImportManager:
     def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
                                   shared_devices_cache: Optional[Dict] = None,
                                   shared_autocomplete_cache: Optional[Dict] = None,
-                                  dry_run: bool = False) -> Optional[Dict[str, Any]]:
+                                  dry_run: bool = False,
+                                  pdf_progress_cb: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
         """Wrapper sécurisé pour _import_single_file avec gestion d'erreur intégrée"""
         return self._import_single_file(file, config, file_seen_device_refs,
                                         shared_devices_cache, shared_autocomplete_cache,
-                                        dry_run=dry_run)
+                                        dry_run=dry_run, pdf_progress_cb=pdf_progress_cb)
 
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
                              shared_devices_cache: Optional[Dict] = None,
                              shared_autocomplete_cache: Optional[Dict] = None,
-                             dry_run: bool = False) -> Dict[str, Any]:
+                             dry_run: bool = False,
+                             pdf_progress_cb: Optional[Callable] = None) -> Dict[str, Any]:
         """Importer un fichier unique"""
         # Charger les données — clipboard utilise les données pré-chargées, fichiers relus depuis disque
         if file.type == FileType.CLIPBOARD and file.data is not None:
@@ -2361,7 +2393,8 @@ class ImportManager:
             data = self.load_csv_data(file.path)
         elif file.type == FileType.PDF:
             # Import complet : extraction de TOUTES les pages (preview_mode=False par défaut)
-            data = self.load_pdf_data(file.path)
+            cancel_check = getattr(self, '_import_cancel_check', None)
+            data = self.load_pdf_data(file.path, progress_cb=pdf_progress_cb, cancel_check=cancel_check)
         else:
             raise ValueError(f"Type de fichier non supporté: {file.type}")
         

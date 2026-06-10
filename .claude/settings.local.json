@@ -107,7 +107,19 @@
       "Bash(ls \"/Users/emg1/Desktop/1001 projects/1001pieces_autofill Claude/\" && python3 --version && pip3 list --format=freeze 2>/dev/null | grep -iE \"pyqt5|camelot|opencv|ghostscript|pandas|numpy|pillow|pdfminer|chardet\")",
       "Bash(which osacompile:*)",
       "Bash(osadecompile \"/Users/emg1/Desktop/1001 projects/1001pieces_autofill Claude/1001pieces_autofill.app/Contents/Resources/Scripts/main.scpt\" 2>&1)",
-      "Bash(cd \"/Users/emg1/Desktop/1001 projects/1001pieces_autofill Claude\" && /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f \"1001pieces_autofill.app\" && echo \"Cache rafraîchi\")"
+      "Bash(cd \"/Users/emg1/Desktop/1001 projects/1001pieces_autofill Claude\" && /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f \"1001pieces_autofill.app\" && echo \"Cache rafraîchi\")",
+      "Bash(aud --version)",
+      "Bash(aud init:*)",
+      "Bash(aud --help)",
+      "Bash(aud index:*)",
+      "Bash(aud full:*)",
+      "Bash(while ps:*)",
+      "Bash(~/bin/gh release:*)",
+      "Bash(~/bin/gh issue:*)",
+      "Bash(~/bin/gh repo:*)",
+      "Bash(~/bin/gh api:*)",
+      "Bash(open:*)",
+      "Bash(~/Library/Python/3.13/bin/aud full *)"
     ],
     "deny": [],
     "additionalDirectories": [

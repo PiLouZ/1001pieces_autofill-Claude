@@ -287,18 +287,12 @@ class ExportManagerService:
     @handle_export_errors(title="Erreur validation résultats")
     def _validate_search_results(self, search_term: str) -> bool:
         """Valider que la recherche a des résultats"""
-        # Utiliser la même logique que TableController
-        if search_term and ('&&' in search_term or '||' in search_term):
-            # Recherche avancée
-            parsed_search_term = self.main_window.advanced_search_service.parse_advanced_search(search_term)
-            results = self.main_window.db_manager.load_data(
-                parsed_search_term, {}, None, None, None, None, False
-            )
-        else:
-            # Recherche simple
-            results = self.main_window.db_manager.load_data(
-                search_term, {}, None, None, None, None, False
-            )
+        # Reproduire exactement le même périmètre que le tableau (parsing + flags
+        # de supersession/équivalence actifs)
+        effective_search_term = self.main_window.table_controller.build_effective_search_term(search_term)
+        results = self.main_window.db_manager.load_data(
+            effective_search_term, {}, None, None, None, None, False
+        )
 
         if not results:
             self._add_to_history("[!] Export annulé: Aucun résultat trouvé pour cette recherche")

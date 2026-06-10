@@ -100,7 +100,6 @@ class SEOGenerator:
         "congélateur": "congélo",       # -4 caractères (terme courant)
         "électroménager": "électromén.", # -3 caractères
         "électroménagers": "électromén.", # -4 caractères
-        "cuisinière": "cuisin.",        # -4 caractères
         "aspirateur": "aspiro",         # -4 caractères
         "micro-ondes": "micro-onde",    # -1 caractère
     }

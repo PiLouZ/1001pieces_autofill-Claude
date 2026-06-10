@@ -12,7 +12,7 @@ import time
 from ..core.config import Config
 from ..core.logger import app_logger
 from ..utils.error_handler import (
-    handle_db_query_errors, handle_db_signal_errors,
+    handle_db_query_errors,
     handle_sqlite_column_errors, handle_database_errors,
     handle_database_operation_errors
 )
@@ -20,19 +20,6 @@ from ._db_mixins import DatabaseError
 from ._db_mixins.fts5 import DatabaseFts5Mixin
 from ._db_mixins.supersession import DatabaseSupersessionMixin
 from ._db_mixins.setup import DatabaseSetupMixin
-
-try:
-    from ..ui.qt_imports import QThread, pyqtSignal
-    PYQT_AVAILABLE = True
-except ImportError:
-    PYQT_AVAILABLE = False
-    # Classes de substitution pour les tests sans PyQt5
-    class QThread:
-        def __init__(self):
-            pass
-    class pyqtSignal:
-        def __init__(self, *args):
-            pass
 
 import sys
 import os
@@ -99,36 +86,6 @@ class SearchCache:
             'hit_rate': round(hit_rate, 1),
             'size': len(self.cache)
         }
-
-class DatabaseWorker(QThread):
-    """Worker thread pour les opérations de base de données asynchrones"""
-    data_loaded = pyqtSignal(list)
-    error_occurred = pyqtSignal(str)
-    
-    def __init__(self, db_file: str, query: str, params: Optional[List] = None):
-        super().__init__()
-        self.db_file = db_file
-        self.query = query
-        self.params = params or []
-    
-    @handle_db_signal_errors(error_signal_name="error_occurred")
-    def run(self):
-        """Exécuter la requête de base de données"""
-        conn = None
-        try:
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
-            cursor.execute(self.query, self.params)
-            records = cursor.fetchall()
-            self.data_loaded.emit(records)
-        finally:
-            # SÉCURITÉ: Garantir fermeture connexion même si exception
-            if conn:
-                try:
-                    conn.close()
-                except:
-                    # Bare except légitime: cleanup ne doit pas masquer erreur principale
-                    pass
 
 class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin):
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
