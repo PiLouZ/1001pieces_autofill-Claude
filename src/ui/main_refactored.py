@@ -2415,6 +2415,103 @@ class MainWindow(QMainWindow):
             self.user_interaction_service.show_info(
                 "Aucune supersession enregistrée — rien à exporter.")
 
+    def _open_restore_backup_dialog(self):
+        """Ouvrir le dialogue de restauration depuis une sauvegarde (data/backups/)"""
+        self._safe_open_restore_backup_dialog()
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur dialogue de restauration")
+    def _safe_open_restore_backup_dialog(self):
+        """Dialogue de sélection et restauration d'une sauvegarde de la base"""
+        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget
+
+        from ..services.restore_service import RestoreService
+        if not hasattr(self, 'restore_service'):
+            self.restore_service = RestoreService(self)
+
+        backups = self.restore_service.list_backups()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Restaurer une sauvegarde")
+        dialog.setModal(True)
+        dialog.resize(480, 320)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
+
+        title_label = QLabel("<b>Restaurer la base depuis une sauvegarde</b>")
+        title_label.setStyleSheet("font-size: 14px; margin-bottom: 4px;")
+        layout.addWidget(title_label)
+
+        info_label = QLabel(
+            "La restauration remplace la base actuelle par la copie sélectionnée, "
+            "puis ferme l'application (à relancer manuellement).\n"
+            "Une sauvegarde de l'état actuel est créée automatiquement avant l'écrasement."
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        list_widget = QListWidget()
+        for path, mtime, size_bytes in backups:
+            size_mb = size_bytes / (1024 * 1024)
+            item_text = f"{mtime.strftime('%d/%m/%Y %H:%M:%S')}  —  {size_mb:.0f} Mo  —  {path.name}"
+            list_widget.addItem(item_text)
+        if not backups:
+            list_widget.addItem("Aucune sauvegarde disponible dans data/backups/")
+            list_widget.setEnabled(False)
+        layout.addWidget(list_widget)
+
+        buttons_layout = QHBoxLayout()
+        _compact = (
+            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+        )
+
+        restore_btn = QPushButton("Restaurer")
+        restore_btn.setIcon(qta.icon('fa5s.history', color='#dc3545'))
+        restore_btn.setIconSize(QSize(12, 12))
+        restore_btn.setStyleSheet(_compact)
+        restore_btn.setEnabled(False)
+        buttons_layout.addWidget(restore_btn)
+
+        buttons_layout.addStretch()
+
+        cancel_btn = QPushButton("Annuler")
+        cancel_btn.setStyleSheet(_compact)
+        cancel_btn.clicked.connect(dialog.reject)
+        buttons_layout.addWidget(cancel_btn)
+
+        layout.addLayout(buttons_layout)
+
+        list_widget.currentRowChanged.connect(
+            lambda row: restore_btn.setEnabled(row >= 0 and bool(backups))
+        )
+
+        def do_restore():
+            row = list_widget.currentRow()
+            if row < 0 or row >= len(backups):
+                return
+            backup_path, mtime, _ = backups[row]
+            confirmed = self.user_interaction_service.show_confirmation(
+                "Confirmer la restauration",
+                f"Restaurer la base depuis la sauvegarde du "
+                f"{mtime.strftime('%d/%m/%Y %H:%M:%S')} ?\n\n"
+                "Toutes les modifications effectuées depuis cette date seront perdues.\n"
+                "L'application va se fermer après la restauration."
+            )
+            if not confirmed:
+                return
+
+            error = self.restore_service.restore_and_quit(backup_path)
+            if error:
+                QMessageBox.critical(dialog, "Erreur de restauration",
+                                     f"La restauration a échoué :\n{error}")
+            else:
+                dialog.accept()
+
+        restore_btn.clicked.connect(do_restore)
+
+        dialog.exec_()
+
     def _open_fts5_manager(self):
         """Ouvrir le gestionnaire d'index FTS5"""
         self._safe_open_fts5_manager()

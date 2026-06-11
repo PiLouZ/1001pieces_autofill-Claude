@@ -168,6 +168,13 @@ class ToolbarService:
         )
         tools_menu.addAction(supersession_csv_action)
 
+        restore_action = QAction("Restaurer une sauvegarde…", self.main_window)
+        restore_action.setToolTip("Restaurer la base depuis une copie de data/backups/")
+        restore_action.triggered.connect(
+            getattr(self.main_window, '_open_restore_backup_dialog', lambda: None)
+        )
+        tools_menu.addAction(restore_action)
+
         tools_menu.addSeparator()
 
         export_action = QAction("Exporter l'application…", self.main_window)

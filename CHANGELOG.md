@@ -4,6 +4,17 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.43.0] - 2026-06-11
+
+### Feat — Restauration de sauvegarde
+
+- Nouveau `RestoreService` (`src/services/restore_service.py`), héritant de `BaseService`
+- Menu Outils → "Restaurer une sauvegarde…" : liste les copies de `data/backups/` (date, taille)
+- Restauration : sauvegarde de sécurité de l'état actuel (`avant_restauration`) → fermeture de la connexion SQLite → suppression des fichiers WAL/SHM périmés → copie de la sauvegarde choisie sur `data/appareils.db` → fermeture de l'application (relance manuelle requise)
+- Confirmation explicite avec avertissement sur la perte des modifications postérieures à la sauvegarde
+
+---
+
 ## [3.42.0] - 2026-06-11
 
 ### UI — Bouton "HTML Détails" en split button compact
