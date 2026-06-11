@@ -354,16 +354,27 @@ class DatabaseOperationsService(BaseService):
         # Chercher l'ID database (peut être dans une colonne cachée ou via d'autres moyens)
         db_id = None
 
-        # Méthode 1: Chercher UserRole dans TOUTES les colonnes de la ligne
-        for check_col in range(table.columnCount()):
-            table_item = table.item(row, check_col)
-            if table_item:
-                user_role_data = table_item.data(Qt.UserRole)
-                if user_role_data:
-                    # Conversion sécurisée avec décorateur
-                    db_id = self._safe_convert_to_int(user_role_data)
-                    if db_id is not None:
-                        break
+        # Méthode 1 (rapide, O(1)) : récupérer le db_id directement depuis le
+        # modèle, qui le stocke déjà par ligne (évite de balayer toutes les
+        # colonnes via table.item(), coûteux car CustomTableView.item()
+        # reconstruit un QTableWidgetItem à chaque appel)
+        model = table.model() if hasattr(table, 'model') and callable(table.model) else None
+        if model and hasattr(model, 'get_db_id'):
+            model_db_id = model.get_db_id(row)
+            if model_db_id is not None:
+                db_id = self._safe_convert_to_int(model_db_id)
+
+        # Méthode 1bis (repli) : Chercher UserRole dans TOUTES les colonnes de la ligne
+        if db_id is None:
+            for check_col in range(table.columnCount()):
+                table_item = table.item(row, check_col)
+                if table_item:
+                    user_role_data = table_item.data(Qt.UserRole)
+                    if user_role_data:
+                        # Conversion sécurisée avec décorateur
+                        db_id = self._safe_convert_to_int(user_role_data)
+                        if db_id is not None:
+                            break
 
         # Méthode 2: Essayer la première colonne si elle contient un nombre
         if db_id is None:

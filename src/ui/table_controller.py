@@ -815,13 +815,6 @@ class TableController:
         if hasattr(self.parent_window, 'statusbar'):
             self.parent_window.statusbar.showMessage(f"Erreur DB : {error_msg}", Config.STATUS_MESSAGE_TIMEOUT)
 
-    @handle_table_operations_errors(log_prefix="Erreur mise à jour numéros de lignes")
-    def _update_row_numbers(self):
-        """Mettre à jour les numéros de lignes après un tri"""
-        for row in range(self.table.rowCount()):
-            self.table.setVerticalHeaderItem(row, QTableWidgetItem(str(row + 1)))
-        app_logger.debug(f"Numéros de lignes mis à jour pour {self.table.rowCount()} lignes")
-    
     @handle_table_operations_errors(log_prefix="Erreur application visibilité colonnes")
     def _apply_column_visibility(self):
         """Appliquer la visibilité des colonnes selon la configuration"""

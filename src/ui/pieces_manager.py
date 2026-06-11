@@ -1388,14 +1388,7 @@ class PiecesManagerWindow(QDialog):
     
     def _do_delete_piece(self, ref_piece: str):
         """Suppression effective d'une pièce : associations puis pièce (sans commit — l'appelant commite)."""
-        self.db_manager.cursor.execute(
-            "DELETE FROM piece_associations WHERE piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)",
-            [ref_piece]
-        )
-        self.db_manager.cursor.execute(
-            "DELETE FROM pieces WHERE ref_piece = ?",
-            [ref_piece]
-        )
+        self.db_manager.delete_piece_catalog(ref_piece, commit=False)
 
     @handle_ui_errors(log_prefix="Erreur suppression pièces", show_message=True)
     def _delete_selected_pieces(self, checked=False):
@@ -1509,23 +1502,13 @@ class PiecesManagerWindow(QDialog):
                                 "La référence ne peut pas contenir les caractères '||' ou '&&'.")
             return
 
-        # Vérifier si la nouvelle référence existe déjà (si elle a changé)
-        if new_ref != current_ref:
-            existing = self.db_manager.execute_query(
-                "SELECT id FROM pieces WHERE ref_piece = ?", [new_ref]
+        if not self.db_manager.rename_piece_catalog(current_ref, new_ref, new_desc):
+            QMessageBox.warning(
+                self, "Référence existante",
+                f"La référence '{new_ref}' existe déjà. Veuillez choisir une référence différente."
             )
-            if existing:
-                QMessageBox.warning(
-                    self, "Référence existante",
-                    f"La référence '{new_ref}' existe déjà. Veuillez choisir une référence différente."
-                )
-                return
+            return
 
-        self.db_manager.cursor.execute(
-            "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?",
-            (new_ref, new_desc, current_ref)
-        )
-        self.db_manager.conn.commit()
         self._load_pieces_data()
 
         if hasattr(self.parent(), 'user_interaction_service'):

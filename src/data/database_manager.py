@@ -132,7 +132,30 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     def get_connection(self):
         """Retourner la connexion pour les opérations batch"""
         return self.conn
-    
+
+    def _piece_association_subquery(self, op: str = "LIKE", alias: str = "a") -> str:
+        """Condition SQL paramétrée : l'appareil possède une pièce associée
+        dont ref_piece correspond (op = "=" ou "LIKE").
+
+        Factorise la sous-requête piece_associations dupliquée à de
+        nombreux endroits dans les conditions de recherche.
+        """
+        return (
+            f"{alias}.id IN (SELECT pa.appareil_id FROM piece_associations pa "
+            f"WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece {op} ?))"
+        )
+
+    def _get_incomplete_condition(self, alias: str = "a") -> str:
+        """Condition SQL : l'appareil a un type et/ou un fabricant manquant ou vide.
+
+        Factorise le pattern dupliqué dans load_data, count_data et
+        get_export_data (filtre "lignes incomplètes").
+        """
+        return (
+            f"({alias}.[type] IS NULL OR {alias}.[type] = '' "
+            f"OR {alias}.[manufacturer] IS NULL OR {alias}.[manufacturer] = '')"
+        )
+
     def _build_search_condition(self, search_term):
         """Construire une condition de recherche basée sur le terme de recherche (simple ou avancé)"""
         import re
@@ -172,7 +195,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
             # Recherche LIKE classique (plus lente)
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
+            search_conditions.append(self._piece_association_subquery("LIKE"))
             return {
                 'query_type': 'like',
                 'condition': f"({' OR '.join(search_conditions)})",
@@ -204,7 +227,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 return self._build_pieces_only_condition(term, bypass=bypass, extra_refs=extra_refs)
 
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
+            search_conditions.append(self._piece_association_subquery("LIKE"))
             return {
                 'condition': f"({' OR '.join(search_conditions)})",
                 'params': [f"%{term}%"] * (len(Config.DB_HEADERS) + 1)
@@ -219,7 +242,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             # Phase 5: Recherche uniquement dans les pièces associées
             if Config.SEARCH_PIECES_ONLY:
                 pieces_conditions = [
-                    "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+                    self._piece_association_subquery("LIKE")
                     for _ in terms
                 ]
                 return {
@@ -234,7 +257,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             for term in terms:
                 # Chaque terme doit être trouvé dans au moins une colonne
                 term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
+                term_conditions.append(self._piece_association_subquery("LIKE"))
 
                 and_conditions.append(f"({' OR '.join(term_conditions)})")
                 all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
@@ -261,13 +284,13 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                         continue
                     if group['type'] == 'and':
                         and_conds = [
-                            "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+                            self._piece_association_subquery("LIKE")
                             for _ in g_terms
                         ]
                         group_conditions.append(f"({' AND '.join(and_conds)})")
                         all_params.extend([f"%{t}%" for t in g_terms])
                     else:  # simple
-                        group_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
+                        group_conditions.append(self._piece_association_subquery("LIKE"))
                         all_params.append(f"%{g_terms[0]}%")
                 if group_conditions:
                     return {
@@ -291,7 +314,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                     for term in terms:
                         # Chaque terme doit être trouvé dans au moins une colonne
                         term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                        term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
+                        term_conditions.append(self._piece_association_subquery("LIKE"))
 
                         and_conditions.append(f"({' OR '.join(term_conditions)})")
                         all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
@@ -308,7 +331,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                     term = terms[0]  # Premier terme du groupe simple
                     # Chercher le terme dans toutes les colonnes
                     term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                    term_conditions.append("a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))")
+                    term_conditions.append(self._piece_association_subquery("LIKE"))
 
                     group_conditions.append(f"({' OR '.join(term_conditions)})")
                     all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
@@ -501,9 +524,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                     if search_condition.get('query_type') in ['exact', 'prefix']:
                         # Pour les requêtes optimisées, extraire juste la condition WHERE
                         if search_condition['query_type'] == 'exact':
-                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
+                            condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
                         else:  # prefix
-                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+                            condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
                         
                         conditions.append(condition)
                         params.extend(search_condition['params'])
@@ -521,7 +544,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             
             # Filtre pour les lignes incomplètes (champs type OU manufacturer vides) pour load_data
             if incomplete_filter:
-                incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
+                incomplete_condition = self._get_incomplete_condition()
                 conditions.append(incomplete_condition)
             
             # Ajouter les conditions
@@ -599,9 +622,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 elif search_condition.get('query_type') in ['exact', 'prefix']:
                     # Pour les requêtes optimisées, extraire juste la condition WHERE
                     if search_condition['query_type'] == 'exact':
-                        condition = "(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
+                        condition = f"(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR {self._piece_association_subquery('=')}"
                     else:  # prefix
-                        condition = "(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+                        condition = f"(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
 
                     conditions.append(condition)
                     params.extend(search_condition['params'])
@@ -619,7 +642,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
         # Filtre pour les lignes incomplètes pour count_data
         if incomplete_filter:
-            incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
+            incomplete_condition = self._get_incomplete_condition()
             conditions.append(incomplete_condition)
 
         # Ajouter les conditions
@@ -633,9 +656,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage appareils incomplets")
     def count_incomplete_devices(self) -> int:
         """Compter le nombre d'appareils où colonne A et/ou B est vide"""
-        query = """
+        query = f"""
         SELECT COUNT(*) FROM appareils a
-        WHERE (a.type IS NULL OR a.type = '') OR (a.manufacturer IS NULL OR a.manufacturer = '')
+        WHERE {self._get_incomplete_condition()}
         """
         self.cursor.execute(query)
         return self.cursor.fetchone()[0]
@@ -1242,7 +1265,45 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         except Exception as e:
             self.conn.rollback()
             raise
-    
+
+    def rename_piece_catalog(self, old_ref_piece: str, new_ref_piece: str, description: str) -> bool:
+        """Renommer une pièce du catalogue (référence + description).
+
+        Retourne False si new_ref_piece existe déjà (et diffère de old_ref_piece) :
+        l'appelant doit alors avertir l'utilisateur sans rien modifier.
+        """
+        return self._safe_rename_piece_catalog(old_ref_piece, new_ref_piece, description)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur renommage pièce catalogue")
+    def _safe_rename_piece_catalog(self, old_ref_piece: str, new_ref_piece: str, description: str) -> bool:
+        """Helper sécurisé pour renommer une pièce du catalogue"""
+        if new_ref_piece != old_ref_piece:
+            existing = self.execute_query("SELECT id FROM pieces WHERE ref_piece = ?", [new_ref_piece])
+            if existing:
+                return False
+
+        self.cursor.execute(
+            "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?",
+            (new_ref_piece, description, old_ref_piece)
+        )
+        self.conn.commit()
+        return True
+
+    def delete_piece_catalog(self, ref_piece: str, commit: bool = True) -> None:
+        """Supprimer une pièce du catalogue (toutes ses associations puis la pièce elle-même)."""
+        return self._safe_delete_piece_catalog(ref_piece, commit)
+
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur suppression pièce catalogue")
+    def _safe_delete_piece_catalog(self, ref_piece: str, commit: bool = True) -> None:
+        """Helper sécurisé pour supprimer une pièce du catalogue (sans commit si appelée en boucle)"""
+        self.cursor.execute(
+            "DELETE FROM piece_associations WHERE piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)",
+            [ref_piece]
+        )
+        self.cursor.execute("DELETE FROM pieces WHERE ref_piece = ?", [ref_piece])
+        if commit:
+            self.conn.commit()
+
     def get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
         """Récupérer les informations d'une pièce spécifique (nouvelle structure)"""
         return self._safe_get_piece_info(ref_piece, appareil_id)
@@ -1639,9 +1700,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 if search_condition.get('query_type') in ['exact', 'prefix']:
                     # Pour les requêtes optimisées, extraire juste la condition WHERE
                     if search_condition['query_type'] == 'exact':
-                        condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
+                        condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
                     else:  # prefix
-                        condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+                        condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
 
                     conditions.append(condition)
                     params.extend(search_condition['params'])
@@ -1659,7 +1720,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
         # Filtre pour les lignes incomplètes (comme dans load_data)
         if incomplete_filter:
-            incomplete_condition = "(a.[type] IS NULL OR a.[type] = '' OR a.[manufacturer] IS NULL OR a.[manufacturer] = '')"
+            incomplete_condition = self._get_incomplete_condition()
             conditions.append(incomplete_condition)
 
         # Ajouter les conditions WHERE si nécessaire
@@ -1844,9 +1905,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 if search_condition:
                     if search_condition.get('query_type') in ['exact', 'prefix']:
                         if search_condition['query_type'] == 'exact':
-                            condition = "(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))"
+                            condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
                         else:  # prefix
-                            condition = "(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
+                            condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
                         conditions.append(condition)
                         params.extend(search_condition['params'])
                     else:

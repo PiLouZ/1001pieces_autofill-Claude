@@ -4,6 +4,50 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.44.0] - 2026-06-11
+
+### Ajout — Boutons-puces de variables dans la configuration d'export (`VariableChipsBar`)
+
+- Nouveau widget réutilisable `VariableChipsBar` (`export_config_dialog.py`) :
+  affiche des boutons-puces cliquables `{variable}` qui s'insèrent dans le
+  champ texte (ou la cellule de tableau) actuellement actif
+- Intégré aux onglets CSV (pattern de nom de fichier) et HTML (templates lien
+  marque, en-tête de marque, ligne modèle) — remplace les labels d'aide
+  statiques par une interaction directe
+
+### Fix — Tailles des 3 boutons d'export désalignées
+
+- `export_html_details_btn` (QToolButton, split-button v3.42.0) avait une
+  politique de taille `Fixed` (vs `Preferred` pour `QPushButton`) et un
+  padding plus large réservé à la flèche de menu, ce qui désalignait les 3
+  boutons d'export
+- `setSizePolicy()` aligné sur `export_html_brands_btn` + réduction du padding
+  du style split-button — les 3 boutons font désormais ~251×32-34px
+
+### Refacto — Audit structure du code (suite, points 1/3/5/6/7 de la Priorité Haute)
+
+- **Perf** : `database_operations_service._safe_process_cell_update()`
+  utilisait un balayage O(N×C) (`table.item()` sur toutes les colonnes) pour
+  retrouver le `db_id` d'une ligne modifiée ; ajout d'un lookup O(1) via
+  `model.get_db_id(row)` en première intention (même classe de bug que le fix
+  v3.43.3)
+- **Dédup SQL** : factorisation de la sous-requête `piece_associations`
+  dupliquée 14× dans `database_manager.py` (+ 2 variantes dans
+  `_db_mixins/supersession.py`) via `_piece_association_subquery(op, alias)`
+- **Dédup SQL** : factorisation du pattern "ligne incomplète"
+  (`type`/`manufacturer` vides) dupliqué 4× via `_get_incomplete_condition(alias)`
+- **Dédup SQL** : factorisation des 3 CTE récursives quasi-identiques de
+  navigation dans la chaîne de supersession
+  (`resolve_current_ref`/`get_supersession_chain`/`get_all_predecessors`) via
+  `_supersession_chain_cte(direction)`
+- **Code mort** : suppression de `_update_row_numbers()`, dupliquée à
+  l'identique et jamais appelée (`table_controller.py` + `main_refactored.py`)
+- **Logique métier hors UI** : extraction de la suppression/renommage d'une
+  pièce du catalogue (`pieces_manager.py`) vers
+  `database_manager.delete_piece_catalog()` / `rename_piece_catalog()`
+- Audit complet (18 points, multi-sessions) : voir
+  `memory/project_audit_structure_2026-06-11.md`
+
 ## [3.43.3] - 2026-06-11
 
 ### Fix — Gel critique (~10 min) sur l'historique groupé après édition en masse

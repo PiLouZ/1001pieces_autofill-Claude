@@ -398,10 +398,7 @@ class DatabaseSupersessionMixin:
         if bypass:
             return {
                 'query_type': 'pieces_only',
-                'condition': (
-                    "a.id IN (SELECT pa.appareil_id FROM piece_associations pa "
-                    "WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
-                ),
+                'condition': self._piece_association_subquery("LIKE"),
                 'params': [f"%{term}%"]
             }
 
@@ -427,12 +424,39 @@ class DatabaseSupersessionMixin:
             )
             params = [f"%{term}%"] + all_extra
         else:
-            condition = (
-                "a.id IN (SELECT pa.appareil_id FROM piece_associations pa "
-                "WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))"
-            )
+            condition = self._piece_association_subquery("LIKE")
             params = [f"%{term}%"]
         return {'query_type': 'pieces_only', 'condition': condition, 'params': params}
+
+    def _supersession_chain_cte(self, direction: str = "forward") -> str:
+        """CTE récursive commune pour parcourir la chaîne de succession.
+
+        direction="forward"  : suit ref_old -> ref_new (vers la ref courante),
+            utilisée par resolve_current_ref() et get_supersession_chain().
+        direction="backward" : suit ref_new -> ref_old (vers les
+            prédécesseurs), utilisée par get_all_predecessors().
+
+        Params attendus par la requête : [ref_piece, max_depth].
+        """
+        if direction == "forward":
+            join_clause = "JOIN piece_supersessions ps ON ps.ref_old = chain.ref"
+            next_ref = "ps.ref_new"
+            where_clause = "ps.ref_new IS NOT NULL AND chain.depth < ?"
+        else:
+            join_clause = "JOIN piece_supersessions ps ON ps.ref_new = chain.ref"
+            next_ref = "ps.ref_old"
+            where_clause = "chain.depth < ?"
+
+        return f"""
+                WITH RECURSIVE chain(ref, depth) AS (
+                    SELECT ?, 0
+                    UNION ALL
+                    SELECT {next_ref}, chain.depth + 1
+                    FROM chain
+                    {join_clause}
+                    WHERE {where_clause}
+                )
+        """
 
     def resolve_current_ref(self, ref_piece: str, max_depth: int = 20) -> str:
         """
@@ -443,17 +467,7 @@ class DatabaseSupersessionMixin:
             La ref courante (dernière de la chaîne), ou ref_piece si déjà courante.
         """
         try:
-            query = """
-                WITH RECURSIVE chain(ref, depth) AS (
-                    SELECT ?, 0
-                    UNION ALL
-                    SELECT ps.ref_new, chain.depth + 1
-                    FROM chain
-                    JOIN piece_supersessions ps ON ps.ref_old = chain.ref
-                    WHERE ps.ref_new IS NOT NULL AND chain.depth < ?
-                )
-                SELECT ref FROM chain ORDER BY depth DESC LIMIT 1
-            """
+            query = self._supersession_chain_cte("forward") + "SELECT ref FROM chain ORDER BY depth DESC LIMIT 1"
             rows = self.execute_query(query, [ref_piece, max_depth])
             return rows[0][0] if rows else ref_piece
         except Exception as e:
@@ -471,17 +485,7 @@ class DatabaseSupersessionMixin:
             Liste des refs prédécesseurs, vide si ref_piece n'en a aucun.
         """
         try:
-            query = """
-                WITH RECURSIVE chain(ref, depth) AS (
-                    SELECT ?, 0
-                    UNION ALL
-                    SELECT ps.ref_old, chain.depth + 1
-                    FROM chain
-                    JOIN piece_supersessions ps ON ps.ref_new = chain.ref
-                    WHERE chain.depth < ?
-                )
-                SELECT ref FROM chain WHERE depth > 0 ORDER BY depth ASC
-            """
+            query = self._supersession_chain_cte("backward") + "SELECT ref FROM chain WHERE depth > 0 ORDER BY depth ASC"
             rows = self.execute_query(query, [ref_piece, max_depth])
             return [r[0] for r in rows] if rows else []
         except Exception as e:
@@ -497,17 +501,7 @@ class DatabaseSupersessionMixin:
             Contient uniquement ref_piece si elle est déjà courante.
         """
         try:
-            query = """
-                WITH RECURSIVE chain(ref, depth) AS (
-                    SELECT ?, 0
-                    UNION ALL
-                    SELECT ps.ref_new, chain.depth + 1
-                    FROM chain
-                    JOIN piece_supersessions ps ON ps.ref_old = chain.ref
-                    WHERE ps.ref_new IS NOT NULL AND chain.depth < ?
-                )
-                SELECT ref FROM chain ORDER BY depth ASC
-            """
+            query = self._supersession_chain_cte("forward") + "SELECT ref FROM chain ORDER BY depth ASC"
             rows = self.execute_query(query, [ref_piece, max_depth])
             return [r[0] for r in rows] if rows else [ref_piece]
         except Exception as e:

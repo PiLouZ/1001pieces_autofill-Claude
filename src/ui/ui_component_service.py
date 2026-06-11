@@ -69,6 +69,12 @@ class UIComponentService:
             self._on_export_html_details_clicked
         )
         self.main_window.export_html_details_btn.setEnabled(False)
+        # QToolButton a une politique de taille horizontale "Fixed" par défaut
+        # (contrairement à QPushButton, "Preferred") : aligner sur "HTML Marques"
+        # pour que les 3 boutons d'export gardent la même largeur/hauteur
+        self.main_window.export_html_details_btn.setSizePolicy(
+            self.main_window.export_html_brands_btn.sizePolicy()
+        )
         export_layout.addWidget(self.main_window.export_html_details_btn)
         self._refresh_html_details_menu()
 
@@ -123,10 +129,9 @@ class UIComponentService:
                                           stop: 0 #ffffff, stop: 1 #f8f9fa);
                 border: 1px solid #dee2e6;
                 border-radius: 6px;
-                padding: 8px 16px;
+                padding: 6px 16px;
                 font-weight: 500;
                 color: #495057;
-                min-height: 16px;
             }
             QToolButton:hover {
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,

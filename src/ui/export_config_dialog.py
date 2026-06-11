@@ -11,7 +11,8 @@ from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QInputDialog, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox
+    QMessageBox, QInputDialog, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox,
+    QEvent
 )
 from src.core.logger import app_logger
 
@@ -21,6 +22,101 @@ def _make_icon_toggle(btn, icon_name, icon_color):
     def _on_toggled(checked):
         btn.setIcon(qta.icon(icon_name, color='white' if checked else icon_color))
     return _on_toggled
+
+
+class VariableChipsBar(QWidget):
+    """Barre de boutons-puces cliquables insérant une variable {nom} dans le
+    champ texte actuellement actif parmi une liste de champs cibles.
+
+    Réutilisable pour n'importe quel groupe de variables (CSV, HTML Marques,
+    HTML Détails, futurs onglets d'export...) : il suffit de fournir la liste
+    de variables (nom + info-bulle) et les QLineEdit concernés.
+    """
+
+    def __init__(self, variables: list, targets: list, parent=None):
+        """
+        Args:
+            variables: liste de tuples (nom_variable, description) — le bouton
+                affichera "{nom_variable}" et l'info-bulle affichera la description.
+            targets: liste de cibles pouvant recevoir l'insertion, chacune étant :
+                - un QLineEdit (insertion à la position du curseur), ou
+                - un tuple ('table', QTableWidget, colonne) pour insérer dans la
+                  cellule en cours d'édition (ou la cellule courante) de cette colonne.
+                La cible active est celle ayant le focus le plus récent (par défaut :
+                la dernière de la liste).
+        """
+        super().__init__(parent)
+        self._targets = list(targets)
+        self._active_target = self._targets[-1] if self._targets else None
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        for name, description in variables:
+            btn = QPushButton("{" + name + "}")
+            btn.setToolTip(description)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(
+                "QPushButton {"
+                "  padding: 1px 6px; font-size: 10px; font-family: monospace;"
+                "  background: #eef1f4; color: #495057;"
+                "  border: 1px solid #dee2e6; border-radius: 8px;"
+                "}"
+                "QPushButton:hover { background: #dde3e8; }"
+            )
+            btn.clicked.connect(lambda _checked, n=name: self._insert_variable(n))
+            layout.addWidget(btn)
+        layout.addStretch()
+
+        for target in self._targets:
+            self._target_widget(target).installEventFilter(self)
+
+    @staticmethod
+    def _target_widget(target):
+        """Widget Qt sous-jacent d'une cible (QLineEdit ou tuple table)."""
+        return target[1] if isinstance(target, tuple) else target
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.FocusIn:
+            for target in self._targets:
+                if self._target_widget(target) is obj:
+                    self._active_target = target
+                    break
+        return super().eventFilter(obj, event)
+
+    def _insert_variable(self, name: str):
+        target = self._active_target
+        if target is None:
+            return
+        token = "{" + name + "}"
+        if isinstance(target, tuple):
+            _, table, col = target
+            self._insert_into_table_cell(table, col, token)
+        else:
+            target.insert(token)
+            target.setFocus()
+
+    @staticmethod
+    def _insert_into_table_cell(table, col, token):
+        """Insérer le token dans la cellule en édition (ou la cellule courante
+        de la colonne `col`) d'un QTableWidget."""
+        editors = table.viewport().findChildren(QLineEdit)
+        if editors:
+            editors[0].insert(token)
+            return
+
+        item = table.currentItem()
+        if item is None or table.currentColumn() != col:
+            row = table.currentRow()
+            if row < 0:
+                return
+            item = table.item(row, col)
+            if item is None:
+                item = QTableWidgetItem("")
+                table.setItem(row, col, item)
+        item.setText(item.text() + token)
+        table.editItem(item)
 
 
 # Données de prévisualisation HTML
@@ -110,10 +206,8 @@ class ExportConfigDialog(QDialog):
 
         # Explication variables disponibles
         vars_label = QLabel(
-            "Variables disponibles dans la colonne Source : "
-            "{export_ref}  {ref_piece}  {type_app}  {manufacturer}  "
-            "{ref_modele}  {commercial_ref}  {other_ref}  "
-            "{modele_complet}  {separateur}\n"
+            "Variables disponibles dans la colonne Source / Assemblage "
+            "(cliquer une puce ci-dessous pour insérer dans la cellule sélectionnée) :\n"
             "  {modele_complet} = ref. modèle + commerciale fusionnées (tiret absent si l'une est vide)\n"
             "  {separateur}     = \" - \" si les deux références sont présentes, \"\" sinon"
         )
@@ -130,6 +224,21 @@ class ExportConfigDialog(QDialog):
         self.csv_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.csv_table.setAlternatingRowColors(True)
         layout.addWidget(self.csv_table)
+
+        layout.addWidget(VariableChipsBar(
+            [
+                ("export_ref",     "Référence d'export de l'appareil"),
+                ("ref_piece",      "Référence de la pièce"),
+                ("type_app",       "Type d'appareil"),
+                ("manufacturer",   "Fabricant"),
+                ("ref_modele",     "Référence modèle"),
+                ("commercial_ref", "Référence commerciale"),
+                ("other_ref",      "Autre référence"),
+                ("modele_complet", "Référence modèle + commerciale fusionnées (tiret absent si l'une est vide)"),
+                ("separateur",     "\" - \" si les deux références sont présentes, \"\" sinon"),
+            ],
+            targets=[('table', self.csv_table, 1)],
+        ))
 
         # Boutons gestion lignes
         row_btn_layout = QHBoxLayout()
@@ -196,6 +305,18 @@ class ExportConfigDialog(QDialog):
         opts_layout.addWidget(self.csv_pattern_input, 1)
 
         layout.addLayout(opts_layout)
+
+        pattern_chips_layout = QHBoxLayout()
+        pattern_chips_layout.addWidget(QLabel("Variables nom de fichier :"))
+        pattern_chips_layout.addWidget(VariableChipsBar(
+            [
+                ("export_ref", "Référence d'export de l'appareil"),
+                ("timestamp",  "Date et heure de génération de l'export"),
+            ],
+            targets=[self.csv_pattern_input],
+        ), 1)
+        layout.addLayout(pattern_chips_layout)
+
         return tab
 
     def _build_html_tab(self) -> QWidget:
@@ -211,9 +332,13 @@ class ExportConfigDialog(QDialog):
         # Section Marques
         left_layout.addWidget(self._section_label("Marques"))
 
-        left_layout.addWidget(QLabel("Template lien  (variable : {marque}) :"))
+        left_layout.addWidget(QLabel("Template lien :"))
         self.html_link_tpl = QLineEdit()
         left_layout.addWidget(self.html_link_tpl)
+        left_layout.addWidget(VariableChipsBar(
+            [("marque", "Nom de la marque")],
+            targets=[self.html_link_tpl],
+        ))
 
         left_layout.addWidget(QLabel("Séparateur entre marques :"))
         self.html_brands_sep = QLineEdit()
@@ -253,24 +378,26 @@ class ExportConfigDialog(QDialog):
 
         left_layout.addLayout(profile_bar)
 
-        left_layout.addWidget(QLabel("En-tête de marque  ({marque}) :"))
+        left_layout.addWidget(QLabel("En-tête de marque :"))
         self.html_brand_header_tpl = QLineEdit()
         left_layout.addWidget(self.html_brand_header_tpl)
-
-        vars_detail_lbl = QLabel(
-            "Variables ligne modèle : "
-            "{modele_complet}  {ref_modele}  {ref_commerciale}  {other_ref}  {separateur}  {marque}\n"
-            "  {modele_complet} = référence modèle + commerciale fusionnées (tiret retiré si l'une est vide)\n"
-            "  {other_ref}      = autre référence\n"
-            "  {separateur}     = \" - \" si les deux références sont présentes, \"\" sinon"
-        )
-        vars_detail_lbl.setStyleSheet("color: #6c757d; font-size: 11px;")
-        vars_detail_lbl.setWordWrap(True)
-        left_layout.addWidget(vars_detail_lbl)
 
         left_layout.addWidget(QLabel("Ligne modèle :"))
         self.html_model_line_tpl = QLineEdit()
         left_layout.addWidget(self.html_model_line_tpl)
+
+        detail_chips = VariableChipsBar(
+            [
+                ("marque",          "Nom de la marque"),
+                ("modele_complet",  "Référence modèle + commerciale fusionnées (tiret retiré si l'une est vide)"),
+                ("ref_modele",      "Référence modèle"),
+                ("ref_commerciale", "Référence commerciale"),
+                ("other_ref",       "Autre référence"),
+                ("separateur",      "\" - \" si les deux références sont présentes, \"\" sinon"),
+            ],
+            targets=[self.html_brand_header_tpl, self.html_model_line_tpl],
+        )
+        left_layout.addWidget(detail_chips)
 
         left_layout.addWidget(QLabel("Séparateur entre groupes :"))
         self.html_group_sep = QLineEdit()

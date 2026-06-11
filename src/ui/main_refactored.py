@@ -928,13 +928,6 @@ class MainWindow(QMainWindow):
         """Retourne le CSS moderne de l'application via StyleManager"""
         return StyleManager.get_modern_style()
     
-    @handle_ui_errors(log_prefix="Erreur mise à jour numéros de lignes", show_message=False)
-    def _update_row_numbers(self):
-        """Mettre à jour les numéros de lignes après un tri"""
-        for row in range(self.table.rowCount()):
-            self.table.setVerticalHeaderItem(row, QTableWidgetItem(str(row + 1)))
-        app_logger.debug(f"Numéros de lignes mis à jour pour {self.table.rowCount()} lignes")
-    
     @handle_ui_errors(log_prefix="Erreur mise à jour pagination", show_message=False)
     def _update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination - PHASE 5: Délégation vers NavigationService"""
