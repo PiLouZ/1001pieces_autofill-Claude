@@ -161,6 +161,13 @@ class ToolbarService:
         fts5_action.triggered.connect(getattr(self.main_window, '_open_fts5_manager', lambda: None))
         tools_menu.addAction(fts5_action)
 
+        supersession_csv_action = QAction("Exporter les chaînes de supersession (CSV)", self.main_window)
+        supersession_csv_action.setToolTip("Rapport CSV de toutes les relations de remplacement de pièces")
+        supersession_csv_action.triggered.connect(
+            getattr(self.main_window, '_export_supersession_chains', lambda: None)
+        )
+        tools_menu.addAction(supersession_csv_action)
+
         tools_menu.addSeparator()
 
         export_action = QAction("Exporter l'application…", self.main_window)

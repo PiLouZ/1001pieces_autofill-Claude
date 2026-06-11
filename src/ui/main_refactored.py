@@ -2401,6 +2401,19 @@ class MainWindow(QMainWindow):
         dialog = HistoryViewDialog(self.history_service, parent=self)
         dialog.show()
 
+    def _export_supersession_chains(self):
+        """Exporter les chaînes de supersession en CSV (F8)"""
+        from ..services.supersession_report_service import SupersessionReportService
+        if not hasattr(self, 'supersession_report_service'):
+            self.supersession_report_service = SupersessionReportService(self)
+        path = self.supersession_report_service.export_chains_csv()
+        if path:
+            self.user_interaction_service.show_info(
+                f"Chaînes de supersession exportées :\n{path}")
+        else:
+            self.user_interaction_service.show_info(
+                "Aucune supersession enregistrée — rien à exporter.")
+
     def _open_fts5_manager(self):
         """Ouvrir le gestionnaire d'index FTS5"""
         self._safe_open_fts5_manager()

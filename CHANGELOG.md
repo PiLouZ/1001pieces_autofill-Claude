@@ -4,6 +4,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.41.0] - 2026-06-11
+
+### Feat — F8 : export CSV des chaînes de supersession (clôture roadmap v2)
+
+- Nouveau `SupersessionReportService` (`src/services/supersession_report_service.py`)
+- Menu Gestion → "Exporter les chaînes de supersession (CSV)" → fichier `supersessions_AAAAMMJJ.csv` sur le Bureau
+- Colonnes : `ref_remplacee ; ref_remplacante ; ref_finale` — la référence finale est résolue en suivant la chaîne complète (garde anti-cycle)
+- Vérifié sur données réelles : 776 supersessions, 14 chaînes multi-maillons résolues
+
+**Bilan roadmap v2** : E5 (Cmd+F) confirmé fonctionnel par l'utilisateur · E6 (recherche textuelle historique) déjà livré pendant les travaux 3.36.x (champ recherche SQL sur titre/appareil/champ/valeurs) · F8 livré ci-dessus · T11 (tests bannières) abandonné (centrage visuel non testable automatiquement de façon fiable) · T12 (packaging .app) mis en réserve.
+
+---
+
 ## [3.40.1] - 2026-06-11
 
 ### Fix — F7 comptage dry-run exact + P5 thread-safety SQLite
