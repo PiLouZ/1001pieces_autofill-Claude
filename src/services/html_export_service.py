@@ -5,6 +5,7 @@ Extrait et unifie les méthodes de génération HTML de data_exporter.py et serv
 
 from collections import defaultdict
 from typing import List, Tuple, Dict, Any
+import html
 import re
 
 class HtmlExportService:
@@ -56,7 +57,7 @@ class HtmlExportService:
             if cfg:
                 html_links.append(cfg.render_html_template(link_template, context))
             else:
-                html_links.append(link_template.replace('{marque}', brand))
+                html_links.append(link_template.replace('{marque}', html.escape(brand, quote=True)))
 
         return separator.join(html_links)
     
@@ -129,8 +130,10 @@ class HtmlExportService:
         group_separator   = details_cfg.get('group_separator', '<div>&nbsp;</div>')
 
         def _render(template: str, context: Dict) -> str:
+            # html.escape sur les valeurs (données importées de sources externes),
+            # jamais sur le template (HTML voulu par l'utilisateur)
             for key, val in context.items():
-                template = template.replace('{' + key + '}', str(val or ''))
+                template = template.replace('{' + key + '}', html.escape(str(val or ''), quote=True))
             return template
 
         html_parts = []

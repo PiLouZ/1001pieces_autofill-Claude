@@ -10,6 +10,7 @@ Responsabilités:
 """
 
 import copy
+import html
 import json
 import os
 import re
@@ -216,7 +217,12 @@ class ExportConfigService(BaseService):
     # ─── Rendu HTML ──────────────────────────────────────────────────────────
 
     def render_html_template(self, template: str, context: Dict) -> str:
-        """Substituer les {variables} dans un template HTML"""
+        """Substituer les {variables} dans un template HTML
+
+        Les valeurs sont échappées (html.escape) : les données importées
+        (PDF/CSV externes) ne doivent jamais injecter de balises dans le HTML
+        exporté. Le template lui-même reste du HTML brut voulu par l'utilisateur.
+        """
         for key, value in context.items():
-            template = template.replace('{' + key + '}', str(value or ''))
+            template = template.replace('{' + key + '}', html.escape(str(value or ''), quote=True))
         return template

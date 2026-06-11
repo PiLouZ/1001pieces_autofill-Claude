@@ -18,6 +18,26 @@ from src.core.constants import ExportFormat, ExportError
 from src.services.html_export_service import HtmlExportService
 from src.utils.error_handler import handle_export_errors
 
+
+def _neutraliser_formule_csv(valeur):
+    """Neutraliser l'injection de formule CSV (ouverture dans Excel/LibreOffice).
+
+    Une cellule commençant par '=', '+' ou '@' serait interprétée comme une
+    formule par le tableur. Les données provenant d'imports externes (PDF/CSV),
+    on préfixe d'une apostrophe — convention tableur pour forcer le texte.
+    Le tiret '-' n'est volontairement pas traité (peut apparaître en tête de
+    références réelles, et n'est pas exploitable seul).
+    """
+    if isinstance(valeur, str) and valeur and valeur[0] in ('=', '+', '@'):
+        return "'" + valeur
+    return valeur
+
+
+def _assainir_ligne_csv(row):
+    """Appliquer la neutralisation de formules à toutes les cellules d'une ligne"""
+    return [_neutraliser_formule_csv(cell) for cell in row]
+
+
 class DataExporter:
     """Classe pour gérer tous les exports de données"""
 
@@ -105,7 +125,7 @@ class DataExporter:
                         ref_modele or '',
                         commercial_ref or ''
                     ]
-                writer.writerow(row)
+                writer.writerow(_assainir_ligne_csv(row))
 
         return f"Fichier CSV créé: {filename}"
     
@@ -241,7 +261,7 @@ class DataExporter:
 
             # Données
             for record in data:
-                writer.writerow(record[:len(Config.DB_HEADERS)])
+                writer.writerow(_assainir_ligne_csv(record[:len(Config.DB_HEADERS)]))
 
         return f"Fichier CSV complet créé: {filename}"
     

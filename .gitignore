@@ -21,6 +21,7 @@ data/appareils.db-wal
 data/*.db.backup
 data/*_backup.db
 data/*.db.bak
+data/backups/
 
 # Logs
 logs/

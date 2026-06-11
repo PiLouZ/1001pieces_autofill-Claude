@@ -367,10 +367,16 @@ class CleanupPreviewDialog(QDialog):
             self,
             "Êtes-vous sûr de vouloir appliquer ces changements?\n\n"
             "Cette opération est irréversible.\n"
-            "Assurez-vous d'avoir une sauvegarde de votre base de données.",
+            "Une copie de sécurité de la base sera créée automatiquement.",
             "Confirmation du nettoyage"
         ):
             return
+
+        # Copie de sécurité systématique avant cette opération destructive.
+        # En cas d'échec de la copie, l'opération continue (comportement historique).
+        backup_service = getattr(self.parent_window, 'backup_service', None)
+        if backup_service:
+            backup_service.create_backup(reason="nettoyage")
 
         # Préparer les options de nettoyage
         cleanup_options = {}

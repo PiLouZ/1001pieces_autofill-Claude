@@ -1831,6 +1831,17 @@ class ImportManager:
     def _launch_real_import(self, config, callback, t0, dialog=None, source='import'):
         """Lance le vrai _ImportWorker après confirmation (ou directement si pas de preview)."""
         from ..ui.progress_dialog import ProgressDialog
+        from .constants import DatabaseConfig
+
+        # Filet de sécurité quotidien : copie de la base avant écritures massives
+        # (au plus une copie / 24h pour ne pas ralentir les imports répétés)
+        backup_service = getattr(getattr(self, 'main_window', None), 'backup_service', None)
+        if backup_service:
+            backup_service.create_backup(
+                reason="import",
+                max_age_hours=DatabaseConfig.BACKUP_MIN_INTERVAL_IMPORT_H
+            )
+
         n        = len(config.files)
         progress = ProgressDialog("Importation en cours", "Annuler", 0, n, self.parent_widget)
         progress.show()

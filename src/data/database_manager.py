@@ -115,7 +115,18 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         # La sécurité est assurée par _query_lock dans load_data() (accès sérialisé).
         self.conn = sqlite3.connect(self.db_file, check_same_thread=False)
         self.cursor = self.conn.cursor()
-    
+
+        # Réglages de performance par connexion (sans effet sur le format du fichier) :
+        # - synchronous=NORMAL : réglage recommandé avec WAL (déjà actif sur cette base),
+        #   réduit les fsync ; la cohérence reste garantie par le journal WAL
+        # - cache_size négatif = taille en Kio (64 Mo de cache de pages)
+        # - temp_store=MEMORY : tris/index temporaires en RAM plutôt que sur disque
+        # - mmap_size : lecture du fichier (~840 Mo) via mémoire mappée (256 Mo)
+        self.cursor.execute("PRAGMA synchronous=NORMAL")
+        self.cursor.execute("PRAGMA cache_size=-65536")
+        self.cursor.execute("PRAGMA temp_store=MEMORY")
+        self.cursor.execute("PRAGMA mmap_size=268435456")
+
     def get_connection(self):
         """Retourner la connexion pour les opérations batch"""
         return self.conn
@@ -1905,6 +1916,12 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     def close(self):
         """Fermer la connexion à la base de données"""
         if self.conn:
+            # Met à jour les statistiques du planificateur (ANALYZE incrémental) —
+            # 3,5M d'associations sans statistiques = plans de requêtes sous-optimaux
+            try:
+                self.conn.execute("PRAGMA optimize")
+            except sqlite3.Error:
+                pass  # Ne jamais empêcher la fermeture propre
             self.conn.close()
     
     def __enter__(self):

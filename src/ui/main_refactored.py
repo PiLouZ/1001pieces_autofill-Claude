@@ -163,7 +163,11 @@ class MainWindow(QMainWindow):
 
         self.exporter = DataExporter(self.db_manager, self.export_config_service)
         self.device_manager = DeviceManager(self.db_manager)
-    
+
+        # Sauvegarde automatique avant opérations destructives (nettoyage, import)
+        from ..services.backup_service import BackupService
+        self.backup_service = BackupService(self)
+
     def _init_search_services(self):
         """Initialiser les services de recherche"""
         self.search_service = SearchService(self.db_manager)

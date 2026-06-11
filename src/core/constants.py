@@ -58,6 +58,9 @@ class DatabaseConfig:
     """Configuration de base de données"""
     DB_NAME = "appareils.db"
     BACKUP_SUFFIX = "_backup"
+    BACKUP_DIR_NAME = "backups"          # data/backups/
+    BACKUP_MAX_COPIES = 3                # rotation (~840 Mo par copie)
+    BACKUP_MIN_INTERVAL_IMPORT_H = 24    # avant import : au plus 1 copie / 24h
     
     # Tables principales
     TABLE_APPAREILS = "appareils"
@@ -248,7 +251,7 @@ class Paths:
 class AppInfo:
     """Informations sur l'application"""
     NAME = "1001pieces - Gestionnaire d'appareils"
-    VERSION = "3.38.2"
+    VERSION = "3.39.0"
     DESCRIPTION = "Gestionnaire de pièces & d'appareils électroménagers"
     AUTHOR = "1001pieces.com"
     URL = "https://1001pieces.com"

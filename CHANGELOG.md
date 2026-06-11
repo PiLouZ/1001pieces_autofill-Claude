@@ -4,6 +4,35 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.39.0] - 2026-06-11
+
+### Sécurité + sauvegarde automatique (audit complet du projet)
+
+Audit sécurité/performance complet : injection SQL vérifiée saine (placeholders partout),
+aucun motif dangereux (`eval`/`pickle`/`subprocess`). Quatre durcissements appliqués :
+
+**P1 — Échappement HTML des exports** (`html_export_service.py`, `export_config_service.py`)
+- `html.escape()` sur les **valeurs** (marques, refs — données issues d'imports PDF/CSV externes) dans `_render()`, `render_html_template()` et le chemin de repli de `generate_html_brands()`
+- Les templates utilisateur restent du HTML brut voulu — seules les données sont neutralisées
+- Ferme un vecteur XSS stocké : une ref importée contenant `<script>` partait telle quelle dans le HTML collé sur le site
+
+**P2 — Sauvegarde automatique de la base** (`backup_service.py`, nouveau)
+- `BackupService(BaseService)` : copie via l'API backup native SQLite (cohérente sous WAL, connexions dédiées)
+- Avant nettoyage des doublons : copie systématique (remplace l'avertissement "assurez-vous d'avoir une sauvegarde")
+- Avant import réel : au plus une copie par 24h (fenêtre glissante, évite de copier ~840 Mo à chaque import)
+- Rotation : 3 copies max dans `data/backups/` (gitignoré) — constantes dans `DatabaseConfig`
+- Un échec de copie ne bloque jamais l'opération (comportement historique préservé)
+
+**P3 — Réglages SQLite** (`database_manager.py`)
+- À la connexion : `synchronous=NORMAL` (recommandé avec WAL), `cache_size` 64 Mo, `temp_store=MEMORY`, `mmap_size` 256 Mo
+- À la fermeture : `PRAGMA optimize` (statistiques du planificateur — 3,5M d'associations n'en avaient aucune)
+
+**P4 — Anti-injection de formules CSV** (`data_exporter.py`)
+- Cellules commençant par `=`, `+` ou `@` préfixées d'une apostrophe (convention tableur) dans les deux chemins d'export CSV
+- Le tiret `-` volontairement non traité (présent en tête de vraies références, non exploitable seul)
+
+---
+
 ## [3.38.2] - 2026-06-10
 
 ### Export HTML Détails — étiquette complet/partiel + variable {other_ref}
