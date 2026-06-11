@@ -329,16 +329,16 @@ class DragHandle(QWidget):
 
         # Note: try/finally nécessaire pour garantir la reprise des invalidations
         try:
-            saved_count = 0
-            cells_to_clean = []  # Cellules à nettoyer de modified_cells
+            cells_to_clean = set()  # Cellules à nettoyer de modified_cells
 
             for row in modified_rows:
                 for col in range(start_col, end_col + 1):
-                    if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
-                        new_value = self.main_window._get_cell_text(row, col)
-                        self.main_window.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
-                        saved_count += 1
-                        cells_to_clean.append((row, col))
+                    cells_to_clean.add((row, col))
+
+            save_service = getattr(self.main_window, 'event_driven_save_service', None)
+            if save_service and cells_to_clean:
+                # Sauvegarde en une seule transaction (évite un commit SQLite par cellule)
+                save_service.save_cells_batch_immediate(cells_to_clean)
 
             # Nettoyer les cellules de modified_cells pour éviter les sauvegardes répétées
             if hasattr(self.main_window, 'modified_cells') and cells_to_clean:

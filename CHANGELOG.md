@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.43.2] - 2026-06-11
+
+### Fix — Gel sur auto-fill double-clic en masse
+
+- Même cause que le fix v3.43.1, sur un autre chemin de code : la duplication
+  automatique vers le bas (double-clic sur la poignée de sélection) sauvegardait
+  chaque cellule dupliquée individuellement via `handle_cell_changed`
+  (15378 cellules → 15378 transactions, ~12 secondes observées en usage réel)
+- `DragHandleService._save_auto_fill_changes()` regroupe désormais toutes les
+  cellules modifiées et appelle `EventDrivenSaveService.save_cells_batch_immediate()`
+  une seule fois
+- Audit complet : c'était le dernier chemin de sauvegarde cellule-par-cellule en
+  boucle (hors édition manuelle d'une seule cellule, qui reste 1 cellule = 1
+  transaction par construction) ; `_save_drag_changes` (glisser-déposer) et
+  `save_after_paste` (collage) étaient déjà batchés via `save_cells_batch()`
+
 ## [3.43.1] - 2026-06-11
 
 ### Fix — Gel sur effacement multi-cellules (Suppr) en masse
