@@ -11,7 +11,7 @@ Responsabilités:
 
 from typing import Optional, Dict, Any
 import qtawesome as qta
-from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QWidget,
+from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QToolButton, QWidget,
                              QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
                              Qt, QTimer, QFont, QMenu, QPoint)
 
@@ -59,45 +59,101 @@ class UIComponentService:
         self.main_window.export_html_brands_btn.setEnabled(False)
         export_layout.addWidget(self.main_window.export_html_brands_btn)
         
-        # Bouton HTML Détails
-        self.main_window.export_html_details_btn = QPushButton("HTML Détails")
+        # Bouton HTML Détails — split button compact (clic = export profil par
+        # défaut, flèche superposée = menu des autres profils configurés)
+        self.main_window.export_html_details_btn = QToolButton()
+        self.main_window.export_html_details_btn.setText("HTML Détails")
+        self.main_window.export_html_details_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.main_window.export_html_details_btn.setStyleSheet(self._get_split_button_style())
         self.main_window.export_html_details_btn.clicked.connect(
             self._on_export_html_details_clicked
         )
         self.main_window.export_html_details_btn.setEnabled(False)
         export_layout.addWidget(self.main_window.export_html_details_btn)
-        
+        self._refresh_html_details_menu()
+
         layout.addLayout(export_layout)
 
         # Ligne 2: Boutons SEO métadonnées
         self._add_seo_buttons(layout)
 
-    def _on_export_html_details_clicked(self):
-        """Export HTML Détails — choix du profil si plusieurs sont configurés.
+    def _refresh_html_details_menu(self) -> None:
+        """Reconstruire le menu déroulant du bouton "HTML Détails".
 
-        Un seul profil : export direct (comportement historique inchangé).
-        Plusieurs profils : menu déroulant sous le bouton, le profil par défaut
-        est repéré par un suffixe. Pas d'icônes (convention menus macOS).
+        Un seul profil configuré : pas de menu, pas de flèche — clic = export direct.
+        Plusieurs profils : la flèche superposée ouvre un menu listant les profils
+        AUTRES que celui par défaut (le clic principal exporte déjà ce dernier).
         """
+        btn = self.main_window.export_html_details_btn
         svc = getattr(self.main_window, 'export_config_service', None)
         names = svc.get_details_profile_names() if svc else []
 
         if len(names) <= 1:
-            self.main_window._export_data(ExportFormat.HTML_DETAILS)
+            btn.setMenu(None)
+            btn.setPopupMode(QToolButton.DelayedPopup)
             return
 
         default_name = svc.get_default_details_profile_name()
-        menu = QMenu(self.main_window)
+        menu = QMenu(btn)
         for name in names:
-            label = f"{name}  (défaut)" if name == default_name else name
-            action = menu.addAction(label)
+            if name == default_name:
+                continue
+            action = menu.addAction(name)
             action.setData(name)
+        menu.triggered.connect(self._on_html_details_profile_chosen)
+        btn.setMenu(menu)
+        btn.setPopupMode(QToolButton.MenuButtonPopup)
 
-        btn = self.main_window.export_html_details_btn
-        chosen = menu.exec_(btn.mapToGlobal(QPoint(0, btn.height())))
-        if chosen:
-            self.main_window._export_data(ExportFormat.HTML_DETAILS,
-                                          profile_name=chosen.data())
+    def _on_html_details_profile_chosen(self, action) -> None:
+        """Export HTML Détails avec le profil choisi dans le menu déroulant."""
+        self.main_window._export_data(ExportFormat.HTML_DETAILS, profile_name=action.data())
+
+    def _on_export_html_details_clicked(self):
+        """Clic sur le bouton principal "HTML Détails" : export immédiat avec
+        le profil par défaut (ou l'unique profil configuré)."""
+        svc = getattr(self.main_window, 'export_config_service', None)
+        default_name = svc.get_default_details_profile_name() if svc else None
+        self.main_window._export_data(ExportFormat.HTML_DETAILS, profile_name=default_name)
+
+    def _get_split_button_style(self) -> str:
+        """Style du bouton split "HTML Détails" — aligné sur le QPushButton global."""
+        return """
+            QToolButton {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                          stop: 0 #ffffff, stop: 1 #f8f9fa);
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 500;
+                color: #495057;
+                min-height: 16px;
+            }
+            QToolButton:hover {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                          stop: 0 #e9ecef, stop: 1 #dee2e6);
+                border-color: #adb5bd;
+                color: #212529;
+            }
+            QToolButton:pressed {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                          stop: 0 #dee2e6, stop: 1 #ced4da);
+                border-color: #6c757d;
+            }
+            QToolButton:disabled {
+                background-color: #f8f9fa;
+                color: #6c757d;
+                border-color: #e9ecef;
+            }
+            QToolButton::menu-button {
+                border: none;
+                width: 18px;
+            }
+            QToolButton::menu-indicator {
+                subcontrol-origin: padding;
+                subcontrol-position: right center;
+                right: 4px;
+            }
+        """
 
     def _add_seo_buttons(self, layout: QVBoxLayout) -> None:
         """Ajouter les boutons SEO métadonnées"""

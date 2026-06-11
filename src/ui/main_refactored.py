@@ -2393,6 +2393,7 @@ class MainWindow(QMainWindow):
         """Ouvrir le dialogue de configuration des exports CSV + HTML"""
         from .export_config_dialog import ExportConfigDialog
         dialog = ExportConfigDialog(self.export_config_service, parent=self)
+        dialog.finished.connect(lambda _: self.ui_component_service._refresh_html_details_menu())
         dialog.show()
 
     def _open_history_view(self):

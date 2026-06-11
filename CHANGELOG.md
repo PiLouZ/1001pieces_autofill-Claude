@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.42.0] - 2026-06-11
+
+### UI — Bouton "HTML Détails" en split button compact
+
+- Le bouton "HTML Détails" est désormais un `QToolButton` (mode `MenuButtonPopup`)
+- Clic sur le bouton principal → export immédiat avec le profil par défaut (ou l'unique profil configuré)
+- Si plusieurs profils existent, une flèche superposée en bord droit ouvre un menu listant les *autres* profils
+- Si un seul profil est configuré, aucune flèche n'apparaît (comportement bouton simple, historique)
+- Le menu se reconstruit automatiquement à la fermeture du dialogue "Configuration des exports…"
+
+---
+
 ## [3.41.1] - 2026-06-11
 
 ### Fix — Autocomplétion des filtres Type / Fabricant cassée depuis 2 mois
