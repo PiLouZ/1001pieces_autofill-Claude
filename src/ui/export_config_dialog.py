@@ -11,7 +11,7 @@ from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox
+    QMessageBox, QInputDialog, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox
 )
 from src.core.logger import app_logger
 
@@ -229,6 +229,30 @@ class ExportConfigDialog(QDialog):
         # Section Détails
         left_layout.addWidget(self._section_label("Détails"))
 
+        # Barre de profils : plusieurs formats d'export HTML Détails mémorisables
+        profile_bar = QHBoxLayout()
+        profile_bar.setSpacing(4)
+        profile_bar.addWidget(QLabel("Profil :"))
+
+        self.profile_combo = QComboBox()
+        self.profile_combo.setMinimumWidth(160)
+        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
+        profile_bar.addWidget(self.profile_combo, stretch=1)
+
+        for label, tooltip, slot in (
+            ("Ajouter",   "Créer un nouveau profil (valeurs par défaut)",  self._add_profile),
+            ("Dupliquer", "Copier le profil sélectionné",                  self._duplicate_profile),
+            ("Renommer",  "Renommer le profil sélectionné",                self._rename_profile),
+            ("Supprimer", "Supprimer le profil sélectionné",               self._delete_profile),
+            ("Par défaut", "Utiliser ce profil pour le bouton HTML Détails", self._set_default_profile),
+        ):
+            btn = QPushButton(label)
+            btn.setToolTip(tooltip)
+            btn.clicked.connect(slot)
+            profile_bar.addWidget(btn)
+
+        left_layout.addLayout(profile_bar)
+
         left_layout.addWidget(QLabel("En-tête de marque  ({marque}) :"))
         self.html_brand_header_tpl = QLineEdit()
         left_layout.addWidget(self.html_brand_header_tpl)
@@ -343,16 +367,131 @@ class ExportConfigDialog(QDialog):
         self.csv_pattern_input.setText(csv_cfg.get('filename_pattern', '{term}_everyParts.csv'))
 
         # HTML
-        brands_cfg  = config.get('html', {}).get('brands', {})
-        details_cfg = config.get('html', {}).get('details', {})
+        brands_cfg = config.get('html', {}).get('brands', {})
         self.html_link_tpl.setText(brands_cfg.get('link_template', ''))
         self.html_brands_sep.setText(brands_cfg.get('separator', ' '))
-        self.html_brand_header_tpl.setText(details_cfg.get('brand_header_template', ''))
-        self.html_model_line_tpl.setText(details_cfg.get('model_line_template', ''))
-        self.html_group_sep.setText(details_cfg.get('group_separator', ''))
-        self.html_char_limit_spin.setValue(details_cfg.get('char_limit', 195000))
 
+        # Profils HTML Détails : copie de travail en mémoire jusqu'à Enregistrer
+        self._profiles = self.export_config_service.get_details_profiles()
+        self._default_profile = self.export_config_service.get_default_details_profile_name()
+        self._current_profile_name = self._default_profile
+        self._refresh_profile_combo(select_name=self._default_profile)
+        self._load_profile_fields(self._find_profile(self._current_profile_name))
+
+    # ─── Gestion des profils HTML Détails ────────────────────────────────────
+
+    def _find_profile(self, name):
+        for p in self._profiles:
+            if p['name'] == name:
+                return p
+        return self._profiles[0]
+
+    def _refresh_profile_combo(self, select_name=None):
+        """Repeupler la combo (nom réel en itemData, suffixe visuel pour le défaut)"""
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        for p in self._profiles:
+            display = p['name'] + ("  (défaut)" if p['name'] == self._default_profile else "")
+            self.profile_combo.addItem(display, p['name'])
+        if select_name:
+            idx = next((i for i in range(self.profile_combo.count())
+                        if self.profile_combo.itemData(i) == select_name), 0)
+            self.profile_combo.setCurrentIndex(idx)
+        self.profile_combo.blockSignals(False)
+
+    def _store_fields_into_current(self):
+        """Reporter les champs de l'éditeur dans le profil courant (en mémoire)"""
+        profile = self._find_profile(self._current_profile_name)
+        profile['brand_header_template'] = self.html_brand_header_tpl.text()
+        profile['model_line_template']   = self.html_model_line_tpl.text()
+        profile['group_separator']       = self.html_group_sep.text()
+        profile['char_limit']            = self.html_char_limit_spin.value()
+
+    def _load_profile_fields(self, profile):
+        self.html_brand_header_tpl.setText(profile.get('brand_header_template', ''))
+        self.html_model_line_tpl.setText(profile.get('model_line_template', ''))
+        self.html_group_sep.setText(profile.get('group_separator', ''))
+        self.html_char_limit_spin.setValue(profile.get('char_limit', 195000))
         self._update_html_preview()
+
+    def _on_profile_changed(self, index):
+        if index < 0:
+            return
+        self._store_fields_into_current()
+        self._current_profile_name = self.profile_combo.itemData(index)
+        self._load_profile_fields(self._find_profile(self._current_profile_name))
+
+    def _unique_profile_name(self, base):
+        names = {p['name'] for p in self._profiles}
+        if base not in names:
+            return base
+        i = 2
+        while f"{base} ({i})" in names:
+            i += 1
+        return f"{base} ({i})"
+
+    def _ask_profile_name(self, title, default_text):
+        name, ok = QInputDialog.getText(self, title, "Nom du profil :", text=default_text)
+        name = name.strip()
+        return name if (ok and name) else None
+
+    def _add_profile(self):
+        name = self._ask_profile_name("Nouveau profil", "Nouveau profil")
+        if not name:
+            return
+        from src.services.export_config_service import DEFAULT_CONFIG
+        profile = dict(DEFAULT_CONFIG['html']['details'])
+        profile['name'] = self._unique_profile_name(name)
+        self._store_fields_into_current()
+        self._profiles.append(profile)
+        self._current_profile_name = profile['name']
+        self._refresh_profile_combo(select_name=profile['name'])
+        self._load_profile_fields(profile)
+
+    def _duplicate_profile(self):
+        self._store_fields_into_current()
+        source = self._find_profile(self._current_profile_name)
+        profile = dict(source)
+        profile['name'] = self._unique_profile_name(f"{source['name']} (copie)")
+        self._profiles.append(profile)
+        self._current_profile_name = profile['name']
+        self._refresh_profile_combo(select_name=profile['name'])
+        self._load_profile_fields(profile)
+
+    def _rename_profile(self):
+        old_name = self._current_profile_name
+        name = self._ask_profile_name("Renommer le profil", old_name)
+        if not name or name == old_name:
+            return
+        name = self._unique_profile_name(name)
+        self._find_profile(old_name)['name'] = name
+        if self._default_profile == old_name:
+            self._default_profile = name
+        self._current_profile_name = name
+        self._refresh_profile_combo(select_name=name)
+
+    def _delete_profile(self):
+        if len(self._profiles) <= 1:
+            QMessageBox.warning(self, "Suppression impossible",
+                                "Au moins un profil doit exister.")
+            return
+        name = self._current_profile_name
+        if QMessageBox.question(
+            self, "Supprimer le profil",
+            f"Supprimer le profil « {name} » ?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        ) != QMessageBox.Yes:
+            return
+        self._profiles = [p for p in self._profiles if p['name'] != name]
+        if self._default_profile == name:
+            self._default_profile = self._profiles[0]['name']
+        self._current_profile_name = self._profiles[0]['name']
+        self._refresh_profile_combo(select_name=self._current_profile_name)
+        self._load_profile_fields(self._find_profile(self._current_profile_name))
+
+    def _set_default_profile(self):
+        self._default_profile = self._current_profile_name
+        self._refresh_profile_combo(select_name=self._current_profile_name)
 
     def _populate_csv_table(self, columns):
         self.csv_table.setRowCount(0)
@@ -485,14 +624,17 @@ class ExportConfigDialog(QDialog):
                     "separator":     self.html_brands_sep.text(),
                     "char_limit":    self.export_config_service.get_html_brands_config().get('char_limit', 195000)
                 },
-                "details": {
-                    "brand_header_template": self.html_brand_header_tpl.text(),
-                    "model_line_template":   self.html_model_line_tpl.text(),
-                    "group_separator":       self.html_group_sep.text(),
-                    "char_limit":            self.html_char_limit_spin.value()
-                }
+                # 'details' (miroir du profil par défaut) est resynchronisé par
+                # ExportConfigService._merge_with_defaults() à la sauvegarde
+                "details_profiles":        self._collect_profiles(),
+                "details_default_profile": self._default_profile
             }
         }
+
+    def _collect_profiles(self) -> list:
+        """Reporter l'éditeur dans le profil courant et retourner tous les profils"""
+        self._store_fields_into_current()
+        return [dict(p) for p in self._profiles]
 
     def _on_save(self):
         config = self._collect_config()

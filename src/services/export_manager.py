@@ -62,13 +62,15 @@ class ExportManagerService:
     # ===== INTERFACE PUBLIQUE UNIFIÉE =====
 
     @handle_export_errors(title="Erreur export unifié")
-    def export_data(self, export_format: ExportFormat, export_type: ExportType = ExportType.MAIN) -> bool:
+    def export_data(self, export_format: ExportFormat, export_type: ExportType = ExportType.MAIN,
+                    profile_name: str = None) -> bool:
         """
         Point d'entrée unifié pour tous les exports
 
         Args:
             export_format: Format d'export (CSV, HTML_BRANDS, HTML_DETAILS)
             export_type: Type d'export (MAIN, LEGACY, QUICK)
+            profile_name: Profil HTML Détails à utiliser (None = profil par défaut)
 
         Returns:
             bool: True si succès, False sinon
@@ -84,7 +86,7 @@ class ExportManagerService:
         elif export_type == ExportType.LEGACY:
             return self._handle_legacy_export(search_term, export_format)
         elif export_type == ExportType.QUICK:
-            return self._handle_quick_export(search_term, export_format)
+            return self._handle_quick_export(search_term, export_format, profile_name=profile_name)
         else:
             raise ValueError(f"Type d'export non supporté: {export_type}")
     
@@ -145,14 +147,16 @@ class ExportManagerService:
         # Pour les autres formats, utiliser l'export standard
         return self._handle_standard_export(search_term, export_format)
     
-    def _handle_quick_export(self, search_term: str, export_format: ExportFormat) -> bool:
+    def _handle_quick_export(self, search_term: str, export_format: ExportFormat,
+                             profile_name: str = None) -> bool:
         """Gérer l'export rapide sans dialogue"""
         # Extraire une référence automatiquement
         reference = self._extract_default_reference(search_term)
 
         # Utiliser le terme parsé avec flags bannières
         parsed = self._parse_search_term(search_term)
-        return self._execute_export_with_reference(parsed, reference, export_format)
+        return self._execute_export_with_reference(parsed, reference, export_format,
+                                                   profile_name=profile_name)
     
     # ===== SÉLECTION DE RÉFÉRENCE UNIFIÉE =====
     
@@ -304,7 +308,8 @@ class ExportManagerService:
     
     @handle_export_errors(title="Erreur exécution export")
     def _execute_export_with_reference(self, search_data_term: Union[str, Dict],
-                                     reference: str, export_format: ExportFormat) -> bool:
+                                     reference: str, export_format: ExportFormat,
+                                     profile_name: str = None) -> bool:
         """
         Exécuter l'export avec référence personnalisée
 
@@ -319,13 +324,15 @@ class ExportManagerService:
         if export_format == ExportFormat.CSV:
             return self._execute_csv_export(data, reference)
         elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
-            return self._execute_html_export(data, reference, export_format)
+            return self._execute_html_export(data, reference, export_format,
+                                             profile_name=profile_name)
         else:
             raise Exception(f"Format d'export {export_format} non supporté")
     
     @handle_export_errors(title="Erreur export CSV")
     def _execute_csv_export(self, data: List, reference: str) -> bool:
         """Exécuter l'export CSV avec format standardisé"""
+        from ..data.data_exporter import _assainir_ligne_csv
         filename = f"{reference}_everyParts.csv"
 
         desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -355,19 +362,21 @@ class ExportManagerService:
                     ref_modele_val,               # reference_modele
                     commercial_ref_val            # commercial_reference
                 ]
-                writer.writerow(csv_row)
+                # Neutralisation injection de formules (même traitement que data_exporter)
+                writer.writerow(_assainir_ligne_csv(csv_row))
 
         self._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
         return True
     
     @handle_export_errors(title="Erreur export HTML")
-    def _execute_html_export(self, data: List, reference: str, export_format: ExportFormat) -> bool:
+    def _execute_html_export(self, data: List, reference: str, export_format: ExportFormat,
+                             profile_name: str = None) -> bool:
         """Exécuter l'export HTML via service unifié"""
         # PHASE 6 CONSOLIDATION - Direct vers HtmlExportService
         if export_format == ExportFormat.HTML_BRANDS:
             result = HtmlExportService.generate_html_brands(data)
         elif export_format == ExportFormat.HTML_DETAILS:
-            result = HtmlExportService.generate_html_details(data)
+            result = HtmlExportService.generate_html_details(data, profile_name=profile_name)
             # Conserver les infos d'export pour compatibilité
             char_count = HtmlExportService.count_non_html_chars(result)
             self._last_export_info = {

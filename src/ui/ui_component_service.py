@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 import qtawesome as qta
 from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QWidget,
                              QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
-                             Qt, QTimer, QFont)
+                             Qt, QTimer, QFont, QMenu, QPoint)
 
 from ..services.export_service import ExportFormat
 from src.core.logger import app_logger
@@ -59,19 +59,46 @@ class UIComponentService:
         self.main_window.export_html_brands_btn.setEnabled(False)
         export_layout.addWidget(self.main_window.export_html_brands_btn)
         
-        # Bouton HTML Détails  
+        # Bouton HTML Détails
         self.main_window.export_html_details_btn = QPushButton("HTML Détails")
         self.main_window.export_html_details_btn.clicked.connect(
-            lambda: self.main_window._export_data(ExportFormat.HTML_DETAILS)
+            self._on_export_html_details_clicked
         )
         self.main_window.export_html_details_btn.setEnabled(False)
         export_layout.addWidget(self.main_window.export_html_details_btn)
         
         layout.addLayout(export_layout)
-        
+
         # Ligne 2: Boutons SEO métadonnées
         self._add_seo_buttons(layout)
-    
+
+    def _on_export_html_details_clicked(self):
+        """Export HTML Détails — choix du profil si plusieurs sont configurés.
+
+        Un seul profil : export direct (comportement historique inchangé).
+        Plusieurs profils : menu déroulant sous le bouton, le profil par défaut
+        est repéré par un suffixe. Pas d'icônes (convention menus macOS).
+        """
+        svc = getattr(self.main_window, 'export_config_service', None)
+        names = svc.get_details_profile_names() if svc else []
+
+        if len(names) <= 1:
+            self.main_window._export_data(ExportFormat.HTML_DETAILS)
+            return
+
+        default_name = svc.get_default_details_profile_name()
+        menu = QMenu(self.main_window)
+        for name in names:
+            label = f"{name}  (défaut)" if name == default_name else name
+            action = menu.addAction(label)
+            action.setData(name)
+
+        btn = self.main_window.export_html_details_btn
+        chosen = menu.exec_(btn.mapToGlobal(QPoint(0, btn.height())))
+        if chosen:
+            self.main_window._export_data(ExportFormat.HTML_DETAILS,
+                                          profile_name=chosen.data())
+
     def _add_seo_buttons(self, layout: QVBoxLayout) -> None:
         """Ajouter les boutons SEO métadonnées"""
         seo_layout = QHBoxLayout()

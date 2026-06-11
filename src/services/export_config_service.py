@@ -46,9 +46,27 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "model_line_template":   "<div>{modele_complet}</div>",
             "group_separator":       "<div>&nbsp;</div>",
             "char_limit":            195000
-        }
+        },
+        # Profils multiples d'export HTML Détails (v3.40.0).
+        # 'details' ci-dessus est conservé comme miroir du profil par défaut
+        # (compatibilité avec les configs existantes et le code legacy).
+        "details_profiles": [
+            {
+                "name":                  "Format standard",
+                "brand_header_template": "<div id=\"{marque}\"><b><u>{marque}</u></b></div>",
+                "model_line_template":   "<div>{modele_complet}</div>",
+                "group_separator":       "<div>&nbsp;</div>",
+                "char_limit":            195000
+            }
+        ],
+        "details_default_profile": "Format standard"
     }
 }
+
+# Clés éditables d'un profil HTML Détails (hors 'name')
+DETAILS_PROFILE_KEYS = (
+    "brand_header_template", "model_line_template", "group_separator", "char_limit"
+)
 
 # Variables disponibles dans les sources de colonnes et templates
 AVAILABLE_VARIABLES = [
@@ -105,7 +123,13 @@ class ExportConfigService(BaseService):
             self._config = copy.deepcopy(DEFAULT_CONFIG)
 
     def _merge_with_defaults(self, loaded: Dict) -> Dict:
-        """Compléter les clés manquantes avec les valeurs par défaut"""
+        """Compléter les clés manquantes avec les valeurs par défaut.
+
+        Migration non-destructive des profils (v3.40.0) : si la config chargée
+        n'a pas de 'details_profiles', un profil unique "Format standard" est
+        créé à partir de sa section 'details' existante — aucune personnalisation
+        n'est perdue. 'details' reste synchronisé sur le profil par défaut.
+        """
         merged = copy.deepcopy(DEFAULT_CONFIG)
         if 'csv' in loaded:
             merged['csv'].update(loaded['csv'])
@@ -114,6 +138,35 @@ class ExportConfigService(BaseService):
                 merged['html']['brands'].update(loaded['html']['brands'])
             if 'details' in loaded['html']:
                 merged['html']['details'].update(loaded['html']['details'])
+
+            # Profils : valider/compléter ceux chargés, sinon migrer depuis 'details'
+            valid_profiles = []
+            for p in loaded['html'].get('details_profiles') or []:
+                if isinstance(p, dict) and p.get('name'):
+                    profile = copy.deepcopy(DEFAULT_CONFIG['html']['details'])
+                    profile.update({k: p[k] for k in DETAILS_PROFILE_KEYS if k in p})
+                    profile['name'] = str(p['name'])
+                    valid_profiles.append(profile)
+
+            if valid_profiles:
+                merged['html']['details_profiles'] = valid_profiles
+            else:
+                merged['html']['details_profiles'] = [
+                    {'name': 'Format standard', **merged['html']['details']}
+                ]
+
+            names = [p['name'] for p in merged['html']['details_profiles']]
+            default = loaded['html'].get('details_default_profile')
+            merged['html']['details_default_profile'] = default if default in names else names[0]
+
+            # Miroir legacy : 'details' = contenu du profil par défaut
+            default_profile = next(
+                p for p in merged['html']['details_profiles']
+                if p['name'] == merged['html']['details_default_profile']
+            )
+            merged['html']['details'] = {
+                k: v for k, v in default_profile.items() if k != 'name'
+            }
         return merged
 
     def _write(self) -> None:
@@ -167,8 +220,28 @@ class ExportConfigService(BaseService):
     def get_html_brands_config(self) -> Dict:
         return copy.deepcopy(self._config['html']['brands'])
 
-    def get_html_details_config(self) -> Dict:
+    def get_html_details_config(self, profile_name: str = None) -> Dict:
+        """Config HTML Détails du profil demandé (ou du profil par défaut).
+
+        Sans argument, comportement historique : retourne le profil par défaut
+        (miroir de l'ancienne section 'details'). Avec un nom inconnu, retombe
+        sur le profil par défaut plutôt que d'échouer.
+        """
+        name = profile_name or self._config['html'].get('details_default_profile')
+        for p in self._config['html'].get('details_profiles', []):
+            if p.get('name') == name:
+                return {k: copy.deepcopy(v) for k, v in p.items() if k != 'name'}
         return copy.deepcopy(self._config['html']['details'])
+
+    def get_details_profiles(self) -> List[Dict]:
+        """Liste complète des profils HTML Détails (copies)"""
+        return copy.deepcopy(self._config['html'].get('details_profiles', []))
+
+    def get_details_profile_names(self) -> List[str]:
+        return [p['name'] for p in self._config['html'].get('details_profiles', [])]
+
+    def get_default_details_profile_name(self) -> str:
+        return self._config['html'].get('details_default_profile', 'Format standard')
 
     # ─── Rendu CSV ───────────────────────────────────────────────────────────
 

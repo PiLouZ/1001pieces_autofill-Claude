@@ -4,6 +4,30 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.40.0] - 2026-06-11
+
+### Feat — Profils d'export HTML Détails multiples
+
+**Modèle de données** (`export_config_service.py`)
+- Nouvelle clé `html.details_profiles` (liste de profils nommés) + `html.details_default_profile`
+- Migration non-destructive : une config existante sans profils est convertie en un profil unique "Format standard" reprenant sa section `details` — aucune personnalisation perdue
+- `details` conservé comme miroir du profil par défaut (compatibilité legacy)
+- `get_html_details_config(profile_name=None)` : signature rétrocompatible, profil inconnu → repli sur le défaut
+
+**Dialogue de configuration** (`export_config_dialog.py`)
+- Barre de profils dans la section Détails : combo + Ajouter / Dupliquer / Renommer / Supprimer / Par défaut
+- Les champs édités sont mémorisés par profil lors des bascules ; suppression refusée s'il ne reste qu'un profil
+
+**Bouton HTML Détails** (`ui_component_service.py`)
+- Un seul profil : export direct, comportement strictement identique à avant
+- Plusieurs profils : menu déroulant sous le bouton (profil par défaut suffixé), choix propagé jusqu'à `generate_html_details(data, profile_name=...)` via `_export_data()` → `export_manager.export_data()`
+
+**Divers**
+- `src/theauditor/` supprimé du dépôt (duplicata exact de l'installation externe + paquet pip global v1.0.1 — vérifié par diff)
+- Complément P4 : neutralisation des formules CSV appliquée aussi au chemin `_execute_csv_export` d'`export_manager.py` (oublié en v3.39.0)
+
+---
+
 ## [3.39.0] - 2026-06-11
 
 ### Sécurité + sauvegarde automatique (audit complet du projet)

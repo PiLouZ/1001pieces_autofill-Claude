@@ -1208,11 +1208,12 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes d'export ---
 
-    def _export_data(self, export_format: ExportFormat):
+    def _export_data(self, export_format: ExportFormat, profile_name: str = None):
         """Export avec sélection de référence - PHASE 4 : Service unifié"""
         # Pour les exports HTML, utiliser l'export rapide sans dialogue de référence
         if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
-            return self.export_manager.export_data(export_format, ExportType.QUICK)
+            return self.export_manager.export_data(export_format, ExportType.QUICK,
+                                                   profile_name=profile_name)
         else:
             return self.export_manager.export_data(export_format, ExportType.MAIN)
 
