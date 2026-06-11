@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.43.1] - 2026-06-11
+
+### Fix — Gel sur effacement multi-cellules (Suppr) en masse
+
+- Effacer (touche Suppr) une sélection de plusieurs milliers de cellules déclenchait
+  une sauvegarde immédiate **par cellule** (`event_driven_save_service.handle_cell_changed`),
+  soit autant de transactions/commits SQLite séparés sur le thread UI — gel observé
+  d'~4 secondes pour 7640 cellules
+- Nouvelle méthode `EventDrivenSaveService.save_cells_batch_immediate()` : sauvegarde
+  de tout le lot en **une seule transaction**
+- `CustomTableView.keyPressEvent` (Suppr/Retour arrière) regroupe désormais les
+  cellules effacées dans `main_window._bulk_edit_collector` pendant la boucle, puis
+  déclenche un unique appel de sauvegarde batch
+- Vérifié sur copie de la base : 50 cellules effacées → 1 seul `Sauvegarde batch
+  réussie: 50 cellules` (au lieu de 50 sauvegardes individuelles), valeurs bien vidées
+
+---
+
 ## [3.43.0] - 2026-06-11
 
 ### Feat — Restauration de sauvegarde

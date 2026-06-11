@@ -173,9 +173,24 @@ class CustomTableView(QTableView):
         if key in (Qt.Key_Delete, Qt.Key_Backspace):
             sel_indexes = self.selectionModel().selectedIndexes() if self.selectionModel() else []
             if sel_indexes:
+                main_window = getattr(self, 'main_window', None)
+                save_service = getattr(main_window, 'event_driven_save_service', None)
+
+                # Regrouper les sauvegardes en une seule transaction : sur une
+                # sélection de plusieurs milliers de cellules, un commit SQLite
+                # par cellule gèle l'interface plusieurs secondes.
+                if save_service is not None:
+                    main_window._bulk_edit_collector = set()
+
                 for index in sel_indexes:
                     if model and model.flags(index) & Qt.ItemIsEditable:
                         model.setData(index, "", Qt.EditRole)
+
+                if save_service is not None:
+                    collector = main_window._bulk_edit_collector
+                    main_window._bulk_edit_collector = None
+                    if collector:
+                        save_service.save_cells_batch_immediate(collector)
             return
 
         # Cmd+D (macOS) / Ctrl+D (Windows/Linux) — popup auto-complétion

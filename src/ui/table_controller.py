@@ -286,6 +286,7 @@ class TableController:
         self.model = AppareillsTableModel(self.parent_window)
         self.table = CustomTableView()
         self.table.setModel(self.model)
+        self.table.main_window = self.parent_window
         # Headers gérés par model.headerData() — pas de setHorizontalHeaderLabels()
 
         # Configuration QTableView

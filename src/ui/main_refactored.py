@@ -1161,7 +1161,12 @@ class MainWindow(QMainWindow):
             self.save_indicator.setText(Config.get_message('save_pending'))
             self.save_indicator.setStyleSheet("color: orange;")
         else:
-            if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+            bulk_collector = getattr(self, '_bulk_edit_collector', None)
+            if bulk_collector is not None:
+                # Effacement multi-cellules (Suppr) : la sauvegarde est différée et
+                # regroupée en une seule transaction par l'appelant (cf. CustomTableView)
+                bulk_collector.add((row, col))
+            elif hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
                 self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
 
         # Historique undo

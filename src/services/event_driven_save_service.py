@@ -114,6 +114,40 @@ class EventDrivenSaveService(BaseService):
 
         return success
 
+    @handle_save_service_errors()
+    def save_cells_batch_immediate(self, modified_cells: Set[Tuple[int, int]]) -> bool:
+        """
+        Sauvegarde immédiate d'un lot de cellules en une seule transaction.
+
+        Utilisé pour les modifications de masse (ex: Suppr sur une sélection de
+        plusieurs milliers de cellules) afin d'éviter un commit SQLite par cellule
+        — qui gèle l'interface le temps de l'opération.
+
+        Args:
+            modified_cells: ensemble de (row, col) modifiées
+
+        Returns:
+            bool: True si sauvegarde réussie
+        """
+        if not self.is_enabled or not modified_cells:
+            return False
+
+        if not self._validate_save_requirements():
+            return False
+
+        self._update_save_indicator_pending()
+
+        updates_by_db_id = self.database_operations_service._convert_modified_cells_to_updates(modified_cells)
+        success = self.database_operations_service.save_cells_batch(updates_by_db_id)
+
+        if success:
+            self._update_save_indicator_success()
+            app_logger.debug(f"Sauvegarde immédiate réussie ({len(modified_cells)} cellules)")
+        else:
+            app_logger.warning(f"Échec sauvegarde immédiate ({len(modified_cells)} cellules)")
+
+        return success
+
     # ================================
     # SAUVEGARDE APRÈS OPÉRATIONS BATCH
     # ================================
