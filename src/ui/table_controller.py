@@ -210,9 +210,18 @@ class TableController:
                     }
                 """)
                 # Autocomplétion différée : suggestions chargées à la frappe (≥ 2 chars)
-                completer = QCompleter(QStringListModel(), filter_combo)
+                # Le modèle est PARENTÉ au completer : sans parent ni référence Python,
+                # le QStringListModel temporaire était garbage-collecté (completer.model()
+                # devenait None) et l'autocomplétion échouait silencieusement à chaque frappe.
+                completer = QCompleter(filter_combo)
+                completer_model = QStringListModel(completer)
+                completer.setModel(completer_model)
                 completer.setCompletionMode(QCompleter.PopupCompletion)
                 completer.setCaseSensitivity(Qt.CaseInsensitive)
+                # Filtrage par sous-chaîne (et non par préfixe) pour rester cohérent
+                # avec la requête DB LIKE '%text%' : sans cela, "linge" ne suggérerait
+                # pas "Lave-linge" et des résultats remontés étaient masqués.
+                completer.setFilterMode(Qt.MatchContains)
                 completer.setMaxVisibleItems(20)
                 filter_combo.setCompleter(completer)
                 filter_combo.lineEdit().textEdited.connect(

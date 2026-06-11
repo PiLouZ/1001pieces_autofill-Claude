@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.41.1] - 2026-06-11
+
+### Fix — Autocomplétion des filtres Type / Fabricant cassée depuis 2 mois
+
+- Bug introduit en commit `6d3255e` (2026-04-02, autocomplétion différée) : `QCompleter(QStringListModel(), filter_combo)` créait un modèle temporaire sans référence Python persistante, garbage-collecté immédiatement → `completer.model()` valait `None` et `_update_filter_completions()` échouait silencieusement à chaque frappe (exception avalée par `@handle_database_operation_errors`)
+- Fix dans `table_controller.py` : le `QStringListModel` est désormais explicitement parenté au `QCompleter` (`QStringListModel(completer)` + `setModel()`)
+- Bonus : `completer.setFilterMode(Qt.MatchContains)` pour aligner le filtrage des suggestions sur la requête SQL `LIKE '%texte%'` (sous-chaîne, pas seulement préfixe)
+- Le filtrage SQL des colonnes Type/Fabricant lui-même fonctionnait déjà correctement — seul le popup de suggestions était impacté
+- Vérifié : suggestions remontées pour "Acce" → "Accessoires" et "AEG" → "AEG", sélection + chargement + RAZ des filtres OK, app démarre sans erreur
+
+---
+
 ## [3.41.0] - 2026-06-11
 
 ### Feat — F8 : export CSV des chaînes de supersession (clôture roadmap v2)
