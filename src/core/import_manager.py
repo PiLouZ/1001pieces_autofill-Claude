@@ -1578,8 +1578,8 @@ class ImportPreviewDialog(QDialog):
 
         layout.addWidget(grid_widget)
 
-        # Note sur les associations (approximation)
-        note = QLabel("* Associations estimées (nouveaux appareils × références)")
+        # Comptage exact depuis v3.40.1 (réplique en lecture seule du chemin réel)
+        note = QLabel("* Associations qui seront créées (les doublons déjà en base sont exclus)")
         note.setStyleSheet("font-size: 10px; color: #999;")
         layout.addWidget(note)
 
@@ -2743,10 +2743,38 @@ class ImportManager:
             if hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
         else:
-            # Dry-run : approximer les associations (nouveaux appareils × refs valides)
-            valid_refs_count = sum(1 for ref, _ in references_and_labels if ref)
-            results['associations_created'] = len(new_devices_batch) * valid_refs_count
-            results['associations_existing'] = 0
+            # Dry-run (F7) : compter exactement depuis associations_batch (construit en
+            # ÉTAPE 2 dans les deux modes), en répliquant la logique de
+            # _batch_create_associations en lecture seule. L'ancienne approximation
+            # (nouveaux appareils × refs valides) donnait des comptages faux.
+            existing_pairs_in_db = set()
+            existing_device_ids = list({a[3] for a in associations_batch if a[3]})
+            CHUNK = 500
+            for i in range(0, len(existing_device_ids), CHUNK):
+                chunk = existing_device_ids[i:i + CHUNK]
+                placeholders = ','.join('?' * len(chunk))
+                rows = self.db_manager.execute_query(
+                    f"SELECT p.ref_piece, pa.appareil_id "
+                    f"FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id "
+                    f"WHERE pa.appareil_id IN ({placeholders})",
+                    chunk
+                )
+                existing_pairs_in_db.update((r[0], r[1]) for r in rows or [])
+
+            created = existing = 0
+            seen_pairs = set(existing_pairs_in_db)
+            for reference, _label, data_index, existing_id in associations_batch:
+                # Même clé que le chemin réel : appareil existant = id DB,
+                # nouvel appareil = index de ligne (l'id n'existe pas encore)
+                pair = (reference, existing_id) if existing_id else (reference, f"new_{data_index}")
+                if pair in seen_pairs:
+                    existing += 1
+                else:
+                    created += 1
+                    seen_pairs.add(pair)
+
+            results['associations_created'] = created
+            results['associations_existing'] = existing
 
         app_logger.debug(f"[OK] BATCH: Terminé — {results['total_imported']} lignes traitées")
         return results

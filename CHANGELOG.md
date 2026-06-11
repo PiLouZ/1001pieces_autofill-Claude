@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.40.1] - 2026-06-11
+
+### Fix — F7 comptage dry-run exact + P5 thread-safety SQLite
+
+**F7 — Aperçu d'import : comptage de pièces exact** (`import_manager.py`)
+- L'ancien dry-run *approximait* les associations (`nouveaux appareils × refs valides`) → comptages faux dans `ImportPreviewDialog`
+- Désormais : réplication en lecture seule de la logique de `_batch_create_associations` sur le `associations_batch` réel (construit en ÉTAPE 2 dans les deux modes), avec vérification des paires (pièce, appareil) déjà en base via SELECT par lots de 500
+- Vérifié : dry-run == import réel sur scénario mixte (appareil existant avec association préexistante + 2 nouveaux)
+- Note du dialogue d'aperçu mise à jour ("estimées" → comptage exact)
+
+**P5 — Thread-safety connexion SQLite partagée** (`database_manager.py`)
+- Audit : `_ImportWorker` exécute le pipeline d'import sur le curseur partagé depuis son thread, pendant que le thread principal (prefetch, recherches) utilise le même curseur → risque "Recursive use of cursors not allowed"
+- `_query_lock` converti `Lock` → `RLock` (réentrant — les méthodes verrouillées s'appellent entre elles, ex. `load_data` → `execute_query`)
+- `_safe_execute_query` et `_safe_execute_insert` prennent désormais le verrou
+- Sans risque : `_batch_insert_devices`/`_batch_update_devices` créent déjà leur propre curseur ; `DuplicatesAnalysisWorker` a sa propre connexion
+- Vérifié : 4 threads concurrents (2 lecteurs + 2 écrivains) pendant 4s — 0 erreur, 0 deadlock, 5299 insertions
+
+---
+
 ## [3.40.0] - 2026-06-11
 
 ### Feat — Profils d'export HTML Détails multiples

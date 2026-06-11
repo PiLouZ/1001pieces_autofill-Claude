@@ -251,7 +251,7 @@ class Paths:
 class AppInfo:
     """Informations sur l'application"""
     NAME = "1001pieces - Gestionnaire d'appareils"
-    VERSION = "3.40.0"
+    VERSION = "3.40.1"
     DESCRIPTION = "Gestionnaire de pièces & d'appareils électroménagers"
     AUTHOR = "1001pieces.com"
     URL = "https://1001pieces.com"

@@ -95,9 +95,11 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.db_file = db_file or Config.DB_FILE
         self.conn = None
         self.cursor = None
-        # Verrou pour serialiser les requêtes load_data() entre threads
-        # (prefetch_worker + thread principal partagent la même connexion SQLite)
-        self._query_lock = threading.Lock()
+        # Verrou RÉENTRANT pour sérialiser les accès au curseur partagé entre threads
+        # (prefetch_worker, _ImportWorker et thread principal partagent self.cursor).
+        # RLock et non Lock : certaines méthodes verrouillées s'appellent entre elles
+        # (ex: load_data → execute_query) — un Lock simple provoquerait un deadlock.
+        self._query_lock = threading.RLock()
         # Phase 3: Initialiser le cache de recherche optimisé
         self.search_cache = SearchCache(Config.SEARCH_CACHE_SIZE) if Config.FULLTEXT_CACHE_ENABLED else None
         # Cache du COUNT total (sans filtre) — invalide uniquement sur insert/delete
@@ -1689,13 +1691,15 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         if params is None:
             params = []
 
-        try:
-            self.cursor.execute(query, params)
-            self.conn.commit()
-            return self.cursor.lastrowid
-        except Exception as e:
-            self.conn.rollback()
-            raise
+        # Curseur partagé : sérialiser avec les autres threads (P5 thread-safety)
+        with self._query_lock:
+            try:
+                self.cursor.execute(query, params)
+                self.conn.commit()
+                return self.cursor.lastrowid
+            except Exception as e:
+                self.conn.rollback()
+                raise
     
     def execute_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
         """Exécuter une requête SQL de lecture (SELECT)"""
@@ -1707,8 +1711,10 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         if params is None:
             params = []
 
-        self.cursor.execute(query, params)
-        return self.cursor.fetchall()
+        # Curseur partagé : sérialiser avec les autres threads (P5 thread-safety)
+        with self._query_lock:
+            self.cursor.execute(query, params)
+            return self.cursor.fetchall()
     
     # Méthodes pour gérer les décisions sur les doublons de références
     def save_reference_decision(self, ref_modele: str, decision: str, notes: str = None) -> bool:
