@@ -74,12 +74,33 @@ class GroupedHistoryService(QObject):
         if not self.pending_modifications:
             return
 
-        # Traiter chaque appareil
-        for db_id, data in self.pending_modifications.items():
-            self._flush_device_modifications(db_id, data)
+        # Construire un index db_id -> ligne une seule fois : évite un balayage
+        # complet de la table (O(lignes x colonnes)) pour chaque appareil flushé,
+        # ce qui devenait O(n²) lors d'une édition en masse (ex: 6615 cellules)
+        self._row_index_cache = self._build_row_index()
+
+        try:
+            # Traiter chaque appareil
+            for db_id, data in self.pending_modifications.items():
+                self._flush_device_modifications(db_id, data)
+        finally:
+            self._row_index_cache = None
 
         # Vider le buffer
         self.pending_modifications.clear()
+
+    def _build_row_index(self) -> Dict[int, int]:
+        """Construire un index {db_id: row} à partir du modèle affiché"""
+        index: Dict[int, int] = {}
+        if hasattr(self.main_window, 'table') and self.main_window.table:
+            table = self.main_window.table
+            model = table.model() if hasattr(table, 'model') and callable(table.model) else None
+            if model and hasattr(model, 'get_db_id'):
+                for row in range(table.rowCount()):
+                    db_id = model.get_db_id(row)
+                    if db_id is not None:
+                        index[int(db_id)] = row
+        return index
 
     def _flush_device_modifications(self, db_id: int, data: Dict):
         """Flusher les modifications d'un appareil spécifique"""
@@ -136,14 +157,23 @@ class GroupedHistoryService(QObject):
             if hasattr(self.main_window, 'table') and self.main_window.table:
                 table = self.main_window.table
 
-                for row in range(table.rowCount()):
+                # Utiliser l'index pré-calculé (flush en masse) si disponible,
+                # sinon balayer la table (cas d'un flush isolé, ex: force_flush_device)
+                row_index_cache = getattr(self, '_row_index_cache', None)
+                if row_index_cache is not None:
+                    rows_to_check = [row_index_cache[db_id]] if db_id in row_index_cache else []
+                else:
+                    rows_to_check = range(table.rowCount())
+
+                for row in rows_to_check:
                     # Vérifier si cette ligne correspond au db_id en cherchant dans toutes les colonnes
-                    found_row = False
-                    for col in range(table.columnCount()):
-                        item = table.item(row, col)
-                        if item and item.data(256) == db_id:  # Qt.UserRole = 256
-                            found_row = True
-                            break
+                    found_row = row_index_cache is not None
+                    if not found_row:
+                        for col in range(table.columnCount()):
+                            item = table.item(row, col)
+                            if item and item.data(256) == db_id:  # Qt.UserRole = 256
+                                found_row = True
+                                break
 
                     if found_row:
                         # Récupérer Référence Modèle et Référence Commerciale

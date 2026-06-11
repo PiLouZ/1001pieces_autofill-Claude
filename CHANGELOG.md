@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.43.3] - 2026-06-11
+
+### Fix — Gel critique (~10 min) sur l'historique groupé après édition en masse
+
+- Cause racine du gel persistant après les fixes v3.43.1/v3.43.2 : 2 secondes après
+  la dernière modification, `GroupedHistoryService.flush_all_pending_modifications()`
+  traite chaque appareil modifié, et `_get_appareil_reference(db_id)` balayait
+  **toute la table** (lignes x colonnes) via `table.item()` pour retrouver la ligne
+  correspondante — soit O(n²) : pour 6615 cellules modifiées, ~569 millions
+  d'appels `table.item()`, ~10 minutes de blocage total de l'UI
+- Nouvelle méthode `_build_row_index()` : construit une fois un index
+  `{db_id: row}` via `model.get_db_id(row)` (O(1) par ligne, déjà utilisé
+  ailleurs dans le code) avant le flush
+- `_get_appareil_reference()` utilise cet index en O(1) lors d'un flush en masse ;
+  le balayage complet est conservé en repli pour `force_flush_device()` (1 seul
+  appareil, cas isolé)
+- Vérifié : simulation de 6615 modifications → flush en 7ms (vs estimation
+  ~570s avant correctif)
+
 ## [3.43.2] - 2026-06-11
 
 ### Fix — Gel sur auto-fill double-clic en masse
