@@ -38,33 +38,12 @@ class SEOGenerator:
         "Faites-le vous-même : {description} {reference} pour {type_appareil} {fabricants}, la réparation à portée de main",
     ]
 
-    # Templates spécifiques aux pièces remplacées (ref_old → ref_current)
-    # {ref_old} = ancienne référence recherchée, {reference} = référence courante
-    META_DESCRIPTION_SUPERSEDED_TEMPLATES = [
-        "Vous cherchez {ref_old} ? La référence actuelle est {reference} — commandez {description} pour {type_appareil} {fabricants}",
-        "Référence {ref_old} remplacée par {reference} — {description} pour {type_appareil} {fabricants} chez votre spécialiste",
-        "L'ancienne réf. {ref_old} est désormais {reference} — trouvez {description} pour {type_appareil} {fabricants}",
-        "Nouvelle référence {reference} (remplace {ref_old}) — {description} pour {type_appareil} {fabricants}, livraison rapide",
-        "Vous recherchez {ref_old} ? Elle a été remplacée par {reference} — {description} pour {type_appareil} {fabricants}",
-        "{ref_old} n'existe plus : commandez {description} sous la référence {reference} pour {type_appareil} {fabricants}",
-        "La pièce {ref_old} est désormais référencée {reference} — {description} pour {type_appareil} {fabricants}, en stock",
-        "Ancienne référence {ref_old}, nouvelle référence {reference} — {description} pour {type_appareil} {fabricants} chez votre spécialiste",
-    ]
-    
-    # Templates méta titles (4 variantes — format normal)
-    META_TITLE_TEMPLATES = [
-        "{reference} {description} pour {type_appareil} {fabricants}",
-        "{reference} — {description} {type_appareil} {fabricants}",
-        "{type_appareil} {fabricants} — {description} {reference}",
-        "Pièce {reference} — {description} {type_appareil} {fabricants}",
-    ]
-
-    # Templates méta titles pour pièces remplacées (3 variantes)
-    META_TITLE_SUPERSEDED_TEMPLATES = [
-        "{ref_old}→{reference} {description} {type_appareil} {fabricants}",
-        "Réf. {ref_old}→{reference} — {description} {type_appareil} {fabricants}",
-        "{description} {type_appareil} {fabricants} ({ref_old}→{reference})",
-    ]
+    # Méta title — gabarit UNIQUE, référence (courante) TOUJOURS en tête.
+    # La diversité/unicité des titres vient des données (réf unique + libellé +
+    # marques), pas du gabarit. La troncature coupant par la fin, la référence
+    # en position 0 n'est jamais tronquée. Les anciennes références ne sont pas
+    # mentionnées (décision produit).
+    META_TITLE_TEMPLATE = "{reference} {description} {type_appareil} {fabricants}"
 
     # Mots de liaison à supprimer en priorité pour préserver les marques
     FILLER_WORDS = [
@@ -135,33 +114,22 @@ class SEOGenerator:
     
     @handle_seo_generation_errors()
     def generate_meta_title(self, reference: str, description: str, type_appareil: str,
-                           fabricants: List[str], max_length: int = 60,
-                           ref_obsolete: Optional[str] = None) -> Dict[str, any]:
+                           fabricants: List[str], max_length: int = 60) -> Dict[str, any]:
         """
-        Générer un méta title optimisé avec priorité à l'inclusion d'au moins 1 marque.
-        Choisit aléatoirement parmi META_TITLE_TEMPLATES (normal) ou
-        META_TITLE_SUPERSEDED_TEMPLATES (supersession).
+        Générer un méta title : référence (courante) en tête, puis libellé,
+        type d'appareil et marques, via le gabarit unique META_TITLE_TEMPLATE.
+        Au moins une marque est privilégiée dans la limite de longueur.
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=True)
         type_clean = self._normalize_type(type_appareil)
 
-        # ── Choisir le template selon le contexte ─────────────────────────────
-        if ref_obsolete:
-            template = random.choice(self.META_TITLE_SUPERSEDED_TEMPLATES)
-            template_kwargs = dict(
-                reference=reference_clean,
-                description=description_clean,
-                type_appareil=type_clean,
-                ref_old=ref_obsolete.strip(),
-            )
-        else:
-            template = random.choice(self.META_TITLE_TEMPLATES)
-            template_kwargs = dict(
-                reference=reference_clean,
-                description=description_clean,
-                type_appareil=type_clean,
-            )
+        template = self.META_TITLE_TEMPLATE
+        template_kwargs = dict(
+            reference=reference_clean,
+            description=description_clean,
+            type_appareil=type_clean,
+        )
 
         fabricants_optimaux = self._maximize_brands_in_title(
             fabricants, template, max_length, **template_kwargs
@@ -182,7 +150,6 @@ class SEOGenerator:
             'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
             'total_fabricants_available': len(fabricants),
             'brand_guaranteed': bool(fabricants_optimaux.strip()),
-            'superseded': bool(ref_obsolete),
         }
 
         self.last_generation_info['title'] = generation_info
@@ -196,12 +163,11 @@ class SEOGenerator:
     @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
                                  fabricants: List[str], max_length: int = 150,
-                                 ref_obsolete: Optional[str] = None,
                                  n_modeles: int = 0) -> Dict[str, any]:
         """
-        Générer une méta description aléatoire.
-        - ref_obsolete : utilise les templates supersession (ancienne + nouvelle ref)
-        - n_modeles > 0 : utilise les templates de compatibilité (X modèles compatibles)
+        Générer une méta description aléatoire (pool varié pour l'unicité à
+        grande échelle). La référence est la référence courante (résolue en
+        amont) ; les anciennes références ne sont pas mentionnées.
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=False)
@@ -210,15 +176,11 @@ class SEOGenerator:
         article = self._get_article(description_clean)
         description_with_article = f"{article} {description_clean}"
 
-        # ── Choisir le pool de templates selon le contexte ───────────────────
-        if ref_obsolete:
-            template = random.choice(self.META_DESCRIPTION_SUPERSEDED_TEMPLATES)
-        else:
-            template = random.choice(self.META_DESCRIPTION_TEMPLATES)
+        template = random.choice(self.META_DESCRIPTION_TEMPLATES)
 
         fabricants_str = self._select_fabricants_for_description(
             fabricants, template, reference_clean, description_with_article, type_clean, max_length,
-            ref_old=ref_obsolete
+            ref_old=None
         )
 
         # ── Instancier le template ────────────────────────────────────────────
@@ -229,8 +191,6 @@ class SEOGenerator:
             type_appareil=type_clean,
             fabricants=fabricants_str,
         )
-        if ref_obsolete:
-            fmt_kwargs['ref_old'] = ref_obsolete.strip()
 
         description_text = template.format(**fmt_kwargs)
 
@@ -244,7 +204,6 @@ class SEOGenerator:
             'within_limit': len(final_description) <= max_length,
             'fabricants_used': fabricants_str,
             'fabricants_count': len(fabricants),
-            'superseded': bool(ref_obsolete),
             'n_modeles': n_modeles,
         }
 
@@ -456,25 +415,6 @@ class SEOGenerator:
             truncated = truncated[:last_space]
         
         return truncated  # Sans "..." pour gagner 3 caractères
-    
-    def get_random_description_variant(self, reference: str, description: str,
-                                     type_appareil: str, fabricants: List[str],
-                                     max_length: int = 150,
-                                     ref_obsolete: Optional[str] = None,
-                                     n_modeles: int = 0) -> Dict[str, any]:
-        """Générer une nouvelle variante aléatoire de description"""
-        return self.generate_meta_description(
-            reference, description, type_appareil, fabricants, max_length, ref_obsolete, n_modeles
-        )
-
-    def get_random_title_variant(self, reference: str, description: str,
-                                type_appareil: str, fabricants: List[str],
-                                max_length: int = 60,
-                                ref_obsolete: Optional[str] = None) -> Dict[str, any]:
-        """Générer une nouvelle variante aléatoire de méta title"""
-        return self.generate_meta_title(
-            reference, description, type_appareil, fabricants, max_length, ref_obsolete
-        )
     
     def _get_article(self, description: str) -> str:
         """
