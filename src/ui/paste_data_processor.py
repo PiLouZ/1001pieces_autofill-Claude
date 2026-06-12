@@ -7,7 +7,6 @@ from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 from src.core.config import Config
 from src.core.logger import app_logger
-from src.utils.error_handler import handle_database_operation_errors
 from src.services.base_service import safe_operation
 
 
@@ -317,91 +316,13 @@ class PasteDataProcessor:
         
         # Créer l'association pièce si nécessaire
         if ref_piece and device_result['device_id']:
-            association_result = self._create_piece_association(
-                device_result['device_id'], ref_piece, libelle_piece, 
+            association_result = self.main_window.device_manager.create_piece_association(
+                device_result['device_id'], ref_piece, libelle_piece,
                 piece_description_decisions
             )
             device_result['association'] = association_result
         
         return device_result
-    
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur mise à jour appareil")
-    def _update_device_info(self, device_id: int, updates: Dict[str, str]) -> bool:
-        """
-        Mettre à jour les informations d'un appareil existant
-
-        Args:
-            device_id: ID de l'appareil à mettre à jour
-            updates: Dictionnaire des champs à mettre à jour
-
-        Returns:
-            bool: True si succès, False sinon
-        """
-        # Construire la requête UPDATE dynamiquement
-        fields = []
-        values = []
-
-        for field, value in updates.items():
-            if field in Config.DB_HEADERS:  # Vérifier que le champ existe
-                fields.append(f"{field} = ?")
-                values.append(value)
-
-        if not fields:
-            return False
-
-        query = f"UPDATE appareils SET {', '.join(fields)} WHERE id = ?"
-        values.append(device_id)
-
-        result = self.db_manager.execute_query(query, values)
-        return result is not None
-
-    @handle_database_operation_errors(return_value={'created': False, 'exists': False, 'description_updated': False}, log_prefix="Erreur création association pièce")
-    def _create_piece_association(self, device_id: int, ref_piece: str,
-                                libelle_piece: str = "", _decisions_cache: Dict = None) -> Dict:
-        """
-        Créer une association entre un appareil et une pièce
-
-        Args:
-            device_id: ID de l'appareil
-            ref_piece: Référence de la pièce
-            libelle_piece: Libellé de la pièce (optionnel)
-
-        Returns:
-            Dict avec le statut de l'opération
-        """
-        # Vérifier si l'association existe déjà
-        check_query = """
-            SELECT COUNT(*) FROM piece_associations pa
-            JOIN pieces p ON pa.piece_id = p.id
-            WHERE pa.appareil_id = ? AND p.ref_piece = ?
-        """
-
-        result = self.db_manager.execute_query(check_query, [device_id, ref_piece])
-        if result and result[0][0] > 0:
-            return {'created': False, 'exists': True, 'description_updated': False}
-
-        # Vérifier si la pièce existe ou la créer
-        piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
-        piece_result = self.db_manager.execute_query(piece_query, [ref_piece])
-
-        if piece_result:
-            piece_id = piece_result[0][0]
-        else:
-            # Créer la pièce
-            insert_piece_query = "INSERT INTO pieces (ref_piece, description) VALUES (?, ?)"
-            piece_result = self.db_manager.execute_query(insert_piece_query, [ref_piece, libelle_piece or ''])
-            if not piece_result:
-                return {'created': False, 'exists': False, 'description_updated': False}
-            piece_id = self.db_manager.cursor.lastrowid
-
-        # Créer l'association
-        association_query = "INSERT INTO piece_associations (appareil_id, piece_id) VALUES (?, ?)"
-        assoc_result = self.db_manager.execute_query(association_query, [device_id, piece_id])
-
-        if assoc_result:
-            return {'created': True, 'exists': False, 'description_updated': False}
-        else:
-            return {'created': False, 'exists': False, 'description_updated': False}
 
     def _needs_manual_completion(self, device_data: Dict[str, str]) -> bool:
         """
@@ -415,54 +336,6 @@ class PasteDataProcessor:
         """
         # Vérifier si les champs obligatoires sont vides
         return not (device_data.get('type', '').strip() and device_data.get('manufacturer', '').strip())
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur recherche appareil existant")
-    def _find_existing_device_by_refs(self, ref_modele: str, commercial_ref: str,
-                                     device_type: str = "", manufacturer: str = "") -> Optional[Dict]:
-        """
-        Chercher un appareil existant par ses références
-
-        Args:
-            ref_modele: Référence modèle
-            commercial_ref: Référence commerciale
-            device_type: Type d'appareil (optionnel)
-            manufacturer: Fabricant (optionnel)
-
-        Returns:
-            Dict avec les données de l'appareil ou None si non trouvé
-        """
-        # Utiliser la requête existante dans Config.QUERIES
-        query = Config.QUERIES.get('find_device_by_refs', """
-            SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
-            FROM appareils
-            WHERE (ref_modele = ? AND commercial_ref = ?)
-               OR (ref_modele = ? AND commercial_ref IS NULL AND ? IS NULL)
-               OR (ref_modele IS NULL AND commercial_ref = ? AND ? IS NULL)
-            LIMIT 1
-        """)
-
-        # Exécuter la requête avec les paramètres appropriés
-        result = self.db_manager.execute_query(query, [
-            ref_modele, commercial_ref,  # Premier cas : les deux références
-            ref_modele, commercial_ref,  # Deuxième cas : ref_modele seulement
-            commercial_ref, ref_modele   # Troisième cas : commercial_ref seulement
-        ])
-
-        if result:
-            # Convertir en dictionnaire
-            row = result[0]
-            return {
-                'id': row[0],
-                'type': row[1] or '',
-                'manufacturer': row[2] or '',
-                'ref_modele': row[3] or '',
-                'commercial_ref': row[4] or '',
-                'other_ref': row[5] or '',
-                'category': row[6] or '',
-                'notes': row[7] or ''
-            }
-
-        return None
 
     def _update_result_stats(self, result: PasteProcessingResult, device_result: Dict[str, Any]):
         """Mettre à jour les statistiques selon le résultat du traitement"""
@@ -695,8 +568,8 @@ class PasteDataProcessor:
         
         # Créer l'association pièce si nécessaire
         if ref_piece and device_result['device_id']:
-            association_result = self._create_piece_association(
-                device_result['device_id'], ref_piece, libelle_piece, 
+            association_result = self.main_window.device_manager.create_piece_association(
+                device_result['device_id'], ref_piece, libelle_piece,
                 piece_description_decisions
             )
             device_result['association'] = association_result

@@ -12,6 +12,7 @@ Responsabilités:
 
 from typing import Optional, Dict, List, Any
 from ..core.logger import app_logger
+from ..utils.error_handler import handle_database_operation_errors
 from .base_service import BaseService, safe_operation
 
 class DeviceManager(BaseService):
@@ -179,7 +180,50 @@ class DeviceManager(BaseService):
         else:
             app_logger.error(f"Échec de la mise à jour de l'appareil {device_id}")
             return False
-    
+
+    @handle_database_operation_errors(return_value={'created': False, 'exists': False, 'description_updated': False}, log_prefix="Erreur création association pièce")
+    def create_piece_association(self, device_id: int, ref_piece: str,
+                                 libelle_piece: str = "", _decisions_cache: Dict = None) -> Dict:
+        """
+        Créer une association entre un appareil et une pièce (variante import).
+
+        Retourne {created, exists, description_updated} : les statistiques
+        d'import dépendent de cette distinction created/exists. Ne pas confondre
+        avec DatabaseManager.add_piece() dont le contrat de retour diffère
+        (cf. follow-up de déduplication noté dans l'audit structure).
+        """
+        # Vérifier si l'association existe déjà
+        check_query = """
+            SELECT COUNT(*) FROM piece_associations pa
+            JOIN pieces p ON pa.piece_id = p.id
+            WHERE pa.appareil_id = ? AND p.ref_piece = ?
+        """
+        result = self.db_manager.execute_query(check_query, [device_id, ref_piece])
+        if result and result[0][0] > 0:
+            return {'created': False, 'exists': True, 'description_updated': False}
+
+        # Vérifier si la pièce existe ou la créer
+        piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
+        piece_result = self.db_manager.execute_query(piece_query, [ref_piece])
+
+        if piece_result:
+            piece_id = piece_result[0][0]
+        else:
+            insert_piece_query = "INSERT INTO pieces (ref_piece, description) VALUES (?, ?)"
+            piece_result = self.db_manager.execute_query(insert_piece_query, [ref_piece, libelle_piece or ''])
+            if not piece_result:
+                return {'created': False, 'exists': False, 'description_updated': False}
+            piece_id = self.db_manager.cursor.lastrowid
+
+        # Créer l'association
+        association_query = "INSERT INTO piece_associations (appareil_id, piece_id) VALUES (?, ?)"
+        assoc_result = self.db_manager.execute_query(association_query, [device_id, piece_id])
+
+        if assoc_result:
+            return {'created': True, 'exists': False, 'description_updated': False}
+        else:
+            return {'created': False, 'exists': False, 'description_updated': False}
+
     @safe_operation(operation_name="try_auto_complete", default_return=False)
     def try_auto_complete(self, device_data: Dict[str, str]) -> bool:
         """
