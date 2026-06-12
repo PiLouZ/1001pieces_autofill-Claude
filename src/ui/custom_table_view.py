@@ -9,8 +9,8 @@ Phase 2 de la migration QTableWidget → QTableView.
 Production : non activé tant que Config.USE_TABLE_VIEW = False.
 """
 
-from PyQt5.QtWidgets import QTableView, QApplication, QTableWidgetItem, QAbstractItemView, QHeaderView
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtWidgets import QTableView, QApplication, QTableWidgetItem, QAbstractItemView, QHeaderView, QMenu
+from PyQt5.QtCore import Qt, QTimer, QItemSelection, QItemSelectionModel
 from PyQt5.QtGui import QKeyEvent, QPainter, QColor, QFont
 
 
@@ -54,6 +54,15 @@ class CustomTableView(QTableView):
     2. Compatibilité QTableWidget — permet aux services Phase 3 non encore
        migrés de continuer à fonctionner. Supprimées progressivement en Phase 4.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Menu contextuel sur l'en-tête horizontal : « Sélectionner la colonne »
+        # (repli souris du raccourci clavier Ctrl/Cmd+Espace). Le clic GAUCHE
+        # sur l'en-tête reste réservé au tri (géré par table_controller).
+        header = self.horizontalHeader()
+        header.setContextMenuPolicy(Qt.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._on_header_context_menu)
 
     # ── Colonne figée à droite ───────────────────────────────────────────────
 
@@ -224,6 +233,31 @@ class CustomTableView(QTableView):
                 self.edit(idx)
             return
 
+        # ── Raccourcis tableur : copie / sélection colonne-ligne / extension ──
+        # (placés AVANT le bloc « frappe sur cellule vide » : Maj+Espace produit
+        # un event.text()=" " printable qui sinon insérerait un espace)
+        mods = event.modifiers()
+
+        # Ctrl/Cmd+C — copier la sélection au presse-papiers (TSV, collable Excel)
+        if is_cmd and key == Qt.Key_C and not (mods & Qt.ShiftModifier):
+            self._copy_selection_to_clipboard()
+            return
+
+        # Espace : Ctrl/Cmd → sélectionne la colonne · Maj → sélectionne la ligne
+        if key == Qt.Key_Space:
+            if is_cmd:
+                self._select_current_column()
+                return
+            if mods & Qt.ShiftModifier:
+                self._select_current_row()
+                return
+
+        # Ctrl/Cmd+Maj+flèche — étendre la sélection jusqu'au bord
+        if is_cmd and (mods & Qt.ShiftModifier) and key in (
+                Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
+            self._extend_selection_to_edge(key)
+            return
+
         # Frappe sur cellule vide → ouvre l'éditeur et insère le caractère
         if (event.text() and event.text()[0].isprintable()
                 and not (event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))):
@@ -247,6 +281,130 @@ class CustomTableView(QTableView):
                     return
 
         super().keyPressEvent(event)
+
+    # ── Raccourcis tableur : copie / sélection / extension ───────────────────
+
+    def _copy_selection_to_clipboard(self):
+        """Copier la sélection au presse-papiers en TSV (collable dans Excel).
+
+        Copie le rectangle englobant de la sélection : tabulations entre
+        colonnes, sauts de ligne entre lignes, cellules non sélectionnées
+        laissées vides (comme Excel). Les colonnes masquées sont ignorées.
+        """
+        sm = self.selectionModel()
+        model = self.model()
+        if sm is None or model is None:
+            return
+        indexes = sm.selectedIndexes()
+        if not indexes:
+            return
+        rows = [i.row() for i in indexes]
+        cols = [i.column() for i in indexes]
+        r0, r1 = min(rows), max(rows)
+        c0, c1 = min(cols), max(cols)
+        visible_cols = [c for c in range(c0, c1 + 1) if not self.isColumnHidden(c)]
+        selected = {(i.row(), i.column()) for i in indexes}
+        lines = []
+        for r in range(r0, r1 + 1):
+            cells = []
+            for c in visible_cols:
+                if (r, c) in selected:
+                    val = model.data(model.index(r, c), Qt.DisplayRole)
+                    cells.append("" if val is None else str(val))
+                else:
+                    cells.append("")
+            lines.append("\t".join(cells))
+        QApplication.clipboard().setText("\n".join(lines))
+
+    def select_column(self, col: int):
+        """Sélectionner toute la colonne `col` (utilisé par le clavier et le menu en-tête)."""
+        sm = self.selectionModel()
+        model = self.model()
+        if sm is None or model is None or col < 0 or model.rowCount() == 0:
+            return
+        top = model.index(0, col)
+        bottom = model.index(model.rowCount() - 1, col)
+        sm.select(QItemSelection(top, bottom), QItemSelectionModel.ClearAndSelect)
+        # NoUpdate : déplace le curseur sans relancer une commande de sélection
+        # (self.setCurrentIndex effacerait la plage qu'on vient de sélectionner)
+        sm.setCurrentIndex(top, QItemSelectionModel.NoUpdate)
+
+    def _select_current_column(self):
+        """Sélectionner la colonne de la cellule courante (Ctrl/Cmd+Espace)."""
+        idx = self.currentIndex()
+        if idx.isValid():
+            self.select_column(idx.column())
+
+    def _select_current_row(self):
+        """Sélectionner la ligne de la cellule courante (Maj+Espace)."""
+        sm = self.selectionModel()
+        model = self.model()
+        idx = self.currentIndex()
+        if sm is None or model is None or not idx.isValid():
+            return
+        left = model.index(idx.row(), 0)
+        right = model.index(idx.row(), model.columnCount() - 1)
+        sm.select(QItemSelection(left, right), QItemSelectionModel.ClearAndSelect)
+
+    def _extend_selection_to_edge(self, key):
+        """Étendre la sélection façon tableur (Ctrl/Cmd+Maj+flèche).
+
+        Vertical (↑/↓) : s'arrête au bord du bloc de données (transition
+        plein↔vide dans la colonne), exactement comme Cmd+↑/↓ (smart-navigate) ;
+        à défaut de transition, va jusqu'à l'extrémité.
+        Horizontal (←/→) : étend jusqu'à la première/dernière colonne.
+        """
+        sm = self.selectionModel()
+        model = self.model()
+        cur = self.currentIndex()
+        if sm is None or model is None or not cur.isValid():
+            return
+        if key in (Qt.Key_Down, Qt.Key_Up):
+            step = 1 if key == Qt.Key_Down else -1
+            target_row = self._smart_vertical_target_row(cur.row(), cur.column(), step)
+            if target_row is None:
+                target_row = (model.rowCount() - 1) if step == 1 else 0
+            target = model.index(target_row, cur.column())
+        elif key == Qt.Key_Right:
+            target = model.index(cur.row(), model.columnCount() - 1)
+        else:  # Qt.Key_Left
+            target = model.index(cur.row(), 0)
+        sm.select(QItemSelection(cur, target), QItemSelectionModel.ClearAndSelect)
+        # NoUpdate : conserve la plage étendue tout en déplaçant le curseur au bord
+        sm.setCurrentIndex(target, QItemSelectionModel.NoUpdate)
+        self.scrollTo(target)
+
+    def _smart_vertical_target_row(self, row: int, col: int, step: int):
+        """Ligne de bord de bloc dans la colonne `col` depuis `row`, en suivant
+        `step` (+1 bas / -1 haut). Réplique navigate_to_empty_cell : s'arrête à
+        la première transition plein↔vide. Retourne None si aucune transition
+        jusqu'au bord (l'appelant ira alors à l'extrémité)."""
+        model = self.model()
+        n = model.rowCount()
+
+        def is_empty(r: int) -> bool:
+            val = model.data(model.index(r, col), Qt.DisplayRole)
+            return val is None or str(val).strip() == ""
+
+        cur_empty = is_empty(row)
+        r = row + step
+        while 0 <= r < n:
+            if is_empty(r) != cur_empty:
+                return r
+            r += step
+        return None
+
+    def _on_header_context_menu(self, pos):
+        """Menu contextuel de l'en-tête : « Sélectionner la colonne »."""
+        header = self.horizontalHeader()
+        col = header.logicalIndexAt(pos)
+        if col < 0:
+            return
+        menu = QMenu(self)
+        action_select = menu.addAction("Sélectionner la colonne")
+        chosen = menu.exec_(header.mapToGlobal(pos))
+        if chosen is action_select:
+            self.select_column(col)
 
     def keyboardSearch(self, search: str):
         """Désactiver la navigation type-ahead native de QAbstractItemView."""
