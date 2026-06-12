@@ -4,6 +4,32 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.46.0] - 2026-06-12
+
+### Fix — Pièce inédite non associée au premier collage
+
+- Lors d'un import par collage, une référence de pièce **encore inconnue** était
+  créée en base mais **n'était pas associée à l'appareil** au premier collage
+  (il fallait recoller pour que l'association se fasse). De plus, le compteur
+  « associations créées » du résumé d'import restait à zéro même quand des
+  associations étaient bien créées.
+- Cause : `create_piece_association` testait la valeur de retour de
+  `execute_query()` (un helper de lecture `SELECT`/`fetchall`) après ses `INSERT`,
+  or `fetchall()` renvoie une liste vide pour un `INSERT` — d'où un abandon
+  prématuré et un statut « créé » jamais atteint.
+- Désormais : la pièce inédite est associée dès le premier collage et le compteur
+  d'associations est exact.
+
+### Refacto — SQL sorti de la couche UI (audit structure, point 4)
+
+- La logique de persistance restante dans `paste_data_processor.py` (couche UI)
+  est déplacée vers la couche service : `create_piece_association` rejoint
+  `DeviceManager`. Deux méthodes mortes (copies de `DeviceManager` jamais
+  appelées) supprimées. `paste_data_processor.py` : 730 → 603 lignes, plus aucun
+  SQL brut.
+- Clôture de l'audit structure 2026-06-11 : les 18 points sont résolus (faits ou
+  fermés par décision motivée). Détail : `memory/project_audit_structure_2026-06-11.md`.
+
 ## [3.45.0] - 2026-06-12
 
 ### Refacto — Audit structure du code (fin du plan, points 8 à 18)
