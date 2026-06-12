@@ -156,7 +156,7 @@ class UIComponentService:
             QToolButton::menu-indicator {
                 subcontrol-origin: padding;
                 subcontrol-position: right center;
-                right: 4px;
+                right: 12px;
             }
         """
 
