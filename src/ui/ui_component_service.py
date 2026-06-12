@@ -150,13 +150,11 @@ class UIComponentService:
                 border-color: #e9ecef;
             }
             QToolButton::menu-button {
+                /* Mode MenuButtonPopup : la flèche est centrée dans cette zone
+                   (::menu-indicator est ignoré dans ce mode). Élargir la zone
+                   éloigne la flèche du bord droit → aération. */
                 border: none;
-                width: 18px;
-            }
-            QToolButton::menu-indicator {
-                subcontrol-origin: padding;
-                subcontrol-position: right center;
-                right: 12px;
+                width: 30px;
             }
         """
 
