@@ -4,6 +4,54 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.47.0] - 2026-06-12
+
+### Feat — Navigation clavier du tableau principal
+
+- Raccourcis type tableur sur le tableau des appareils :
+  - **Ctrl/Cmd+C** : copie la sélection au presse-papiers au format TSV
+    (collable directement dans Excel/Sheets ; colonnes visibles uniquement).
+  - **Ctrl/Cmd+Espace** : sélectionne toute la colonne courante ·
+    **Maj+Espace** : sélectionne toute la ligne courante.
+  - **Ctrl/Cmd+Maj+flèche** : étend la sélection jusqu'au bord. En vertical,
+    l'extension s'arrête à la première rupture plein↔vide du bloc (même logique
+    que la navigation intelligente Cmd+↑/↓) plutôt que de filer jusqu'au bout.
+  - Clic droit sur un en-tête de colonne : « Sélectionner la colonne ».
+
+### Feat — Héritage du libellé pour les références fantômes (import)
+
+- À l'import d'un fichier, quand on déclare une référence remplacée ou
+  remplaçante, la référence fantôme créée pour la succession hérite désormais
+  du libellé de la pièce importée (sans écraser un libellé existant). Périmètre :
+  import de fichier unique.
+
+### Feat SEO — Méta title : référence courante toujours en tête
+
+- Le méta title commence systématiquement par la référence la plus récente
+  (gabarit unique `{référence} {libellé} {type} {fabricants}`), y compris en cas
+  de remplacement. Les anciennes références ne sont plus mentionnées dans les
+  méta. Gabarits « superseded » et paramètre `ref_obsolete` supprimés, ainsi que
+  deux méthodes mortes (`get_random_title_variant`, `get_random_description_variant`).
+
+### Fix — Panneau du gestionnaire de pièces consolidé
+
+- Les sections « ↳ Remplacée par » et « ↑ Remplace » disparaissaient par
+  intermittence du panneau de droite, laissant un en-tête fantôme (ex.
+  « 00636865 · Ecrou ») alors que le reste affichait « Sélectionnez une pièce… ».
+  Cause : quand la pièce courante sortait de la liste filtrée (recherche/filtre/
+  suppression), la re-sélection échouait mais le panneau masquait les sections
+  sans réinitialiser l'en-tête.
+- Désormais : les 3 sections restent toujours visibles (vidées) comme
+  ≡ Équivalences — layout stable — et l'en-tête repasse à « — » proprement
+  quand plus aucune pièce n'est sélectionnée.
+
+### Style — Flèche du split button « HTML Détails » aérée
+
+- La flèche du menu déroulant était collée au bord droit. Élargissement de la
+  zone `::menu-button` (18→30 px) — en mode `MenuButtonPopup`, Qt ignore
+  `::menu-indicator` pour le positionnement, la flèche se recentre dans cette
+  zone plus large.
+
 ## [3.46.1] - 2026-06-12
 
 ### Fix — Erreur de syntaxe dans le gestionnaire de pièces (régression v3.45.0)
