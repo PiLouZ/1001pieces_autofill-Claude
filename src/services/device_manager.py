@@ -209,20 +209,26 @@ class DeviceManager(BaseService):
         if piece_result:
             piece_id = piece_result[0][0]
         else:
-            insert_piece_query = "INSERT INTO pieces (ref_piece, description) VALUES (?, ?)"
-            piece_result = self.db_manager.execute_query(insert_piece_query, [ref_piece, libelle_piece or ''])
-            if not piece_result:
-                return {'created': False, 'exists': False, 'description_updated': False}
+            # execute_query() est un helper SELECT (fetchall) : il renvoie []
+            # pour un INSERT. On récupère donc l'id via cursor.lastrowid, et NON
+            # via la valeur de retour (sinon l'association n'était jamais créée
+            # pour une pièce inédite — bug corrigé).
+            self.db_manager.execute_query(
+                "INSERT INTO pieces (ref_piece, description) VALUES (?, ?)",
+                [ref_piece, libelle_piece or '']
+            )
             piece_id = self.db_manager.cursor.lastrowid
+            if not piece_id:
+                return {'created': False, 'exists': False, 'description_updated': False}
 
-        # Créer l'association
-        association_query = "INSERT INTO piece_associations (appareil_id, piece_id) VALUES (?, ?)"
-        assoc_result = self.db_manager.execute_query(association_query, [device_id, piece_id])
-
-        if assoc_result:
-            return {'created': True, 'exists': False, 'description_updated': False}
-        else:
-            return {'created': False, 'exists': False, 'description_updated': False}
+        # Créer l'association. L'INSERT renvoie [] : ne pas tester la valeur de
+        # retour, sinon created:True serait inatteignable et la stat
+        # associations_created toujours faussée (bug corrigé).
+        self.db_manager.execute_query(
+            "INSERT INTO piece_associations (appareil_id, piece_id) VALUES (?, ?)",
+            [device_id, piece_id]
+        )
+        return {'created': True, 'exists': False, 'description_updated': False}
 
     @safe_operation(operation_name="try_auto_complete", default_return=False)
     def try_auto_complete(self, device_data: Dict[str, str]) -> bool:
