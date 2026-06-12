@@ -347,26 +347,52 @@ class CustomTableView(QTableView):
         sm.select(QItemSelection(left, right), QItemSelectionModel.ClearAndSelect)
 
     def _extend_selection_to_edge(self, key):
-        """Étendre la sélection de la cellule courante jusqu'au bord (Ctrl/Cmd+Maj+flèche)."""
+        """Étendre la sélection façon tableur (Ctrl/Cmd+Maj+flèche).
+
+        Vertical (↑/↓) : s'arrête au bord du bloc de données (transition
+        plein↔vide dans la colonne), exactement comme Cmd+↑/↓ (smart-navigate) ;
+        à défaut de transition, va jusqu'à l'extrémité.
+        Horizontal (←/→) : étend jusqu'à la première/dernière colonne.
+        """
         sm = self.selectionModel()
         model = self.model()
         cur = self.currentIndex()
         if sm is None or model is None or not cur.isValid():
             return
-        last_row = model.rowCount() - 1
-        last_col = model.columnCount() - 1
-        if key == Qt.Key_Down:
-            target = model.index(last_row, cur.column())
-        elif key == Qt.Key_Up:
-            target = model.index(0, cur.column())
+        if key in (Qt.Key_Down, Qt.Key_Up):
+            step = 1 if key == Qt.Key_Down else -1
+            target_row = self._smart_vertical_target_row(cur.row(), cur.column(), step)
+            if target_row is None:
+                target_row = (model.rowCount() - 1) if step == 1 else 0
+            target = model.index(target_row, cur.column())
         elif key == Qt.Key_Right:
-            target = model.index(cur.row(), last_col)
+            target = model.index(cur.row(), model.columnCount() - 1)
         else:  # Qt.Key_Left
             target = model.index(cur.row(), 0)
         sm.select(QItemSelection(cur, target), QItemSelectionModel.ClearAndSelect)
         # NoUpdate : conserve la plage étendue tout en déplaçant le curseur au bord
         sm.setCurrentIndex(target, QItemSelectionModel.NoUpdate)
         self.scrollTo(target)
+
+    def _smart_vertical_target_row(self, row: int, col: int, step: int):
+        """Ligne de bord de bloc dans la colonne `col` depuis `row`, en suivant
+        `step` (+1 bas / -1 haut). Réplique navigate_to_empty_cell : s'arrête à
+        la première transition plein↔vide. Retourne None si aucune transition
+        jusqu'au bord (l'appelant ira alors à l'extrémité)."""
+        model = self.model()
+        n = model.rowCount()
+
+        def is_empty(r: int) -> bool:
+            val = model.data(model.index(r, col), Qt.DisplayRole)
+            return val is None or str(val).strip() == ""
+
+        cur_empty = is_empty(row)
+        r = row + step
+        while 0 <= r < n:
+            if is_empty(r) != cur_empty:
+                return r
+            r += step
+        return None
 
     def _on_header_context_menu(self, pos):
         """Menu contextuel de l'en-tête : « Sélectionner la colonne »."""
