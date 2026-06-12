@@ -697,13 +697,27 @@ class PiecesManagerWindow(QDialog):
         # vide → has_selection = False → sections du panneau cachées à tort.
         ref = getattr(self, '_current_ref_piece', None)
         if ref:
+            found = False
             for row in range(self.pieces_table.rowCount()):
                 item = self.pieces_table.item(row, 0)
                 if item and (item.data(Qt.UserRole) or item.text()) == ref:
                     self.pieces_table.selectRow(row)
+                    found = True
                     break
-            self._refresh_succession_panel(ref)
-            self._refresh_equivalence_panel(ref)
+            if found:
+                self._refresh_succession_panel(ref)
+                self._refresh_equivalence_panel(ref)
+            else:
+                # La pièce courante n'est plus dans la liste filtrée (recherche /
+                # filtre / suppression) : on remet le panneau dans un état « rien
+                # de sélectionné » COHÉRENT — sinon l'en-tête garderait l'ancienne
+                # pièce alors que le reste du panneau s'est vidé (bug des blocs
+                # qui « disparaissent »).
+                self._current_ref_piece = None
+                self.panel_header_label.setText("—")
+                self.details_text.clear()
+                self._refresh_succession_panel(None)
+                self._refresh_equivalence_panel(None)
             
     def _get_filtered_data(self):
         """Obtenir les données filtrées selon les critères"""
@@ -1001,11 +1015,18 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_obsolete.setEnabled(has_selection)
 
         # ── Aucune sélection ──────────────────────────────────────────────
+        # Option B : les sections restent TOUJOURS visibles (vidées) pour un
+        # layout stable — comme le fait déjà ≡ Équivalences. Plus aucun bloc
+        # ne « disparaît » quand rien n'est sélectionné.
         if not has_selection or ref_piece is None:
             self.succession_status_label.setText("Sélectionnez une pièce pour voir son statut.")
             self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
-            self.superseded_section.setVisible(False)
-            self.replaces_section.setVisible(False)
+            self.superseded_by_tag_list.set_refs([], '#e67e22')
+            self.replaces_tag_list.set_refs([], '#2980b9')
+            self.superseded_section.setVisible(True)
+            self.replaces_section.setVisible(True)
+            self.btn_mark_superseded.setEnabled(False)
+            self.btn_mark_replaces.setEnabled(False)
             self.btn_cancel_succession.setVisible(False)
             self.btn_cancel_succession.setEnabled(False)
             return
@@ -1015,8 +1036,12 @@ class PiecesManagerWindow(QDialog):
             self.succession_status_label.setText(
                 f"{n} pièces sélectionnées — les actions s'appliquent à toutes.")
             self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
-            self.superseded_section.setVisible(False)
-            self.replaces_section.setVisible(False)
+            # Sections visibles mais vidées : les chips n'ont pas de sens en
+            # multi-sélection, les actions passent par les boutons batch.
+            self.superseded_by_tag_list.set_refs([], '#e67e22')
+            self.replaces_tag_list.set_refs([], '#2980b9')
+            self.superseded_section.setVisible(True)
+            self.replaces_section.setVisible(True)
             self.btn_mark_superseded.setEnabled(True)
             self.btn_mark_replaces.setEnabled(True)
             self.btn_cancel_succession.setVisible(True)
