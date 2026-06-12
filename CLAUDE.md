@@ -27,6 +27,9 @@
 - Bannière bidirectionnelle dans `table_controller.py` (modes `superseded` / `replacing`)
 - CDC complet : `docs/cdc_supersession_pieces.md`
 
+## Dette technique connue
+- **Import Excel (.xlsx/.xls) et JSON non implémentés** dans `ImportExportService._safe_process_import_file` : seuls CSV et PDF sont supportés. Les autres formats loguent un avertissement et sont ignorés (pas d'erreur bloquante). À implémenter si le besoin se confirme.
+
 ## Outils
 - GitHub CLI : `~/bin/gh`
 - Lancement app : `python3 run.py` ou double-clic `1001pieces_autofill.command`

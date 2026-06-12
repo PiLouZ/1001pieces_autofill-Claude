@@ -333,11 +333,12 @@ class ImportExportService(BaseService):
         if ext == '.csv':
             self.import_csv_from_path(file_path)
         elif ext in ['.xlsx', '.xls']:
-            # TODO: Implémenter import Excel
-            app_logger.warning("Import Excel non encore implémenté dans le service")
+            # Dette technique connue : import Excel non implémenté (cf. CLAUDE.md).
+            # Formats supportés à ce jour : CSV et PDF.
+            app_logger.warning("Import Excel non supporté (dette technique connue) : utilisez CSV ou PDF")
         elif ext == '.json':
-            # TODO: Implémenter import JSON
-            app_logger.warning("Import JSON non encore implémenté dans le service")
+            # Dette technique connue : import JSON non implémenté (cf. CLAUDE.md).
+            app_logger.warning("Import JSON non supporté (dette technique connue) : utilisez CSV ou PDF")
         elif ext == '.pdf':
             self.import_pdf_from_path(file_path)
         else:

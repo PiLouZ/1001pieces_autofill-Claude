@@ -4,6 +4,7 @@ Permet d'analyser les logs en temps réel et de diagnostiquer les problèmes
 """
 
 import qtawesome as qta
+from .style_manager import StyleManager
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QComboBox,
     QPushButton, QLabel, QSpinBox, QStackedWidget, QButtonGroup, QFrame, QWidget,
@@ -79,7 +80,7 @@ class LogViewer(QDialog):
         self.refresh_button.setIconSize(QSize(13, 13))
         self.refresh_button.setFixedSize(26, 26)
         self.refresh_button.setFlat(True)
-        self.refresh_button.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }")
+        self.refresh_button.setStyleSheet(StyleManager.REFRESH_BUTTON)
         self.refresh_button.setToolTip("Actualiser")
         self.refresh_button.clicked.connect(self.load_logs)
         control_layout.addWidget(self.refresh_button)

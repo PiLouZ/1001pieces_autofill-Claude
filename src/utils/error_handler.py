@@ -323,17 +323,6 @@ def handle_validation_errors(title: str = "Erreur de validation"):
         return_on_error=None
     )
 
-def handle_network_errors(title: str = "Erreur réseau"):
-    """
-    Décorateur spécialisé pour les erreurs réseau
-    """
-    return handle_errors(
-        title=title,
-        message="Problème de connexion réseau. Vérifiez votre connexion.",
-        exceptions=(ConnectionError, TimeoutError),
-        return_on_error=None
-    )
-
 def handle_seo_generation_errors(title: str = "Erreur génération SEO"):
     """
     Décorateur spécialisé pour les erreurs de génération SEO (title/description)

@@ -4,6 +4,38 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.45.0] - 2026-06-12
+
+### Refacto — Audit structure du code (fin du plan, points 8 à 18)
+
+Suite et clôture de l'audit structure entamé en v3.44.0. Aucune modification
+fonctionnelle visible — factorisation, suppression de code mort et
+centralisation de constantes, à ZERO REGRESSION (smoke test après chaque point).
+
+- **Perf** : `_safe_delete_pieces_by_appareil` ne boucle plus pour vérifier les
+  pièces orphelines (un `SELECT COUNT` + `DELETE` par pièce) — une seule
+  requête `DELETE ... WHERE id IN (candidats) AND id NOT IN (SELECT DISTINCT
+  piece_id FROM piece_associations)`. Équivalence prouvée (pièce partagée
+  conservée, orphelines supprimées)
+- **Styles QSS** : 4 constantes réutilisables sur `StyleManager`
+  (`FLAT_TRANSPARENT`, `FLAT_TRANSPARENT_BUTTON`, `ICON_BUTTON`,
+  `REFRESH_BUTTON`) — 11 littéraux dupliqués factorisés dans 7 fichiers UI
+- **Code mort supprimé** : `_load_data_optimized()` (~95 lignes jamais
+  appelées), wrapper `_build_search_condition()` (inliné), décorateur
+  `handle_network_errors()`, imports inutilisés (`csv`, `CustomTableWidget`,
+  `TableWidgetService`) dans `main_refactored.py`
+- **Constantes** : réglages PRAGMA SQLite (`cache_size`, `mmap_size`)
+  centralisés dans `DatabaseConfig` (`SQLITE_CACHE_SIZE_KIB`,
+  `SQLITE_MMAP_SIZE_BYTES`)
+- **Dette technique documentée** : import Excel/JSON non implémentés (stubs CSV
+  et PDF seuls actifs) — section ajoutée à `CLAUDE.md`
+- Décisions "pas d'action" motivées (analysées, jugées net-négatives ou
+  légitimes) : migration QObject→BaseService de 7 services, centralisation des
+  identifiants SQL de supersession. Points reportés à une session dédiée :
+  découpage de `main_refactored.py`/`table_controller.py`, extraction de
+  `paste_data_processor.py`
+- Détail complet : `memory/project_audit_structure_2026-06-11.md`
+
 ## [3.44.0] - 2026-06-11
 
 ### Ajout — Boutons-puces de variables dans la configuration d'export (`VariableChipsBar`)

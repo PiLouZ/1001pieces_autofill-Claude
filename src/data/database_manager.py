@@ -10,6 +10,7 @@ import hashlib
 import time
 
 from ..core.config import Config
+from ..core.constants import DatabaseConfig
 from ..core.logger import app_logger
 from ..utils.error_handler import (
     handle_db_query_errors,
@@ -125,9 +126,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         # - temp_store=MEMORY : tris/index temporaires en RAM plutôt que sur disque
         # - mmap_size : lecture du fichier (~840 Mo) via mémoire mappée (256 Mo)
         self.cursor.execute("PRAGMA synchronous=NORMAL")
-        self.cursor.execute("PRAGMA cache_size=-65536")
+        self.cursor.execute(f"PRAGMA cache_size={DatabaseConfig.SQLITE_CACHE_SIZE_KIB}")
         self.cursor.execute("PRAGMA temp_store=MEMORY")
-        self.cursor.execute("PRAGMA mmap_size=268435456")
+        self.cursor.execute(f"PRAGMA mmap_size={DatabaseConfig.SQLITE_MMAP_SIZE_BYTES}")
 
     def get_connection(self):
         """Retourner la connexion pour les opérations batch"""
@@ -156,13 +157,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             f"OR {alias}.[manufacturer] IS NULL OR {alias}.[manufacturer] = '')"
         )
 
-    def _build_search_condition(self, search_term):
-        """Construire une condition de recherche basée sur le terme de recherche (simple ou avancé)"""
-        import re
-        
-        # Phase 3: Utiliser la nouvelle logique optimisée
-        return self._build_search_condition_optimized(search_term)
-    
     def _build_search_condition_optimized(self, search_term):
         """Phase 3: Condition de recherche optimisée selon le type de requête.
 
@@ -1389,13 +1383,16 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute("DELETE FROM piece_associations WHERE appareil_id = ?", (appareil_id,))
         deleted_count = self.cursor.rowcount
 
-        # Étape 3: Supprimer les pièces qui n'ont plus d'associations
-        for piece_id, ref_piece in piece_info:
-            self.cursor.execute("SELECT COUNT(*) FROM piece_associations WHERE piece_id = ?", (piece_id,))
-            remaining_assocs = self.cursor.fetchone()[0]
-
-            if remaining_assocs == 0:
-                self.cursor.execute("DELETE FROM pieces WHERE id = ?", (piece_id,))
+        # Étape 3: Supprimer en une seule requête les pièces (parmi celles de cet
+        # appareil) qui n'ont plus aucune association. On restreint au set des
+        # pièces candidates pour ne pas toucher d'éventuels orphelins d'ailleurs.
+        candidate_ids = [piece_id for piece_id, _ in piece_info]
+        placeholders = ",".join("?" * len(candidate_ids))
+        self.cursor.execute(
+            f"DELETE FROM pieces WHERE id IN ({placeholders}) "
+            f"AND id NOT IN (SELECT DISTINCT piece_id FROM piece_associations)",
+            candidate_ids
+        )
 
         self.conn.commit()
 
@@ -1694,7 +1691,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         if search_term:
             # Parser le terme de recherche s'il contient des opérateurs || ou &&
             parsed_search = self._parse_search_term_for_export(search_term)
-            search_condition = self._build_search_condition(parsed_search)
+            search_condition = self._build_search_condition_optimized(parsed_search)
             if search_condition:
                 # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
                 if search_condition.get('query_type') in ['exact', 'prefix']:
@@ -1884,102 +1881,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.conn.rollback()
             raise
     
-    def _load_data_optimized(self, search_term: Optional[str] = None,
-                          column_filters: Optional[Dict[int, str]] = None,
-                          limit: Optional[int] = None,
-                          offset: Optional[int] = None,
-                          sort_column: Optional[int] = None,
-                          sort_order: Optional[str] = None,
-                          incomplete_filter: bool = False) -> List[Tuple]:
-        """Version optimisée de load_data - sépare requête principale du calcul pieces_count"""
-        try:
-            # ÉTAPE 1: Requête principale RAPIDE (sans LEFT JOIN coûteux)
-            headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS)
-            query = f"SELECT a.id, {headers_str} FROM appareils a"
-            params = []
-            conditions = []
-
-            # Mêmes conditions de recherche que l'original
-            if search_term:
-                search_condition = self._build_search_condition_optimized(search_term)
-                if search_condition:
-                    if search_condition.get('query_type') in ['exact', 'prefix']:
-                        if search_condition['query_type'] == 'exact':
-                            condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
-                        else:  # prefix
-                            condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
-                        conditions.append(condition)
-                        params.extend(search_condition['params'])
-                    else:
-                        conditions.append(search_condition['condition'])
-                        params.extend(search_condition['params'])
-
-            # Filtres par colonne
-            if column_filters:
-                for col_idx, filter_text in column_filters.items():
-                    if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
-                        conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
-                        params.append(f"%{filter_text}%")
-
-            # Filtre lignes incomplètes
-            if incomplete_filter:
-                incomplete_condition = "(a.type IS NULL OR a.type = '' OR a.manufacturer IS NULL OR a.manufacturer = '')"
-                conditions.append(incomplete_condition)
-
-            # Assemblage WHERE
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-
-            # Tri (même logique que l'original)
-            if sort_column is not None and 0 <= sort_column < len(Config.DB_HEADERS):
-                sort_col = Config.DB_HEADERS[sort_column]
-                order = "DESC" if sort_order == "desc" else "ASC"
-                query += f" ORDER BY a.[{sort_col}] {order}"
-            else:
-                query += " ORDER BY a.id DESC"
-
-            # Pagination
-            if limit is not None:
-                query += " LIMIT ?"
-                params.append(limit)
-                if offset is not None:
-                    query += " OFFSET ?"
-                    params.append(offset)
-
-            # ÉTAPE 2: Exécuter requête principale
-            main_results = self.execute_query(query, params)
-            if not main_results:
-                return []
-
-            # ÉTAPE 3: Calculer pieces_count seulement pour les résultats retournés
-            appareil_ids = [str(row[0]) for row in main_results]
-            pieces_counts = {}
-
-            if appareil_ids:
-                count_query = f"""
-                    SELECT pa.appareil_id, COUNT(*) as pieces_count
-                    FROM piece_associations pa
-                    INNER JOIN pieces p ON pa.piece_id = p.id
-                    WHERE pa.appareil_id IN ({','.join(['?'] * len(appareil_ids))})
-                    GROUP BY pa.appareil_id
-                """
-                count_results = self.execute_query(count_query, appareil_ids)
-                pieces_counts = {row[0]: row[1] for row in count_results}
-
-            # ÉTAPE 4: Assembler résultats finaux avec pieces_count
-            final_results = []
-            for row in main_results:
-                appareil_id = row[0]
-                pieces_count = pieces_counts.get(appareil_id, 0)
-                final_row = row + (pieces_count,)
-                final_results.append(final_row)
-
-            return final_results
-
-        except Exception as e:
-            app_logger.error(f"Erreur _load_data_optimized: {e}")
-            raise
-
     def close(self):
         """Fermer la connexion à la base de données"""
         if self.conn:

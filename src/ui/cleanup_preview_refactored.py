@@ -11,6 +11,7 @@ from .qt_imports import Qt
 import qtawesome as qta
 
 from ..core.logger import app_logger
+from .style_manager import StyleManager
 from ..data.database_manager import DatabaseManager
 from ..data.data_validator import DataValidator
 from ..services.duplicates_analysis_service import DuplicatesAnalysisService
@@ -74,7 +75,7 @@ class CleanupPreviewDialog(QDialog):
         spinner_btn.setIconSize(QSize(22, 22))
         spinner_btn.setIcon(qta.icon('fa5s.circle-notch', color='#495057',
                                      animation=qta.Spin(spinner_btn)))
-        spinner_btn.setStyleSheet("border: none; background: transparent;")
+        spinner_btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT)
         spinner_row.addWidget(spinner_btn)
         title_lbl = QLabel("Analyse des doublons en cours…")
         title_lbl.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")

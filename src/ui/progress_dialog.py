@@ -13,6 +13,7 @@ from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                           QPushButton, QProgressBar, Qt, QSize, QSizePolicy,
                           pyqtSignal)
 import qtawesome as qta
+from .style_manager import StyleManager
 
 
 class ProgressDialog(QDialog):
@@ -61,7 +62,7 @@ class ProgressDialog(QDialog):
         self._spinner_btn.setIcon(
             qta.icon('fa5s.circle-notch', color='#495057',
                      animation=qta.Spin(self._spinner_btn)))
-        self._spinner_btn.setStyleSheet("border: none; background: transparent;")
+        self._spinner_btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT)
         header.addWidget(self._spinner_btn)
 
         self._title_label = QLabel(title)

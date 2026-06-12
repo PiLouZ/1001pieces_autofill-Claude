@@ -61,6 +61,10 @@ class DatabaseConfig:
     BACKUP_DIR_NAME = "backups"          # data/backups/
     BACKUP_MAX_COPIES = 3                # rotation (~840 Mo par copie)
     BACKUP_MIN_INTERVAL_IMPORT_H = 24    # avant import : au plus 1 copie / 24h
+
+    # Réglages de performance SQLite (PRAGMA appliqués à chaque connexion)
+    SQLITE_CACHE_SIZE_KIB = -65536       # cache_size négatif = Kio → 64 Mo de cache de pages
+    SQLITE_MMAP_SIZE_BYTES = 268435456   # mmap_size → 256 Mo de fichier en mémoire mappée
     
     # Tables principales
     TABLE_APPAREILS = "appareils"
@@ -251,7 +255,7 @@ class Paths:
 class AppInfo:
     """Informations sur l'application"""
     NAME = "1001pieces - Gestionnaire d'appareils"
-    VERSION = "3.44.0"
+    VERSION = "3.45.0"
     DESCRIPTION = "Gestionnaire de pièces & d'appareils électroménagers"
     AUTHOR = "1001pieces.com"
     URL = "https://1001pieces.com"

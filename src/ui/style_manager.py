@@ -29,6 +29,28 @@ def _generate_combo_arrow() -> str:
 class StyleManager:
     """Gestionnaire centralisé des styles CSS modernes"""
 
+    # === Styles QSS réutilisables (boutons plats / transparents) ===
+    # Centralisés ici pour éviter la duplication de ces littéraux dans les
+    # multiples fenêtres (cf. audit structure 2026-06-11, point 9).
+
+    # Style nu pour un widget plat sans bord ni fond (ex: bouton-spinner)
+    FLAT_TRANSPARENT = "border: none; background: transparent;"
+
+    # Idem mais ciblé sur QPushButton
+    FLAT_TRANSPARENT_BUTTON = "QPushButton { border: none; background: transparent; }"
+
+    # Bouton-icône compact sans marge ni contour (ex: icônes d'action inline)
+    ICON_BUTTON = (
+        "QPushButton { border: none; background: transparent; "
+        "padding: 0; margin: 0; outline: none; }"
+    )
+
+    # Bouton de rafraîchissement plat avec survol discret
+    REFRESH_BUTTON = (
+        "QPushButton { border: none; background: transparent; } "
+        "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
+    )
+
     @staticmethod
     def get_modern_style() -> str:
         """Retourner le style CSS moderne complet de l'application"""

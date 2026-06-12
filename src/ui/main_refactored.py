@@ -19,7 +19,6 @@ from .qt_imports import (
 
 # Imports Python standard consolidés
 import os
-import csv  
 import webbrowser
 from datetime import datetime
 
@@ -67,7 +66,6 @@ from .log_viewer import LogViewer
 from .piece_management_service import PieceManagementService
 from .seo_service import SEOService
 from .pieces_list_service import PiecesListService
-from ..services.table_widget_service import CustomTableWidget, TableWidgetService
 from ..services.grouped_history_service import GroupedHistoryService
 from ..services.history_service import HistoryService
 from ..services.drag_handle_service import DragHandle, DragHandleService
@@ -640,7 +638,7 @@ class MainWindow(QMainWindow):
         history_open_btn.setFixedSize(18, 18)
         history_open_btn.setToolTip("Ouvrir l'historique persistant")
         history_open_btn.setFlat(True)
-        history_open_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
+        history_open_btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT_BUTTON)
         history_open_btn.clicked.connect(self._open_history_view)
         history_header_layout.addWidget(history_open_btn, 0, Qt.AlignVCenter)
 

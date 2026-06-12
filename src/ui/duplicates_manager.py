@@ -11,6 +11,7 @@ from .qt_imports import (
 from .qt_imports import Qt, QTimer
 from .qt_imports import QFont, QSize
 from src.core.logger import app_logger
+from src.ui.style_manager import StyleManager
 from src.utils.error_handler import handle_ui_errors, handle_database_operation_errors
 from src.utils.text_utils import clean_display_text
 
@@ -50,7 +51,7 @@ class DuplicatesManager(QDialog):
         refresh_btn.setIconSize(QSize(13, 13))
         refresh_btn.setFixedSize(26, 26)
         refresh_btn.setFlat(True)
-        refresh_btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }")
+        refresh_btn.setStyleSheet(StyleManager.REFRESH_BUTTON)
         refresh_btn.setToolTip("Actualiser")
         refresh_btn.clicked.connect(self._load_duplicates)
         header_layout.addWidget(refresh_btn)

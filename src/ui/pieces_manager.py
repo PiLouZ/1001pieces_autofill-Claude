@@ -17,6 +17,7 @@ from ..core.config import Config
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
+from .style_manager import StyleManager
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 class ActionButtonWidget(QWidget):
@@ -42,7 +43,7 @@ class ActionButtonWidget(QWidget):
         edit_btn.setFlat(True)
         edit_btn.setToolTip("Modifier cette pièce")
         edit_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; padding: 0; margin: 0; outline: none; }"
+            StyleManager.ICON_BUTTON
             "QPushButton:hover { border: none; background: rgba(21,101,192,0.12); border-radius: 3px; outline: none; padding: 0; }"
             "QPushButton:pressed { border: none; background: rgba(21,101,192,0.20); border-radius: 3px; }"
         )
@@ -57,7 +58,7 @@ class ActionButtonWidget(QWidget):
         obsolete_btn.setFlat(True)
         obsolete_btn.setToolTip("Marquer obsolète / retirer l'obsolescence")
         obsolete_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; padding: 0; margin: 0; outline: none; }"
+            StyleManager.ICON_BUTTON
             "QPushButton:hover { border: none; background: rgba(230,126,34,0.12); border-radius: 3px; outline: none; padding: 0; }"
             "QPushButton:pressed { border: none; background: rgba(230,126,34,0.20); border-radius: 3px; }"
         )
@@ -72,7 +73,7 @@ class ActionButtonWidget(QWidget):
         delete_btn.setFlat(True)
         delete_btn.setToolTip("Supprimer cette pièce")
         delete_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; padding: 0; margin: 0; outline: none; }"
+            StyleManager.ICON_BUTTON
             "QPushButton:hover { border: none; background: rgba(198,40,40,0.12); border-radius: 3px; outline: none; padding: 0; }"
             "QPushButton:pressed { border: none; background: rgba(198,40,40,0.20); border-radius: 3px; }"
         )
@@ -175,10 +176,7 @@ class PiecesManagerWindow(QDialog):
         refresh_btn.setFixedSize(26, 26)
         refresh_btn.setFlat(True)
         refresh_btn.setToolTip("Actualiser (F5)")
-        refresh_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
-        )
+        refresh_btn.setStyleSheet(StyleManager.REFRESH_BUTTON)
         refresh_btn.clicked.connect(self._load_pieces_data)
         search_layout.addWidget(refresh_btn)
 
@@ -292,7 +290,7 @@ class PiecesManagerWindow(QDialog):
         spinner_btn.setIconSize(QSize(22, 22))
         spinner_btn.setIcon(qta.icon('fa5s.circle-notch', color='#495057',
                                      animation=qta.Spin(spinner_btn)))
-        spinner_btn.setStyleSheet("border: none; background: transparent;")
+        spinner_btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT)
         spinner_row.addWidget(spinner_btn)
         title_lbl = QLabel("Chargement des pièces…")
         title_lbl.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")
