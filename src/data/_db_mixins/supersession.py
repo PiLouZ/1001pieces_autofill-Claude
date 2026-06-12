@@ -577,6 +577,40 @@ class DatabaseSupersessionMixin:
             app_logger.error(f"Erreur add_supersession({ref_old} → {ref_new}): {e}")
             return False, str(e)
 
+    def inherit_phantom_description(self, source_ref: str, target_ref: str) -> bool:
+        """Recopier la description de `source_ref` vers `target_ref` si ce dernier
+        est une pièce fantôme **sans** description.
+
+        Utilisé à l'import avec succession : la réf partenaire créée en fantôme
+        hérite du libellé de la pièce importée. N'écrase jamais un libellé
+        existant et ne fait rien si la source n'a pas de description.
+
+        Returns:
+            True si une description a effectivement été recopiée.
+        """
+        try:
+            with self._query_lock:
+                self.cursor.execute(
+                    """
+                    UPDATE pieces
+                    SET description = (SELECT description FROM pieces WHERE ref_piece = ?)
+                    WHERE ref_piece = ?
+                      AND COALESCE(is_phantom, 0) = 1
+                      AND (description IS NULL OR description = '')
+                      AND (SELECT description FROM pieces WHERE ref_piece = ?) IS NOT NULL
+                      AND (SELECT description FROM pieces WHERE ref_piece = ?) != ''
+                    """,
+                    [source_ref, target_ref, source_ref, source_ref]
+                )
+                updated = self.cursor.rowcount > 0
+                self.conn.commit()
+            if updated:
+                app_logger.info(f"Libellé hérité : '{source_ref}' → fantôme '{target_ref}'")
+            return updated
+        except Exception as e:
+            app_logger.error(f"Erreur inherit_phantom_description({source_ref} → {target_ref}): {e}")
+            return False
+
     def remove_supersession(self, ref_old: str) -> bool:
         """Supprimer la relation de supersession pour ref_old."""
         try:

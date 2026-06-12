@@ -2330,6 +2330,8 @@ class ImportManager:
                 if ok:
                     results['succession_created'] = results.get('succession_created', 0) + 1
                     app_logger.info(f"Succession import : {config.succession_replaces} → {file_ref}")
+                    # La réf saisie est créée en fantôme → hériter du libellé importé
+                    self.db_manager.inherit_phantom_description(file_ref, config.succession_replaces)
                 else:
                     app_logger.warning(f"Succession import non créée ({config.succession_replaces} → {file_ref}) : {msg}")
 
@@ -2338,6 +2340,8 @@ class ImportManager:
                 if ok:
                     results['succession_created'] = results.get('succession_created', 0) + 1
                     app_logger.info(f"Succession import : {file_ref} → {config.succession_replaced_by}")
+                    # La réf saisie est créée en fantôme → hériter du libellé importé
+                    self.db_manager.inherit_phantom_description(file_ref, config.succession_replaced_by)
                 else:
                     app_logger.warning(f"Succession import non créée ({file_ref} → {config.succession_replaced_by}) : {msg}")
 
