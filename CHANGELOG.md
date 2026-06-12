@@ -4,6 +4,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.46.1] - 2026-06-12
+
+### Fix — Erreur de syntaxe dans le gestionnaire de pièces (régression v3.45.0)
+
+- L'ouverture du gestionnaire de pièces (`ActionButtonWidget`) levait une
+  `SyntaxError` : la centralisation des styles QSS de la v3.45.0 avait remplacé
+  le premier de trois littéraux de chaîne concaténés par `StyleManager.ICON_BUTTON`
+  (un nom), ce qui rendait invalide la concaténation implicite nom + chaîne.
+- Correction : `+` explicite à la jonction nom/chaîne aux 3 emplacements
+  concernés. Non détecté au démarrage car ce module est chargé paresseusement
+  (uniquement à l'ouverture du gestionnaire de pièces) — vérification ajoutée
+  par `py_compile` sur tous les fichiers + instanciation headless du widget.
+
 ## [3.46.0] - 2026-06-12
 
 ### Fix — Pièce inédite non associée au premier collage

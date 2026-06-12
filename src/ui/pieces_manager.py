@@ -43,7 +43,7 @@ class ActionButtonWidget(QWidget):
         edit_btn.setFlat(True)
         edit_btn.setToolTip("Modifier cette pièce")
         edit_btn.setStyleSheet(
-            StyleManager.ICON_BUTTON
+            StyleManager.ICON_BUTTON +
             "QPushButton:hover { border: none; background: rgba(21,101,192,0.12); border-radius: 3px; outline: none; padding: 0; }"
             "QPushButton:pressed { border: none; background: rgba(21,101,192,0.20); border-radius: 3px; }"
         )
@@ -58,7 +58,7 @@ class ActionButtonWidget(QWidget):
         obsolete_btn.setFlat(True)
         obsolete_btn.setToolTip("Marquer obsolète / retirer l'obsolescence")
         obsolete_btn.setStyleSheet(
-            StyleManager.ICON_BUTTON
+            StyleManager.ICON_BUTTON +
             "QPushButton:hover { border: none; background: rgba(230,126,34,0.12); border-radius: 3px; outline: none; padding: 0; }"
             "QPushButton:pressed { border: none; background: rgba(230,126,34,0.20); border-radius: 3px; }"
         )
@@ -73,7 +73,7 @@ class ActionButtonWidget(QWidget):
         delete_btn.setFlat(True)
         delete_btn.setToolTip("Supprimer cette pièce")
         delete_btn.setStyleSheet(
-            StyleManager.ICON_BUTTON
+            StyleManager.ICON_BUTTON +
             "QPushButton:hover { border: none; background: rgba(198,40,40,0.12); border-radius: 3px; outline: none; padding: 0; }"
             "QPushButton:pressed { border: none; background: rgba(198,40,40,0.20); border-radius: 3px; }"
         )
