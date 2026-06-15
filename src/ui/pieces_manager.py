@@ -458,8 +458,9 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_obsolete.setEnabled(False)
         self.btn_mark_obsolete.clicked.connect(self._on_mark_obsolete)
 
-        # ── Ligne d'actions communes ──────────────────────────────────────────
+        # ── Lignes d'actions communes (2 rangées pour éviter la troncature) ────
         succ_action_row = QHBoxLayout()
+        succ_action_row2 = QHBoxLayout()
         self.btn_cancel_succession = QPushButton("Annuler la succession")
         self.btn_cancel_succession.setToolTip("Supprimer tous les liens de succession pour les pièces sélectionnées")
         self.btn_cancel_succession.setEnabled(False)
@@ -483,7 +484,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_batch_edit_libelle.setStyleSheet("font-size: 11px;")
         self.btn_batch_edit_libelle.setVisible(False)
         self.btn_batch_edit_libelle.clicked.connect(self._on_batch_edit_libelle)
-        succ_action_row.addWidget(self.btn_batch_edit_libelle)
+        succ_action_row2.addWidget(self.btn_batch_edit_libelle)
 
         self.btn_mark_equivalent_group = QPushButton("Marquer comme équivalentes")
         self.btn_mark_equivalent_group.setToolTip(
@@ -491,7 +492,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_equivalent_group.setStyleSheet("color: #8e44ad; font-size: 11px;")
         self.btn_mark_equivalent_group.setVisible(False)
         self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
-        succ_action_row.addWidget(self.btn_mark_equivalent_group)
+        succ_action_row2.addWidget(self.btn_mark_equivalent_group)
 
         self.btn_harmonize_labels = QPushButton("Harmoniser les libellés…")
         self.btn_harmonize_labels.setToolTip(
@@ -499,7 +500,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_harmonize_labels.setStyleSheet("color: #d35400; font-size: 11px;")
         self.btn_harmonize_labels.setVisible(False)
         self.btn_harmonize_labels.clicked.connect(self._on_harmonize_labels)
-        succ_action_row.addWidget(self.btn_harmonize_labels)
+        succ_action_row2.addWidget(self.btn_harmonize_labels)
 
         self.btn_export_selection = QPushButton("Exporter la sélection")
         self.btn_export_selection.setToolTip(
@@ -510,7 +511,9 @@ class PiecesManagerWindow(QDialog):
         succ_action_row.addWidget(self.btn_export_selection)
 
         succ_action_row.addStretch()
+        succ_action_row2.addStretch()
         side_layout.addLayout(succ_action_row)
+        side_layout.addLayout(succ_action_row2)
 
         # Clic gauche sur une référence dans les fieldsets → recherche dans le gestionnaire
         self.superseded_by_tag_list.ref_clicked.connect(self._search_in_manager)
