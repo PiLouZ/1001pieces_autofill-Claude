@@ -5,13 +5,20 @@ Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QTableWidgetItem, QLabel, QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
-                           QApplication, QWidget, QMenu,
+                           QApplication, QWidget, QMenu, QInputDialog, QCheckBox,
                            Qt, QTimer, pyqtSignal, QColor,
                            QButtonGroup, QFont,
                            QFrame, QSize, QCursor, QPalette,
                            QEvent, QStackedWidget, QProgressBar)
 from typing import List, Tuple, Dict
 import qtawesome as qta
+
+
+def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
+    """Formater une liste de refs pour un récapitulatif de confirmation."""
+    if len(refs) <= max_shown:
+        return ", ".join(refs)
+    return ", ".join(refs[:max_shown]) + f", … et {len(refs) - max_shown} autre(s)"
 
 from ..core.config import Config
 from ..utils.error_handler import handle_ui_errors
@@ -199,6 +206,7 @@ class PiecesManagerWindow(QDialog):
             ('replacing',  'Remplaçantes',  'fa5s.level-up-alt',            '#2980b9'),
             ('equivalent', 'Équivalentes',  'fa5s.exchange-alt',            '#8e44ad'),
             ('current',    'Courantes',     'fa5s.check-circle',            '#27ae60'),
+            ('inconsistent', 'Libellés incohérents', 'fa5s.exclamation-circle', '#d35400'),
         ]
         def _make_icon_toggle(b, iname, icolor):
             def _on_toggled(checked):
@@ -468,6 +476,39 @@ class PiecesManagerWindow(QDialog):
         self.btn_unlink_equiv.clicked.connect(self._on_unlink_equiv)
         succ_action_row.addWidget(self.btn_unlink_equiv)
 
+        # ── Actions de groupe (multi-sélection) ────────────────────────────
+        self.btn_batch_edit_libelle = QPushButton("Modifier le libellé…")
+        self.btn_batch_edit_libelle.setToolTip(
+            "Appliquer le même libellé à toutes les pièces sélectionnées")
+        self.btn_batch_edit_libelle.setStyleSheet("font-size: 11px;")
+        self.btn_batch_edit_libelle.setVisible(False)
+        self.btn_batch_edit_libelle.clicked.connect(self._on_batch_edit_libelle)
+        succ_action_row.addWidget(self.btn_batch_edit_libelle)
+
+        self.btn_mark_equivalent_group = QPushButton("Marquer comme équivalentes")
+        self.btn_mark_equivalent_group.setToolTip(
+            "Fusionner toutes les pièces sélectionnées dans un seul groupe d'équivalence")
+        self.btn_mark_equivalent_group.setStyleSheet("color: #8e44ad; font-size: 11px;")
+        self.btn_mark_equivalent_group.setVisible(False)
+        self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
+        succ_action_row.addWidget(self.btn_mark_equivalent_group)
+
+        self.btn_harmonize_labels = QPushButton("Harmoniser les libellés…")
+        self.btn_harmonize_labels.setToolTip(
+            "Les pièces équivalentes n'ont pas le même libellé — choisir celui à appliquer à tout le groupe")
+        self.btn_harmonize_labels.setStyleSheet("color: #d35400; font-size: 11px;")
+        self.btn_harmonize_labels.setVisible(False)
+        self.btn_harmonize_labels.clicked.connect(self._on_harmonize_labels)
+        succ_action_row.addWidget(self.btn_harmonize_labels)
+
+        self.btn_export_selection = QPushButton("Exporter la sélection")
+        self.btn_export_selection.setToolTip(
+            "Exporter uniquement les pièces sélectionnées au format CSV")
+        self.btn_export_selection.setStyleSheet("font-size: 11px;")
+        self.btn_export_selection.setVisible(False)
+        self.btn_export_selection.clicked.connect(self._export_selected_pieces)
+        succ_action_row.addWidget(self.btn_export_selection)
+
         succ_action_row.addStretch()
         side_layout.addLayout(succ_action_row)
 
@@ -592,6 +633,18 @@ class PiecesManagerWindow(QDialog):
         self.all_pieces_data = results
         all_refs = [r[0] for r in results if r[0]]
         self.all_statuses = self.db_manager.get_pieces_statuses_batch(all_refs)
+
+        # Détection des libellés divergents au sein d'un groupe d'équivalence (C+I)
+        self._desc_by_ref = {r[0]: (r[1] or "") for r in results}
+        for ref, status in self.all_statuses.items():
+            equiv_str = status.get('equivalents')
+            if equiv_str:
+                group_refs = [ref] + [e.strip() for e in equiv_str.split(',') if e.strip()]
+                descs = {self._desc_by_ref.get(r, "") for r in group_refs}
+                status['labels_differ'] = len(descs) > 1
+            else:
+                status['labels_differ'] = False
+
         self._update_table_display()
 
     # ── Widget d'actions flottant ─────────────────────────────────────────────
@@ -764,6 +817,9 @@ class PiecesManagerWindow(QDialog):
                         if (statuses.get(r[0] or '', {}).get('status') == 'current'
                             and not statuses.get(r[0] or '', {}).get('is_obsolete')
                             and not (len(r) > 4 and r[4] == 1))]
+        elif active == 'inconsistent':
+            filtered = [r for r in filtered
+                        if statuses.get(r[0] or '', {}).get('labels_differ')]
 
         return filtered
         
@@ -1029,6 +1085,10 @@ class PiecesManagerWindow(QDialog):
             self.btn_mark_replaces.setEnabled(False)
             self.btn_cancel_succession.setVisible(False)
             self.btn_cancel_succession.setEnabled(False)
+            self.btn_batch_edit_libelle.setVisible(False)
+            self.btn_mark_equivalent_group.setVisible(False)
+            self.btn_harmonize_labels.setVisible(False)
+            self.btn_export_selection.setVisible(False)
             return
 
         # ── Multi-sélection : boutons batch, pas de chips ─────────────────
@@ -1046,6 +1106,14 @@ class PiecesManagerWindow(QDialog):
             self.btn_mark_replaces.setEnabled(True)
             self.btn_cancel_succession.setVisible(True)
             self.btn_cancel_succession.setEnabled(True)
+            self.btn_batch_edit_libelle.setVisible(True)
+            self.btn_batch_edit_libelle.setEnabled(True)
+            self.btn_mark_equivalent_group.setVisible(True)
+            self.btn_mark_equivalent_group.setEnabled(True)
+            self.btn_harmonize_labels.setVisible(False)
+            self.btn_export_selection.setText(f"Exporter la sélection ({n})")
+            self.btn_export_selection.setVisible(True)
+            self.btn_export_selection.setEnabled(True)
             return
 
         # ── Sélection unique : chips ──────────────────────────────────────
@@ -1092,6 +1160,17 @@ class PiecesManagerWindow(QDialog):
         self.superseded_section.setVisible(True)
         self.replaces_section.setVisible(True)
         self.btn_cancel_succession.setVisible(False)  # chips suffisent en mono-sélection
+        self.btn_batch_edit_libelle.setVisible(False)
+        self.btn_mark_equivalent_group.setVisible(False)
+
+        # Libellés divergents au sein du groupe d'équivalence (C)
+        labels_differ = self.all_statuses.get(ref_piece, {}).get('labels_differ', False)
+        self.btn_harmonize_labels.setVisible(bool(equivalents) and labels_differ)
+        self.btn_harmonize_labels.setEnabled(bool(equivalents) and labels_differ)
+
+        self.btn_export_selection.setText("Exporter la sélection (1)")
+        self.btn_export_selection.setVisible(True)
+        self.btn_export_selection.setEnabled(True)
 
     def _on_mark_superseded(self):
         """Déclarer que les pièces sélectionnées sont remplacées par une autre."""
@@ -1256,6 +1335,111 @@ class PiecesManagerWindow(QDialog):
             self._refresh_succession_panel(self._current_ref_piece)
             self._update_table_display()
 
+    _format_refs_recap = staticmethod(_format_refs_recap)
+
+    def _on_batch_edit_libelle(self):
+        """Appliquer le même libellé à toutes les pièces sélectionnées (action D/A)."""
+        refs = self._get_selected_refs()
+        if len(refs) < 2:
+            return
+
+        new_desc, ok = QInputDialog.getText(
+            self, "Modifier le libellé",
+            f"Nouveau libellé pour les {len(refs)} pièces sélectionnées :"
+        )
+        if not ok:
+            return
+
+        confirm = QMessageBox.question(
+            self, "Modifier le libellé",
+            f"Le libellé de {len(refs)} pièces va devenir « {new_desc} » :\n"
+            f"{self._format_refs_recap(refs)}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        updated = self.db_manager.set_description_for_refs(refs, new_desc)
+        if updated:
+            self._notify_history(
+                f"Libellé :\n==> {updated} pièce(s) → « {new_desc} » ({self._format_refs_recap(refs)})"
+            )
+            self._load_pieces_data()
+
+    def _on_mark_equivalent_group(self):
+        """Fusionner toutes les pièces sélectionnées dans un seul groupe d'équivalence (action D)."""
+        refs = self._get_selected_refs()
+        if len(refs) < 2:
+            return
+
+        confirm = QMessageBox.question(
+            self, "Marquer comme équivalentes",
+            f"Fusionner ces {len(refs)} pièces dans un seul groupe d'équivalence ?\n"
+            f"{self._format_refs_recap(refs)}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        errors = []
+        for ref_b in refs[1:]:
+            success, error_msg = self.db_manager.add_equivalence(refs[0], ref_b)
+            if not success:
+                errors.append(f"{ref_b} : {error_msg}")
+
+        self._notify_history(
+            f"Équivalence :\n==> {len(refs)} pièces fusionnées en un groupe ({self._format_refs_recap(refs)})"
+        )
+        self._update_table_display()
+        if errors:
+            QMessageBox.warning(self, "Erreur", "\n".join(errors))
+
+    def _on_harmonize_labels(self):
+        """Harmoniser les libellés divergents d'un groupe d'équivalence (action C)."""
+        ref_piece = self._current_ref_piece
+        if not ref_piece:
+            return
+
+        equivalents = self.db_manager.get_equivalents(ref_piece)
+        if not equivalents:
+            return
+
+        group_refs = [ref_piece] + equivalents
+
+        descs = []
+        for r in group_refs:
+            d = self._desc_by_ref.get(r, "")
+            if d not in descs:
+                descs.append(d)
+
+        if len(descs) < 2:
+            return
+
+        choices = []
+        for d in descs:
+            count = sum(1 for r in group_refs if self._desc_by_ref.get(r, "") == d)
+            label_display = d if d else "(vide)"
+            choices.append(f"{label_display}  —  {count} pièce(s)")
+
+        choice, ok = QInputDialog.getItem(
+            self, "Harmoniser les libellés",
+            f"Libellés actuels du groupe ({self._format_refs_recap(group_refs)}) :\n"
+            f"Choisir le libellé à appliquer à toutes les pièces du groupe :",
+            choices, 0, False
+        )
+        if not ok:
+            return
+
+        chosen_desc = descs[choices.index(choice)]
+
+        updated = self.db_manager.set_description_for_refs(group_refs, chosen_desc)
+        if updated:
+            self._notify_history(
+                f"Libellé :\n==> {updated} pièce(s) harmonisées → « {chosen_desc} » "
+                f"({self._format_refs_recap(group_refs)})"
+            )
+            self._load_pieces_data()
+
     # ── Équivalences ────────────────────────────────────────────────────────
 
     def _refresh_equivalence_panel(self, ref_piece):
@@ -1386,6 +1570,17 @@ class PiecesManagerWindow(QDialog):
         except Exception:
             pass
 
+    @staticmethod
+    def _write_pieces_csv(filename, rows):
+        """Écrire une liste de lignes (ref, description, nb_appareils, types_appareils) en CSV."""
+        import csv
+        with open(filename, 'w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, delimiter=';')
+            writer.writerow(['Référence Pièce', 'Libellé', 'Nb Appareils', "Types d'Appareils"])
+            for row in rows:
+                ref_piece, description, nb_appareils, types_appareils = row[0], row[1], row[2], row[3]
+                writer.writerow([ref_piece, description, nb_appareils, types_appareils or ""])
+
     @handle_ui_errors(log_prefix="Erreur export pièces", show_message=True)
     def _export_pieces(self, checked=False):
         """Exporter la liste des pièces"""
@@ -1397,17 +1592,28 @@ class PiecesManagerWindow(QDialog):
         )
 
         if filename:
-            import csv
-            with open(filename, 'w', newline='', encoding='utf-8') as file:
-                writer = csv.writer(file, delimiter=';')
-                writer.writerow(['Référence Pièce', 'Libellé', 'Nb Appareils', "Types d'Appareils"])
-
-                filtered_data = self._get_filtered_data()
-                for row in filtered_data:
-                    ref_piece, description, nb_appareils, types_appareils = row[0], row[1], row[2], row[3]
-                    writer.writerow([ref_piece, description, nb_appareils, types_appareils or ""])
-
+            self._write_pieces_csv(filename, self._get_filtered_data())
             QMessageBox.information(self, "Export réussi", f"Liste exportée vers:\n{filename}")
+
+    @handle_ui_errors(log_prefix="Erreur export sélection pièces", show_message=True)
+    def _export_selected_pieces(self, checked=False):
+        """Exporter uniquement les pièces sélectionnées"""
+        from .qt_imports import QFileDialog
+
+        selected_refs = set(self._get_selected_refs())
+        if not selected_refs:
+            return
+
+        rows = [row for row in self._get_filtered_data() if row[0] in selected_refs]
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Exporter la sélection", "pieces_selection.csv",
+            "Fichiers CSV (*.csv)"
+        )
+
+        if filename:
+            self._write_pieces_csv(filename, rows)
+            QMessageBox.information(self, "Export réussi", f"Sélection exportée vers:\n{filename}")
     
     def _do_delete_piece(self, ref_piece: str):
         """Suppression effective d'une pièce : associations puis pièce (sans commit — l'appelant commite)."""
@@ -1510,11 +1716,12 @@ class PiecesManagerWindow(QDialog):
     
     def _do_edit_piece(self, current_ref: str, current_desc: str):
         """Logique commune d'édition d'une pièce : dialogue, validation, mise à jour DB, historique."""
-        dialog = PieceEditDialog(self, current_ref, current_desc)
+        equivalents = self.db_manager.get_equivalents(current_ref)
+        dialog = PieceEditDialog(self, current_ref, current_desc, equivalents)
         if dialog.exec_() != QDialog.Accepted:
             return
 
-        new_ref, new_desc = dialog.get_values()
+        new_ref, new_desc, propagate = dialog.get_values()
 
         if not new_ref:
             QMessageBox.warning(self, "Erreur", "La référence ne peut pas être vide.")
@@ -1538,6 +1745,15 @@ class PiecesManagerWindow(QDialog):
             msg = _format_piece_edit_history(current_ref, new_ref, current_desc, new_desc)
             if msg:
                 self.parent().user_interaction_service.add_to_history(msg)
+
+        if propagate and equivalents:
+            updated = self.db_manager.set_description_for_refs(equivalents, new_desc)
+            if updated and hasattr(self.parent(), 'user_interaction_service'):
+                self.parent().user_interaction_service.add_to_history(
+                    f"Libellé :\n==> {updated} pièce(s) équivalente(s) → « {new_desc} » "
+                    f"({_format_refs_recap(equivalents)})"
+                )
+                self._load_pieces_data()
 
     @handle_ui_errors(log_prefix="Erreur modification pièce", show_message=True)
     def _edit_selected_piece(self, checked=False):
@@ -1606,14 +1822,14 @@ class PiecesManagerWindow(QDialog):
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""
     
-    def __init__(self, parent, current_ref, current_desc):
+    def __init__(self, parent, current_ref, current_desc, equivalents=None):
         super().__init__(parent)
         self.setWindowTitle("Modifier la pièce")
         self.setModal(True)
         self.resize(400, 150)
-        
+
         layout = QVBoxLayout()
-        
+
         # Champ référence
         ref_layout = QHBoxLayout()
         ref_layout.addWidget(QLabel("Référence:"))
@@ -1621,7 +1837,7 @@ class PieceEditDialog(QDialog):
         self.ref_input.setPlaceholderText("Référence de la pièce")
         ref_layout.addWidget(self.ref_input)
         layout.addLayout(ref_layout)
-        
+
         # Champ libellé
         desc_layout = QHBoxLayout()
         desc_layout.addWidget(QLabel("Libellé:"))
@@ -1629,7 +1845,19 @@ class PieceEditDialog(QDialog):
         self.desc_input.setPlaceholderText("Libellé de la pièce (optionnel)")
         desc_layout.addWidget(self.desc_input)
         layout.addLayout(desc_layout)
-        
+
+        # Propagation au groupe d'équivalence (B)
+        self.equivalents = equivalents or []
+        self.propagate_checkbox = QCheckBox()
+        if self.equivalents:
+            self.propagate_checkbox.setText(
+                f"Appliquer aussi ce libellé aux {len(self.equivalents)} pièces équivalentes "
+                f"({_format_refs_recap(self.equivalents)})"
+            )
+            layout.addWidget(self.propagate_checkbox)
+        else:
+            self.propagate_checkbox.setVisible(False)
+
         # Boutons
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
@@ -1654,4 +1882,5 @@ class PieceEditDialog(QDialog):
         
     def get_values(self):
         """Retourner les valeurs saisies"""
-        return self.ref_input.text().strip(), self.desc_input.text().strip()
+        return (self.ref_input.text().strip(), self.desc_input.text().strip(),
+                self.propagate_checkbox.isChecked())
