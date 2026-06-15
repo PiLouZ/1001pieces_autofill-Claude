@@ -206,6 +206,7 @@ class PiecesManagerWindow(QDialog):
             ('replacing',  'Remplaçantes',  'fa5s.level-up-alt',            '#2980b9'),
             ('equivalent', 'Équivalentes',  'fa5s.exchange-alt',            '#8e44ad'),
             ('current',    'Courantes',     'fa5s.check-circle',            '#27ae60'),
+            ('inconsistent', 'Libellés incohérents', 'fa5s.exclamation-circle', '#d35400'),
         ]
         def _make_icon_toggle(b, iname, icolor):
             def _on_toggled(checked):
@@ -492,6 +493,14 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
         succ_action_row.addWidget(self.btn_mark_equivalent_group)
 
+        self.btn_harmonize_labels = QPushButton("Harmoniser les libellés…")
+        self.btn_harmonize_labels.setToolTip(
+            "Les pièces équivalentes n'ont pas le même libellé — choisir celui à appliquer à tout le groupe")
+        self.btn_harmonize_labels.setStyleSheet("color: #d35400; font-size: 11px;")
+        self.btn_harmonize_labels.setVisible(False)
+        self.btn_harmonize_labels.clicked.connect(self._on_harmonize_labels)
+        succ_action_row.addWidget(self.btn_harmonize_labels)
+
         self.btn_export_selection = QPushButton("Exporter la sélection")
         self.btn_export_selection.setToolTip(
             "Exporter uniquement les pièces sélectionnées au format CSV")
@@ -624,6 +633,18 @@ class PiecesManagerWindow(QDialog):
         self.all_pieces_data = results
         all_refs = [r[0] for r in results if r[0]]
         self.all_statuses = self.db_manager.get_pieces_statuses_batch(all_refs)
+
+        # Détection des libellés divergents au sein d'un groupe d'équivalence (C+I)
+        self._desc_by_ref = {r[0]: (r[1] or "") for r in results}
+        for ref, status in self.all_statuses.items():
+            equiv_str = status.get('equivalents')
+            if equiv_str:
+                group_refs = [ref] + [e.strip() for e in equiv_str.split(',') if e.strip()]
+                descs = {self._desc_by_ref.get(r, "") for r in group_refs}
+                status['labels_differ'] = len(descs) > 1
+            else:
+                status['labels_differ'] = False
+
         self._update_table_display()
 
     # ── Widget d'actions flottant ─────────────────────────────────────────────
@@ -796,6 +817,9 @@ class PiecesManagerWindow(QDialog):
                         if (statuses.get(r[0] or '', {}).get('status') == 'current'
                             and not statuses.get(r[0] or '', {}).get('is_obsolete')
                             and not (len(r) > 4 and r[4] == 1))]
+        elif active == 'inconsistent':
+            filtered = [r for r in filtered
+                        if statuses.get(r[0] or '', {}).get('labels_differ')]
 
         return filtered
         
@@ -1063,6 +1087,7 @@ class PiecesManagerWindow(QDialog):
             self.btn_cancel_succession.setEnabled(False)
             self.btn_batch_edit_libelle.setVisible(False)
             self.btn_mark_equivalent_group.setVisible(False)
+            self.btn_harmonize_labels.setVisible(False)
             self.btn_export_selection.setVisible(False)
             return
 
@@ -1085,6 +1110,7 @@ class PiecesManagerWindow(QDialog):
             self.btn_batch_edit_libelle.setEnabled(True)
             self.btn_mark_equivalent_group.setVisible(True)
             self.btn_mark_equivalent_group.setEnabled(True)
+            self.btn_harmonize_labels.setVisible(False)
             self.btn_export_selection.setText(f"Exporter la sélection ({n})")
             self.btn_export_selection.setVisible(True)
             self.btn_export_selection.setEnabled(True)
@@ -1136,6 +1162,12 @@ class PiecesManagerWindow(QDialog):
         self.btn_cancel_succession.setVisible(False)  # chips suffisent en mono-sélection
         self.btn_batch_edit_libelle.setVisible(False)
         self.btn_mark_equivalent_group.setVisible(False)
+
+        # Libellés divergents au sein du groupe d'équivalence (C)
+        labels_differ = self.all_statuses.get(ref_piece, {}).get('labels_differ', False)
+        self.btn_harmonize_labels.setVisible(bool(equivalents) and labels_differ)
+        self.btn_harmonize_labels.setEnabled(bool(equivalents) and labels_differ)
+
         self.btn_export_selection.setText("Exporter la sélection (1)")
         self.btn_export_selection.setVisible(True)
         self.btn_export_selection.setEnabled(True)
@@ -1361,6 +1393,52 @@ class PiecesManagerWindow(QDialog):
         self._update_table_display()
         if errors:
             QMessageBox.warning(self, "Erreur", "\n".join(errors))
+
+    def _on_harmonize_labels(self):
+        """Harmoniser les libellés divergents d'un groupe d'équivalence (action C)."""
+        ref_piece = self._current_ref_piece
+        if not ref_piece:
+            return
+
+        equivalents = self.db_manager.get_equivalents(ref_piece)
+        if not equivalents:
+            return
+
+        group_refs = [ref_piece] + equivalents
+
+        descs = []
+        for r in group_refs:
+            d = self._desc_by_ref.get(r, "")
+            if d not in descs:
+                descs.append(d)
+
+        if len(descs) < 2:
+            return
+
+        choices = []
+        for d in descs:
+            count = sum(1 for r in group_refs if self._desc_by_ref.get(r, "") == d)
+            label_display = d if d else "(vide)"
+            choices.append(f"{label_display}  —  {count} pièce(s)")
+
+        choice, ok = QInputDialog.getItem(
+            self, "Harmoniser les libellés",
+            f"Libellés actuels du groupe ({self._format_refs_recap(group_refs)}) :\n"
+            f"Choisir le libellé à appliquer à toutes les pièces du groupe :",
+            choices, 0, False
+        )
+        if not ok:
+            return
+
+        chosen_desc = descs[choices.index(choice)]
+
+        updated = self.db_manager.set_description_for_refs(group_refs, chosen_desc)
+        if updated:
+            self._notify_history(
+                f"Libellé :\n==> {updated} pièce(s) harmonisées → « {chosen_desc} » "
+                f"({self._format_refs_recap(group_refs)})"
+            )
+            self._load_pieces_data()
 
     # ── Équivalences ────────────────────────────────────────────────────────
 
