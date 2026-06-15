@@ -224,6 +224,28 @@ class DatabaseSupersessionMixin:
             app_logger.error(f"Erreur get_equivalents({ref_piece}): {e}")
             return []
 
+    def set_description_for_refs(self, refs: list, description: str) -> int:
+        """
+        Appliquer le même libellé à plusieurs pièces en une seule transaction.
+
+        Returns: nombre de lignes effectivement modifiées.
+        """
+        if not refs:
+            return 0
+        try:
+            with self._query_lock:
+                placeholders = ",".join("?" * len(refs))
+                self.cursor.execute(
+                    f"UPDATE pieces SET description = ? WHERE ref_piece IN ({placeholders})",
+                    [description, *refs]
+                )
+                updated = self.cursor.rowcount
+                self.conn.commit()
+            return updated
+        except Exception as e:
+            app_logger.error(f"Erreur set_description_for_refs({refs} → '{description}'): {e}")
+            return 0
+
     def get_piece_status(self, ref_piece: str) -> dict:
         """
         Retourner le statut de succession d'une référence pièce.

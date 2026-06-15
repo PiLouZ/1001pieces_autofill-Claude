@@ -5,7 +5,7 @@ Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QTableWidgetItem, QLabel, QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
-                           QApplication, QWidget, QMenu,
+                           QApplication, QWidget, QMenu, QInputDialog,
                            Qt, QTimer, pyqtSignal, QColor,
                            QButtonGroup, QFont,
                            QFrame, QSize, QCursor, QPalette,
@@ -467,6 +467,23 @@ class PiecesManagerWindow(QDialog):
         self.btn_unlink_equiv.setVisible(False)
         self.btn_unlink_equiv.clicked.connect(self._on_unlink_equiv)
         succ_action_row.addWidget(self.btn_unlink_equiv)
+
+        # ── Actions de groupe (multi-sélection) ────────────────────────────
+        self.btn_batch_edit_libelle = QPushButton("Modifier le libellé…")
+        self.btn_batch_edit_libelle.setToolTip(
+            "Appliquer le même libellé à toutes les pièces sélectionnées")
+        self.btn_batch_edit_libelle.setStyleSheet("font-size: 11px;")
+        self.btn_batch_edit_libelle.setVisible(False)
+        self.btn_batch_edit_libelle.clicked.connect(self._on_batch_edit_libelle)
+        succ_action_row.addWidget(self.btn_batch_edit_libelle)
+
+        self.btn_mark_equivalent_group = QPushButton("Marquer comme équivalentes")
+        self.btn_mark_equivalent_group.setToolTip(
+            "Fusionner toutes les pièces sélectionnées dans un seul groupe d'équivalence")
+        self.btn_mark_equivalent_group.setStyleSheet("color: #8e44ad; font-size: 11px;")
+        self.btn_mark_equivalent_group.setVisible(False)
+        self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
+        succ_action_row.addWidget(self.btn_mark_equivalent_group)
 
         succ_action_row.addStretch()
         side_layout.addLayout(succ_action_row)
@@ -1029,6 +1046,8 @@ class PiecesManagerWindow(QDialog):
             self.btn_mark_replaces.setEnabled(False)
             self.btn_cancel_succession.setVisible(False)
             self.btn_cancel_succession.setEnabled(False)
+            self.btn_batch_edit_libelle.setVisible(False)
+            self.btn_mark_equivalent_group.setVisible(False)
             return
 
         # ── Multi-sélection : boutons batch, pas de chips ─────────────────
@@ -1046,6 +1065,10 @@ class PiecesManagerWindow(QDialog):
             self.btn_mark_replaces.setEnabled(True)
             self.btn_cancel_succession.setVisible(True)
             self.btn_cancel_succession.setEnabled(True)
+            self.btn_batch_edit_libelle.setVisible(True)
+            self.btn_batch_edit_libelle.setEnabled(True)
+            self.btn_mark_equivalent_group.setVisible(True)
+            self.btn_mark_equivalent_group.setEnabled(True)
             return
 
         # ── Sélection unique : chips ──────────────────────────────────────
@@ -1092,6 +1115,8 @@ class PiecesManagerWindow(QDialog):
         self.superseded_section.setVisible(True)
         self.replaces_section.setVisible(True)
         self.btn_cancel_succession.setVisible(False)  # chips suffisent en mono-sélection
+        self.btn_batch_edit_libelle.setVisible(False)
+        self.btn_mark_equivalent_group.setVisible(False)
 
     def _on_mark_superseded(self):
         """Déclarer que les pièces sélectionnées sont remplacées par une autre."""
@@ -1255,6 +1280,70 @@ class PiecesManagerWindow(QDialog):
             self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
             self._update_table_display()
+
+    @staticmethod
+    def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
+        """Formater une liste de refs pour un récapitulatif de confirmation."""
+        if len(refs) <= max_shown:
+            return ", ".join(refs)
+        return ", ".join(refs[:max_shown]) + f", … et {len(refs) - max_shown} autre(s)"
+
+    def _on_batch_edit_libelle(self):
+        """Appliquer le même libellé à toutes les pièces sélectionnées (action D/A)."""
+        refs = self._get_selected_refs()
+        if len(refs) < 2:
+            return
+
+        new_desc, ok = QInputDialog.getText(
+            self, "Modifier le libellé",
+            f"Nouveau libellé pour les {len(refs)} pièces sélectionnées :"
+        )
+        if not ok:
+            return
+
+        confirm = QMessageBox.question(
+            self, "Modifier le libellé",
+            f"Le libellé de {len(refs)} pièces va devenir « {new_desc} » :\n"
+            f"{self._format_refs_recap(refs)}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        updated = self.db_manager.set_description_for_refs(refs, new_desc)
+        if updated:
+            self._notify_history(
+                f"Libellé :\n==> {updated} pièce(s) → « {new_desc} » ({self._format_refs_recap(refs)})"
+            )
+            self._load_pieces_data()
+
+    def _on_mark_equivalent_group(self):
+        """Fusionner toutes les pièces sélectionnées dans un seul groupe d'équivalence (action D)."""
+        refs = self._get_selected_refs()
+        if len(refs) < 2:
+            return
+
+        confirm = QMessageBox.question(
+            self, "Marquer comme équivalentes",
+            f"Fusionner ces {len(refs)} pièces dans un seul groupe d'équivalence ?\n"
+            f"{self._format_refs_recap(refs)}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        errors = []
+        for ref_b in refs[1:]:
+            success, error_msg = self.db_manager.add_equivalence(refs[0], ref_b)
+            if not success:
+                errors.append(f"{ref_b} : {error_msg}")
+
+        self._notify_history(
+            f"Équivalence :\n==> {len(refs)} pièces fusionnées en un groupe ({self._format_refs_recap(refs)})"
+        )
+        self._update_table_display()
+        if errors:
+            QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
     # ── Équivalences ────────────────────────────────────────────────────────
 
