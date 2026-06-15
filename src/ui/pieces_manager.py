@@ -5,13 +5,20 @@ Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QTableWidgetItem, QLabel, QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
-                           QApplication, QWidget, QMenu, QInputDialog,
+                           QApplication, QWidget, QMenu, QInputDialog, QCheckBox,
                            Qt, QTimer, pyqtSignal, QColor,
                            QButtonGroup, QFont,
                            QFrame, QSize, QCursor, QPalette,
                            QEvent, QStackedWidget, QProgressBar)
 from typing import List, Tuple, Dict
 import qtawesome as qta
+
+
+def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
+    """Formater une liste de refs pour un récapitulatif de confirmation."""
+    if len(refs) <= max_shown:
+        return ", ".join(refs)
+    return ", ".join(refs[:max_shown]) + f", … et {len(refs) - max_shown} autre(s)"
 
 from ..core.config import Config
 from ..utils.error_handler import handle_ui_errors
@@ -1281,12 +1288,7 @@ class PiecesManagerWindow(QDialog):
             self._refresh_succession_panel(self._current_ref_piece)
             self._update_table_display()
 
-    @staticmethod
-    def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
-        """Formater une liste de refs pour un récapitulatif de confirmation."""
-        if len(refs) <= max_shown:
-            return ", ".join(refs)
-        return ", ".join(refs[:max_shown]) + f", … et {len(refs) - max_shown} autre(s)"
+    _format_refs_recap = staticmethod(_format_refs_recap)
 
     def _on_batch_edit_libelle(self):
         """Appliquer le même libellé à toutes les pièces sélectionnées (action D/A)."""
@@ -1599,11 +1601,12 @@ class PiecesManagerWindow(QDialog):
     
     def _do_edit_piece(self, current_ref: str, current_desc: str):
         """Logique commune d'édition d'une pièce : dialogue, validation, mise à jour DB, historique."""
-        dialog = PieceEditDialog(self, current_ref, current_desc)
+        equivalents = self.db_manager.get_equivalents(current_ref)
+        dialog = PieceEditDialog(self, current_ref, current_desc, equivalents)
         if dialog.exec_() != QDialog.Accepted:
             return
 
-        new_ref, new_desc = dialog.get_values()
+        new_ref, new_desc, propagate = dialog.get_values()
 
         if not new_ref:
             QMessageBox.warning(self, "Erreur", "La référence ne peut pas être vide.")
@@ -1627,6 +1630,15 @@ class PiecesManagerWindow(QDialog):
             msg = _format_piece_edit_history(current_ref, new_ref, current_desc, new_desc)
             if msg:
                 self.parent().user_interaction_service.add_to_history(msg)
+
+        if propagate and equivalents:
+            updated = self.db_manager.set_description_for_refs(equivalents, new_desc)
+            if updated and hasattr(self.parent(), 'user_interaction_service'):
+                self.parent().user_interaction_service.add_to_history(
+                    f"Libellé :\n==> {updated} pièce(s) équivalente(s) → « {new_desc} » "
+                    f"({_format_refs_recap(equivalents)})"
+                )
+                self._load_pieces_data()
 
     @handle_ui_errors(log_prefix="Erreur modification pièce", show_message=True)
     def _edit_selected_piece(self, checked=False):
@@ -1695,14 +1707,14 @@ class PiecesManagerWindow(QDialog):
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""
     
-    def __init__(self, parent, current_ref, current_desc):
+    def __init__(self, parent, current_ref, current_desc, equivalents=None):
         super().__init__(parent)
         self.setWindowTitle("Modifier la pièce")
         self.setModal(True)
         self.resize(400, 150)
-        
+
         layout = QVBoxLayout()
-        
+
         # Champ référence
         ref_layout = QHBoxLayout()
         ref_layout.addWidget(QLabel("Référence:"))
@@ -1710,7 +1722,7 @@ class PieceEditDialog(QDialog):
         self.ref_input.setPlaceholderText("Référence de la pièce")
         ref_layout.addWidget(self.ref_input)
         layout.addLayout(ref_layout)
-        
+
         # Champ libellé
         desc_layout = QHBoxLayout()
         desc_layout.addWidget(QLabel("Libellé:"))
@@ -1718,7 +1730,19 @@ class PieceEditDialog(QDialog):
         self.desc_input.setPlaceholderText("Libellé de la pièce (optionnel)")
         desc_layout.addWidget(self.desc_input)
         layout.addLayout(desc_layout)
-        
+
+        # Propagation au groupe d'équivalence (B)
+        self.equivalents = equivalents or []
+        self.propagate_checkbox = QCheckBox()
+        if self.equivalents:
+            self.propagate_checkbox.setText(
+                f"Appliquer aussi ce libellé aux {len(self.equivalents)} pièces équivalentes "
+                f"({_format_refs_recap(self.equivalents)})"
+            )
+            layout.addWidget(self.propagate_checkbox)
+        else:
+            self.propagate_checkbox.setVisible(False)
+
         # Boutons
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
@@ -1743,4 +1767,5 @@ class PieceEditDialog(QDialog):
         
     def get_values(self):
         """Retourner les valeurs saisies"""
-        return self.ref_input.text().strip(), self.desc_input.text().strip()
+        return (self.ref_input.text().strip(), self.desc_input.text().strip(),
+                self.propagate_checkbox.isChecked())
