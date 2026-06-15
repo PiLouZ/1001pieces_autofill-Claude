@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.48.0] - 2026-06-15
+
+### Feat — Gestion groupée des libellés et des équivalences (gestionnaire de pièces)
+
+- **Grouper la sélection en équivalence** : en sélectionnant plusieurs pièces
+  dans le tableau, un bouton « Marquer comme équivalentes » fusionne toutes
+  les pièces sélectionnées dans un seul groupe d'équivalence.
+- **Modifier le libellé en masse** : bouton « Modifier le libellé… » applique
+  le même libellé à toutes les pièces sélectionnées en une seule transaction
+  (`set_description_for_refs`), avec récapitulatif de confirmation.
+- **Propagation à l'édition simple** : en éditant le libellé d'une pièce ayant
+  des équivalents, une case à cocher permet d'appliquer le nouveau libellé à
+  tout le groupe d'équivalence.
+- **Exporter la sélection** : nouveau bouton « Exporter la sélection (N) »
+  pour exporter en CSV uniquement les pièces sélectionnées.
+- **Libellés incohérents** : nouveau filtre rapide repérant les pièces dont
+  le groupe d'équivalence contient des libellés divergents, avec un bouton
+  « Harmoniser les libellés… » pour choisir le libellé à propager à tout le
+  groupe.
+
 ## [3.47.0] - 2026-06-12
 
 ### Feat — Navigation clavier du tableau principal
