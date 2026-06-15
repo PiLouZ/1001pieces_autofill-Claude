@@ -153,20 +153,26 @@ class PiecesManagerWindow(QDialog):
     def _init_ui(self):
         """Initialiser l'interface utilisateur"""
         layout = QVBoxLayout()
-        
+
         # Titre et statistiques
         header_layout = QHBoxLayout()
         title_label = QLabel("Gestionnaire des Pièces")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
         header_layout.addWidget(title_label)
-        
+
         self.stats_label = QLabel("Chargement...")
         self.stats_label.setStyleSheet(f"color: {Config.Colors.TEXT_MUTED}; margin: 10px;")
         header_layout.addWidget(self.stats_label)
+
+        # Nombre de références actuellement affichées (après recherche/filtre)
+        self.filtered_count_label = QLabel("")
+        self.filtered_count_label.setStyleSheet(f"color: {Config.Colors.TEXT_MUTED}; margin: 10px;")
+        header_layout.addWidget(self.filtered_count_label)
+
         header_layout.addStretch()
-        
+
         layout.addLayout(header_layout)
-        
+
         # Barre de recherche
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("Recherche :"))
@@ -187,22 +193,38 @@ class PiecesManagerWindow(QDialog):
         refresh_btn.clicked.connect(self._load_pieces_data)
         search_layout.addWidget(refresh_btn)
 
-        # Indicateur de sélection persistante (sticky) — visible dès qu'au moins
-        # une pièce est sélectionnée, y compris si elle est masquée par la recherche.
+        layout.addLayout(search_layout)
+
+        # ── Bannière de sélection persistante (sticky) ──────────────────────
+        # Bandeau dédié, masqué tant qu'aucune pièce n'est sélectionnée — les
+        # pièces sélectionnées restent « cochées » même si une recherche les
+        # masque temporairement (voir _sync_sticky_selection).
+        self.sticky_banner_frame = QFrame()
+        self.sticky_banner_frame.setStyleSheet(
+            "QFrame { background: #f3e9f8; border: 1px solid #d9b8ec; border-radius: 4px; }"
+        )
+        self.sticky_banner_frame.setVisible(False)
+        sticky_banner_layout = QHBoxLayout(self.sticky_banner_frame)
+        sticky_banner_layout.setContentsMargins(8, 3, 8, 3)
+
+        sticky_icon_label = QLabel()
+        sticky_icon_label.setPixmap(qta.icon('fa5s.thumbtack', color='#8e44ad').pixmap(QSize(12, 12)))
+        sticky_banner_layout.addWidget(sticky_icon_label)
+
         self.sticky_selection_label = QLabel("")
         self.sticky_selection_label.setStyleSheet("color: #8e44ad; font-size: 11px; font-weight: bold;")
-        self.sticky_selection_label.setVisible(False)
-        search_layout.addWidget(self.sticky_selection_label)
+        sticky_banner_layout.addWidget(self.sticky_selection_label)
+
+        sticky_banner_layout.addStretch()
 
         self.btn_clear_sticky_selection = QPushButton("Désélectionner tout")
         self.btn_clear_sticky_selection.setStyleSheet("font-size: 11px; padding: 2px 6px;")
-        self.btn_clear_sticky_selection.setVisible(False)
         self.btn_clear_sticky_selection.clicked.connect(self._clear_sticky_selection)
-        search_layout.addWidget(self.btn_clear_sticky_selection)
+        sticky_banner_layout.addWidget(self.btn_clear_sticky_selection)
 
-        layout.addLayout(search_layout)
+        layout.addWidget(self.sticky_banner_frame)
 
-        # Barre de filtres rapides
+        # ── Barre de filtres rapides, regroupée en 3 clusters thématiques ───
         filter_layout = QHBoxLayout()
         filter_layout.addWidget(QLabel("Filtrer :"))
 
@@ -210,39 +232,68 @@ class PiecesManagerWindow(QDialog):
         self._filter_group.setExclusive(True)
         self._active_filter = 'all'
 
-        _filter_defs = [
-            ('all',        'Toutes',        'fa5s.list',                    '#495057'),
-            ('orphan',     'Orphelines',    'fa5s.unlink',                  '#c0392b'),
-            ('phantom',    'Fantômes',      'fa5s.ghost',                   '#7f8c8d'),
-            ('superseded', 'Remplacées',    'fa5s.long-arrow-alt-right',    '#e67e22'),
-            ('obsolete',   'Obsolètes',     'fa5s.exclamation-triangle',    '#e67e22'),
-            ('replacing',  'Remplaçantes',  'fa5s.level-up-alt',            '#2980b9'),
-            ('equivalent', 'Équivalentes',  'fa5s.exchange-alt',            '#8e44ad'),
-            ('current',    'Courantes',     'fa5s.check-circle',            '#27ae60'),
-            ('inconsistent', 'Libellés incohérents', 'fa5s.exclamation-circle', '#d35400'),
+        # Clusters : (libellé du cluster, [(clé, label, icône, couleur), ...])
+        _filter_clusters = [
+            ('général', [
+                ('all',     'Toutes',     'fa5s.list',   '#495057'),
+                ('orphan',  'Orphelines', 'fa5s.unlink', '#c0392b'),
+                ('phantom', 'Fantômes',   'fa5s.ghost',  '#7f8c8d'),
+            ]),
+            ('succession', [
+                ('obsolete',   'Obsolètes',    'fa5s.exclamation-triangle', '#e67e22'),
+                ('superseded', 'Remplacées',   'fa5s.long-arrow-alt-right', '#e67e22'),
+                ('replacing',  'Remplaçantes', 'fa5s.level-up-alt',         '#2980b9'),
+                ('current',    'Courantes',    'fa5s.check-circle',         '#27ae60'),
+            ]),
+            ('équivalences', [
+                ('equivalent',   'Équivalentes',         'fa5s.exchange-alt',       '#8e44ad'),
+                ('inconsistent', 'Libellés incohérents', 'fa5s.exclamation-circle', '#d35400'),
+            ]),
         ]
+
         def _make_icon_toggle(b, iname, icolor):
             def _on_toggled(checked):
                 b.setIcon(qta.icon(iname, color='white' if checked else icolor))
             return _on_toggled
 
         self._filter_btns = {}
-        for i, (key, label, icon_name, icon_color) in enumerate(_filter_defs):
-            btn = QPushButton(label)
-            is_checked = (key == 'all')
-            btn.setIcon(qta.icon(icon_name, color='white' if is_checked else icon_color))
-            btn.setIconSize(QSize(11, 11))
-            btn.setCheckable(True)
-            btn.setChecked(is_checked)
-            btn.setProperty('filter_key', key)
-            btn.setStyleSheet("""
-                QPushButton { padding: 2px 6px; font-size: 11px; }
-                QPushButton:checked { background-color: #495057; color: white; border-radius: 3px; }
-            """)
-            btn.toggled.connect(_make_icon_toggle(btn, icon_name, icon_color))
-            self._filter_group.addButton(btn, i)
-            filter_layout.addWidget(btn)
-            self._filter_btns[key] = btn
+        btn_index = 0
+        for cluster_idx, (cluster_label, defs) in enumerate(_filter_clusters):
+            if cluster_idx > 0:
+                separator = QFrame()
+                separator.setFrameShape(QFrame.VLine)
+                separator.setFrameShadow(QFrame.Sunken)
+                filter_layout.addWidget(separator)
+
+            cluster_col = QVBoxLayout()
+            cluster_col.setSpacing(1)
+
+            cluster_title = QLabel(cluster_label)
+            cluster_title.setStyleSheet("color: #adb5bd; font-size: 9px;")
+            cluster_col.addWidget(cluster_title)
+
+            cluster_row = QHBoxLayout()
+            cluster_row.setSpacing(4)
+            for key, label, icon_name, icon_color in defs:
+                btn = QPushButton(label)
+                is_checked = (key == 'all')
+                btn.setIcon(qta.icon(icon_name, color='white' if is_checked else icon_color))
+                btn.setIconSize(QSize(11, 11))
+                btn.setCheckable(True)
+                btn.setChecked(is_checked)
+                btn.setProperty('filter_key', key)
+                btn.setStyleSheet("""
+                    QPushButton { padding: 2px 6px; font-size: 11px; }
+                    QPushButton:checked { background-color: #495057; color: white; border-radius: 3px; }
+                """)
+                btn.toggled.connect(_make_icon_toggle(btn, icon_name, icon_color))
+                self._filter_group.addButton(btn, btn_index)
+                btn_index += 1
+                cluster_row.addWidget(btn)
+                self._filter_btns[key] = btn
+
+            cluster_col.addLayout(cluster_row)
+            filter_layout.addLayout(cluster_col)
 
         self._filter_group.buttonClicked.connect(self._on_filter_changed)
         filter_layout.addStretch()
@@ -359,70 +410,11 @@ class PiecesManagerWindow(QDialog):
         self.succession_status_label.setWordWrap(True)
         side_layout.addWidget(self.succession_status_label)
 
-        # ── 3 sections égales ─────────────────────────────────────────────────
+        # ── 2 zones : Équivalences (prioritaire) / Succession + actions ────────
         sections_splitter = QSplitter(Qt.Vertical)
         sections_splitter.setChildrenCollapsible(False)
 
-        # Section "↳ Remplacée par"
-        superseded_section = QFrame()
-        superseded_section.setFrameShape(QFrame.StyledPanel)
-        superseded_section.setObjectName("superseded_section")
-        self.superseded_section = superseded_section
-        sup_sec_layout = QVBoxLayout(superseded_section)
-        sup_sec_layout.setContentsMargins(6, 4, 6, 4)
-        sup_sec_layout.setSpacing(3)
-
-        superseded_hdr = QHBoxLayout()
-        lbl_sup = QLabel("↳ Remplacée par")
-        lbl_sup.setStyleSheet("color: #e67e22; font-weight: bold; font-size: 11px;")
-        superseded_hdr.addWidget(lbl_sup)
-        superseded_hdr.addStretch()
-        self.btn_mark_superseded = QPushButton("+ Déclarer remplacée par…")
-        self.btn_mark_superseded.setStyleSheet(
-            "QPushButton { color: #e67e22; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
-        )
-        self.btn_mark_superseded.setFlat(True)
-        self.btn_mark_superseded.clicked.connect(self._on_mark_superseded)
-        superseded_hdr.addWidget(self.btn_mark_superseded)
-        sup_sec_layout.addLayout(superseded_hdr)
-
-        self.superseded_by_tag_list = RefTagList()
-        self.superseded_by_tag_list.enable_full_height_mode()
-        self.superseded_by_tag_list.ref_removed.connect(self._on_remove_superseded_by)
-        sup_sec_layout.addWidget(self.superseded_by_tag_list, 1)
-        sections_splitter.addWidget(superseded_section)
-
-        # Section "↑ Remplace"
-        replaces_section = QFrame()
-        replaces_section.setFrameShape(QFrame.StyledPanel)
-        self.replaces_section = replaces_section
-        rep_sec_layout = QVBoxLayout(replaces_section)
-        rep_sec_layout.setContentsMargins(6, 4, 6, 4)
-        rep_sec_layout.setSpacing(3)
-
-        replaces_hdr = QHBoxLayout()
-        lbl_rep = QLabel("↑ Remplace")
-        lbl_rep.setStyleSheet("color: #2980b9; font-weight: bold; font-size: 11px;")
-        replaces_hdr.addWidget(lbl_rep)
-        replaces_hdr.addStretch()
-        self.btn_mark_replaces = QPushButton("+ Ajouter une référence remplacée…")
-        self.btn_mark_replaces.setStyleSheet(
-            "QPushButton { color: #2980b9; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
-        )
-        self.btn_mark_replaces.setFlat(True)
-        self.btn_mark_replaces.clicked.connect(self._on_mark_replaces)
-        replaces_hdr.addWidget(self.btn_mark_replaces)
-        rep_sec_layout.addLayout(replaces_hdr)
-
-        self.replaces_tag_list = RefTagList()
-        self.replaces_tag_list.enable_full_height_mode()
-        self.replaces_tag_list.ref_removed.connect(self._on_remove_replaces)
-        rep_sec_layout.addWidget(self.replaces_tag_list, 1)
-        sections_splitter.addWidget(replaces_section)
-
-        # Section "≡ Équivalences"
+        # Section "≡ Équivalences" — zone prioritaire en haut
         equiv_section = QFrame()
         equiv_section.setFrameShape(QFrame.StyledPanel)
         self.equiv_section = equiv_section
@@ -458,11 +450,80 @@ class PiecesManagerWindow(QDialog):
         eq_sec_layout.addWidget(self.equiv_tag_list, 1)
         sections_splitter.addWidget(equiv_section)
 
+        # ── Zone "Succession" (Remplace / Remplacée par en 2 colonnes + actions) ──
+        succession_combined = QFrame()
+        succession_combined.setFrameShape(QFrame.StyledPanel)
+        succ_combined_layout = QVBoxLayout(succession_combined)
+        succ_combined_layout.setContentsMargins(6, 4, 6, 4)
+        succ_combined_layout.setSpacing(4)
+
+        succession_row = QHBoxLayout()
+        succession_row.setSpacing(6)
+
+        # Colonne "↑ Remplace"
+        replaces_section = QFrame()
+        replaces_section.setFrameShape(QFrame.StyledPanel)
+        self.replaces_section = replaces_section
+        rep_sec_layout = QVBoxLayout(replaces_section)
+        rep_sec_layout.setContentsMargins(6, 4, 6, 4)
+        rep_sec_layout.setSpacing(3)
+
+        replaces_hdr = QHBoxLayout()
+        lbl_rep = QLabel("↑ Remplace")
+        lbl_rep.setStyleSheet("color: #2980b9; font-weight: bold; font-size: 11px;")
+        replaces_hdr.addWidget(lbl_rep)
+        replaces_hdr.addStretch()
+        self.btn_mark_replaces = QPushButton("+ Ajouter une référence remplacée…")
+        self.btn_mark_replaces.setStyleSheet(
+            "QPushButton { color: #2980b9; font-size: 11px; border: none; }"
+            "QPushButton:hover { text-decoration: underline; }"
+        )
+        self.btn_mark_replaces.setFlat(True)
+        self.btn_mark_replaces.clicked.connect(self._on_mark_replaces)
+        replaces_hdr.addWidget(self.btn_mark_replaces)
+        rep_sec_layout.addLayout(replaces_hdr)
+
+        self.replaces_tag_list = RefTagList()
+        self.replaces_tag_list.enable_full_height_mode()
+        self.replaces_tag_list.ref_removed.connect(self._on_remove_replaces)
+        rep_sec_layout.addWidget(self.replaces_tag_list, 1)
+        succession_row.addWidget(replaces_section)
+
+        # Colonne "↳ Remplacée par"
+        superseded_section = QFrame()
+        superseded_section.setFrameShape(QFrame.StyledPanel)
+        superseded_section.setObjectName("superseded_section")
+        self.superseded_section = superseded_section
+        sup_sec_layout = QVBoxLayout(superseded_section)
+        sup_sec_layout.setContentsMargins(6, 4, 6, 4)
+        sup_sec_layout.setSpacing(3)
+
+        superseded_hdr = QHBoxLayout()
+        lbl_sup = QLabel("↳ Remplacée par")
+        lbl_sup.setStyleSheet("color: #e67e22; font-weight: bold; font-size: 11px;")
+        superseded_hdr.addWidget(lbl_sup)
+        superseded_hdr.addStretch()
+        self.btn_mark_superseded = QPushButton("+ Déclarer remplacée par…")
+        self.btn_mark_superseded.setStyleSheet(
+            "QPushButton { color: #e67e22; font-size: 11px; border: none; }"
+            "QPushButton:hover { text-decoration: underline; }"
+        )
+        self.btn_mark_superseded.setFlat(True)
+        self.btn_mark_superseded.clicked.connect(self._on_mark_superseded)
+        superseded_hdr.addWidget(self.btn_mark_superseded)
+        sup_sec_layout.addLayout(superseded_hdr)
+
+        self.superseded_by_tag_list = RefTagList()
+        self.superseded_by_tag_list.enable_full_height_mode()
+        self.superseded_by_tag_list.ref_removed.connect(self._on_remove_superseded_by)
+        sup_sec_layout.addWidget(self.superseded_by_tag_list, 1)
+        succession_row.addWidget(superseded_section)
+
+        succ_combined_layout.addLayout(succession_row)
+
         # succ_single_widget : wrapper fantôme gardé pour la compatibilité
         self.succ_single_widget = QWidget()
         self.succ_single_widget.setVisible(False)  # never shown, kept for compat
-
-        side_layout.addWidget(sections_splitter, 1)
 
         # btn_mark_obsolete : conservé comme widget orphelin pour la compatibilité
         # avec _refresh_succession_panel (setEnabled / setText) — non affiché dans l'UI
@@ -471,62 +532,86 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_obsolete.setEnabled(False)
         self.btn_mark_obsolete.clicked.connect(self._on_mark_obsolete)
 
-        # ── Lignes d'actions communes (2 rangées pour éviter la troncature) ────
-        succ_action_row = QHBoxLayout()
-        succ_action_row2 = QHBoxLayout()
-        self.btn_cancel_succession = QPushButton("Annuler la succession")
+        # ── Approche A : actions regroupées en sous-sections avec mini-titres ──
+        self.btn_cancel_succession = QPushButton("Supprimer les liens de succession")
+        self.btn_cancel_succession.setIcon(qta.icon('fa5s.ban', color='#e67e22'))
+        self.btn_cancel_succession.setIconSize(QSize(11, 11))
         self.btn_cancel_succession.setToolTip("Supprimer tous les liens de succession pour les pièces sélectionnées")
         self.btn_cancel_succession.setEnabled(False)
         self.btn_cancel_succession.setStyleSheet("font-size: 11px;")
         self.btn_cancel_succession.clicked.connect(self._on_cancel_succession)
         self.btn_cancel_succession.setVisible(False)
-        succ_action_row.addWidget(self.btn_cancel_succession)
 
         self.btn_unlink_equiv = QPushButton("Retirer du groupe")
+        self.btn_unlink_equiv.setIcon(qta.icon('fa5s.unlink', color='#E05252'))
+        self.btn_unlink_equiv.setIconSize(QSize(11, 11))
         self.btn_unlink_equiv.setToolTip("Retirer la pièce sélectionnée de son groupe d'équivalence")
         self.btn_unlink_equiv.setEnabled(False)
         self.btn_unlink_equiv.setStyleSheet("QPushButton { color: #E05252; font-size: 11px; }")
         self.btn_unlink_equiv.setVisible(False)
         self.btn_unlink_equiv.clicked.connect(self._on_unlink_equiv)
-        succ_action_row.addWidget(self.btn_unlink_equiv)
 
-        # ── Actions de groupe (multi-sélection) ────────────────────────────
-        self.btn_batch_edit_libelle = QPushButton("Modifier le libellé…")
-        self.btn_batch_edit_libelle.setToolTip(
-            "Appliquer le même libellé à toutes les pièces sélectionnées")
-        self.btn_batch_edit_libelle.setStyleSheet("font-size: 11px;")
-        self.btn_batch_edit_libelle.setVisible(False)
-        self.btn_batch_edit_libelle.clicked.connect(self._on_batch_edit_libelle)
-        succ_action_row2.addWidget(self.btn_batch_edit_libelle)
-
-        self.btn_mark_equivalent_group = QPushButton("Marquer comme équivalentes")
+        self.btn_mark_equivalent_group = QPushButton("Fusionner en un groupe d'équivalents")
+        self.btn_mark_equivalent_group.setIcon(qta.icon('fa5s.link', color='#8e44ad'))
+        self.btn_mark_equivalent_group.setIconSize(QSize(11, 11))
         self.btn_mark_equivalent_group.setToolTip(
             "Fusionner toutes les pièces sélectionnées dans un seul groupe d'équivalence")
         self.btn_mark_equivalent_group.setStyleSheet("color: #8e44ad; font-size: 11px;")
         self.btn_mark_equivalent_group.setVisible(False)
         self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
-        succ_action_row2.addWidget(self.btn_mark_equivalent_group)
 
         self.btn_harmonize_labels = QPushButton("Harmoniser les libellés…")
+        self.btn_harmonize_labels.setIcon(qta.icon('fa5s.palette', color='#d35400'))
+        self.btn_harmonize_labels.setIconSize(QSize(11, 11))
         self.btn_harmonize_labels.setToolTip(
             "Les pièces équivalentes n'ont pas le même libellé — choisir celui à appliquer à tout le groupe")
         self.btn_harmonize_labels.setStyleSheet("color: #d35400; font-size: 11px;")
         self.btn_harmonize_labels.setVisible(False)
         self.btn_harmonize_labels.clicked.connect(self._on_harmonize_labels)
-        succ_action_row2.addWidget(self.btn_harmonize_labels)
+
+        # ── Actions de groupe (multi-sélection) ────────────────────────────
+        self.btn_batch_edit_libelle = QPushButton("Modifier le libellé…")
+        self.btn_batch_edit_libelle.setIcon(qta.icon('fa5s.edit', color='#1565C0'))
+        self.btn_batch_edit_libelle.setIconSize(QSize(11, 11))
+        self.btn_batch_edit_libelle.setToolTip(
+            "Appliquer le même libellé à toutes les pièces sélectionnées")
+        self.btn_batch_edit_libelle.setStyleSheet("font-size: 11px;")
+        self.btn_batch_edit_libelle.setVisible(False)
+        self.btn_batch_edit_libelle.clicked.connect(self._on_batch_edit_libelle)
 
         self.btn_export_selection = QPushButton("Exporter la sélection")
+        self.btn_export_selection.setIcon(qta.icon('fa5s.file-export', color='#555555'))
+        self.btn_export_selection.setIconSize(QSize(11, 11))
         self.btn_export_selection.setToolTip(
             "Exporter uniquement les pièces sélectionnées au format CSV")
         self.btn_export_selection.setStyleSheet("font-size: 11px;")
         self.btn_export_selection.setVisible(False)
         self.btn_export_selection.clicked.connect(self._export_selected_pieces)
-        succ_action_row.addWidget(self.btn_export_selection)
 
-        succ_action_row.addStretch()
-        succ_action_row2.addStretch()
-        side_layout.addLayout(succ_action_row)
-        side_layout.addLayout(succ_action_row2)
+        # Sous-sections : (titre, [boutons]) — le titre est masqué si aucun
+        # bouton de la sous-section n'est visible (voir _sync_action_sections)
+        self._action_sections = []
+        for section_title, buttons in [
+            ("SUCCESSION",       [self.btn_cancel_succession]),
+            ("ÉQUIVALENCES",     [self.btn_unlink_equiv, self.btn_mark_equivalent_group, self.btn_harmonize_labels]),
+            ("LIBELLÉ & EXPORT", [self.btn_batch_edit_libelle, self.btn_export_selection]),
+        ]:
+            title_lbl = QLabel(section_title)
+            title_lbl.setStyleSheet("color: #adb5bd; font-size: 9px; font-weight: bold;")
+            succ_combined_layout.addWidget(title_lbl)
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(6)
+            for btn in buttons:
+                btn_row.addWidget(btn)
+            btn_row.addStretch()
+            succ_combined_layout.addLayout(btn_row)
+            self._action_sections.append((title_lbl, buttons))
+
+        sections_splitter.addWidget(succession_combined)
+        sections_splitter.setStretchFactor(0, 3)
+        sections_splitter.setStretchFactor(1, 2)
+
+        side_layout.addWidget(sections_splitter, 1)
 
         # Clic gauche sur une référence dans les fieldsets → recherche dans le gestionnaire
         self.superseded_by_tag_list.ref_clicked.connect(self._search_in_manager)
@@ -700,6 +785,14 @@ class PiecesManagerWindow(QDialog):
             self._table_stack.setCurrentIndex(1)
 
         filtered_data = self._get_filtered_data()
+
+        from src.core.config import pluralize
+        total = len(getattr(self, 'all_pieces_data', []))
+        if len(filtered_data) != total:
+            self.filtered_count_label.setText(f"— {pluralize(len(filtered_data), 'affichée')}")
+        else:
+            self.filtered_count_label.setText("")
+
         if hasattr(self, '_floating_actions'):
             self._floating_actions.setVisible(False)
         self.pieces_table.blockSignals(True)
@@ -1134,12 +1227,11 @@ class PiecesManagerWindow(QDialog):
         """Afficher/masquer l'indicateur de sélection persistante près de la recherche."""
         n = len(self._sticky_selected_refs)
         if n > 0:
-            self.sticky_selection_label.setText(f"{n} pièce(s) sélectionnée(s)")
-            self.sticky_selection_label.setVisible(True)
-            self.btn_clear_sticky_selection.setVisible(True)
+            from src.core.config import pluralize
+            self.sticky_selection_label.setText(f"{pluralize(n, 'pièce')} sélectionnée(s) — les actions ci-dessous s'appliquent à toutes")
+            self.sticky_banner_frame.setVisible(True)
         else:
-            self.sticky_selection_label.setVisible(False)
-            self.btn_clear_sticky_selection.setVisible(False)
+            self.sticky_banner_frame.setVisible(False)
 
     def _clear_sticky_selection(self, checked=False):
         """Vider la sélection persistante et la sélection visible du tableau."""
@@ -1153,6 +1245,18 @@ class PiecesManagerWindow(QDialog):
         self._refresh_equivalence_panel(None)
 
     def _refresh_succession_panel(self, ref_piece):
+        """Mettre à jour le panneau Succession, puis synchroniser les mini-titres des
+        sous-sections d'actions (Approche A) en fonction des boutons visibles."""
+        self._refresh_succession_panel_impl(ref_piece)
+        self._sync_action_sections()
+
+    def _sync_action_sections(self):
+        """Masquer le mini-titre d'une sous-section d'actions si aucun de ses
+        boutons n'est visible (Approche A)."""
+        for title_lbl, buttons in getattr(self, '_action_sections', []):
+            title_lbl.setVisible(any(b.isVisible() for b in buttons))
+
+    def _refresh_succession_panel_impl(self, ref_piece):
         """Mettre à jour le panneau Succession pour la pièce courante (dernière sélectionnée)."""
         selected = self._get_selected_refs()
         n = len(selected)
@@ -1533,6 +1637,12 @@ class PiecesManagerWindow(QDialog):
     # ── Équivalences ────────────────────────────────────────────────────────
 
     def _refresh_equivalence_panel(self, ref_piece):
+        """Mettre à jour le panneau Équivalences, puis synchroniser les mini-titres
+        des sous-sections d'actions (Approche A)."""
+        self._refresh_equivalence_panel_impl(ref_piece)
+        self._sync_action_sections()
+
+    def _refresh_equivalence_panel_impl(self, ref_piece):
         """Mettre à jour le panneau Équivalences pour la pièce courante."""
         selected = self._get_selected_refs()
         n = len(selected)

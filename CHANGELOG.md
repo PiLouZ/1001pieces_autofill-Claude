@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.50.0] - 2026-06-15
+
+### Refonte — Interface du gestionnaire de pièces (Maquette 2)
+
+- **En-tête enrichi** : affichage du nombre de références affichées en plus
+  des statistiques globales ("N affichée(s)") dès qu'un filtre ou une
+  recherche réduit la liste.
+- **Bannière de sélection persistante dédiée** : l'indicateur "N pièce(s)
+  sélectionnée(s)" et le bouton "Désélectionner tout" sont regroupés dans un
+  bandeau violet distinct (icône punaise), affiché uniquement si au moins une
+  pièce est sélectionnée.
+- **Filtres regroupés en 3 clusters thématiques** (général / succession /
+  équivalences) avec séparateurs verticaux et mini-libellés, pour clarifier le
+  rôle de chaque filtre rapide.
+- **Panneau latéral réorganisé en 2 zones** : "Équivalences" en zone
+  prioritaire (haut), "Succession" (Remplace / Remplacée par, désormais
+  côte à côte sur 2 colonnes) + actions en bas.
+- **Barre d'actions repensée (Approche A)** : sous-sections avec mini-titres
+  ("SUCCESSION", "ÉQUIVALENCES", "LIBELLÉ & EXPORT"), icônes qtawesome,
+  renommages ("Supprimer les liens de succession", "Fusionner en un groupe
+  d'équivalents"). Chaque mini-titre est masqué automatiquement si aucun de
+  ses boutons n'est visible (mono-sélection).
+
 ## [3.49.0] - 2026-06-15
 
 ### Fix — Sélection persistante (sticky) dans le gestionnaire de pièces
