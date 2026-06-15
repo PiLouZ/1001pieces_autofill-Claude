@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.49.0] - 2026-06-15
+
+### Fix — Sélection persistante (sticky) dans le gestionnaire de pièces
+
+- **Bug corrigé** : une multi-sélection de pièces était perdue dès qu'une
+  recherche (ou un changement de filtre) reconstruisait le tableau —
+  seule la dernière pièce cliquée était restaurée.
+- La sélection est maintenant **persistante (sticky)** : les pièces
+  sélectionnées restent « cochées » même si une recherche les masque
+  temporairement, et redeviennent sélectionnées dès qu'elles redeviennent
+  visibles — permet de composer une sélection multi-pièces sur plusieurs
+  recherches successives.
+- Un indicateur « N pièce(s) sélectionnée(s) » + bouton « Désélectionner tout »
+  apparaît près de la barre de recherche dès qu'au moins une pièce est
+  sélectionnée.
+
 ## [3.48.0] - 2026-06-15
 
 ### Feat — Gestion groupée des libellés et des équivalences (gestionnaire de pièces)

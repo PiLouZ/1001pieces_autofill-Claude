@@ -22,7 +22,7 @@ from PyQt5.QtCore import (
     Qt, QTimer, QSettings, QEvent, QSize, QRect, QPoint,
     QMimeData, QUrl, QThread, QRunnable, QThreadPool,
     QObject, pyqtSignal, pyqtSlot, QVariant, QModelIndex,
-    QAbstractTableModel, QStringListModel
+    QAbstractTableModel, QStringListModel, QItemSelectionModel
 )
 
 # GUI et graphiques
@@ -51,7 +51,7 @@ __all__ = [
     # Core
     'Qt', 'QTimer', 'QSettings', 'QEvent', 'QSize', 'QRect', 'QPoint',
     'QMimeData', 'QUrl', 'QThread', 'QRunnable', 'QThreadPool',
-    'QObject', 'pyqtSignal', 'pyqtSlot', 'QVariant',
+    'QObject', 'pyqtSignal', 'pyqtSlot', 'QVariant', 'QItemSelectionModel',
     
     # GUI
     'QKeySequence', 'QPainter', 'QPen', 'QColor', 'QBrush', 'QKeyEvent',

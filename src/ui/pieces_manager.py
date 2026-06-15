@@ -9,7 +9,7 @@ from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            Qt, QTimer, pyqtSignal, QColor,
                            QButtonGroup, QFont,
                            QFrame, QSize, QCursor, QPalette,
-                           QEvent, QStackedWidget, QProgressBar)
+                           QEvent, QStackedWidget, QProgressBar, QItemSelectionModel)
 from typing import List, Tuple, Dict
 import qtawesome as qta
 
@@ -186,6 +186,19 @@ class PiecesManagerWindow(QDialog):
         refresh_btn.setStyleSheet(StyleManager.REFRESH_BUTTON)
         refresh_btn.clicked.connect(self._load_pieces_data)
         search_layout.addWidget(refresh_btn)
+
+        # Indicateur de sélection persistante (sticky) — visible dès qu'au moins
+        # une pièce est sélectionnée, y compris si elle est masquée par la recherche.
+        self.sticky_selection_label = QLabel("")
+        self.sticky_selection_label.setStyleSheet("color: #8e44ad; font-size: 11px; font-weight: bold;")
+        self.sticky_selection_label.setVisible(False)
+        search_layout.addWidget(self.sticky_selection_label)
+
+        self.btn_clear_sticky_selection = QPushButton("Désélectionner tout")
+        self.btn_clear_sticky_selection.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_clear_sticky_selection.setVisible(False)
+        self.btn_clear_sticky_selection.clicked.connect(self._clear_sticky_selection)
+        search_layout.addWidget(self.btn_clear_sticky_selection)
 
         layout.addLayout(search_layout)
 
@@ -527,6 +540,11 @@ class PiecesManagerWindow(QDialog):
         # Référence courante sélectionnée (pour les callbacks)
         self._current_ref_piece = None
 
+        # Sélection persistante (sticky) : refs sélectionnées par l'utilisateur,
+        # conservées même quand une recherche/filtre les masque temporairement —
+        # permet de composer une sélection multi-pièces sur plusieurs recherches.
+        self._sticky_selected_refs = set()
+
         main_splitter.addWidget(side_panel)
         # Taille initiale : 70% tableau / 30% panneau latéral
         main_splitter.setStretchFactor(0, 7)
@@ -747,33 +765,59 @@ class PiecesManagerWindow(QDialog):
 
         self.pieces_table.blockSignals(False)
 
-        # Restaurer la sélection et les panneaux si la pièce courante est toujours visible
-        # selectRow() est utilisé (pas setCurrentCell) car en ExtendedSelection,
-        # setCurrentCell ne sélectionne pas réellement la ligne → selectedIndexes() resterait
-        # vide → has_selection = False → sections du panneau cachées à tort.
+        # Restaurer la sélection persistante (sticky) et les panneaux.
+        # selectionModel().select(..., Select | Rows) est utilisé (pas selectRow,
+        # qui ne cumule PAS les lignes — chaque appel remplace la sélection
+        # précédente) ni setCurrentCell (qui en ExtendedSelection ne sélectionne
+        # pas réellement la ligne → selectedIndexes() resterait vide).
         ref = getattr(self, '_current_ref_piece', None)
-        if ref:
-            found = False
-            for row in range(self.pieces_table.rowCount()):
-                item = self.pieces_table.item(row, 0)
-                if item and (item.data(Qt.UserRole) or item.text()) == ref:
-                    self.pieces_table.selectRow(row)
-                    found = True
-                    break
-            if found:
-                self._refresh_succession_panel(ref)
-                self._refresh_equivalence_panel(ref)
-            else:
-                # La pièce courante n'est plus dans la liste filtrée (recherche /
-                # filtre / suppression) : on remet le panneau dans un état « rien
-                # de sélectionné » COHÉRENT — sinon l'en-tête garderait l'ancienne
-                # pièce alors que le reste du panneau s'est vidé (bug des blocs
-                # qui « disparaissent »).
-                self._current_ref_piece = None
-                self.panel_header_label.setText("—")
-                self.details_text.clear()
-                self._refresh_succession_panel(None)
-                self._refresh_equivalence_panel(None)
+        restored = []  # [(row, item_ref), ...] — toutes les refs sticky encore visibles
+        # blockSignals pendant la boucle : sinon chaque select() émet
+        # itemSelectionChanged → _sync_sticky_selection() re-synchronise sur une
+        # sélection PARTIELLEMENT restaurée et retire les refs pas encore
+        # re-sélectionnées de _sticky_selected_refs (perte de sélection).
+        self.pieces_table.blockSignals(True)
+        selection_model = self.pieces_table.selectionModel()
+        for row in range(self.pieces_table.rowCount()):
+            item = self.pieces_table.item(row, 0)
+            if item:
+                item_ref = item.data(Qt.UserRole) or item.text()
+                if item_ref in self._sticky_selected_refs:
+                    selection_model.select(
+                        self.pieces_table.model().index(row, 0),
+                        QItemSelectionModel.Select | QItemSelectionModel.Rows
+                    )
+                    restored.append((row, item_ref))
+        self.pieces_table.blockSignals(False)
+
+        target_row, target_ref = None, None
+        for row, item_ref in restored:
+            if item_ref == ref:
+                target_row, target_ref = row, item_ref
+                break
+        if target_ref is None and restored:
+            target_row, target_ref = restored[-1]
+
+        self._update_sticky_selection_indicator()
+
+        if target_ref:
+            self._current_ref_piece = target_ref
+            if target_ref != ref:
+                self._update_panel_header(target_ref)
+                self._load_piece_details(target_ref)
+            self._refresh_succession_panel(target_ref)
+            self._refresh_equivalence_panel(target_ref)
+        elif ref:
+            # La pièce courante n'est plus dans la liste filtrée (recherche /
+            # filtre / suppression) : on remet le panneau dans un état « rien
+            # de sélectionné » COHÉRENT — sinon l'en-tête garderait l'ancienne
+            # pièce alors que le reste du panneau s'est vidé (bug des blocs
+            # qui « disparaissent »).
+            self._current_ref_piece = None
+            self.panel_header_label.setText("—")
+            self.details_text.clear()
+            self._refresh_succession_panel(None)
+            self._refresh_equivalence_panel(None)
             
     def _get_filtered_data(self):
         """Obtenir les données filtrées selon les critères"""
@@ -980,6 +1024,7 @@ class PiecesManagerWindow(QDialog):
 
     def _on_piece_selected(self):
         """Quand une pièce est sélectionnée"""
+        self._sync_sticky_selection()
         current_row = self.pieces_table.currentRow()
         if current_row < 0:
             self.details_text.clear()
@@ -1055,8 +1100,8 @@ class PiecesManagerWindow(QDialog):
             
     # ── Succession ──────────────────────────────────────────────────────────
 
-    def _get_selected_refs(self) -> list:
-        """Retourner la liste des refs de toutes les lignes sélectionnées."""
+    def _get_visible_selected_refs(self) -> list:
+        """Retourner les refs des lignes sélectionnées dans le tableau affiché."""
         rows = sorted({idx.row() for idx in self.pieces_table.selectedIndexes()})
         refs = []
         for row in rows:
@@ -1064,6 +1109,48 @@ class PiecesManagerWindow(QDialog):
             if item:
                 refs.append(item.data(Qt.UserRole) or item.text())
         return refs
+
+    def _get_selected_refs(self) -> list:
+        """Retourner la liste des refs sélectionnées (persiste entre les recherches)."""
+        return sorted(self._sticky_selected_refs)
+
+    def _sync_sticky_selection(self):
+        """Synchroniser la sélection persistante avec la sélection visible.
+        Les refs visibles ajoutées/retirées de la sélection mettent à jour
+        _sticky_selected_refs ; les refs masquées par la recherche/filtre en
+        cours restent inchangées — ce qui permet de composer une sélection
+        multi-pièces à travers plusieurs recherches successives."""
+        visible_refs = set()
+        for row in range(self.pieces_table.rowCount()):
+            item = self.pieces_table.item(row, 0)
+            if item:
+                visible_refs.add(item.data(Qt.UserRole) or item.text())
+        visible_selected = set(self._get_visible_selected_refs())
+        self._sticky_selected_refs -= (visible_refs - visible_selected)
+        self._sticky_selected_refs |= visible_selected
+        self._update_sticky_selection_indicator()
+
+    def _update_sticky_selection_indicator(self):
+        """Afficher/masquer l'indicateur de sélection persistante près de la recherche."""
+        n = len(self._sticky_selected_refs)
+        if n > 0:
+            self.sticky_selection_label.setText(f"{n} pièce(s) sélectionnée(s)")
+            self.sticky_selection_label.setVisible(True)
+            self.btn_clear_sticky_selection.setVisible(True)
+        else:
+            self.sticky_selection_label.setVisible(False)
+            self.btn_clear_sticky_selection.setVisible(False)
+
+    def _clear_sticky_selection(self, checked=False):
+        """Vider la sélection persistante et la sélection visible du tableau."""
+        self._sticky_selected_refs.clear()
+        self.pieces_table.clearSelection()
+        self._current_ref_piece = None
+        self.panel_header_label.setText("—")
+        self.details_text.clear()
+        self._update_sticky_selection_indicator()
+        self._refresh_succession_panel(None)
+        self._refresh_equivalence_panel(None)
 
     def _refresh_succession_panel(self, ref_piece):
         """Mettre à jour le panneau Succession pour la pièce courante (dernière sélectionnée)."""
