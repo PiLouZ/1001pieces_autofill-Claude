@@ -1703,10 +1703,6 @@ class MainWindow(QMainWindow):
         if result.get('user_choice') == 'applied':
             # Rafraîchir l'affichage après nettoyage
             self._force_refresh_display()
-
-            # Invalider le cache des doublons après nettoyage
-            if hasattr(self, 'duplicate_indicator_service'):
-                self.duplicate_indicator_service.invalidate_cache("nettoyage doublons")
     
     def _manage_categories(self):
         """Gérer les catégories"""

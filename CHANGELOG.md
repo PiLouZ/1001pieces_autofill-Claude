@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.50.1] - 2026-06-15
+
+### Fix — bouton "Outils" reste rouge après marquage "distinct" dans le nettoyage des doublons
+
+- `prepare_data_cleaning()` invalide désormais systématiquement le cache de
+  `DuplicateIndicatorService` à la fermeture de la fenêtre "Nettoyage des
+  doublons", que l'utilisateur ait cliqué "Appliquer" ou "Annuler".
+- Cause : marquer un groupe comme "distinct" écrit directement la décision en
+  base (indépendamment de l'application du nettoyage), mais l'ancien code
+  n'invalidait le cache que sur `user_choice == 'applied'` — le bouton
+  "Outils" restait donc rouge si l'utilisateur annulait après un marquage.
+
 ## [3.50.0] - 2026-06-15
 
 ### Refonte — Interface du gestionnaire de pièces (Maquette 2)

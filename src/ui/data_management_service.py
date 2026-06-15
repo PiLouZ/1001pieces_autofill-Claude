@@ -181,6 +181,12 @@ class DataManagementService:
         result = preview_dialog.exec_()
         user_choice = preview_dialog.get_user_choice()
 
+        # Le marquage "distinct" d'un groupe écrit directement en base, indépendamment
+        # du résultat (Appliquer/Annuler) : invalider le cache des doublons systématiquement
+        # pour que le bouton "Outils" reflète l'état réel.
+        if hasattr(self.main_window, 'duplicate_indicator_service'):
+            self.main_window.duplicate_indicator_service.invalidate_cache("nettoyage doublons")
+
         # Si l'utilisateur a annulé ou fermé la fenêtre
         if result != QDialog.Accepted and user_choice != 'applied':
             return None
