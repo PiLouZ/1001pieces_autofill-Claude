@@ -492,6 +492,14 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
         succ_action_row.addWidget(self.btn_mark_equivalent_group)
 
+        self.btn_export_selection = QPushButton("Exporter la sélection")
+        self.btn_export_selection.setToolTip(
+            "Exporter uniquement les pièces sélectionnées au format CSV")
+        self.btn_export_selection.setStyleSheet("font-size: 11px;")
+        self.btn_export_selection.setVisible(False)
+        self.btn_export_selection.clicked.connect(self._export_selected_pieces)
+        succ_action_row.addWidget(self.btn_export_selection)
+
         succ_action_row.addStretch()
         side_layout.addLayout(succ_action_row)
 
@@ -1055,6 +1063,7 @@ class PiecesManagerWindow(QDialog):
             self.btn_cancel_succession.setEnabled(False)
             self.btn_batch_edit_libelle.setVisible(False)
             self.btn_mark_equivalent_group.setVisible(False)
+            self.btn_export_selection.setVisible(False)
             return
 
         # ── Multi-sélection : boutons batch, pas de chips ─────────────────
@@ -1076,6 +1085,9 @@ class PiecesManagerWindow(QDialog):
             self.btn_batch_edit_libelle.setEnabled(True)
             self.btn_mark_equivalent_group.setVisible(True)
             self.btn_mark_equivalent_group.setEnabled(True)
+            self.btn_export_selection.setText(f"Exporter la sélection ({n})")
+            self.btn_export_selection.setVisible(True)
+            self.btn_export_selection.setEnabled(True)
             return
 
         # ── Sélection unique : chips ──────────────────────────────────────
@@ -1124,6 +1136,9 @@ class PiecesManagerWindow(QDialog):
         self.btn_cancel_succession.setVisible(False)  # chips suffisent en mono-sélection
         self.btn_batch_edit_libelle.setVisible(False)
         self.btn_mark_equivalent_group.setVisible(False)
+        self.btn_export_selection.setText("Exporter la sélection (1)")
+        self.btn_export_selection.setVisible(True)
+        self.btn_export_selection.setEnabled(True)
 
     def _on_mark_superseded(self):
         """Déclarer que les pièces sélectionnées sont remplacées par une autre."""
@@ -1477,6 +1492,17 @@ class PiecesManagerWindow(QDialog):
         except Exception:
             pass
 
+    @staticmethod
+    def _write_pieces_csv(filename, rows):
+        """Écrire une liste de lignes (ref, description, nb_appareils, types_appareils) en CSV."""
+        import csv
+        with open(filename, 'w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, delimiter=';')
+            writer.writerow(['Référence Pièce', 'Libellé', 'Nb Appareils', "Types d'Appareils"])
+            for row in rows:
+                ref_piece, description, nb_appareils, types_appareils = row[0], row[1], row[2], row[3]
+                writer.writerow([ref_piece, description, nb_appareils, types_appareils or ""])
+
     @handle_ui_errors(log_prefix="Erreur export pièces", show_message=True)
     def _export_pieces(self, checked=False):
         """Exporter la liste des pièces"""
@@ -1488,17 +1514,28 @@ class PiecesManagerWindow(QDialog):
         )
 
         if filename:
-            import csv
-            with open(filename, 'w', newline='', encoding='utf-8') as file:
-                writer = csv.writer(file, delimiter=';')
-                writer.writerow(['Référence Pièce', 'Libellé', 'Nb Appareils', "Types d'Appareils"])
-
-                filtered_data = self._get_filtered_data()
-                for row in filtered_data:
-                    ref_piece, description, nb_appareils, types_appareils = row[0], row[1], row[2], row[3]
-                    writer.writerow([ref_piece, description, nb_appareils, types_appareils or ""])
-
+            self._write_pieces_csv(filename, self._get_filtered_data())
             QMessageBox.information(self, "Export réussi", f"Liste exportée vers:\n{filename}")
+
+    @handle_ui_errors(log_prefix="Erreur export sélection pièces", show_message=True)
+    def _export_selected_pieces(self, checked=False):
+        """Exporter uniquement les pièces sélectionnées"""
+        from .qt_imports import QFileDialog
+
+        selected_refs = set(self._get_selected_refs())
+        if not selected_refs:
+            return
+
+        rows = [row for row in self._get_filtered_data() if row[0] in selected_refs]
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Exporter la sélection", "pieces_selection.csv",
+            "Fichiers CSV (*.csv)"
+        )
+
+        if filename:
+            self._write_pieces_csv(filename, rows)
+            QMessageBox.information(self, "Export réussi", f"Sélection exportée vers:\n{filename}")
     
     def _do_delete_piece(self, ref_piece: str):
         """Suppression effective d'une pièce : associations puis pièce (sans commit — l'appelant commite)."""
