@@ -258,6 +258,9 @@ class CleanupPreviewDialog(QDialog):
         if self.devices_widget:
             self.devices_widget.devices_selection_changed.connect(self._update_buttons_state)
             self.devices_widget.groups_marked_distinct.connect(self._on_groups_marked_distinct)
+
+        if self.pieces_widget:
+            self.pieces_widget.pieces_selection_changed.connect(self._update_buttons_state)
             
         # Signaux des boutons
         self.preview_btn.clicked.connect(self._preview_changes)

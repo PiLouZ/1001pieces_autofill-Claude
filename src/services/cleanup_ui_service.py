@@ -39,19 +39,34 @@ class KeyboardTreeWidget(QTreeWidget):
         super().keyPressEvent(event)
 
     def contextMenuEvent(self, event):
-        """Gérer le menu contextuel pour copier une cellule"""
+        """Gérer le menu contextuel.
+
+        - Sur un appareil (item enfant) : action « Copier » de la cellule.
+        - Sur un groupe parent : action déléguée via le callback optionnel
+          `on_group_context_menu(group_item)` posé par le widget propriétaire
+          (sert au marquage « distinct » depuis l'arbre des appareils).
+        """
         item = self.itemAt(event.pos())
-        if item and item.parent() is not None:  # C'est un appareil (pas un groupe)
-            from ..ui.qt_imports import QMenu, QAction
-            from ..ui.qt_imports import QApplication
+        if not item:
+            return
 
+        from ..ui.qt_imports import QMenu, QAction
+
+        if item.parent() is not None:  # C'est un appareil (pas un groupe)
             menu = QMenu(self)
-
-            # Action pour copier la valeur de la cellule
             copy_action = QAction("Copier", self)
             copy_action.triggered.connect(lambda: self._copy_cell_value(item, self.currentColumn()))
             menu.addAction(copy_action)
+            menu.exec_(event.globalPos())
+            return
 
+        # Item parent (groupe) : déléguer au callback si présent
+        on_group = getattr(self, 'on_group_context_menu', None)
+        if callable(on_group):
+            menu = QMenu(self)
+            distinct_action = QAction("Marquer ce groupe comme distinct (faux doublon)", self)
+            distinct_action.triggered.connect(lambda: on_group(item))
+            menu.addAction(distinct_action)
             menu.exec_(event.globalPos())
 
     def _copy_cell_value(self, item, column):
@@ -210,6 +225,8 @@ class DuplicateDevicesWidget(QWidget):
         self.auto_select_newest_btn.clicked.connect(self._auto_select_newest)
         self.mark_distinct_btn.clicked.connect(self._mark_selected_as_distinct)
         self.devices_tree.itemSelectionChanged.connect(self._update_buttons_state)
+        # Clic droit sur un groupe parent : marquer ce groupe comme distinct
+        self.devices_tree.on_group_context_menu = self._on_group_context_distinct
         
     def populate_devices(self, duplicate_devices: List[Dict[str, Any]]):
         """Remplir la liste des appareils en doublon"""
@@ -458,12 +475,26 @@ class DuplicateDevicesWidget(QWidget):
         self.mark_distinct_btn.setEnabled(len(self._selected_groups()) > 0)
 
     def _mark_selected_as_distinct(self):
-        """Marquer le(s) groupe(s) sélectionné(s) comme distinct(s) — en masse."""
+        """Marquer le(s) groupe(s) sélectionné(s) comme distinct(s) — en masse (bouton)."""
         app_logger.info("BOUTON 'Marquer comme distinct(s)' cliqué")
         group_items = self._selected_groups()
-
         if not group_items:
             app_logger.warning("Aucun groupe sélectionné pour marquage distinct")
+            return
+        self._apply_distinct_marking(group_items)
+
+    def _on_group_context_distinct(self, group_item: QTreeWidgetItem):
+        """Marquer un groupe comme distinct depuis le menu contextuel (clic droit)."""
+        app_logger.info("MENU CONTEXTUEL 'Marquer ce groupe comme distinct'")
+        if group_item is not None:
+            self._apply_distinct_marking([group_item])
+
+    def _apply_distinct_marking(self, group_items: List[QTreeWidgetItem]):
+        """Cœur du marquage distinct : confirmation, écriture en base, retrait, signal.
+
+        Partagé par le bouton (sélection multiple) et le menu contextuel (un groupe).
+        """
+        if not group_items:
             return
 
         # Confirmation : ce marquage est ENREGISTRÉ IMMÉDIATEMENT en base, hors du
@@ -553,7 +584,9 @@ class DuplicateDevicesWidget(QWidget):
 
 class DuplicatePiecesWidget(QWidget):
     """Widget pour gérer les pièces dupliquées"""
-    
+
+    pieces_selection_changed = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.duplicate_pieces = []
@@ -585,58 +618,86 @@ class DuplicatePiecesWidget(QWidget):
         self.pieces_table.setColumnCount(3)
         self.pieces_table.setHorizontalHeaderLabels(["Supprimer", "Référence Pièce", "Nombre de doublons"])
         self.pieces_table.horizontalHeader().setStretchLastSection(True)
-        
+        # Tri par clic sur en-tête (ex. trier par nombre de doublons). Les cases sont
+        # des items checkables (et non des QCheckBox en cellWidget) : la coche voyage
+        # donc avec la ligne au tri, sans désynchronisation.
+        self.pieces_table.setSortingEnabled(True)
+
         layout.addWidget(self.pieces_table)
-        
+
         # Connecter les signaux
         self.select_all_pieces_btn.clicked.connect(self._select_all_pieces)
         self.select_none_pieces_btn.clicked.connect(self._select_none_pieces)
+        self.pieces_table.itemChanged.connect(self._on_piece_item_changed)
         
     def populate_pieces(self, duplicate_pieces: List[Dict[str, Any]]):
         """Remplir la table des pièces dupliquées"""
         self.duplicate_pieces = duplicate_pieces
+        # Désactiver le tri pendant le remplissage (sinon les lignes se réordonnent
+        # à chaque insertion). Réactivé après.
+        self.pieces_table.setSortingEnabled(False)
         self.pieces_table.setRowCount(len(duplicate_pieces))
-        
+
         for row, piece_data in enumerate(duplicate_pieces):
             ref_piece = piece_data['ref_piece']
             count = piece_data['count']
-            
-            # Checkbox
-            checkbox = QCheckBox()
-            self.pieces_table.setCellWidget(row, 0, checkbox)
-            
+
+            # Case à cocher = item checkable (colonne "Supprimer"). La coche voyage
+            # avec la ligne au tri (contrairement à un QCheckBox en cellWidget).
+            check_item = QTableWidgetItem()
+            check_item.setFlags(
+                (check_item.flags() | Qt.ItemIsUserCheckable) & ~Qt.ItemIsEditable
+            )
+            check_item.setCheckState(Qt.Unchecked)
+            self.pieces_table.setItem(row, 0, check_item)
+
             # Référence pièce
             ref_item = QTableWidgetItem(ref_piece)
             ref_item.setFlags(ref_item.flags() & ~Qt.ItemIsEditable)
             self.pieces_table.setItem(row, 1, ref_item)
-            
-            # Nombre de doublons
-            count_item = QTableWidgetItem(str(count))
+
+            # Nombre de doublons — donnée numérique pour un tri correct (10 > 9)
+            count_item = QTableWidgetItem()
+            count_item.setData(Qt.DisplayRole, int(count))
             count_item.setFlags(count_item.flags() & ~Qt.ItemIsEditable)
             self.pieces_table.setItem(row, 2, count_item)
-            
+
+        self.pieces_table.setSortingEnabled(True)
         self.pieces_table.resizeColumnsToContents()
-        
+
+    def _on_piece_item_changed(self, item):
+        """Émettre le signal de sélection quand une case (colonne 0) change."""
+        if item.column() == 0:
+            self.pieces_selection_changed.emit()
+
+    def _set_all_pieces_checked(self, checked: bool):
+        """Cocher/décocher toutes les pièces (un seul rafraîchissement de signal)."""
+        state = Qt.Checked if checked else Qt.Unchecked
+        table = self.pieces_table
+        blocked = table.blockSignals(True)
+        try:
+            for row in range(table.rowCount()):
+                item = table.item(row, 0)
+                if item:
+                    item.setCheckState(state)
+        finally:
+            table.blockSignals(blocked)
+        self.pieces_selection_changed.emit()
+
     def _select_all_pieces(self):
         """Sélectionner toutes les pièces"""
-        for row in range(self.pieces_table.rowCount()):
-            checkbox = self.pieces_table.cellWidget(row, 0)
-            if checkbox:
-                checkbox.setChecked(True)
-                
+        self._set_all_pieces_checked(True)
+
     def _select_none_pieces(self):
         """Désélectionner toutes les pièces"""
-        for row in range(self.pieces_table.rowCount()):
-            checkbox = self.pieces_table.cellWidget(row, 0)
-            if checkbox:
-                checkbox.setChecked(False)
-                
+        self._set_all_pieces_checked(False)
+
     def get_selected_pieces(self) -> List[str]:
         """Obtenir les références des pièces sélectionnées"""
         selected = []
         for row in range(self.pieces_table.rowCount()):
-            checkbox = self.pieces_table.cellWidget(row, 0)
-            if checkbox and checkbox.isChecked():
+            check_item = self.pieces_table.item(row, 0)
+            if check_item and check_item.checkState() == Qt.Checked:
                 ref_item = self.pieces_table.item(row, 1)
                 if ref_item:
                     selected.append(ref_item.text())

@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.51.1] - 2026-06-16
+
+### Nettoyage des doublons — marquage distinct par clic droit + tri de l'onglet Pièces
+
+- **Marquage « distinct » par clic droit** sur un groupe de l'arbre des appareils
+  (menu contextuel « Marquer ce groupe comme distinct (faux doublon) »), en plus du
+  bouton multi-sélection existant. La logique de marquage (confirmation, écriture,
+  retrait, stats live) est factorisée dans `_apply_distinct_marking()` ; le menu
+  contextuel générique de `KeyboardTreeWidget` délègue via un callback
+  `on_group_context_menu` (widget générique non couplé au métier).
+- **Onglet « Pièces dupliquées » triable** : tri par clic sur en-tête, avec tri
+  **numérique** sur « Nombre de doublons ». Les cases à cocher deviennent des items
+  checkables (au lieu de `QCheckBox` en `setCellWidget`) — la coche suit la ligne au
+  tri (plus de désynchronisation), et la barre espace fonctionne désormais sur cet
+  onglet.
+- Le bouton « Appliquer le nettoyage » réagit maintenant aussi à la sélection de
+  pièces (nouveau signal `pieces_selection_changed`).
+
 ## [3.51.0] - 2026-06-16
 
 ### Nettoyage des doublons — analyse ~1360× plus rapide + barre de progression réaliste
