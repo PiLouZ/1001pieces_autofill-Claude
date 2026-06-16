@@ -685,6 +685,13 @@ class MainWindow(QMainWindow):
         pieces_splitter.setStretchFactor(1, 1)  # Historique peut grandir
         
         layout.addWidget(pieces_splitter)
+
+        # Boutons d'export en bas de la colonne de droite (sous l'historique).
+        # Disposition inchangée (CSV/HTML Marques/HTML Détails, puis Méta Title/Desc) ;
+        # seul l'emplacement change, pour dégager totalement le bas du tableau.
+        if hasattr(self, 'ui_component_service') and self.ui_component_service:
+            self.ui_component_service.add_export_buttons(layout)
+
         return widget
 
     def _setup_drag_handle(self):

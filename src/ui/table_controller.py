@@ -514,10 +514,9 @@ class TableController:
         # Ajouter le conteneur recherche au layout (position par défaut : sous le tableau)
         layout.addWidget(self.search_container)
 
-        # Boutons d'export (si le service UI est disponible)
-        if hasattr(self, 'ui_component_service') and self.ui_component_service:
-            self.ui_component_service.add_export_buttons(layout)
-        
+        # Boutons d'export : déplacés en bas de la colonne de droite
+        # (cf. main_refactored._create_pieces_widget) pour dégager le bas du tableau.
+
         # Contrôles de pagination
         self._add_pagination_controls(layout)
         
