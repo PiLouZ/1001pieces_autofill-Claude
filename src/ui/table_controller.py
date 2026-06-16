@@ -274,8 +274,30 @@ class TableController:
         raz_btn.clicked.connect(self._clear_all_column_filters)
         filter_layout.addWidget(raz_btn, 0, Qt.AlignVCenter)
 
+        # Rangée d'en-tête avec le bouton repli/affichage des filtres colonnes.
+        # Placée JUSTE AU-DESSUS des filtres (toujours en haut du tableau), pour que
+        # bouton et filtres restent groupés quelle que soit la position de la recherche.
+        import qtawesome as _qta_filters
+        filters_header = QHBoxLayout()
+        filters_header.setContentsMargins(0, 0, 0, 0)
+        self.filters_toggle_btn = QToolButton()
+        self.filters_toggle_btn.setText(" Filtres ")
+        self.filters_toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.filters_toggle_btn.setCheckable(True)
+        self.filters_toggle_btn.setIcon(_qta_filters.icon('fa5s.caret-right', color='#555555'))
+        self.filters_toggle_btn.setToolTip("Afficher / masquer les filtres par colonne")
+        self.filters_toggle_btn.setStyleSheet(
+            "QToolButton { padding: 3px 9px; font-size: 11px; border: 1px solid #ced4da;"
+            " border-radius: 4px; background: #f8f9fa; }"
+            "QToolButton:checked { background: #e7f1ff; border-color: #0078d4; }"
+        )
+        self.filters_toggle_btn.toggled.connect(self._toggle_column_filters)
+        filters_header.addWidget(self.filters_toggle_btn, 0, Qt.AlignVCenter)
+        filters_header.addStretch()
+        layout.addLayout(filters_header)
+
         layout.addWidget(filter_widget)
-        
+
         # Sauvegarder les références pour la visibilité
         self.filter_widget = filter_widget
         self.filter_layout = filter_layout
@@ -493,7 +515,31 @@ class TableController:
         # Bouton pour lignes incomplètes
         self._add_incomplete_filter_button(layout)
 
+        # Appliquer l'état mémorisé des filtres colonnes (défaut : masqués)
+        _show_filters = False
+        if hasattr(self.parent_window, 'settings'):
+            _show_filters = self.parent_window.settings.value("ui/show_column_filters", False, type=bool)
+        self.filters_toggle_btn.blockSignals(True)
+        self.filters_toggle_btn.setChecked(_show_filters)
+        self.filters_toggle_btn.blockSignals(False)
+        self._apply_column_filters_visibility(_show_filters)
+
         return widget
+
+    def _toggle_column_filters(self, checked: bool):
+        """Afficher/masquer la rangée de filtres par colonne + mémoriser l'état."""
+        self._apply_column_filters_visibility(checked)
+        if hasattr(self.parent_window, 'settings'):
+            self.parent_window.settings.setValue("ui/show_column_filters", checked)
+
+    def _apply_column_filters_visibility(self, visible: bool):
+        """Appliquer la visibilité de la rangée de filtres + l'icône du bouton."""
+        if getattr(self, 'filter_widget', None) is not None:
+            self.filter_widget.setVisible(visible)
+        if getattr(self, 'filters_toggle_btn', None) is not None:
+            import qtawesome as qta
+            icon = 'fa5s.caret-down' if visible else 'fa5s.caret-right'
+            self.filters_toggle_btn.setIcon(qta.icon(icon, color='#555555'))
 
     def set_search_position(self, position: str):
         """Repositionner le conteneur recherche (+ bannières) au-dessus ou sous le tableau.
