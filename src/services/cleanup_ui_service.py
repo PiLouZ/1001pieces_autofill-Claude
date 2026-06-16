@@ -118,7 +118,11 @@ class DuplicateDevicesWidget(QWidget):
     """Widget pour gérer les appareils en doublon"""
     
     devices_selection_changed = pyqtSignal()
-    
+    # Émis après marquage "distinct" d'un ou plusieurs groupes : porte la liste
+    # [{'ref_modele': str, 'affected': int, 'savings': int}, …] pour que le dialogue
+    # décrémente les stats live et rafraîchisse l'onglet "Références distinctes".
+    groups_marked_distinct = pyqtSignal(list)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.duplicate_groups = []
@@ -149,7 +153,11 @@ class DuplicateDevicesWidget(QWidget):
         self.auto_select_newest_btn.setStyleSheet(_compact_style)
 
         # Boutons pour décisions sur doublons
-        self.mark_distinct_btn = QPushButton("Marquer comme distincts")
+        self.mark_distinct_btn = QPushButton("Marquer comme distinct(s)")
+        self.mark_distinct_btn.setToolTip(
+            "Marquer le(s) groupe(s) sélectionné(s) comme faux doublons "
+            "(Ctrl/Maj-clic pour en sélectionner plusieurs)"
+        )
         self.mark_distinct_btn.setIcon(qta.icon('fa5s.check-double', color='white'))
         self.mark_distinct_btn.setIconSize(QSize(11, 11))
         self.mark_distinct_btn.setStyleSheet(
@@ -174,7 +182,11 @@ class DuplicateDevicesWidget(QWidget):
             "Référence Commerciale", "Autre Référence", "Nb Pièces"
         ])
         self.devices_tree.setRootIsDecorated(True)
-        
+        # Multi-sélection de lignes : permet de marquer plusieurs groupes "distincts"
+        # en une action (Ctrl/Shift-clic). N'affecte pas les checkboxes de fusion
+        # (colonne 0), qui restent indépendantes de la sélection de ligne.
+        self.devices_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
         layout.addWidget(self.devices_tree)
         
         # Connecter les signaux
@@ -367,65 +379,108 @@ class DuplicateDevicesWidget(QWidget):
         app_logger.info(f"Total groupes de fusion: {len(merge_groups)}")
         return merge_groups
 
+    def _selected_groups(self) -> List[QTreeWidgetItem]:
+        """Résoudre la sélection courante en groupes parents dédupliqués.
+
+        La sélection peut contenir des groupes et/ou des appareils enfants ;
+        chaque enfant est remonté à son groupe parent. La déduplication conserve
+        l'ordre d'apparition dans l'arbre.
+        """
+        groups = []
+        seen = set()
+        for item in self.devices_tree.selectedItems():
+            group_item = item.parent() if item.parent() else item
+            if id(group_item) not in seen:
+                seen.add(id(group_item))
+                groups.append(group_item)
+        return groups
+
+    @staticmethod
+    def _extract_ref_modele(group_item: QTreeWidgetItem) -> str:
+        """Extraire la référence modèle du libellé d'un groupe ('REF (n appareils)')."""
+        group_text = group_item.text(2)  # Colonne "Référence Modèle"
+        return group_text.split(" (")[0] if " (" in group_text else group_text
+
     def _update_buttons_state(self):
         """Mettre à jour l'état des boutons selon la sélection"""
-        current_item = self.devices_tree.currentItem()
-
-        # Le bouton "Marquer comme distincts" est activé si on a sélectionné un groupe parent
-        if current_item and current_item.parent() is None:  # C'est un groupe parent
-            self.mark_distinct_btn.setEnabled(True)
-        elif current_item and current_item.parent():  # C'est un enfant, activer pour le groupe parent
-            self.mark_distinct_btn.setEnabled(True)
-        else:
-            self.mark_distinct_btn.setEnabled(False)
+        # Le bouton "Marquer comme distinct(s)" est activé dès qu'au moins un groupe
+        # est sélectionné (directement ou via un de ses appareils enfants).
+        self.mark_distinct_btn.setEnabled(len(self._selected_groups()) > 0)
 
     def _mark_selected_as_distinct(self):
-        """Marquer le groupe sélectionné comme distinct"""
-        app_logger.info("BOUTON 'Marquer comme distincts' cliqué")
-        current_item = self.devices_tree.currentItem()
+        """Marquer le(s) groupe(s) sélectionné(s) comme distinct(s) — en masse."""
+        app_logger.info("BOUTON 'Marquer comme distinct(s)' cliqué")
+        group_items = self._selected_groups()
 
-        # Trouver le groupe parent si on a sélectionné un enfant
-        if current_item and current_item.parent():
-            current_item = current_item.parent()
-
-        if not current_item:
+        if not group_items:
             app_logger.warning("Aucun groupe sélectionné pour marquage distinct")
             return
 
-        # Extraire la référence modèle du texte du groupe
-        group_text = current_item.text(2)  # Colonne "Référence Modèle"
-        if " (" in group_text:
-            ref_modele = group_text.split(" (")[0]
-        else:
-            ref_modele = group_text
-
-        # Utiliser le parent pour accéder au DatabaseManager
+        # Accéder au DatabaseManager via la chaîne de parents
         parent_widget = self.parent()
         while parent_widget and not hasattr(parent_widget, 'db_manager'):
             parent_widget = parent_widget.parent()
 
-        if parent_widget and hasattr(parent_widget, 'db_manager'):
-            success = parent_widget.db_manager.save_reference_decision(
+        if not (parent_widget and hasattr(parent_widget, 'db_manager')):
+            app_logger.error("Impossible d'accéder au DatabaseManager")
+            return
+
+        db_manager = parent_widget.db_manager
+        marked = []  # [{'ref_modele', 'affected', 'savings'}]
+        root = self.devices_tree.invisibleRootItem()
+
+        for group_item in group_items:
+            ref_modele = self._extract_ref_modele(group_item)
+            success = db_manager.save_reference_decision(
                 ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
             )
-
-            if success:
-                app_logger.info(f"Groupe {ref_modele} marqué comme distinct")
-                # Désactiver le groupe dans l'affichage
-                current_item.setDisabled(True)
-                current_item.setText(2, f"{ref_modele} (MARQUÉ DISTINCT)")
-
-                # Enregistrer dans l'historique
-                if self.history_callback:
-                    self.history_callback(
-                        "Marquage distinct",
-                        f"Référence '{ref_modele}' marquée comme distincte",
-                        "Succès"
-                    )
-            else:
+            if not success:
                 app_logger.error(f"Échec marquage distinct pour {ref_modele}")
-        else:
-            app_logger.error("Impossible d'accéder au DatabaseManager")
+                continue
+
+            app_logger.info(f"Groupe {ref_modele} marqué comme distinct")
+
+            # Nombre d'appareils concernés par ce groupe (pour les stats live)
+            affected = group_item.childCount()
+
+            # Retrait immédiat du groupe de l'arbre (#3)
+            index = root.indexOfChild(group_item)
+            if index >= 0:
+                root.takeChild(index)
+
+            # Tenir à jour la liste interne des groupes
+            self.duplicate_groups = [
+                g for g in self.duplicate_groups if g.get('ref_modele') != ref_modele
+            ]
+
+            marked.append({
+                'ref_modele': ref_modele,
+                'affected': affected,
+                'savings': max(affected - 1, 0),  # économie = doublons potentiels du groupe
+            })
+
+        if not marked:
+            return
+
+        # Historique : une entrée agrégée si plusieurs groupes, sinon unitaire
+        if self.history_callback:
+            if len(marked) == 1:
+                self.history_callback(
+                    "Marquage distinct",
+                    f"Référence '{marked[0]['ref_modele']}' marquée comme distincte",
+                    "Succès"
+                )
+            else:
+                refs = ", ".join(m['ref_modele'] for m in marked)
+                self.history_callback(
+                    "Marquage distinct",
+                    f"{len(marked)} références marquées comme distinctes : {refs}",
+                    "Succès"
+                )
+
+        # Signaler au dialogue : décrément des stats + rafraîchissement de l'onglet distinctes
+        self.groups_marked_distinct.emit(marked)
+        self._update_buttons_state()
 
 class DuplicatePiecesWidget(QWidget):
     """Widget pour gérer les pièces dupliquées"""

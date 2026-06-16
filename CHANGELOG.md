@@ -4,6 +4,23 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.50.2] - 2026-06-16
+
+### Nettoyage des doublons — marquage « distinct » en masse + retrait immédiat
+
+- **Marquage en masse** : l'arbre des appareils passe en multi-sélection
+  (`ExtendedSelection`). On peut sélectionner plusieurs groupes (Ctrl/Maj-clic),
+  directement ou via un de leurs appareils, et tous les marquer « distincts » en
+  une action. `_mark_selected_as_distinct()` traite désormais l'ensemble des
+  groupes résolus (dédupliqués), avec une entrée d'historique agrégée si plusieurs.
+- **Retrait immédiat + stats live** : un groupe marqué « distinct » est retiré de
+  l'arbre sur-le-champ (`takeChild`) au lieu d'être grisé. Le widget émet le
+  nouveau signal `groups_marked_distinct` ; le dialogue décrémente les statistiques
+  affichées (groupes / appareils concernés / économie potentielle) et rafraîchit
+  l'onglet « Références distinctes » sans relancer l'analyse.
+- Libellé du bouton clarifié (« Marquer comme distinct(s) ») + tooltip expliquant
+  la multi-sélection.
+
 ## [3.50.1] - 2026-06-15
 
 ### Fix — bouton "Outils" reste rouge après marquage "distinct" dans le nettoyage des doublons

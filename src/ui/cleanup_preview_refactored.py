@@ -242,6 +242,7 @@ class CleanupPreviewDialog(QDialog):
         # Signaux des widgets
         if self.devices_widget:
             self.devices_widget.devices_selection_changed.connect(self._update_buttons_state)
+            self.devices_widget.groups_marked_distinct.connect(self._on_groups_marked_distinct)
             
         # Signaux des boutons
         self.preview_btn.clicked.connect(self._preview_changes)
@@ -290,6 +291,40 @@ class CleanupPreviewDialog(QDialog):
             self._loading_widget.setVisible(False)
         show_error(self, "Erreur d'analyse", f"Erreur lors de l'analyse des doublons:\n{error_message}")
         
+    def _on_groups_marked_distinct(self, marked: list):
+        """Réagir au marquage 'distinct' d'un ou plusieurs groupes (effet immédiat).
+
+        Décrémente les statistiques affichées et rafraîchit l'onglet des références
+        distinctes, sans relancer toute l'analyse.
+        """
+        if not marked:
+            return
+
+        # Décrément des stats live (les groupes marqués distincts ne sont plus des doublons)
+        stats = (self.analysis_results or {}).get('statistics')
+        if stats is not None and self.stats_widget:
+            removed_groups = len(marked)
+            removed_affected = sum(m.get('affected', 0) for m in marked)
+            removed_savings = sum(m.get('savings', 0) for m in marked)
+
+            stats['total_duplicate_devices'] = max(
+                stats.get('total_duplicate_devices', 0) - removed_groups, 0
+            )
+            stats['total_affected_devices'] = max(
+                stats.get('total_affected_devices', 0) - removed_affected, 0
+            )
+            stats['potential_savings_devices'] = max(
+                stats.get('potential_savings_devices', 0) - removed_savings, 0
+            )
+            self.stats_widget.update_stats(stats)
+
+        # Rafraîchir l'onglet "Références distinctes" pour refléter les nouveaux marquages
+        if self.distinct_widget:
+            self.distinct_widget.load_distinct_references()
+
+        # Mettre à jour l'état des boutons (la sélection peut avoir changé)
+        self._update_buttons_state()
+
     def _update_buttons_state(self):
         """Mettre à jour l'état des boutons selon les sélections"""
         has_selection = False
