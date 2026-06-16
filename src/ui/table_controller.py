@@ -1164,7 +1164,8 @@ class TableController:
         pagination_layout.addWidget(self.prev_button)
 
         # Saut de page direct : "Page [champ éditable] / N"
-        pagination_layout.addWidget(QLabel("Page"))
+        self.page_text_label = QLabel("Page")
+        pagination_layout.addWidget(self.page_text_label)
         self.page_input = QLineEdit("1")
         self.page_input.setFixedWidth(48)
         self.page_input.setAlignment(Qt.AlignCenter)
@@ -1283,7 +1284,8 @@ class TableController:
         if hasattr(self, 'pagination_widget') and self.pagination_widget:
             single_page = self.total_pages <= 1 and self.page_size != -1
             for w in (getattr(self, 'first_button', None), self.prev_button,
-                      getattr(self, 'page_input', None), getattr(self, 'page_total_label', None),
+                      getattr(self, 'page_text_label', None), getattr(self, 'page_input', None),
+                      getattr(self, 'page_total_label', None),
                       self.next_button, getattr(self, 'last_button', None)):
                 if w is not None:
                     w.setVisible(not single_page)
