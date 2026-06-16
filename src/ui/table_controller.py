@@ -1140,21 +1140,18 @@ class TableController:
         pagination_layout = QHBoxLayout(pagination_widget)
         pagination_layout.setContentsMargins(4, 2, 4, 0)
         
+        # Style unique pour les 4 boutons de navigation (référence : "Suivant ▶"),
+        # avec règle :disabled pour une désactivation cohérente.
         _btn_style = (
             "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
-
-        _nav_btn_style = (
-            "QPushButton { padding: 3px 7px; font-size: 11px; border-radius: 4px; }"
             "QPushButton:hover { background: rgba(0,0,0,0.07); }"
             "QPushButton:disabled { color: #adb5bd; }"
         )
 
         # Première page
-        self.first_button = QPushButton("««")
+        self.first_button = QPushButton("◀◀")
         self.first_button.setToolTip("Première page")
-        self.first_button.setStyleSheet(_nav_btn_style)
+        self.first_button.setStyleSheet(_btn_style)
         pagination_layout.addWidget(self.first_button)
 
         # Bouton page précédente
@@ -1187,9 +1184,9 @@ class TableController:
         pagination_layout.addWidget(self.next_button)
 
         # Dernière page
-        self.last_button = QPushButton("»»")
+        self.last_button = QPushButton("▶▶")
         self.last_button.setToolTip("Dernière page")
-        self.last_button.setStyleSheet(_nav_btn_style)
+        self.last_button.setStyleSheet(_btn_style)
         pagination_layout.addWidget(self.last_button)
 
         pagination_layout.addStretch()
