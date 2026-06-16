@@ -120,6 +120,21 @@ class ToolbarService:
         categories_action.triggered.connect(self.main_window._manage_categories)
         display_menu.addAction(categories_action)
 
+        display_menu.addSeparator()
+
+        # Position de la barre de recherche pièce (haut/bas du tableau) — mémorisée
+        search_top_action = QAction("Recherche pièce en haut du tableau", self.main_window)
+        search_top_action.setCheckable(True)
+        search_top_action.setToolTip("Placer la barre de recherche pièce au-dessus du tableau (sinon sous le tableau)")
+        _pos = "bottom"
+        if hasattr(self.main_window, 'settings'):
+            _pos = self.main_window.settings.value("ui/search_position", "bottom")
+        search_top_action.setChecked(_pos == "top")
+        search_top_action.toggled.connect(
+            getattr(self.main_window, '_on_search_position_toggled', lambda checked: None)
+        )
+        display_menu.addAction(search_top_action)
+
         display_btn.setMenu(display_menu)
         toolbar.addWidget(display_btn)
 

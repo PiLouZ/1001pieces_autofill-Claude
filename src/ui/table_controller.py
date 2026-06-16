@@ -322,8 +322,17 @@ class TableController:
         header.setSectionResizeMode(4, QHeaderView.Stretch)
 
         layout.addWidget(self.table)
-        
-        # Barre de recherche SOUS le tableau (position correcte)
+        self.table_widget_layout = layout  # réf. pour repositionner la recherche
+
+        # Conteneur [recherche + bannières] repositionnable (haut/bas du tableau).
+        # Les bannières supersession/équivalence restent SOLIDAIRES de la recherche
+        # (elles lisent le terme courant) : on les groupe pour éviter toute régression.
+        self.search_container = QWidget()
+        _sc_layout = QVBoxLayout(self.search_container)
+        _sc_layout.setContentsMargins(0, 0, 0, 0)
+        _sc_layout.setSpacing(6)
+
+        # Barre de recherche (dans le conteneur)
         search_layout2 = QHBoxLayout()
         import qtawesome as qta
         search_icon_label = QLabel()
@@ -368,8 +377,8 @@ class TableController:
         self.history_btn.setEnabled(False)  # Désactivé jusqu'à ce qu'il y ait un historique
         self.history_btn.clicked.connect(self._show_search_history)
         search_layout2.addWidget(self.history_btn, 0, Qt.AlignVCenter)
-        
-        layout.addLayout(search_layout2)
+
+        _sc_layout.addLayout(search_layout2)
 
         # Bandeau de notification supersession (caché par défaut)
         self.supersession_banner = QWidget()
@@ -418,7 +427,7 @@ class TableController:
         self.supersession_bypass_btn.clicked.connect(self._toggle_supersession_bypass)
         banner_layout.addWidget(self.supersession_bypass_btn)
 
-        layout.addWidget(self.supersession_banner)
+        _sc_layout.addWidget(self.supersession_banner)
 
         # Bandeau équivalence (caché par défaut, fond violet clair)
         self.equivalence_banner = QWidget()
@@ -469,7 +478,10 @@ class TableController:
         """)
         self.equivalence_expand_btn.clicked.connect(self._toggle_equivalence_expand)
         equiv_banner_layout.addWidget(self.equivalence_expand_btn)
-        layout.addWidget(self.equivalence_banner)
+        _sc_layout.addWidget(self.equivalence_banner)
+
+        # Ajouter le conteneur recherche au layout (position par défaut : sous le tableau)
+        layout.addWidget(self.search_container)
 
         # Boutons d'export (si le service UI est disponible)
         if hasattr(self, 'ui_component_service') and self.ui_component_service:
@@ -480,8 +492,28 @@ class TableController:
         
         # Bouton pour lignes incomplètes
         self._add_incomplete_filter_button(layout)
-        
+
         return widget
+
+    def set_search_position(self, position: str):
+        """Repositionner le conteneur recherche (+ bannières) au-dessus ou sous le tableau.
+
+        position : "top" (au-dessus du tableau) ou "bottom" (sous le tableau, défaut).
+        """
+        if getattr(self, 'search_container', None) is None:
+            return
+        layout = getattr(self, 'table_widget_layout', None)
+        if layout is None:
+            return
+        layout.removeWidget(self.search_container)
+        if position == "top":
+            # Tout en haut, AU-DESSUS des filtres colonnes (qui restent juste au-dessus du tableau)
+            layout.insertWidget(0, self.search_container)
+        else:
+            # Sous le tableau (position par défaut)
+            table_idx = layout.indexOf(self.table)
+            layout.insertWidget(table_idx + 1, self.search_container)
+        self.search_container.setVisible(True)
     
     def connect_selection_signals(self, on_selection_changed_callback):
         """Connecter les signaux de sélection du tableau à un callback"""

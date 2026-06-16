@@ -495,6 +495,11 @@ class MainWindow(QMainWindow):
             )
             # Établir la liaison bidirectionnelle
             self.table_controller.set_navigation_service(self.navigation_service)
+
+        # Appliquer la position de recherche mémorisée (défaut : sous le tableau)
+        if hasattr(self, 'settings') and hasattr(self.table_controller, 'set_search_position'):
+            if self.settings.value("ui/search_position", "bottom") == "top":
+                self.table_controller.set_search_position("top")
         
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
@@ -1708,6 +1713,14 @@ class MainWindow(QMainWindow):
             # Rafraîchir l'affichage après nettoyage
             self._force_refresh_display()
     
+    def _on_search_position_toggled(self, checked: bool):
+        """Basculer la position de la barre de recherche pièce (haut/bas) et mémoriser."""
+        position = "top" if checked else "bottom"
+        if hasattr(self, 'settings'):
+            self.settings.setValue("ui/search_position", position)
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'set_search_position'):
+            self.table_controller.set_search_position(position)
+
     def _manage_categories(self):
         """Gérer les catégories"""
         return self._safe_manage_categories()
