@@ -37,6 +37,8 @@ class CleanupPreviewDialog(QDialog):
         # État
         self.analysis_results = None
         self.user_choice = None
+        # Nombre de groupes marqués "distincts" pendant cette session (action immédiate)
+        self._distinct_marked_session = 0
 
         # Widgets
         self._loading_widget = None
@@ -300,6 +302,9 @@ class CleanupPreviewDialog(QDialog):
         if not marked:
             return
 
+        # Compteur de session (action immédiate, déjà enregistrée en base)
+        self._distinct_marked_session += len(marked)
+
         # Décrément des stats live (les groupes marqués distincts ne sont plus des doublons)
         stats = (self.analysis_results or {}).get('statistics')
         if stats is not None and self.stats_widget:
@@ -327,24 +332,36 @@ class CleanupPreviewDialog(QDialog):
 
     def _update_buttons_state(self):
         """Mettre à jour l'état des boutons selon les sélections"""
-        has_selection = False
-        
-        # Vérifier les sélections d'appareils
+        has_actionable = False
+
+        # Appareils : seuls comptent les groupes VALIDES (exactement 1 maître coché).
+        # Cocher 0 ou ≥2 appareils dans un groupe le rend ignoré silencieusement —
+        # on n'active donc pas "Appliquer" sur cette base trompeuse.
         if self.devices_widget:
-            selected_devices = self.devices_widget.get_selected_devices()
-            has_selection = has_selection or len(selected_devices) > 0
-            
-        # Vérifier les sélections de pièces
+            merge_groups = self.devices_widget.get_merge_groups()
+            has_actionable = has_actionable or len(merge_groups) > 0
+
+        # Pièces : au moins une référence sélectionnée
         if self.pieces_widget:
             selected_pieces = self.pieces_widget.get_selected_pieces()
-            has_selection = has_selection or len(selected_pieces) > 0
-            
-        self.apply_btn.setEnabled(has_selection)
+            has_actionable = has_actionable or len(selected_pieces) > 0
+
+        self.apply_btn.setEnabled(has_actionable)
         
     @handle_cleanup_preview_errors()
     def _preview_changes(self, checked=False):
         """Prévisualiser les changements qui seront appliqués"""
-        preview_text = "Aperçu des changements qui seront appliqués:\n\n"
+        preview_text = ""
+
+        # Section "immédiat" : marquages distincts déjà enregistrés cette session
+        if self._distinct_marked_session > 0:
+            preview_text += "DÉJÀ APPLIQUÉ pendant cette session (immédiat) :\n"
+            preview_text += (
+                f"  • {self._distinct_marked_session} groupe(s) marqué(s) comme distinct(s) "
+                "— enregistré(s) en base\n\n"
+            )
+
+        preview_text += "SERA APPLIQUÉ au clic sur « Appliquer le nettoyage » (différé) :\n\n"
 
         # Appareils à fusionner
         if self.devices_widget:

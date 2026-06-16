@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.50.3] - 2026-06-16
+
+### Nettoyage des doublons — quick wins ergonomiques (réduction du risque de perte de données)
+
+- **Clarification du sens des cases à cocher** : la colonne « Sélection » devient
+  **« Maître (à conserver) »** et un bandeau d'aide rappelle que l'appareil coché
+  est CONSERVÉ (il reçoit les pièces des autres, qui sont supprimés). Levée de
+  l'ambiguïté qui pouvait faire croire « coché = supprimé ».
+- **Validité de fusion par groupe** : chaque en-tête de groupe affiche une icône
+  selon le nombre de maîtres cochés — vert (1, prêt), gris (0, ignoré), rouge
+  (≥2, fusion impossible) — avec tooltip explicatif. Fin du « groupe ignoré
+  silencieusement ».
+- **Bouton « Appliquer le nettoyage » fiabilisé** : activé uniquement s'il existe
+  au moins un groupe valide (1 maître) ou une pièce sélectionnée, via
+  `get_merge_groups()` au lieu d'un simple comptage de cases cochées.
+- **Confirmation du marquage « distinct »** : une boîte de dialogue rappelle que
+  l'action est enregistrée immédiatement en base (hors cycle « Appliquer/Annuler »).
+- **Aperçu unifié immédiat/différé** : la prévisualisation distingue ce qui est
+  « déjà appliqué pendant cette session (immédiat) » (marquages distincts) de ce
+  qui « sera appliqué au clic sur Appliquer (différé) » (fusions, pièces).
+
 ## [3.50.2] - 2026-06-16
 
 ### Nettoyage des doublons — marquage « distinct » en masse + retrait immédiat

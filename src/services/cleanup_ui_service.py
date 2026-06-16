@@ -132,7 +132,20 @@ class DuplicateDevicesWidget(QWidget):
     def init_ui(self):
         """Initialiser l'interface pour les appareils en doublon"""
         layout = QVBoxLayout(self)
-        
+
+        # Bandeau d'aide : lever l'ambiguïté "coché = conservé" (et non supprimé)
+        help_label = QLabel(
+            "Cochez l'appareil à CONSERVER dans chaque groupe — il recevra les pièces "
+            "des autres, qui seront supprimés. Sélectionnez un ou plusieurs groupes "
+            "(Ctrl/Maj-clic) pour les marquer comme faux doublons (« distincts »)."
+        )
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet(
+            "font-size: 11px; padding: 6px 10px; color: #495057;"
+            " background-color: #e7f3ff; border-radius: 4px;"
+        )
+        layout.addWidget(help_label)
+
         # En-tête avec actions
         header_layout = QHBoxLayout()
         
@@ -178,7 +191,7 @@ class DuplicateDevicesWidget(QWidget):
         # Arbre des appareils avec gestion clavier
         self.devices_tree = KeyboardTreeWidget()
         self.devices_tree.setHeaderLabels([
-            "Sélection", "ID", "Référence Modèle", "Type", "Fabricant",
+            "Maître (à conserver)", "ID", "Référence Modèle", "Type", "Fabricant",
             "Référence Commerciale", "Autre Référence", "Nb Pièces"
         ])
         self.devices_tree.setRootIsDecorated(True)
@@ -243,12 +256,49 @@ class DuplicateDevicesWidget(QWidget):
 
         # Forcer l'expansion de tous les groupes pour voir tous les appareils
         self.devices_tree.expandAll()
-            
+
+        # Indiquer la validité de fusion de chaque groupe (0/1/≥2 maîtres cochés)
+        self._refresh_group_validity()
+
     def _on_item_changed(self, item, column):
         """Gérer les changements de sélection"""
-        if column == 0:  # Colonne checkbox
+        if column == 0:  # Colonne checkbox (désignation du maître)
             self.devices_selection_changed.emit()
-            
+            self._refresh_group_validity()
+
+    def _refresh_group_validity(self):
+        """Marquer visuellement chaque groupe selon le nombre de maîtres cochés.
+
+        Une fusion exige exactement 1 appareil coché par groupe ; 0 ou ≥2 rend le
+        groupe ignoré silencieusement par `get_merge_groups()`. On le signale par
+        une icône en tête de groupe. `blockSignals` évite la récursion
+        setIcon → itemChanged → _on_item_changed.
+        """
+        tree = self.devices_tree
+        blocked = tree.blockSignals(True)
+        try:
+            root = tree.invisibleRootItem()
+            for i in range(root.childCount()):
+                group_item = root.child(i)
+                checked = sum(
+                    1 for j in range(group_item.childCount())
+                    if group_item.child(j).checkState(0) == Qt.Checked
+                )
+                if checked == 1:
+                    group_item.setIcon(0, qta.icon('fa5s.check-circle', color='#28a745'))
+                    group_item.setToolTip(0, "Prêt à fusionner : 1 maître désigné")
+                elif checked == 0:
+                    group_item.setIcon(0, qta.icon('fa5s.minus-circle', color='#adb5bd'))
+                    group_item.setToolTip(0, "Aucun maître coché — ce groupe sera ignoré au nettoyage")
+                else:
+                    group_item.setIcon(0, qta.icon('fa5s.exclamation-triangle', color='#dc3545'))
+                    group_item.setToolTip(
+                        0, f"{checked} appareils cochés — fusion impossible (1 seul maître attendu)"
+                    )
+        finally:
+            tree.blockSignals(blocked)
+
+
     def _select_all(self):
         """Sélectionner tous les appareils"""
         self._set_all_checkboxes(Qt.Checked)
@@ -414,6 +464,25 @@ class DuplicateDevicesWidget(QWidget):
 
         if not group_items:
             app_logger.warning("Aucun groupe sélectionné pour marquage distinct")
+            return
+
+        # Confirmation : ce marquage est ENREGISTRÉ IMMÉDIATEMENT en base, hors du
+        # cycle "Appliquer/Annuler" du nettoyage. L'utilisateur doit le savoir.
+        nb = len(group_items)
+        refs_apercu = ", ".join(self._extract_ref_modele(g) for g in group_items[:5])
+        if nb > 5:
+            refs_apercu += f", … (+{nb - 5})"
+        reply = QMessageBox.question(
+            self,
+            "Marquage immédiat",
+            f"Marquer {nb} groupe(s) comme distinct(s) ?\n\n"
+            f"{refs_apercu}\n\n"
+            "Attention — cette action est enregistrée immédiatement en base "
+            "(elle ne passe pas par le bouton « Appliquer le nettoyage »).",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
             return
 
         # Accéder au DatabaseManager via la chaîne de parents
