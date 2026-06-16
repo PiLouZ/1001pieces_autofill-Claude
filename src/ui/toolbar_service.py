@@ -9,7 +9,7 @@ Responsabilités:
 """
 
 import qtawesome as qta
-from .qt_imports import QToolBar, QAction, QPushButton, QMenu
+from .qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy
 from .qt_imports import QSize, Qt
 from .qt_imports import QKeySequence
 
@@ -77,9 +77,10 @@ class ToolbarService:
 
         self._add_toolbar_separator(toolbar)
 
-        # Menus déroulants
+        # Menus déroulants : Affichage / Données / Configuration
         self._setup_display_menu(toolbar)
-        self._setup_tools_menu(toolbar)
+        self._setup_data_menu(toolbar)
+        self._setup_config_menu(toolbar)
 
         self._add_toolbar_separator(toolbar)
 
@@ -96,12 +97,29 @@ class ToolbarService:
 
         self._add_toolbar_separator(toolbar)
 
-        # Rafraîchir (discret, en fin)
+        # Rafraîchir (discret)
         refresh_action = QAction(qta.icon('fa5s.sync-alt', color='#555555'), "", self.main_window)
         refresh_action.setShortcut("F5")
         refresh_action.setToolTip("Rafraîchir l'application (F5)")
         refresh_action.triggered.connect(getattr(self.main_window, '_refresh_application', lambda: None))
         toolbar.addAction(refresh_action)
+
+        # Espace extensible → pousse le bouton "Nettoyer les doublons" à droite
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(spacer)
+
+        # Bouton dédié "Nettoyer les doublons" (sorti du menu). Sa couleur passe au
+        # rouge via DuplicateIndicatorService quand des doublons sont en attente.
+        self.clean_duplicates_btn = QPushButton("Nettoyer les doublons")
+        self.clean_duplicates_btn.setObjectName("cleanDuplicatesButton")
+        self.clean_duplicates_btn.setIcon(qta.icon('fa5s.clone', color='#555555'))
+        self.clean_duplicates_btn.setToolTip("Nettoyer les doublons")
+        self.clean_duplicates_btn.clicked.connect(self.main_window._clean_data)
+        # Action conservée pour compatibilité avec DuplicateIndicatorService
+        self.clean_duplicates_action = QAction("Nettoyer les doublons", self.main_window)
+        self.clean_duplicates_action.triggered.connect(self.main_window._clean_data)
+        toolbar.addWidget(self.clean_duplicates_btn)
 
         return toolbar
     
@@ -138,71 +156,73 @@ class ToolbarService:
         display_btn.setMenu(display_menu)
         toolbar.addWidget(display_btn)
 
-    def _setup_tools_menu(self, toolbar):
-        """Menu Outils — actions de maintenance et configuration"""
-        tools_btn = QPushButton("Outils")
-        tools_btn.setObjectName("menuButton")
-        tools_menu = QMenu()
+    def _setup_data_menu(self, toolbar):
+        """Menu Données — opérations sur les données les plus fréquentes"""
+        data_btn = QPushButton("Données")
+        data_btn.setObjectName("menuButton")
+        data_menu = QMenu()
 
         autocomplete_action = QAction("Autocomplétion", self.main_window)
+        autocomplete_action.setToolTip("Compléter automatiquement Type et Fabricant manquants")
         autocomplete_action.triggered.connect(self.main_window._fill_empty_fields)
-        tools_menu.addAction(autocomplete_action)
+        data_menu.addAction(autocomplete_action)
 
-        clean_action = QAction("Nettoyer les doublons", self.main_window)
-        clean_action.triggered.connect(self.main_window._clean_data)
-        tools_menu.addAction(clean_action)
+        history_action = QAction("Historique des modifications…", self.main_window)
+        history_action.setToolTip("Consulter l'historique persistant des modifications")
+        history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))
+        data_menu.addAction(history_action)
+
+        data_btn.setMenu(data_menu)
+        toolbar.addWidget(data_btn)
+
+    def _setup_config_menu(self, toolbar):
+        """Menu Configuration — réglages, maintenance et export applicatif"""
+        config_btn = QPushButton("Configuration")
+        config_btn.setObjectName("menuButton")
+        config_menu = QMenu()
 
         paste_config_action = QAction("Configuration Collage", self.main_window)
         paste_config_action.setToolTip("Configurer le nettoyage automatique des extensions collées")
         paste_config_action.triggered.connect(self._configure_paste_cleanup)
-        tools_menu.addAction(paste_config_action)
+        config_menu.addAction(paste_config_action)
 
         export_config_action = QAction("Configuration des exports…", self.main_window)
         export_config_action.setToolTip("Personnaliser les colonnes CSV et les templates HTML d'export")
         export_config_action.triggered.connect(
             getattr(self.main_window, '_open_export_config', lambda: None)
         )
-        tools_menu.addAction(export_config_action)
+        config_menu.addAction(export_config_action)
 
-        history_action = QAction("Historique des modifications…", self.main_window)
-        history_action.setToolTip("Consulter l'historique persistant des modifications")
-        history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))
-        tools_menu.addAction(history_action)
-
-        tools_menu.addSeparator()
+        config_menu.addSeparator()
 
         fts5_action = QAction("Index de recherche FTS5", self.main_window)
         fts5_action.setToolTip("Gérer l'index de recherche plein texte (FTS5)")
         fts5_action.triggered.connect(getattr(self.main_window, '_open_fts5_manager', lambda: None))
-        tools_menu.addAction(fts5_action)
+        config_menu.addAction(fts5_action)
 
         supersession_csv_action = QAction("Exporter les chaînes de supersession (CSV)", self.main_window)
         supersession_csv_action.setToolTip("Rapport CSV de toutes les relations de remplacement de pièces")
         supersession_csv_action.triggered.connect(
             getattr(self.main_window, '_export_supersession_chains', lambda: None)
         )
-        tools_menu.addAction(supersession_csv_action)
+        config_menu.addAction(supersession_csv_action)
 
         restore_action = QAction("Restaurer une sauvegarde…", self.main_window)
         restore_action.setToolTip("Restaurer la base depuis une copie de data/backups/")
         restore_action.triggered.connect(
             getattr(self.main_window, '_open_restore_backup_dialog', lambda: None)
         )
-        tools_menu.addAction(restore_action)
+        config_menu.addAction(restore_action)
 
-        tools_menu.addSeparator()
+        config_menu.addSeparator()
 
         export_action = QAction("Exporter l'application…", self.main_window)
         export_action.setToolTip("Créer un dossier portable pour installation sur une autre machine")
         export_action.triggered.connect(getattr(self.main_window, '_export_application', lambda: None))
-        tools_menu.addAction(export_action)
+        config_menu.addAction(export_action)
 
-        tools_btn.setMenu(tools_menu)
-        toolbar.addWidget(tools_btn)
-
-        # Stocker les références pour les services externes (compatibilité)
-        self.action_button = tools_btn
-        self.clean_duplicates_action = clean_action
+        config_btn.setMenu(config_menu)
+        toolbar.addWidget(config_btn)
     
     def _add_toolbar_separator(self, toolbar):
         """Ajouter un séparateur dans la toolbar"""

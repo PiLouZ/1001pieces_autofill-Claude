@@ -708,10 +708,11 @@ class MainWindow(QMainWindow):
         # Déléguer la configuration au service spécialisé
         self.toolbar = self.toolbar_service.setup_toolbar()
 
-        # Connecter le service d'indication des doublons aux boutons
-        if hasattr(self, 'duplicate_indicator_service') and hasattr(self.toolbar_service, 'action_button'):
+        # Connecter le service d'indication des doublons au bouton dédié
+        # "Nettoyer les doublons" (devient rouge quand des doublons sont en attente)
+        if hasattr(self, 'duplicate_indicator_service') and hasattr(self.toolbar_service, 'clean_duplicates_btn'):
             self.duplicate_indicator_service.set_buttons(
-                self.toolbar_service.action_button,
+                self.toolbar_service.clean_duplicates_btn,
                 self.toolbar_service.clean_duplicates_action
             )
             from ..core.logger import app_logger
