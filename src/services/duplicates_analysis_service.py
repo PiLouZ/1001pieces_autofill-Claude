@@ -43,28 +43,27 @@ class DuplicatesAnalysisWorker(QThread):
                 'statistics': {}
             }
             
-            # Phase 1: Analyse des appareils en doublon
-            self.progress_updated.emit(10, "Recherche des appareils en doublon...")
+            # Les valeurs émises sont les PLAFONDS de fin de phase : l'UI fait glisser
+            # la barre vers ce plafond pendant que la phase s'exécute (animation fluide).
+
+            # Phase 1: Analyse des appareils en doublon (phase principale)
+            self.progress_updated.emit(55, "Recherche des appareils en doublon…")
             if not self.should_stop:
                 results['duplicate_devices'] = self._find_duplicate_devices()
-                
+
             # Phase 2: Analyse des pièces dupliquées
-            self.progress_updated.emit(40, "Recherche des pièces dupliquées...")
+            self.progress_updated.emit(80, "Recherche des pièces dupliquées…")
             if not self.should_stop:
                 results['duplicate_pieces'] = self._find_duplicate_pieces()
-                
-            # Phase 3: Analyse des incohérences potentielles - DÉSACTIVÉE par défaut
-            # Le produit cartésien appareils x appareils (650k lignes) rend cette
-            # requête extrêmement lente à l'ouverture de la fenêtre, pour un résultat
-            # qui n'alimente qu'un compteur statistique ("X incohérences potentielles")
-            self.progress_updated.emit(70, "Analyse des incohérences potentielles...")
+
+            # Phase 3: Incohérences potentielles - DÉSACTIVÉE (produit cartésien trop lent)
             results['potential_inconsistencies'] = []
-                
+
             # Phase 4: Calcul des statistiques
-            self.progress_updated.emit(90, "Calcul des statistiques...")
+            self.progress_updated.emit(92, "Calcul des statistiques…")
             if not self.should_stop:
                 results['statistics'] = self._calculate_statistics(results)
-                
+
             self.progress_updated.emit(100, "Analyse terminée")
             
             if not self.should_stop:
@@ -82,7 +81,14 @@ class DuplicatesAnalysisWorker(QThread):
                     pass
             
     def _find_duplicate_devices(self) -> List[Dict[str, Any]]:
-        """Trouver les appareils en doublon basés sur ref_modele"""
+        """Trouver les appareils en doublon basés sur ref_modele.
+
+        Performance : on récupère les détails (+ comptage de pièces) de TOUS les
+        appareils des groupes en quelques requêtes batch, au lieu d'une requête par
+        appareil. L'ancienne version (N+1) ré-agrégeait toute la table
+        `piece_associations` (3,5 M lignes) à chaque appareil → ~12 min pour 1443
+        appareils ; la version batch tient en ~0,5 s.
+        """
         query = """
         SELECT ref_modele, COUNT(*) as count, GROUP_CONCAT(id) as ids
         FROM appareils
@@ -97,43 +103,62 @@ class DuplicatesAnalysisWorker(QThread):
         """
 
         results = self.db_manager.execute_query(query)
-        duplicates = []
+        if not results:
+            return []
 
-        for row in results:
-            ref_modele, count, ids_str = row
+        # Conserver l'ordre des groupes et collecter tous les ids
+        group_order = []  # [(ref_modele, count, [ids])]
+        all_ids = []
+        for ref_modele, count, ids_str in results:
             ids = [int(id_str) for id_str in ids_str.split(',')]
+            group_order.append((ref_modele, count, ids))
+            all_ids.extend(ids)
 
-            # Récupérer les détails de chaque appareil
-            devices = []
-            for device_id in ids:
-                device_query = """
-                SELECT a.id, a.ref_modele, a.type, a.manufacturer,
-                       a.commercial_ref, a.other_ref, a.category, a.notes,
-                       COALESCE(p.pieces_count, 0) as pieces_count
-                FROM appareils a
-                LEFT JOIN (
-                    SELECT pa.appareil_id, COUNT(*) as pieces_count
-                    FROM piece_associations pa
-                    INNER JOIN pieces p ON pa.piece_id = p.id
-                    GROUP BY pa.appareil_id
-                ) p ON a.id = p.appareil_id
-                WHERE a.id = ?
-                """
-                device_details = self.db_manager.execute_query(device_query, (device_id,))
-                if device_details:
-                    device = {
-                        'id': device_details[0][0],
-                        'ref_modele': clean_display_text(device_details[0][1] or ''),
-                        'type_appareil': clean_display_text(device_details[0][2] or ''),
-                        'manufacturer': clean_display_text(device_details[0][3] or ''),
-                        'commercial_ref': clean_display_text(device_details[0][4] or ''),
-                        'other_ref': clean_display_text(device_details[0][5] or ''),
-                        'category': clean_display_text(device_details[0][6] or ''),
-                        'notes': clean_display_text(device_details[0][7] or ''),
-                        'pieces_count': device_details[0][8] or 0
-                    }
-                    devices.append(device)
+        if not all_ids:
+            return []
 
+        # Détails + comptage de pièces de tous les appareils, par lots (limite de
+        # variables liées de SQLite : on reste prudemment sous 999 par requête)
+        by_id: Dict[int, Dict[str, Any]] = {}
+        CHUNK = 900
+        for start in range(0, len(all_ids), CHUNK):
+            chunk_ids = all_ids[start:start + CHUNK]
+            placeholders = ",".join("?" * len(chunk_ids))
+            # La sous-requête de comptage est filtrée sur les ids du lot (WHERE
+            # appareil_id IN …) : elle n'agrège que les lignes utiles via l'index
+            # sur piece_associations.appareil_id, au lieu de balayer les 3,5 M lignes.
+            detail_query = f"""
+            SELECT a.id, a.ref_modele, a.type, a.manufacturer,
+                   a.commercial_ref, a.other_ref, a.category, a.notes,
+                   COALESCE(pc.cnt, 0) as pieces_count
+            FROM appareils a
+            LEFT JOIN (
+                SELECT pa.appareil_id, COUNT(*) as cnt
+                FROM piece_associations pa
+                INNER JOIN pieces p ON pa.piece_id = p.id
+                WHERE pa.appareil_id IN ({placeholders})
+                GROUP BY pa.appareil_id
+            ) pc ON pc.appareil_id = a.id
+            WHERE a.id IN ({placeholders})
+            """
+            rows = self.db_manager.execute_query(detail_query, tuple(chunk_ids) + tuple(chunk_ids))
+            for r in (rows or []):
+                by_id[r[0]] = {
+                    'id': r[0],
+                    'ref_modele': clean_display_text(r[1] or ''),
+                    'type_appareil': clean_display_text(r[2] or ''),
+                    'manufacturer': clean_display_text(r[3] or ''),
+                    'commercial_ref': clean_display_text(r[4] or ''),
+                    'other_ref': clean_display_text(r[5] or ''),
+                    'category': clean_display_text(r[6] or ''),
+                    'notes': clean_display_text(r[7] or ''),
+                    'pieces_count': r[8] or 0
+                }
+
+        # Reconstituer les groupes dans l'ordre initial
+        duplicates = []
+        for ref_modele, count, ids in group_order:
+            devices = [by_id[i] for i in ids if i in by_id]
             duplicates.append({
                 'ref_modele': ref_modele,
                 'count': count,

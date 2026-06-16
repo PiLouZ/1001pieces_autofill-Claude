@@ -4,6 +4,23 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.51.0] - 2026-06-16
+
+### Nettoyage des doublons — analyse ~1360× plus rapide + barre de progression réaliste
+
+- **Suppression de l'anti-pattern N+1** dans `DuplicatesAnalysisWorker._find_duplicate_devices()` :
+  l'ancienne version lançait une requête par appareil, chacune ré-agrégeant toute
+  la table `piece_associations` (3,5 M lignes) — ~12 min pour 1443 appareils. La
+  nouvelle version récupère tous les détails + comptages de pièces en quelques
+  requêtes batch (par lots de 900, sous-requête de comptage filtrée sur les ids du
+  lot). Mesuré : **~525 ms à froid** (vs ~713 s extrapolés). Sortie identique
+  (230 groupes / 1443 appareils, `pieces_count` vérifié).
+- **Barre de progression fluide** : la barre glisse désormais vers un « plafond »
+  avec une inertie (`QTimer` à 40 ms, décélération près du plafond) au lieu de
+  sauter par paliers puis se figer pendant la phase longue. Les jalons émis par le
+  worker correspondent aux fins de phase, ce qui donne un remplissage continu de
+  0 à 100 %.
+
 ## [3.50.3] - 2026-06-16
 
 ### Nettoyage des doublons — quick wins ergonomiques (réduction du risque de perte de données)

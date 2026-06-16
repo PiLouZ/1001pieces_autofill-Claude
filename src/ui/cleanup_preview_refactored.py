@@ -7,7 +7,7 @@ from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QStackedWidget, QButtonGroup, QFrame, QWidget, QMessageBox, QProgressBar, QSizePolicy, QSize
 )
-from .qt_imports import Qt
+from .qt_imports import Qt, QTimer
 import qtawesome as qta
 
 from ..core.logger import app_logger
@@ -39,6 +39,13 @@ class CleanupPreviewDialog(QDialog):
         self.user_choice = None
         # Nombre de groupes marqués "distincts" pendant cette session (action immédiate)
         self._distinct_marked_session = 0
+
+        # Animation fluide de la barre de chargement : la valeur affichée glisse vers
+        # un "plafond" (dernier jalon reçu) avec une inertie, au lieu de sauter par
+        # paliers — évite l'effet "charge un peu puis se fige".
+        self._loading_ceiling = 0.0
+        self._loading_display = 0.0
+        self._loading_timer = None
 
         # Widgets
         self._loading_widget = None
@@ -103,6 +110,12 @@ class CleanupPreviewDialog(QDialog):
         """)
         loading_layout.addWidget(self._loading_bar, 0, Qt.AlignHCenter)
         layout.addWidget(self._loading_widget)
+
+        # Timer d'animation de la barre (glissement fluide vers le plafond courant)
+        self._loading_timer = QTimer(self)
+        self._loading_timer.setInterval(40)
+        self._loading_timer.timeout.connect(self._tick_loading_bar)
+        self._loading_timer.start()
 
         # Widget principal (masqué pendant l'analyse)
         self.main_widget = QWidget()
@@ -252,16 +265,39 @@ class CleanupPreviewDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
         
     def _on_analysis_progress(self, progress: int, message: str):
-        """Gérer la progression de l'analyse"""
-        if self._loading_bar:
-            self._loading_bar.setValue(progress)
+        """Gérer la progression de l'analyse.
+
+        On ne fixe pas directement la valeur de la barre : on relève le "plafond"
+        vers lequel l'animation va glisser (cf. `_tick_loading_bar`).
+        """
+        self._loading_ceiling = float(progress)
         if self._loading_step_label:
             self._loading_step_label.setText(message)
+
+    def _tick_loading_bar(self):
+        """Faire glisser la barre vers le plafond courant avec une inertie.
+
+        Le rapprochement décélère près du plafond (rendu "réaliste"), avec un pas
+        minimal pour que le mouvement reste perceptible même quand le worker est
+        silencieux entre deux jalons.
+        """
+        if not self._loading_bar:
+            return
+        if self._loading_display < self._loading_ceiling:
+            step = max(0.4, (self._loading_ceiling - self._loading_display) * 0.07)
+            self._loading_display = min(self._loading_display + step, self._loading_ceiling)
+            self._loading_bar.setValue(int(self._loading_display))
         
     @handle_cleanup_preview_errors()
     def _on_analysis_completed(self, results: dict):
         """Gérer la fin de l'analyse"""
         self.analysis_results = results
+
+        # Finaliser l'animation : barre à 100 % puis arrêt du timer
+        if self._loading_timer:
+            self._loading_timer.stop()
+        if self._loading_bar:
+            self._loading_bar.setValue(100)
 
         # Masquer le chargement, afficher les résultats
         if self._loading_widget:
@@ -289,6 +325,8 @@ class CleanupPreviewDialog(QDialog):
             
     def _on_analysis_error(self, error_message: str):
         """Gérer les erreurs d'analyse"""
+        if self._loading_timer:
+            self._loading_timer.stop()
         if self._loading_widget:
             self._loading_widget.setVisible(False)
         show_error(self, "Erreur d'analyse", f"Erreur lors de l'analyse des doublons:\n{error_message}")
@@ -484,6 +522,9 @@ class CleanupPreviewDialog(QDialog):
         
     def closeEvent(self, event):
         """Gérer la fermeture de la fenêtre"""
+        # Arrêter l'animation de la barre
+        if self._loading_timer:
+            self._loading_timer.stop()
         # Arrêter l'analyse si en cours
         if self.analysis_service:
             self.analysis_service.stop_analysis()
