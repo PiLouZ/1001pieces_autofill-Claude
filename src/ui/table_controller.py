@@ -180,12 +180,27 @@ class TableController:
         _filter_btn_h = QComboBox().sizeHint().height()   # ligne filtres — dominée par QComboBox (32px)
         _search_btn_h = QLineEdit().sizeHint().height()   # ligne recherche — dominée par QLineEdit (21px)
 
-        # Filtres par colonne prenant toute la largeur disponible
+        # Filtres par colonne alignés sur les colonnes du tableau
         filter_widget = QWidget()
         filter_layout = QHBoxLayout(filter_widget)
         filter_layout.setContentsMargins(0, 0, 0, 0)
-        filter_layout.setSpacing(2)  # Petit espacement entre les filtres
-        
+        filter_layout.setSpacing(0)  # Aligné aux colonnes : pas d'espacement
+
+        # Bouton entonnoir 'Filtres' calé sur la largeur de la colonne des n° de ligne
+        # (en-tête vertical). Toujours visible : il pilote l'affichage des filtres.
+        # Sa largeur est synchronisée dans _sync_filter_alignment().
+        import qtawesome as _qta_f
+        self.filters_toggle_btn = QToolButton()
+        self.filters_toggle_btn.setCheckable(True)
+        self.filters_toggle_btn.setIcon(_qta_f.icon('fa5s.filter', color='#555555'))
+        self.filters_toggle_btn.setToolTip("Afficher / masquer les filtres par colonne")
+        self.filters_toggle_btn.setStyleSheet(
+            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
+            "QToolButton:checked { background: #e7f1ff; border-color: #0078d4; }"
+        )
+        self.filters_toggle_btn.toggled.connect(self._toggle_column_filters)
+        filter_layout.addWidget(self.filters_toggle_btn, 0, Qt.AlignVCenter)
+
         for i, header in enumerate(Config.UI_HEADERS):
             # Skip filters for invisible or useless columns
             if i == 7:  # "Nb Pièces" column
@@ -229,7 +244,7 @@ class TableController:
                 )
                 filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 self.filter_widgets[i] = filter_combo
-                filter_layout.addWidget(filter_combo, 1)  # stretch factor 1
+                filter_layout.addWidget(filter_combo)  # largeur fixée au sync (alignée colonne)
             else:
                 # Champs texte avec même style que les dropdowns
                 filter_input = QLineEdit()
@@ -248,7 +263,9 @@ class TableController:
                     }
                 """)
                 self.filter_widgets[i] = filter_input
-                filter_layout.addWidget(filter_input, 1)  # stretch factor 1
+                # Colonne 4 = colonne en stretch du tableau → le filtre stretch aussi
+                # (évite la boucle de rétroaction d'une largeur fixe qui chasse le stretch)
+                filter_layout.addWidget(filter_input, 1 if i == 4 else 0)
 
         # Bouton RAZ pour vider tous les filtres colonne
         raz_btn = QPushButton("×")
@@ -272,29 +289,19 @@ class TableController:
             }
         """)
         raz_btn.clicked.connect(self._clear_all_column_filters)
+        self.raz_btn = raz_btn
         filter_layout.addWidget(raz_btn, 0, Qt.AlignVCenter)
 
-        # Rangée d'en-tête avec le bouton repli/affichage des filtres colonnes.
-        # Placée JUSTE AU-DESSUS des filtres (toujours en haut du tableau), pour que
-        # bouton et filtres restent groupés quelle que soit la position de la recherche.
-        import qtawesome as _qta_filters
-        filters_header = QHBoxLayout()
-        filters_header.setContentsMargins(0, 0, 0, 0)
-        self.filters_toggle_btn = QToolButton()
-        self.filters_toggle_btn.setText(" Filtres ")
-        self.filters_toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.filters_toggle_btn.setCheckable(True)
-        self.filters_toggle_btn.setIcon(_qta_filters.icon('fa5s.caret-right', color='#555555'))
-        self.filters_toggle_btn.setToolTip("Afficher / masquer les filtres par colonne")
-        self.filters_toggle_btn.setStyleSheet(
-            "QToolButton { padding: 3px 9px; font-size: 11px; border: 1px solid #ced4da;"
-            " border-radius: 4px; background: #f8f9fa; }"
-            "QToolButton:checked { background: #e7f1ff; border-color: #0078d4; }"
-        )
-        self.filters_toggle_btn.toggled.connect(self._toggle_column_filters)
-        filters_header.addWidget(self.filters_toggle_btn, 0, Qt.AlignVCenter)
-        filters_header.addStretch()
-        layout.addLayout(filters_header)
+        # Espace réservé à droite = largeur de la colonne figée "Nb Pièces" (overlay),
+        # pour que le filtre stretch (col 4) s'arrête où la colonne visible s'arrête.
+        self.filter_trailing_spacer = QWidget()
+        self.filter_trailing_spacer.setFixedWidth(52)
+        filter_layout.addWidget(self.filter_trailing_spacer)
+
+        # Étirement final : actif UNIQUEMENT en replié (pour packer le bouton à gauche).
+        # Déplié, c'est le filtre col 4 qui prend l'étirement (cf. _apply_column_filters_visibility).
+        filter_layout.addStretch(0)
+        self._filter_trailing_stretch_index = filter_layout.count() - 1
 
         layout.addWidget(filter_widget)
 
@@ -328,6 +335,8 @@ class TableController:
 
         # Log des largeurs de colonnes quand elles sont modifiées
         self.table.horizontalHeader().sectionResized.connect(self._on_column_resized)
+        # Réaligner les filtres sur les colonnes quand une colonne est redimensionnée
+        self.table.horizontalHeader().sectionResized.connect(lambda *a: self._sync_filter_alignment())
 
         # Appliquer la visibilité des colonnes
         self._apply_column_visibility()
@@ -523,6 +532,7 @@ class TableController:
         self.filters_toggle_btn.setChecked(_show_filters)
         self.filters_toggle_btn.blockSignals(False)
         self._apply_column_filters_visibility(_show_filters)
+        self._sync_filter_alignment()  # caler le bouton/filtres dès la construction
 
         return widget
 
@@ -533,13 +543,67 @@ class TableController:
             self.parent_window.settings.setValue("ui/show_column_filters", checked)
 
     def _apply_column_filters_visibility(self, visible: bool):
-        """Appliquer la visibilité de la rangée de filtres + l'icône du bouton."""
-        if getattr(self, 'filter_widget', None) is not None:
-            self.filter_widget.setVisible(visible)
-        if getattr(self, 'filters_toggle_btn', None) is not None:
-            import qtawesome as qta
-            icon = 'fa5s.caret-down' if visible else 'fa5s.caret-right'
-            self.filters_toggle_btn.setIcon(qta.icon(icon, color='#555555'))
+        """Afficher/masquer les CHAMPS de filtre (le bouton entonnoir reste visible).
+
+        La rangée `filter_widget` reste affichée en permanence (elle porte le bouton
+        entonnoir qui pilote le repli) ; seuls les champs de filtre et le bouton RAZ
+        apparaissent/disparaissent.
+        """
+        for w in getattr(self, 'filter_widgets', {}).values():
+            if w is not None:
+                w.setVisible(visible)
+        if getattr(self, 'raz_btn', None) is not None:
+            self.raz_btn.setVisible(visible)
+        if getattr(self, 'filter_trailing_spacer', None) is not None:
+            self.filter_trailing_spacer.setVisible(visible)
+
+        # Gestion de l'étirement : déplié → la colonne 4 prend l'étirement (elle remplit) ;
+        # replié → l'étirement final prend le relais pour packer le bouton entonnoir à gauche.
+        layout = getattr(self, 'filter_layout', None)
+        f4 = getattr(self, 'filter_widgets', {}).get(4)
+        if layout is not None:
+            if f4 is not None:
+                idx4 = layout.indexOf(f4)
+                if idx4 >= 0:
+                    layout.setStretch(idx4, 1 if visible else 0)
+            ts = getattr(self, '_filter_trailing_stretch_index', -1)
+            if ts >= 0:
+                layout.setStretch(ts, 0 if visible else 1)
+
+        if visible:
+            # Réaligner les champs sur les colonnes au moment de l'affichage,
+            # puis une 2e fois après stabilisation du layout (colonne 4 en stretch)
+            self._sync_filter_alignment()
+            QTimer.singleShot(0, self._sync_filter_alignment)
+
+    def _sync_filter_alignment(self):
+        """Caler le bouton entonnoir et chaque champ de filtre sur la largeur de sa colonne.
+
+        - Bouton entonnoir = largeur de l'en-tête vertical (colonne des n° de ligne).
+        - Champ i = largeur de la colonne i du tableau.
+        Resynchronisé sur `sectionResized` (col. 4 en stretch bouge au redimensionnement).
+        """
+        if getattr(self, 'table', None) is None:
+            return
+        vh = self.table.verticalHeader().width()
+        if getattr(self, 'filters_toggle_btn', None) is not None and vh > 0:
+            self.filters_toggle_btn.setFixedWidth(vh)
+        for i, w in getattr(self, 'filter_widgets', {}).items():
+            if w is None or self.table.isColumnHidden(i):
+                continue
+            if i == 4:
+                # Colonne en stretch : largeur libre (le filtre stretch via le layout),
+                # sinon une largeur fixe chasserait sans fin le stretch (boucle).
+                w.setMinimumWidth(0)
+                w.setMaximumWidth(16777215)
+                continue
+            col_w = self.table.columnWidth(i)
+            if col_w > 0:
+                w.setFixedWidth(col_w)
+        # Réserver à droite la largeur de la colonne figée "Nb Pièces"
+        if getattr(self, 'filter_trailing_spacer', None) is not None:
+            frozen_w = getattr(self.table, '_frozen_col_width', 52) or 52
+            self.filter_trailing_spacer.setFixedWidth(frozen_w)
 
     def set_search_position(self, position: str):
         """Repositionner le conteneur recherche (+ bannières) au-dessus ou sous le tableau.
