@@ -482,12 +482,16 @@ class MainWindow(QMainWindow):
             )
         
         # Configurer le service de navigation avec les widgets de pagination
-        if hasattr(self.table_controller, 'page_label'):
+        if hasattr(self.table_controller, 'page_input'):
             self.navigation_service.set_pagination_widgets(
                 self.table_controller.page_label,
                 self.table_controller.prev_button,
                 self.table_controller.next_button,
-                self.table_controller.page_size_combo
+                self.table_controller.page_size_combo,
+                first_button=getattr(self.table_controller, 'first_button', None),
+                last_button=getattr(self.table_controller, 'last_button', None),
+                page_input=self.table_controller.page_input,
+                page_total_label=getattr(self.table_controller, 'page_total_label', None)
             )
             # Établir la liaison bidirectionnelle
             self.table_controller.set_navigation_service(self.navigation_service)

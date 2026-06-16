@@ -1004,22 +1004,52 @@ class TableController:
             "QPushButton:hover { background: rgba(0,0,0,0.07); }"
         )
 
+        _nav_btn_style = (
+            "QPushButton { padding: 3px 7px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+            "QPushButton:disabled { color: #adb5bd; }"
+        )
+
+        # Première page
+        self.first_button = QPushButton("««")
+        self.first_button.setToolTip("Première page")
+        self.first_button.setStyleSheet(_nav_btn_style)
+        pagination_layout.addWidget(self.first_button)
+
         # Bouton page précédente
         self.prev_button = QPushButton("◀ Précédent")
         self.prev_button.setStyleSheet(_btn_style)
         # Navigation gérée par NavigationService
         pagination_layout.addWidget(self.prev_button)
 
-        # Label page actuelle
-        self.page_label = QLabel("Page 1 sur 1")
-        pagination_layout.addWidget(self.page_label)
+        # Saut de page direct : "Page [champ éditable] / N"
+        pagination_layout.addWidget(QLabel("Page"))
+        self.page_input = QLineEdit("1")
+        self.page_input.setFixedWidth(48)
+        self.page_input.setAlignment(Qt.AlignCenter)
+        self.page_input.setToolTip("Saisir un numéro de page puis Entrée")
+        self.page_input.setStyleSheet(
+            "QLineEdit { padding: 2px; font-size: 11px; border: 1px solid #bdbdbd;"
+            " border-radius: 3px; } QLineEdit:focus { border: 1px solid #0078d4; }"
+        )
+        pagination_layout.addWidget(self.page_input)
+        self.page_total_label = QLabel("/ 1")
+        pagination_layout.addWidget(self.page_total_label)
+        # page_label conservé à None (remplacé par page_input + page_total_label)
+        self.page_label = None
 
         # Bouton page suivante
         self.next_button = QPushButton("Suivant ▶")
         self.next_button.setStyleSheet(_btn_style)
         # Navigation gérée par NavigationService
         pagination_layout.addWidget(self.next_button)
-        
+
+        # Dernière page
+        self.last_button = QPushButton("»»")
+        self.last_button.setToolTip("Dernière page")
+        self.last_button.setStyleSheet(_nav_btn_style)
+        pagination_layout.addWidget(self.last_button)
+
         pagination_layout.addStretch()
 
         self.size_label = QLabel(f"Total: {self.total_rows} lignes")
@@ -1098,17 +1128,24 @@ class TableController:
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour pagination")
     def _update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination"""
-        if self.page_label:
-            self.page_label.setText(f"Page {self.current_page} sur {self.total_pages}")
+        # Champ de saut de page + total (remplace l'ancien page_label)
+        if getattr(self, 'page_input', None) is not None:
+            blocked = self.page_input.blockSignals(True)
+            self.page_input.setText(str(self.current_page))
+            self.page_input.blockSignals(blocked)
+        if getattr(self, 'page_total_label', None) is not None:
+            self.page_total_label.setText(f"/ {self.total_pages}")
         if self.size_label:
             self.size_label.setText(f"Total: {self.total_rows} lignes")
 
         # Masquer la zone de navigation page si une seule page
         if hasattr(self, 'pagination_widget') and self.pagination_widget:
             single_page = self.total_pages <= 1 and self.page_size != -1
-            self.prev_button.setVisible(not single_page)
-            self.next_button.setVisible(not single_page)
-            self.page_label.setVisible(not single_page)
+            for w in (getattr(self, 'first_button', None), self.prev_button,
+                      getattr(self, 'page_input', None), getattr(self, 'page_total_label', None),
+                      self.next_button, getattr(self, 'last_button', None)):
+                if w is not None:
+                    w.setVisible(not single_page)
 
         # Synchroniser avec NavigationService si disponible
         if self.navigation_service:
