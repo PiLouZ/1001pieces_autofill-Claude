@@ -896,7 +896,12 @@ class PiecesManagerWindow(QDialog):
                 _status_text = f"→ {ref_new}" if ref_new else "Remplacée"
                 _status_tip = f"Remplacée par {ref_new}" if ref_new else "Remplacée"
             elif status == 'replacing':
-                refs_old = status_info.get('refs_old') or []
+                _raw = status_info.get('refs_old') or []
+                # refs_old peut être une chaîne CSV (ex. "REF1, REF2") ou une liste
+                if isinstance(_raw, str):
+                    refs_old = [r.strip() for r in _raw.split(',') if r.strip()]
+                else:
+                    refs_old = list(_raw)
                 _icon = qta.icon('fa5s.level-up-alt', color='#1565C0')
                 _n = len(refs_old)
                 _status_text = f"Remplace ({_n})" if _n > 1 else "Remplace"
