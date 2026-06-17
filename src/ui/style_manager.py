@@ -51,6 +51,24 @@ class StyleManager:
         "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
     )
 
+    # === Cluster "santé des données" — boutons toolbar (lignes incomplètes / doublons) ===
+    # Géométrie UNIQUE et partagée par les deux boutons (cf. IncompleteButtonService et
+    # DuplicateIndicatorService) : même padding/bordure/rayon/police → les deux boutons
+    # restent rigoureusement de même taille par construction ; seule la couleur change
+    # selon l'état (neutre au repos, orange en alerte). Toute modif de ces styles se fait
+    # ICI uniquement, jamais en dupliquant le littéral dans les services.
+    HEALTH_BTN_NEUTRAL = (
+        "QPushButton { background-color: #f8f9fa; color: #495057;"
+        " border: 2px solid #ced4da; border-radius: 4px; padding: 3px 9px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #e9ecef; }"
+    )
+    HEALTH_BTN_ALERT = (
+        "QPushButton {"
+        " background-color: #ff6b35; color: white; font-weight: bold;"
+        " border: 2px solid #e55a2b; border-radius: 4px; padding: 3px 9px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #e55a2b; }"
+    )
+
     @staticmethod
     def get_modern_style() -> str:
         """Retourner le style CSS moderne complet de l'application"""

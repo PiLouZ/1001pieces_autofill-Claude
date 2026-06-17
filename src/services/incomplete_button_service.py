@@ -38,28 +38,12 @@ class IncompleteButtonService(QObject):
         # Compteur pour éviter les calculs inutiles
         self._pending_updates = 0
 
-        # Géométrie IDENTIQUE au bouton "Nettoyer les doublons" (cf.
-        # DuplicateIndicatorService) : même padding/bordure/font → mêmes dimensions ;
-        # seule la couleur varie selon l'état.
-        self._normal_style = (
-            "QPushButton { background-color: #f8f9fa; color: #495057;"
-            " border: 2px solid #ced4da; border-radius: 4px; padding: 3px 9px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #e9ecef; }"
-        )
-        self._alert_style = """
-            QPushButton {
-                background-color: #ff6b35;
-                color: white;
-                font-weight: bold;
-                border: 2px solid #e55a2b;
-                border-radius: 4px;
-                padding: 3px 9px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #e55a2b;
-            }
-        """
+        # Styles centralisés dans StyleManager (cluster "santé des données") : géométrie
+        # partagée avec le bouton "Nettoyer les doublons" → mêmes dimensions garanties ;
+        # seule la couleur varie selon l'état. Source unique de vérité.
+        from ..ui.style_manager import StyleManager
+        self._normal_style = StyleManager.HEALTH_BTN_NEUTRAL
+        self._alert_style = StyleManager.HEALTH_BTN_ALERT
 
     @handle_count_operation_errors(return_value=None)
     def _safe_count_incomplete_devices(self):

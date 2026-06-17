@@ -34,28 +34,12 @@ class DuplicateIndicatorService(QObject):
         # Compteur pour éviter les calculs inutiles
         self._pending_updates = 0
 
-        # Géométrie IDENTIQUE au bouton "Lignes à traiter" (cf. IncompleteButtonService) :
-        # même padding/bordure 2px/font → les deux boutons du cluster "santé des données"
-        # ont exactement les mêmes dimensions ; seule la couleur varie selon l'état.
-        self._normal_style = (
-            "QPushButton { background-color: #f8f9fa; color: #495057;"
-            " border: 2px solid #ced4da; border-radius: 4px; padding: 3px 9px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #e9ecef; }"
-        )
-        self._warning_style = """
-            QPushButton {
-                background-color: #ff6b35;
-                color: white;
-                font-weight: bold;
-                border: 2px solid #e55a2b;
-                border-radius: 4px;
-                padding: 3px 9px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #e55a2b;
-            }
-        """
+        # Styles centralisés dans StyleManager (cluster "santé des données") : géométrie
+        # partagée avec le bouton "Lignes à traiter" → les deux boutons ont exactement les
+        # mêmes dimensions ; seule la couleur varie selon l'état. Source unique de vérité.
+        from ..ui.style_manager import StyleManager
+        self._normal_style = StyleManager.HEALTH_BTN_NEUTRAL
+        self._warning_style = StyleManager.HEALTH_BTN_ALERT
 
         # Style pour le menu quand il y a des alertes
         self._menu_warning_style = """
