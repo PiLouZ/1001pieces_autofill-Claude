@@ -12,6 +12,7 @@ from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QFrame, QScrollArea, QSize, QPoint, QCursor, QPalette,
                            QEvent, QStackedWidget, QProgressBar, QItemSelectionModel)
 from typing import List, Tuple, Dict
+import html as _html
 import qtawesome as qta
 
 
@@ -1350,7 +1351,9 @@ class PiecesManagerWindow(QDialog):
             from src.core.config import pluralize
             refs_sorted = sorted(self._sticky_selected_refs)
             self._action_bar_label.setText(pluralize(n, 'pièce') + " sélectionnée(s)")
-            self._action_bar_label.setToolTip("\n".join(refs_sorted))
+            self._action_bar_label.setToolTip(
+                "<html>" + "<br>".join(_html.escape(r) for r in refs_sorted) + "</html>"
+            )
             self._btn_selection_popup.setVisible(True)
             self._action_bar.setVisible(True)
             # Boutons batch : visibles seulement en multi-sélection (n > 1)
@@ -1432,7 +1435,7 @@ class PiecesManagerWindow(QDialog):
                 desc_display = desc[:MAX_DESC] + "…" if len(desc) > MAX_DESC else desc
                 lbl_desc = QLabel(desc_display)
                 lbl_desc.setStyleSheet("font-size: 10px; color: #868e96; font-style: italic;")
-                lbl_desc.setToolTip(desc)
+                lbl_desc.setToolTip("<html>" + _html.escape(desc) + "</html>")
                 rl.addWidget(lbl_desc, 1)
             else:
                 rl.addStretch()
