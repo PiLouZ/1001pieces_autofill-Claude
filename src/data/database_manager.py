@@ -1283,6 +1283,25 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.conn.commit()
         return True
 
+    def create_piece_standalone(self, ref_piece: str, description: str = None) -> bool:
+        """Créer une pièce orpheline dans le catalogue (sans association d'appareils).
+        Retourne False si la référence existe déjà."""
+        return self._safe_create_piece_standalone(ref_piece, description)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur création pièce catalogue")
+    def _safe_create_piece_standalone(self, ref_piece: str, description: str = None) -> bool:
+        """Helper sécurisé pour créer une pièce orpheline dans le catalogue."""
+        existing = self.execute_query("SELECT id FROM pieces WHERE ref_piece = ?", [ref_piece])
+        if existing:
+            return False
+        clean_desc = description.strip() if description and description.strip() else None
+        self.cursor.execute(
+            "INSERT INTO pieces (ref_piece, description) VALUES (?, ?)",
+            (ref_piece, clean_desc)
+        )
+        self.conn.commit()
+        return True
+
     def delete_piece_catalog(self, ref_piece: str, commit: bool = True) -> None:
         """Supprimer une pièce du catalogue (toutes ses associations puis la pièce elle-même)."""
         return self._safe_delete_piece_catalog(ref_piece, commit)

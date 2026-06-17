@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.53.0] - 2026-06-17
+
+### Refonte UX du gestionnaire de pièces (Lots A–D)
+
+- **Redirection "Éditer la pièce"** (Lot A) : le dialogue inline de 465 lignes est remplacé par une redirection vers `PiecesManagerWindow.open_on_piece(ref)` — suppression des widgets orphelins (`details_text`, `btn_mark_obsolete`, `_load_piece_details`).
+- **Colonne Statut + raccourcis clavier** (Lot B) : 6ᵉ colonne "Statut" insérée avec icônes qtawesome (fantôme, obsolète, remplacée, remplaçante, équivalent, OK) et tooltips. F2 → modifier, Suppr/Backspace → supprimer.
+- **Barre d'actions contextuelle** (Lot C) : les boutons batch (Fusionner, Modifier libellé, Exporter sélection, Désélectionner tout) sont déplacés dans une barre horizontale sous le tableau, visible uniquement si ≥1 pièce sélectionnée. "Chercher dans l'app" déplacé dans le menu contextuel clic droit. Suppression de la bannière sticky redondante.
+- **Bouton "+ Nouvelle pièce"** (Lot D) : dans la barre de recherche, ouvre un mini-dialogue (référence + libellé optionnel) → `db_manager.create_piece_standalone()` → rechargement + positionnement. Nouvelle méthode `DatabaseManager.create_piece_standalone()`.
+- **Ajustements tableau** : Libellé passe en Interactive (redimensionnable), Types d'Appareils en Stretch. Splitter table/panneau forcé à 70/30 via `setSizes([700, 300])`. Minimum panneau latéral réduit à 200px.
+
+---
+
 ## [3.52.0] - 2026-06-17
 
 ### Refonte UX de la fenêtre principale
