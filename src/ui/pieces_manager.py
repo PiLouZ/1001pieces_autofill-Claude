@@ -1451,6 +1451,8 @@ class PiecesManagerWindow(QDialog):
 
         self.superseded_section.setVisible(True)
         self.replaces_section.setVisible(True)
+        self.btn_mark_superseded.setEnabled(True)
+        self.btn_mark_replaces.setEnabled(True)
         self.btn_cancel_succession.setVisible(False)  # chips suffisent en mono-sélection
 
         # Libellés divergents au sein du groupe d'équivalence (C)
