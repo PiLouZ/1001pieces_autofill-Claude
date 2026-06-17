@@ -819,6 +819,9 @@ class PiecesManagerWindow(QDialog):
             row = self.pieces_table.currentRow()
             if row >= 0:
                 self._delete_at_row_or_selection(row)
+            elif self._sticky_selected_refs:
+                # Sélection entièrement hors de la vue filtrée : supprimer la sticky
+                self._delete_selected_pieces()
         else:
             super().keyPressEvent(event)
 
@@ -1279,9 +1282,12 @@ class PiecesManagerWindow(QDialog):
         ref_input.setFocus()
 
     def _delete_at_row_or_selection(self, row: int):
-        """Supprimer la pièce à la ligne, ou toute la sélection si la ligne en fait partie."""
-        selected_rows = list(set([item.row() for item in self.pieces_table.selectedItems()]))
-        if len(selected_rows) > 1 and row in selected_rows:
+        """Supprimer la pièce à la ligne, ou toute la sélection sticky si la ligne
+        en fait partie (sélection multi). La sélection sticky est la source de
+        vérité unique, comme pour les actions batch (cohérence du périmètre)."""
+        item = self.pieces_table.item(row, 0)
+        ref = (item.data(Qt.UserRole) or item.text()) if item else None
+        if ref and ref in self._sticky_selected_refs and len(self._sticky_selected_refs) > 1:
             self._delete_selected_pieces()
         else:
             self._delete_piece_at_row(row)
@@ -1349,18 +1355,35 @@ class PiecesManagerWindow(QDialog):
 
     def _sync_sticky_selection(self):
         """Synchroniser la sélection persistante avec la sélection visible.
-        Les refs visibles ajoutées/retirées de la sélection mettent à jour
-        _sticky_selected_refs ; les refs masquées par la recherche/filtre en
-        cours restent inchangées — ce qui permet de composer une sélection
-        multi-pièces à travers plusieurs recherches successives."""
+
+        Convention native (macOS/Windows) :
+        - clic SIMPLE (sans modificateur) → REMPLACE : la sélection repart de
+          zéro, on ne garde que les lignes visibles sélectionnées. Les refs
+          composées lors de recherches précédentes sont abandonnées (évite la
+          sélection « surprise » dont l'origine est introuvable).
+        - Ctrl/Cmd/Maj tenu → COMPOSE : on cumule, y compris à travers plusieurs
+          recherches successives (les refs hors-écran sont préservées).
+
+        Cette méthode n'est appelée que sur une sélection pilotée par
+        l'utilisateur : les reconstructions programmatiques du tableau bloquent
+        les signaux (cf. _update_table_display), donc keyboardModifiers() reflète
+        bien le geste en cours."""
         visible_refs = set()
         for row in range(self.pieces_table.rowCount()):
             item = self.pieces_table.item(row, 0)
             if item:
                 visible_refs.add(item.data(Qt.UserRole) or item.text())
         visible_selected = set(self._get_visible_selected_refs())
-        self._sticky_selected_refs -= (visible_refs - visible_selected)
-        self._sticky_selected_refs |= visible_selected
+
+        mods = QApplication.keyboardModifiers()
+        additive = bool(mods & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier))
+        if additive:
+            # Composer : retirer les refs visibles désélectionnées, ajouter les nouvelles
+            self._sticky_selected_refs -= (visible_refs - visible_selected)
+            self._sticky_selected_refs |= visible_selected
+        else:
+            # Remplacer : on repart de la seule sélection visible
+            self._sticky_selected_refs = set(visible_selected)
         self._update_sticky_selection_indicator()
 
     def _update_sticky_selection_indicator(self):
@@ -1369,7 +1392,18 @@ class PiecesManagerWindow(QDialog):
         if n > 0:
             from src.core.config import pluralize
             refs_sorted = sorted(self._sticky_selected_refs)
-            self._action_bar_label.setText(pluralize(n, 'pièce') + " sélectionnée(s)")
+            # Refs sélectionnées absentes de la vue filtrée actuelle : on le signale
+            # pour rendre la composition multi-recherche découvrable.
+            visible_refs = set()
+            for row in range(self.pieces_table.rowCount()):
+                item = self.pieces_table.item(row, 0)
+                if item:
+                    visible_refs.add(item.data(Qt.UserRole) or item.text())
+            offscreen = len(self._sticky_selected_refs - visible_refs)
+            label = pluralize(n, 'pièce') + " sélectionnée(s)"
+            if offscreen:
+                label += f"  ·  {offscreen} hors écran"
+            self._action_bar_label.setText(label)
             self._action_bar_label.setToolTip(
                 "<html>" + "<br>".join(_html.escape(r) for r in refs_sorted) + "</html>"
             )
@@ -1500,8 +1534,32 @@ class PiecesManagerWindow(QDialog):
             self.pieces_table.blockSignals(False)
         popup.close()
         self._update_sticky_selection_indicator()
+        # Resynchroniser la pièce courante + panneau latéral : ce mutateur
+        # contourne _on_piece_selected (blockSignals), il faut donc recalculer
+        # l'état affiché à la main, sinon l'en-tête/les sections gardent la
+        # pièce retirée (incohérence d'affichage après désélection).
+        self._resync_after_selection_mutation()
         if self._sticky_selected_refs:
             self._show_selection_popup()
+
+    def _resync_after_selection_mutation(self):
+        """Recalculer la pièce courante et rafraîchir le panneau latéral après
+        une mutation DIRECTE de _sticky_selected_refs (popover ×) qui ne passe
+        pas par _on_piece_selected. Garde l'affichage cohérent avec la sélection."""
+        if self._current_ref_piece in self._sticky_selected_refs:
+            target = self._current_ref_piece
+        elif self._sticky_selected_refs:
+            # La pièce courante a été retirée : reprendre la dernière restante
+            target = sorted(self._sticky_selected_refs)[-1]
+        else:
+            target = None
+        self._current_ref_piece = target
+        if target:
+            self._update_panel_header(target)
+        else:
+            self.panel_header_label.setText("—")
+        self._refresh_succession_panel(target)
+        self._refresh_equivalence_panel(target)
 
     def _clear_sticky_selection(self, checked=False):
         """Vider la sélection persistante et la sélection visible du tableau."""
@@ -2071,28 +2129,28 @@ class PiecesManagerWindow(QDialog):
 
     @handle_ui_errors(log_prefix="Erreur suppression pièces", show_message=True)
     def _delete_selected_pieces(self, checked=False):
-        """Supprimer les références de pièces sélectionnées"""
-        selected_rows = list(set([item.row() for item in self.pieces_table.selectedItems()]))
+        """Supprimer les références de pièces sélectionnées (sélection sticky).
 
-        if not selected_rows:
+        La source de vérité est _sticky_selected_refs, pas la sélection visible :
+        la suppression porte donc aussi sur les pièces hors de la vue filtrée, qui
+        sont alors listées explicitement dans la confirmation."""
+        selected_refs = self._get_selected_refs()  # sticky, trié
+
+        if not selected_refs:
             QMessageBox.warning(self, "Aucune sélection", "Veuillez sélectionner au moins une référence de pièce à supprimer.")
             return
 
-        # Collecter les informations des pièces sélectionnées
-        pieces_to_delete = []
-        total_associations = 0
+        # Nb d'associations résolu depuis all_pieces_data (couvre visible ET hors-écran)
+        nb_by_ref = {r[0]: r[2] for r in getattr(self, 'all_pieces_data', [])}
+        visible_refs = set()
+        for row in range(self.pieces_table.rowCount()):
+            item = self.pieces_table.item(row, 0)
+            if item:
+                visible_refs.add(item.data(Qt.UserRole) or item.text())
 
-        for row in selected_rows:
-            ref_item = self.pieces_table.item(row, 0)
-            nb_item = self.pieces_table.item(row, 2)  # Colonne 2 pour le nombre d'appareils
-            if ref_item and nb_item:
-                ref_piece = ref_item.data(Qt.UserRole) or ref_item.text()
-                nb_appareils = int(nb_item.text())
-                pieces_to_delete.append((ref_piece, nb_appareils))
-                total_associations += nb_appareils
-
-        if not pieces_to_delete:
-            return
+        pieces_to_delete = [(ref, int(nb_by_ref.get(ref, 0))) for ref in selected_refs]
+        total_associations = sum(nb for _, nb in pieces_to_delete)
+        offscreen_refs = [ref for ref in selected_refs if ref not in visible_refs]
 
         # Confirmation
         from src.core.config import pluralize
@@ -2107,6 +2165,11 @@ class PiecesManagerWindow(QDialog):
             if total_associations > 0:
                 message += f"ATTENTION: Ces pièces sont associées à {pluralize(total_associations, 'appareil')} au total.\n"
                 message += "Toutes les associations seront supprimées.\n\n"
+
+        # Lister explicitement les pièces hors de la vue actuelle (sinon suppression « invisible »)
+        if offscreen_refs:
+            message += (f"Dont {pluralize(len(offscreen_refs), 'pièce')} hors de la vue actuelle :\n"
+                        f"{_format_refs_recap(offscreen_refs)}\n\n")
 
         message += "Cette action est irréversible. Continuer ?"
 
@@ -2146,6 +2209,11 @@ class PiecesManagerWindow(QDialog):
                 self, "Suppression réussie",
                 f"{pluralize(deleted_count, 'référence')} supprimées avec {pluralize(deleted_associations, 'association')} au total."
             )
+
+        # La sélection sticky portait exactement sur les pièces supprimées :
+        # la purger pour éviter des refs fantômes comptées « hors écran » après reload.
+        self._sticky_selected_refs.clear()
+        self._current_ref_piece = None
 
         # Recharger les données (sans fermer la fenêtre)
         self._load_pieces_data()
@@ -2268,6 +2336,10 @@ class PiecesManagerWindow(QDialog):
 
             self._do_delete_piece(ref_piece)
             self.db_manager.conn.commit()
+            # Retirer la pièce supprimée de la sélection sticky (cohérence du compteur)
+            self._sticky_selected_refs.discard(ref_piece)
+            if self._current_ref_piece == ref_piece:
+                self._current_ref_piece = None
             self._load_pieces_data()
             self._add_to_main_history(ref_piece, nb_appareils)
 

@@ -4,6 +4,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.0] - 2026-06-17
+
+### Robustesse de la sélection du gestionnaire de pièces
+
+Audit multi-agents de la sélection multi-pièces puis renforcement en 4 lots.
+
+- **Cohérence après désélection** (Lot 1) : `_remove_ref_from_sticky` (retrait via le `×` du popover) contournait toute resynchronisation → l'en-tête et les sections Succession/Équivalences gardaient la pièce retirée, et `_current_ref_piece` pouvait pointer une pièce non sélectionnée (risque d'action sur la mauvaise pièce). Nouveau helper `_resync_after_selection_mutation()` qui recalcule la pièce courante + rafraîchit le panneau latéral.
+- **Sémantique du clic** (Lot 2) : `_sync_sticky_selection` lit `keyboardModifiers()`. Clic simple = **remplace** (la sélection repart de zéro), Ctrl/Cmd/Maj = **compose** à travers les recherches. Élimine la sélection « surprise » dont l'origine était introuvable.
+- **Indicateur hors-écran** (Lot 3) : la barre d'actions affiche « N sélectionnée(s) · K hors écran » quand des pièces sélectionnées sont absentes de la vue filtrée — la composition multi-recherche devient découvrable.
+- **Source de vérité unique** (Lot 4) : toutes les actions (Suppr clavier, bouton corbeille, batch) raisonnent désormais sur la sélection sticky (`_get_selected_refs()`) — fin de la double source de vérité où Suppr agissait sur le visible et les boutons batch sur la sticky. La confirmation de suppression liste explicitement les pièces hors-écran concernées ; le nb d'associations est résolu depuis `all_pieces_data`. Purge de la sticky après suppression (plus de refs fantômes comptées « hors écran »).
+
+---
+
 ## [3.53.0] - 2026-06-17
 
 ### Refonte UX du gestionnaire de pièces (Lots A–D)
