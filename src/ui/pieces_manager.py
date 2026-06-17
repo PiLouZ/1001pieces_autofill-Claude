@@ -638,10 +638,14 @@ class PiecesManagerWindow(QDialog):
         self._btn_selection_popup.setIconSize(QSize(9, 9))
         self._btn_selection_popup.setFixedSize(20, 20)
         self._btn_selection_popup.setToolTip("Voir et gérer la sélection")
-        self._btn_selection_popup.setFlat(True)
+        self._btn_selection_popup.setStyleSheet(
+            "QPushButton { border: none; background: transparent; padding: 0; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
+        )
         self._btn_selection_popup.setVisible(False)
         self._btn_selection_popup.clicked.connect(self._show_selection_popup)
         _ab_layout.addWidget(self._btn_selection_popup)
+        _ab_layout.setAlignment(self._btn_selection_popup, Qt.AlignVCenter)
 
         _ab_sep = QFrame()
         _ab_sep.setFrameShape(QFrame.VLine)
@@ -1398,6 +1402,14 @@ class PiecesManagerWindow(QDialog):
         scroll.setMinimumWidth(270)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
+        # Récupérer les libellés en une seule requête batch
+        placeholders = ",".join(["?"] * len(refs))
+        desc_rows = self.db_manager.execute_query(
+            f"SELECT ref_piece, description FROM pieces WHERE ref_piece IN ({placeholders})",
+            list(refs)
+        )
+        desc_map = {r[0]: (r[1] or "") for r in desc_rows}
+
         content = QWidget()
         content.setStyleSheet("background: #ffffff;")
         cl = QVBoxLayout(content)
@@ -1409,11 +1421,21 @@ class PiecesManagerWindow(QDialog):
             row_w.setStyleSheet("QWidget:hover { background: #f1f3f5; }")
             rl = QHBoxLayout(row_w)
             rl.setContentsMargins(8, 3, 6, 3)
-            rl.setSpacing(4)
-            lbl = QLabel(ref)
-            lbl.setStyleSheet("font-size: 11px; color: #212529;")
-            rl.addWidget(lbl)
-            rl.addStretch()
+            rl.setSpacing(6)
+            lbl_ref = QLabel(ref)
+            lbl_ref.setStyleSheet("font-size: 11px; color: #212529; font-weight: 500;")
+            lbl_ref.setMinimumWidth(80)
+            rl.addWidget(lbl_ref)
+            desc = desc_map.get(ref, "")
+            if desc:
+                MAX_DESC = 38
+                desc_display = desc[:MAX_DESC] + "…" if len(desc) > MAX_DESC else desc
+                lbl_desc = QLabel(desc_display)
+                lbl_desc.setStyleSheet("font-size: 10px; color: #868e96; font-style: italic;")
+                lbl_desc.setToolTip(desc)
+                rl.addWidget(lbl_desc, 1)
+            else:
+                rl.addStretch()
             btn_x = QPushButton("×")
             btn_x.setFixedSize(18, 18)
             btn_x.setStyleSheet(
