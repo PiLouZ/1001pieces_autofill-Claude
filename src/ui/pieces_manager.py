@@ -1891,9 +1891,7 @@ class PiecesManagerWindow(QDialog):
 
         # ── Multi-sélection ────────────────────────────────────────────────
         if n > 1:
-            self.equiv_status_label.setText(f"{n} pièces sélectionnées.")
-            self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
-            self.equiv_status_label.setVisible(True)
+            self.equiv_status_label.setVisible(False)
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(True)
             self.btn_unlink_equiv.setEnabled(True)
