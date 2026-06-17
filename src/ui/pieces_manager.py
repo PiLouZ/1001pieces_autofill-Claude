@@ -3,12 +3,13 @@ Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 """
 
 from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
-                           QTableWidgetItem, QLabel, QPushButton, QLineEdit,
+                           QTableWidgetItem, QTableWidgetSelectionRange, QLabel,
+                           QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
                            QApplication, QWidget, QMenu, QInputDialog, QCheckBox,
                            Qt, QTimer, pyqtSignal, QColor,
                            QButtonGroup, QFont,
-                           QFrame, QSize, QCursor, QPalette,
+                           QFrame, QScrollArea, QSize, QPoint, QCursor, QPalette,
                            QEvent, QStackedWidget, QProgressBar, QItemSelectionModel)
 from typing import List, Tuple, Dict
 import qtawesome as qta
@@ -631,6 +632,16 @@ class PiecesManagerWindow(QDialog):
         self._action_bar_label = QLabel("")
         self._action_bar_label.setStyleSheet("color: #495057; font-size: 11px; font-weight: bold;")
         _ab_layout.addWidget(self._action_bar_label)
+
+        self._btn_selection_popup = QPushButton()
+        self._btn_selection_popup.setIcon(qta.icon('fa5s.chevron-down', color='#495057'))
+        self._btn_selection_popup.setIconSize(QSize(9, 9))
+        self._btn_selection_popup.setFixedSize(20, 20)
+        self._btn_selection_popup.setToolTip("Voir et gérer la sélection")
+        self._btn_selection_popup.setFlat(True)
+        self._btn_selection_popup.setVisible(False)
+        self._btn_selection_popup.clicked.connect(self._show_selection_popup)
+        _ab_layout.addWidget(self._btn_selection_popup)
 
         _ab_sep = QFrame()
         _ab_sep.setFrameShape(QFrame.VLine)
@@ -1333,7 +1344,10 @@ class PiecesManagerWindow(QDialog):
         n = len(self._sticky_selected_refs)
         if n > 0:
             from src.core.config import pluralize
+            refs_sorted = sorted(self._sticky_selected_refs)
             self._action_bar_label.setText(pluralize(n, 'pièce') + " sélectionnée(s)")
+            self._action_bar_label.setToolTip("\n".join(refs_sorted))
+            self._btn_selection_popup.setVisible(True)
             self._action_bar.setVisible(True)
             # Boutons batch : visibles seulement en multi-sélection (n > 1)
             show_batch = n > 1
@@ -1344,6 +1358,106 @@ class PiecesManagerWindow(QDialog):
                 self.btn_export_selection.setText(f"Exporter la sélection ({n})")
         else:
             self._action_bar.setVisible(False)
+            self._btn_selection_popup.setVisible(False)
+            self._action_bar_label.setToolTip("")
+
+    def _show_selection_popup(self):
+        """Afficher un popover listant les pièces sélectionnées avec désélection individuelle (×)."""
+        refs = sorted(self._sticky_selected_refs)
+        if not refs:
+            return
+
+        popup = QFrame(None)
+        popup.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        popup.setObjectName("selectionPopup")
+        popup.setStyleSheet(
+            "QFrame#selectionPopup { background: #ffffff; border: 1px solid #ced4da;"
+            " border-radius: 4px; }"
+        )
+
+        outer = QVBoxLayout(popup)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        header = QLabel(f"  Pièces sélectionnées — {len(refs)}")
+        header.setStyleSheet(
+            "background: #e9ecef; color: #495057; font-size: 11px; font-weight: bold;"
+            " padding: 5px 8px;"
+        )
+        outer.addWidget(header)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setFrameShadow(QFrame.Sunken)
+        outer.addWidget(sep)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setMaximumHeight(220)
+        scroll.setMinimumWidth(270)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        content.setStyleSheet("background: #ffffff;")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(0, 2, 0, 2)
+        cl.setSpacing(0)
+
+        for ref in refs:
+            row_w = QWidget()
+            row_w.setStyleSheet("QWidget:hover { background: #f1f3f5; }")
+            rl = QHBoxLayout(row_w)
+            rl.setContentsMargins(8, 3, 6, 3)
+            rl.setSpacing(4)
+            lbl = QLabel(ref)
+            lbl.setStyleSheet("font-size: 11px; color: #212529;")
+            rl.addWidget(lbl)
+            rl.addStretch()
+            btn_x = QPushButton("×")
+            btn_x.setFixedSize(18, 18)
+            btn_x.setStyleSheet(
+                "QPushButton { color: #868e96; border: none; font-size: 14px; padding: 0;"
+                " background: transparent; }"
+                "QPushButton:hover { color: #dc3545; background: #f8d7da; border-radius: 3px; }"
+            )
+            btn_x.setToolTip(f"Retirer {ref} de la sélection")
+            btn_x.clicked.connect(lambda checked, r=ref, p=popup: self._remove_ref_from_sticky(r, p))
+            rl.addWidget(btn_x)
+            cl.addWidget(row_w)
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        popup.adjustSize()
+
+        btn = self._btn_selection_popup
+        pos = btn.mapToGlobal(QPoint(0, btn.height() + 2))
+        screen_rect = self.screen().availableGeometry()
+        if pos.x() + popup.sizeHint().width() > screen_rect.right():
+            pos.setX(screen_rect.right() - popup.sizeHint().width() - 4)
+        popup.move(pos)
+        popup.show()
+
+    def _remove_ref_from_sticky(self, ref: str, popup):
+        """Retirer une pièce de la sélection persistante depuis le popover."""
+        self._sticky_selected_refs.discard(ref)
+        # Désélectionner la ligne dans le tableau si visible, sans déclencher selectionChanged
+        self.pieces_table.blockSignals(True)
+        try:
+            for row in range(self.pieces_table.rowCount()):
+                item = self.pieces_table.item(row, 0)
+                if item and (item.data(Qt.UserRole) or item.text()) == ref:
+                    self.pieces_table.setRangeSelected(
+                        QTableWidgetSelectionRange(row, 0, row, self.pieces_table.columnCount() - 1),
+                        False
+                    )
+                    break
+        finally:
+            self.pieces_table.blockSignals(False)
+        popup.close()
+        self._update_sticky_selection_indicator()
+        if self._sticky_selected_refs:
+            self._show_selection_popup()
 
     def _clear_sticky_selection(self, checked=False):
         """Vider la sélection persistante et la sélection visible du tableau."""
