@@ -34,14 +34,23 @@ class DuplicateIndicatorService(QObject):
         # Compteur pour éviter les calculs inutiles
         self._pending_updates = 0
 
-        # Styles CSS pour l'indication visuelle
-        self._normal_style = ""
+        # Géométrie IDENTIQUE au bouton "Lignes à traiter" (cf. IncompleteButtonService) :
+        # même padding/bordure 2px/font → les deux boutons du cluster "santé des données"
+        # ont exactement les mêmes dimensions ; seule la couleur varie selon l'état.
+        self._normal_style = (
+            "QPushButton { background-color: #f8f9fa; color: #495057;"
+            " border: 2px solid #ced4da; border-radius: 4px; padding: 3px 9px; font-size: 11px; }"
+            "QPushButton:hover { background-color: #e9ecef; }"
+        )
         self._warning_style = """
             QPushButton {
                 background-color: #ff6b35;
                 color: white;
                 font-weight: bold;
                 border: 2px solid #e55a2b;
+                border-radius: 4px;
+                padding: 3px 9px;
+                font-size: 11px;
             }
             QPushButton:hover {
                 background-color: #e55a2b;

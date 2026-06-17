@@ -467,8 +467,8 @@ class MainWindow(QMainWindow):
         # Garder des références pour la compatibilité
         self.table = self.table_controller.table
         self.search_input = self.table_controller.advanced_search_input  # Le vrai search input
-        self.incomplete_filter_btn = self.table_controller.incomplete_filter_btn  # Référence au bouton lignes à compléter
-        
+        # self.incomplete_filter_btn est défini dans _setup_toolbar (bouton créé dans la toolbar)
+
         # PHASE 5: Configuration des services centralisés
         self.cell_editing_service.table = self.table
 
@@ -482,15 +482,24 @@ class MainWindow(QMainWindow):
             )
         
         # Configurer le service de navigation avec les widgets de pagination
-        if hasattr(self.table_controller, 'page_label'):
+        if hasattr(self.table_controller, 'page_input'):
             self.navigation_service.set_pagination_widgets(
                 self.table_controller.page_label,
                 self.table_controller.prev_button,
                 self.table_controller.next_button,
-                self.table_controller.page_size_combo
+                self.table_controller.page_size_combo,
+                first_button=getattr(self.table_controller, 'first_button', None),
+                last_button=getattr(self.table_controller, 'last_button', None),
+                page_input=self.table_controller.page_input,
+                page_total_label=getattr(self.table_controller, 'page_total_label', None)
             )
             # Établir la liaison bidirectionnelle
             self.table_controller.set_navigation_service(self.navigation_service)
+
+        # Appliquer la position de recherche mémorisée (défaut : sous le tableau)
+        if hasattr(self, 'settings') and hasattr(self.table_controller, 'set_search_position'):
+            if self.settings.value("ui/search_position", "bottom") == "top":
+                self.table_controller.set_search_position("top")
         
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
@@ -676,6 +685,13 @@ class MainWindow(QMainWindow):
         pieces_splitter.setStretchFactor(1, 1)  # Historique peut grandir
         
         layout.addWidget(pieces_splitter)
+
+        # Boutons d'export en bas de la colonne de droite (sous l'historique).
+        # Disposition inchangée (CSV/HTML Marques/HTML Détails, puis Méta Title/Desc) ;
+        # seul l'emplacement change, pour dégager totalement le bas du tableau.
+        if hasattr(self, 'ui_component_service') and self.ui_component_service:
+            self.ui_component_service.add_export_buttons(layout)
+
         return widget
 
     def _setup_drag_handle(self):
@@ -692,14 +708,27 @@ class MainWindow(QMainWindow):
         # Déléguer la configuration au service spécialisé
         self.toolbar = self.toolbar_service.setup_toolbar()
 
-        # Connecter le service d'indication des doublons aux boutons
-        if hasattr(self, 'duplicate_indicator_service') and hasattr(self.toolbar_service, 'action_button'):
+        # Connecter le service d'indication des doublons au bouton dédié
+        # "Nettoyer les doublons" (devient rouge quand des doublons sont en attente)
+        if hasattr(self, 'duplicate_indicator_service') and hasattr(self.toolbar_service, 'clean_duplicates_btn'):
             self.duplicate_indicator_service.set_buttons(
-                self.toolbar_service.action_button,
+                self.toolbar_service.clean_duplicates_btn,
                 self.toolbar_service.clean_duplicates_action
             )
             from ..core.logger import app_logger
             app_logger.info("✅ Service d'indication des doublons connecté aux boutons")
+
+        # "Lignes à traiter" est créé dans la toolbar (cluster "santé des données",
+        # à gauche de "Nettoyer les doublons"). On l'expose et on le câble au service
+        # de visibilité/compteur ici, une fois la toolbar et les services prêts.
+        if hasattr(self.toolbar_service, 'incomplete_filter_btn'):
+            self.incomplete_filter_btn = self.toolbar_service.incomplete_filter_btn
+            if hasattr(self, 'table_controller'):
+                self.table_controller.incomplete_filter_btn = self.incomplete_filter_btn
+            if hasattr(self, 'incomplete_button_service'):
+                self.incomplete_button_service.set_button(self.incomplete_filter_btn)
+                self.incomplete_button_service.set_filter_active(self.show_incomplete_only)
+            self._update_incomplete_button_visibility()
 
         self._update_toolbar_states()
 
@@ -1704,6 +1733,14 @@ class MainWindow(QMainWindow):
             # Rafraîchir l'affichage après nettoyage
             self._force_refresh_display()
     
+    def _on_search_position_toggled(self, checked: bool):
+        """Basculer la position de la barre de recherche pièce (haut/bas) et mémoriser."""
+        position = "top" if checked else "bottom"
+        if hasattr(self, 'settings'):
+            self.settings.setValue("ui/search_position", position)
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'set_search_position'):
+            self.table_controller.set_search_position(position)
+
     def _manage_categories(self):
         """Gérer les catégories"""
         return self._safe_manage_categories()

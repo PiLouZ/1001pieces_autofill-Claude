@@ -180,12 +180,27 @@ class TableController:
         _filter_btn_h = QComboBox().sizeHint().height()   # ligne filtres — dominée par QComboBox (32px)
         _search_btn_h = QLineEdit().sizeHint().height()   # ligne recherche — dominée par QLineEdit (21px)
 
-        # Filtres par colonne prenant toute la largeur disponible
+        # Filtres par colonne alignés sur les colonnes du tableau
         filter_widget = QWidget()
         filter_layout = QHBoxLayout(filter_widget)
         filter_layout.setContentsMargins(0, 0, 0, 0)
-        filter_layout.setSpacing(2)  # Petit espacement entre les filtres
-        
+        filter_layout.setSpacing(0)  # Aligné aux colonnes : pas d'espacement
+
+        # Bouton entonnoir 'Filtres' calé sur la largeur de la colonne des n° de ligne
+        # (en-tête vertical). Toujours visible : il pilote l'affichage des filtres.
+        # Sa largeur est synchronisée dans _sync_filter_alignment().
+        import qtawesome as _qta_f
+        self.filters_toggle_btn = QToolButton()
+        self.filters_toggle_btn.setCheckable(True)
+        self.filters_toggle_btn.setIcon(_qta_f.icon('fa5s.filter', color='#555555'))
+        self.filters_toggle_btn.setToolTip("Afficher / masquer les filtres par colonne")
+        self.filters_toggle_btn.setStyleSheet(
+            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
+            "QToolButton:checked { background: #e7f1ff; border-color: #0078d4; }"
+        )
+        self.filters_toggle_btn.toggled.connect(self._toggle_column_filters)
+        filter_layout.addWidget(self.filters_toggle_btn, 0, Qt.AlignVCenter)
+
         for i, header in enumerate(Config.UI_HEADERS):
             # Skip filters for invisible or useless columns
             if i == 7:  # "Nb Pièces" column
@@ -229,7 +244,7 @@ class TableController:
                 )
                 filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 self.filter_widgets[i] = filter_combo
-                filter_layout.addWidget(filter_combo, 1)  # stretch factor 1
+                filter_layout.addWidget(filter_combo)  # largeur fixée au sync (alignée colonne)
             else:
                 # Champs texte avec même style que les dropdowns
                 filter_input = QLineEdit()
@@ -248,7 +263,9 @@ class TableController:
                     }
                 """)
                 self.filter_widgets[i] = filter_input
-                filter_layout.addWidget(filter_input, 1)  # stretch factor 1
+                # Colonne 4 = colonne en stretch du tableau → le filtre stretch aussi
+                # (évite la boucle de rétroaction d'une largeur fixe qui chasse le stretch)
+                filter_layout.addWidget(filter_input, 1 if i == 4 else 0)
 
         # Bouton RAZ pour vider tous les filtres colonne
         raz_btn = QPushButton("×")
@@ -272,10 +289,22 @@ class TableController:
             }
         """)
         raz_btn.clicked.connect(self._clear_all_column_filters)
+        self.raz_btn = raz_btn
         filter_layout.addWidget(raz_btn, 0, Qt.AlignVCenter)
 
+        # Espace réservé à droite = largeur de la colonne figée "Nb Pièces" (overlay),
+        # pour que le filtre stretch (col 4) s'arrête où la colonne visible s'arrête.
+        self.filter_trailing_spacer = QWidget()
+        self.filter_trailing_spacer.setFixedWidth(52)
+        filter_layout.addWidget(self.filter_trailing_spacer)
+
+        # Étirement final : actif UNIQUEMENT en replié (pour packer le bouton à gauche).
+        # Déplié, c'est le filtre col 4 qui prend l'étirement (cf. _apply_column_filters_visibility).
+        filter_layout.addStretch(0)
+        self._filter_trailing_stretch_index = filter_layout.count() - 1
+
         layout.addWidget(filter_widget)
-        
+
         # Sauvegarder les références pour la visibilité
         self.filter_widget = filter_widget
         self.filter_layout = filter_layout
@@ -306,6 +335,8 @@ class TableController:
 
         # Log des largeurs de colonnes quand elles sont modifiées
         self.table.horizontalHeader().sectionResized.connect(self._on_column_resized)
+        # Réaligner les filtres sur les colonnes quand une colonne est redimensionnée
+        self.table.horizontalHeader().sectionResized.connect(lambda *a: self._sync_filter_alignment())
 
         # Appliquer la visibilité des colonnes
         self._apply_column_visibility()
@@ -322,8 +353,17 @@ class TableController:
         header.setSectionResizeMode(4, QHeaderView.Stretch)
 
         layout.addWidget(self.table)
-        
-        # Barre de recherche SOUS le tableau (position correcte)
+        self.table_widget_layout = layout  # réf. pour repositionner la recherche
+
+        # Conteneur [recherche + bannières] repositionnable (haut/bas du tableau).
+        # Les bannières supersession/équivalence restent SOLIDAIRES de la recherche
+        # (elles lisent le terme courant) : on les groupe pour éviter toute régression.
+        self.search_container = QWidget()
+        _sc_layout = QVBoxLayout(self.search_container)
+        _sc_layout.setContentsMargins(0, 0, 0, 0)
+        _sc_layout.setSpacing(6)
+
+        # Barre de recherche (dans le conteneur)
         search_layout2 = QHBoxLayout()
         import qtawesome as qta
         search_icon_label = QLabel()
@@ -368,8 +408,8 @@ class TableController:
         self.history_btn.setEnabled(False)  # Désactivé jusqu'à ce qu'il y ait un historique
         self.history_btn.clicked.connect(self._show_search_history)
         search_layout2.addWidget(self.history_btn, 0, Qt.AlignVCenter)
-        
-        layout.addLayout(search_layout2)
+
+        _sc_layout.addLayout(search_layout2)
 
         # Bandeau de notification supersession (caché par défaut)
         self.supersession_banner = QWidget()
@@ -418,7 +458,7 @@ class TableController:
         self.supersession_bypass_btn.clicked.connect(self._toggle_supersession_bypass)
         banner_layout.addWidget(self.supersession_bypass_btn)
 
-        layout.addWidget(self.supersession_banner)
+        _sc_layout.addWidget(self.supersession_banner)
 
         # Bandeau équivalence (caché par défaut, fond violet clair)
         self.equivalence_banner = QWidget()
@@ -469,19 +509,120 @@ class TableController:
         """)
         self.equivalence_expand_btn.clicked.connect(self._toggle_equivalence_expand)
         equiv_banner_layout.addWidget(self.equivalence_expand_btn)
-        layout.addWidget(self.equivalence_banner)
+        _sc_layout.addWidget(self.equivalence_banner)
 
-        # Boutons d'export (si le service UI est disponible)
-        if hasattr(self, 'ui_component_service') and self.ui_component_service:
-            self.ui_component_service.add_export_buttons(layout)
-        
+        # Ajouter le conteneur recherche au layout (position par défaut : sous le tableau)
+        layout.addWidget(self.search_container)
+
+        # Boutons d'export : déplacés en bas de la colonne de droite
+        # (cf. main_refactored._create_pieces_widget) pour dégager le bas du tableau.
+
         # Contrôles de pagination
         self._add_pagination_controls(layout)
         
-        # Bouton pour lignes incomplètes
-        self._add_incomplete_filter_button(layout)
-        
+        # Le bouton "Lignes à traiter" est désormais créé dans la toolbar
+        # (toolbar_service), à gauche de "Nettoyer les doublons".
+
+        # Appliquer l'état mémorisé des filtres colonnes (défaut : masqués)
+        _show_filters = False
+        if hasattr(self.parent_window, 'settings'):
+            _show_filters = self.parent_window.settings.value("ui/show_column_filters", False, type=bool)
+        self.filters_toggle_btn.blockSignals(True)
+        self.filters_toggle_btn.setChecked(_show_filters)
+        self.filters_toggle_btn.blockSignals(False)
+        self._apply_column_filters_visibility(_show_filters)
+        self._sync_filter_alignment()  # caler le bouton/filtres dès la construction
+
         return widget
+
+    def _toggle_column_filters(self, checked: bool):
+        """Afficher/masquer la rangée de filtres par colonne + mémoriser l'état."""
+        self._apply_column_filters_visibility(checked)
+        if hasattr(self.parent_window, 'settings'):
+            self.parent_window.settings.setValue("ui/show_column_filters", checked)
+
+    def _apply_column_filters_visibility(self, visible: bool):
+        """Afficher/masquer les CHAMPS de filtre (le bouton entonnoir reste visible).
+
+        La rangée `filter_widget` reste affichée en permanence (elle porte le bouton
+        entonnoir qui pilote le repli) ; seuls les champs de filtre et le bouton RAZ
+        apparaissent/disparaissent.
+        """
+        for w in getattr(self, 'filter_widgets', {}).values():
+            if w is not None:
+                w.setVisible(visible)
+        if getattr(self, 'raz_btn', None) is not None:
+            self.raz_btn.setVisible(visible)
+        if getattr(self, 'filter_trailing_spacer', None) is not None:
+            self.filter_trailing_spacer.setVisible(visible)
+
+        # Gestion de l'étirement : déplié → la colonne 4 prend l'étirement (elle remplit) ;
+        # replié → l'étirement final prend le relais pour packer le bouton entonnoir à gauche.
+        layout = getattr(self, 'filter_layout', None)
+        f4 = getattr(self, 'filter_widgets', {}).get(4)
+        if layout is not None:
+            if f4 is not None:
+                idx4 = layout.indexOf(f4)
+                if idx4 >= 0:
+                    layout.setStretch(idx4, 1 if visible else 0)
+            ts = getattr(self, '_filter_trailing_stretch_index', -1)
+            if ts >= 0:
+                layout.setStretch(ts, 0 if visible else 1)
+
+        if visible:
+            # Réaligner les champs sur les colonnes au moment de l'affichage,
+            # puis une 2e fois après stabilisation du layout (colonne 4 en stretch)
+            self._sync_filter_alignment()
+            QTimer.singleShot(0, self._sync_filter_alignment)
+
+    def _sync_filter_alignment(self):
+        """Caler le bouton entonnoir et chaque champ de filtre sur la largeur de sa colonne.
+
+        - Bouton entonnoir = largeur de l'en-tête vertical (colonne des n° de ligne).
+        - Champ i = largeur de la colonne i du tableau.
+        Resynchronisé sur `sectionResized` (col. 4 en stretch bouge au redimensionnement).
+        """
+        if getattr(self, 'table', None) is None:
+            return
+        vh = self.table.verticalHeader().width()
+        if getattr(self, 'filters_toggle_btn', None) is not None and vh > 0:
+            self.filters_toggle_btn.setFixedWidth(vh)
+        for i, w in getattr(self, 'filter_widgets', {}).items():
+            if w is None or self.table.isColumnHidden(i):
+                continue
+            if i == 4:
+                # Colonne en stretch : largeur libre (le filtre stretch via le layout),
+                # sinon une largeur fixe chasserait sans fin le stretch (boucle).
+                w.setMinimumWidth(0)
+                w.setMaximumWidth(16777215)
+                continue
+            col_w = self.table.columnWidth(i)
+            if col_w > 0:
+                w.setFixedWidth(col_w)
+        # Réserver à droite la largeur de la colonne figée "Nb Pièces"
+        if getattr(self, 'filter_trailing_spacer', None) is not None:
+            frozen_w = getattr(self.table, '_frozen_col_width', 52) or 52
+            self.filter_trailing_spacer.setFixedWidth(frozen_w)
+
+    def set_search_position(self, position: str):
+        """Repositionner le conteneur recherche (+ bannières) au-dessus ou sous le tableau.
+
+        position : "top" (au-dessus du tableau) ou "bottom" (sous le tableau, défaut).
+        """
+        if getattr(self, 'search_container', None) is None:
+            return
+        layout = getattr(self, 'table_widget_layout', None)
+        if layout is None:
+            return
+        layout.removeWidget(self.search_container)
+        if position == "top":
+            # Tout en haut, AU-DESSUS des filtres colonnes (qui restent juste au-dessus du tableau)
+            layout.insertWidget(0, self.search_container)
+        else:
+            # Sous le tableau (position par défaut)
+            table_idx = layout.indexOf(self.table)
+            layout.insertWidget(table_idx + 1, self.search_container)
+        self.search_container.setVisible(True)
     
     def connect_selection_signals(self, on_selection_changed_callback):
         """Connecter les signaux de sélection du tableau à un callback"""
@@ -999,10 +1140,19 @@ class TableController:
         pagination_layout = QHBoxLayout(pagination_widget)
         pagination_layout.setContentsMargins(4, 2, 4, 0)
         
+        # Style unique pour les 4 boutons de navigation (référence : "Suivant ▶"),
+        # avec règle :disabled pour une désactivation cohérente.
         _btn_style = (
             "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
             "QPushButton:hover { background: rgba(0,0,0,0.07); }"
+            "QPushButton:disabled { color: #adb5bd; }"
         )
+
+        # Première page
+        self.first_button = QPushButton("◀◀")
+        self.first_button.setToolTip("Première page")
+        self.first_button.setStyleSheet(_btn_style)
+        pagination_layout.addWidget(self.first_button)
 
         # Bouton page précédente
         self.prev_button = QPushButton("◀ Précédent")
@@ -1010,16 +1160,35 @@ class TableController:
         # Navigation gérée par NavigationService
         pagination_layout.addWidget(self.prev_button)
 
-        # Label page actuelle
-        self.page_label = QLabel("Page 1 sur 1")
-        pagination_layout.addWidget(self.page_label)
+        # Saut de page direct : "Page [champ éditable] / N"
+        self.page_text_label = QLabel("Page")
+        pagination_layout.addWidget(self.page_text_label)
+        self.page_input = QLineEdit("1")
+        self.page_input.setFixedWidth(48)
+        self.page_input.setAlignment(Qt.AlignCenter)
+        self.page_input.setToolTip("Saisir un numéro de page puis Entrée")
+        self.page_input.setStyleSheet(
+            "QLineEdit { padding: 2px; font-size: 11px; border: 1px solid #bdbdbd;"
+            " border-radius: 3px; } QLineEdit:focus { border: 1px solid #0078d4; }"
+        )
+        pagination_layout.addWidget(self.page_input)
+        self.page_total_label = QLabel("/ 1")
+        pagination_layout.addWidget(self.page_total_label)
+        # page_label conservé à None (remplacé par page_input + page_total_label)
+        self.page_label = None
 
         # Bouton page suivante
         self.next_button = QPushButton("Suivant ▶")
         self.next_button.setStyleSheet(_btn_style)
         # Navigation gérée par NavigationService
         pagination_layout.addWidget(self.next_button)
-        
+
+        # Dernière page
+        self.last_button = QPushButton("▶▶")
+        self.last_button.setToolTip("Dernière page")
+        self.last_button.setStyleSheet(_btn_style)
+        pagination_layout.addWidget(self.last_button)
+
         pagination_layout.addStretch()
 
         self.size_label = QLabel(f"Total: {self.total_rows} lignes")
@@ -1098,17 +1267,25 @@ class TableController:
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour pagination")
     def _update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination"""
-        if self.page_label:
-            self.page_label.setText(f"Page {self.current_page} sur {self.total_pages}")
+        # Champ de saut de page + total (remplace l'ancien page_label)
+        if getattr(self, 'page_input', None) is not None:
+            blocked = self.page_input.blockSignals(True)
+            self.page_input.setText(str(self.current_page))
+            self.page_input.blockSignals(blocked)
+        if getattr(self, 'page_total_label', None) is not None:
+            self.page_total_label.setText(f"/ {self.total_pages}")
         if self.size_label:
             self.size_label.setText(f"Total: {self.total_rows} lignes")
 
         # Masquer la zone de navigation page si une seule page
         if hasattr(self, 'pagination_widget') and self.pagination_widget:
             single_page = self.total_pages <= 1 and self.page_size != -1
-            self.prev_button.setVisible(not single_page)
-            self.next_button.setVisible(not single_page)
-            self.page_label.setVisible(not single_page)
+            for w in (getattr(self, 'first_button', None), self.prev_button,
+                      getattr(self, 'page_text_label', None), getattr(self, 'page_input', None),
+                      getattr(self, 'page_total_label', None),
+                      self.next_button, getattr(self, 'last_button', None)):
+                if w is not None:
+                    w.setVisible(not single_page)
 
         # Synchroniser avec NavigationService si disponible
         if self.navigation_service:
@@ -1726,29 +1903,35 @@ class TableController:
                 search_input.setFocus()
 
     def _add_incomplete_filter_button(self, layout):
-        """Ajouter le bouton de filtre pour les lignes incomplètes"""
-        from .qt_imports import QPushButton, QHBoxLayout
+        """Créer le bouton de filtre des lignes incomplètes et l'insérer dans la toolbar.
+
+        Le bouton est placé à GAUCHE de "Nettoyer les doublons" (cluster "santé des
+        données" : tous deux pilotés par un compteur). Le câblage (toggle, service de
+        visibilité/compteur) reste inchangé ; seul l'emplacement change.
+        """
+        from .qt_imports import QPushButton
         from ..core.config import pluralize
-        
-        # Layout centré pour le bouton
-        incomplete_layout = QHBoxLayout()
-        incomplete_layout.addStretch()  # Centrer le bouton
-        
+
         # Bouton pour afficher seulement les lignes incomplètes
         self.incomplete_filter_btn = QPushButton("Lignes à traiter")
         self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
         self.incomplete_filter_btn.setCheckable(True)
         self.incomplete_filter_btn.clicked.connect(self.parent_window._toggle_incomplete_filter)
         self.incomplete_filter_btn.setObjectName("incompleteBtn")
-        incomplete_layout.addWidget(self.incomplete_filter_btn)
+
+        # Insertion dans la toolbar, juste à gauche de "Nettoyer les doublons"
+        toolbar = getattr(self.parent_window, 'toolbar', None)
+        clean_action = getattr(getattr(self.parent_window, 'toolbar_service', None), 'clean_btn_action', None)
+        if toolbar is not None and clean_action is not None:
+            toolbar.insertWidget(clean_action, self.incomplete_filter_btn)
+        else:
+            # Repli : ancien emplacement sous le tableau (sécurité si toolbar absente)
+            layout.addWidget(self.incomplete_filter_btn)
 
         # Associer le bouton au service optimisé
         if hasattr(self.parent_window, 'incomplete_button_service'):
             self.parent_window.incomplete_button_service.set_button(self.incomplete_filter_btn)
             self.parent_window.incomplete_button_service.set_filter_active(self.parent_window.show_incomplete_only)
-
-        incomplete_layout.addStretch()  # Centrer le bouton
-        layout.addLayout(incomplete_layout)
 
         # Mettre à jour la visibilité
         self._update_incomplete_button_visibility()

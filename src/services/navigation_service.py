@@ -35,22 +35,60 @@ class NavigationService(QObject):
         self.prev_button = None
         self.next_button = None
         self.page_size_combo = None
-        
-    def set_pagination_widgets(self, page_label: QLabel, prev_button: QPushButton, 
-                              next_button: QPushButton, page_size_combo: QComboBox):
-        """Configurer les widgets de pagination"""
+        # Saut de page direct (optionnels)
+        self.page_input = None          # QLineEdit éditable : numéro de page courant
+        self.page_total_label = None    # QLabel "/ N"
+        self.first_button = None        # ««
+        self.last_button = None         # »»
+
+    def set_pagination_widgets(self, page_label: QLabel, prev_button: QPushButton,
+                              next_button: QPushButton, page_size_combo: QComboBox,
+                              first_button: QPushButton = None, last_button: QPushButton = None,
+                              page_input=None, page_total_label: QLabel = None):
+        """Configurer les widgets de pagination.
+
+        `page_label` reste accepté pour compatibilité ; si `page_input` +
+        `page_total_label` sont fournis, le saut de page direct est activé.
+        """
         self.page_label = page_label
         self.prev_button = prev_button
         self.next_button = next_button
         self.page_size_combo = page_size_combo
-        
+        self.first_button = first_button
+        self.last_button = last_button
+        self.page_input = page_input
+        self.page_total_label = page_total_label
+
         # Connecter les signaux
         if self.prev_button:
             self.prev_button.clicked.connect(self.previous_page)
         if self.next_button:
             self.next_button.clicked.connect(self.next_page)
+        if self.first_button:
+            self.first_button.clicked.connect(self.go_to_first_page)
+        if self.last_button:
+            self.last_button.clicked.connect(self.go_to_last_page)
+        if self.page_input is not None:
+            # Saut quand l'utilisateur valide (Entrée ou perte de focus)
+            self.page_input.editingFinished.connect(self._submit_page_input)
         if self.page_size_combo:
             self.page_size_combo.currentTextChanged.connect(self.change_page_size)
+
+    def _submit_page_input(self):
+        """Aller à la page saisie dans le champ (clampée ; restaurée si invalide)."""
+        if self.page_input is None:
+            return
+        text = self.page_input.text().strip()
+        try:
+            page = int(text)
+        except (ValueError, TypeError):
+            # Saisie invalide : restaurer l'affichage courant
+            self.update_pagination_controls()
+            return
+        # go_to_page clampe déjà à [1, total_pages] ; on rafraîchit ensuite pour
+        # refléter la valeur réellement atteinte (ex. saisie hors bornes)
+        self.go_to_page(page)
+        self.update_pagination_controls()
             
     def update_total_rows(self, total_rows: int):
         """Mettre à jour le nombre total de lignes"""
@@ -152,21 +190,32 @@ class NavigationService(QObject):
     @handle_navigation_errors()
     def update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination"""
-        if not all([self.page_label, self.prev_button, self.next_button]):
+        if not all([self.prev_button, self.next_button]):
             return
 
         current_page = self.current_page
         total_pages = self.get_total_pages()
-
-        # Mise à jour du label de page
         if self.total_rows == 0:
-            self.page_label.setText("Page 1 sur 1")
-        else:
+            current_page, total_pages = 1, 1
+
+        # Saut de page direct (champ éditable + total) si présent, sinon label texte
+        if self.page_input is not None:
+            # blockSignals : éviter de redéclencher editingFinished pendant la MAJ
+            blocked = self.page_input.blockSignals(True)
+            self.page_input.setText(str(current_page))
+            self.page_input.blockSignals(blocked)
+            if self.page_total_label is not None:
+                self.page_total_label.setText(f"/ {total_pages}")
+        elif self.page_label:
             self.page_label.setText(f"Page {current_page} sur {total_pages}")
 
         # Activation/désactivation des boutons
         self.prev_button.setEnabled(current_page > 1)
         self.next_button.setEnabled(current_page < total_pages)
+        if self.first_button:
+            self.first_button.setEnabled(current_page > 1)
+        if self.last_button:
+            self.last_button.setEnabled(current_page < total_pages)
 
         app_logger.debug(f"Contrôles pagination mis à jour: {current_page}/{total_pages}")
             

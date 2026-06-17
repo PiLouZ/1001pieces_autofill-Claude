@@ -4,6 +4,32 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.52.0] - 2026-06-17
+
+### Refonte UX de la fenêtre principale
+
+Refonte incrémentale et sans régression de la fenêtre principale, livrée par
+incréments validés un à un par rendu offscreen.
+
+- **Pagination enrichie** : champ « Page » éditable (saut direct à une page, avec
+  bornage et restauration si saisie invalide) et boutons « première / dernière page »
+  (`◀◀` / `▶▶`, flèches doubles). Suppression de la pagination morte ; correction de
+  l'affichage lorsqu'il n'y a qu'une seule page (plus de libellé « Page » orphelin).
+  Harmonisation du style de tous les boutons de pagination.
+- **Position de la recherche par pièce réglable** (menu *Affichage*) : en bas (défaut)
+  ou en haut, au-dessus des filtres de colonne. Le réglage est persisté dans `QSettings`.
+- **Filtres de colonne repliables** : masqués par défaut derrière un bouton entonnoir
+  (`fa5s.filter`), aligné sur la colonne des numéros de ligne ; chaque champ de filtre
+  reste ajusté à la largeur de sa colonne quand ils sont déployés.
+- **Exports déplacés en bas de la colonne de droite** (panneau pièces), tous visibles
+  sur une rangée (pas de menu déroulant).
+- **Menus réorganisés** : *Données* (autocomplétion, historique) et *Configuration*
+  (collage, exports de config, FTS5, CSV supersessions, restauration, export app).
+- **Bouton dédié « Nettoyer les doublons »** dans la toolbar, avec indicateur rouge
+  quand des doublons sont détectés. Le bouton **« Lignes à traiter »** est déplacé
+  juste à sa gauche ; les deux boutons du cluster « santé des données » sont
+  **harmonisés à la même taille** (même géométrie, seule la couleur varie selon l'état).
+
 ## [3.51.1] - 2026-06-16
 
 ### Nettoyage des doublons — marquage distinct par clic droit + tri de l'onglet Pièces
