@@ -9,7 +9,7 @@ Responsabilités:
 """
 
 import qtawesome as qta
-from .qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy
+from .qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy, QHBoxLayout
 from .qt_imports import QSize, Qt
 from .qt_imports import QKeySequence
 
@@ -104,10 +104,34 @@ class ToolbarService:
         refresh_action.triggered.connect(getattr(self.main_window, '_refresh_application', lambda: None))
         toolbar.addAction(refresh_action)
 
-        # Espace extensible → pousse le bouton "Nettoyer les doublons" à droite
+        # Espace extensible → pousse le cluster "santé des données" à droite
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
+
+        # Style compact partagé (réduit l'encombrement → limite le débordement de la
+        # toolbar aux fenêtres étroites ; au-delà, repli natif dans le menu » de QToolBar)
+        _compact_btn = "QPushButton { padding: 2px 8px; font-size: 11px; }"
+
+        # Bouton "Lignes à traiter" (filtre lignes incomplètes), à gauche de
+        # "Nettoyer les doublons" (cluster "santé des données" : tous deux pilotés par
+        # un compteur). Enrobé dans un conteneur toujours présent dans la toolbar : le
+        # service masque/affiche le bouton À L'INTÉRIEUR (widget normal), ce qui évite
+        # le quirk de visibilité des QWidgetAction dans un QToolBar. Câblage du service
+        # finalisé dans main_refactored._setup_toolbar.
+        _inc_container = QWidget()
+        _inc_layout = QHBoxLayout(_inc_container)
+        _inc_layout.setContentsMargins(0, 0, 0, 0)
+        self.incomplete_filter_btn = QPushButton("Lignes à traiter")
+        self.incomplete_filter_btn.setObjectName("incompleteBtn")
+        self.incomplete_filter_btn.setCheckable(True)
+        self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
+        # Icône (comme "Nettoyer les doublons") → même hauteur naturelle entre les deux
+        self.incomplete_filter_btn.setIcon(qta.icon('fa5s.tasks', color='#555555'))
+        self.incomplete_filter_btn.setStyleSheet(_compact_btn)
+        self.incomplete_filter_btn.clicked.connect(self.main_window._toggle_incomplete_filter)
+        _inc_layout.addWidget(self.incomplete_filter_btn)
+        toolbar.addWidget(_inc_container)
 
         # Bouton dédié "Nettoyer les doublons" (sorti du menu). Sa couleur passe au
         # rouge via DuplicateIndicatorService quand des doublons sont en attente.
@@ -115,6 +139,8 @@ class ToolbarService:
         self.clean_duplicates_btn.setObjectName("cleanDuplicatesButton")
         self.clean_duplicates_btn.setIcon(qta.icon('fa5s.clone', color='#555555'))
         self.clean_duplicates_btn.setToolTip("Nettoyer les doublons")
+        # Style (padding compact) géré par DuplicateIndicatorService (_normal_style /
+        # _warning_style) : un setStyleSheet ici serait écrasé.
         self.clean_duplicates_btn.clicked.connect(self.main_window._clean_data)
         # Action conservée pour compatibilité avec DuplicateIndicatorService
         self.clean_duplicates_action = QAction("Nettoyer les doublons", self.main_window)

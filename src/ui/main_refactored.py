@@ -467,8 +467,8 @@ class MainWindow(QMainWindow):
         # Garder des références pour la compatibilité
         self.table = self.table_controller.table
         self.search_input = self.table_controller.advanced_search_input  # Le vrai search input
-        self.incomplete_filter_btn = self.table_controller.incomplete_filter_btn  # Référence au bouton lignes à compléter
-        
+        # self.incomplete_filter_btn est défini dans _setup_toolbar (bouton créé dans la toolbar)
+
         # PHASE 5: Configuration des services centralisés
         self.cell_editing_service.table = self.table
 
@@ -717,6 +717,18 @@ class MainWindow(QMainWindow):
             )
             from ..core.logger import app_logger
             app_logger.info("✅ Service d'indication des doublons connecté aux boutons")
+
+        # "Lignes à traiter" est créé dans la toolbar (cluster "santé des données",
+        # à gauche de "Nettoyer les doublons"). On l'expose et on le câble au service
+        # de visibilité/compteur ici, une fois la toolbar et les services prêts.
+        if hasattr(self.toolbar_service, 'incomplete_filter_btn'):
+            self.incomplete_filter_btn = self.toolbar_service.incomplete_filter_btn
+            if hasattr(self, 'table_controller'):
+                self.table_controller.incomplete_filter_btn = self.incomplete_filter_btn
+            if hasattr(self, 'incomplete_button_service'):
+                self.incomplete_button_service.set_button(self.incomplete_filter_btn)
+                self.incomplete_button_service.set_filter_active(self.show_incomplete_only)
+            self._update_incomplete_button_visibility()
 
         self._update_toolbar_states()
 

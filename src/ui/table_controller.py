@@ -520,8 +520,8 @@ class TableController:
         # Contrôles de pagination
         self._add_pagination_controls(layout)
         
-        # Bouton pour lignes incomplètes
-        self._add_incomplete_filter_button(layout)
+        # Le bouton "Lignes à traiter" est désormais créé dans la toolbar
+        # (toolbar_service), à gauche de "Nettoyer les doublons".
 
         # Appliquer l'état mémorisé des filtres colonnes (défaut : masqués)
         _show_filters = False
@@ -1903,29 +1903,35 @@ class TableController:
                 search_input.setFocus()
 
     def _add_incomplete_filter_button(self, layout):
-        """Ajouter le bouton de filtre pour les lignes incomplètes"""
-        from .qt_imports import QPushButton, QHBoxLayout
+        """Créer le bouton de filtre des lignes incomplètes et l'insérer dans la toolbar.
+
+        Le bouton est placé à GAUCHE de "Nettoyer les doublons" (cluster "santé des
+        données" : tous deux pilotés par un compteur). Le câblage (toggle, service de
+        visibilité/compteur) reste inchangé ; seul l'emplacement change.
+        """
+        from .qt_imports import QPushButton
         from ..core.config import pluralize
-        
-        # Layout centré pour le bouton
-        incomplete_layout = QHBoxLayout()
-        incomplete_layout.addStretch()  # Centrer le bouton
-        
+
         # Bouton pour afficher seulement les lignes incomplètes
         self.incomplete_filter_btn = QPushButton("Lignes à traiter")
         self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
         self.incomplete_filter_btn.setCheckable(True)
         self.incomplete_filter_btn.clicked.connect(self.parent_window._toggle_incomplete_filter)
         self.incomplete_filter_btn.setObjectName("incompleteBtn")
-        incomplete_layout.addWidget(self.incomplete_filter_btn)
+
+        # Insertion dans la toolbar, juste à gauche de "Nettoyer les doublons"
+        toolbar = getattr(self.parent_window, 'toolbar', None)
+        clean_action = getattr(getattr(self.parent_window, 'toolbar_service', None), 'clean_btn_action', None)
+        if toolbar is not None and clean_action is not None:
+            toolbar.insertWidget(clean_action, self.incomplete_filter_btn)
+        else:
+            # Repli : ancien emplacement sous le tableau (sécurité si toolbar absente)
+            layout.addWidget(self.incomplete_filter_btn)
 
         # Associer le bouton au service optimisé
         if hasattr(self.parent_window, 'incomplete_button_service'):
             self.parent_window.incomplete_button_service.set_button(self.incomplete_filter_btn)
             self.parent_window.incomplete_button_service.set_filter_active(self.parent_window.show_incomplete_only)
-
-        incomplete_layout.addStretch()  # Centrer le bouton
-        layout.addLayout(incomplete_layout)
 
         # Mettre à jour la visibilité
         self._update_incomplete_button_visibility()
