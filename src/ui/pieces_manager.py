@@ -354,9 +354,9 @@ class PiecesManagerWindow(QDialog):
                                      animation=qta.Spin(spinner_btn)))
         spinner_btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT)
         spinner_row.addWidget(spinner_btn)
-        title_lbl = QLabel("Chargement des pièces…")
-        title_lbl.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")
-        spinner_row.addWidget(title_lbl)
+        self._loading_label = QLabel("Chargement des pièces…")
+        self._loading_label.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")
+        spinner_row.addWidget(self._loading_label)
         loading_layout.addLayout(spinner_row)
 
         # Barre de progression fine indéterminée
@@ -712,7 +712,16 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur chargement pièces", show_message=True)
     def _load_pieces_data(self, checked=False):
         """Phase 1 : chargement rapide (ref + libellé uniquement, sans jointures).
-        Affiche la liste immédiatement, puis déclenche le chargement complet."""
+        Affiche le spinner, remplit la liste, puis déclenche le chargement complet."""
+        # Spinner visible pour tout chargement/rechargement (pas seulement le premier)
+        is_reload = bool(getattr(self, 'all_pieces_data', None))
+        if hasattr(self, '_loading_label'):
+            self._loading_label.setText("Actualisation…" if is_reload else "Chargement des pièces…")
+        if hasattr(self, '_table_stack'):
+            self._table_stack.setCurrentIndex(0)
+        self._loading_phase = 1  # empêche _update_table_display de switcher vers le tableau
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+
         query_fast = """
         SELECT p.ref_piece, p.description, 0, NULL, COALESCE(p.is_phantom, 0)
         FROM pieces p
@@ -773,6 +782,9 @@ class PiecesManagerWindow(QDialog):
             else:
                 status['labels_differ'] = False
 
+        # Phase 2 terminée : autoriser le switch vers le tableau
+        self._loading_phase = 0
+        QApplication.restoreOverrideCursor()
         self._update_table_display()
 
     # ── Widget d'actions flottant ─────────────────────────────────────────────
@@ -814,8 +826,10 @@ class PiecesManagerWindow(QDialog):
         """Mettre à jour l'affichage du tableau avec filtrage.
         Les signaux sont bloqués pendant la reconstruction pour éviter que
         setRowCount() ne déclenche itemSelectionChanged → sections cachées."""
-        # Remplacer l'écran de chargement par le tableau au premier appel
-        if hasattr(self, '_table_stack') and self._table_stack.currentIndex() == 0:
+        # Basculer vers le tableau uniquement quand la phase 2 est terminée
+        if (hasattr(self, '_table_stack')
+                and self._table_stack.currentIndex() == 0
+                and not getattr(self, '_loading_phase', 0)):
             self._table_stack.setCurrentIndex(1)
 
         filtered_data = self._get_filtered_data()
