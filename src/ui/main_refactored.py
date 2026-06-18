@@ -945,11 +945,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes de gestion des données ---
 
-    def _on_header_clicked(self, logical_index: int):
-        """Gérer le clic sur un header pour trier"""
-        # PHASE 3.1: Déléguer au service de tri
-        if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
-            self.sorting_filtering_service.on_header_clicked(logical_index)
 
     def _get_modern_style(self) -> str:
         """Retourne le CSS moderne de l'application via StyleManager"""
@@ -965,34 +960,15 @@ class MainWindow(QMainWindow):
         else:
             app_logger.warning("NavigationService non disponible, pagination manuelle non implémentée")
     
-    def _reload_current_search(self):
-        """Recharger les données avec la recherche et filtres actuels (factorisation pagination)"""
-        search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
-        self.table_controller.load_data(search_term, is_search=bool(search_term))
     
     def _next_page(self):
         """Aller à la page suivante - PHASE 5: Délégation vers NavigationService"""
         self.navigation_service.next_page()
     
-    def _previous_page(self):
-        """Aller à la page précédente - PHASE 5: Délégation vers NavigationService"""
-        self.navigation_service.previous_page()
     
-    def _go_to_page(self, page: int):
-        """Aller à une page spécifique - PHASE 5: Délégation vers NavigationService"""
-        self.navigation_service.go_to_page(page)
     
-    def _go_to_last_page(self):
-        """Aller à la dernière page - PHASE 5: Délégation vers NavigationService"""
-        self.navigation_service.go_to_last_page()
     
-    def _change_page_size(self, size_text: str):
-        """Changer la taille de page - PHASE 5: Délégation vers NavigationService"""
-        self.navigation_service.change_page_size(size_text)
     
-    def _toggle_show_all(self):
-        """Basculer entre affichage paginé et affichage de toutes les lignes"""
-        return self._safe_toggle_show_all()
 
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur basculement affichage")
     def _safe_toggle_show_all(self):
@@ -1083,16 +1059,6 @@ class MainWindow(QMainWindow):
 
     # ────────────────────────────────────────────────────────────────────────
 
-    def _on_current_item_changed(self, current, previous):
-        """Capturer la valeur précédente avant modification"""
-        if previous:
-            key = (previous.row(), previous.column())
-            self.previous_values[key] = previous.text()
-        
-        # Capturer aussi la valeur de la cellule actuelle
-        if current:
-            key = (current.row(), current.column())
-            self.previous_values[key] = current.text()
     
     def _on_item_double_clicked(self, item):
         """Capturer la valeur avant l'édition lors du double-clic"""
@@ -1111,37 +1077,6 @@ class MainWindow(QMainWindow):
             for col in range(self.table.columnCount()):
                 self.previous_values[(row, col)] = self._get_cell_text(row, col)
     
-    def _on_cell_changed(self, item: QTableWidgetItem):
-        """Gérer les modifications de cellules (mode QTableWidget)."""
-        if self.table.signalsBlocked():
-            return
-
-        row, col = item.row(), item.column()
-        new_value = item.text()
-
-        # Obtenir l'ancienne valeur
-        key = (row, col)
-        old_value = self.previous_values.get(key, '')
-
-        if old_value == new_value:
-            return
-
-        # Colonne Nb Pièces — lecture seule : restaurer et ignorer
-        if col == len(Config.DB_HEADERS):
-            item.setText(old_value)
-            return
-
-        # Validation
-        field_name = self._get_db_field_name(col)
-        if field_name:
-            validation_result = self.validator.validate_field(field_name, new_value)
-            if not validation_result.is_valid:
-                MessageHelper.show_warning(self, validation_result.error_message, Messages.TITLE_WARNING)
-                item.setText(old_value)
-                return
-
-        db_id_str = self.table.verticalHeaderItem(row).text() if self.table.verticalHeaderItem(row) else None
-        self._apply_cell_edit_logic(row, col, old_value, new_value, db_id_str)
 
     def _on_cell_changed_model(self, row: int, col: int, old_value: str, new_value: str):
         """Gérer les modifications de cellules (mode QTableView).
@@ -1242,9 +1177,6 @@ class MainWindow(QMainWindow):
         else:
             return self.export_manager.export_data(export_format, ExportType.MAIN)
 
-    def _export_data_legacy(self, export_format: ExportFormat):
-        """Export legacy - PHASE 4 : Service unifié avec fallbacks"""
-        return self.export_manager.export_data(export_format, ExportType.LEGACY)
 
     # --- Méthodes utilitaires ---
 
@@ -1350,17 +1282,6 @@ class MainWindow(QMainWindow):
             if value and value.strip():  # S'assurer que la valeur n'est pas vide
                 combo_widget.addItem(value.strip())
 
-    def _populate_dropdown_values(self, combo_widget: QComboBox, column_index: int):
-        """Peupler les valeurs du dropdown avec les données uniques de la BDD"""
-        # Déterminer le champ de base de données selon l'index de colonne
-        if column_index == 0:  # Type
-            db_field = "type"
-        elif column_index == 1:  # Fabricant
-            db_field = "manufacturer"
-        else:
-            return  # Ne pas traiter d'autres colonnes
-
-        self._safe_populate_dropdown_values(combo_widget, column_index, db_field)
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
@@ -1391,13 +1312,7 @@ class MainWindow(QMainWindow):
             self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
             self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
 
-    def _get_cell_db_info(self, item: QTableWidgetItem) -> Tuple[Optional[int], Optional[str]]:
-        """Récupérer les informations DB d'une cellule - PHASE 5: Délégation vers CellEditingService"""
-        return self.cell_editing_service.get_cell_db_info(item)
 
-    def _update_cell_in_db(self, item: QTableWidgetItem, skip_history: bool = False):
-        """Mettre à jour une cellule - PHASE 5: Délégation vers CellEditingService"""
-        return self.cell_editing_service.update_cell_in_db(item, skip_history)
     
     def _handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
         """Gérer les actions post mise à jour - PHASE 5: Appel délégué + actions spécifiques"""
@@ -1479,81 +1394,7 @@ class MainWindow(QMainWindow):
                 if cache_service:
                     cache_service.resume_invalidation(force_invalidate=True)
 
-    def _apply_css_indentation(self, content: str) -> str:
-        """Appliquer l'indentation avec des espaces non-sécables pour les lignes ==>"""
-        lines = content.split('\n')
-        processed_lines = []
-        
-        for line in lines:
-            stripped_line = line.strip()
-            
-            if (stripped_line.startswith('==> ') or 
-                stripped_line.startswith('Créés :') or 
-                stripped_line.startswith('Complétion automatique :') or 
-                stripped_line.startswith('À compléter :') or 
-                stripped_line.startswith('Doublon ignoré :') or 
-                stripped_line.startswith('Nouvelles :') or 
-                stripped_line.startswith('Déjà associées :')):
-                # Utiliser des espaces non-sécables pour l'indentation
-                processed_lines.append(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line.strip()}')
-            else:
-                processed_lines.append(line)
-        
-        # Convertir les retours à la ligne en HTML
-        return '<br>'.join(processed_lines)
     
-    def _format_message_for_history(self, message: str, timestamp: str) -> str:
-        """Formater les messages pour un affichage optimisé dans l'historique"""
-        
-        # Si c'est un message d'import PDF, appliquer le formatage spécialisé
-        if message.startswith("Import"):
-            lines = message.strip().split('\n')
-            formatted_lines = []
-
-            for i, line in enumerate(lines):
-                if not line.strip():
-                    continue
-
-                # En-tête d'import : garder tel quel mais sans timestamp redondant
-                if line.startswith("Import"):
-                    formatted_lines.append(line)
-                    continue
-                
-                # Messages PDF : enlever les préfixes de fichier et nettoyer
-                if "Fichier PDF" in line and "lignes extraites" in line:
-                    # Format: "Fichier PDF filename.pdf : N lignes extraites"
-                    # On veut garder juste cette information
-                    formatted_lines.append(line)
-                    continue
-                
-                # Lignes traitées : ajouter le préfixe ==>
-                if line.startswith("Lignes traitées"):
-                    formatted_lines.append(f"==> {line}")
-                    continue
-                
-                # Titres de sections : ajouter interligne seulement avant "Appareils :"
-                if line.endswith("Appareils :"):
-                    formatted_lines.append("")  # Interligne avant première section
-                    formatted_lines.append(line)
-                    continue
-                elif line.endswith("Associations de pièce :"):
-                    formatted_lines.append(line)  # Pas d'interligne supplémentaire
-                    continue
-                
-                # Éléments de synthèse : garder tels quels (l'indentation sera gérée par CSS)
-                if line.strip().startswith("==> ") or line.strip().startswith("Créés :") or line.strip().startswith("Complétion automatique :"):
-                    formatted_lines.append(line.strip())
-                    continue
-                
-                # Autres lignes : garder telles quelles
-                formatted_lines.append(line)
-            
-            # Reconstruire le message avec le formatage appliqué
-            formatted_content = '\n'.join(formatted_lines)
-            return f"[{timestamp}] {formatted_content}"
-        
-        # Pour les autres messages, format standard
-        return f"[{timestamp}] {message}"
 
     @handle_navigation_errors(return_value=None, title="Erreur traitement lien historique")
     def _safe_handle_history_link(self, url_str: str):
@@ -1578,9 +1419,6 @@ class MainWindow(QMainWindow):
         """Supprimer une pièce - Phase 2.14: Délégation vers PieceManagementService"""
         self.piece_management_service.delete_piece(item)
     
-    def _copy_piece(self, item: QListWidgetItem):
-        """Copier une pièce - Phase 2.14: Délégation vers PieceManagementService"""
-        self.piece_management_service.copy_piece(item)
     
     def _delete_piece_from_selected(self, item: QListWidgetItem):
         """Supprimer une pièce des appareils sélectionnés - Phase 2.14: Délégation vers PieceManagementService"""
@@ -2032,9 +1870,6 @@ class MainWindow(QMainWindow):
         duration_ms = results.get('processing_time_ms')
         self.user_interaction_service.add_to_history(summary, duration_ms=duration_ms)
 
-    def _validate_and_detect_inconsistencies(self):
-        """Ouvrir la fenêtre interactive de validation et incohérences"""
-        return self._safe_validate_and_detect_inconsistencies()
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur ouverture validation")
     def _safe_validate_and_detect_inconsistencies(self):
@@ -2242,9 +2077,6 @@ class MainWindow(QMainWindow):
             import webbrowser
             webbrowser.open(guide_url)
 
-    def _open_user_guide(self):
-        """Ouvrir le guide d'utilisation"""
-        self._safe_open_user_guide()
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage guide local")
     def _safe_show_local_guide(self):
@@ -2788,20 +2620,6 @@ class MainWindow(QMainWindow):
                 self._position_drag_handle()
         return super().eventFilter(source, event)
     
-    def _update_progress_with_debounce(self, progress_dialog, value, text=None):
-        """Mettre à jour la barre de progression avec débouncing"""
-        if not progress_dialog:
-            return
-            
-        current_time = __import__('time').time() * 1000  # Convertir en ms
-        
-        # Forcer la mise à jour pour 0% et 100%, sinon respecter l'intervalle
-        if value == 0 or value >= progress_dialog.maximum() or (current_time - self.last_progress_update) >= self.progress_update_interval:
-            progress_dialog.setValue(value)
-            if text:
-                progress_dialog.setLabelText(text)
-            QApplication.processEvents()
-            self.last_progress_update = current_time
 
     def dragEnterEvent(self, event):
         """Gérer l'entrée d'un glisser/déposer"""
@@ -2858,32 +2676,6 @@ class MainWindow(QMainWindow):
         
         event.ignore()
         
-    def dropEvent_legacy(self, event):
-        """Ancienne méthode de drag & drop - gardée pour référence"""
-        self._hide_drag_overlay()
-        
-        if event.mimeData().hasUrls():
-            csv_files = []
-            pdf_files = []
-            for url in event.mimeData().urls():
-                if url.isLocalFile():
-                    file_path = url.toLocalFile()
-                    if file_path.lower().endswith('.csv'):
-                        csv_files.append(file_path)
-                    elif file_path.lower().endswith('.pdf'):
-                        pdf_files.append(file_path)
-            
-            # Priorité aux fichiers CSV (un seul à la fois)
-            if csv_files:
-                self._import_csv_from_path(csv_files[0])
-                event.acceptProposedAction()
-                return
-            elif pdf_files:
-                # Supporter plusieurs fichiers PDF
-                self._import_pdf_from_path(pdf_files)
-                event.acceptProposedAction()
-                return
-        event.ignore()
 
     def _import_csv_from_path(self, file_path):
         """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)"""
@@ -2896,78 +2688,6 @@ class MainWindow(QMainWindow):
         # Déléguer au service FileProcessingService
         return self.file_processing_service.import_pdf_files(file_paths)
 
-    def _get_import_options_pdf(self, suggested_ref_piece=None):
-        """Dialogue pour choisir les options d'import PDF"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Options d'import PDF")
-        dialog.setModal(True)
-        
-        layout = QVBoxLayout()
-        
-        # Information sur le PDF
-        info_label = QLabel("Données PDF détectées : 3 colonnes (Réf. technique, Réf. commerciale, Description)")
-        info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
-        layout.addWidget(info_label)
-        
-        # Référence de pièce (optionnelle) - pré-remplie avec le nom du fichier
-        ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence de pièce (optionnelle):"))
-        ref_input = QLineEdit()
-        if suggested_ref_piece:
-            ref_input.setText(suggested_ref_piece)
-        ref_layout.addWidget(ref_input)
-        layout.addLayout(ref_layout)
-        
-        # Gestion de la 3ème colonne (Description)
-        third_col_layout = QHBoxLayout()
-        third_col_layout.addWidget(QLabel("Stocker la Description dans:"))
-        third_col_combo = QComboBox()
-        third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
-        third_col_combo.setCurrentIndex(0)  # Ignorer par défaut
-        third_col_layout.addWidget(third_col_combo)
-        layout.addLayout(third_col_layout)
-        
-        # Boutons
-        button_layout = QHBoxLayout()
-        ok_button = QPushButton("OK")
-        cancel_button = QPushButton("Annuler")
-        button_layout.addWidget(ok_button)
-        button_layout.addWidget(cancel_button)
-        layout.addLayout(button_layout)
-        
-        dialog.setLayout(layout)
-        
-        result = [None, None, None, None]
-        
-        def on_ok():
-            result[0] = 3  # Toujours 3 colonnes pour PDF
-            result[1] = ref_input.text().strip() if ref_input.text().strip() else None
-            
-            third_choice = third_col_combo.currentText()
-            if third_choice == "Ignorer":
-                result[2] = "ignore"
-            elif third_choice == "Autre référence":
-                result[2] = "other_ref"
-            elif third_choice == "Notes":
-                result[2] = "notes"
-            else:
-                result[2] = "ignore"  # Par défaut
-            
-            result[3] = False  # Pas d'en-têtes dans les données extraites
-            dialog.accept()
-        
-        def on_cancel():
-            dialog.reject()
-        
-        ok_button.clicked.connect(on_ok)
-        cancel_button.clicked.connect(on_cancel)
-        
-        if dialog.exec_() == QDialog.Accepted:
-            return result[0], result[1], result[2], result[3]
-        return None, None, None, None
-    
     def _show_drag_overlay(self):
         """Afficher l'overlay de glisser/déposer"""
         if not self.drag_overlay_active:
@@ -3178,48 +2898,7 @@ class MainWindow(QMainWindow):
         # Ouvrir ImportDialog avec les données du presse-papiers (v3.31.0)
         self.import_manager.import_from_clipboard(rows, callback=self._on_import_complete)
 
-    def _detect_paste_columns(self, clipboard_text: str) -> int:
-        """Méthode de compatibilité - délègue au processeur"""
-        return self.paste_processor.detect_columns_count(clipboard_text)
 
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur traitement batch collage")
-    def _safe_process_paste_batch(self, rows, ref_piece, third_column_choice, libelle_piece, category, total_rows, progress_dialog):
-        """Helper sécurisé pour le traitement batch du collage"""
-        try:
-            result = self.paste_processor.process_rows_batch(
-                rows, ref_piece, third_column_choice,
-                libelle_piece, category,
-                self._piece_description_decisions
-            )
-
-            # Recharger les données dans le tableau pour refléter les nouveaux ajouts
-            self.table_controller.load_data()
-
-            # Feature Flag: Phase 4 - Sauvegarde événementielle après collage (délégation service)
-            if Config.ENABLE_EVENT_DRIVEN_SAVE:
-                if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
-                    self.event_driven_save_service.handle_paste_completed(result)
-
-            # Log les résultats dans l'historique et afficher le résumé via le service
-            self.paste_results_service.log_paste_results(
-                result.inserted_count, result.updated_count, result.ignored_count,
-                result.associations_created, result.duplicates_skipped,
-                result.manual_completion_count, result.descriptions_updated,
-                total_rows, ref_piece
-            )
-
-            # Afficher le résumé
-            self.paste_results_service.show_paste_summary(
-                result.inserted_count, result.updated_count, result.ignored_count,
-                result.associations_created, result.duplicates_skipped,
-                result.manual_completion_count, result.descriptions_updated,
-                total_rows
-            )
-
-        finally:
-            # Toujours fermer la barre de progression
-            if progress_dialog:
-                progress_dialog.close()
 
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur copie de données")
     def _safe_copy_selected_data(self, selected):

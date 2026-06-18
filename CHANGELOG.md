@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.4] - 2026-06-18
+
+### Nettoyage — Suppression de code mort dans `main_refactored.py`
+
+- Suppression de `_get_import_options_pdf` (ancien dialogue d'import PDF, ~70 lignes, sans appelant — source du quiproquo « j'édite le mauvais dialogue » lors du fix v3.54.3 ; le dialogue réellement utilisé est dans `import_manager.py`).
+- Audit statique du fichier (occurrences textuelles dans tout `src/`, hors `theauditor`) : suppression de **22 méthodes non appelées** au total (~249 lignes), dont des duplicatas figés laissés par des refontes antérieures (pagination `_go_to_page`/`_previous_page`/`_change_page_size`/`_go_to_last_page` — versions vivantes dans `table_controller.py` ; slots de l'ancien `QTableWidget` `_on_cell_changed`/`_on_current_item_changed`/`_on_header_clicked` ; chemins legacy `_export_data_legacy`/`dropEvent_legacy` ; etc.).
+- Vérifié : aucune auto-connexion Qt par nom (`connectSlotsByName`/`.ui` absents), `compileall` OK, smoke test headless (instanciation `MainWindow` + recherche réelle → 377 lignes, aucun `AttributeError` lors des connexions de signaux).
+
+---
+
 ## [3.54.3] - 2026-06-18
 
 ### UX — Import PDF : « Autre référence » présélectionné pour la 3ᵉ colonne
