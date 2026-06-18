@@ -11,7 +11,6 @@ Responsabilités:
 from typing import Optional
 from ..ui.qt_imports import QMessageBox
 from ..core.logger import app_logger
-from ..utils.error_handler import handle_paste_results_errors
 
 class PasteResultsService:
     """

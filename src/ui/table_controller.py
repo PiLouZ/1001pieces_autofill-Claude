@@ -21,7 +21,7 @@ from ..utils.error_handler import (
 )
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
-from ..services.table_widget_service import CustomTableWidget, TableWidgetService
+from ..services.table_widget_service import TableWidgetService
 from .pieces_list_service import PieceRelationsPopup
 
 def _truncate_refs(refs: list, max_inline: int = 3) -> tuple:

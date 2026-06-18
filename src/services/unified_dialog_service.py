@@ -448,6 +448,4 @@ class UnifiedDialogService:
     # Factory methods pour compatibilité avec l'ancien code
 
 # Backward compatibility aliases pour migration facile
-CategoryDialog = SimpleDialogs
-NotesDialog = SimpleDialogs
 DialogService = UnifiedDialogService

@@ -19,7 +19,6 @@ from .qt_imports import (
 
 # Imports Python standard consolidés
 import os
-import webbrowser
 from datetime import datetime
 
 # Helpers et utilitaires refactorisés
@@ -30,8 +29,8 @@ from ..utils.error_handler import (
     handle_ui_errors, handle_ui_column_errors,
     handle_database_operation_errors, handle_ui_operation_errors,
     handle_table_operations_errors, handle_navigation_errors,
-    handle_export_errors, handle_import_errors, handle_validation_errors,
-    handle_file_errors, handle_log_viewer_errors,
+    handle_export_errors, handle_import_errors,
+    handle_log_viewer_errors,
     handle_data_management_errors, handle_drag_operation_errors,
     handle_event_handler_errors, handle_ui_update_errors
 )
@@ -59,7 +58,7 @@ from src.data.data_validator import DataValidator, ValidationResult
 from src.data.data_exporter import DataExporter, ExportError
 from .style_manager import StyleManager
 from .table_controller import TableController
-from .paste_data_processor import PasteDataProcessor, PasteProcessingResult
+from .paste_data_processor import PasteDataProcessor
 from .data_management_service import DataManagementService, FieldCompletionResult
 from .user_interaction_service import UserInteractionService
 from .log_viewer import LogViewer

@@ -4,6 +4,21 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.7] - 2026-06-18
+
+### Nettoyage — Imports inutilisés + alias legacy morts
+
+Dernière passe du nettoyage, sur les catégories qu'un audit de méthodes ne couvre pas (analyse vulture 2.15 + vérif manuelle).
+
+- **9 imports inutilisés** retirés : décorateurs jamais appliqués (`handle_highlight_errors`, `handle_file_errors`, `handle_validation_errors`, `handle_paste_results_errors`), `webbrowser` (orphelin laissé par la suppression de `_open_user_guide`), `PasteProcessingResult`, `CustomTableWidget`. Répartis sur `advanced_search_service`, `import_service`, `paste_results_service`, `main_refactored`, `table_controller`.
+- **2 alias de compatibilité morts** : `CategoryDialog`/`NotesDialog = SimpleDialogs` dans `unified_dialog_service.py` (0 référence ; `DialogService` conservé, lui utilisé).
+- **Code inatteignable** : aucun détecté (catégorie vide).
+- **Conservé délibérément** : constantes centralisées de `config.py`/`constants.py` (palette `Colors.*`, `UIConfig`, `Messages`, `SearchConfig`, `ValidationRules`, `AppInfo`…) — surface de config voulue (cf. CLAUDE.md), même si actuellement inutilisée ; variables locales signalées (paramètres de signaux Qt, dépaquetages) = faux positifs non touchés.
+
+**Vérifié** : `compileall` OK ; 0 import mort restant (vulture) ; import des 80 modules ; smoke headless 2 fenêtres (recherche `57X2411` → 377, pièces 3297).
+
+---
+
 ## [3.54.6] - 2026-06-18
 
 ### Nettoyage — Code mort résiduel (passe 2, itérée jusqu'au point fixe)

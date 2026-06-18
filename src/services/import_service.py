@@ -9,7 +9,7 @@ from ..core.import_manager import ImportManager, ImportConfiguration
 from ..data.database_manager import DatabaseManager
 from .event_bus import event_bus
 from .base_service import BaseService
-from ..utils.error_handler import handle_import_errors, handle_file_errors, handle_validation_errors
+from ..utils.error_handler import handle_import_errors
 
 class ImportService(BaseService):
     """Service dédié aux opérations d'import"""

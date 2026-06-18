@@ -13,7 +13,7 @@ from .search_service import SearchService
 from ..core.logger import app_logger
 from ..core.config import Config
 from .base_service import BaseService
-from ..utils.error_handler import handle_search_errors, handle_highlight_errors
+from ..utils.error_handler import handle_search_errors
 
 class AdvancedSearchService(QObject):
     """Service de recherche avancé avec support opérateurs && et ||, débounce et mise en évidence"""
