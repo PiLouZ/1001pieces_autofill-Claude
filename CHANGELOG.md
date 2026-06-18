@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.1] - 2026-06-18
+
+### Fix — Export incomplet sur recherche d'une ancienne référence (supersession)
+
+Exporter (HTML Détails / Marques / CSV) après une recherche sur une **ancienne** référence ne ramenait qu'une partie des lignes affichées dans le tableau (ex. `57X2411` : 377 lignes au tableau mais 299 exportées / 10 marques au lieu de 13). Seul l'export depuis la référence **courante** (tête de chaîne) était complet.
+
+- **Cause** : `ExportManagerService._parse_search_term` recopiait la logique de `table_controller.build_effective_search_term` au lieu de l'appeler. Le bloc d'injection des **références sœurs** (mode `superseded` : les autres anciennes refs partageant la même tête de chaîne), ajouté à `build_effective_search_term` le 2026-03-18, n'avait jamais été propagé dans cette copie. L'export résolvait donc la chaîne de la seule ref cherchée, sans ses sœurs.
+- **Correctif (factorisation)** : `_parse_search_term` **délègue** désormais à `build_effective_search_term` — source unique de vérité partagée par le tableau et l'export. Toute évolution future du périmètre de recherche est automatiquement reflétée des deux côtés ; la dérive ne peut plus se reproduire.
+- **Vérifié** sur la base réelle (headless) : `57X2411`, sa sœur `51X9163` et la courante `57X2519` aboutissent toutes aux mêmes **377 lignes / 13 marques** ; `eff_table == eff_export` pour les trois.
+
+---
+
 ## [3.54.0] - 2026-06-17
 
 ### Robustesse de la sélection du gestionnaire de pièces

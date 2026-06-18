@@ -469,31 +469,23 @@ class ExportManagerService:
     def _parse_search_term(self, search_term: str) -> Union[str, Dict]:
         """Parser le terme de recherche avec injection des flags des bannières actives.
 
-        Reproduit exactement la logique de table_controller.load_data (lignes 472-492)
-        afin que l'export exporte exactement ce qui est affiché dans le tableau.
+        SOURCE UNIQUE DE VÉRITÉ : délègue à table_controller.build_effective_search_term,
+        la MÊME méthode que celle utilisée pour remplir le tableau. L'export reproduit
+        donc exactement le périmètre affiché (refs sœurs, prédécesseurs, équivalents,
+        bypass). Ne JAMAIS recopier ces blocs ici : toute évolution du périmètre de
+        recherche doit rester dans build_effective_search_term pour éviter la dérive
+        (régression historique : le bloc "refs sœurs" n'avait jamais été propagé ici).
         """
-        # Étape 1 : parser avec le même service que table_controller
-        effective = search_term
+        tc = getattr(self.main_window, 'table_controller', None)
+        if tc is not None:
+            return tc.build_effective_search_term(search_term)
+
+        # Fallback si le contrôleur de tableau est indisponible : parsing brut
         if search_term and isinstance(search_term, str) and hasattr(self.main_window, 'search_service'):
             parsed = self.main_window.search_service.parse_advanced_search(search_term)
             if parsed:
-                effective = parsed  # toujours un dict après parsing réussi
-
-        # Étape 2 : injecter les flags des bannières actives (identique à table_controller)
-        tc = getattr(self.main_window, 'table_controller', None)
-        if tc and isinstance(effective, dict):
-            if getattr(tc, '_supersession_bypass', False):
-                effective = dict(effective)
-                effective['bypass_supersession'] = True
-            preds = getattr(tc, '_supersession_predecessors', None)
-            if getattr(tc, '_supersession_expand', False) and preds:
-                effective = dict(effective)
-                effective['expand_predecessors'] = preds
-            equiv_group = getattr(tc, '_equivalence_group', None)
-            if getattr(tc, '_equivalence_expand', False) and equiv_group:
-                effective = dict(effective)
-                effective['expand_equivalents'] = equiv_group
-        return effective
+                return parsed
+        return search_term
     
     def _extract_default_reference(self, search_term: str) -> str:
         """Extraire une référence par défaut"""
