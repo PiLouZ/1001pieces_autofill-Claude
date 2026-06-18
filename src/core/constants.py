@@ -22,14 +22,6 @@ class ExportFormat(Enum):
     EXCEL = "EXCEL"
     
     # Méthodes utilitaires pour la compatibilité
-    @classmethod
-    def from_string(cls, value: str):
-        """Convertir string vers ExportFormat (compatibilité)"""
-        value_upper = value.upper()
-        for format_type in cls:
-            if format_type.value == value_upper:
-                return format_type
-        raise ValueError(f"Format non supporté: {value}")
     
     @property
     def lowercase(self) -> str:
@@ -226,26 +218,6 @@ class Paths:
     def get_data_dir() -> Path:
         """Obtenir le répertoire de données"""
         return Paths.get_app_root() / "data"
-    
-    @staticmethod
-    def get_exports_dir() -> Path:
-        """Obtenir le répertoire d'exports"""
-        return Paths.get_data_dir() / "exports"
-    
-    @staticmethod
-    def get_imports_dir() -> Path:
-        """Obtenir le répertoire d'imports"""
-        return Paths.get_data_dir() / "imports" 
-    
-    @staticmethod
-    def get_logs_dir() -> Path:
-        """Obtenir le répertoire de logs"""
-        return Paths.get_data_dir() / "logs"
-    
-    @staticmethod
-    def get_config_dir() -> Path:
-        """Obtenir le répertoire de configuration"""
-        return Paths.get_app_root() / "config"
     
     @staticmethod
     def get_database_path() -> Path:

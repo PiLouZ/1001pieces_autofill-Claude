@@ -18,11 +18,6 @@ class EventBus:
     def on(self, event_name: str, callback: Callable) -> None:
         """Écouter un événement"""
         self._listeners[event_name].append(callback)
-    
-    def off(self, event_name: str, callback: Callable) -> None:
-        """Arrêter d'écouter un événement"""
-        if callback in self._listeners[event_name]:
-            self._listeners[event_name].remove(callback)
 
     @handle_event_bus_errors()
     def _safe_call_callback(self, callback: Callable, data: Any) -> None:
@@ -36,14 +31,6 @@ class EventBus:
 
         for callback in self._listeners[event_name]:
             self._safe_call_callback(callback, data)
-    
-    def disable(self) -> None:
-        """Désactiver temporairement le bus d'événements"""
-        self._enabled = False
-    
-    def enable(self) -> None:
-        """Réactiver le bus d'événements"""
-        self._enabled = True
     
     def clear(self) -> None:
         """Vider tous les listeners"""

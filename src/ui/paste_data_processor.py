@@ -94,16 +94,6 @@ class PasteDataProcessor:
         
         return cleaned_rows
     
-    @safe_operation(operation_name="préparation aperçu", default_return=[])
-    def prepare_sample_data(self, rows: List[List[str]], max_lines: int = 3) -> List[List[str]]:
-        """Préparer les données d'exemple pour l'aperçu"""
-        sample_data = []
-        for i in range(min(max_lines, len(rows))):
-            if rows[i] and any(cell.strip() for cell in rows[i]):
-                sample_data.append(rows[i])
-
-        return sample_data
-    
     def map_row_to_device_data(self, clean_row: List[str], third_column_choice: str = "ignore") -> Dict[str, Any]:
         """
         Mapper une ligne de données vers la structure appareil
@@ -191,71 +181,6 @@ class PasteDataProcessor:
             app_logger.warning(f"    Données concernées: {device_data}")
             return False  # Mais on continue l'import
         return True
-    
-    def process_rows_batch(self, rows: List[List[str]], ref_piece: str, third_column_choice: str, 
-                          libelle_piece: str, category: str, 
-                          piece_description_decisions: Dict) -> PasteProcessingResult:
-        """
-        Traiter un lot de lignes de données
-        
-        Args:
-            rows: Lignes de données à traiter
-            ref_piece: Référence de pièce pour associations
-            third_column_choice: Choix pour la 3ème colonne
-            libelle_piece: Libellé de la pièce
-            category: Catégorie à appliquer
-            piece_description_decisions: Cache des décisions utilisateur
-            
-        Returns:
-            PasteProcessingResult avec les statistiques du traitement
-        """
-        result = PasteProcessingResult()
-        
-        app_logger.info(f"🔍 Début du traitement de {len(rows)} lignes d'import par collage")
-        
-        for row_idx, row_data in enumerate(rows):
-            # Parser et mapper les données
-            clean_row = []
-            for cell in row_data:
-                if cell:
-                    cleaned_cell = ''.join(
-                        char for char in cell 
-                        if char not in ['\0', '\r', '\n', '\t']
-                    ).strip()
-                    clean_row.append(cleaned_cell)
-                else:
-                    clean_row.append('')
-            
-            num_cols = len(clean_row)
-            
-            # Mapper les données
-            appareil_data = self.map_row_to_device_data(clean_row, third_column_choice)
-            
-            if appareil_data is None:
-                app_logger.warning(f"❌ REJET #{result.ignored_count + 1} - Ligne {row_idx + 1}: {num_cols} colonne(s) non supportée(s)")
-                app_logger.warning(f"    Données: {clean_row}")
-                result.ignored_count += 1
-                continue
-            
-            # Ajouter la catégorie si spécifiée
-            if category:
-                appareil_data['category'] = category
-            
-            # Valider les données (continue même en cas d'erreur)
-            self.validate_device_data(appareil_data, row_idx)
-            
-            # Traiter l'appareil via les méthodes existantes du main_window
-            # Note: Cette partie nécessite encore l'accès aux méthodes de MainWindow
-            # pour la recherche/création d'appareils et associations
-            if self.main_window:
-                device_result = self._process_single_device(
-                    appareil_data, row_idx, ref_piece, libelle_piece, 
-                    piece_description_decisions, result
-                )
-                # Mettre à jour les statistiques
-                self._update_result_stats(result, device_result)
-        
-        return result
     
     def _process_single_device(self, appareil_data: Dict[str, Any], row_idx: int,
                              ref_piece: str, libelle_piece: str,
@@ -360,72 +285,6 @@ class PasteDataProcessor:
         
         if association.get('description_updated'):
             result.descriptions_updated += 1
-    
-    def process_file_import(self, imported_data: List[List[str]], import_type: str, ref_piece: str, 
-                           third_column_choice: str = "ignore", libelle_piece: str = None,
-                           piece_description_decisions: Dict = None) -> PasteProcessingResult:
-        """
-        Traiter un import de fichier CSV/PDF - logique unifiée avec le collage
-        
-        Args:
-            imported_data: Données du fichier (lignes x colonnes)
-            import_type: Type d'import ("CSV" ou "PDF") 
-            ref_piece: Référence de pièce pour associations
-            third_column_choice: Choix pour la 3ème colonne
-            libelle_piece: Libellé de la pièce
-            piece_description_decisions: Cache des décisions utilisateur
-            
-        Returns:
-            PasteProcessingResult avec les statistiques du traitement
-        """
-        result = PasteProcessingResult()
-        seen_device_refs = set()
-        
-        if piece_description_decisions is None:
-            piece_description_decisions = {}
-            
-        # Compter les lignes originales
-        result.no_piece_ref_count = len(imported_data)
-        
-        app_logger.info(f"🔍 Début du traitement de {len(imported_data)} lignes d'import {import_type}")
-        
-        for row_idx, row in enumerate(imported_data):
-            result.no_piece_ref_count += 1  # Toutes les lignes traitées
-            
-            try:
-                # Mapping des colonnes selon les règles d'import (différent du collage)
-                device_data = self._map_import_row_to_device_data(row, third_column_choice, import_type)
-                
-                if device_data is None:
-                    result.ignored_count += 1
-                    continue
-                
-                # Validation des données (continue même en cas d'erreur)
-                self.validate_device_data(device_data, row_idx)
-                
-                # Détection des doublons dans le fichier
-                device_key = self._make_device_key(device_data)
-                if device_key in seen_device_refs and device_key != "|":
-                    result.duplicates_in_file += 1
-                    continue
-                elif device_key != "|":
-                    seen_device_refs.add(device_key)
-                
-                # Traiter l'appareil via les méthodes existantes
-                if self.main_window:
-                    device_result = self._process_single_import_device(
-                        device_data, row_idx, ref_piece, libelle_piece, 
-                        piece_description_decisions, result
-                    )
-                    # Mettre à jour les statistiques
-                    self._update_import_result_stats(result, device_result)
-                    
-            except Exception as e:
-                app_logger.error(f"❌ Erreur ligne {row_idx + 1}: {e}")
-                result.ignored_count += 1
-                continue
-        
-        return result
     
     def _map_import_row_to_device_data(self, row: List[str], third_column_choice: str, import_type: str) -> Dict[str, Any]:
         """

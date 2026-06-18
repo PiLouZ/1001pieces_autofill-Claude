@@ -275,19 +275,6 @@ class EventDrivenSaveService(BaseService):
             self.save_indicator.setStyleSheet("color: green;")
 
     @handle_save_service_errors()
-    def update_save_indicator(self, status: str, color: str = "green"):
-        """
-        Mettre à jour l'indicateur de sauvegarde avec un statut personnalisé
-
-        Args:
-            status: Texte à afficher
-            color: Couleur CSS (green, orange, red)
-        """
-        if self.save_indicator:
-            self.save_indicator.setText(status)
-            self.save_indicator.setStyleSheet(f"color: {color};")
-
-    @handle_save_service_errors()
     def _update_incomplete_button_after_operation(self):
         """Mettre à jour le bouton 'lignes à compléter' après une opération"""
         from ..ui.qt_imports import QTimer
@@ -320,31 +307,6 @@ class EventDrivenSaveService(BaseService):
 
         return True
 
-    def is_event_driven_enabled(self) -> bool:
-        """
-        Vérifier si le système événementiel est activé
-
-        Returns:
-            bool: True si le système événementiel est actif
-        """
-        return self.is_enabled and Config.ENABLE_EVENT_DRIVEN_SAVE
-
-    def get_service_status(self) -> Dict[str, Any]:
-        """
-        Obtenir le statut complet du service pour diagnostics
-
-        Returns:
-            Dict: Statut détaillé du service
-        """
-        return {
-            'enabled': self.is_enabled,
-            'config_flag': Config.ENABLE_EVENT_DRIVEN_SAVE,
-            'database_service_available': self.database_operations_service is not None,
-            'save_indicator_available': self.save_indicator is not None,
-            'use_database_operations': Config.USE_NEW_DATABASE_OPERATIONS_SERVICE,
-            'service_initialized': True
-        }
-
     # ================================
     # API PUBLIQUE POUR INTÉGRATION
     # ================================
@@ -363,18 +325,6 @@ class EventDrivenSaveService(BaseService):
             bool: True si traité avec succès
         """
         return self.save_cell_immediately(row, col, new_value, table_widget)
-
-    def handle_paste_completed(self, result) -> bool:
-        """
-        API publique: Gérer la fin d'une opération de collage
-
-        Args:
-            result: Résultat de l'opération de collage
-
-        Returns:
-            bool: True si traité avec succès
-        """
-        return self.save_after_paste(result)
 
     def handle_import_completed(self) -> bool:
         """

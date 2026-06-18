@@ -60,17 +60,6 @@ class SearchCache:
         self.misses += 1
         return None
     
-    def put(self, search_term: str, results: List, column_filters: Dict = None, sort_info: Tuple = None):
-        """Mettre en cache"""
-        key = self._make_key(search_term, column_filters or {}, sort_info or ())
-        
-        # Limiter la taille du cache
-        if len(self.cache) >= self.max_size:
-            # Supprimer le plus ancien
-            self.cache.popitem(last=False)
-        
-        self.cache[key] = results
-    
     def clear(self):
         """Vider le cache"""
         self.cache.clear()
@@ -879,13 +868,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute(query, params)
         count = self.cursor.fetchone()[0]
         return count > 0
-    
-    def clean_data(self) -> Dict[str, int]:
-        """Nettoyer les données (supprimer vides et doublons)"""
-        result = self._safe_clean_data()
-        if not result:
-            raise DatabaseError("Erreur lors du nettoyage des données")
-        return result
 
     @handle_database_operation_errors(return_value={}, log_prefix="Erreur nettoyage données")
     def _safe_clean_data(self) -> Dict[str, int]:
@@ -1189,13 +1171,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
 
         return updated
-    
-    def update_piece_complete(self, old_ref_piece: str, new_ref_piece: str, description: str, appareil_id: int) -> bool:
-        """Mettre à jour complètement une pièce (référence ET description)"""
-        result = self._safe_update_piece_complete(old_ref_piece, new_ref_piece, description, appareil_id)
-        if result is None:
-            raise DatabaseError(f"Erreur lors de la mise à jour complète de la pièce {old_ref_piece}")
-        return result
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur mise à jour complète pièce")
     def _safe_update_piece_complete(self, old_ref_piece: str, new_ref_piece: str, description: str, appareil_id: int) -> bool:
@@ -1317,10 +1292,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         if commit:
             self.conn.commit()
 
-    def get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
-        """Récupérer les informations d'une pièce spécifique (nouvelle structure)"""
-        return self._safe_get_piece_info(ref_piece, appareil_id)
-
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur récupération info pièce")
     def _safe_get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
         """Helper sécurisé pour récupérer les informations d'une pièce spécifique"""
@@ -1374,13 +1345,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, 1)
 
         return True
-    
-    def delete_pieces_by_appareil(self, appareil_id: int) -> int:
-        """Supprimer toutes les pièces d'un appareil (nouvelle structure)"""
-        result = self._safe_delete_pieces_by_appareil(appareil_id)
-        if result == -1:
-            raise DatabaseError(f"Erreur lors de la suppression des pièces de l'appareil {appareil_id}")
-        return result
 
     @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression pièces appareil")
     def _safe_delete_pieces_by_appareil(self, appareil_id: int) -> int:
@@ -1420,13 +1384,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.cache_invalidation.invalidate_after_device_modification("suppression de pièces", 1)
 
         return deleted_count
-    
-    def delete_piece_from_multiple_appareils(self, ref_piece: str, appareil_ids: List[int]) -> int:
-        """Supprimer une pièce de plusieurs appareils"""
-        result = self._safe_delete_piece_from_multiple_appareils(ref_piece, appareil_ids)
-        if result == -1:
-            raise DatabaseError(f"Erreur lors de la suppression multiple de la pièce {ref_piece}")
-        return result
 
     @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression multiple pièce")
     def _safe_delete_piece_from_multiple_appareils(self, ref_piece: str, appareil_ids: List[int]) -> int:
@@ -1491,18 +1448,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             ORDER BY id
         """
         return self.execute_custom_query(query, [ref_modele])
-
-    @handle_database_errors(title="Erreur récupération doublons")
-    def get_duplicate_references(self) -> List[Tuple[str, str, str, str, str, int]]:
-        """Récupérer les références d'appareils en doublon (colonnes A,B,C,D,E identiques)"""
-        query = """
-            SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, COUNT(*) as count
-            FROM appareils
-            GROUP BY type, manufacturer, ref_modele, commercial_ref, other_ref
-            HAVING COUNT(*) > 1
-            ORDER BY count DESC, type, manufacturer, ref_modele, commercial_ref, other_ref
-        """
-        return self.execute_custom_query(query)
     
     def transfer_pieces(self, from_device_id: int, to_device_id: int):
         """Transférer les pièces d'un appareil vers un autre (nouvelle structure)"""
@@ -1613,23 +1558,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         except sqlite3.Error as e:
             self.conn.rollback()
             raise DatabaseError(f"Erreur lors de la suppression des pièces dupliquées: {e}")
-    
-    @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage pièces dupliquées")
-    def get_duplicate_pieces_count(self) -> int:
-        """Compter les références de pièces dupliquées (nouvelle structure)"""
-        # Compter les doublons d'associations
-        query = """
-            SELECT COUNT(*)
-            FROM piece_associations
-            WHERE id NOT IN (
-                SELECT MIN(id)
-                FROM piece_associations
-                GROUP BY piece_id, appareil_id
-            )
-        """
-        self.cursor.execute(query)
-        result = self.cursor.fetchone()
-        return result[0] if result else 0
     
     @handle_database_errors(title="Erreur récupération catégories")
     def get_categories(self) -> List[str]:
@@ -1820,10 +1748,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         except Exception as e:
             self.conn.rollback()
             raise
-    
-    def get_reference_decision(self, ref_modele: str) -> Optional[Dict[str, Any]]:
-        """Récupérer la décision pour une référence"""
-        return self._safe_get_reference_decision(ref_modele)
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur récupération décision référence")
     def _safe_get_reference_decision(self, ref_modele: str) -> Optional[Dict[str, Any]]:
@@ -1845,10 +1769,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 'created_at': result[2]
             }
         return None
-    
-    def get_references_by_decision(self, decision: str = None) -> List[Dict[str, Any]]:
-        """Récupérer toutes les références filtrées par décision (optionnel)"""
-        return self._safe_get_references_by_decision(decision)
 
     @handle_database_operation_errors(return_value=[], log_prefix="Erreur récupération références par décision")
     def _safe_get_references_by_decision(self, decision: str = None) -> List[Dict[str, Any]]:
@@ -1882,10 +1802,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             })
 
         return results
-    
-    def delete_reference_decision(self, ref_modele: str) -> bool:
-        """Supprimer une décision (réinitialiser à l'état nouveau)"""
-        return self._safe_delete_reference_decision(ref_modele)
 
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur suppression décision référence")
     def _safe_delete_reference_decision(self, ref_modele: str) -> bool:

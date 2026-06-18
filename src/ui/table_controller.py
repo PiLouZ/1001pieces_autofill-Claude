@@ -1034,80 +1034,6 @@ class TableController:
         finally:
             # Nettoyer le flag de tri en cours
             self._sorting_in_progress = False
-    
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur chargement avec tri")
-    def _load_data_with_sort(self, search_term: str, sort_column: int, sort_order_str: str):
-        """Charger les données avec tri spécifique sans passer par load_data standard"""
-        # Calculer les paramètres de pagination
-        if self.page_size == -1:  # "Tout" sélectionné
-            limit = None
-            offset = None
-        else:
-            limit = self.page_size
-            offset = (self.current_page - 1) * self.page_size
-
-        # Obtenir les filtres de colonnes
-        column_filters = {}
-        for col_idx, filter_widget in self.filter_widgets.items():
-            if filter_widget is not None:  # Skip removed filters
-                if isinstance(filter_widget, QComboBox):
-                    filter_text = filter_widget.currentText().strip()
-                else:  # QLineEdit
-                    filter_text = filter_widget.text().strip()
-                if filter_text:
-                    column_filters[col_idx] = filter_text
-
-        # Ajouter le filtre des lignes incomplètes si activé
-        # CORRECTION: Utiliser le service de tri/filtrage si disponible
-        if (hasattr(self.parent_window, 'sorting_filtering_service') and
-            self.parent_window.sorting_filtering_service):
-            incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
-        else:
-            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
-
-        # CORRECTION: Parser le terme de recherche si nécessaire
-        parsed_search_term = search_term
-        if isinstance(search_term, str) and search_term and hasattr(self.parent_window, 'advanced_search_service'):
-            # Essayer de parser la string comme recherche avancée
-            parsed_result = self.parent_window.advanced_search_service.parse_advanced_search(search_term)
-            if parsed_result:
-                parsed_search_term = parsed_result
-
-        # Détecter si c'est une recherche avancée
-        is_advanced_search = isinstance(parsed_search_term, dict)
-
-        if is_advanced_search:
-            # Désactiver temporairement le cache pour cette requête triée
-            cache_backup = self.db_manager.search_cache
-            self.db_manager.search_cache = None
-
-            try:
-                records = self.db_manager.load_data(
-                    parsed_search_term, column_filters, limit, offset,
-                    sort_column, sort_order_str, incomplete_filter
-                )
-            finally:
-                # Restaurer le cache
-                self.db_manager.search_cache = cache_backup
-        else:
-            # Appel normal avec cache pour les recherches simples
-            records = self.db_manager.load_data(
-                parsed_search_term, column_filters, limit, offset,
-                sort_column, sort_order_str, incomplete_filter
-            )
-
-        # Remplir le tableau
-        if self.total_rows > 1000:
-            self.parent_window.table_fill_service.fill_table_chunked(self.table, records, None, search_term)
-        else:
-            self.parent_window.table_fill_service.fill_table_standard(self.table, records, None, search_term)
-
-        # Mettre à jour les contrôles de pagination
-        self._update_pagination_controls()
-
-        # Réinitialiser les valeurs précédentes après tri (comme load_data le fait)
-        if hasattr(self.parent_window, '_init_previous_values'):
-            self.parent_window._init_previous_values()
 
     @handle_table_operations_errors(log_prefix="Erreur mise à jour indicateurs tri")
     def _update_sort_indicators(self):
@@ -1301,37 +1227,6 @@ class TableController:
             search_term = getattr(self, 'current_search_term', None)
             self.load_data(search_term)
     
-    def _previous_page(self):
-        """Aller à la page précédente"""
-        if self.current_page > 1:
-            self.current_page -= 1
-            # Utiliser le terme de recherche persistant pour pagination
-            search_term = getattr(self, 'current_search_term', None)
-            self.load_data(search_term)
-    
-    def _go_to_page(self, page: int):
-        """Aller à une page spécifique"""
-        if 1 <= page <= self.total_pages:
-            self.current_page = page
-            # Utiliser le terme de recherche persistant pour pagination
-            search_term = getattr(self, 'current_search_term', None)
-            self.load_data(search_term)
-    
-    def _change_page_size(self, size_text: str):
-        """Changer la taille de page"""
-        if size_text == "Tout":
-            self.page_size = -1
-        else:
-            try:
-                self.page_size = int(size_text)
-            except ValueError:
-                self.page_size = 500
-        
-        self.current_page = 1  # Reset à la première page
-        # Utiliser le terme de recherche persistant pour changement taille page
-        search_term = getattr(self, 'current_search_term', None)
-        self.load_data(search_term)
-    
     def _apply_column_filter(self, column: int, text: str):
         """Appliquer un filtre sur une colonne avec debounce de 400ms"""
         self.pending_column_filter = (column, text)
@@ -1386,16 +1281,6 @@ class TableController:
                     # Le widget a été supprimé, on le retire de la liste
                     self.filter_widgets[col_idx] = None
     
-    def get_selected_row_ids(self) -> List[int]:
-        """Obtenir les IDs des lignes sélectionnées"""
-        selected_ids = []
-        for item in self.table.selectedItems():
-            if item.column() == 0:  # Première colonne
-                db_id = item.data(Qt.UserRole)
-                if db_id is not None:
-                    selected_ids.append(db_id)
-        return selected_ids
-    
     @handle_table_operations_errors(log_prefix="Erreur récupération ID base de données")
     def get_db_id_from_row(self, row: int) -> int:
         """Récupérer l'ID de base de données d'une ligne"""
@@ -1403,31 +1288,6 @@ class TableController:
         if item:
             return item.data(Qt.UserRole) or -1
         return -1
-    
-    def _on_search_text_changed(self, text: str):
-        """Gestionnaire de changement du texte de recherche"""
-        # Pour l'instant, pas de recherche automatique - seulement sur bouton
-        pass
-    
-    def _perform_search(self):
-        """Effectuer la recherche"""
-        search_term = self.search_input.text().strip()
-        self.load_data(search_term, is_search=True)
-    
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur effacement recherche")
-    def _clear_search(self):
-        """Effacer la recherche - délégué vers AdvancedSearchService"""
-        if hasattr(self.parent_window, 'advanced_search_service'):
-            self.parent_window.advanced_search_service.clear_search_ui(self.parent_window)
-        else:
-            # Fallback direct si le service n'est pas disponible
-            if hasattr(self, 'search_input') and self.search_input is not None:
-                try:
-                    self.search_input.clear()
-                except RuntimeError:
-                    # Le widget a été supprimé, on ignore silencieusement
-                    pass
-            self.load_data(None, is_search=False)
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur RAZ filtres colonne")
     def _clear_all_column_filters(self, checked=False):
@@ -1479,36 +1339,6 @@ class TableController:
                 self.parent_window._update_export_buttons_state(search_term)
             
             self.pending_search_term = None
-    
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur effacement recherche avancée")
-    def _clear_advanced_search(self, checked=False):
-        """Effacer la recherche avancée"""
-        # Utiliser la référence principale dans MainWindow (compatible avec PasteInterceptor)
-        if hasattr(self.parent_window, 'search_input') and self.parent_window.search_input is not None:
-            try:
-                self.parent_window.search_input.clear()
-            except RuntimeError:
-                # Le widget a été supprimé, on ignore silencieusement
-                pass
-        # Fallback vers l'ancienne méthode si nécessaire
-        elif hasattr(self, 'advanced_search_input') and self.advanced_search_input is not None:
-            try:
-                self.advanced_search_input.clear()
-            except RuntimeError:
-                pass
-
-        self.current_search_term = None  # Nettoyer aussi le terme persistant
-        self._hide_supersession_banner()
-        self._hide_equivalence_banner()
-        self.load_data(None, is_search=False)
-
-        # Désactiver les boutons d'export quand on vide la recherche
-        if hasattr(self.parent_window, '_update_export_buttons_state'):
-            self.parent_window._update_export_buttons_state("")
-
-        # Réinitialiser le panneau pièces (aucune sélection après RAZ)
-        if hasattr(self.parent_window, 'pieces_panel_service'):
-            self.parent_window.pieces_panel_service.update_pieces_panel()
 
     def _execute_prefetch(self):
         """Lancer le préchargement de la page suivante en arrière-plan"""
@@ -1903,40 +1733,6 @@ class TableController:
             if search_input:
                 search_input.setText(selected_term)
                 search_input.setFocus()
-
-    def _add_incomplete_filter_button(self, layout):
-        """Créer le bouton de filtre des lignes incomplètes et l'insérer dans la toolbar.
-
-        Le bouton est placé à GAUCHE de "Nettoyer les doublons" (cluster "santé des
-        données" : tous deux pilotés par un compteur). Le câblage (toggle, service de
-        visibilité/compteur) reste inchangé ; seul l'emplacement change.
-        """
-        from .qt_imports import QPushButton
-        from ..core.config import pluralize
-
-        # Bouton pour afficher seulement les lignes incomplètes
-        self.incomplete_filter_btn = QPushButton("Lignes à traiter")
-        self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
-        self.incomplete_filter_btn.setCheckable(True)
-        self.incomplete_filter_btn.clicked.connect(self.parent_window._toggle_incomplete_filter)
-        self.incomplete_filter_btn.setObjectName("incompleteBtn")
-
-        # Insertion dans la toolbar, juste à gauche de "Nettoyer les doublons"
-        toolbar = getattr(self.parent_window, 'toolbar', None)
-        clean_action = getattr(getattr(self.parent_window, 'toolbar_service', None), 'clean_btn_action', None)
-        if toolbar is not None and clean_action is not None:
-            toolbar.insertWidget(clean_action, self.incomplete_filter_btn)
-        else:
-            # Repli : ancien emplacement sous le tableau (sécurité si toolbar absente)
-            layout.addWidget(self.incomplete_filter_btn)
-
-        # Associer le bouton au service optimisé
-        if hasattr(self.parent_window, 'incomplete_button_service'):
-            self.parent_window.incomplete_button_service.set_button(self.incomplete_filter_btn)
-            self.parent_window.incomplete_button_service.set_filter_active(self.parent_window.show_incomplete_only)
-
-        # Mettre à jour la visibilité
-        self._update_incomplete_button_visibility()
     
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""

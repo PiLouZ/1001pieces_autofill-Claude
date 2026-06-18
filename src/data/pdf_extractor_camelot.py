@@ -307,35 +307,3 @@ class CamelotPDFExtractor:
             return True, f"PDF compatible - {len(tables)} tableau(x) détecté(s)"
         else:
             return False, "Aucun tableau détecté - Essayez l'import CSV ou le collage de données"
-    
-    def export_to_csv(self, data: List[List[str]], output_path: str, include_metadata: bool = False) -> None:
-        """
-        Exporter les données au format CSV
-        """
-        output_path = Path(output_path)
-        
-        with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-            if include_metadata:
-                # Format avec métadonnées
-                import csv
-                writer = csv.writer(csvfile, delimiter=';')
-                headers = ['fichier_source', 'ligne_numero', 'ref_technique', 'ref_commerciale', 'description']
-                writer.writerow(headers)
-                
-                for i, row in enumerate(data, 1):
-                    if len(row) >= 3:
-                        metadata_row = [
-                            self.get_last_extraction_info().get('filename', ''),
-                            i,
-                            row[0],
-                            row[1], 
-                            row[2]
-                        ]
-                        writer.writerow(metadata_row)
-            else:
-                # Format simple: ref_technique;ref_commerciale;description
-                for row in data:
-                    if len(row) >= 2:
-                        # Assurer 3 colonnes
-                        csv_row = row[:3] if len(row) >= 3 else row + [''] * (3 - len(row))
-                        csvfile.write(';'.join(csv_row) + '\n')

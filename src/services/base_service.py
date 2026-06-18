@@ -137,30 +137,6 @@ class BaseService(QObject):
         self.handle_error(error, context, show_dialog)
         return return_value
 
-    def handle_error_with_result(self, error: Exception, context: str, success: bool = False, count: int = 0, extra_fields: dict = None):
-        """
-        Gestion d'erreurs avec retour d'objet résultat (pattern export/import)
-
-        Args:
-            error: Exception capturée
-            context: Contexte de l'erreur
-            success: État de succès (False par défaut)
-            count: Nombre d'éléments traités
-            extra_fields: Champs additionnels pour le résultat
-
-        Returns:
-            Dict: Objet résultat standardisé
-        """
-        self.handle_error(error, context)
-        result = {
-            'success': success,
-            'error': str(error),
-            'count': count
-        }
-        if extra_fields:
-            result.update(extra_fields)
-        return result
-
     def log_operation(self, operation: str, message: str, level: str = "debug") -> None:
         """
         Logging standardisé avec préfixe de service
@@ -195,33 +171,6 @@ class BaseService(QObject):
         level = "debug" if success else "warning"
         self.log_operation(operation, f"terminée ({status})", level)
 
-    def emit_progress(self, operation: str, percentage: int) -> None:
-        """Émettre le signal de progression"""
-        self.operation_progress.emit(operation, max(0, min(100, percentage)))
-
-    def emit_data_changed(self, operation_type: str, data: Any) -> None:
-        """Émettre le signal de changement de données"""
-        self.data_changed.emit(operation_type, data)
-
-    def emit_validation_failed(self, operation: str, errors: List[str]) -> None:
-        """Émettre le signal d'échec de validation"""
-        self.validation_failed.emit(operation, errors)
-        self.log_operation(operation, f"validation échouée: {errors}", "warning")
-
-    def get_service_state(self) -> dict:
-        """Retourner l'état actuel du service pour debugging"""
-        return {
-            "service_name": self._service_name,
-            "parent_window_available": self.parent_window is not None,
-            "required_services": self._required_services,
-            "services_initialized": all(
-                getattr(self, service, None) is not None
-                for service in self._required_services
-            ),
-            "dialog_service_available": self.dialog_service is not None,
-            "user_interaction_service_available": self.user_interaction_service is not None
-        }
-
 class DebounceTimer(QTimer):
     """
     Timer réutilisable avec pattern debounce pour optimiser les performances
@@ -236,21 +185,6 @@ class DebounceTimer(QTimer):
         self.callback = callback
 
         app_logger.debug(f" DebounceTimer créé avec délai {delay_ms}ms")
-
-    def trigger(self) -> None:
-        """Déclencher le timer avec debounce"""
-        self.stop()  # Arrêter le timer précédent s'il existe
-        self.start(self.delay_ms)
-
-    def set_delay(self, delay_ms: int) -> None:
-        """Modifier le délai de debounce"""
-        self.delay_ms = delay_ms
-
-    def force_execute(self) -> None:
-        """Forcer l'exécution immédiate sans attendre le délai"""
-        self.stop()
-        if self.callback:
-            self.callback()
 
 def service_operation(operation_name: str, emit_signals: bool = True):
     """

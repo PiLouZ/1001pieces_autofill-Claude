@@ -209,22 +209,6 @@ class CustomTableWidget(QTableWidget):
         )
         return [row[0] for row in result]
     
-    def _get_type_suggestions(self, partial_text: str) -> List[str]:
-        """Obtenir des suggestions pour la colonne Type"""
-        return self._execute_autocomplete_query(
-            'autocomplete_types_like', 
-            (f"{partial_text}%",),
-            "récupération suggestions type"
-        )
-    
-    def _get_manufacturer_suggestions(self, partial_text: str) -> List[str]:
-        """Obtenir des suggestions pour la colonne Fabricant"""
-        return self._execute_autocomplete_query(
-            'autocomplete_manufacturers_like', 
-            (f"{partial_text}%",),
-            "récupération suggestions fabricant"
-        )
-    
     def _get_all_types(self) -> List[str]:
         """Obtenir toutes les valeurs Type disponibles"""
         return self._execute_autocomplete_query(
@@ -253,14 +237,3 @@ class TableWidgetService:
     
     def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
-    
-    def create_custom_table(self, parent=None) -> CustomTableWidget:
-        """
-        Créer une CustomTableWidget configurée
-        
-        Returns:
-            CustomTableWidget: Table configurée avec auto-complétion
-        """
-        table = CustomTableWidget(parent)
-        table.set_db_manager(self.db_manager)
-        return table

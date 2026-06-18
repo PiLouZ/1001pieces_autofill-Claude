@@ -446,21 +446,6 @@ class UnifiedDialogService:
         return self.complex.show_autocompletion_popup(suggestions, current_value)
     
     # Factory methods pour compatibilité avec l'ancien code
-    def get_category_dialog(self):
-        """Factory pour dialogue de catégories (rétrocompatibilité)"""
-        class CategoryDialogWrapper:
-            @staticmethod
-            def get_categories(parent, current_categories):
-                return SimpleDialogs.get_categories(parent, current_categories)
-        return CategoryDialogWrapper()
-    
-    def get_notes_dialog(self):
-        """Factory pour dialogue de notes (rétrocompatibilité)"""
-        class NotesDialogWrapper:
-            @staticmethod
-            def get_notes(parent, current_notes=""):
-                return SimpleDialogs.get_notes(parent, current_notes)
-        return NotesDialogWrapper()
 
 # Backward compatibility aliases pour migration facile
 CategoryDialog = SimpleDialogs

@@ -80,24 +80,6 @@ class ExportService(BaseService):
         return result
     
     # Phase 2.3: Ajouter les méthodes HTML factorées ici
-    @handle_export_errors()
-    def export_to_html(self, data: List[Tuple], export_format: str) -> str:
-        """
-        Exporter les données au format HTML
-
-        Args:
-            data: Liste des données (tuples avec id, manufacturer, ref_modele, commercial_ref...)
-            export_format: Format HTML souhaité (HTML_BRANDS ou HTML_DETAILS)
-
-        Returns:
-            str: Code HTML généré
-        """
-        if export_format == ExportFormat.HTML_BRANDS:
-            return self._generate_html_brands(data)
-        elif export_format == ExportFormat.HTML_DETAILS:
-            return self._generate_html_details(data)
-        else:
-            raise ValueError(f"Format d'export HTML non supporté: {export_format}")
     
     def _generate_html_brands(self, data: List[Tuple]) -> str:
         """Générer les liens HTML vers les marques - DÉLÉGUÉ AU SERVICE CENTRALISÉ"""
@@ -121,12 +103,6 @@ class ExportService(BaseService):
     def get_last_export_info(self):
         """Récupérer les informations du dernier export HTML détails"""
         return getattr(self, '_last_export_info', None)
-    
-    def _format_reference_text(self, ref_modele: str, commercial_ref: str) -> str:
-        """Formater le texte d'une référence"""
-        if ref_modele and commercial_ref:
-            return f"{ref_modele} - {commercial_ref}"
-        return ref_modele or commercial_ref or ""
     
     def _prepare_export_data(self, results: List[tuple], include_pieces: bool = True) -> List[Dict[str, Any]]:
         """Préparer les données pour l'export"""

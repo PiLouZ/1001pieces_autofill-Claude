@@ -182,17 +182,6 @@ class PieceManagementService:
             else:
                 self.main_window.user_interaction_service.show_error("Erreur lors de la suppression")
 
-    def copy_piece(self, item: QListWidgetItem) -> None:
-        """Copier la référence d'une pièce dans le presse-papier"""
-        ref_piece = item.data(Qt.UserRole)
-        if ref_piece:
-            from .qt_imports import QApplication
-            clipboard = QApplication.clipboard()
-            clipboard.setText(ref_piece)
-            self.main_window.user_interaction_service.show_status_message(
-                f"Référence '{ref_piece}' copiée", 2000
-            )
-
     def delete_piece_from_selected(self, item: QListWidgetItem) -> None:
         """Supprimer une pièce des appareils sélectionnés"""
         ref_piece = item.data(Qt.UserRole)
@@ -267,42 +256,3 @@ class PieceManagementService:
         self.main_window.pieces_manager.show()
         self.main_window.pieces_manager.raise_()
         self.main_window.pieces_manager.activateWindow()
-
-    def confirm_piece_description_update(self, ref_piece: str, existing_desc: str, new_desc: str) -> str:
-        """
-        Demander à l'utilisateur de confirmer la mise à jour d'une description de pièce.
-        Retourne la description finale à utiliser.
-        Utilise un cache pour éviter de redemander pour la même référence.
-        """
-        # Créer une clé de cache unique
-        cache_key = f"{ref_piece}:{existing_desc}:{new_desc}"
-        
-        # Vérifier le cache
-        if cache_key in self._piece_description_decisions:
-            return self._piece_description_decisions[cache_key]
-        
-        # Si les descriptions sont identiques, pas besoin de demander
-        if existing_desc == new_desc:
-            return existing_desc
-        
-        # Préparer le message de confirmation
-        message = f"Référence: {ref_piece}\n\n"
-        message += f"Description actuelle: '{existing_desc}'\n"
-        message += f"Nouvelle description: '{new_desc}'\n\n"
-        message += "Que souhaitez-vous faire ?"
-        
-        # Afficher la boîte de dialogue personnalisée
-        result = self.main_window.user_interaction_service.show_save_confirmation(
-            "Mise à jour de description",
-            message
-        )
-        
-        if result == "yes":  # Remplacer par la nouvelle
-            self._piece_description_decisions[cache_key] = new_desc
-            return new_desc
-        elif result == "no":  # Conserver l'existante
-            self._piece_description_decisions[cache_key] = existing_desc
-            return existing_desc
-        else:  # Conserver l'existante
-            self._piece_description_decisions[cache_key] = existing_desc
-            return existing_desc

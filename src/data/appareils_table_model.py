@@ -162,10 +162,6 @@ class AppareillsTableModel(QAbstractTableModel):
         """
         return self._records[row][0] if 0 <= row < len(self._records) else None
 
-    def get_record(self, row: int):
-        """Retourne le tuple complet de la ligne, ou None si hors limites."""
-        return self._records[row] if 0 <= row < len(self._records) else None
-
     def update_record_db_id(self, row: int, db_id: int):
         """Met à jour le db_id (record[0]) d'une ligne existante.
 

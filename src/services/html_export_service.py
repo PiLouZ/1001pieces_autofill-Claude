@@ -193,32 +193,3 @@ class HtmlExportService:
         # Supprimer toutes les balises HTML
         text_only = re.sub(r'<[^>]*>', '', html_content)
         return len(text_only)
-    
-    @staticmethod
-    def generate_complete_html_export(data: List[Tuple], search_term: str) -> str:
-        """Générer un export HTML complet (brands + details)
-        
-        Args:
-            data: Données à exporter
-            search_term: Terme de recherche (pour titre)
-            
-        Returns:
-            HTML complet avec en-tête et contenu
-        """
-        brands_html = HtmlExportService.generate_html_brands(data)
-        details_html = HtmlExportService.generate_html_details(data)
-        
-        # Template HTML complet
-        html_template = f"""
-        <div class="export-container">
-            <h2>Export: {search_term}</h2>
-            <div class="brands-navigation">
-                {brands_html}
-            </div>
-            <div class="details-content">
-                {details_html}
-            </div>
-        </div>
-        """
-        
-        return html_template.strip()

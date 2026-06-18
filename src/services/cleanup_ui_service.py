@@ -390,19 +390,6 @@ class DuplicateDevicesWidget(QWidget):
                     device_item.setCheckState(0, Qt.Checked)    # Le plus récent devient maître
                 else:
                     device_item.setCheckState(0, Qt.Unchecked)  # Les autres ne sont pas sélectionnés
-                    
-    def get_selected_devices(self) -> List[int]:
-        """Obtenir les IDs des appareils sélectionnés pour suppression"""
-        selected = []
-        root = self.devices_tree.invisibleRootItem()
-        for i in range(root.childCount()):
-            group_item = root.child(i)
-            for j in range(group_item.childCount()):
-                device_item = group_item.child(j)
-                if device_item.checkState(0) == Qt.Checked:
-                    device_id = device_item.data(0, Qt.UserRole)
-                    selected.append(device_id)
-        return selected
         
     def get_merge_groups(self) -> List[Dict[str, Any]]:
         """Obtenir les groupes de fusion d'appareils"""
@@ -728,45 +715,6 @@ class CleanupUIService(BaseService):
     def create_history_widget(self) -> 'ActionHistoryWidget':
         """Créer le widget de l'historique des actions"""
         return ActionHistoryWidget()
-        
-    def create_progress_widget(self) -> Dict[str, QWidget]:
-        """Créer les widgets de progression"""
-        widgets = {}
-        
-        # Label de titre
-        widgets['title'] = QLabel("Analyse des doublons en cours…")
-        widgets['title'].setStyleSheet("font-size: 18px; font-weight: bold; color: #007bff; padding: 10px;")
-        
-        # Barre de progression
-        widgets['progress_bar'] = QProgressBar()
-        widgets['progress_bar'].setRange(0, 100)
-        widgets['progress_bar'].setValue(0)
-        
-        # Label de statut
-        widgets['status'] = QLabel("Initialisation de l'analyse...")
-        widgets['status'].setStyleSheet("color: #6c757d; font-style: italic; padding: 5px;")
-        
-        return widgets
-        
-    def update_progress(self, widgets: Dict[str, QWidget], progress: int, message: str):
-        """Mettre à jour l'affichage de progression"""
-        if 'progress_bar' in widgets:
-            widgets['progress_bar'].setValue(progress)
-        if 'status' in widgets:
-            widgets['status'].setText(message)
-        if 'title' in widgets and progress == 100:
-            widgets['title'].setText("Analyse terminée — résultats disponibles")
-            
-    def show_analysis_error(self, widgets: Dict[str, QWidget], error_message: str):
-        """Afficher une erreur d'analyse"""
-        if 'title' in widgets:
-            widgets['title'].setText("Erreur lors de l'analyse")
-            widgets['title'].setStyleSheet("font-size: 18px; font-weight: bold; color: #dc3545; padding: 10px;")
-        if 'status' in widgets:
-            widgets['status'].setText(f"Erreur: {error_message}")
-            widgets['status'].setStyleSheet("color: #dc3545; font-style: italic; padding: 5px;")
-        if 'progress_bar' in widgets:
-            widgets['progress_bar'].setVisible(False)
 
 class DistinctReferencesWidget(QWidget):
     """Widget pour gérer les références marquées comme distinctes"""

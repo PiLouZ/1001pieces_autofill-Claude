@@ -197,12 +197,3 @@ class DuplicateIndicatorService(QObject):
             app_logger.error(f"Erreur requête doublons réels: {e}")
             # Fallback sur la méthode standard si erreur
             return self.db_manager.get_duplicate_ref_modeles()
-
-    def get_statistics(self) -> dict:
-        """Obtenir les statistiques du service"""
-        return {
-            'cached_duplicates': self._cached_duplicates,
-            'cache_valid': self._cache_valid,
-            'pending_updates': self._pending_updates,
-            'has_duplicates': self._cached_duplicates[0] > 0 if self._cached_duplicates else False
-        }

@@ -72,46 +72,6 @@ class SearchService(BaseService):
             })
             raise
     
-    def count_results(self, term: str,
-                     column_filters: Optional[Dict[int, str]] = None,
-                     incomplete_filter: bool = False) -> int:
-        """Compter les résultats de recherche sans les charger"""
-        return self.db_manager.count_data(
-            search_term=term,
-            column_filters=column_filters,
-            incomplete_filter=incomplete_filter
-        )
-    
-    def get_suggestions(self, term: str, limit: int = 10) -> List[str]:
-        """Obtenir des suggestions de recherche (références similaires)"""
-        if len(term) < 2:
-            return []
-        
-        try:
-            # Rechercher dans les références existantes
-            query = """
-                SELECT DISTINCT ref_modele FROM appareils 
-                WHERE ref_modele LIKE ? AND ref_modele != ''
-                UNION
-                SELECT DISTINCT commercial_ref FROM appareils 
-                WHERE commercial_ref LIKE ? AND commercial_ref != ''
-                UNION  
-                SELECT DISTINCT ref_piece FROM pieces 
-                WHERE ref_piece LIKE ? AND ref_piece != ''
-                ORDER BY 1
-                LIMIT ?
-            """
-            
-            like_term = f"{term}%"
-            results = self.db_manager.execute_query(
-                query, [like_term, like_term, like_term, limit]
-            )
-            
-            return [row[0] for row in results]
-            
-        except Exception as e:
-            return self.handle_error_with_return(e, "suggestions de recherche", [])
-    
     def parse_advanced_search(self, text: str) -> Optional[Dict[str, Any]]:
         """
         Parser une recherche avancée (regex, opérateurs OR, AND, etc.)
@@ -240,26 +200,6 @@ class SearchService(BaseService):
             'terms': and_terms,
             'original': text
         }
-    
-    def get_current_search(self) -> Optional[str]:
-        """Obtenir la recherche courante"""
-        return self._current_search
-    
-    def get_last_results_count(self) -> int:
-        """Obtenir le nombre de résultats de la dernière recherche"""
-        return len(self._last_results)
-    
-    def clear_cache(self) -> None:
-        """Vider le cache de recherche"""
-        if hasattr(self.db_manager, 'search_cache') and self.db_manager.search_cache:
-            self.db_manager.search_cache.clear()
-            event_bus.emit('search.cache_cleared', None)
-    
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Obtenir les statistiques du cache"""
-        if hasattr(self.db_manager, 'search_cache') and self.db_manager.search_cache:
-            return self.db_manager.search_cache.get_stats()
-        return {'enabled': False}
     
     def _normalize_search_term(self, term):
         """Normaliser le terme de recherche pour le cache et la DB"""

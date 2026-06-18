@@ -111,14 +111,6 @@ class SearchCacheInvalidationService:
 
         return entries_cleared
     
-    def invalidate_manual(self, reason: str = "manuel"):
-        """Invalidation manuelle par l'utilisateur"""
-        self.invalidation_stats['manual_invalidations'] += 1
-        entries_cleared = self.invalidate_search_cache(f"invalidation {reason}")
-        
-        app_logger.info(f"👤 Cache invalidé manuellement: {reason}")
-        return entries_cleared
-    
     def get_cache_statistics(self) -> Dict[str, Any]:
         """Obtenir statistiques du cache et invalidations"""
         cache_stats = {
@@ -142,65 +134,3 @@ class SearchCacheInvalidationService:
             'cache': cache_stats,
             'invalidations': self.invalidation_stats.copy()
         }
-    
-    def should_invalidate_for_search_term(self, search_term: str) -> bool:
-        """Déterminer si le cache doit être invalidé pour un terme spécifique"""
-        # Pour l'instant, invalidation globale uniquement
-        # Future amélioration: invalidation sélective par terme
-        return False
-    
-    def optimize_cache_settings(self) -> Dict[str, Any]:
-        """Optimiser automatiquement les paramètres de cache"""
-        if not hasattr(self.db_manager, 'search_cache') or not self.db_manager.search_cache:
-            return {'status': 'cache_disabled'}
-        
-        cache = self.db_manager.search_cache
-        stats = self.get_cache_statistics()
-        
-        # Calculer hit rate
-        total_requests = stats['cache']['cache_hits'] + stats['cache']['cache_misses']
-        hit_rate = stats['cache']['cache_hits'] / total_requests if total_requests > 0 else 0
-        
-        recommendations = []
-        
-        if hit_rate < 0.3:  # Moins de 30% hit rate
-            recommendations.append("Cache peu efficace - considérer augmenter la taille")
-        elif hit_rate > 0.8:  # Plus de 80% hit rate
-            recommendations.append("Cache très efficace - taille optimale")
-        
-        if stats['invalidations']['total_invalidations'] > 100:
-            recommendations.append("Beaucoup d'invalidations - données fréquemment modifiées")
-        
-        return {
-            'status': 'analyzed',
-            'hit_rate': hit_rate,
-            'recommendations': recommendations,
-            'stats': stats
-        }
-    
-    def create_cache_report(self) -> str:
-        """Créer rapport complet du cache pour debugging"""
-        stats = self.get_cache_statistics()
-        
-        report = "=== RAPPORT CACHE DE RECHERCHE ===\n"
-        report += f"État: {'Activé' if stats['cache']['cache_enabled'] else 'Désactivé'}\n"
-        
-        if stats['cache']['cache_enabled']:
-            report += f"Taille actuelle: {stats['cache']['cache_size']}/{stats['cache']['cache_max_size']}\n"
-            report += f"Hits: {stats['cache']['cache_hits']}\n"
-            report += f"Misses: {stats['cache']['cache_misses']}\n"
-            
-            total = stats['cache']['cache_hits'] + stats['cache']['cache_misses']
-            if total > 0:
-                hit_rate = stats['cache']['cache_hits'] / total * 100
-                report += f"Taux de réussite: {hit_rate:.1f}%\n"
-            
-            report += "\n=== INVALIDATIONS ===\n"
-            inv_stats = stats['invalidations']
-            report += f"Total: {inv_stats['total_invalidations']}\n"
-            report += f"Imports: {inv_stats['import_invalidations']}\n"
-            report += f"Modifications pièces: {inv_stats['piece_modification_invalidations']}\n"
-            report += f"Modifications appareils: {inv_stats['device_modification_invalidations']}\n"
-            report += f"Manuelles: {inv_stats['manual_invalidations']}\n"
-        
-        return report

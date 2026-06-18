@@ -128,20 +128,6 @@ class ImportService(BaseService):
             'suggested_reference': self._suggest_reference(file_path),
             'columns_detected': len(data[0]) if data else 0
         }
-    
-    def validate_files(self, files: List[str]) -> Dict[str, Any]:
-        """Valider une liste de fichiers avant import"""
-        validation_results = {
-            'valid_files': [],
-            'invalid_files': [],
-            'total_size': 0,
-            'estimated_records': 0
-        }
-        
-        for file_path in files:
-            result = self._safe_validate_single_file(file_path, validation_results)
-            if result:
-                validation_results['valid_files'].append(result)
 
     @handle_validation_errors()
     def _safe_validate_single_file(self, file_path: str, validation_results: Dict[str, Any]) -> Optional[Dict[str, Any]]:

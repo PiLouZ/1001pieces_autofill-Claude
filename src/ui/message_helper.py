@@ -54,29 +54,6 @@ class MessageHelper:
         return reply == QMessageBox.Yes
     
     @staticmethod
-    def ask_question_with_cancel(
-        parent: Optional[QWidget], 
-        message: str, 
-        title: str = MessageType.QUESTION
-    ) -> Optional[bool]:
-        """
-        Poser une question oui/non/annuler
-        Returns: True (Oui), False (Non), None (Annuler)
-        """
-        reply = QMessageBox.question(
-            parent, title, message,
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-            QMessageBox.Cancel
-        )
-        
-        if reply == QMessageBox.Yes:
-            return True
-        elif reply == QMessageBox.No:
-            return False
-        else:  # Cancel
-            return None
-    
-    @staticmethod
     def show_detailed_error(
         parent: Optional[QWidget], 
         message: str, 
@@ -90,22 +67,6 @@ class MessageHelper:
         msg_box.setDetailedText(details)
         msg_box.setIcon(QMessageBox.Critical)
         msg_box.exec_()
-    
-    @staticmethod
-    def show_custom(
-        parent: Optional[QWidget],
-        title: str,
-        message: str,
-        icon: QMessageBox.Icon = QMessageBox.Information,
-        buttons: QMessageBox.StandardButtons = QMessageBox.Ok
-    ) -> int:
-        """Afficher un message personnalisé"""
-        msg_box = QMessageBox(parent)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setIcon(icon)
-        msg_box.setStandardButtons(buttons)
-        return msg_box.exec_()
 
 class CommonMessages:
     """Messages couramment utilisés dans l'application"""

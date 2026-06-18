@@ -198,37 +198,6 @@ class UIComponentService:
             self.main_window.copy_csv_btn.setEnabled(is_piece_search)
         if hasattr(self.main_window, 'copy_html_btn'):
             self.main_window.copy_html_btn.setEnabled(is_piece_search)
-    
-    def update_export_buttons_state(self, search_term: str) -> None:
-        """
-        Mettre à jour l'état des boutons d'export selon le terme de recherche
-        
-        Args:
-            search_term: Terme de recherche actuel
-        """
-        has_search = bool(search_term)
-        is_piece_search = has_search and self.main_window.advanced_search_service._is_piece_reference_search(search_term)
-        
-        # Tous les boutons d'export nécessitent une référence de pièce
-        export_buttons = [
-            self.main_window.export_csv_btn,
-            self.main_window.export_html_brands_btn, 
-            self.main_window.export_html_details_btn
-        ]
-        
-        for btn in export_buttons:
-            if btn is not None:
-                btn.setEnabled(is_piece_search)
-        
-        # Boutons SEO nécessitent également une référence de pièce
-        seo_buttons = [
-            getattr(self.main_window, 'meta_title_btn', None),
-            getattr(self.main_window, 'meta_desc_btn', None)
-        ]
-        
-        for btn in seo_buttons:
-            if btn:
-                btn.setEnabled(is_piece_search)
 
     # Méthodes de styles pour les boutons
     def _get_csv_button_style(self) -> str:

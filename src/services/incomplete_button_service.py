@@ -151,12 +151,3 @@ class IncompleteButtonService(QObject):
             # Mettre à jour immédiatement l'affichage
             if self._cached_count is not None:
                 self._update_button_display(self._cached_count)
-
-    def get_statistics(self) -> dict:
-        """Obtenir les statistiques du service"""
-        return {
-            'cached_count': self._cached_count,
-            'cache_valid': self._cache_valid,
-            'pending_updates': self._pending_updates,
-            'filter_active': self.show_incomplete_only
-        }

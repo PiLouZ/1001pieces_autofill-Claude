@@ -1219,20 +1219,6 @@ class ImportDialog(QDialog):
         """
         return n_cols == 3 and any(f.type == FileType.PDF for f in files)
 
-    def _get_format_description(self, n_cols: int, files: list) -> str:
-        """Description textuelle du format pour un groupe de fichiers."""
-        if n_cols == 1:
-            return "• 1 colonne → Réf. Modèle uniquement"
-        elif n_cols == 2:
-            return "• 2 colonnes → Réf. Modèle + Réf. Commerciale"
-        elif n_cols == 3:
-            if any(f.type == FileType.PDF for f in files):
-                return "• 3 colonnes → Réf. technique + Réf. commerciale + Description"
-            return "• 3 colonnes → Réf. Modèle + Réf. Commerciale + Autre"
-        elif n_cols >= 4:
-            return "• 4+ colonnes → Format complet (Type, Fabricant, Réf. Modèle, Réf. Commerciale, ...)"
-        return ""
-
     def _get_default_mapping(self, n_cols: int, files: list,
                              sample_data: list = None) -> Tuple[List[str], bool]:
         """
@@ -2110,75 +2096,6 @@ class ImportManager:
     def _extract_reference_from_filename(self, file_path: str) -> str:
         """Extraire une référence depuis le nom de fichier"""
         return os.path.splitext(os.path.basename(file_path))[0]
-    
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur lors du chargement d'échantillon")
-    def _get_sample_data(self, file_path: str, file_type: FileType) -> Optional[List[List[str]]]:
-        """
-        Récupérer un échantillon de données pour l'aperçu (avec cache)
-
-        PHASE 1.2 OPTIMISATION: Cache basé sur (path, mtime)
-        - Évite de recharger les mêmes fichiers
-        - Instantané si fichier déjà importé récemment
-        """
-        # Vérifier si le fichier existe
-        if not os.path.exists(file_path):
-            return None
-
-        # Obtenir le timestamp de modification
-        try:
-            mtime = os.path.getmtime(file_path)
-        except OSError:
-            return None
-
-        # Clé de cache: (chemin, timestamp)
-        cache_key = (file_path, mtime)
-
-        # Vérifier le cache
-        if cache_key in self._file_metadata_cache:
-            app_logger.debug(f" Cache HIT: {os.path.basename(file_path)}")
-            return self._file_metadata_cache[cache_key]
-
-        # Cache MISS: Charger les données
-        app_logger.debug(f"⏳ Cache MISS: Chargement {os.path.basename(file_path)}")
-
-        if file_type == FileType.CSV:
-            data = self.load_csv_data(file_path, max_rows=5)
-        elif file_type == FileType.PDF:
-            # PHASE 1.1 OPTIMISATION: Mode preview pour aperçu rapide (1ère page seulement)
-            data = self.load_pdf_data(file_path, max_rows=5, preview_mode=True)
-        else:
-            data = None
-
-        # Mettre en cache si données valides
-        if data is not None:
-            # Limiter la taille du cache (LRU simple: supprimer les plus anciennes)
-            if len(self._file_metadata_cache) >= 50:
-                # Supprimer la première entrée (la plus ancienne)
-                oldest_key = next(iter(self._file_metadata_cache))
-                del self._file_metadata_cache[oldest_key]
-                app_logger.debug(f" Cache nettoyé: {len(self._file_metadata_cache)} entrées")
-
-            self._file_metadata_cache[cache_key] = data
-            app_logger.debug(f" Mise en cache: {os.path.basename(file_path)}")
-
-        return data
-
-    def clear_metadata_cache(self) -> None:
-        """
-        Vider le cache des métadonnées fichiers
-
-        Utile pour libérer la mémoire ou forcer le rechargement
-        """
-        cache_size = len(self._file_metadata_cache)
-        self._file_metadata_cache.clear()
-        app_logger.debug(f" Cache vidé: {cache_size} entrées supprimées")
-
-    def get_cache_stats(self) -> Dict[str, int]:
-        """Obtenir les statistiques du cache"""
-        return {
-            'entries': len(self._file_metadata_cache),
-            'max_entries': 50
-        }
 
     def _run_import_files(self, config: ImportConfiguration,
                           progress_cb=None, cancel_check=None,

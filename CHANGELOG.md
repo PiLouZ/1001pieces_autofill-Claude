@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.5] - 2026-06-18
+
+### Nettoyage — Code mort à l'échelle du projet (132 méthodes)
+
+Extension de l'audit v3.54.4 à **tout `src/`** : suppression de **132 méthodes jamais référencées** (~2100 lignes) réparties sur 44 fichiers (data, services, core, ui), reliquats de refontes successives (duplicatas de pagination dans `table_controller.py`, slots désactivés de `pieces_manager.py`, chemins legacy d'export/import, helpers orphelins, etc.).
+
+- **Méthode d'audit** : pour chaque méthode, comptage des occurrences textuelles dans `src/` + `tests/` + `run.py` moins les définitions ; `<= 0` ⇒ non invocable. Exclusions : overrides Qt (`keyboardSearch`, `setRowCount`, `setMinimumDuration`, événements…), `__dunder__`, lifecycle. Vérifié au préalable : aucun dispatch dynamique par nom (`getattr` sur attributs littéraux uniquement), aucune auto-connexion Qt par nom.
+- **Suppression par AST** (`lineno`→`end_lineno`) pour gérer correctement décorateurs et signatures multi-lignes.
+- **Vérifications** : `compileall` OK ; import des **82 modules** sans erreur ; smoke headless — fenêtre principale (recherche `57X2411` → 377 lignes, export → 377), gestionnaire de pièces (3297 lignes chargées, sélection sticky fonctionnelle).
+
+---
+
 ## [3.54.4] - 2026-06-18
 
 ### Nettoyage — Suppression de code mort dans `main_refactored.py`

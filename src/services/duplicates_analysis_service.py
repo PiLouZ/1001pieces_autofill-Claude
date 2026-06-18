@@ -191,70 +191,6 @@ class DuplicatesAnalysisWorker(QThread):
 
         return duplicates
             
-    def _find_potential_inconsistencies(self) -> List[Dict[str, Any]]:
-        """Trouver les incohérences potentielles"""
-        # Rechercher les appareils avec des références modèle similaires mais pas identiques
-        query = """
-        SELECT DISTINCT a1.id, a1.ref_modele, a1.type, a1.manufacturer,
-               a2.id, a2.ref_modele, a2.type, a2.manufacturer
-        FROM appareils a1, appareils a2
-        WHERE a1.id < a2.id
-        AND a1.ref_modele IS NOT NULL AND a2.ref_modele IS NOT NULL
-        AND a1.ref_modele != a2.ref_modele
-        AND (
-            -- Références très similaires (distance de Levenshtein approximative)
-            LENGTH(a1.ref_modele) > 3 AND LENGTH(a2.ref_modele) > 3
-            AND (
-                a1.ref_modele LIKE '%' || SUBSTR(a2.ref_modele, 1, LENGTH(a2.ref_modele)-1) || '%'
-                OR a2.ref_modele LIKE '%' || SUBSTR(a1.ref_modele, 1, LENGTH(a1.ref_modele)-1) || '%'
-                OR ABS(LENGTH(a1.ref_modele) - LENGTH(a2.ref_modele)) <= 2
-            )
-            -- Même type et fabricant mais références différentes
-            OR (a1.type = a2.type
-                AND a1.manufacturer = a2.manufacturer
-                AND a1.type IS NOT NULL
-                AND a1.manufacturer IS NOT NULL)
-        )
-        ORDER BY a1.ref_modele, a2.ref_modele
-        LIMIT 200
-        """
-
-        results = self.db_manager.execute_query(query)
-        inconsistencies = []
-
-        processed_pairs = set()
-
-        for row in results:
-            id1, ref1, type1, manuf1, id2, ref2, type2, manuf2 = row
-
-            # Éviter les doublons en utilisant un tuple ordonné
-            pair_key = tuple(sorted([id1, id2]))
-            if pair_key in processed_pairs:
-                continue
-            processed_pairs.add(pair_key)
-
-            inconsistency = {
-                'devices': [
-                    {
-                        'id': id1,
-                        'ref_modele': clean_display_text(ref1),
-                        'type_appareil': clean_display_text(type1 or ''),
-                        'manufacturer': clean_display_text(manuf1 or '')
-                    },
-                    {
-                        'id': id2,
-                        'ref_modele': clean_display_text(ref2),
-                        'type_appareil': clean_display_text(type2 or ''),
-                        'manufacturer': clean_display_text(manuf2 or '')
-                    }
-                ],
-                'similarity_score': self._calculate_similarity(ref1, ref2),
-                'decision': None  # 'merge', 'keep_separate', ou None
-            }
-            inconsistencies.append(inconsistency)
-
-        return inconsistencies
-            
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """Calculer un score de similitude simple entre deux textes"""
         if not text1 or not text2:
@@ -351,10 +287,6 @@ class DuplicatesAnalysisService(BaseService):
         self.current_results = results
         self.analysis_completed.emit(results)
         app_logger.info(f"Analyse doublons terminée: {results['statistics']}")
-        
-    def get_current_results(self) -> Optional[Dict[str, Any]]:
-        """Obtenir les résultats de la dernière analyse"""
-        return self.current_results
         
     @safe_operation(operation_name="apply_cleanup_decisions", default_return={'errors': ['Erreur application nettoyage']})
     def apply_cleanup_decisions(self, cleanup_options: Dict[str, Any]) -> Dict[str, Any]:

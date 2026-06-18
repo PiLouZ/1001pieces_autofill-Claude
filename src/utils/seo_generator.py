@@ -438,7 +438,3 @@ class SEOGenerator:
         )
 
         return 'vos' if is_plural else 'votre'
-    
-    def get_last_generation_info(self) -> Dict[str, any]:
-        """Récupérer les informations de la dernière génération"""
-        return self.last_generation_info

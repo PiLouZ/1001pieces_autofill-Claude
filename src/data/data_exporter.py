@@ -216,40 +216,6 @@ class DataExporter:
 
         return f"Fichier XML créé: {filename}"
     
-    @handle_export_errors(title="Erreur export données complètes")
-    def export_all_data(self, export_format: ExportFormat,
-                       filename: Optional[str] = None) -> str:
-        """Exporter toutes les données"""
-        if not self.db_manager:
-            raise ExportError("Gestionnaire de base de données non initialisé")
-
-        # Récupérer toutes les données
-        data = self.db_manager.load_data()
-
-        if not data:
-            raise ExportError("Aucune donnée à exporter")
-
-        # Convertir le format des données pour l'export
-        export_data = []
-        for record in data:
-            # record[0] = id, record[1:] = données
-            row_data = record[1:] + (None,)  # Ajouter None pour ref_piece
-            export_data.append(row_data)
-
-        # Générer le nom de fichier
-        if not filename:
-            filename = self._generate_filename("all_data", export_format)
-
-        # Exporter selon le format
-        if export_format == ExportFormat.CSV:
-            return self._export_all_to_csv(export_data, filename)
-        elif export_format == ExportFormat.JSON:
-            return self._export_all_to_json(export_data, filename)
-        elif export_format == ExportFormat.XML:
-            return self._export_all_to_xml(export_data, filename)
-        else:
-            raise ExportError(f"Format d'export non supporté pour l'export complet: {export_format}")
-    
     @handle_export_errors(title="Erreur export CSV complet")
     def _export_all_to_csv(self, data: List[Tuple], filename: str) -> str:
         """Exporter toutes les données vers CSV"""
@@ -314,49 +280,6 @@ class DataExporter:
             xmlfile.write('\n'.join(xml_content))
 
         return f"Fichier XML complet créé: {filename}"
-    
-    def create_export_report(self, data: List[Tuple], search_term: str = None) -> Dict[str, Any]:
-        """Créer un rapport d'export"""
-        report = {
-            'export_date': datetime.now().isoformat(),
-            'search_term': search_term,
-            'total_records': len(data),
-            'statistics': {
-                'manufacturers': set(),
-                'types': set(),
-                'categories': set(),
-                'empty_fields': defaultdict(int)
-            }
-        }
-        
-        # Analyser les données
-        for record in data:
-            if len(record) >= 2:  # Au moins type et manufacturer
-                type_app = record[0] if len(record) > 0 else ''
-                manufacturer = record[1] if len(record) > 1 else ''
-                category = record[5] if len(record) > 5 else ''
-                
-                if type_app:
-                    report['statistics']['types'].add(type_app)
-                else:
-                    report['statistics']['empty_fields']['type'] += 1
-                
-                if manufacturer:
-                    report['statistics']['manufacturers'].add(manufacturer)
-                else:
-                    report['statistics']['empty_fields']['manufacturer'] += 1
-                
-                if category:
-                    report['statistics']['categories'].add(category)
-                else:
-                    report['statistics']['empty_fields']['category'] += 1
-        
-        # Convertir les sets en listes pour la sérialisation
-        report['statistics']['manufacturers'] = list(report['statistics']['manufacturers'])
-        report['statistics']['types'] = list(report['statistics']['types'])
-        report['statistics']['categories'] = list(report['statistics']['categories'])
-        
-        return report
     
     def _generate_filename(self, search_term, export_format: ExportFormat) -> str:
         """Générer un chemin complet vers le Bureau pour l'export"""
@@ -427,11 +350,3 @@ class DataExporter:
         else:
             self.export_stats['failed_exports'] += 1
         self.export_stats['last_export_time'] = datetime.now().isoformat()
-    
-    def get_export_stats(self) -> Dict[str, Any]:
-        """Récupérer les statistiques d'export"""
-        return self.export_stats.copy()
-    
-    def get_supported_formats(self) -> List[str]:
-        """Récupérer la liste des formats supportés"""
-        return [fmt.lowercase for fmt in ExportFormat]

@@ -112,21 +112,6 @@ class PiecesTableWidget(QTableWidget):
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
     
-    def _show_action_buttons_for_row(self, row: int):
-        """Afficher les boutons d'action pour une ligne - DÉSACTIVÉ"""
-        # BOUTONS DE SURVOL SUPPRIMÉS - Méthode désactivée
-        return
-    
-    def _on_edit_requested(self, row: int):
-        """Signal émis quand édition demandée"""
-        if hasattr(self.parent(), '_edit_piece_at_row'):
-            self.parent()._edit_piece_at_row(row)
-    
-    def _on_delete_requested(self, row: int):
-        """Signal émis quand suppression demandée"""
-        if hasattr(self.parent(), '_delete_piece_at_row'):
-            self.parent()._delete_piece_at_row(row)
-    
     def setRowCount(self, rows: int):
         """Override pour nettoyer les widgets d'action"""
         super().setRowCount(rows)
@@ -1064,91 +1049,6 @@ class PiecesManagerWindow(QDialog):
     def _on_double_click_piece(self, item):
         """Double-clic sur une ligne → édition immédiate."""
         self._edit_selected_piece()
-
-    def _search_in_main_app(self):
-        """Injecter la référence sélectionnée dans le champ de recherche principal."""
-        current_row = self.pieces_table.currentRow()
-        if current_row < 0:
-            return
-        ref_item = self.pieces_table.item(current_row, 0)
-        if not ref_item:
-            return
-        ref = ref_item.data(Qt.UserRole) or ref_item.text()
-        self._inject_ref_in_search(ref)
-
-    def _make_status_cell_widget(self, row_idx: int, prefix: str, refs: list,
-                                  color: str, ref_piece: str, status_info: dict) -> QLabel:
-        """Créer un QLabel avec refs cliquables pour la colonne Statut.
-        Soulignement dynamique via linkHovered (le survol souligne uniquement la ref survolée).
-        Clic = copie dans le presse-papier + injection dans la recherche principale."""
-        MAX_INLINE = 2
-
-        # Couleur de fond alternée (correspondant aux lignes du tableau)
-        palette = self.pieces_table.palette()
-        bg = (palette.color(QPalette.AlternateBase).name()
-              if row_idx % 2 == 1
-              else palette.color(QPalette.Base).name())
-
-        lbl = QLabel()
-        lbl.setStyleSheet(f"background: {bg}; padding: 2px 6px; border: none;")
-        lbl.setTextFormat(Qt.RichText)
-        lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
-        lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-
-        refs_shown = refs[:MAX_INLINE]
-        n_more     = len(refs) - MAX_INLINE if len(refs) > MAX_INLINE else 0
-
-        def _build_html(hovered_href: str = ''):
-            parts = []
-            for r in refs_shown:
-                deco = 'underline' if f'ref://{r}' == hovered_href else 'none'
-                parts.append(
-                    f"<a href='ref://{r}' style='color:{color};font-weight:bold;"
-                    f"font-size:11px;text-decoration:{deco};'>{r}</a>")
-            refs_html = ' '.join(parts)
-            popup_html = ''
-            if n_more:
-                popup_html = (f" <a href='#popup' style='color:{color};font-size:10px;"
-                              f"text-decoration:none;border-bottom:1px dashed {color};'>"
-                              f"… +{n_more}</a>")
-            return (f"<span style='color:{color};font-size:11px;'>{prefix}</span>"
-                    f" {refs_html}{popup_html}")
-
-        _last_hovered = ['']  # conteneur mutable pour la closure
-
-        lbl.setText(_build_html())
-
-        def _on_hover(href: str):
-            _last_hovered[0] = href
-            lbl.setText(_build_html(href))
-
-        def _on_link(href: str, _rp=ref_piece, _si=status_info):
-            if href.startswith('ref://'):
-                self._search_in_manager(href[6:])
-            elif href == '#popup':
-                popup = PieceRelationsPopup(_rp, _si, self)
-                popup.show_at_cursor()
-
-        def _show_context_menu(pos):
-            """Clic droit : copier la référence ou rechercher dans l'app."""
-            menu = QMenu(lbl)
-            hovered_ref = (_last_hovered[0][6:]
-                           if _last_hovered[0].startswith('ref://') else None)
-            targets = [hovered_ref] if hovered_ref else refs_shown
-            for r in targets:
-                copy_action = menu.addAction(f"Copier  {r}")
-                copy_action.triggered.connect(
-                    lambda checked, _r=r: QApplication.clipboard().setText(_r))
-                search_action = menu.addAction(f"Rechercher dans l'app  {r}")
-                search_action.triggered.connect(
-                    lambda checked, _r=r: self._inject_ref_in_search(_r))
-            menu.exec_(lbl.mapToGlobal(pos))
-
-        lbl.setContextMenuPolicy(Qt.CustomContextMenu)
-        lbl.customContextMenuRequested.connect(_show_context_menu)
-        lbl.linkHovered.connect(_on_hover)
-        lbl.linkActivated.connect(_on_link)
-        return lbl
 
     def open_on_piece(self, ref: str):
         """Ouvrir le gestionnaire et se positionner sur la pièce donnée.

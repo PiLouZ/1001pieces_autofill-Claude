@@ -111,65 +111,6 @@ class AdvancedSearchService(QObject):
         """
         return self.search_service.parse_advanced_search(text)
 
-    @handle_highlight_errors(return_value=False)
-    def apply_search_highlight(self, item: QTableWidgetItem, search_term) -> bool:
-        """Appliquer la mise en évidence de recherche sur un item"""
-        if not search_term:
-            return False
-            
-        item_text = str(item.text()).lower()
-        should_highlight = False
-        
-        if isinstance(search_term, str):
-            # Recherche simple (chaîne)
-            should_highlight = search_term.lower() in item_text
-        elif isinstance(search_term, dict):
-            # Recherche parsée (dictionnaire)
-            if search_term.get('type') == 'simple':
-                # Recherche simple parsée
-                terms = search_term.get('terms', [])
-                if terms:
-                    should_highlight = terms[0].lower() in item_text
-            elif search_term.get('type') == 'regex':
-                # Recherche par expression régulière
-                pattern = search_term.get('pattern', '')
-                should_highlight = bool(re.search(pattern, item_text, re.IGNORECASE))
-            elif search_term.get('type') == 'and':
-                # Recherche AND - tous les termes doivent être présents
-                terms = search_term.get('terms', [])
-                should_highlight = all(term.lower() in item_text for term in terms)
-            elif search_term.get('type') == 'or':
-                # Recherche OR - au moins un terme des groupes doit matcher
-                for group in search_term.get('groups', []):
-                    if group.get('type') == 'and':
-                        # Groupe AND dans OR
-                        if all(term.lower() in item_text for term in group.get('terms', [])):
-                            should_highlight = True
-                            break
-                    elif group.get('type') == 'simple':
-                        # Terme simple dans OR
-                        terms = group.get('terms', [])
-                        if terms and terms[0].lower() in item_text:
-                            should_highlight = True
-                            break
-
-        # Appliquer le style si match
-        if should_highlight:
-            # Utiliser la couleur configurée avec une opacité réduite pour éviter le problème de lisibilité
-            highlight_color = Config.SEARCH_HIGHLIGHT_COLOR
-            if len(highlight_color) == 4:  # RGBA
-                # Réduire l'opacité pour éviter que le texte devienne illisible
-                r, g, b, a = highlight_color
-                item.setBackground(QColor(r, g, b, min(a, 50)))  # Max 50 sur 255 pour plus de lisibilité
-            else:  # RGB
-                r, g, b = highlight_color
-                item.setBackground(QColor(r, g, b, 50))  # Opacité 50 sur 255
-            return True
-        else:
-            # Remettre la couleur par défaut explicitement (blanc)
-            item.setBackground(QColor(255, 255, 255))  # Blanc par défaut
-            return False
-
     def get_current_search_term(self):
         """Obtenir le terme de recherche actuellement actif"""
         return self.current_search_term
@@ -225,9 +166,3 @@ class AdvancedSearchService(QObject):
                 return  # _clear_all_column_filters appelle déjà load_data()
             # Fallback si méthode absente
             main_window.table_controller.load_data()
-    
-    def force_search(self, search_term=None):
-        """Forcer une recherche immédiate (sans débounce)"""
-        if search_term is not None:
-            self.pending_search_term = search_term
-        self._execute_search()

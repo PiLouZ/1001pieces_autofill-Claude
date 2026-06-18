@@ -94,26 +94,6 @@ class AutoSaveManager(BaseService):
         # Mettre à jour l'indicateur
         self._update_save_indicator(Config.get_message('save_pending'))
 
-    def clear_cell_modification(self, row: int, col: int, table_widget) -> None:
-        """
-        Effacer le marquage de modification d'une cellule
-
-        Args:
-            row: Ligne de la cellule
-            col: Colonne de la cellule
-            table_widget: Widget table pour accès aux items
-        """
-        self.modified_cells.discard((row, col))
-
-        # Restaurer couleur normale
-        item = table_widget.item(row, col)
-        if item:
-            item.setBackground(QColor(255, 255, 255))  # Blanc
-
-        # Mettre à jour l'indicateur si plus de modifications
-        if not self.modified_cells:
-            self._update_save_indicator(Config.get_message('save_success'), "color: green;")
-
     def trigger_manual_save(self) -> None:
         """Déclencher une sauvegarde manuelle"""
         self._auto_save()
@@ -122,19 +102,6 @@ class AutoSaveManager(BaseService):
             Config.STATUS_MESSAGE_TIMEOUT
         )
         self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
-
-    def has_pending_changes(self) -> bool:
-        """Vérifier s'il y a des modifications en attente"""
-        return len(self.modified_cells) > 0
-
-    def get_pending_changes_count(self) -> int:
-        """Obtenir le nombre de modifications en attente"""
-        return len(self.modified_cells)
-
-    def enable_auto_save(self, enabled: bool = True) -> None:
-        """Activer/désactiver l'auto-sauvegarde"""
-        self.auto_save_enabled = enabled
-        app_logger.debug(f"Auto-sauvegarde {'activée' if enabled else 'désactivée'}")
 
     def cleanup(self) -> None:
         """Nettoyer les ressources"""

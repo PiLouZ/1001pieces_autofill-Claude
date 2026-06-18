@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.54.4"
+    VERSION = "3.54.5"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -178,12 +178,6 @@ class Config:
             """Convertir couleur hex en tuple RGB pour QColor"""
             hex_color = hex_color.lstrip('#')
             return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-            
-        @classmethod  
-        def get_qcolor_rgba(cls, hex_color, alpha=255):
-            """Convertir couleur hex en tuple RGBA pour QColor"""
-            rgb = cls.get_qcolor_rgb(hex_color)
-            return rgb + (alpha,)
     
     # Messages
     MESSAGES = {

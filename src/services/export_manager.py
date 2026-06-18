@@ -90,25 +90,6 @@ class ExportManagerService:
         else:
             raise ValueError(f"Type d'export non supporté: {export_type}")
     
-    @handle_export_errors(title="Erreur export avec référence")
-    def export_with_reference(self, export_format: ExportFormat, custom_reference: str) -> bool:
-        """
-        Export direct avec référence personnalisée (pas de dialogue)
-
-        Args:
-            export_format: Format d'export
-            custom_reference: Référence personnalisée à utiliser
-
-        Returns:
-            bool: True si succès
-        """
-        search_term = self._get_search_term()
-        if not self._validate_search_term(search_term):
-            return False
-
-        parsed = self._parse_search_term(search_term)
-        return self._execute_export_with_reference(parsed, custom_reference, export_format)
-    
     # ===== GESTION DES TYPES D'EXPORT =====
     
     def _handle_main_export(self, search_term: str, export_format: ExportFormat) -> bool:
@@ -560,10 +541,3 @@ class ExportManagerService:
         """Ajouter un message à l'historique"""
         if hasattr(self.main_window, 'user_interaction_service'):
             self.main_window.user_interaction_service.add_to_history(message)
-    
-    def _handle_error(self, error_message: str) -> None:
-        """Gérer les erreurs de manière unifiée"""
-        app_logger.error(error_message)
-        self._add_to_history(f"[ERR] {error_message}")
-        if hasattr(self.main_window, '_show_error'):
-            self.main_window._show_error(error_message)

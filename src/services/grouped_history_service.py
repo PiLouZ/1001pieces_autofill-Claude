@@ -234,20 +234,6 @@ class GroupedHistoryService(QObject):
         """Obtenir les statistiques d'utilisation"""
         return self.stats.copy()
 
-    def clear_stats(self):
-        """Réinitialiser les statistiques"""
-        self.stats = {
-            'single_modifications': 0,
-            'grouped_modifications': 0,
-            'total_devices_modified': 0
-        }
-
-    def has_pending_modifications(self, db_id: Optional[int] = None) -> bool:
-        """Vérifier s'il y a des modifications en attente"""
-        if db_id is not None:
-            return db_id in self.pending_modifications
-        return bool(self.pending_modifications)
-
     def cleanup(self):
         """Nettoyer les ressources"""
         # Flusher les modifications en attente avant nettoyage

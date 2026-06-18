@@ -969,28 +969,6 @@ class MainWindow(QMainWindow):
     
     
     
-
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur basculement affichage")
-    def _safe_toggle_show_all(self):
-        """Helper sécurisé pour basculer entre affichage paginé et affichage de toutes les lignes"""
-        if self.use_pagination:
-            # Passer en mode "Toutes les lignes"
-            message = (f"Voulez-vous afficher toutes les {self.total_rows} lignes?\n\n"
-                      "Cela peut être lent si vous avez beaucoup de données.")
-
-            if MessageHelper.ask_question(self, message, "Afficher toutes les lignes"):
-                self.use_pagination = False
-                self.show_all_btn.setText("Pagination")
-                self.show_all_btn.setToolTip("Revenir à l'affichage paginé")
-                self.table_controller.load_data()
-        else:
-            # Revenir en mode pagination
-            self.use_pagination = True
-            self.show_all_btn.setText("Toutes les lignes")
-            self.show_all_btn.setToolTip("Afficher toutes les lignes (peut être lent)")
-            if hasattr(self.table_controller, 'current_page'):
-                self.table_controller.current_page = 0
-            self.table_controller.load_data()
     
     def _navigate_to_empty_cell(self, direction='down'):
         """Navigation intelligente - PHASE 5: Délégation vers CellEditingService"""
@@ -1259,28 +1237,6 @@ class MainWindow(QMainWindow):
         self._safe_position_drag_handle_at_selection(selected)
 
     # --- Méthodes d'action (stubs pour les fonctionnalités à implémenter) ---
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur peuplement dropdown")
-    def _safe_populate_dropdown_values(self, combo_widget: QComboBox, column_index: int, db_field: str):
-        """Peupler les valeurs du dropdown avec les données uniques (version protégée)"""
-        # Requête pour obtenir les valeurs distinctes, non vides, triées
-        query = f"""
-            SELECT DISTINCT {db_field}
-            FROM appareils
-            WHERE {db_field} IS NOT NULL AND {db_field} != ''
-            ORDER BY {db_field}
-        """
-
-        results = self.db_manager.execute_query(query)
-
-        # Ajouter une option vide en premier
-        combo_widget.addItem("")
-
-        # Ajouter les valeurs uniques
-        for row in results:
-            value = row[0]
-            if value and value.strip():  # S'assurer que la valeur n'est pas vide
-                combo_widget.addItem(value.strip())
 
 
     def _auto_save(self):
@@ -1870,16 +1826,6 @@ class MainWindow(QMainWindow):
         duration_ms = results.get('processing_time_ms')
         self.user_interaction_service.add_to_history(summary, duration_ms=duration_ms)
 
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur ouverture validation")
-    def _safe_validate_and_detect_inconsistencies(self):
-        """Helper sécurisé pour ouvrir la fenêtre de validation"""
-        if not hasattr(self, 'validation_window') or not self.validation_window:
-            self.validation_window = ValidationWindow(self)
-
-        self.validation_window.show()
-        self.validation_window.raise_()
-        self.validation_window.activateWindow()
     
     def _open_pieces_manager(self):
         """Ouvrir la fenêtre de gestion des pièces - Phase 2.14: Délégation vers PieceManagementService"""
@@ -2050,32 +1996,6 @@ class MainWindow(QMainWindow):
     def _open_log_viewer(self):
         """Ouvrir le visualiseur de logs"""
         self._safe_open_log_viewer()
-    
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur ouverture guide utilisateur")
-    def _safe_open_user_guide(self):
-        """Ouvrir le guide d'utilisation (version protégée)"""
-        # URL du guide d'utilisation (vous pouvez la modifier selon vos besoins)
-        guide_url = "https://github.com/PiLouZ/1001pieces_autofill-Claude/blob/main/README.md"
-
-        # Message informatif avec options
-        from .qt_imports import QMessageBox
-        reply = QMessageBox.question(
-            self,
-            "Guide d'utilisation",
-            "Le guide d'utilisation sera ouvert dans votre navigateur web.\n\n"
-            "📖 Contenu du guide :\n"
-            "• Import de fichiers CSV et collage de données\n"
-            "• Gestion des pièces et associations\n"
-            "• Fonctionnalités avancées et raccourcis\n"
-            "• Résolution des problèmes courants\n\n"
-            "Souhaitez-vous continuer ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            import webbrowser
-            webbrowser.open(guide_url)
 
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage guide local")
@@ -2676,17 +2596,6 @@ class MainWindow(QMainWindow):
         
         event.ignore()
         
-
-    def _import_csv_from_path(self, file_path):
-        """Importer un fichier CSV depuis un chemin donné (utilisé pour le glisser/déposer)"""
-        # PHASE 3.2: Déléguer au ImportExportService
-        if Config.USE_NEW_IMPORT_EXPORT_SERVICE and hasattr(self, 'import_export_service') and self.import_export_service:
-            self.import_export_service.import_csv_from_path(file_path)
-    
-    def _import_pdf_from_path(self, file_paths):
-        """Importer un ou plusieurs fichiers PDF depuis des chemins donnés - Phase 2.7"""
-        # Déléguer au service FileProcessingService
-        return self.file_processing_service.import_pdf_files(file_paths)
 
     def _show_drag_overlay(self):
         """Afficher l'overlay de glisser/déposer"""

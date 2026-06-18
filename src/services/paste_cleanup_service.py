@@ -238,12 +238,6 @@ class PasteCleanupService(QObject):
         
         return cleaned
     
-    def configure_extensions(self, extensions: List[str]):
-        """Configure la liste des extensions à détecter"""
-        self._user_extensions = [ext.lower() if ext.startswith('.') else f'.{ext.lower()}' 
-                                for ext in extensions]
-        app_logger.debug(f"Extensions configurées: {self._user_extensions}")
-    
     def configure_defaults(self, default_replacement: str = '||', 
                          ask_confirmation: bool = True,
                          remember_choice: bool = True):
@@ -260,10 +254,3 @@ class PasteCleanupService(QObject):
         """Efface la mémoire des choix utilisateur"""
         self._user_choice_memory.clear()
         app_logger.debug("Mémoire des choix utilisateur effacée")
-    
-    def get_memory_stats(self) -> Dict[str, str]:
-        """Retourne les statistiques de la mémoire des choix"""
-        return {
-            ext_key: self._replacement_options.get(choice, choice)
-            for ext_key, choice in self._user_choice_memory.items()
-        }

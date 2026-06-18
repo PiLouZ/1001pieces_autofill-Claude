@@ -118,17 +118,6 @@ class RefTagList(QWidget):
                     self.setVisible(True)
         # else full_height_mode : toujours visible, hauteur gérée par le layout parent
 
-    def set_compact(self, compact: bool):
-        """Mode compact : chemin plat sans QScrollArea.
-        La scroll area parente (dialogue) gère l'overflow global."""
-        self._compact = compact
-        if compact:
-            self._scroll.setVisible(False)
-            self._flat.setVisible(False)  # sera montré par set_refs si n > 0
-
-    def get_refs(self) -> list:
-        return list(self._refs)
-
     def is_empty(self) -> bool:
         return len(self._refs) == 0
 

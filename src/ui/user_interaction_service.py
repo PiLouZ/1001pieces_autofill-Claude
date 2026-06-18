@@ -495,14 +495,6 @@ class UserInteractionService:
         if hasattr(self.main_window, 'statusbar'):
             self.main_window.statusbar.showMessage(message, timeout)
 
-    def show_performance_indicator(self, message: str, duration_ms: Optional[int] = None) -> None:
-        """Afficher un indicateur de performance"""
-        if hasattr(self.main_window, 'perf_label'):
-            perf_message = f"{message} ({duration_ms}ms)" if duration_ms else message
-            self.main_window.perf_label.setText(perf_message)
-            if duration_ms is not None:
-                QTimer.singleShot(3000, lambda: self._reset_performance_indicator())
-
     def _reset_performance_indicator(self) -> None:
         """Remettre l'indicateur de performance à "Prêt" """
         if hasattr(self.main_window, 'perf_label'):
@@ -521,7 +513,3 @@ class UserInteractionService:
                 f'</body></html>'
             )
             self.main_window.history_list.setHtml(empty_html)
-
-    def get_history_count(self) -> int:
-        """Obtenir le nombre d'entrées dans l'historique"""
-        return len(self._history_entries)

@@ -193,21 +193,6 @@ class DataManagementService:
 
         # Retourner un dict indiquant que la fenêtre a été utilisée avec succès
         return {'dialog_completed': True, 'user_choice': user_choice}
-    
-    def execute_data_cleaning(self, cleanup_options: Dict[str, Any]) -> Dict[str, int]:
-        """
-        Exécuter le nettoyage des données selon les options choisies
-        
-        Args:
-            cleanup_options: Options de nettoyage de CleanupPreviewDialog
-            
-        Returns:
-            Dict avec les statistiques du nettoyage effectué
-        """
-        if not self.main_window:
-            return {'error': 'MainWindow requis pour le nettoyage'}
-        
-        return self._safe_execute_cleanup(cleanup_options)
 
     @handle_data_management_errors(return_value={'error': 'Erreur lors du nettoyage'})
     def _safe_execute_cleanup(self, cleanup_options: Dict[str, Any]) -> Dict[str, int]:

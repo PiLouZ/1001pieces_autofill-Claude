@@ -152,10 +152,6 @@ class ImportExportService(BaseService):
         # Émettre le signal
         self.export_completed.emit("clipboard")
 
-    def export_data_legacy(self):
-        """Wrapper pour compatibilité legacy"""
-        return self.export_data()
-
     # ================================
     # MÉTHODES D'IMPORT
     # ================================
@@ -343,10 +339,6 @@ class ImportExportService(BaseService):
             self.import_pdf_from_path(file_path)
         else:
             app_logger.error(f"Format de fichier non supporté: {ext}")
-
-    def _import_csv_legacy(self, file_path: str):
-        """Méthode legacy d'import CSV (placeholder)"""
-        app_logger.warning("Méthode legacy d'import CSV appelée - à implémenter si nécessaire")
 
     def _show_import_results_new(self, result: Dict[str, Any]):
         """Traitement des résultats du nouveau système ImportManager"""
