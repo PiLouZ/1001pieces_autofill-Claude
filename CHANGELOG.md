@@ -4,6 +4,14 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.2] - 2026-06-18
+
+### UX — Respiration des filtres colonne (fenêtre principale)
+
+- Léger `margin: 0 2px` sur les champs de filtre par colonne (`QComboBox` Type/Fabricant et `QLineEdit` Réf modèle/commerciale/Autre réf) dans `table_controller.py`. Les champs ne se touchent plus bord à bord : un filet de blanc les sépare et chaque champ est légèrement centré dans sa colonne. L'alignement pixel-près sur les colonnes du tableau est préservé (le `margin` agit à l'intérieur de la largeur fixe calée par `_sync_filter_alignment`, sans toucher au layout).
+
+---
+
 ## [3.54.1] - 2026-06-18
 
 ### Fix — Export incomplet sur recherche d'une ancienne référence (supersession)

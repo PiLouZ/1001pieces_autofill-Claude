@@ -215,6 +215,7 @@ class TableController:
                 filter_combo.lineEdit().setPlaceholderText(f"{header}...")
                 filter_combo.setStyleSheet("""
                     QComboBox {
+                        margin: 0 2px;
                         padding: 2px 8px;
                         border: 1px solid #ccc;
                         border-radius: 3px;
@@ -252,6 +253,7 @@ class TableController:
                 filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 filter_input.setStyleSheet("""
                     QLineEdit {
+                        margin: 0 2px;
                         padding: 2px 8px;
                         border: 1px solid #ccc;
                         border-radius: 3px;
