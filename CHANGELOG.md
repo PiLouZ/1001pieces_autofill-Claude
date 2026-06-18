@@ -4,6 +4,14 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.3] - 2026-06-18
+
+### UX — Import PDF : « Autre référence » présélectionné pour la 3ᵉ colonne
+
+- Le combo « Destination Description » du dialogue d'import PDF (`import_manager.py`) présélectionne désormais **« Autre référence »** (index 1) au lieu de « Ignorer » (index 0) — c'est le choix fait quasi systématiquement. Les options « Ignorer » et « Notes » restent disponibles, ordre inchangé ; la relecture (`other_ref`) est inchangée.
+
+---
+
 ## [3.54.2] - 2026-06-18
 
 ### UX — Respiration des filtres colonne (fenêtre principale)

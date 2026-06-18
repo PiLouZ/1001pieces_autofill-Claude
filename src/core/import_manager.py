@@ -450,7 +450,7 @@ class ImportDialog(QDialog):
         
         self.third_col_combo = QComboBox()
         self.third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
-        self.third_col_combo.setCurrentIndex(0)
+        self.third_col_combo.setCurrentIndex(1)  # "Autre référence" présélectionné (choix le plus fréquent)
         third_col_layout.addWidget(self.third_col_combo)
         
         options_layout.addWidget(self.third_col_widget)
