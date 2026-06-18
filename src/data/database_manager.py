@@ -66,16 +66,6 @@ class SearchCache:
         self.hits = 0
         self.misses = 0
     
-    def get_stats(self) -> Dict[str, int]:
-        """Statistiques du cache"""
-        total = self.hits + self.misses
-        hit_rate = (self.hits / total * 100) if total > 0 else 0
-        return {
-            'hits': self.hits,
-            'misses': self.misses,
-            'hit_rate': round(hit_rate, 1),
-            'size': len(self.cache)
-        }
 
 class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin):
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
@@ -848,26 +838,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
         return success
     
-    def check_duplicate_reference(self, ref: str, exclude_id: Optional[int] = None) -> bool:
-        """Vérifier si une référence existe déjà"""
-        return self._safe_check_duplicate_reference(ref, exclude_id)
 
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur vérification doublons")
-    def _safe_check_duplicate_reference(self, ref: str, exclude_id: Optional[int] = None) -> bool:
-        """Helper sécurisé pour vérifier si une référence existe déjà"""
-        query = """
-            SELECT COUNT(*) FROM appareils
-            WHERE (ref_modele = ? OR commercial_ref = ? OR other_ref = ?)
-        """
-        params = [ref, ref, ref]
-
-        if exclude_id:
-            query += " AND id != ?"
-            params.append(exclude_id)
-
-        self.cursor.execute(query, params)
-        count = self.cursor.fetchone()[0]
-        return count > 0
 
     @handle_database_operation_errors(return_value={}, log_prefix="Erreur nettoyage données")
     def _safe_clean_data(self) -> Dict[str, int]:
@@ -1154,86 +1125,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
             return (assoc_id, description_updated, True)  # True = nouvelle association
     
-    def update_piece(self, ref_piece: str, description: str) -> bool:
-        """Mettre à jour la description d'une pièce (nouvelle structure)"""
-        return self._safe_update_piece(ref_piece, description)
 
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur mise à jour pièce")
-    def _safe_update_piece(self, ref_piece: str, description: str) -> bool:
-        """Helper sécurisé pour mettre à jour la description d'une pièce"""
-        query = "UPDATE pieces SET description = ? WHERE ref_piece = ?"
-        self.cursor.execute(query, (description, ref_piece))
-        updated = self.cursor.rowcount > 0
-        self.conn.commit()
 
-        # Phase 2.3: Invalider le cache après mise à jour de pièce
-        if updated and hasattr(self, 'cache_invalidation'):
-            self.cache_invalidation.invalidate_after_piece_modification("modification", ref_piece, 1)
-
-        return updated
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur mise à jour complète pièce")
-    def _safe_update_piece_complete(self, old_ref_piece: str, new_ref_piece: str, description: str, appareil_id: int) -> bool:
-        """Helper sécurisé pour mettre à jour complètement une pièce"""
-        try:
-            # Si la référence ne change pas, utiliser update_piece simple
-            if old_ref_piece == new_ref_piece:
-                return self.update_piece(new_ref_piece, description)
-
-            # Si la référence change, vérifier que la nouvelle référence n'existe pas déjà
-            check_query = "SELECT COUNT(*) FROM pieces WHERE ref_piece = ?"
-            self.cursor.execute(check_query, (new_ref_piece,))
-            if self.cursor.fetchone()[0] > 0:
-                # La nouvelle référence existe déjà - on va faire une association
-                # Supprimer l'ancienne association et créer la nouvelle
-                piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
-                self.cursor.execute(piece_query, (old_ref_piece,))
-                old_piece_result = self.cursor.fetchone()
-
-                self.cursor.execute(piece_query, (new_ref_piece,))
-                new_piece_result = self.cursor.fetchone()
-
-                if old_piece_result and new_piece_result:
-                    old_piece_id, new_piece_id = old_piece_result[0], new_piece_result[0]
-
-                    # Supprimer l'ancienne association
-                    delete_assoc = "DELETE FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
-                    self.cursor.execute(delete_assoc, (old_piece_id, appareil_id))
-
-                    # Ajouter la nouvelle association si elle n'existe pas
-                    check_assoc = "SELECT COUNT(*) FROM piece_associations WHERE piece_id = ? AND appareil_id = ?"
-                    self.cursor.execute(check_assoc, (new_piece_id, appareil_id))
-                    if self.cursor.fetchone()[0] == 0:
-                        insert_assoc = "INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)"
-                        self.cursor.execute(insert_assoc, (new_piece_id, appareil_id))
-
-                    # Mettre à jour la description si fournie
-                    if description:
-                        self.cursor.execute("UPDATE pieces SET description = ? WHERE id = ?", (description, new_piece_id))
-
-                    self.conn.commit()
-
-                    # Invalider le cache
-                    if hasattr(self, 'cache_invalidation'):
-                        self.cache_invalidation.invalidate_after_piece_modification("modification", new_ref_piece, 1)
-
-                    return True
-            else:
-                # La nouvelle référence n'existe pas - mise à jour directe
-                update_query = "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?"
-                self.cursor.execute(update_query, (new_ref_piece, description, old_ref_piece))
-                updated = self.cursor.rowcount > 0
-                self.conn.commit()
-
-                # Invalider le cache
-                if updated and hasattr(self, 'cache_invalidation'):
-                    self.cache_invalidation.invalidate_after_piece_modification("modification", new_ref_piece, 1)
-
-                return updated
-
-        except Exception as e:
-            self.conn.rollback()
-            raise
 
     def rename_piece_catalog(self, old_ref_piece: str, new_ref_piece: str, description: str) -> bool:
         """Renommer une pièce du catalogue (référence + description).
@@ -1292,18 +1185,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         if commit:
             self.conn.commit()
 
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur récupération info pièce")
-    def _safe_get_piece_info(self, ref_piece: str, appareil_id: int) -> Optional[Tuple[str, str]]:
-        """Helper sécurisé pour récupérer les informations d'une pièce spécifique"""
-        query = """
-            SELECT p.ref_piece, p.description
-            FROM pieces p
-            JOIN piece_associations pa ON p.id = pa.piece_id
-            WHERE p.ref_piece = ? AND pa.appareil_id = ?
-        """
-        self.cursor.execute(query, (ref_piece, appareil_id))
-        result = self.cursor.fetchone()
-        return result if result else None
     
     def delete_piece(self, ref_piece: str, appareil_id: int) -> bool:
         """Supprimer une pièce spécifique d'un appareil (nouvelle structure)"""
@@ -1346,58 +1227,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
         return True
 
-    @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression pièces appareil")
-    def _safe_delete_pieces_by_appareil(self, appareil_id: int) -> int:
-        """Helper sécurisé pour supprimer toutes les pièces d'un appareil"""
-        # Étape 1: Récupérer toutes les pièces associées à cet appareil
-        query = """
-            SELECT p.id, p.ref_piece
-            FROM pieces p
-            JOIN piece_associations pa ON p.id = pa.piece_id
-            WHERE pa.appareil_id = ?
-        """
-        self.cursor.execute(query, (appareil_id,))
-        piece_info = self.cursor.fetchall()
 
-        if not piece_info:
-            return 0
-
-        # Étape 2: Supprimer toutes les associations pour cet appareil
-        self.cursor.execute("DELETE FROM piece_associations WHERE appareil_id = ?", (appareil_id,))
-        deleted_count = self.cursor.rowcount
-
-        # Étape 3: Supprimer en une seule requête les pièces (parmi celles de cet
-        # appareil) qui n'ont plus aucune association. On restreint au set des
-        # pièces candidates pour ne pas toucher d'éventuels orphelins d'ailleurs.
-        candidate_ids = [piece_id for piece_id, _ in piece_info]
-        placeholders = ",".join("?" * len(candidate_ids))
-        self.cursor.execute(
-            f"DELETE FROM pieces WHERE id IN ({placeholders}) "
-            f"AND id NOT IN (SELECT DISTINCT piece_id FROM piece_associations)",
-            candidate_ids
-        )
-
-        self.conn.commit()
-
-        # Phase 2.3: Invalider le cache après suppression de pièces d'appareil
-        if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
-            self.cache_invalidation.invalidate_after_device_modification("suppression de pièces", 1)
-
-        return deleted_count
-
-    @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression multiple pièce")
-    def _safe_delete_piece_from_multiple_appareils(self, ref_piece: str, appareil_ids: List[int]) -> int:
-        """Helper sécurisé pour supprimer une pièce de plusieurs appareils"""
-        deleted_count = 0
-        for appareil_id in appareil_ids:
-            if self.delete_piece(ref_piece, appareil_id):
-                deleted_count += 1
-
-        # Phase 2.3: Invalider le cache après suppression multiple
-        if deleted_count > 0 and hasattr(self, 'cache_invalidation'):
-            self.cache_invalidation.invalidate_after_piece_modification("suppression", ref_piece, deleted_count)
-
-        return deleted_count
     
     def get_duplicate_ref_modeles(self) -> List[Tuple[str, int]]:
         """Récupérer les ref_modele en doublon avec leur nombre d'occurrences (recherche exacte uniquement)"""
@@ -1437,90 +1267,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             }
         return None
 
-    @handle_db_query_errors(return_value=[], log_prefix="Erreur récupération appareils par ref_modele")
-    def get_devices_by_ref_modele(self, ref_modele: str) -> List[Tuple]:
-        """Récupérer tous les appareils ayant exactement la même ref_modele"""
-        # Récupérer uniquement les appareils avec la référence exacte
-        query = """
-            SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref, category, notes
-            FROM appareils
-            WHERE ref_modele = ?
-            ORDER BY id
-        """
-        return self.execute_custom_query(query, [ref_modele])
     
-    def transfer_pieces(self, from_device_id: int, to_device_id: int):
-        """Transférer les pièces d'un appareil vers un autre (nouvelle structure)"""
-        try:
-            # Étape 1: Récupérer toutes les pièces de l'appareil source
-            source_query = """
-                SELECT p.id, p.ref_piece
-                FROM pieces p
-                JOIN piece_associations pa ON p.id = pa.piece_id
-                WHERE pa.appareil_id = ?
-            """
-            self.cursor.execute(source_query, (from_device_id,))
-            source_pieces = self.cursor.fetchall()
-            
-            # Étape 2: Récupérer les pièces déjà associées à l'appareil de destination
-            dest_query = """
-                SELECT p.ref_piece
-                FROM pieces p
-                JOIN piece_associations pa ON p.id = pa.piece_id
-                WHERE pa.appareil_id = ?
-            """
-            self.cursor.execute(dest_query, (to_device_id,))
-            dest_pieces = {row[0] for row in self.cursor.fetchall()}
-            
-            # Étape 3: Transférer les pièces non-doublons
-            transferred = 0
-            for piece_id, ref_piece in source_pieces:
-                if ref_piece not in dest_pieces:
-                    # Transférer l'association
-                    self.cursor.execute("UPDATE piece_associations SET appareil_id = ? WHERE piece_id = ? AND appareil_id = ?", 
-                                      (to_device_id, piece_id, from_device_id))
-                    transferred += 1
-            
-            # Étape 4: Supprimer les associations restantes de l'appareil source
-            self.cursor.execute("DELETE FROM piece_associations WHERE appareil_id = ?", (from_device_id,))
-            
-            self.conn.commit()
-            
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            raise DatabaseError(f"Erreur lors du transfert des pièces: {e}")
 
-    def remove_duplicate_devices(self) -> int:
-        """Supprimer les appareils en doublon en gardant le plus ancien"""
-        try:
-            # Récupérer les doublons (colonnes A,B,C,D,E identiques)
-            duplicates_query = """
-                SELECT type, manufacturer, ref_modele, commercial_ref, other_ref, GROUP_CONCAT(id) as ids, MIN(id) as keep_id
-                FROM appareils 
-                GROUP BY type, manufacturer, ref_modele, commercial_ref, other_ref 
-                HAVING COUNT(*) > 1
-            """
-            duplicates = self.execute_custom_query(duplicates_query)
-            
-            deleted_count = 0
-            for type_val, manufacturer, ref_modele, commercial_ref, other_ref, ids_str, keep_id in duplicates:
-                all_ids = [int(x) for x in ids_str.split(',')]
-                ids_to_delete = [x for x in all_ids if x != keep_id]
-                
-                for delete_id in ids_to_delete:
-                    # Transférer les pièces vers l'appareil à conserver (nouvelle structure)
-                    self.transfer_pieces(delete_id, keep_id)
-                    
-                    # Supprimer l'appareil doublon
-                    self.cursor.execute("DELETE FROM appareils WHERE id = ?", (delete_id,))
-                    deleted_count += 1
-            
-            self.conn.commit()
-            return deleted_count
-            
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            raise DatabaseError(f"Erreur lors de la suppression des doublons: {e}")
     
     def remove_duplicate_pieces(self) -> int:
         """Supprimer les références de pièces dupliquées (nouvelle structure)"""
@@ -1592,24 +1340,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.conn.commit()
         return True
     
-    @handle_database_errors(title="Erreur validation base de données")
-    def validate_database(self) -> Dict[str, Any]:
-        """Valider la cohérence de la base de données"""
-        issues = {}
-
-        # Pièces orphelines
-        self.cursor.execute(Config.get_query('orphaned_pieces'))
-        issues['orphaned_pieces'] = self.cursor.fetchone()[0]
-
-        # Doublons de références
-        self.cursor.execute(Config.get_query('duplicate_refs'))
-        issues['duplicate_refs'] = len(self.cursor.fetchall())
-
-        # Champs vides critiques
-        self.cursor.execute(Config.get_query('empty_critical'))
-        issues['empty_critical'] = self.cursor.fetchone()[0]
-
-        return issues
     
     @handle_database_errors(title="Erreur récupération données export")
     def get_export_data(self, search_term: str,
@@ -1749,72 +1479,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.conn.rollback()
             raise
 
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur récupération décision référence")
-    def _safe_get_reference_decision(self, ref_modele: str) -> Optional[Dict[str, Any]]:
-        """Helper sécurisé pour récupérer la décision pour une référence"""
-        query = """
-            SELECT decision, notes, created_at
-            FROM reference_decisions
-            WHERE ref_modele = ?
-        """
 
-        self.cursor.execute(query, (ref_modele,))
-        result = self.cursor.fetchone()
 
-        if result:
-            return {
-                'ref_modele': ref_modele,
-                'decision': result[0],
-                'notes': result[1],
-                'created_at': result[2]
-            }
-        return None
-
-    @handle_database_operation_errors(return_value=[], log_prefix="Erreur récupération références par décision")
-    def _safe_get_references_by_decision(self, decision: str = None) -> List[Dict[str, Any]]:
-        """Helper sécurisé pour récupérer toutes les références par décision"""
-        if decision and decision not in ('DISTINCT', 'MERGE'):
-            raise ValueError(f"Décision invalide: {decision}")
-
-        if decision:
-            query = """
-                SELECT ref_modele, decision, notes, created_at
-                FROM reference_decisions
-                WHERE decision = ?
-                ORDER BY created_at DESC
-            """
-            self.cursor.execute(query, (decision,))
-        else:
-            query = """
-                SELECT ref_modele, decision, notes, created_at
-                FROM reference_decisions
-                ORDER BY created_at DESC
-            """
-            self.cursor.execute(query)
-
-        results = []
-        for row in self.cursor.fetchall():
-            results.append({
-                'ref_modele': row[0],
-                'decision': row[1],
-                'notes': row[2],
-                'created_at': row[3]
-            })
-
-        return results
-
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur suppression décision référence")
-    def _safe_delete_reference_decision(self, ref_modele: str) -> bool:
-        """Helper sécurisé pour supprimer une décision de référence"""
-        query = "DELETE FROM reference_decisions WHERE ref_modele = ?"
-
-        try:
-            self.cursor.execute(query, (ref_modele,))
-            self.conn.commit()
-            return self.cursor.rowcount > 0
-        except Exception as e:
-            self.conn.rollback()
-            raise
     
     def close(self):
         """Fermer la connexion à la base de données"""

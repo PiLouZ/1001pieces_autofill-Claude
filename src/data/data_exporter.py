@@ -216,70 +216,8 @@ class DataExporter:
 
         return f"Fichier XML créé: {filename}"
     
-    @handle_export_errors(title="Erreur export CSV complet")
-    def _export_all_to_csv(self, data: List[Tuple], filename: str) -> str:
-        """Exporter toutes les données vers CSV"""
-        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.writer(csvfile, delimiter=';')
-
-            # En-têtes
-            writer.writerow(Config.UI_HEADERS)
-
-            # Données
-            for record in data:
-                writer.writerow(_assainir_ligne_csv(record[:len(Config.DB_HEADERS)]))
-
-        return f"Fichier CSV complet créé: {filename}"
     
-    @handle_export_errors(title="Erreur export JSON complet")
-    def _export_all_to_json(self, data: List[Tuple], filename: str) -> str:
-        """Exporter toutes les données vers JSON"""
-        json_data = {
-            'export_info': {
-                'export_date': datetime.now().isoformat(),
-                'total_records': len(data),
-                'export_type': 'complete'
-            },
-            'appareils': []
-        }
-
-        for record in data:
-            appareil = {}
-            for i, header in enumerate(Config.DB_HEADERS):
-                if i < len(record):
-                    appareil[header] = record[i] or ''
-
-            json_data['appareils'].append(appareil)
-
-        with open(filename, 'w', encoding='utf-8') as jsonfile:
-            json.dump(json_data, jsonfile, indent=2, ensure_ascii=False)
-
-        return f"Fichier JSON complet créé: {filename}"
     
-    @handle_export_errors(title="Erreur export XML complet")
-    def _export_all_to_xml(self, data: List[Tuple], filename: str) -> str:
-        """Exporter toutes les données vers XML"""
-        xml_content = ['<?xml version="1.0" encoding="UTF-8"?>']
-        xml_content.append('<export_complet>')
-        xml_content.append(f'  <export_date>{datetime.now().isoformat()}</export_date>')
-        xml_content.append(f'  <total_records>{len(data)}</total_records>')
-        xml_content.append('  <appareils>')
-
-        for record in data:
-            xml_content.append('    <appareil>')
-            for i, header in enumerate(Config.DB_HEADERS):
-                if i < len(record):
-                    value = record[i] or ''
-                    xml_content.append(f'      <{header}>{self._escape_xml(value)}</{header}>')
-            xml_content.append('    </appareil>')
-
-        xml_content.append('  </appareils>')
-        xml_content.append('</export_complet>')
-
-        with open(filename, 'w', encoding='utf-8') as xmlfile:
-            xmlfile.write('\n'.join(xml_content))
-
-        return f"Fichier XML complet créé: {filename}"
     
     def _generate_filename(self, search_term, export_format: ExportFormat) -> str:
         """Générer un chemin complet vers le Bureau pour l'export"""

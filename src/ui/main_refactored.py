@@ -1038,11 +1038,6 @@ class MainWindow(QMainWindow):
     # ────────────────────────────────────────────────────────────────────────
 
     
-    def _on_item_double_clicked(self, item):
-        """Capturer la valeur avant l'édition lors du double-clic"""
-        if item:
-            key = (item.row(), item.column())
-            self.previous_values[key] = item.text()
     
     def _init_previous_values(self):
         """Initialiser les valeurs précédentes pour toutes les cellules après le chargement"""
@@ -2935,10 +2930,6 @@ class MainWindow(QMainWindow):
 
     # --- Méthodes de gestion des dispositifs pour le collage (délégation vers DeviceManager) ---
     
-    def _find_existing_device_by_refs(self, ref_modele: str, commercial_ref: str, 
-                                    device_type: str = "", manufacturer: str = "") -> Optional[Dict]:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.find_existing_device_by_refs(ref_modele, commercial_ref, device_type, manufacturer)
     
     def _try_auto_complete(self, device_data: Dict[str, str]) -> bool:
         """Déléguer vers DeviceManager"""
@@ -2948,9 +2939,6 @@ class MainWindow(QMainWindow):
         """Déléguer vers DeviceManager"""
         return self.device_manager.needs_manual_completion(device_data)
     
-    def _create_new_device(self, device_data: Dict[str, str]) -> Optional[int]:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.create_new_device(device_data)
     
     def _update_device_info(self, device_id: int, updates: Dict[str, str]) -> bool:
         """Déléguer vers DeviceManager"""

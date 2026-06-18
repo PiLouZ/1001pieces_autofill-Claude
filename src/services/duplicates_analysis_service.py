@@ -191,22 +191,6 @@ class DuplicatesAnalysisWorker(QThread):
 
         return duplicates
             
-    def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """Calculer un score de similitude simple entre deux textes"""
-        if not text1 or not text2:
-            return 0.0
-            
-        text1, text2 = text1.lower(), text2.lower()
-        
-        # Similitude basée sur les caractères communs
-        set1, set2 = set(text1), set(text2)
-        intersection = len(set1.intersection(set2))
-        union = len(set1.union(set2))
-        
-        if union == 0:
-            return 0.0
-            
-        return intersection / union
         
     def _calculate_statistics(self, results: Dict[str, Any]) -> Dict[str, Any]:
         """Calculer les statistiques d'analyse"""

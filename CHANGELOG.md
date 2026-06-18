@@ -4,6 +4,21 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.54.6] - 2026-06-18
+
+### Nettoyage — Code mort résiduel (passe 2, itérée jusqu'au point fixe)
+
+Suite de v3.54.5 : le nettoyage du code mort est **itératif** (retirer une méthode publique rend mort le wrapper `_safe_*` qui ne servait qu'à elle). Cette passe boucle audit → suppression → ré-audit jusqu'à 0 orphelin.
+
+- **Lot A — 45 méthodes orphelines** retirées en plusieurs tours (wrappers `_safe_*` de `database_manager`, helpers d'import de `paste_data_processor`, exports `_export_all_to_*` de `data_exporter`, etc.).
+- **Lot B — 2 fichiers entiers morts** supprimés (955 lignes) : `src/ui/validation_window.py` (`ValidationWindow`) et `src/ui/duplicates_manager.py` (`DuplicatesManager`) — versions pré-refonte jamais importées. Leur suppression a exposé un dernier lot de méthodes DB mortes (`validate_database`, `remove_duplicate_devices`, `get_devices_by_ref_modele`, `transfer_pieces`), retirées dans la même boucle.
+- **Lot C — 4 fonctions module-level** mortes (`_link_if_truncated`, `import_files_with_dialog`, `get_class_constants`, `handle_export_operation_errors`).
+- **Conservé** (décision) : les classes de constantes inutilisées de `constants.py` (`FileExtensions`, `SearchConfig`, `ValidationRules`, `AppInfo`, `LogLevel`) — surface de config potentiellement voulue.
+
+Suppression par AST (décorateurs + signatures multi-lignes). Faux positifs Qt exclus (`paint`, `mouseReleaseEvent`, `mouseDoubleClickEvent`…). **Vérifié** : `compileall` OK ; import des **80 modules** sans erreur ; smoke headless 2 fenêtres (recherche `57X2411` → 377 lignes, export → 377 ; pièces 3297 + sélection) ; audit final = **0 orphelin** (point fixe).
+
+---
+
 ## [3.54.5] - 2026-06-18
 
 ### Nettoyage — Code mort à l'échelle du projet (132 méthodes)

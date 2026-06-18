@@ -141,32 +141,6 @@ class AppLogger:
         record.levelname = "DATA_OP"
         self.logger.handle(record)
     
-    def _get_changes(self, original: Dict[str, Any], modified: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """
-        Compare deux dictionnaires et retourne les changements
-        
-        Args:
-            original: Données originales
-            modified: Données modifiées
-            
-        Returns:
-            Dictionnaire des changements
-        """
-        changes = {}
-        
-        all_keys = set(original.keys()) | set(modified.keys())
-        
-        for key in all_keys:
-            orig_val = original.get(key)
-            mod_val = modified.get(key)
-            
-            if orig_val != mod_val:
-                changes[key] = {
-                    "before": orig_val,
-                    "after": mod_val
-                }
-        
-        return changes
     
     def debug(self, msg: str, **kwargs):
         """Log niveau DEBUG"""

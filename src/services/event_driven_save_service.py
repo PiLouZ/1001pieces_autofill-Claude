@@ -152,39 +152,6 @@ class EventDrivenSaveService(BaseService):
     # SAUVEGARDE APRÈS OPÉRATIONS BATCH
     # ================================
 
-    @handle_save_service_errors()
-    def save_after_paste(self, result) -> bool:
-        """
-        Sauvegarde événementielle après opération de collage
-
-        Args:
-            result: Résultat du processus de collage avec inserted_count/updated_count
-
-        Returns:
-            bool: True si sauvegarde réussie
-        """
-        if not self.is_enabled:
-            return False
-
-        if not self._validate_save_requirements():
-            return False
-
-        total_changes = getattr(result, 'inserted_count', 0) + getattr(result, 'updated_count', 0)
-        app_logger.debug(f"Sauvegarde événementielle après collage: {total_changes} modifications")
-        self._update_save_indicator_pending()
-
-        # Après un collage, les données sont déjà commitées en base
-        # On peut forcer un auto_save pour s'assurer que les transactions en attente sont terminées
-        success = self.database_operations_service.auto_save()
-
-        if success:
-            self._update_save_indicator_success()
-            self._update_incomplete_button_after_operation()
-            app_logger.debug(f"Sauvegarde événementielle réussie après collage")
-        else:
-            app_logger.warning(f"Échec sauvegarde événementielle après collage")
-
-        return success
 
     @handle_save_service_errors()
     def save_after_import(self, event_type: str = "import_completed") -> bool:

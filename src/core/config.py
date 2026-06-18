@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.54.5"
+    VERSION = "3.54.6"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -173,11 +173,6 @@ class Config:
         ALTERNATE_ROW = "#f8f9fa"  # Lignes alternées
         SCROLLBAR = "#ced4da"      # Barres de défilement
         
-        @classmethod
-        def get_qcolor_rgb(cls, hex_color):
-            """Convertir couleur hex en tuple RGB pour QColor"""
-            hex_color = hex_color.lstrip('#')
-            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     
     # Messages
     MESSAGES = {

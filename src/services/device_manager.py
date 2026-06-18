@@ -181,54 +181,6 @@ class DeviceManager(BaseService):
             app_logger.error(f"Échec de la mise à jour de l'appareil {device_id}")
             return False
 
-    @handle_database_operation_errors(return_value={'created': False, 'exists': False, 'description_updated': False}, log_prefix="Erreur création association pièce")
-    def create_piece_association(self, device_id: int, ref_piece: str,
-                                 libelle_piece: str = "", _decisions_cache: Dict = None) -> Dict:
-        """
-        Créer une association entre un appareil et une pièce (variante import).
-
-        Retourne {created, exists, description_updated} : les statistiques
-        d'import dépendent de cette distinction created/exists. Ne pas confondre
-        avec DatabaseManager.add_piece() dont le contrat de retour diffère
-        (cf. follow-up de déduplication noté dans l'audit structure).
-        """
-        # Vérifier si l'association existe déjà
-        check_query = """
-            SELECT COUNT(*) FROM piece_associations pa
-            JOIN pieces p ON pa.piece_id = p.id
-            WHERE pa.appareil_id = ? AND p.ref_piece = ?
-        """
-        result = self.db_manager.execute_query(check_query, [device_id, ref_piece])
-        if result and result[0][0] > 0:
-            return {'created': False, 'exists': True, 'description_updated': False}
-
-        # Vérifier si la pièce existe ou la créer
-        piece_query = "SELECT id FROM pieces WHERE ref_piece = ?"
-        piece_result = self.db_manager.execute_query(piece_query, [ref_piece])
-
-        if piece_result:
-            piece_id = piece_result[0][0]
-        else:
-            # execute_query() est un helper SELECT (fetchall) : il renvoie []
-            # pour un INSERT. On récupère donc l'id via cursor.lastrowid, et NON
-            # via la valeur de retour (sinon l'association n'était jamais créée
-            # pour une pièce inédite — bug corrigé).
-            self.db_manager.execute_query(
-                "INSERT INTO pieces (ref_piece, description) VALUES (?, ?)",
-                [ref_piece, libelle_piece or '']
-            )
-            piece_id = self.db_manager.cursor.lastrowid
-            if not piece_id:
-                return {'created': False, 'exists': False, 'description_updated': False}
-
-        # Créer l'association. L'INSERT renvoie [] : ne pas tester la valeur de
-        # retour, sinon created:True serait inatteignable et la stat
-        # associations_created toujours faussée (bug corrigé).
-        self.db_manager.execute_query(
-            "INSERT INTO piece_associations (appareil_id, piece_id) VALUES (?, ?)",
-            [device_id, piece_id]
-        )
-        return {'created': True, 'exists': False, 'description_updated': False}
 
     @safe_operation(operation_name="try_auto_complete", default_return=False)
     def try_auto_complete(self, device_data: Dict[str, str]) -> bool:

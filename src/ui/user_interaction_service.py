@@ -495,10 +495,6 @@ class UserInteractionService:
         if hasattr(self.main_window, 'statusbar'):
             self.main_window.statusbar.showMessage(message, timeout)
 
-    def _reset_performance_indicator(self) -> None:
-        """Remettre l'indicateur de performance à "Prêt" """
-        if hasattr(self.main_window, 'perf_label'):
-            self.main_window.perf_label.setText("Prêt")
 
     # ── Utilitaires ────────────────────────────────────────────────────────────
 

@@ -237,9 +237,3 @@ class AppInfo:
     LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # Fonction utilitaire pour obtenir toutes les constantes d'une classe
-def get_class_constants(cls) -> Dict[str, Any]:
-    """Obtenir toutes les constantes d'une classe (attributs en majuscules)"""
-    return {
-        name: value for name, value in cls.__dict__.items()
-        if name.isupper() and not name.startswith('_')
-    }

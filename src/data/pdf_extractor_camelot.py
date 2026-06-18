@@ -287,9 +287,6 @@ class CamelotPDFExtractor:
         
         return bool(re.match(pagination_pattern, row_text, re.IGNORECASE))
     
-    def get_last_extraction_info(self) -> Dict[str, Any]:
-        """Récupérer les informations de la dernière extraction"""
-        return self.last_extraction_info or {}
     
     @handle_pdf_extraction_errors(return_value=(False, "Erreur de validation PDF"))
     def validate_pdf_compatibility(self, pdf_path: str) -> Tuple[bool, str]:

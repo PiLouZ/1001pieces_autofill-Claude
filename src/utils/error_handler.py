@@ -356,16 +356,6 @@ def handle_seo_dialog_errors(return_value=None, title: str = "Erreur dialogue SE
         return_on_error=return_value
     )
 
-def handle_export_operation_errors(return_value=None, title: str = "Erreur d'export"):
-    """
-    Décorateur spécialisé pour les opérations d'export de données
-    """
-    return handle_errors(
-        title=title,
-        message="Erreur lors de l'export des données. Vérifiez les paramètres et les permissions.",
-        show_message=False,  # Les exports affichent déjà leurs messages
-        return_on_error=return_value
-    )
 
 def handle_save_service_errors(return_value=None, title: str = "Erreur service sauvegarde"):
     """

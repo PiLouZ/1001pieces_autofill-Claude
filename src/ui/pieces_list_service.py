@@ -16,16 +16,6 @@ from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
 from src.core.logger import app_logger
 
 
-def _link_if_truncated(disp: str, tip: str, color: str) -> str:
-    """
-    Si tip est non-vide (liste tronquée), remplace le '… +N' de disp par un lien HTML.
-    Sinon retourne disp tel quel (compatible RichText).
-    """
-    if not tip or '… +' not in disp:
-        return disp
-    base, n = disp.rsplit('… +', 1)
-    return (f"{base}<a href='#' style='color:{color};text-decoration:none;"
-            f"border-bottom:1px dashed {color};'>… +{n}</a>")
 
 
 def _parse_refs(refs_str: str) -> list:

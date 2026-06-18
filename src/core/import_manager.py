@@ -3149,10 +3149,6 @@ def create_import_manager(db_manager, parent_widget=None) -> ImportManager:
     return ImportManager(db_manager, parent_widget)
 
 
-def import_files_with_dialog(file_paths: List[str], db_manager, parent_widget=None) -> Optional[Dict[str, Any]]:
-    """Fonction utilitaire pour importer des fichiers avec interface"""
-    manager = create_import_manager(db_manager, parent_widget)
-    return manager.import_files(file_paths, show_dialog=True)
 
 
 def import_from_drag_drop(file_paths: List[str], db_manager, parent_widget=None) -> Optional[Dict[str, Any]]:

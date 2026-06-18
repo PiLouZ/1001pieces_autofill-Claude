@@ -111,26 +111,3 @@ class SearchCacheInvalidationService:
 
         return entries_cleared
     
-    def get_cache_statistics(self) -> Dict[str, Any]:
-        """Obtenir statistiques du cache et invalidations"""
-        cache_stats = {
-            'cache_enabled': hasattr(self.db_manager, 'search_cache') and self.db_manager.search_cache is not None,
-            'cache_size': 0,
-            'cache_hits': 0,
-            'cache_misses': 0,
-            'cache_max_size': 0
-        }
-        
-        if hasattr(self.db_manager, 'search_cache') and self.db_manager.search_cache:
-            cache = self.db_manager.search_cache
-            cache_stats.update({
-                'cache_size': len(cache.cache),
-                'cache_hits': getattr(cache, 'hits', 0),
-                'cache_misses': getattr(cache, 'misses', 0),
-                'cache_max_size': getattr(cache, 'max_size', 0)
-            })
-        
-        return {
-            'cache': cache_stats,
-            'invalidations': self.invalidation_stats.copy()
-        }

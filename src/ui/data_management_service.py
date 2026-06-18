@@ -193,22 +193,3 @@ class DataManagementService:
 
         # Retourner un dict indiquant que la fenêtre a été utilisée avec succès
         return {'dialog_completed': True, 'user_choice': user_choice}
-
-    @handle_data_management_errors(return_value={'error': 'Erreur lors du nettoyage'})
-    def _safe_execute_cleanup(self, cleanup_options: Dict[str, Any]) -> Dict[str, int]:
-        """Exécuter le nettoyage de manière sécurisée"""
-        # Exécuter le nettoyage des données selon les options
-        stats = {'devices_deleted': 0, 'pieces_deleted': 0, 'pieces_merged': 0}
-
-        # Nettoyer les appareils dupliqués si demandé
-        if cleanup_options.get('clean_devices', False):
-            devices_deleted = self.db_manager.remove_duplicate_devices()
-            stats['devices_deleted'] = devices_deleted
-
-        # Nettoyer les pièces dupliquées si demandé
-        if cleanup_options.get('clean_pieces', False):
-            pieces_deleted = self.db_manager.remove_duplicate_pieces()
-            stats['pieces_deleted'] = pieces_deleted
-            stats['pieces_merged'] = pieces_deleted  # Les pièces supprimées sont effectivement "fusionnées"
-
-        return stats

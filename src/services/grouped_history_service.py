@@ -230,9 +230,6 @@ class GroupedHistoryService(QObject):
             data = self.pending_modifications.pop(db_id)
             self._flush_device_modifications(db_id, data)
 
-    def get_stats(self) -> Dict:
-        """Obtenir les statistiques d'utilisation"""
-        return self.stats.copy()
 
     def cleanup(self):
         """Nettoyer les ressources"""
