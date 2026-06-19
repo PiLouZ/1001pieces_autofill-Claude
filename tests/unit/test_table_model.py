@@ -294,20 +294,21 @@ class TestSuggestionsSimilarite:
         assert m.data(idx, Qt.BackgroundRole) == bg_avant
         assert m.data(idx, Qt.ToolTipRole) == tip_avant
 
-    def test_safe_suggestions_palier_a_unique(self, qapp):
-        """safe_suggestions ne retient que le Palier A à candidat unique."""
+    def test_safe_suggestions_candidat_unique(self, qapp):
+        """safe_suggestions retient tout candidat UNIQUE (tous paliers) ; exclut
+        uniquement les cas à plusieurs candidats (ambiguïté inter-marques)."""
         m = AppareillsTableModel()
         m.load_records([make_record(db_id=i, type_="", manufacturer="") for i in (1, 2, 3)])
         a_unique = {'ref': 'X', 'type': 'Four', 'manufacturer': 'Siemens', 'score': 1.0,
                     'source': 'ref_modele', 'confidence_tier': 'A_suffix_variant', 'db_id': 9}
         b_fuzzy = dict(a_unique, confidence_tier='B_fuzzy_alpha', score=0.93)
         m.set_pending_suggestions({
-            1: [a_unique],                 # sûr
-            2: [a_unique, b_fuzzy],        # ambigu (plusieurs candidats) → exclu
-            3: [b_fuzzy],                  # Palier B → exclu
+            1: [a_unique],                 # Palier A unique → éligible
+            2: [a_unique, b_fuzzy],        # plusieurs candidats → exclu
+            3: [b_fuzzy],                  # Palier B unique → éligible
         })
         safe = m.safe_suggestions()
-        assert [db_id for db_id, _ in safe] == [1]
+        assert sorted(db_id for db_id, _ in safe) == [1, 3]
 
     def test_add_pending_fusionne(self, qapp):
         m = AppareillsTableModel()

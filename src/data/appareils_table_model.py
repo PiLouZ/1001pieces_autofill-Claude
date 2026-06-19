@@ -256,16 +256,14 @@ class AppareillsTableModel(QAbstractTableModel):
         return self._pending_suggestions.get(db_id, [])
 
     def safe_suggestions(self):
-        """Suggestions « sûres » applicables en masse sans ambiguïté :
-        Palier A (variante de suffixe) ET candidat unique. Retourne [(db_id, candidat)].
+        """Suggestions applicables en masse **sans concurrence** : exactement UN
+        candidat trouvé (aucune marque alternative). Retourne [(db_id, candidat)].
 
-        Les suggestions à plusieurs candidats ou issues du fuzzy (Palier B) sont
-        volontairement exclues — elles exigent un choix humain (risque inter-marques)."""
-        out = []
-        for db_id, cands in self._pending_suggestions.items():
-            if len(cands) == 1 and cands[0].get('confidence_tier') == 'A_suffix_variant':
-                out.append((db_id, cands[0]))
-        return out
+        Le critère est l'absence d'ambiguïté (1 seul candidat), pas le palier :
+        une suggestion à plusieurs candidats — seul cas réellement risqué pour la
+        confusion inter-marques — est exclue et exige un choix humain."""
+        return [(db_id, cands[0]) for db_id, cands in self._pending_suggestions.items()
+                if len(cands) == 1]
 
     @property
     def pending_suggestions_count(self):

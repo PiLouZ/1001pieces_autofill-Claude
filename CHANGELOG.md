@@ -13,9 +13,12 @@ Complète (sans jamais le remplacer) l'auto-complétion **exacte** de l'import :
 - **Moteur de scoring** (`src/services/reference_similarity_service.py`, pur Python) : Palier A « quasi-exact » (variante de suffixe `/NN`, `/C4`, `/IX`… ignorée) et Palier B « fuzzy » (`difflib` ≥ 0,90). Le fuzzy est **exclu par défaut sur préfixe purement numérique** (risque de confusion inter-marques par rebadging). Pré-filtre par préfixe → ~0,6 ms/requête sur 655k lignes.
 - **Intégration import** (`import_manager.py`) : collecte des lignes incomplètes pendant l'import, calcul **en un seul lot après** l'import (jamais ligne par ligne), non bloquant. Mécanisme exact intouché. Flags `Config.ENABLE_SIMILARITY_SUGGESTIONS`, `SIMILARITY_FUZZY_THRESHOLD`, `SIMILARITY_ALLOW_NUMERIC_FUZZY`.
 - **UX tableau** : indicateur discret sur les cellules Type/Marque (fond ambre + valeur suggérée en texte fantôme + icône cliquable à droite), bannière conditionnelle (visible seulement s'il y a des suggestions). **Clic sur l'icône** = application directe si 1 candidat, **chooser** si plusieurs (concurrence inter-marques). Bouton **« Valider les N sûres »** (Palier A à candidat unique) en **une seule transaction** (collecteur batch — pas de gel).
-- **Historique/undo** : l'application d'une suggestion passe par le pipeline `model.setData` → déjà historisée et annulable.
+- **Historique/undo** : l'application d'une suggestion passe par le pipeline `model.setData` → déjà historisée et annulable. **Provenance** ajoutée à l'entrée d'historique groupée (« source : suggestion réf. X (score Y) ») ; les deux champs Type+Marque d'une acceptation sont regroupés en une seule entrée.
+- **Déclenchement manuel** : entrée de menu contextuel « Suggérer Type/Marque par similarité » sur les lignes incomplètes déjà en base (requête ciblée par préfixe, instantanée — pas de reconstruction de l'index complet).
+- **Critère du bouton « tout valider »** : basé sur l'**absence de concurrence** (candidat unique, tous paliers) et non sur le palier — le multi-candidats reste manuel. Libellé « Valider N suggestion(s) sans concurrence ».
+- **Bannière de supersession (réfs sœurs)** repassée en **bleu** (`#E3F2FD`) pour lever le conflit visuel avec la bannière ambre des suggestions, cohérent avec le bleu des sœurs dans la gestion des pièces.
 
-**Vérifié** : 320 tests unitaires (39 nouveaux), 81 modules importés, captures offscreen (indicateur inline + bannière), bout-en-bout sur base temporaire (persistance DB du « tout valider »). ZERO REGRESSION (6 échecs préexistants inchangés).
+**Vérifié** : 320 tests unitaires (40 nouveaux), 81 modules importés, captures offscreen (indicateur inline, bannières bleue/ambre), bout-en-bout sur base temporaire (persistance DB du « tout valider », menu contextuel, regroupement + provenance historique). ZERO REGRESSION (6 échecs préexistants inchangés).
 
 ---
 

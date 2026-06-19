@@ -68,7 +68,8 @@ class TestResolveSuggestionInline:
         fake, idx = self._fake_window(db_id=7)
         cand = {'type': 'Four', 'manufacturer': 'Siemens'}
         MainWindow._resolve_suggestion_inline(fake, idx, [cand])
-        fake.autocompletion_service.apply_suggestion_pair.assert_called_once()
+        # Application via le wrapper de provenance (1 candidat → direct)
+        fake._apply_suggestion_with_provenance.assert_called_once()
         fake.table_controller.clear_similarity_suggestion.assert_called_once_with(7)
         fake._show_suggestion_dialog.assert_not_called()
 
@@ -79,11 +80,11 @@ class TestResolveSuggestionInline:
                  {'type': 'Four', 'manufacturer': 'Bosch'}]
         MainWindow._resolve_suggestion_inline(fake, idx, cands)
         fake._show_suggestion_dialog.assert_called_once()
-        fake.autocompletion_service.apply_suggestion_pair.assert_not_called()
+        fake._apply_suggestion_with_provenance.assert_not_called()
 
     def test_liste_vide_ne_fait_rien(self):
         from src.ui.main_refactored import MainWindow
         fake, idx = self._fake_window()
         MainWindow._resolve_suggestion_inline(fake, idx, [])
-        fake.autocompletion_service.apply_suggestion_pair.assert_not_called()
+        fake._apply_suggestion_with_provenance.assert_not_called()
         fake._show_suggestion_dialog.assert_not_called()

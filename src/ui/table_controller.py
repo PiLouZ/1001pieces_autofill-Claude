@@ -422,14 +422,14 @@ class TableController:
         self.supersession_banner = QWidget()
         self.supersession_banner.setVisible(False)
         self.supersession_banner.setStyleSheet(
-            "QWidget { background-color: #FFF8E1; border: 1px solid #FFD54F; border-radius: 3px; }"
+            "QWidget { background-color: #E3F2FD; border: 1px solid #64B5F6; border-radius: 3px; }"
         )
         banner_layout = QHBoxLayout(self.supersession_banner)
         banner_layout.setContentsMargins(8, 3, 8, 3)
         banner_layout.setSpacing(8)
 
         self.supersession_banner_label = QLabel()
-        self.supersession_banner_label.setStyleSheet("color: #795548; font-size: 12px; border: none; background: transparent;")
+        self.supersession_banner_label.setStyleSheet("color: #0D47A1; font-size: 12px; border: none; background: transparent;")
         self.supersession_banner_label.setTextFormat(Qt.RichText)
         self.supersession_banner_label.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
         self.supersession_banner_label.linkActivated.connect(self._on_supersession_ref_clicked)
@@ -441,8 +441,8 @@ class TableController:
         self.supersession_overflow_btn = QPushButton()
         self.supersession_overflow_btn.setFlat(True)
         self.supersession_overflow_btn.setStyleSheet(
-            "QPushButton { color: #795548; font-size: 12px; border: none; background: transparent; padding: 0px; }"
-            "QPushButton:hover { color: #4e342e; text-decoration: underline; }"
+            "QPushButton { color: #1565C0; font-size: 12px; border: none; background: transparent; padding: 0px; }"
+            "QPushButton:hover { color: #0D47A1; text-decoration: underline; }"
         )
         self.supersession_overflow_btn.setCursor(Qt.PointingHandCursor)
         self.supersession_overflow_btn.setVisible(False)
@@ -454,13 +454,13 @@ class TableController:
         self.supersession_bypass_btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
-                color: #795548;
-                border: 1px solid #BCAAA4;
+                color: #1565C0;
+                border: 1px solid #90CAF9;
                 border-radius: 3px;
                 font-size: 11px;
                 padding: 1px 6px;
             }
-            QPushButton:hover { background-color: #FFD54F; }
+            QPushButton:hover { background-color: #90CAF9; }
         """)
         self.supersession_bypass_btn.clicked.connect(self._toggle_supersession_bypass)
         banner_layout.addWidget(self.supersession_bypass_btn)
@@ -1543,7 +1543,7 @@ class TableController:
             )
             safe = len(self.model.safe_suggestions()) if self.model is not None else 0
             if safe > 0:
-                self.similarity_validate_all_btn.setText(f"Valider les {safe} suggestion(s) sûre(s)")
+                self.similarity_validate_all_btn.setText(f"Valider {safe} suggestion(s) sans concurrence")
                 self.similarity_validate_all_btn.setVisible(True)
             else:
                 self.similarity_validate_all_btn.setVisible(False)
