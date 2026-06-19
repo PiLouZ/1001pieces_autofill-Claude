@@ -312,12 +312,17 @@ class TableController:
         self.filter_layout = filter_layout
         
         # Tableau principal — QTableView + AppareillsTableModel
-        from ..data.appareils_table_model import AppareillsTableModel, PiecesCountDelegate
+        from ..data.appareils_table_model import AppareillsTableModel, PiecesCountDelegate, SuggestionCellDelegate
         from .custom_table_view import CustomTableView
         self.model = AppareillsTableModel(self.parent_window)
         self.table = CustomTableView()
         self.table.setModel(self.model)
         self.table.main_window = self.parent_window
+        # Delegate des colonnes Type/Marque : suggestion en case + icône cliquable.
+        self._suggestion_delegate = SuggestionCellDelegate(self.table)
+        self._suggestion_delegate.accept_handler = self._on_suggestion_icon_clicked
+        self.table.setItemDelegateForColumn(0, self._suggestion_delegate)
+        self.table.setItemDelegateForColumn(1, self._suggestion_delegate)
         # Headers gérés par model.headerData() — pas de setHorizontalHeaderLabels()
 
         # Configuration QTableView
@@ -512,6 +517,41 @@ class TableController:
         self.equivalence_expand_btn.clicked.connect(self._toggle_equivalence_expand)
         equiv_banner_layout.addWidget(self.equivalence_expand_btn)
         _sc_layout.addWidget(self.equivalence_banner)
+
+        # Bandeau « suggestions par similarité » (caché par défaut, fond ambre doux).
+        # Visible UNIQUEMENT s'il existe au moins une suggestion Type/Marque en attente.
+        self.similarity_banner = QWidget()
+        self.similarity_banner.setVisible(False)
+        self.similarity_banner.setStyleSheet(
+            "QWidget { background-color: #FFF8E1; border: 1px solid #f39c12; border-radius: 3px; }"
+        )
+        sim_banner_layout = QHBoxLayout(self.similarity_banner)
+        sim_banner_layout.setContentsMargins(8, 3, 8, 3)
+        sim_banner_layout.setSpacing(8)
+        self.similarity_banner_label = QLabel()
+        self.similarity_banner_label.setStyleSheet(
+            "color: #795548; font-size: 12px; border: none; background: transparent;"
+        )
+        sim_banner_layout.addWidget(self.similarity_banner_label)
+        sim_banner_layout.addStretch()
+        # Bouton « tout valider » : applique uniquement les suggestions sûres (Palier A unique).
+        self.similarity_validate_all_btn = QPushButton()
+        self.similarity_validate_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #795548;
+                border: 1px solid #f39c12;
+                border-radius: 3px;
+                font-size: 11px;
+                padding: 1px 6px;
+            }
+            QPushButton:hover { background-color: #f39c12; color: white; }
+        """)
+        self.similarity_validate_all_btn.setCursor(Qt.PointingHandCursor)
+        self.similarity_validate_all_btn.setVisible(False)
+        self.similarity_validate_all_btn.clicked.connect(self._on_validate_all_safe)
+        sim_banner_layout.addWidget(self.similarity_validate_all_btn)
+        _sc_layout.addWidget(self.similarity_banner)
 
         # Ajouter le conteneur recherche au layout (position par défaut : sous le tableau)
         layout.addWidget(self.search_container)
@@ -1464,6 +1504,52 @@ class TableController:
         self._supersession_siblings = []
         if hasattr(self, 'supersession_banner'):
             self.supersession_banner.setVisible(False)
+
+    # ── Suggestions Type/Marque par similarité ──────────────────────────────
+    def set_similarity_suggestions(self, suggestions_by_db_id):
+        """Installe les suggestions calculées (après import) dans le modèle et
+        met à jour la bannière. {db_id: [candidat_dict, ...]}."""
+        if self.model is not None and hasattr(self.model, 'set_pending_suggestions'):
+            self.model.set_pending_suggestions(suggestions_by_db_id or {})
+            self._update_similarity_banner()
+
+    def clear_similarity_suggestion(self, db_id):
+        """Dissipe l'indicateur d'une ligne (acceptée / ignorée) et rafraîchit la bannière."""
+        if self.model is not None and hasattr(self.model, 'clear_suggestion'):
+            self.model.clear_suggestion(db_id)
+            self._update_similarity_banner()
+
+    def _on_suggestion_icon_clicked(self, index, suggestions):
+        """Relais du clic sur l'icône de suggestion (depuis SuggestionCellDelegate)
+        vers la fenêtre principale : application directe si 1 candidat, chooser sinon."""
+        if hasattr(self.parent_window, '_resolve_suggestion_inline'):
+            self.parent_window._resolve_suggestion_inline(index, suggestions)
+
+    def _on_validate_all_safe(self):
+        """Relais du bouton « tout valider » vers la fenêtre principale (batché)."""
+        if hasattr(self.parent_window, '_validate_all_safe_suggestions'):
+            self.parent_window._validate_all_safe_suggestions()
+
+    def _update_similarity_banner(self):
+        """Affiche la bannière uniquement s'il reste des suggestions en attente.
+        Le bouton « tout valider » n'apparaît que s'il existe des suggestions sûres."""
+        if not hasattr(self, 'similarity_banner'):
+            return
+        count = self.model.pending_suggestions_count if self.model is not None else 0
+        if count > 0:
+            self.similarity_banner_label.setText(
+                f"{count} appareil(s) ont une suggestion Type/Marque en attente — "
+                f"cliquez la cellule surlignée pour valider."
+            )
+            safe = len(self.model.safe_suggestions()) if self.model is not None else 0
+            if safe > 0:
+                self.similarity_validate_all_btn.setText(f"Valider les {safe} suggestion(s) sûre(s)")
+                self.similarity_validate_all_btn.setVisible(True)
+            else:
+                self.similarity_validate_all_btn.setVisible(False)
+            self.similarity_banner.setVisible(True)
+        else:
+            self.similarity_banner.setVisible(False)
 
     def _on_supersession_ref_clicked(self, ref: str):
         """Déclencher une nouvelle recherche en cliquant sur une référence dans la bannière."""

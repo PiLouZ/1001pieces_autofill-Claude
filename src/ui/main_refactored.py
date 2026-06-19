@@ -990,6 +990,93 @@ class MainWindow(QMainWindow):
             if model:
                 model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
 
+    def _validate_all_safe_suggestions(self):
+        """Applique en une seule transaction toutes les suggestions « sûres »
+        (Palier A à candidat unique). Les ambiguës restent en attente.
+
+        Utilise le collecteur batch (`_bulk_edit_collector`) pour éviter N commits
+        SQLite individuels — sinon plusieurs centaines d'écritures gèleraient l'UI.
+        """
+        model = self.table_controller.model
+        if not model:
+            return
+        safe = model.safe_suggestions()
+        if not safe:
+            return
+
+        reply = QMessageBox.question(
+            self, "Valider les suggestions sûres",
+            f"Appliquer automatiquement {len(safe)} suggestion(s) sans ambiguïté "
+            f"(variantes de référence à candidat unique) ?\n\n"
+            f"Les suggestions à plusieurs candidats resteront à valider manuellement.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        save_service = getattr(self, 'event_driven_save_service', None)
+        # Collecte batch : _apply_cell_edit_logic détourne les écritures vers ce set.
+        if save_service is not None:
+            self._bulk_edit_collector = set()
+        try:
+            for db_id, cand in safe:
+                self.autocompletion_service.apply_suggestion_pair(cand, model, db_id)
+        finally:
+            collector = getattr(self, '_bulk_edit_collector', None)
+            self._bulk_edit_collector = None
+        if save_service is not None and collector:
+            save_service.save_cells_batch_immediate(collector)
+
+        # Dissiper les indicateurs appliqués + rafraîchir la bannière.
+        for db_id, _ in safe:
+            model.clear_suggestion(db_id)
+        self.table_controller._update_similarity_banner()
+
+    def _resolve_suggestion_inline(self, index, suggestions):
+        """Clic sur l'icône de suggestion (delegate) : application rapide.
+
+        - 1 seul candidat → appliquer directement Type+Marque (pas de dialogue).
+        - Plusieurs candidats en concurrence → ouvrir le chooser pour décider.
+        """
+        if not suggestions:
+            return
+        model = self.table_controller.model
+        if not model:
+            return
+        db_id = model.get_db_id(index.row())
+        if db_id is None:
+            return
+        if len(suggestions) == 1:
+            self.autocompletion_service.apply_suggestion_pair(suggestions[0], model, db_id)
+            self.table_controller.clear_similarity_suggestion(db_id)
+        else:
+            self._show_suggestion_dialog(index, suggestions, db_id)
+
+    def _show_suggestion_dialog(self, index, suggestions, db_id):
+        """Ouvre le dialogue d'autocomplétion enrichi des suggestions, au clic sur une
+        cellule Type/Marque ayant une suggestion par similarité en attente.
+
+        Le dialogue renvoie soit un dict (candidat choisi → application en paire),
+        soit un str (valeur libre saisie → écriture de la seule colonne cliquée).
+        """
+        col = index.column()
+        current_item = self.table.currentItem() if hasattr(self.table, 'currentItem') else None
+        result = self.autocompletion_service.show_column_values_dialog(
+            self.table, current_item, col, suggestions=suggestions
+        )
+        if result is None:
+            return
+        model = self.table_controller.model
+        if not model:
+            return
+        if isinstance(result, dict):
+            # Candidat choisi : appliquer Type + Marque, puis dissiper l'indicateur.
+            self.autocompletion_service.apply_suggestion_pair(result, model, db_id)
+            self.table_controller.clear_similarity_suggestion(db_id)
+        else:
+            # Valeur libre : écrire uniquement la colonne cliquée (pipeline complet).
+            model.setData(model.index(index.row(), col), result, Qt.EditRole)
+
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
         # Mapping avec la nouvelle colonne Nb Pièces
@@ -1077,6 +1164,12 @@ class MainWindow(QMainWindow):
 
         db_id = model.get_db_id(row) if model else None
         self._apply_cell_edit_logic(row, col, old_value, new_value, db_id)
+
+        # Dissiper l'indicateur de suggestion dès que l'utilisateur renseigne Type/Marque
+        # (manuellement ou via une suggestion appliquée) — la ligne n'est plus « à compléter ».
+        if col in (0, 1) and new_value.strip() and db_id is not None:
+            if hasattr(self.table_controller, 'clear_similarity_suggestion'):
+                self.table_controller.clear_similarity_suggestion(db_id)
 
     def _apply_cell_edit_logic(self, row: int, col: int, old_value: str, new_value: str, db_id):
         """Tronc commun post-validation : sauvegarde, historique et mises à jour UI."""
@@ -1750,6 +1843,12 @@ class MainWindow(QMainWindow):
             self.table_controller.clear_column_filters()
 
             self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
+
+            # Installer les suggestions Type/Marque par similarité calculées pendant
+            # l'import (indicateur + bannière conditionnelle). Stockées par db_id :
+            # s'affichent dès que les lignes concernées deviennent visibles.
+            if hasattr(self.table_controller, 'set_similarity_suggestions'):
+                self.table_controller.set_similarity_suggestions(results.get('similarity_suggestions'))
 
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""

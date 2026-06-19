@@ -284,3 +284,66 @@ class TestImportManagerCore:
             assert "Error" in str(type(e).__name__) or "Error" in str(e) or True
         finally:
             os.unlink(binary_file)
+
+@pytest.mark.unit
+class TestSimilaritySuggestions:
+    """Tests des suggestions Type/Marque par similarité (Phase 2 — additif).
+
+    Vérifie la NON-RÉGRESSION du mécanisme exact et le calcul différé des
+    suggestions, sans jamais écrire automatiquement Type/Marque.
+    """
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    def test_mecanisme_exact_inchange(self, import_manager):
+        """NON-RÉGRESSION : l'auto-complétion exacte remplit toujours sur ref identique."""
+        cache = {'sms46aw03e': {'type': 'Lave-vaisselle', 'manufacturer': 'Bosch'}}
+        device_data = {'ref_modele': 'SMS46AW03E', 'commercial_ref': ''}
+        import_manager._apply_autocomplete_from_cache(device_data, cache)
+        assert device_data['type'] == 'Lave-vaisselle'
+        assert device_data['manufacturer'] == 'Bosch'
+
+    def test_suggestions_pour_variante_suffixe(self, import_manager):
+        """Une ligne incomplète variante /82 d'un appareil /58 existant reçoit une suggestion."""
+        new_ids = import_manager._batch_insert_devices([{
+            'type': 'Lave-vaisselle', 'manufacturer': 'Bosch',
+            'ref_modele': 'SMU6ZCS10S/58', 'commercial_ref': '',
+            'other_ref': '', 'notes': '', 'category': '',
+        }])
+        assert len(new_ids) == 1
+
+        # Précharger l'index (remplit _existing_devices_rows_for_similarity)
+        import_manager._preload_existing_devices()
+        # Simuler une ligne importée restée incomplète (variante /82)
+        import_manager._pending_similarity_candidates = [
+            {'id': 999999, 'ref_modele': 'SMU6ZCS10S/82', 'commercial_ref': ''}
+        ]
+        suggestions = import_manager._compute_pending_similarity_suggestions()
+
+        assert 999999 in suggestions
+        best = suggestions[999999][0]
+        assert best['manufacturer'] == 'Bosch'
+        assert best['type'] == 'Lave-vaisselle'
+        assert best['confidence_tier'] == 'A_suffix_variant'
+
+    def test_flag_desactive_retourne_vide(self, import_manager):
+        """Avec le flag à False, aucun calcul même si des candidats existent."""
+        from src.core.config import Config
+        original = Config.ENABLE_SIMILARITY_SUGGESTIONS
+        Config.ENABLE_SIMILARITY_SUGGESTIONS = False
+        try:
+            import_manager._preload_existing_devices()
+            import_manager._pending_similarity_candidates = [
+                {'id': 1, 'ref_modele': 'SMU6ZCS10S/82', 'commercial_ref': ''}
+            ]
+            assert import_manager._compute_pending_similarity_suggestions() == {}
+        finally:
+            Config.ENABLE_SIMILARITY_SUGGESTIONS = original
+
+    def test_aucun_candidat_collecte_retourne_vide(self, import_manager):
+        """Sans lignes incomplètes collectées, retourne {} sans erreur."""
+        import_manager._preload_existing_devices()
+        import_manager._pending_similarity_candidates = []
+        assert import_manager._compute_pending_similarity_suggestions() == {}

@@ -7,7 +7,7 @@
 
 ## Architecture
 - Point d'entrée : `run.py` → `src/ui/main_refactored.py::main()`
-- Base de données : `data/appareils.db` (SQLite, 598k+ enregistrements)
+- Base de données : `data/appareils.db` (SQLite)
 - Logs : `data/logs/` (créé automatiquement au premier lancement)
 - Fichiers PDF de test : `tests/fixtures/pdf_samples/`
 
