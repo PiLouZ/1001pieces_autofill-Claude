@@ -2867,7 +2867,23 @@ class MainWindow(QMainWindow):
             MessageHelper.show_info(self, "Aucune ligne incomplète à compléter.", Messages.TITLE_INFO)
             return
 
-        # Requête ciblée : appareils complets partageant un préfixe de référence
+        found = self._compute_similarity_suggestions(incomplete, prefixes)
+        if found:
+            model.add_pending_suggestions(found)
+            self.table_controller._update_similarity_banner()
+            MessageHelper.show_info(
+                self, f"{len(found)} suggestion(s) trouvée(s) — cellules surlignées.", Messages.TITLE_INFO)
+        else:
+            MessageHelper.show_info(
+                self, "Aucune suggestion trouvée pour la sélection.", Messages.TITLE_INFO)
+
+    def _compute_similarity_suggestions(self, incomplete, prefixes):
+        """Cœur partagé (menu contextuel + scan global) : construit un index CIBLÉ
+        par préfixe de référence puis calcule les candidats.
+
+        incomplete : [(db_id, ref_modele, commercial_ref)] ; prefixes : set de préfixes
+        de 3 caractères (minuscules). Retourne {db_id: [candidat_dict, ...]}.
+        """
         from ..services.reference_similarity_service import ReferenceSimilarityService
         like_clauses = " OR ".join(
             ["ref_modele LIKE ? COLLATE NOCASE", "commercial_ref LIKE ? COLLATE NOCASE"] * len(prefixes)
@@ -2891,15 +2907,41 @@ class MainWindow(QMainWindow):
             cands = svc.find_candidates(ref_modele, commercial_ref, index, exclude_db_id=db_id)
             if cands:
                 found[db_id] = [c.to_dict() for c in cands]
+        return found
+
+    def _scan_all_for_suggestions(self):
+        """Action menu Données : re-scanne TOUTES les lignes incomplètes chargées
+        et propose des suggestions Type/Marque (utile après avoir complété des
+        références de comparaison, ou pour des lignes hors période d'import)."""
+        model = self.table_controller.model
+        if not model:
+            return
+        incomplete = model.incomplete_records()
+        prefixes = set()
+        for _, ref_modele, commercial_ref in incomplete:
+            for ref in (ref_modele, commercial_ref):
+                if len(ref) >= 3:
+                    prefixes.add(ref[:3].lower())
+        if not incomplete or not prefixes:
+            MessageHelper.show_info(self, "Aucune ligne incomplète dans l'affichage courant.", Messages.TITLE_INFO)
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            found = self._compute_similarity_suggestions(incomplete, prefixes)
+        finally:
+            QApplication.restoreOverrideCursor()
 
         if found:
             model.add_pending_suggestions(found)
             self.table_controller._update_similarity_banner()
             MessageHelper.show_info(
-                self, f"{len(found)} suggestion(s) trouvée(s) — cellules surlignées.", Messages.TITLE_INFO)
+                self, f"{len(found)} suggestion(s) trouvée(s) sur {len(incomplete)} ligne(s) "
+                f"incomplète(s) — cellules surlignées.", Messages.TITLE_INFO)
         else:
             MessageHelper.show_info(
-                self, "Aucune suggestion trouvée pour la sélection.", Messages.TITLE_INFO)
+                self, f"Aucune suggestion trouvée parmi {len(incomplete)} ligne(s) incomplète(s).",
+                Messages.TITLE_INFO)
 
     def _set_column_filter(self, col: int, value: str):
         """Injecte une valeur dans le widget filtre de la colonne correspondante."""

@@ -255,6 +255,23 @@ class AppareillsTableModel(QAbstractTableModel):
         """Retourne la liste des candidats pour un db_id, ou [] si aucune."""
         return self._pending_suggestions.get(db_id, [])
 
+    def incomplete_records(self):
+        """Retourne [(db_id, ref_modele, commercial_ref)] pour toutes les lignes
+        CHARGÉES (pas seulement visibles) dont Type OU Marque est vide.
+
+        Record : (db_id, type, manufacturer, ref_modele, commercial_ref, ...).
+        Utilisé par le scan global de suggestions (menu Données)."""
+        out = []
+        for rec in self._records:
+            type_v = (rec[1] or '').strip() if len(rec) > 1 else ''
+            mfr_v = (rec[2] or '').strip() if len(rec) > 2 else ''
+            if type_v and mfr_v:
+                continue
+            ref_modele = (rec[3] or '').strip() if len(rec) > 3 else ''
+            commercial_ref = (rec[4] or '').strip() if len(rec) > 4 else ''
+            out.append((rec[0], ref_modele, commercial_ref))
+        return out
+
     def safe_suggestions(self):
         """Suggestions applicables en masse **sans concurrence** : exactement UN
         candidat trouvé (aucune marque alternative). Retourne [(db_id, candidat)].

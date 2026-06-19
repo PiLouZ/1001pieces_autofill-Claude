@@ -256,3 +256,25 @@ def test_to_dict_contrat():
         'confidence_tier': "B_fuzzy_alpha",
         'db_id': 1,
     }
+
+
+class TestWithinOneEdit:
+    def test_substitution(self):
+        from src.services.reference_similarity_service import within_one_edit
+        assert within_one_edit("ch3m61c53", "ch3m61153") is True   # 1 substitution
+        assert within_one_edit("abc", "abc") is True               # identique
+        assert within_one_edit("ch3m61c53", "ch3m61199") is False  # 2 diff
+
+    def test_insertion_suppression(self):
+        from src.services.reference_similarity_service import within_one_edit
+        assert within_one_edit("abc123", "abc1234") is True   # 1 insertion
+        assert within_one_edit("abc1234", "abc123") is True   # 1 suppression
+        assert within_one_edit("abc", "abcde") is False       # 2 de différence
+
+    def test_palier_b_capte_variante_1_caractere(self):
+        # CH3M61C53 doit matcher CH3M61153 (Constructa) malgré ratio 0.889 < 0.90
+        rows = [(1, "CH3M61153/95", "CH3M61153", "Four", "Constructa")]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("CH3M61C53/01", "CH3M61C53", _index(rows))
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Constructa"

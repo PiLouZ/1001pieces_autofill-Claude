@@ -55,6 +55,33 @@ def strip_variant_suffix(ref: str) -> str:
     return m.group('base') if m else ref
 
 
+def within_one_edit(a: str, b: str) -> bool:
+    """True si a et b sont à une distance d'édition <= 1 (1 substitution, 1
+    insertion ou 1 suppression). Capte les variantes à un seul caractère que le
+    ratio difflib rejette sur les références courtes (ex. 'CH3M61C53' vs
+    'CH3M61153' = ratio 0,889 mais 1 seule substitution)."""
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la == lb:
+        return sum(1 for x, y in zip(a, b) if x != y) <= 1
+    # Longueurs différant de 1 : vérifier qu'une seule suppression rend a == b.
+    if la > lb:
+        a, b = b, a  # a = la plus courte
+    i = j = 0
+    skipped = False
+    while i < len(a) and j < len(b):
+        if a[i] == b[j]:
+            i += 1
+            j += 1
+        elif skipped:
+            return False
+        else:
+            skipped = True
+            j += 1
+    return True
+
+
 def detect_prefix_kind(ref: str) -> str:
     """Retourne 'alpha' si la ref commence par >=3 lettres, 'numeric' si elle
     commence par >=3 chiffres, 'other' sinon (ref trop courte, mixte d'emblée…)."""
@@ -249,7 +276,9 @@ class ReferenceSimilarityService:
             if cand_key == qref_l or cand_key == qbase:
                 continue
             ratio = SequenceMatcher(None, qref_l, cand_key).ratio()
-            if ratio < self.fuzzy_threshold:
+            # Accepter si suffisamment proche OU à une seule édition près (variantes
+            # à 1 caractère sur réfs courtes, sous le seuil ratio mais évidentes).
+            if ratio < self.fuzzy_threshold and not within_one_edit(qref_l, cand_key):
                 continue
             for entry in index.by_ref.get(cand_key, []):
                 if exclude_db_id is not None and entry['db_id'] == exclude_db_id:
