@@ -116,6 +116,7 @@ class Config:
     ENABLE_SIMILARITY_SUGGESTIONS = True
     SIMILARITY_FUZZY_THRESHOLD = 0.90        # Seuil Palier B (difflib SequenceMatcher)
     SIMILARITY_ALLOW_NUMERIC_FUZZY = False   # Palier B exclu par défaut sur préfixe numérique (risque rebadging)
+    SIMILARITY_PREFIX_CONSENSUS = True       # Palier C : consensus de préfixe (familles mono-marque)
 
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3

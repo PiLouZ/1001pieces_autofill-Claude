@@ -2901,6 +2901,7 @@ class MainWindow(QMainWindow):
         svc = ReferenceSimilarityService(
             allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,
             fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
+            enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
         )
         found = {}
         for db_id, ref_modele, commercial_ref in incomplete:

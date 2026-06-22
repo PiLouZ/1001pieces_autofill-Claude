@@ -2781,6 +2781,7 @@ class ImportManager:
             service = ReferenceSimilarityService(
                 allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,
                 fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
+                enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
             )
             suggestions_by_db_id: Dict[int, list] = {}
             for device_data in self._pending_similarity_candidates:

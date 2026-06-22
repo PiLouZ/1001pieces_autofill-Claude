@@ -278,3 +278,55 @@ class TestWithinOneEdit:
         cands = svc.find_candidates("CH3M61C53/01", "CH3M61C53", _index(rows))
         assert len(cands) == 1
         assert cands[0].manufacturer == "Constructa"
+
+
+class TestPalierCConsensus:
+    def test_consensus_mono_marque(self):
+        # Famille 3HB58* mono-marque (Balay) → suggère Balay même si ref éloignée (3 diff)
+        rows = [(i, f"3HB5879N{i}", f"3HB5879N{i}", "Four", "Balay") for i in range(1, 6)]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("3HB5821N3", "3HB5821N3", _index(rows))
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Balay"
+        assert cands[0].confidence_tier == "C_prefix_consensus"
+
+    def test_pas_de_consensus_si_multi_marques(self):
+        # Préfixe partagé mais marques variées (pas de dominante) → rien
+        rows = [
+            (1, "ABCD111", "ABCD111", "Four", "MarqueA"),
+            (2, "ABCD222", "ABCD222", "Four", "MarqueB"),
+            (3, "ABCD333", "ABCD333", "Four", "MarqueC"),
+        ]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("ABCD999", "ABCD999", _index(rows))
+        assert cands == []
+
+    def test_consensus_ignore_si_groupe_trop_petit(self):
+        # Moins de _CONSENSUS_MIN_GROUP appareils → pas de consensus fiable
+        rows = [(1, "ZZZZ111", "ZZZZ111", "Four", "Balay")]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("ZZZZ999", "ZZZZ999", _index(rows))
+        assert cands == []
+
+    def test_consensus_desactivable(self):
+        rows = [(i, f"3HB5879N{i}", f"3HB5879N{i}", "Four", "Balay") for i in range(1, 6)]
+        svc = ReferenceSimilarityService(enable_prefix_consensus=False)
+        cands = svc.find_candidates("3HB5821N3", "3HB5821N3", _index(rows))
+        assert cands == []
+
+
+class TestPalierCNumericGuard:
+    def test_consensus_exclu_sur_prefixe_numerique(self):
+        # Préfixe purement numérique dominé par une marque → quand même exclu
+        # (le numéro de catalogue n'encode pas la marque).
+        rows = [(i, f"3104{i:05d}", f"3104{i:05d}", "Four", "Candy") for i in range(1, 8)]
+        svc = ReferenceSimilarityService()  # allow_numeric_fuzzy=False par défaut
+        cands = svc.find_candidates("3104999999", "3104999999", _index(rows))
+        assert cands == []
+
+    def test_consensus_numerique_si_active(self):
+        rows = [(i, f"3104{i:05d}", f"3104{i:05d}", "Four", "Candy") for i in range(1, 8)]
+        svc = ReferenceSimilarityService(allow_numeric_fuzzy=True)
+        cands = svc.find_candidates("3104999999", "3104999999", _index(rows))
+        assert len(cands) == 1
+        assert cands[0].confidence_tier == "C_prefix_consensus"

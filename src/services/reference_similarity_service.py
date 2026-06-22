@@ -23,6 +23,7 @@ Deux paliers de confiance (décidés après analyse des données réelles) :
 """
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -30,6 +31,14 @@ from typing import Dict, Iterable, List, Optional, Tuple
 # ── Constantes par défaut (surchargeables via le constructeur) ──────────────
 FUZZY_THRESHOLD = 0.90
 ALLOW_NUMERIC_FUZZY_BY_DEFAULT = False
+PREFIX_CONSENSUS_BY_DEFAULT = True
+
+# Palier C — consensus de préfixe : une famille de préfixe dominée à >= ratio par
+# une seule (type, marque) sur >= N appareils est considérée mono-marque fiable.
+_CONSENSUS_PREFIX_LEN = 4    # longueur du préfixe testé pour le consensus
+_CONSENSUS_MIN_GROUP = 3     # nb minimal d'appareils complets partageant le préfixe
+_CONSENSUS_MIN_RATIO = 0.90  # part minimale de la marque dominante
+_CONSENSUS_MAX_SCORE = 0.85  # score plafond (consensus < quasi-exact/fuzzy fort)
 
 # Suffixe de variante : « /XX » (1 à 3 caractères alphanumériques) en fin de
 # référence — couvre les codes de build numériques (/01, /58) ET alphanumériques
@@ -139,9 +148,11 @@ class ReferenceSimilarityService:
     """Service de scoring pur — aucune écriture, aucune dépendance Qt."""
 
     def __init__(self, allow_numeric_fuzzy: bool = ALLOW_NUMERIC_FUZZY_BY_DEFAULT,
-                 fuzzy_threshold: float = FUZZY_THRESHOLD):
+                 fuzzy_threshold: float = FUZZY_THRESHOLD,
+                 enable_prefix_consensus: bool = PREFIX_CONSENSUS_BY_DEFAULT):
         self.allow_numeric_fuzzy = allow_numeric_fuzzy
         self.fuzzy_threshold = fuzzy_threshold
+        self.enable_prefix_consensus = enable_prefix_consensus
 
     # ── Construction de l'index (une seule fois par session) ────────────────
     @staticmethod
@@ -258,39 +269,88 @@ class ReferenceSimilarityService:
 
         # ── Palier B : fuzzy sur les références du même bucket de préfixe ────
         prefix_kind = detect_prefix_kind(qref)
-        if prefix_kind == 'numeric' and not self.allow_numeric_fuzzy:
-            # Préfixe purement numérique = risque de confusion inter-marques élevé.
-            return out
+        # Préfixe purement numérique exclu du fuzzy (risque inter-marques élevé),
+        # MAIS le Palier C (consensus) reste applicable — il s'auto-protège.
+        do_fuzzy = (len(qref_l) >= _PREFIX_LEN
+                    and not (prefix_kind == 'numeric' and not self.allow_numeric_fuzzy))
+        if do_fuzzy:
+            b_tier = 'B_fuzzy_numeric' if prefix_kind == 'numeric' else 'B_fuzzy_alpha'
+            prefix = qref_l[:_PREFIX_LEN]
+            seen_keys = set()
+            for cand_key in index.by_prefix.get(prefix, []):
+                if cand_key in seen_keys:
+                    continue
+                seen_keys.add(cand_key)
+                # Le Palier A a déjà couvert l'identité exacte / la base.
+                if cand_key == qref_l or cand_key == qbase:
+                    continue
+                ratio = SequenceMatcher(None, qref_l, cand_key).ratio()
+                # Accepter si suffisamment proche OU à une seule édition près (variantes
+                # à 1 caractère sur réfs courtes, sous le seuil ratio mais évidentes).
+                if ratio < self.fuzzy_threshold and not within_one_edit(qref_l, cand_key):
+                    continue
+                for entry in index.by_ref.get(cand_key, []):
+                    if exclude_db_id is not None and entry['db_id'] == exclude_db_id:
+                        continue
+                    out.append(SimilarityCandidate(
+                        ref=entry['matched_ref'],
+                        type=entry['type'],
+                        manufacturer=entry['manufacturer'],
+                        score=ratio,
+                        source=entry['source_field'],
+                        confidence_tier=b_tier,
+                        db_id=entry['db_id'],
+                    ))
 
-        if len(qref_l) < _PREFIX_LEN:
-            return out
+        # ── Palier C : consensus de préfixe (dernier recours, si rien trouvé) ──
+        # Même garde numérique que le Palier B : un numéro de catalogue n'encode
+        # pas la marque (la dominance y serait un artefact d'inventaire, pas un
+        # signal) — on n'applique le consensus qu'aux préfixes contenant des lettres.
+        consensus_allowed = not (prefix_kind == 'numeric' and not self.allow_numeric_fuzzy)
+        if not out and self.enable_prefix_consensus and consensus_allowed:
+            consensus = self._prefix_consensus(qref_l, index, exclude_db_id)
+            if consensus is not None:
+                out.append(consensus)
 
-        b_tier = 'B_fuzzy_numeric' if prefix_kind == 'numeric' else 'B_fuzzy_alpha'
-        prefix = qref_l[:_PREFIX_LEN]
-        seen_keys = set()
-        for cand_key in index.by_prefix.get(prefix, []):
-            if cand_key in seen_keys:
+        return out
+
+    def _prefix_consensus(self, qref_l: str, index: ReferenceIndex,
+                          exclude_db_id: Optional[int]) -> Optional[SimilarityCandidate]:
+        """Palier C : si la famille de préfixe (4 car.) de la référence est dominée
+        à >= ratio par une seule (type, marque) sur >= N appareils complets, la
+        proposer. Sinon None (préfixe multi-marques = ambigu, ex. numériques rebadgés)."""
+        if len(qref_l) < _CONSENSUS_PREFIX_LEN:
+            return None
+        prefix = qref_l[:_CONSENSUS_PREFIX_LEN]
+        bucket3 = qref_l[:_PREFIX_LEN]
+
+        # Collecter une entrée par db_id distinct (évite le double comptage
+        # ref_modele/commercial_ref/base d'un même appareil).
+        seen = {}   # db_id -> (type, manufacturer, matched_ref, source_field)
+        processed_keys = set()
+        for cand_key in index.by_prefix.get(bucket3, []):
+            if cand_key in processed_keys or not cand_key.startswith(prefix):
                 continue
-            seen_keys.add(cand_key)
-            # Le Palier A a déjà couvert l'identité exacte / la base.
-            if cand_key == qref_l or cand_key == qbase:
-                continue
-            ratio = SequenceMatcher(None, qref_l, cand_key).ratio()
-            # Accepter si suffisamment proche OU à une seule édition près (variantes
-            # à 1 caractère sur réfs courtes, sous le seuil ratio mais évidentes).
-            if ratio < self.fuzzy_threshold and not within_one_edit(qref_l, cand_key):
-                continue
+            processed_keys.add(cand_key)
             for entry in index.by_ref.get(cand_key, []):
                 if exclude_db_id is not None and entry['db_id'] == exclude_db_id:
                     continue
-                out.append(SimilarityCandidate(
-                    ref=entry['matched_ref'],
-                    type=entry['type'],
-                    manufacturer=entry['manufacturer'],
-                    score=ratio,
-                    source=entry['source_field'],
-                    confidence_tier=b_tier,
-                    db_id=entry['db_id'],
-                ))
+                seen[entry['db_id']] = (entry['type'], entry['manufacturer'],
+                                        entry['matched_ref'], entry['source_field'])
 
-        return out
+        if len(seen) < _CONSENSUS_MIN_GROUP:
+            return None
+
+        counts = Counter((t.lower(), m.lower()) for (t, m, _, _) in seen.values())
+        top_pair, top_n = counts.most_common(1)[0]
+        if top_n / len(seen) < _CONSENSUS_MIN_RATIO:
+            return None   # pas de marque dominante → ambigu, on ne propose rien
+
+        score = round(min(_CONSENSUS_MAX_SCORE, top_n / len(seen)), 4)
+        for db_id, (t, m, ref, src) in seen.items():
+            if (t.lower(), m.lower()) == top_pair:
+                return SimilarityCandidate(
+                    ref=ref, type=t, manufacturer=m, score=score,
+                    source=src, confidence_tier='C_prefix_consensus', db_id=db_id,
+                )
+        return None
