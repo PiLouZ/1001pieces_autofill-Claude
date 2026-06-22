@@ -193,6 +193,13 @@ class ToolbarService:
         autocomplete_action.triggered.connect(self.main_window._fill_empty_fields)
         data_menu.addAction(autocomplete_action)
 
+        suggest_action = QAction("Suggérer Type/Marque par similarité", self.main_window)
+        suggest_action.setToolTip("Proposer Type/Marque pour les lignes incomplètes d'après des références proches déjà renseignées")
+        suggest_action.triggered.connect(
+            getattr(self.main_window, '_scan_all_for_suggestions', lambda: None)
+        )
+        data_menu.addAction(suggest_action)
+
         history_action = QAction("Historique des modifications…", self.main_window)
         history_action.setToolTip("Consulter l'historique persistant des modifications")
         history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))

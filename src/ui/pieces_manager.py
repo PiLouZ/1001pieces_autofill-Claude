@@ -20,9 +20,9 @@ def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
     """Formater une liste de refs pour un récapitulatif de confirmation."""
     if len(refs) <= max_shown:
         return ", ".join(refs)
-    return ", ".join(refs[:max_shown]) + f", … et {len(refs) - max_shown} autre(s)"
+    return ", ".join(refs[:max_shown]) + f", … et {pluralize(len(refs) - max_shown, 'autre')}"
 
-from ..core.config import Config
+from ..core.config import Config, pluralize
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
@@ -715,7 +715,7 @@ class PiecesManagerWindow(QDialog):
         results = self.db_manager.execute_query(query_fast) or []
         self.all_pieces_data = results
         self.all_statuses = {}
-        self.stats_label.setText(f"{len(results)} référence(s) — chargement des données…")
+        self.stats_label.setText(f"{pluralize(len(results), 'référence')} — chargement des données…")
         self._update_table_display()
         # Phase 2 : données complètes après le premier rendu
         QTimer.singleShot(0, self._load_pieces_data_full)
@@ -1300,7 +1300,7 @@ class PiecesManagerWindow(QDialog):
                 if item:
                     visible_refs.add(item.data(Qt.UserRole) or item.text())
             offscreen = len(self._sticky_selected_refs - visible_refs)
-            label = pluralize(n, 'pièce') + " sélectionnée(s)"
+            label = pluralize(n, 'pièce sélectionnée', 'pièces sélectionnées')
             if offscreen:
                 label += f"  ·  {offscreen} hors écran"
             self._action_bar_label.setText(label)
@@ -1672,7 +1672,7 @@ class PiecesManagerWindow(QDialog):
                 for type_, mfr, ref_mod in appareils[:10]:
                     appareils_lines.append(f"  • {mfr or '?'} {ref_mod or '?'} ({type_ or '?'})")
                 if len(appareils) > 10:
-                    appareils_lines.append(f"  … et {len(appareils) - 10} autre(s)")
+                    appareils_lines.append(f"  … et {pluralize(len(appareils) - 10, 'autre')}")
 
         label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces sélectionnées"
         msg = f"Marquer {label} comme obsolète(s) (aucun remplacement) ?"
@@ -1766,7 +1766,7 @@ class PiecesManagerWindow(QDialog):
         updated = self.db_manager.set_description_for_refs(refs, new_desc)
         if updated:
             self._notify_history(
-                f"Libellé :\n==> {updated} pièce(s) → « {new_desc} » ({self._format_refs_recap(refs)})"
+                f"Libellé :\n==> {pluralize(updated, 'pièce')} → « {new_desc} » ({self._format_refs_recap(refs)})"
             )
             self._load_pieces_data()
 
@@ -1823,7 +1823,7 @@ class PiecesManagerWindow(QDialog):
         for d in descs:
             count = sum(1 for r in group_refs if self._desc_by_ref.get(r, "") == d)
             label_display = d if d else "(vide)"
-            choices.append(f"{label_display}  —  {count} pièce(s)")
+            choices.append(f"{label_display}  —  {pluralize(count, 'pièce')}")
 
         choice, ok = QInputDialog.getItem(
             self, "Harmoniser les libellés",
@@ -1839,7 +1839,7 @@ class PiecesManagerWindow(QDialog):
         updated = self.db_manager.set_description_for_refs(group_refs, chosen_desc)
         if updated:
             self._notify_history(
-                f"Libellé :\n==> {updated} pièce(s) harmonisées → « {chosen_desc} » "
+                f"Libellé :\n==> {pluralize(updated, 'pièce harmonisée', 'pièces harmonisées')} → « {chosen_desc} » "
                 f"({self._format_refs_recap(group_refs)})"
             )
             self._load_pieces_data()
@@ -2167,7 +2167,7 @@ class PiecesManagerWindow(QDialog):
                 updated = self.db_manager.set_description_for_refs(equivalents, new_desc)
                 if updated and hasattr(self.parent(), 'user_interaction_service'):
                     self.parent().user_interaction_service.add_to_history(
-                        f"Libellé :\n==> {updated} pièce(s) équivalente(s) → « {new_desc} » "
+                        f"Libellé :\n==> {pluralize(updated, 'pièce équivalente', 'pièces équivalentes')} → « {new_desc} » "
                         f"({_format_refs_recap(equivalents)})"
                     )
                     self._load_pieces_data()

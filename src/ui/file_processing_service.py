@@ -258,9 +258,9 @@ class FileProcessingService:
             ProgressDialog configuré
         """
         progress_dialog = self.main_window._create_progress_dialog(
-            "Import PDF", 
-            total_files, 
-            "Import PDF en cours... {} / {} fichier(s)"
+            "Import PDF",
+            total_files,
+            f"Import PDF en cours... {{}} / {{}} {'fichier' if total_files <= 1 else 'fichiers'}"
         )
         return progress_dialog
     

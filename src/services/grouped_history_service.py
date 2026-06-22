@@ -38,7 +38,8 @@ class GroupedHistoryService(QObject):
             'total_devices_modified': 0
         }
 
-    def add_modification(self, db_id: int, field_name: str, old_value: str, new_value: str):
+    def add_modification(self, db_id: int, field_name: str, old_value: str, new_value: str,
+                         source: str = None):
         """
         Ajouter une modification au buffer de groupement
 
@@ -47,6 +48,8 @@ class GroupedHistoryService(QObject):
             field_name: Nom du champ modifié (ex: "Type", "Fabricant")
             old_value: Ancienne valeur
             new_value: Nouvelle valeur
+            source: provenance optionnelle (ex: "suggestion réf. X (score 95%)"),
+                affichée une fois par appareil dans l'entrée d'historique groupée.
         """
         try:
             current_time = datetime.now()
@@ -57,6 +60,10 @@ class GroupedHistoryService(QObject):
                     'timestamp': current_time,
                     'modifications': []
                 }
+
+            # Mémoriser la provenance au niveau de l'appareil (la dernière prime).
+            if source:
+                self.pending_modifications[db_id]['source'] = source
 
             # Ajouter la modification
             self.pending_modifications[db_id]['modifications'].append((field_name, old_value, new_value))
@@ -113,15 +120,19 @@ class GroupedHistoryService(QObject):
                 field_name, old_value, new_value = modifications[0]
                 appareil_ref = self._get_appareil_reference(db_id)
                 message = f"Modification de l'appareil {appareil_ref}\n     ==> {field_name} : '{old_value}' → '{new_value}'"
-                self.user_interaction_service.add_to_history(message)
                 self.stats['single_modifications'] += 1
 
             else:
                 # Modifications multiples : utiliser le format groupé
                 message = self._format_grouped_modifications(db_id, modifications, timestamp)
-                self.user_interaction_service.add_to_history(message)
                 self.stats['grouped_modifications'] += 1
 
+            # Provenance optionnelle (ex: suggestion par similarité) — une ligne par appareil.
+            source = data.get('source')
+            if source:
+                message += f"\n     (source : {source})"
+
+            self.user_interaction_service.add_to_history(message)
             self.stats['total_devices_modified'] += 1
 
         except Exception as e:

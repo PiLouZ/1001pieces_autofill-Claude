@@ -14,7 +14,7 @@ from typing import Optional, Any
 from ..ui.qt_imports import (pyqtSignal, QTimer, Qt, QApplication, QProgressBar,
                             QLabel, QTableWidget, QFont, QPixmap, QPainter, QIcon, QPalette)
 
-from ..core.config import Config
+from ..core.config import Config, pluralize
 from ..core.logger import app_logger
 from .base_service import BaseService, DebounceTimer, service_operation
 from ..utils.error_handler import handle_ui_operation_errors
@@ -175,7 +175,7 @@ class UIStateManagementService(BaseService):
 
         # Mettre à jour la barre de statut si applicable
         if self.status_bar and has_selection:
-            status_text = f"{selection_count} élément(s) sélectionné(s)"
+            status_text = pluralize(selection_count, 'élément sélectionné', 'éléments sélectionnés')
             self.status_bar.showMessage(status_text, Config.STATUS_MESSAGE_TIMEOUT)
 
         self.state_updated.emit("selection", {

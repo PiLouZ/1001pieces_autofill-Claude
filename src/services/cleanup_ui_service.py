@@ -493,7 +493,7 @@ class DuplicateDevicesWidget(QWidget):
         reply = QMessageBox.question(
             self,
             "Marquage immédiat",
-            f"Marquer {nb} groupe(s) comme distinct(s) ?\n\n"
+            f"Marquer {nb} {'groupe' if nb <= 1 else 'groupes'} comme distinct{'s' if nb > 1 else ''} ?\n\n"
             f"{refs_apercu}\n\n"
             "Attention — cette action est enregistrée immédiatement en base "
             "(elle ne passe pas par le bouton « Appliquer le nettoyage »).",

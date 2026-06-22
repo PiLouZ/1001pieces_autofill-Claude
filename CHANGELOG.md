@@ -4,6 +4,54 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.56.0] - 2026-06-22
+
+### Nouveauté — Fenêtre de validation polyvalente des suggestions Type/Marque
+
+Le bouton de la bannière de suggestions devient **« Examiner N suggestion(s)… »** et ouvre une fenêtre dédiée (`src/ui/suggestion_validation_dialog.py`, non bloquante) synthétisant **toutes** les suggestions, y compris celles à plusieurs candidats concurrents (l'ancien bouton n'appliquait que les candidats uniques).
+
+- **Arbre regroupable** (`QTreeWidget`) épuré : colonne de case à cocher **étroite**, **Référence**, **Type** et **Marque** (les seules valeurs utiles, éditables), **score** en % tricolore (vert ≥ 90 %, ambre ≥ 75 %, gris-orange sinon) et **fiabilité lisible** (badge « Quasi-certain / Probable / À vérifier » — le palier technique A/B/C n'apparaît jamais).
+- **Édition via la fenêtre Cmd+D du tableau principal** : un double-clic sur Type ou Marque ouvre la **même** fenêtre de valeurs (valeurs existantes + suggestions) que `Cmd+D`, pour une interaction identique. Choisir une suggestion remplit Type **et** Marque ; saisir une valeur libre ne touche que la colonne éditée (score neutralisé « — modifié », fond bleu) ; dans les deux cas la ligne est cochée.
+- **Pré-cochage** du sûr (candidat unique + palier A ou score ≥ 0,90), décoché pour l'ambigu et le palier C — équivalent fonctionnel de l'ancien « sans concurrence », mais on peut désormais arbitrer.
+- **Regroupement** par Fiabilité ou par Marque (cases tri-state propagées parent ↔ enfants), **filtre** texte, compteur de sélection live, « Tout cocher / décocher ».
+- **Boutons d'action colorés** selon la ligne directrice projet : **vert** (`success`) pour « Valider la sélection », **rouge** (`danger`) pour « Annuler ».
+- **Validation** = applique les **seules lignes cochées** via le cœur batché partagé `_apply_suggestion_decisions` (1 transaction, `model.setData` → historique groupé + provenance). L'ancienne méthode `_validate_all_safe_suggestions`, désormais orpheline, est retirée.
+
+### Pluralisation correcte (« s » conditionnel)
+
+Le « s » du pluriel ne s'affiche plus que lorsqu'il est nécessaire (via le helper `pluralize`), dans la fenêtre de validation **et** dans les messages utilisateur de l'application : gestion des pièces, suppression d'appareils, autocomplétion, suggestions, historique, sélection, compteurs, import PDF, etc. (≈ 40 chaînes visibles). Les gabarits inutilisés et les lignes de log internes sont laissés tels quels.
+
+### Corrections
+
+- **Auto-complétion (Action → Autocomplétion) — valeurs désormais persistées.** `update_device_info` écrivait via `execute_custom_query` qui **ne committe pas** (et le `_auto_save()` censé persister derrière est un no-op hérité de l'API `QTableWidget`) : les valeurs apparaissaient en session mais étaient **perdues à la fermeture**. Routé vers `update_multiple_cells_batch` (chemin canonique qui committe). Vérifié bout-en-bout (reconnexion neuve).
+- **Compteur de lignes incomplètes mis à jour** après l'auto-complétion (`_update_incomplete_button_visibility` appelé) — il restait figé et donnait l'impression que rien ne s'était passé.
+- **Recherche sans résultat qui persistait par intermittence.** Une recherche tapée pendant qu'une requête tournait encore était silencieusement abandonnée (le tableau gardait l'ancien contenu). Mise en place d'un **coalescing** : la dernière demande est mémorisée puis rejouée à la fin du worker courant → la dernière recherche gagne toujours, « Aucun résultat » s'affiche correctement.
+- **Suggestions par similarité (menu contextuel + menu Données) : plus de pop-up modal**, remplacé par un **insert discret dans l'historique** (cellules surlignées + bannière restent le retour visuel).
+
+**Vérifié** : 344 tests unitaires (15 nouveaux : snapshot modèle + logique de la fenêtre), compilation complète, captures offscreen (fenêtre à plat et regroupée par fiabilité, boutons colorés), persistance DB sur base temporaire, contrôle du helper `pluralize` (0/1 → singulier, 2+ → pluriel). ZERO REGRESSION (6 échecs préexistants inchangés).
+
+---
+
+## [3.55.0] - 2026-06-19
+
+### Nouveauté — Suggestions Type/Marque par similarité de référence (import)
+
+Complète (sans jamais le remplacer) l'auto-complétion **exacte** de l'import : lorsqu'une ligne importée reste sans Type/Marque, l'outil propose des valeurs déduites d'appareils déjà en base à la référence proche. **Aucune application automatique** : validation utilisateur obligatoire.
+
+- **Moteur de scoring** (`src/services/reference_similarity_service.py`, pur Python) : Palier A « quasi-exact » (variante de suffixe `/NN`, `/C4`, `/IX`… ignorée) et Palier B « fuzzy » (`difflib` ≥ 0,90). Le fuzzy est **exclu par défaut sur préfixe purement numérique** (risque de confusion inter-marques par rebadging). Pré-filtre par préfixe → ~0,6 ms/requête sur 655k lignes.
+- **Intégration import** (`import_manager.py`) : collecte des lignes incomplètes pendant l'import, calcul **en un seul lot après** l'import (jamais ligne par ligne), non bloquant. Mécanisme exact intouché. Flags `Config.ENABLE_SIMILARITY_SUGGESTIONS`, `SIMILARITY_FUZZY_THRESHOLD`, `SIMILARITY_ALLOW_NUMERIC_FUZZY`.
+- **UX tableau** : indicateur discret sur les cellules Type/Marque (fond ambre + valeur suggérée en texte fantôme + icône cliquable à droite), bannière conditionnelle (visible seulement s'il y a des suggestions). **Clic sur l'icône** = application directe si 1 candidat, **chooser** si plusieurs (concurrence inter-marques). Bouton **« Valider les N sûres »** (Palier A à candidat unique) en **une seule transaction** (collecteur batch — pas de gel).
+- **Historique/undo** : l'application d'une suggestion passe par le pipeline `model.setData` → déjà historisée et annulable. **Provenance** ajoutée à l'entrée d'historique groupée (« source : suggestion réf. X (score Y) ») ; les deux champs Type+Marque d'une acceptation sont regroupés en une seule entrée.
+- **Déclenchement manuel** : entrée de menu contextuel « Suggérer Type/Marque par similarité » sur les lignes incomplètes déjà en base + entrée équivalente dans le **menu Données** (scan global de toutes les lignes incomplètes affichées). Requête ciblée par préfixe, instantanée — pas de reconstruction de l'index complet.
+- **Variantes à 1 caractère** : règle de distance d'édition ≤ 1 (`within_one_edit`) qui capte les références différant d'un seul caractère même quand le ratio difflib passe sous 0,90 sur les réfs courtes (ex. `CH3M61C53` vs `CH3M61153`, ratio 0,889).
+- **Palier C — consensus de préfixe** (`SIMILARITY_PREFIX_CONSENSUS`) : en dernier recours, si la famille de préfixe (4 car.) d'une ligne incomplète est dominée à ≥ 90 % par une seule (type, marque) sur ≥ 3 appareils complets, la proposer. Capte les familles mono-marque éloignées en plein-texte (ex. `3HB5821N3` → Balay, car `3HB*` = 976 appareils 100 % Balay). S'auto-protège : un préfixe multi-marques n'a pas de consensus. **Exclu sur préfixe purement numérique** (même garde que le fuzzy : un numéro de catalogue n'encode pas la marque).
+- **Critère du bouton « tout valider »** : basé sur l'**absence de concurrence** (candidat unique, tous paliers) et non sur le palier — le multi-candidats reste manuel. Libellé « Valider N suggestion(s) sans concurrence ».
+- **Bannière de supersession (réfs sœurs)** repassée en **bleu** (`#E3F2FD`) pour lever le conflit visuel avec la bannière ambre des suggestions, cohérent avec le bleu des sœurs dans la gestion des pièces.
+
+**Vérifié** : 320 tests unitaires (40 nouveaux), 81 modules importés, captures offscreen (indicateur inline, bannières bleue/ambre), bout-en-bout sur base temporaire (persistance DB du « tout valider », menu contextuel, regroupement + provenance historique). ZERO REGRESSION (6 échecs préexistants inchangés).
+
+---
+
 ## [3.54.7] - 2026-06-18
 
 ### Nettoyage — Imports inutilisés + alias legacy morts

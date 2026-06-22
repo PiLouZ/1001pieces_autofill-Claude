@@ -234,3 +234,109 @@ def test_headerdata_rows_are_1indexed(model_with_records):
         result = model_with_records.headerData(row, Qt.Vertical, Qt.DisplayRole)
         assert result == str(row + 1), \
             f"Row {row} : header attendu '{row + 1}', obtenu '{result}'"
+
+
+# ── Suggestions Type/Marque par similarité (Phase 3) ─────────────────────────
+@pytest.mark.unit
+class TestSuggestionsSimilarite:
+    """Indicateur visuel des suggestions : rôles Qt additifs, sans régression."""
+
+    def _model_with_row(self, qapp, db_id=42):
+        m = AppareillsTableModel()
+        m.load_records([make_record(db_id=db_id, type_="", manufacturer="", pieces_count=3)])
+        return m
+
+    def _candidate(self):
+        return {'ref': 'SMU6ZCS10S/58', 'type': 'Lave-vaisselle', 'manufacturer': 'Bosch',
+                'score': 0.95, 'source': 'ref_modele', 'confidence_tier': 'A_suffix_variant', 'db_id': 1}
+
+    def test_set_et_count(self, qapp):
+        m = self._model_with_row(qapp, db_id=42)
+        assert m.pending_suggestions_count == 0
+        m.set_pending_suggestions({42: [self._candidate()]})
+        assert m.pending_suggestions_count == 1
+        assert m.get_suggestions_for_db_id(42)[0]['manufacturer'] == 'Bosch'
+
+    def test_clear(self, qapp):
+        m = self._model_with_row(qapp, db_id=42)
+        m.set_pending_suggestions({42: [self._candidate()]})
+        m.clear_suggestion(42)
+        assert m.pending_suggestions_count == 0
+        assert m.get_suggestions_for_db_id(42) == []
+
+    def test_background_et_tooltip_sur_type_marque(self, qapp):
+        m = self._model_with_row(qapp, db_id=42)
+        m.set_pending_suggestions({42: [self._candidate()]})
+        # Colonnes Type (0) et Marque (1) : teinte + tooltip présents (icône = delegate)
+        for col in (0, 1):
+            idx = m.index(0, col)
+            assert m.data(idx, Qt.BackgroundRole) is not None
+            assert "Suggestion" in (m.data(idx, Qt.ToolTipRole) or "")
+
+    def test_delegate_top_candidate(self, qapp):
+        """Le delegate expose le meilleur candidat pour le rendu (icône + fantôme)."""
+        from src.data.appareils_table_model import SuggestionCellDelegate
+        m = self._model_with_row(qapp, db_id=42)
+        assert SuggestionCellDelegate._top_candidate(m.index(0, 0)) is None
+        m.set_pending_suggestions({42: [self._candidate()]})
+        cand = SuggestionCellDelegate._top_candidate(m.index(0, 0))
+        assert cand is not None and cand['manufacturer'] == 'Bosch'
+
+    def test_non_regression_nb_pieces(self, qapp):
+        """La colonne Nb Pièces garde son fond/tooltip même avec suggestion active."""
+        m = self._model_with_row(qapp, db_id=42)
+        nb_col = len(Config.DB_HEADERS)
+        idx = m.index(0, nb_col)
+        bg_avant = m.data(idx, Qt.BackgroundRole)
+        tip_avant = m.data(idx, Qt.ToolTipRole)
+
+        m.set_pending_suggestions({42: [self._candidate()]})
+        assert m.data(idx, Qt.BackgroundRole) == bg_avant
+        assert m.data(idx, Qt.ToolTipRole) == tip_avant
+
+    def test_safe_suggestions_candidat_unique(self, qapp):
+        """safe_suggestions retient tout candidat UNIQUE (tous paliers) ; exclut
+        uniquement les cas à plusieurs candidats (ambiguïté inter-marques)."""
+        m = AppareillsTableModel()
+        m.load_records([make_record(db_id=i, type_="", manufacturer="") for i in (1, 2, 3)])
+        a_unique = {'ref': 'X', 'type': 'Four', 'manufacturer': 'Siemens', 'score': 1.0,
+                    'source': 'ref_modele', 'confidence_tier': 'A_suffix_variant', 'db_id': 9}
+        b_fuzzy = dict(a_unique, confidence_tier='B_fuzzy_alpha', score=0.93)
+        m.set_pending_suggestions({
+            1: [a_unique],                 # Palier A unique → éligible
+            2: [a_unique, b_fuzzy],        # plusieurs candidats → exclu
+            3: [b_fuzzy],                  # Palier B unique → éligible
+        })
+        safe = m.safe_suggestions()
+        assert sorted(db_id for db_id, _ in safe) == [1, 3]
+
+    def test_add_pending_fusionne(self, qapp):
+        m = AppareillsTableModel()
+        m.load_records([
+            make_record(db_id=1, type_="", manufacturer=""),
+            make_record(db_id=2, type_="", manufacturer=""),
+        ])
+        m.set_pending_suggestions({1: [self._candidate()]})
+        m.add_pending_suggestions({2: [self._candidate()]})
+        assert m.pending_suggestions_count == 2
+
+    def test_suggestions_snapshot_structure(self, qapp):
+        """suggestions_snapshot expose réf. + valeurs actuelles + candidats par db_id ;
+        ignore les db_id sans enregistrement chargé."""
+        m = AppareillsTableModel()
+        m.load_records([
+            make_record(db_id=1, type_="", manufacturer="", ref_modele="HE517BBS4/01",
+                        commercial_ref="3HB5351X0"),
+            make_record(db_id=2, type_="", manufacturer="Bosch", ref_modele="SMU6ZCS10S/58",
+                        commercial_ref=""),
+        ])
+        cand = self._candidate()
+        m.set_pending_suggestions({1: [cand], 2: [cand], 999: [cand]})  # 999 absent des records
+        snap = m.suggestions_snapshot()
+        by_id = {e['db_id']: e for e in snap}
+        assert set(by_id) == {1, 2}  # 999 ignoré
+        assert by_id[1]['ref_modele'] == "HE517BBS4/01"
+        assert by_id[1]['commercial_ref'] == "3HB5351X0"
+        assert by_id[1]['current_type'] == ""
+        assert by_id[2]['current_manufacturer'] == "Bosch"
+        assert by_id[1]['candidates'] == [cand]

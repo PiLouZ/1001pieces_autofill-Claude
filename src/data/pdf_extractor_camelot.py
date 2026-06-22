@@ -301,6 +301,7 @@ class CamelotPDFExtractor:
             tables = camelot.read_pdf(pdf_path, flavor='lattice', pages='1')
 
         if len(tables) > 0:
-            return True, f"PDF compatible - {len(tables)} tableau(x) détecté(s)"
+            return True, (f"PDF compatible - {len(tables)} "
+                          f"{'tableau détecté' if len(tables) <= 1 else 'tableaux détectés'}")
         else:
             return False, "Aucun tableau détecté - Essayez l'import CSV ou le collage de données"

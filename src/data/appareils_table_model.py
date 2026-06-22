@@ -10,11 +10,16 @@ Usage :
     view.setModel(model)
 """
 
-from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QRectF, QSize, pyqtSignal
+import qtawesome as qta
+from PyQt5.QtCore import Qt, QAbstractTableModel, QEvent, QModelIndex, QRect, QRectF, QSize, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QPainter
 from PyQt5.QtWidgets import QStyle, QStyledItemDelegate
 
-from src.core.config import Config
+from src.core.config import Config, pluralize
+
+# Colonnes Type (0) et Fabricant (1) — cibles des suggestions par similarité.
+_SUGGESTION_COLS = (0, 1)
+_SUGGESTION_BG = QColor('#FFF8E1')   # jaune pâle, distinct de l'alerte doublons
 
 
 class AppareillsTableModel(QAbstractTableModel):
@@ -44,6 +49,11 @@ class AppareillsTableModel(QAbstractTableModel):
         self._headers = Config.UI_HEADERS
         self._main_window = main_window
         self._search_term = None
+        # Suggestions Type/Marque par similarité en attente de validation.
+        # {db_id: [candidat_dict, ...]} — alimenté par set_pending_suggestions().
+        # Le rendu (teinte de fond + texte fantôme + icône) est assuré par
+        # SuggestionCellDelegate ; le modèle n'expose que l'état et le BackgroundRole.
+        self._pending_suggestions = {}
 
     # ── API Qt obligatoire ───────────────────────────────────────────────────
 
@@ -97,13 +107,22 @@ class AppareillsTableModel(QAbstractTableModel):
                 pieces = record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0
                 color = QColor(220, 248, 198) if pieces > 0 else QColor(248, 248, 248)
                 return QBrush(color)
+            # Suggestion Type/Marque en attente : teinte douce sur les cellules concernées.
+            if col in _SUGGESTION_COLS and self._pending_suggestions.get(record[0]):
+                return QBrush(_SUGGESTION_BG)
             # Highlight de recherche : délégué au service (Phase 3+)
             return None
 
         elif role == Qt.ToolTipRole:
             if col == len(Config.DB_HEADERS):
                 pieces = record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0
-                return f"{pieces} pièce(s) associée(s)" if pieces > 0 else "Aucune pièce associée"
+                return pluralize(pieces, 'pièce associée', 'pièces associées') if pieces > 0 else "Aucune pièce associée"
+            if col in _SUGGESTION_COLS:
+                suggestions = self._pending_suggestions.get(record[0])
+                if suggestions:
+                    best = suggestions[0]
+                    return (f"Suggestion : {best['type']} / {best['manufacturer']} "
+                            f"(score {best['score']:.0%}) — clic pour voir les candidats")
 
         return None
 
@@ -206,6 +225,104 @@ class AppareillsTableModel(QAbstractTableModel):
                 return i
         return None
 
+    # ── Suggestions Type/Marque par similarité ──────────────────────────────
+    def set_pending_suggestions(self, suggestions_by_db_id):
+        """Remplace la map des suggestions en attente et rafraîchit les cellules
+        Type/Marque concernées (anciennes ET nouvelles lignes affectées).
+
+        suggestions_by_db_id : {db_id: [candidat_dict, ...]}.
+        """
+        affected = set(self._pending_suggestions.keys()) | set(suggestions_by_db_id.keys())
+        self._pending_suggestions = dict(suggestions_by_db_id)
+        self._emit_data_changed_for_db_ids(affected)
+
+    def add_pending_suggestions(self, suggestions_by_db_id):
+        """Fusionne des suggestions dans la map existante (sans tout remplacer).
+
+        Utilisé par le déclenchement manuel (menu contextuel) pour ne pas effacer
+        les suggestions issues d'un import précédent.
+        """
+        self._pending_suggestions.update(suggestions_by_db_id)
+        self._emit_data_changed_for_db_ids(set(suggestions_by_db_id.keys()))
+
+    def clear_suggestion(self, db_id):
+        """Dissipe l'indicateur pour une ligne (acceptée / ignorée / éditée)."""
+        if db_id in self._pending_suggestions:
+            del self._pending_suggestions[db_id]
+            self._emit_data_changed_for_db_ids({db_id})
+
+    def get_suggestions_for_db_id(self, db_id):
+        """Retourne la liste des candidats pour un db_id, ou [] si aucune."""
+        return self._pending_suggestions.get(db_id, [])
+
+    def incomplete_records(self):
+        """Retourne [(db_id, ref_modele, commercial_ref)] pour toutes les lignes
+        CHARGÉES (pas seulement visibles) dont Type OU Marque est vide.
+
+        Record : (db_id, type, manufacturer, ref_modele, commercial_ref, ...).
+        Utilisé par le scan global de suggestions (menu Données)."""
+        out = []
+        for rec in self._records:
+            type_v = (rec[1] or '').strip() if len(rec) > 1 else ''
+            mfr_v = (rec[2] or '').strip() if len(rec) > 2 else ''
+            if type_v and mfr_v:
+                continue
+            ref_modele = (rec[3] or '').strip() if len(rec) > 3 else ''
+            commercial_ref = (rec[4] or '').strip() if len(rec) > 4 else ''
+            out.append((rec[0], ref_modele, commercial_ref))
+        return out
+
+    def safe_suggestions(self):
+        """Suggestions applicables en masse **sans concurrence** : exactement UN
+        candidat trouvé (aucune marque alternative). Retourne [(db_id, candidat)].
+
+        Le critère est l'absence d'ambiguïté (1 seul candidat), pas le palier :
+        une suggestion à plusieurs candidats — seul cas réellement risqué pour la
+        confusion inter-marques — est exclue et exige un choix humain."""
+        return [(db_id, cands[0]) for db_id, cands in self._pending_suggestions.items()
+                if len(cands) == 1]
+
+    def suggestions_snapshot(self):
+        """Décrit chaque appareil ayant des suggestions en attente, pour alimenter la
+        fenêtre de validation. Chaque entrée :
+        {db_id, ref_modele, commercial_ref, current_type, current_manufacturer,
+         candidates: [candidat_dict, ...]}.
+
+        Record : (db_id, type, manufacturer, ref_modele, commercial_ref, ...).
+        Les db_id sans enregistrement chargé (hors page courante) sont ignorés."""
+        by_id = {rec[0]: rec for rec in self._records}
+        out = []
+        for db_id, cands in self._pending_suggestions.items():
+            rec = by_id.get(db_id)
+            if rec is None:
+                continue
+            out.append({
+                'db_id': db_id,
+                'ref_modele': (rec[3] or '') if len(rec) > 3 else '',
+                'commercial_ref': (rec[4] or '') if len(rec) > 4 else '',
+                'current_type': (rec[1] or '') if len(rec) > 1 else '',
+                'current_manufacturer': (rec[2] or '') if len(rec) > 2 else '',
+                'candidates': list(cands),
+            })
+        return out
+
+    @property
+    def pending_suggestions_count(self):
+        """Nombre d'appareils ayant une suggestion en attente (API publique)."""
+        return len(self._pending_suggestions)
+
+    def _emit_data_changed_for_db_ids(self, db_ids):
+        """Émet dataChanged sur les colonnes Type/Marque des lignes visibles
+        correspondant aux db_id fournis."""
+        for db_id in db_ids:
+            row = self.find_row_by_db_id(db_id)
+            if row is not None and row < self._display_count:
+                self.dataChanged.emit(
+                    self.index(row, _SUGGESTION_COLS[0]),
+                    self.index(row, _SUGGESTION_COLS[-1]),
+                    [Qt.BackgroundRole, Qt.DecorationRole, Qt.ToolTipRole],
+                )
+
     def set_search_term(self, term):
         """Met à jour le terme de recherche pour le highlight (Phase 3+).
 
@@ -276,3 +393,83 @@ class PiecesCountDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option, index):
         return QSize(50, 26)
+
+
+class SuggestionCellDelegate(QStyledItemDelegate):
+    """Delegate des colonnes Type/Marque : affiche la suggestion en attente
+    directement dans la case (texte fantôme grisé) + une icône cliquable à droite.
+
+    - Clic sur l'icône → `accept_handler(index, suggestions)` (défini par
+      l'appelant) : applique le candidat unique, ou ouvre le chooser si plusieurs.
+    - Clic ailleurs dans la case → comportement normal (sélection/édition).
+
+    Le delegate ne décide PAS de l'application : il délègue à `accept_handler`,
+    qui passe par le pipeline model.setData (jamais d'accès DB direct).
+    """
+
+    _ICON_SIZE = 16
+    _GHOST_COLOR = QColor('#9e9e9e')
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.accept_handler = None      # callable(index, suggestions) -> None
+        self._icon = None               # qta.icon, créé paresseusement
+
+    def _get_icon(self):
+        if self._icon is None:
+            self._icon = qta.icon('fa5s.magic', color='#f39c12')
+        return self._icon
+
+    def _icon_rect(self, rect):
+        s = self._ICON_SIZE
+        y = rect.top() + (rect.height() - s) // 2
+        x = rect.right() - s - 4
+        return QRect(int(x), int(y), s, s)
+
+    @staticmethod
+    def _top_candidate(index):
+        model = index.model()
+        if not (hasattr(model, 'get_suggestions_for_db_id') and hasattr(model, 'get_db_id')):
+            return None
+        db_id = model.get_db_id(index.row())
+        if db_id is None:
+            return None
+        suggestions = model.get_suggestions_for_db_id(db_id)
+        return suggestions[0] if suggestions else None
+
+    def paint(self, painter, option, index):
+        # Fond (BackgroundRole), sélection et texte réel (vide ici) : rendu standard.
+        super().paint(painter, option, index)
+
+        cand = self._top_candidate(index)
+        if cand is None:
+            return
+
+        painter.save()
+        # Icône d'action à droite
+        self._get_icon().paint(painter, self._icon_rect(option.rect))
+
+        # Texte fantôme (valeur suggérée) uniquement si la case est réellement vide
+        if not (index.data(Qt.DisplayRole) or ''):
+            ghost = cand.get('type', '') if index.column() == 0 else cand.get('manufacturer', '')
+            if ghost:
+                painter.setPen(self._GHOST_COLOR)
+                f = painter.font()
+                f.setItalic(True)
+                painter.setFont(f)
+                text_rect = option.rect.adjusted(6, 0, -(self._ICON_SIZE + 8), 0)
+                elided = painter.fontMetrics().elidedText(ghost, Qt.ElideRight, text_rect.width())
+                painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, elided)
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        if (event.type() == QEvent.MouseButtonRelease
+                and event.button() == Qt.LeftButton
+                and self._top_candidate(index) is not None
+                and self._icon_rect(option.rect).contains(event.pos())):
+            if callable(self.accept_handler):
+                db_id = model.get_db_id(index.row())
+                suggestions = model.get_suggestions_for_db_id(db_id)
+                self.accept_handler(index, suggestions)
+            return True
+        return super().editorEvent(event, model, option, index)

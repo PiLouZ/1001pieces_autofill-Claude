@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.54.7"
+    VERSION = "3.56.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -109,6 +109,14 @@ class Config:
 
     # Feature Flags - v3.30.0 Mapping de colonnes à l'import
     ENABLE_COLUMN_MAPPING = True   # Mapping manuel des colonnes (activé v3.30.0)
+
+    # Feature Flags - Suggestions Type/Marque par similarité de référence
+    # Complète (ne remplace JAMAIS) l'auto-complétion exacte de l'import.
+    # Aucune application automatique : suggestions soumises à validation utilisateur.
+    ENABLE_SIMILARITY_SUGGESTIONS = True
+    SIMILARITY_FUZZY_THRESHOLD = 0.90        # Seuil Palier B (difflib SequenceMatcher)
+    SIMILARITY_ALLOW_NUMERIC_FUZZY = False   # Palier B exclu par défaut sur préfixe numérique (risque rebadging)
+    SIMILARITY_PREFIX_CONSENSUS = True       # Palier C : consensus de préfixe (familles mono-marque)
 
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3

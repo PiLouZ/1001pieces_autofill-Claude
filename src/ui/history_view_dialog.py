@@ -305,7 +305,7 @@ class HistoryViewDialog(QDialog):
         # ── Barre de statut + pagination ──────────────────────────────────────
         bottom_bar = QHBoxLayout()
 
-        self._count_label = QLabel("0 entrée(s)")
+        self._count_label = QLabel("0 entrée")
         self._count_label.setStyleSheet("color: #666;")
         bottom_bar.addWidget(self._count_label)
         bottom_bar.addStretch()
@@ -367,7 +367,8 @@ class HistoryViewDialog(QDialog):
         )
         self._populate_table(rows)
 
-        self._count_label.setText(f"{self._total_count:,} entrée(s)".replace(',', ' '))
+        _formatted = f"{self._total_count:,}".replace(',', ' ')
+        self._count_label.setText(f"{_formatted} {'entrée' if self._total_count <= 1 else 'entrées'}")
         self._page_label.setText(f"Page {self._current_page + 1} / {total_pages}")
         self._prev_btn.setEnabled(self._current_page > 0)
         self._next_btn.setEnabled(self._current_page < total_pages - 1)

@@ -50,7 +50,7 @@ from ..services.paste_results_service import PasteResultsService
 # Imports des modules refactorisés
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from src.core.config import Config
+from src.core.config import Config, pluralize
 from src.core.logger import app_logger
 from src.core.import_manager import ImportManager
 from src.data.database_manager import DatabaseManager, DatabaseError
@@ -990,6 +990,131 @@ class MainWindow(QMainWindow):
             if model:
                 model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
 
+    def _apply_suggestion_decisions(self, decisions):
+        """Cœur batché partagé : applique une liste de décisions [(db_id, candidat)]
+        en UNE seule transaction (collecteur `_bulk_edit_collector` →
+        `save_cells_batch_immediate`), dissipe les indicateurs appliqués et rafraîchit
+        la bannière. Utilisé par le bouton « sans concurrence » ET par la fenêtre de
+        validation (un seul chemin d'écriture = pas de divergence).
+
+        `candidat` porte au minimum 'type'/'manufacturer' (valeurs retenues, possiblement
+        éditées) et idéalement 'ref'/'score' pour la provenance dans l'historique groupé.
+        Retourne le nombre d'appareils effectivement traités.
+        """
+        model = self.table_controller.model
+        if not model or not decisions:
+            return 0
+        save_service = getattr(self, 'event_driven_save_service', None)
+        # Collecte batch : _apply_cell_edit_logic détourne les écritures vers ce set.
+        if save_service is not None:
+            self._bulk_edit_collector = set()
+        try:
+            for db_id, cand in decisions:
+                self._apply_suggestion_with_provenance(cand, model, db_id)
+        finally:
+            collector = getattr(self, '_bulk_edit_collector', None)
+            self._bulk_edit_collector = None
+        if save_service is not None and collector:
+            save_service.save_cells_batch_immediate(collector)
+
+        # Dissiper les indicateurs appliqués + rafraîchir la bannière.
+        for db_id, _ in decisions:
+            model.clear_suggestion(db_id)
+        self.table_controller._update_similarity_banner()
+        return len(decisions)
+
+    def _open_suggestion_validation_dialog(self):
+        """Ouvre la fenêtre de validation polyvalente des suggestions Type/Marque.
+
+        Tableau de synthèse de TOUTES les suggestions (y compris à plusieurs candidats
+        concurrents) : cases à cocher, choix du candidat, édition à la volée, scores.
+        Validation = applique les seules lignes cochées via `_apply_suggestion_decisions`
+        (batché, historisé). Non bloquant (show() + callback).
+        """
+        model = self.table_controller.model
+        if not model or not hasattr(model, 'suggestions_snapshot'):
+            return
+        snapshot = model.suggestions_snapshot()
+        if not snapshot:
+            self.user_interaction_service.add_to_history(
+                "Validation des suggestions : aucune suggestion en attente.")
+            return
+        from .suggestion_validation_dialog import SuggestionValidationDialog
+
+        def _on_validate(decisions):
+            applied = self._apply_suggestion_decisions(decisions)
+            if applied:
+                self.user_interaction_service.add_to_history(
+                    f"Suggestions validées via la fenêtre : "
+                    f"{pluralize(applied, 'appareil')} complété{'s' if applied > 1 else ''}.")
+
+        def _pick_value(db_field, current_value, candidates):
+            # Réutilise la fenêtre Cmd+D (valeurs existantes + suggestions) du tableau.
+            return self.autocompletion_service.show_field_values_dialog(
+                db_field, current_value, suggestions=candidates
+            )
+
+        self._suggestion_validation_dialog = SuggestionValidationDialog(
+            self, snapshot, on_validate=_on_validate, value_picker=_pick_value
+        )
+        self._suggestion_validation_dialog.show()
+
+    def _apply_suggestion_with_provenance(self, candidate, model, db_id):
+        """Applique un candidat en marquant la provenance pour l'historique groupé
+        (visible dans l'entrée comme « source : suggestion réf. X (score Y) »)."""
+        self._suggestion_provenance = (
+            f"suggestion réf. {candidate.get('ref', '')} (score {candidate.get('score', 0):.0%})"
+        )
+        try:
+            return self.autocompletion_service.apply_suggestion_pair(candidate, model, db_id)
+        finally:
+            self._suggestion_provenance = None
+
+    def _resolve_suggestion_inline(self, index, suggestions):
+        """Clic sur l'icône de suggestion (delegate) : application rapide.
+
+        - 1 seul candidat → appliquer directement Type+Marque (pas de dialogue).
+        - Plusieurs candidats en concurrence → ouvrir le chooser pour décider.
+        """
+        if not suggestions:
+            return
+        model = self.table_controller.model
+        if not model:
+            return
+        db_id = model.get_db_id(index.row())
+        if db_id is None:
+            return
+        if len(suggestions) == 1:
+            self._apply_suggestion_with_provenance(suggestions[0], model, db_id)
+            self.table_controller.clear_similarity_suggestion(db_id)
+        else:
+            self._show_suggestion_dialog(index, suggestions, db_id)
+
+    def _show_suggestion_dialog(self, index, suggestions, db_id):
+        """Ouvre le dialogue d'autocomplétion enrichi des suggestions, au clic sur une
+        cellule Type/Marque ayant une suggestion par similarité en attente.
+
+        Le dialogue renvoie soit un dict (candidat choisi → application en paire),
+        soit un str (valeur libre saisie → écriture de la seule colonne cliquée).
+        """
+        col = index.column()
+        current_item = self.table.currentItem() if hasattr(self.table, 'currentItem') else None
+        result = self.autocompletion_service.show_column_values_dialog(
+            self.table, current_item, col, suggestions=suggestions
+        )
+        if result is None:
+            return
+        model = self.table_controller.model
+        if not model:
+            return
+        if isinstance(result, dict):
+            # Candidat choisi : appliquer Type + Marque, puis dissiper l'indicateur.
+            self._apply_suggestion_with_provenance(result, model, db_id)
+            self.table_controller.clear_similarity_suggestion(db_id)
+        else:
+            # Valeur libre : écrire uniquement la colonne cliquée (pipeline complet).
+            model.setData(model.index(index.row(), col), result, Qt.EditRole)
+
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
         # Mapping avec la nouvelle colonne Nb Pièces
@@ -1078,6 +1203,12 @@ class MainWindow(QMainWindow):
         db_id = model.get_db_id(row) if model else None
         self._apply_cell_edit_logic(row, col, old_value, new_value, db_id)
 
+        # Dissiper l'indicateur de suggestion dès que l'utilisateur renseigne Type/Marque
+        # (manuellement ou via une suggestion appliquée) — la ligne n'est plus « à compléter ».
+        if col in (0, 1) and new_value.strip() and db_id is not None:
+            if hasattr(self.table_controller, 'clear_similarity_suggestion'):
+                self.table_controller.clear_similarity_suggestion(db_id)
+
     def _apply_cell_edit_logic(self, row: int, col: int, old_value: str, new_value: str, db_id):
         """Tronc commun post-validation : sauvegarde, historique et mises à jour UI."""
         # Sauvegarde
@@ -1158,11 +1289,14 @@ class MainWindow(QMainWindow):
         # Obtenir le nom de la colonne
         column_name = self._get_column_display_name(col)
 
+        # Provenance transitoire (ex: application d'une suggestion par similarité).
+        source = getattr(self, '_suggestion_provenance', None)
+
         # Utiliser le service de groupement d'historique
         if getattr(self, 'auto_save_enabled', True):
             try:
                 db_id = self.table_fill_service.get_db_id_from_row(self.table, row)
-                self.grouped_history_service.add_modification(db_id, column_name, old_value, new_value)
+                self.grouped_history_service.add_modification(db_id, column_name, old_value, new_value, source=source)
             except Exception as e:
                 # Fallback vers historique normal en cas d'erreur
                 app_logger.warning(f"Erreur historique groupé dans _on_cell_editing_updated, fallback: {e}")
@@ -1479,6 +1613,12 @@ class MainWindow(QMainWindow):
         # Recharger les données pour refléter les changements
         self.table_controller.load_data()
 
+        # Rafraîchir le compteur de lignes incomplètes : la complétion a écrit
+        # Type/Marque directement en base (update_device_info), donc le décompte
+        # « X incomplète(s) » doit être recalculé, sinon il reste figé sur l'ancienne
+        # valeur et donne l'impression que rien ne s'est passé.
+        self._update_incomplete_button_visibility()
+
         # Afficher le résultat
         if result.errors:
             error_msg = f"Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
@@ -1487,12 +1627,14 @@ class MainWindow(QMainWindow):
             self.user_interaction_service.show_error(error_msg)
 
         if result.completed_count > 0:
-            self.user_interaction_service.show_info(f"Auto-complétion réussie !\n\n"
-                           f"{result.completed_count} ligne(s) complétée(s)\n"
-                           f"{result.total_rows_processed} ligne(s) traitée(s)")
+            self.user_interaction_service.show_info(
+                f"Auto-complétion réussie !\n\n"
+                f"{pluralize(result.completed_count, 'ligne complétée', 'lignes complétées')}\n"
+                f"{pluralize(result.total_rows_processed, 'ligne traitée', 'lignes traitées')}")
             self.user_interaction_service.add_to_history(
-                f"Autocomplétion: {result.completed_count} appareil(s) complété(s) "
-                f"sur {result.total_rows_processed} traité(s)"
+                f"Autocomplétion: "
+                f"{pluralize(result.completed_count, 'appareil complété', 'appareils complétés')} "
+                f"sur {result.total_rows_processed} traité{'s' if result.total_rows_processed > 1 else ''}"
             )
             self._auto_save()
         else:
@@ -1750,6 +1892,12 @@ class MainWindow(QMainWindow):
             self.table_controller.clear_column_filters()
 
             self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
+
+            # Installer les suggestions Type/Marque par similarité calculées pendant
+            # l'import (indicateur + bannière conditionnelle). Stockées par db_id :
+            # s'affichent dès que les lignes concernées deviennent visibles.
+            if hasattr(self.table_controller, 'set_similarity_suggestions'):
+                self.table_controller.set_similarity_suggestions(results.get('similarity_suggestions'))
 
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
@@ -2698,6 +2846,20 @@ class MainWindow(QMainWindow):
                 )
                 context_menu.addAction(filter_action)
 
+        # — Suggérer Type/Marque par similarité (si lignes incomplètes) ————
+        mdl = self.table.model()
+        has_incomplete = any(
+            not ((mdl.data(mdl.index(r, 0), Qt.DisplayRole) or '').strip()
+                 and (mdl.data(mdl.index(r, 1), Qt.DisplayRole) or '').strip())
+            for r in selected_rows
+        )
+        if has_incomplete:
+            suggest_action = QAction("Suggérer Type/Marque par similarité", self)
+            suggest_action.triggered.connect(
+                lambda checked=False, rows=list(selected_rows): self._suggest_similarity_for_rows(rows)
+            )
+            context_menu.addAction(suggest_action)
+
         context_menu.addSeparator()
 
         # — Supprimer ——————————————————————————————————————————————
@@ -2706,6 +2868,121 @@ class MainWindow(QMainWindow):
         context_menu.addAction(delete_action)
 
         context_menu.exec_(self.table.mapToGlobal(position))
+
+    def _suggest_similarity_for_rows(self, selected_rows):
+        """Calcule à la demande des suggestions Type/Marque pour les lignes
+        sélectionnées incomplètes (déclenchement manuel, hors import).
+
+        Utilise une requête CIBLÉE par préfixe de référence (pas l'index complet
+        des 655k lignes) pour rester instantané sur un clic droit.
+        """
+        model = self.table_controller.model
+        if not model:
+            return
+
+        # Collecter les lignes incomplètes + leurs références
+        incomplete = []   # (db_id, ref_modele, commercial_ref)
+        prefixes = set()
+        for row in selected_rows:
+            db_id = model.get_db_id(row)
+            if db_id is None:
+                continue
+            type_v = (model.data(model.index(row, 0), Qt.DisplayRole) or '').strip()
+            mfr_v = (model.data(model.index(row, 1), Qt.DisplayRole) or '').strip()
+            if type_v and mfr_v:
+                continue
+            ref_modele = (model.data(model.index(row, 2), Qt.DisplayRole) or '').strip()
+            commercial_ref = (model.data(model.index(row, 3), Qt.DisplayRole) or '').strip()
+            incomplete.append((db_id, ref_modele, commercial_ref))
+            for ref in (ref_modele, commercial_ref):
+                if len(ref) >= 3:
+                    prefixes.add(ref[:3].lower())
+
+        if not incomplete or not prefixes:
+            self.user_interaction_service.add_to_history(
+                "Suggestions similarité : aucune ligne incomplète dans la sélection.")
+            return
+
+        found = self._compute_similarity_suggestions(incomplete, prefixes)
+        if found:
+            model.add_pending_suggestions(found)
+            self.table_controller._update_similarity_banner()
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité : {pluralize(len(found), 'proposition')} sur "
+                f"{pluralize(len(incomplete), 'ligne incomplète sélectionnée', 'lignes incomplètes sélectionnées')}"
+                f" — cellules surlignées.")
+        else:
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité : aucune proposition sur "
+                f"{pluralize(len(incomplete), 'ligne incomplète sélectionnée', 'lignes incomplètes sélectionnées')}.")
+
+    def _compute_similarity_suggestions(self, incomplete, prefixes):
+        """Cœur partagé (menu contextuel + scan global) : construit un index CIBLÉ
+        par préfixe de référence puis calcule les candidats.
+
+        incomplete : [(db_id, ref_modele, commercial_ref)] ; prefixes : set de préfixes
+        de 3 caractères (minuscules). Retourne {db_id: [candidat_dict, ...]}.
+        """
+        from ..services.reference_similarity_service import ReferenceSimilarityService
+        like_clauses = " OR ".join(
+            ["ref_modele LIKE ? COLLATE NOCASE", "commercial_ref LIKE ? COLLATE NOCASE"] * len(prefixes)
+        )
+        params = []
+        for p in prefixes:
+            params.extend([p + '%', p + '%'])
+        query = (
+            "SELECT id, ref_modele, commercial_ref, type, manufacturer FROM appareils "
+            "WHERE (type IS NOT NULL AND type != '' OR manufacturer IS NOT NULL AND manufacturer != '') "
+            f"AND ({like_clauses})"
+        )
+        rows = self.db_manager.execute_query(query, params) or []
+        index = ReferenceSimilarityService.build_reference_index(rows)
+        svc = ReferenceSimilarityService(
+            allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,
+            fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
+            enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
+        )
+        found = {}
+        for db_id, ref_modele, commercial_ref in incomplete:
+            cands = svc.find_candidates(ref_modele, commercial_ref, index, exclude_db_id=db_id)
+            if cands:
+                found[db_id] = [c.to_dict() for c in cands]
+        return found
+
+    def _scan_all_for_suggestions(self):
+        """Action menu Données : re-scanne TOUTES les lignes incomplètes chargées
+        et propose des suggestions Type/Marque (utile après avoir complété des
+        références de comparaison, ou pour des lignes hors période d'import)."""
+        model = self.table_controller.model
+        if not model:
+            return
+        incomplete = model.incomplete_records()
+        prefixes = set()
+        for _, ref_modele, commercial_ref in incomplete:
+            for ref in (ref_modele, commercial_ref):
+                if len(ref) >= 3:
+                    prefixes.add(ref[:3].lower())
+        if not incomplete or not prefixes:
+            self.user_interaction_service.add_to_history(
+                "Suggestions similarité (scan global) : aucune ligne incomplète dans l'affichage courant.")
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            found = self._compute_similarity_suggestions(incomplete, prefixes)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if found:
+            model.add_pending_suggestions(found)
+            self.table_controller._update_similarity_banner()
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité (scan global) : {pluralize(len(found), 'proposition')} sur "
+                f"{pluralize(len(incomplete), 'ligne incomplète', 'lignes incomplètes')} — cellules surlignées.")
+        else:
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité (scan global) : aucune proposition parmi "
+                f"{pluralize(len(incomplete), 'ligne incomplète', 'lignes incomplètes')}.")
 
     def _set_column_filter(self, col: int, value: str):
         """Injecte une valeur dans le widget filtre de la colonne correspondante."""
@@ -2787,7 +3064,7 @@ class MainWindow(QMainWindow):
                 "• 1 colonne : Référence modèle\n"
                 "• 2 colonnes : Référence modèle + Référence commerciale\n"
                 "• 3 colonnes : Référence modèle + Référence commerciale + Description/Autre\n\n"
-                f"Détecté : {detected_columns} colonne(s)\n\n"
+                f"Détecté : {pluralize(detected_columns, 'colonne')}\n\n"
                 "💡 Astuce : Copiez les données depuis un tableur (Excel, Calc, etc.) "
                 "pour conserver la séparation par tabulations."
             )
@@ -2816,7 +3093,7 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().setText(clipboard_string)
 
         self.statusbar.showMessage(
-            f"Copié: {len(clipboard_data)} ligne(s)",
+            f"Copié: {pluralize(len(clipboard_data), 'ligne')}",
             Config.STATUS_MESSAGE_TIMEOUT
         )
 

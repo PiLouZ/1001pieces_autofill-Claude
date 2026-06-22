@@ -2131,6 +2131,9 @@ class ImportManager:
 
             app_logger.info(f" Import de {len(config.files)} fichier(s)")
             seen_device_refs = set()
+            # Collecte (niveau session, accumulée sur tous les fichiers) des lignes
+            # restées incomplètes après le mécanisme exact, pour suggestions différées.
+            self._pending_similarity_candidates = []
 
             n = len(config.files)
             if progress_cb:
@@ -2181,6 +2184,11 @@ class ImportManager:
                 progress_cb(n, n, "Finalisation…")
 
             app_logger.info(f"[OK] Import terminé : {results['successful_files']}/{n} fichiers")
+
+            # Suggestions Type/Marque par similarité (additif, non bloquant) : calcul
+            # en un seul lot sur les lignes incomplètes collectées pendant l'import.
+            if not dry_run:
+                results['similarity_suggestions'] = self._compute_pending_similarity_suggestions()
 
             if not dry_run:
                 self._apply_succession_from_config(config, results)
@@ -2606,14 +2614,25 @@ class ImportManager:
             if existing_id:
                 # Appareil existant
                 results['matches_found'] += 1
+                device_data['id'] = existing_id   # pour la collecte des suggestions (ci-dessous)
                 if self._needs_update(device_data):
                     existing_updates.append((existing_id, device_data))
             else:
-                # Nouvel appareil à créer
+                # Nouvel appareil à créer (l'id sera réinjecté après insertion batch)
                 results['new_entries'] += 1
                 if self._needs_manual_completion(device_data):
                     results['manual_completion'] += 1
                 new_devices_batch.append(device_data)
+
+            # Suggestions par similarité (ADDITIF) : collecter les lignes restées
+            # incomplètes APRÈS le mécanisme exact, pour calcul différé en fin d'import.
+            # On stocke la RÉFÉRENCE à device_data : l'id (réinjecté plus bas pour les
+            # nouveaux appareils) sera visible au moment du calcul.
+            if (not dry_run and Config.ENABLE_SIMILARITY_SUGGESTIONS
+                    and hasattr(self, '_pending_similarity_candidates')):
+                if not ((device_data.get('type') or '').strip()
+                        and (device_data.get('manufacturer') or '').strip()):
+                    self._pending_similarity_candidates.append(device_data)
 
             # Préparer associations (sera traitée après insertion batch)
             # CORRECTION: Utiliser processed_line_index pour avoir des indices consécutifs
@@ -2641,6 +2660,12 @@ class ImportManager:
 
             if len(new_devices_batch) != len(new_device_ids):
                 app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
+
+            # Réinjecter l'id généré dans chaque device_data (additif) : nécessaire à la
+            # collecte des suggestions par similarité (et sans effet sur le reste du flux).
+            # new_device_ids est parallèle à new_devices_batch ; zip tronque si tailles diffèrent.
+            for _dev_data, _new_id in zip(new_devices_batch, new_device_ids):
+                _dev_data['id'] = _new_id
 
             app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
             if existing_updates:
@@ -2705,7 +2730,13 @@ class ImportManager:
         from .config import Config
         query = Config.QUERIES['preload_all_devices']
         rows = self.db_manager.execute_query(query)
-        
+
+        # Conserver les lignes brutes pour le calcul des suggestions par similarité
+        # (réutilise la même lecture — pas de requête supplémentaire). Les colonnes
+        # (id, ref_modele, commercial_ref, type, manufacturer) suffisent : build_reference_index
+        # ne lit que row[:5] et ignore other_ref/notes.
+        self._existing_devices_rows_for_similarity = rows
+
         cache = {}
         for row in rows:
             device_id, ref_modele, commercial_ref, device_type, manufacturer, other_ref, notes = row
@@ -2722,9 +2753,58 @@ class ImportManager:
                     'other_ref': other_ref,
                     'notes': notes
                 }
-        
+
         return cache
-    
+
+    def _compute_pending_similarity_suggestions(self) -> Dict[int, list]:
+        """Calcule les suggestions Type/Marque par similarité pour les lignes
+        restées incomplètes après le mécanisme exact (collectées pendant la boucle
+        d'import dans self._pending_similarity_candidates).
+
+        ADDITIF, aucune écriture : ne fait que proposer. Ne doit JAMAIS faire
+        échouer un import (try/except interne, retourne {} en cas de souci).
+
+        Returns:
+            Dict[db_id, List[dict]] — candidats par appareil (SimilarityCandidate.to_dict()).
+        """
+        from .config import Config
+        if not Config.ENABLE_SIMILARITY_SUGGESTIONS:
+            return {}
+        if not getattr(self, '_pending_similarity_candidates', None):
+            return {}
+        rows = getattr(self, '_existing_devices_rows_for_similarity', None)
+        if not rows:
+            return {}
+        try:
+            from ..services.reference_similarity_service import ReferenceSimilarityService
+            reference_index = ReferenceSimilarityService.build_reference_index(rows)
+            service = ReferenceSimilarityService(
+                allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,
+                fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
+                enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
+            )
+            suggestions_by_db_id: Dict[int, list] = {}
+            for device_data in self._pending_similarity_candidates:
+                db_id = device_data.get('id')
+                if not db_id:
+                    continue
+                candidates = service.find_candidates(
+                    ref_modele=device_data.get('ref_modele', ''),
+                    commercial_ref=device_data.get('commercial_ref', ''),
+                    reference_index=reference_index,
+                    exclude_db_id=db_id,
+                )
+                if candidates:
+                    suggestions_by_db_id[db_id] = [c.to_dict() for c in candidates]
+            app_logger.info(
+                f"Suggestions par similarité : {len(suggestions_by_db_id)} appareil(s) "
+                f"sur {len(self._pending_similarity_candidates)} ligne(s) incomplète(s)"
+            )
+            return suggestions_by_db_id
+        except Exception as e:
+            app_logger.error(f"Calcul des suggestions de similarité échoué (non bloquant): {e}")
+            return {}
+
     def _build_autocomplete_cache(self, existing_devices_cache: Dict[str, Dict]) -> Dict[str, Dict[str, str]]:
         """Construire un cache pour l'auto-complétion (Type + Fabricant par référence)"""
         autocomplete_cache = {}

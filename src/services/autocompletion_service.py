@@ -3,7 +3,7 @@ Service d'autocomplétion - Phase 2.4
 Gère les fenêtres d'autocomplétion et la récupération des valeurs
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                             QPushButton, QListWidget, QListWidgetItem, QMessageBox, QWidget, Qt,
                             QTimer)
@@ -21,7 +21,8 @@ class AutoCompletionService(BaseService):
         self.db_manager = db_manager
         self.parent_widget = parent_widget
     
-    def show_column_values_dialog(self, table_widget, current_item, current_col, prefill: str = "") -> Optional[str]:
+    def show_column_values_dialog(self, table_widget, current_item, current_col, prefill: str = "",
+                                  suggestions: Optional[List[dict]] = None) -> Union[str, dict, None]:
         """
         Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D)
 
@@ -29,9 +30,13 @@ class AutoCompletionService(BaseService):
             table_widget: Widget du tableau (QTableWidget ou CustomTableView)
             current_item: Item actuel sélectionné (QTableWidgetItem ou compat)
             current_col: Colonne actuelle
+            suggestions: candidats Type/Marque par similarité (optionnel). S'ils sont
+                fournis, une section « Suggestions » est ajoutée en tête de liste.
 
         Returns:
-            str: Valeur sélectionnée ou None si annulé/colonne sans champ DB
+            - str  : valeur saisie/choisie (à écrire dans la colonne courante)
+            - dict : candidat de suggestion choisi (à appliquer en paire Type+Marque)
+            - None : annulé / colonne sans champ DB
         """
         db_field = self._get_db_field_name(current_col)
         if not db_field:
@@ -43,8 +48,47 @@ class AutoCompletionService(BaseService):
         label = f"Sélectionner ou saisir une valeur pour « {col_label} » :"
         # Pré-sélectionner le texte existant (Cmd+D normal), pas lors d'un préfixe de frappe
         select_all = not bool(prefill)
-        return self._show_autocompletion_dialog(title, label, db_field, current_value, select_all=select_all)
-    
+        return self._show_autocompletion_dialog(title, label, db_field, current_value,
+                                                select_all=select_all, suggestions=suggestions)
+
+    def show_field_values_dialog(self, db_field: str, current_value: str = "",
+                                 suggestions: Optional[List[dict]] = None) -> Union[str, dict, None]:
+        """Variante de `show_column_values_dialog` SANS dépendance à un tableau : ouvre
+        exactement la même fenêtre Cmd+D (valeurs existantes + section Suggestions) pour
+        un champ donné. Utilisée par la fenêtre de validation des suggestions pour
+        conserver une interaction identique au tableau principal.
+
+        Returns: str (valeur choisie/saisie), dict (candidat → paire Type+Marque), None.
+        """
+        labels = {'type': 'Type', 'manufacturer': 'Fabricant'}
+        col_label = labels.get(db_field, db_field)
+        title = f"Valeurs — {col_label}"
+        label = f"Sélectionner ou saisir une valeur pour « {col_label} » :"
+        return self._show_autocompletion_dialog(
+            title, label, db_field, current_value,
+            select_all=bool(current_value), suggestions=suggestions
+        )
+
+    def apply_suggestion_pair(self, candidate: dict, model, db_id: int) -> bool:
+        """Applique un candidat de suggestion (Type + Marque) via le pipeline existant.
+
+        Écrit par model.setData() → signal cell_edited → EventDrivenSaveService.
+        AUCUN accès direct à la base. Ne touche pas la bannière (responsabilité de
+        l'appelant). N'écrit que les champs non vides du candidat.
+
+        Returns:
+            bool: True si toutes les écritures tentées ont réussi.
+        """
+        row = model.find_row_by_db_id(db_id)
+        if row is None:
+            return False
+        ok = True
+        if candidate.get('type'):
+            ok = model.setData(model.index(row, 0), candidate['type'], Qt.EditRole) and ok
+        if candidate.get('manufacturer'):
+            ok = model.setData(model.index(row, 1), candidate['manufacturer'], Qt.EditRole) and ok
+        return ok
+
     @handle_autocompletion_errors(return_value="")
     def _get_current_cell_edit_value(self, table_widget, current_item, current_col):
         """Récupérer la valeur actuelle d'une cellule, même si elle est en cours d'édition"""
@@ -74,7 +118,9 @@ class AutoCompletionService(BaseService):
         # Méthode 4: Valeur par défaut depuis l'item
         return current_item.text() if current_item else ""
     
-    def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "", select_all: bool = True) -> Optional[str]:
+    def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "",
+                                    select_all: bool = True,
+                                    suggestions: Optional[List[dict]] = None) -> Union[str, dict, None]:
         """Afficher une fenêtre d'auto-complétion dédiée avec navigation clavier"""
         dialog = QDialog(self.parent_widget)
         dialog.setWindowTitle(title)
@@ -97,17 +143,34 @@ class AutoCompletionService(BaseService):
         layout.addWidget(values_list)
         
         # Récupérer les valeurs de la base de données et configurer l'interface
-        return self._safe_configure_dialog_interface(dialog, layout, input_field, values_list, db_field, current_value, select_all=select_all)
+        return self._safe_configure_dialog_interface(dialog, layout, input_field, values_list, db_field, current_value, select_all=select_all, suggestions=suggestions)
 
-    def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value, select_all: bool = True):
+    def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value, select_all: bool = True, suggestions: Optional[List[dict]] = None):
         """Configurer l'interface du dialogue de manière sécurisée"""
         # Récupérer les valeurs de la base de données
         all_values = self.db_manager.get_column_values(db_field)
+        # Résultat : candidat de suggestion choisi (sinon None → on renvoie le texte saisi).
+        chosen = {'candidate': None}
 
         def update_list():
             """Mettre à jour la liste selon le filtre"""
             filter_text = input_field.text().lower()
             values_list.clear()
+
+            # Section « Suggestions » en tête, uniquement sans filtre actif.
+            if suggestions and not filter_text:
+                header = QListWidgetItem("— Suggestions (similarité) —")
+                header.setFlags(Qt.NoItemFlags)
+                values_list.addItem(header)
+                for cand in suggestions:
+                    text = (f"{cand.get('type', '')} / {cand.get('manufacturer', '')}  "
+                            f"(score {cand.get('score', 0):.0%}, réf. {cand.get('ref', '')})")
+                    s_item = QListWidgetItem(text)
+                    s_item.setData(Qt.UserRole, cand)   # dict complet → application en paire
+                    values_list.addItem(s_item)
+                separator = QListWidgetItem("— Valeurs existantes —")
+                separator.setFlags(Qt.NoItemFlags)
+                values_list.addItem(separator)
 
             # Ajouter les items filtrés
             filtered_values = []
@@ -137,13 +200,20 @@ class AutoCompletionService(BaseService):
 
         # Double-clic pour valider
         def on_item_double_clicked(item):
+            cand = item.data(Qt.UserRole)
+            if isinstance(cand, dict):       # item de suggestion → application en paire
+                chosen['candidate'] = cand
+                dialog.accept()
+                return
             input_field.setText(item.text())
             dialog.accept()
 
         values_list.itemDoubleClicked.connect(on_item_double_clicked)
 
-        # Clic simple pour remplir le champ
+        # Clic simple pour remplir le champ (sauf items de suggestion : double-clic requis)
         def on_item_clicked(item):
+            if isinstance(item.data(Qt.UserRole), dict):
+                return
             input_field.setText(item.text())
 
         values_list.itemClicked.connect(on_item_clicked)
@@ -171,6 +241,11 @@ class AutoCompletionService(BaseService):
                 # Entrée : utiliser l'item surligné dans la liste si disponible
                 selected_list_item = values_list.currentItem()
                 if selected_list_item:
+                    cand = selected_list_item.data(Qt.UserRole)
+                    if isinstance(cand, dict):
+                        chosen['candidate'] = cand
+                        dialog.accept()
+                        return
                     input_field.setText(selected_list_item.text())
                 dialog.accept()
             elif key == Qt.Key_Escape:
@@ -192,6 +267,11 @@ class AutoCompletionService(BaseService):
                 # Entrée : valider la sélection
                 current_item = values_list.currentItem()
                 if current_item:
+                    cand = current_item.data(Qt.UserRole)
+                    if isinstance(cand, dict):
+                        chosen['candidate'] = cand
+                        dialog.accept()
+                        return
                     input_field.setText(current_item.text())
                     dialog.accept()
             elif key == Qt.Key_Escape:
@@ -238,6 +318,9 @@ class AutoCompletionService(BaseService):
         
         # Afficher le dialogue
         if dialog.exec_() == QDialog.Accepted:
+            # Un candidat de suggestion choisi prime sur la saisie texte.
+            if chosen['candidate'] is not None:
+                return chosen['candidate']
             return input_field.text().strip()
         else:
             return None
