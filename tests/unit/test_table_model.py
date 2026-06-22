@@ -319,3 +319,24 @@ class TestSuggestionsSimilarite:
         m.set_pending_suggestions({1: [self._candidate()]})
         m.add_pending_suggestions({2: [self._candidate()]})
         assert m.pending_suggestions_count == 2
+
+    def test_suggestions_snapshot_structure(self, qapp):
+        """suggestions_snapshot expose réf. + valeurs actuelles + candidats par db_id ;
+        ignore les db_id sans enregistrement chargé."""
+        m = AppareillsTableModel()
+        m.load_records([
+            make_record(db_id=1, type_="", manufacturer="", ref_modele="HE517BBS4/01",
+                        commercial_ref="3HB5351X0"),
+            make_record(db_id=2, type_="", manufacturer="Bosch", ref_modele="SMU6ZCS10S/58",
+                        commercial_ref=""),
+        ])
+        cand = self._candidate()
+        m.set_pending_suggestions({1: [cand], 2: [cand], 999: [cand]})  # 999 absent des records
+        snap = m.suggestions_snapshot()
+        by_id = {e['db_id']: e for e in snap}
+        assert set(by_id) == {1, 2}  # 999 ignoré
+        assert by_id[1]['ref_modele'] == "HE517BBS4/01"
+        assert by_id[1]['commercial_ref'] == "3HB5351X0"
+        assert by_id[1]['current_type'] == ""
+        assert by_id[2]['current_manufacturer'] == "Bosch"
+        assert by_id[1]['candidates'] == [cand]

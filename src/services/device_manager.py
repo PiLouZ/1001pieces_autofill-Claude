@@ -143,10 +143,6 @@ class DeviceManager(BaseService):
         if not updates:
             return True  # Rien à faire
 
-        # Préparer les champs pour la mise à jour
-        set_clauses = []
-        values = []
-
         # Mapping des champs du dictionnaire vers les colonnes de la DB
         field_mapping = {
             'type': 'type',
@@ -157,24 +153,22 @@ class DeviceManager(BaseService):
             'other_ref': 'other_ref'
         }
 
+        # Construire le dict {colonne_db: valeur} pour le chemin batché canonique.
+        # IMPORTANT : passer par update_multiple_cells_batch (qui COMMIT) et non par
+        # execute_custom_query (qui n'effectue PAS de commit) — sinon l'UPDATE reste
+        # dans une transaction non validée et les valeurs sont perdues à la fermeture.
+        column_updates = {}
         for key, value in updates.items():
             if key in field_mapping and value is not None:
                 db_field = field_mapping[key]
-                set_clauses.append(f"{db_field} = ?")
-                values.append(value.strip() if isinstance(value, str) else value)
+                column_updates[db_field] = value.strip() if isinstance(value, str) else value
 
-        if not set_clauses:
+        if not column_updates:
             app_logger.warning("Aucune mise à jour valide à appliquer")
             return True
 
-        # Ajouter l'ID pour la clause WHERE
-        values.append(device_id)
-
-        # Construire et exécuter la requête de mise à jour
-        query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
-
-        result = self.db_manager.execute_custom_query(query, values)
-        if result is not None:
+        success = self.db_manager.update_multiple_cells_batch({device_id: column_updates})
+        if success:
             app_logger.info(f"Appareil {device_id} mis à jour avec succès")
             return True
         else:

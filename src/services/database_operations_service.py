@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Any, Tuple, Callable
 from ..ui.qt_imports import QMessageBox
 from ..ui.qt_imports import pyqtSignal, Qt
 
-from ..core.config import Config
+from ..core.config import Config, pluralize
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 from ..utils.error_handler import handle_database_operation_errors
@@ -484,15 +484,15 @@ class DatabaseOperationsService(BaseService):
 
             # Ajouter à l'historique
             if self.user_interaction_service and devices_info:
-                history_msg = f"Suppression de {deleted_count} appareil(s): " + ", ".join(devices_info[:3])
+                history_msg = f"Suppression de {pluralize(deleted_count, 'appareil')}: " + ", ".join(devices_info[:3])
                 if len(devices_info) > 3:
-                    history_msg += f" et {len(devices_info) - 3} autre(s)"
+                    history_msg += f" et {pluralize(len(devices_info) - 3, 'autre')}"
                 self.user_interaction_service.add_to_history(history_msg)
 
             # Afficher le résultat
             if self.user_interaction_service:
                 self.user_interaction_service.show_success(
-                    f"{deleted_count} appareil(s) supprimé(s) avec succès"
+                    f"{pluralize(deleted_count, 'appareil supprimé', 'appareils supprimés')} avec succès"
                 )
 
             # Feature Flag: Phase 4 - Sauvegarde événementielle après suppression (délégation service)

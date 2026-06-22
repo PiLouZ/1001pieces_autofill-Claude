@@ -397,9 +397,11 @@ class CleanupPreviewDialog(QDialog):
         # Section "immédiat" : marquages distincts déjà enregistrés cette session
         if self._distinct_marked_session > 0:
             preview_text += "DÉJÀ APPLIQUÉ pendant cette session (immédiat) :\n"
+            _n = self._distinct_marked_session
+            _g = 'groupe marqué' if _n <= 1 else 'groupes marqués'
             preview_text += (
-                f"  • {self._distinct_marked_session} groupe(s) marqué(s) comme distinct(s) "
-                "— enregistré(s) en base\n\n"
+                f"  • {_n} {_g} comme distinct{'s' if _n > 1 else ''} "
+                f"— enregistré{'s' if _n > 1 else ''} en base\n\n"
             )
 
         preview_text += "SERA APPLIQUÉ au clic sur « Appliquer le nettoyage » (différé) :\n\n"

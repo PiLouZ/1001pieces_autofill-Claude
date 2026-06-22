@@ -14,7 +14,7 @@ from typing import Optional, List, Dict, Any, Set
 from .qt_imports import QListWidgetItem, QMessageBox
 from .qt_imports import Qt
 
-from src.core.config import Config
+from src.core.config import Config, pluralize
 from src.core.logger import app_logger
 from src.utils.error_handler import handle_ui_errors
 
@@ -107,11 +107,11 @@ class PieceManagementService:
             
             # Message de succès
             if error_count == 0:
-                history_message = f"Pièce '{ref_piece}' ajoutée avec succès à {success_count} appareil(s)"
+                history_message = f"Pièce '{ref_piece}' ajoutée avec succès à {pluralize(success_count, 'appareil')}"
             else:
-                history_message = f"Pièce '{ref_piece}' ajoutée à {success_count} appareil(s)"
+                history_message = f"Pièce '{ref_piece}' ajoutée à {pluralize(success_count, 'appareil')}"
                 if error_count > 0:
-                    history_message += f" ({error_count} erreur(s))"
+                    history_message += f" ({pluralize(error_count, 'erreur')})"
                     
             self.main_window.user_interaction_service.add_to_history(history_message)
             self.main_window.user_interaction_service.show_status_message(history_message, Config.STATUS_MESSAGE_TIMEOUT)
@@ -208,7 +208,8 @@ class PieceManagementService:
         # Demander confirmation
         confirmed = self.main_window.user_interaction_service.show_confirmation(
             "Confirmer la suppression multiple",
-            f"Supprimer la pièce '{ref_piece}' de {len(selected_rows)} appareil(s) sélectionné(s) ?",
+            f"Supprimer la pièce '{ref_piece}' de "
+            f"{pluralize(len(selected_rows), 'appareil sélectionné', 'appareils sélectionnés')} ?",
             default_yes=False
         )
         
@@ -237,9 +238,9 @@ class PieceManagementService:
                 self.main_window.pieces_panel_service.update_pieces_panel()
                 self.main_window._refresh_pieces_count_column()
                 
-                message = f"Pièce '{ref_piece}' supprimée de {success_count} appareil(s)"
+                message = f"Pièce '{ref_piece}' supprimée de {pluralize(success_count, 'appareil')}"
                 if error_count > 0:
-                    message += f" ({error_count} erreur(s))"
+                    message += f" ({pluralize(error_count, 'erreur')})"
                 
                 self.main_window.user_interaction_service.add_to_history(message)
                 self.main_window.user_interaction_service.show_status_message(message, Config.STATUS_MESSAGE_TIMEOUT)

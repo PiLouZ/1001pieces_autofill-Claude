@@ -15,7 +15,7 @@ from PyQt5.QtCore import Qt, QAbstractTableModel, QEvent, QModelIndex, QRect, QR
 from PyQt5.QtGui import QBrush, QColor, QPainter
 from PyQt5.QtWidgets import QStyle, QStyledItemDelegate
 
-from src.core.config import Config
+from src.core.config import Config, pluralize
 
 # Colonnes Type (0) et Fabricant (1) — cibles des suggestions par similarité.
 _SUGGESTION_COLS = (0, 1)
@@ -116,7 +116,7 @@ class AppareillsTableModel(QAbstractTableModel):
         elif role == Qt.ToolTipRole:
             if col == len(Config.DB_HEADERS):
                 pieces = record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0
-                return f"{pieces} pièce(s) associée(s)" if pieces > 0 else "Aucune pièce associée"
+                return pluralize(pieces, 'pièce associée', 'pièces associées') if pieces > 0 else "Aucune pièce associée"
             if col in _SUGGESTION_COLS:
                 suggestions = self._pending_suggestions.get(record[0])
                 if suggestions:
@@ -281,6 +281,30 @@ class AppareillsTableModel(QAbstractTableModel):
         confusion inter-marques — est exclue et exige un choix humain."""
         return [(db_id, cands[0]) for db_id, cands in self._pending_suggestions.items()
                 if len(cands) == 1]
+
+    def suggestions_snapshot(self):
+        """Décrit chaque appareil ayant des suggestions en attente, pour alimenter la
+        fenêtre de validation. Chaque entrée :
+        {db_id, ref_modele, commercial_ref, current_type, current_manufacturer,
+         candidates: [candidat_dict, ...]}.
+
+        Record : (db_id, type, manufacturer, ref_modele, commercial_ref, ...).
+        Les db_id sans enregistrement chargé (hors page courante) sont ignorés."""
+        by_id = {rec[0]: rec for rec in self._records}
+        out = []
+        for db_id, cands in self._pending_suggestions.items():
+            rec = by_id.get(db_id)
+            if rec is None:
+                continue
+            out.append({
+                'db_id': db_id,
+                'ref_modele': (rec[3] or '') if len(rec) > 3 else '',
+                'commercial_ref': (rec[4] or '') if len(rec) > 4 else '',
+                'current_type': (rec[1] or '') if len(rec) > 1 else '',
+                'current_manufacturer': (rec[2] or '') if len(rec) > 2 else '',
+                'candidates': list(cands),
+            })
+        return out
 
     @property
     def pending_suggestions_count(self):

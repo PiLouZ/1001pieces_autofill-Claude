@@ -5,7 +5,7 @@ Extrait des méthodes _on_* de main_refactored.py
 
 from typing import Any, Dict
 from src.core.logger import app_logger
-from src.core.config import Config
+from src.core.config import Config, pluralize
 from src.utils.error_handler import handle_event_handler_errors
 
 class EventHandlersService:
@@ -93,7 +93,7 @@ class EventHandlersService:
     def on_import_started(self, data: Dict[str, Any]):
         """Gestionnaire événement début d'import"""
         if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f" Import de {data['file_count']} fichier(s)...")
+            self.main_window.statusbar.showMessage(f" Import de {pluralize(data['file_count'], 'fichier')}...")
     
     def on_import_completed(self, data: Dict[str, Any]):
         """Gestionnaire événement fin d'import"""

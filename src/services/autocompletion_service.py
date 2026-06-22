@@ -50,7 +50,25 @@ class AutoCompletionService(BaseService):
         select_all = not bool(prefill)
         return self._show_autocompletion_dialog(title, label, db_field, current_value,
                                                 select_all=select_all, suggestions=suggestions)
-    
+
+    def show_field_values_dialog(self, db_field: str, current_value: str = "",
+                                 suggestions: Optional[List[dict]] = None) -> Union[str, dict, None]:
+        """Variante de `show_column_values_dialog` SANS dépendance à un tableau : ouvre
+        exactement la même fenêtre Cmd+D (valeurs existantes + section Suggestions) pour
+        un champ donné. Utilisée par la fenêtre de validation des suggestions pour
+        conserver une interaction identique au tableau principal.
+
+        Returns: str (valeur choisie/saisie), dict (candidat → paire Type+Marque), None.
+        """
+        labels = {'type': 'Type', 'manufacturer': 'Fabricant'}
+        col_label = labels.get(db_field, db_field)
+        title = f"Valeurs — {col_label}"
+        label = f"Sélectionner ou saisir une valeur pour « {col_label} » :"
+        return self._show_autocompletion_dialog(
+            title, label, db_field, current_value,
+            select_all=bool(current_value), suggestions=suggestions
+        )
+
     def apply_suggestion_pair(self, candidate: dict, model, db_id: int) -> bool:
         """Applique un candidat de suggestion (Type + Marque) via le pipeline existant.
 

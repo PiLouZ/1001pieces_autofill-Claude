@@ -12,7 +12,7 @@ from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout,
                             QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView,
                             QHeaderView, QCompleter, QStringListModel)
 
-from ..core.config import Config
+from ..core.config import Config, pluralize
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
 from ..utils.error_handler import (
@@ -111,6 +111,9 @@ class TableController:
         # Phase 2c: Worker thread pour async operations
         self.query_worker = None
         self.loading_in_progress = False
+        # Dernière demande de recherche async mise en attente pendant un chargement
+        # (coalescing) — rejouée à la fin du worker courant.
+        self._pending_async_request = None
 
         # Historique des recherches (max 10, le plus récent en premier)
         self.search_history = []
@@ -861,9 +864,14 @@ class TableController:
         import time
         start_time = time.time()
 
-        # Empêcher les requêtes multiples simultanées
+        # Empêcher les requêtes multiples simultanées, mais NE PAS abandonner la
+        # demande : on mémorise la dernière (coalescing) pour la rejouer dès que le
+        # worker courant se termine. Sinon, une recherche tapée pendant qu'une
+        # requête tourne encore était silencieusement perdue → le tableau gardait
+        # les anciens résultats (notamment « aucun résultat » jamais affiché).
         if self.loading_in_progress:
-            app_logger.debug("Requête async déjà en cours, ignorée")
+            self._pending_async_request = (search_term, is_search)
+            app_logger.debug("Requête async déjà en cours — demande mise en attente (coalescing)")
             return
 
         # IDENTIQUE à load_data() - même logique de préparation
@@ -990,6 +998,19 @@ class TableController:
 
         app_logger.debug(f"load_data_async terminé: {len(records)} résultats")
 
+        # Rejouer la dernière demande mise en attente pendant ce chargement (coalescing)
+        self._drain_pending_async_request()
+
+    def _drain_pending_async_request(self):
+        """Relance la dernière recherche async mise en attente pendant qu'une autre
+        tournait. Garantit que la DERNIÈRE demande de l'utilisateur gagne toujours,
+        sans relancer les requêtes intermédiaires (une seule en attente à la fois)."""
+        pending = getattr(self, '_pending_async_request', None)
+        if pending is not None:
+            self._pending_async_request = None
+            search_term, is_search = pending
+            self.load_data_async(search_term, is_search)
+
     def _on_async_error(self, error_msg):
         """Callback en cas d'erreur async"""
         app_logger.error(f"Erreur requête async: {error_msg}")
@@ -997,6 +1018,10 @@ class TableController:
         self.table.setRowCount(0)
         if hasattr(self.parent_window, 'statusbar'):
             self.parent_window.statusbar.showMessage(f"Erreur DB : {error_msg}", Config.STATUS_MESSAGE_TIMEOUT)
+
+        # Rejouer la dernière demande mise en attente même après une erreur, sinon
+        # l'UI resterait bloquée sur l'ancien contenu jusqu'au prochain rafraîchissement.
+        self._drain_pending_async_request()
 
     @handle_table_operations_errors(log_prefix="Erreur application visibilité colonnes")
     def _apply_column_visibility(self):
@@ -1526,9 +1551,10 @@ class TableController:
             self.parent_window._resolve_suggestion_inline(index, suggestions)
 
     def _on_validate_all_safe(self):
-        """Relais du bouton « tout valider » vers la fenêtre principale (batché)."""
-        if hasattr(self.parent_window, '_validate_all_safe_suggestions'):
-            self.parent_window._validate_all_safe_suggestions()
+        """Relais du bouton de bannière : ouvre la fenêtre de validation polyvalente
+        (tableau de synthèse, cases à cocher, choix du candidat, édition à la volée)."""
+        if hasattr(self.parent_window, '_open_suggestion_validation_dialog'):
+            self.parent_window._open_suggestion_validation_dialog()
 
     def _update_similarity_banner(self):
         """Affiche la bannière uniquement s'il reste des suggestions en attente.
@@ -1538,15 +1564,14 @@ class TableController:
         count = self.model.pending_suggestions_count if self.model is not None else 0
         if count > 0:
             self.similarity_banner_label.setText(
-                f"{count} appareil(s) ont une suggestion Type/Marque en attente — "
-                f"cliquez la cellule surlignée pour valider."
+                f"{pluralize(count, 'appareil')} avec une suggestion Type/Marque en attente — "
+                f"cliquez la cellule surlignée, ou examinez-les toutes."
             )
-            safe = len(self.model.safe_suggestions()) if self.model is not None else 0
-            if safe > 0:
-                self.similarity_validate_all_btn.setText(f"Valider {safe} suggestion(s) sans concurrence")
-                self.similarity_validate_all_btn.setVisible(True)
-            else:
-                self.similarity_validate_all_btn.setVisible(False)
+            # Le bouton ouvre désormais la fenêtre de validation polyvalente (toutes
+            # les suggestions, y compris à plusieurs candidats), il apparaît donc dès
+            # qu'il existe au moins une suggestion.
+            self.similarity_validate_all_btn.setText(f"Examiner {pluralize(count, 'suggestion')}…")
+            self.similarity_validate_all_btn.setVisible(True)
             self.similarity_banner.setVisible(True)
         else:
             self.similarity_banner.setVisible(False)

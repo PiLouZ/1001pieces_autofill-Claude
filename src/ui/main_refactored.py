@@ -50,7 +50,7 @@ from ..services.paste_results_service import PasteResultsService
 # Imports des modules refactorisés
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from src.core.config import Config
+from src.core.config import Config, pluralize
 from src.core.logger import app_logger
 from src.core.import_manager import ImportManager
 from src.data.database_manager import DatabaseManager, DatabaseError
@@ -990,36 +990,26 @@ class MainWindow(QMainWindow):
             if model:
                 model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
 
-    def _validate_all_safe_suggestions(self):
-        """Applique en une seule transaction toutes les suggestions « sûres »
-        (Palier A à candidat unique). Les ambiguës restent en attente.
+    def _apply_suggestion_decisions(self, decisions):
+        """Cœur batché partagé : applique une liste de décisions [(db_id, candidat)]
+        en UNE seule transaction (collecteur `_bulk_edit_collector` →
+        `save_cells_batch_immediate`), dissipe les indicateurs appliqués et rafraîchit
+        la bannière. Utilisé par le bouton « sans concurrence » ET par la fenêtre de
+        validation (un seul chemin d'écriture = pas de divergence).
 
-        Utilise le collecteur batch (`_bulk_edit_collector`) pour éviter N commits
-        SQLite individuels — sinon plusieurs centaines d'écritures gèleraient l'UI.
+        `candidat` porte au minimum 'type'/'manufacturer' (valeurs retenues, possiblement
+        éditées) et idéalement 'ref'/'score' pour la provenance dans l'historique groupé.
+        Retourne le nombre d'appareils effectivement traités.
         """
         model = self.table_controller.model
-        if not model:
-            return
-        safe = model.safe_suggestions()
-        if not safe:
-            return
-
-        reply = QMessageBox.question(
-            self, "Valider les suggestions sans concurrence",
-            f"Appliquer automatiquement {len(safe)} suggestion(s) pour lesquelles "
-            f"un seul candidat a été trouvé (aucune marque concurrente) ?\n\n"
-            f"Les références à plusieurs candidats resteront à valider manuellement.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
-        )
-        if reply != QMessageBox.Yes:
-            return
-
+        if not model or not decisions:
+            return 0
         save_service = getattr(self, 'event_driven_save_service', None)
         # Collecte batch : _apply_cell_edit_logic détourne les écritures vers ce set.
         if save_service is not None:
             self._bulk_edit_collector = set()
         try:
-            for db_id, cand in safe:
+            for db_id, cand in decisions:
                 self._apply_suggestion_with_provenance(cand, model, db_id)
         finally:
             collector = getattr(self, '_bulk_edit_collector', None)
@@ -1028,9 +1018,46 @@ class MainWindow(QMainWindow):
             save_service.save_cells_batch_immediate(collector)
 
         # Dissiper les indicateurs appliqués + rafraîchir la bannière.
-        for db_id, _ in safe:
+        for db_id, _ in decisions:
             model.clear_suggestion(db_id)
         self.table_controller._update_similarity_banner()
+        return len(decisions)
+
+    def _open_suggestion_validation_dialog(self):
+        """Ouvre la fenêtre de validation polyvalente des suggestions Type/Marque.
+
+        Tableau de synthèse de TOUTES les suggestions (y compris à plusieurs candidats
+        concurrents) : cases à cocher, choix du candidat, édition à la volée, scores.
+        Validation = applique les seules lignes cochées via `_apply_suggestion_decisions`
+        (batché, historisé). Non bloquant (show() + callback).
+        """
+        model = self.table_controller.model
+        if not model or not hasattr(model, 'suggestions_snapshot'):
+            return
+        snapshot = model.suggestions_snapshot()
+        if not snapshot:
+            self.user_interaction_service.add_to_history(
+                "Validation des suggestions : aucune suggestion en attente.")
+            return
+        from .suggestion_validation_dialog import SuggestionValidationDialog
+
+        def _on_validate(decisions):
+            applied = self._apply_suggestion_decisions(decisions)
+            if applied:
+                self.user_interaction_service.add_to_history(
+                    f"Suggestions validées via la fenêtre : "
+                    f"{pluralize(applied, 'appareil')} complété{'s' if applied > 1 else ''}.")
+
+        def _pick_value(db_field, current_value, candidates):
+            # Réutilise la fenêtre Cmd+D (valeurs existantes + suggestions) du tableau.
+            return self.autocompletion_service.show_field_values_dialog(
+                db_field, current_value, suggestions=candidates
+            )
+
+        self._suggestion_validation_dialog = SuggestionValidationDialog(
+            self, snapshot, on_validate=_on_validate, value_picker=_pick_value
+        )
+        self._suggestion_validation_dialog.show()
 
     def _apply_suggestion_with_provenance(self, candidate, model, db_id):
         """Applique un candidat en marquant la provenance pour l'historique groupé
@@ -1586,6 +1613,12 @@ class MainWindow(QMainWindow):
         # Recharger les données pour refléter les changements
         self.table_controller.load_data()
 
+        # Rafraîchir le compteur de lignes incomplètes : la complétion a écrit
+        # Type/Marque directement en base (update_device_info), donc le décompte
+        # « X incomplète(s) » doit être recalculé, sinon il reste figé sur l'ancienne
+        # valeur et donne l'impression que rien ne s'est passé.
+        self._update_incomplete_button_visibility()
+
         # Afficher le résultat
         if result.errors:
             error_msg = f"Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
@@ -1594,12 +1627,14 @@ class MainWindow(QMainWindow):
             self.user_interaction_service.show_error(error_msg)
 
         if result.completed_count > 0:
-            self.user_interaction_service.show_info(f"Auto-complétion réussie !\n\n"
-                           f"{result.completed_count} ligne(s) complétée(s)\n"
-                           f"{result.total_rows_processed} ligne(s) traitée(s)")
+            self.user_interaction_service.show_info(
+                f"Auto-complétion réussie !\n\n"
+                f"{pluralize(result.completed_count, 'ligne complétée', 'lignes complétées')}\n"
+                f"{pluralize(result.total_rows_processed, 'ligne traitée', 'lignes traitées')}")
             self.user_interaction_service.add_to_history(
-                f"Autocomplétion: {result.completed_count} appareil(s) complété(s) "
-                f"sur {result.total_rows_processed} traité(s)"
+                f"Autocomplétion: "
+                f"{pluralize(result.completed_count, 'appareil complété', 'appareils complétés')} "
+                f"sur {result.total_rows_processed} traité{'s' if result.total_rows_processed > 1 else ''}"
             )
             self._auto_save()
         else:
@@ -2864,18 +2899,22 @@ class MainWindow(QMainWindow):
                     prefixes.add(ref[:3].lower())
 
         if not incomplete or not prefixes:
-            MessageHelper.show_info(self, "Aucune ligne incomplète à compléter.", Messages.TITLE_INFO)
+            self.user_interaction_service.add_to_history(
+                "Suggestions similarité : aucune ligne incomplète dans la sélection.")
             return
 
         found = self._compute_similarity_suggestions(incomplete, prefixes)
         if found:
             model.add_pending_suggestions(found)
             self.table_controller._update_similarity_banner()
-            MessageHelper.show_info(
-                self, f"{len(found)} suggestion(s) trouvée(s) — cellules surlignées.", Messages.TITLE_INFO)
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité : {pluralize(len(found), 'proposition')} sur "
+                f"{pluralize(len(incomplete), 'ligne incomplète sélectionnée', 'lignes incomplètes sélectionnées')}"
+                f" — cellules surlignées.")
         else:
-            MessageHelper.show_info(
-                self, "Aucune suggestion trouvée pour la sélection.", Messages.TITLE_INFO)
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité : aucune proposition sur "
+                f"{pluralize(len(incomplete), 'ligne incomplète sélectionnée', 'lignes incomplètes sélectionnées')}.")
 
     def _compute_similarity_suggestions(self, incomplete, prefixes):
         """Cœur partagé (menu contextuel + scan global) : construit un index CIBLÉ
@@ -2924,7 +2963,8 @@ class MainWindow(QMainWindow):
                 if len(ref) >= 3:
                     prefixes.add(ref[:3].lower())
         if not incomplete or not prefixes:
-            MessageHelper.show_info(self, "Aucune ligne incomplète dans l'affichage courant.", Messages.TITLE_INFO)
+            self.user_interaction_service.add_to_history(
+                "Suggestions similarité (scan global) : aucune ligne incomplète dans l'affichage courant.")
             return
 
         QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -2936,13 +2976,13 @@ class MainWindow(QMainWindow):
         if found:
             model.add_pending_suggestions(found)
             self.table_controller._update_similarity_banner()
-            MessageHelper.show_info(
-                self, f"{len(found)} suggestion(s) trouvée(s) sur {len(incomplete)} ligne(s) "
-                f"incomplète(s) — cellules surlignées.", Messages.TITLE_INFO)
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité (scan global) : {pluralize(len(found), 'proposition')} sur "
+                f"{pluralize(len(incomplete), 'ligne incomplète', 'lignes incomplètes')} — cellules surlignées.")
         else:
-            MessageHelper.show_info(
-                self, f"Aucune suggestion trouvée parmi {len(incomplete)} ligne(s) incomplète(s).",
-                Messages.TITLE_INFO)
+            self.user_interaction_service.add_to_history(
+                f"Suggestions similarité (scan global) : aucune proposition parmi "
+                f"{pluralize(len(incomplete), 'ligne incomplète', 'lignes incomplètes')}.")
 
     def _set_column_filter(self, col: int, value: str):
         """Injecte une valeur dans le widget filtre de la colonne correspondante."""
@@ -3024,7 +3064,7 @@ class MainWindow(QMainWindow):
                 "• 1 colonne : Référence modèle\n"
                 "• 2 colonnes : Référence modèle + Référence commerciale\n"
                 "• 3 colonnes : Référence modèle + Référence commerciale + Description/Autre\n\n"
-                f"Détecté : {detected_columns} colonne(s)\n\n"
+                f"Détecté : {pluralize(detected_columns, 'colonne')}\n\n"
                 "💡 Astuce : Copiez les données depuis un tableur (Excel, Calc, etc.) "
                 "pour conserver la séparation par tabulations."
             )
@@ -3053,7 +3093,7 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().setText(clipboard_string)
 
         self.statusbar.showMessage(
-            f"Copié: {len(clipboard_data)} ligne(s)",
+            f"Copié: {pluralize(len(clipboard_data), 'ligne')}",
             Config.STATUS_MESSAGE_TIMEOUT
         )
 
