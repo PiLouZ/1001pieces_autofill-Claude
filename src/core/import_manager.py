@@ -2134,6 +2134,10 @@ class ImportManager:
             # Collecte (niveau session, accumulée sur tous les fichiers) des lignes
             # restées incomplètes après le mécanisme exact, pour suggestions différées.
             self._pending_similarity_candidates = []
+            # Frères COMPLETS du même lot (Type+Marque renseignés) : on les ajoutera à
+            # l'index de similarité pour que les incomplètes du lot « voient » leurs
+            # frères importés en même temps (pas encore en base au moment du calcul).
+            self._imported_complete_for_similarity = []
 
             n = len(config.files)
             if progress_cb:
@@ -2630,9 +2634,13 @@ class ImportManager:
             # nouveaux appareils) sera visible au moment du calcul.
             if (not dry_run and Config.ENABLE_SIMILARITY_SUGGESTIONS
                     and hasattr(self, '_pending_similarity_candidates')):
-                if not ((device_data.get('type') or '').strip()
-                        and (device_data.get('manufacturer') or '').strip()):
+                _is_complete = ((device_data.get('type') or '').strip()
+                                and (device_data.get('manufacturer') or '').strip())
+                if not _is_complete:
                     self._pending_similarity_candidates.append(device_data)
+                else:
+                    # Frère complet du lot → référence supplémentaire pour la similarité.
+                    self._imported_complete_for_similarity.append(device_data)
 
             # Préparer associations (sera traitée après insertion batch)
             # CORRECTION: Utiliser processed_line_index pour avoir des indices consécutifs
@@ -2772,11 +2780,21 @@ class ImportManager:
             return {}
         if not getattr(self, '_pending_similarity_candidates', None):
             return {}
-        rows = getattr(self, '_existing_devices_rows_for_similarity', None)
-        if not rows:
-            return {}
         try:
             from ..services.reference_similarity_service import ReferenceSimilarityService
+            # Index = appareils déjà en base + Levier 1 : frères COMPLETS du lot en
+            # cours (id réinjecté après insertion), au format attendu
+            # (db_id, ref_modele, commercial_ref, type, manufacturer). Les frères du
+            # lot suffisent à eux seuls même si la base est vide pour ce préfixe.
+            rows = list(getattr(self, '_existing_devices_rows_for_similarity', None) or [])
+            for dev in getattr(self, '_imported_complete_for_similarity', []):
+                dev_id = dev.get('id')
+                if dev_id:
+                    rows.append((dev_id, dev.get('ref_modele', ''),
+                                 dev.get('commercial_ref', ''),
+                                 dev.get('type', ''), dev.get('manufacturer', '')))
+            if not rows:
+                return {}
             reference_index = ReferenceSimilarityService.build_reference_index(rows)
             service = ReferenceSimilarityService(
                 allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,

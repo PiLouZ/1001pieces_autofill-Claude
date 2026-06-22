@@ -314,6 +314,47 @@ class TestPalierCConsensus:
         cands = svc.find_candidates("3HB5821N3", "3HB5821N3", _index(rows))
         assert cands == []
 
+    def test_consensus_repli_3_car(self):
+        # Préfixe 4 car. trop épars (aucun voisin sous 'ADXN'), mais 3 car. 'ADX'
+        # dominé Brandt → repli sur 3 car. (Levier 2). Les refs sont assez éloignées
+        # pour ne pas déclencher le Palier B fuzzy.
+        rows = [
+            (1, "ADXA111", "ADXA111", "Hotte", "Brandt"),
+            (2, "ADXB222", "ADXB222", "Hotte", "Brandt"),
+            (3, "ADXC333", "ADXC333", "Hotte", "Brandt"),
+        ]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("ADXN999", "ADXN999", _index(rows))
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Brandt"
+        assert cands[0].confidence_tier == "C_prefix_consensus"
+
+    def test_consensus_4_car_prioritaire_sur_3_car(self):
+        # Le 4 car. (plus spécifique) gagne quand il a son propre consensus.
+        rows = [
+            (1, "ADXN111", "ADXN111", "Hotte", "Bosch"),   # 'ADXN' → Bosch
+            (2, "ADXN222", "ADXN222", "Hotte", "Bosch"),
+            (3, "ADXN333", "ADXN333", "Hotte", "Bosch"),
+            (4, "ADXZ444", "ADXZ444", "Hotte", "Brandt"),  # 'ADX' global plus mêlé
+            (5, "ADXY555", "ADXY555", "Hotte", "Brandt"),
+        ]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("ADXN999", "ADXN999", _index(rows))
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Bosch"   # le 4 car. 'ADXN' prime
+
+    def test_pas_de_consensus_3_car_si_multi_marques(self):
+        # 3 car. partagé par plusieurs marques (aucune dominante ≥ 90 %) → rien,
+        # même en repli (le garde-fou de dominance protège le préfixe court).
+        rows = [
+            (1, "ADXA111", "ADXA111", "Hotte", "Brandt"),
+            (2, "ADXB222", "ADXB222", "Hotte", "Bosch"),
+            (3, "ADXC333", "ADXC333", "Hotte", "Faure"),
+        ]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("ADXN999", "ADXN999", _index(rows))
+        assert cands == []
+
 
 class TestPalierCNumericGuard:
     def test_consensus_exclu_sur_prefixe_numerique(self):

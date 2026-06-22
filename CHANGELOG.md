@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.57.0] - 2026-06-22
+
+### Affinage du moteur de suggestions (cas réels)
+
+Deux leviers complémentaires, ajoutés après analyse de familles réelles (Bosch `HBA572*`, Brandt `AHLN*`/`AD2*`) — toutes mono-marque mais manquées à l'import.
+
+- **Levier 1 — frères du même lot.** À l'import, l'index de similarité ne contenait que les appareils **déjà en base** ; les frères complets importés **dans le même lot** étaient invisibles. Ils sont désormais ajoutés à l'index (`_imported_complete_for_similarity`), de sorte qu'une ligne incomplète « voit » ses frères du lot (ex. `HBA572EM3/01` → Bosch via `HBA572ES3A` importé en même temps). Corrige aussi un cas limite : un import dans une base **vide** pour ce préfixe produit maintenant des suggestions à partir du seul lot.
+- **Levier 2 — consensus de préfixe à 3 caractères en repli.** Le consensus (Palier C) teste d'abord 4 caractères ; s'il est trop épars, il **retombe sur 3 caractères**, avec la **même garde de dominance ≥ 90 % sur ≥ 3 appareils** (et toujours exclu sur préfixe purement numérique). Capte les grandes familles mono-marque à préfixe court (ex. `AD249XE → Brandt` via `AD2*` = 100 % Brandt). Le 4 caractères, plus spécifique, reste prioritaire quand il a son propre consensus.
+
+### Fenêtre de validation — ajustements
+
+- **Copie des références** : clic droit « Copier la/les référence(s) » et **Cmd/Ctrl+C** sur les lignes sélectionnées (sélection multiple) → références (une par ligne) dans le presse-papiers.
+- **Couleur de la fiabilité liée au score** : le badge Fiabilité (et le %) suit le score — vert (≥ 90 %), ambre (≥ 86 %), **rouge** (≤ 85 %, ex. consensus « À vérifier ») **au lieu de gris**.
+- **Largeurs de colonnes** rééquilibrées : Référence extensible, Score/Fiabilité au plus juste.
+
+**Vérifié** : 350 tests unitaires (6 nouveaux : repli 3 car. + précédence 4 car. + garde multi-marques, frères du lot, copie, couleurs), vérification du moteur sur la **base réelle** (familles correctes, préfixe numérique muet), captures offscreen. ZERO REGRESSION (6 échecs préexistants inchangés).
+
+---
+
 ## [3.56.0] - 2026-06-22
 
 ### Nouveauté — Fenêtre de validation polyvalente des suggestions Type/Marque
