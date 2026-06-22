@@ -9,7 +9,7 @@ from PyQt5.QtCore import Qt
 
 from src.ui.suggestion_validation_dialog import (
     SuggestionValidationDialog, is_safe_default, tier_label, score_color,
-    COL_CHECK, COL_NEW_TYPE, COL_NEW_MFR,
+    fiability_colors, COL_CHECK, COL_NEW_TYPE, COL_NEW_MFR,
 )
 
 _ROLE_DBID = Qt.UserRole
@@ -41,9 +41,16 @@ class TestHelpers:
         assert tier_label('C_prefix_consensus') == "À vérifier"
 
     def test_score_color_thresholds(self):
-        assert score_color(0.95).name() == "#2e7d32"   # vert
-        assert score_color(0.80).name() == "#f39c12"   # ambre
-        assert score_color(0.50).name() == "#b06a00"   # gris-orange
+        assert score_color(0.95).name() == "#2e7d32"   # vert (fort)
+        assert score_color(0.88).name() == "#b06a00"   # ambre (moyen)
+        assert score_color(0.85).name() == "#c0392b"   # rouge (faible)
+        assert score_color(0.50).name() == "#c0392b"   # rouge
+
+    def test_fiability_colors_red_when_low(self):
+        # Score faible (≤ 0,85, ex. consensus de préfixe) → badge ROUGE, pas gris
+        assert fiability_colors(1.0) == ("#E8F5E9", "#2e7d32")    # vert
+        assert fiability_colors(0.88) == ("#FFF8E1", "#b06a00")   # ambre
+        assert fiability_colors(0.85) == ("#FDECEA", "#c0392b")   # rouge
 
     def test_safe_default_candidat_unique_palier_a(self):
         assert is_safe_default(_entry(1, [_cand(tier='A_suffix_variant', score=1.0)]))
@@ -146,6 +153,19 @@ class TestDialog:
         # 3 nœuds-groupes au premier niveau
         root = dlg._tree.invisibleRootItem()
         assert root.childCount() == 3
+
+    def test_copie_des_references_selectionnees(self, qapp):
+        from PyQt5.QtWidgets import QApplication
+        snap = [_entry(1, [_cand()], ref='HBA572EM3/01'),
+                _entry(2, [_cand()], ref='AD249XE11'),
+                _entry(3, [_cand()], ref='AHLN6W5E1')]
+        dlg, _ = self._make(qapp, snap)
+        # Sélectionner deux feuilles puis copier
+        _leaf_by_dbid(dlg, 1).setSelected(True)
+        _leaf_by_dbid(dlg, 3).setSelected(True)
+        assert dlg._selected_refs() == ['HBA572EM3/01', 'AHLN6W5E1']
+        dlg._copy_selected_refs()
+        assert QApplication.clipboard().text() == 'HBA572EM3/01\nAHLN6W5E1'
 
     def test_tout_cocher_decocher(self, qapp):
         snap = [_entry(i, [_cand(score=0.92, tier='B_fuzzy_alpha')]) for i in (1, 2, 3)]

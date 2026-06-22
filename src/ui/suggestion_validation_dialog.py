@@ -11,10 +11,11 @@ Non bloquant : ouvert via show() + callback (jamais exec_(), cf. conventions pro
 """
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QBrush
+from PyQt5.QtGui import QColor, QBrush, QKeySequence
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QFrame, QHeaderView,
+    QTreeWidget, QTreeWidgetItem, QFrame, QHeaderView, QMenu, QShortcut,
+    QApplication, QAbstractItemView,
 )
 import qtawesome as qta
 
@@ -35,8 +36,9 @@ _ROLE_DBID = Qt.UserRole
 _ROLE_CANDS = Qt.UserRole + 1
 _ROLE_EDITED = Qt.UserRole + 2
 _ROLE_IS_LEAF = Qt.UserRole + 3
+_ROLE_REF = Qt.UserRole + 4      # ref_modele brute, pour la copie
 
-# Palier technique → libellé humain + ordre de tri + couleur de badge
+# Palier technique → libellé humain + ordre de tri
 _TIER_LABEL = {
     'A_suffix_variant': "Quasi-certain",
     'B_fuzzy_alpha': "Probable",
@@ -45,11 +47,6 @@ _TIER_LABEL = {
 }
 _TIER_ORDER = {'A_suffix_variant': 0, 'B_fuzzy_alpha': 1, 'B_fuzzy_numeric': 1,
                'C_prefix_consensus': 2}
-_TIER_BADGE = {
-    "Quasi-certain": ("#E8F5E9", "#2e7d32"),
-    "Probable": ("#FFF8E1", "#b06a00"),
-    "À vérifier": ("#ECEFF1", "#546E7A"),
-}
 
 
 def tier_label(tier):
@@ -57,11 +54,22 @@ def tier_label(tier):
 
 
 def score_color(score):
+    """Couleur du % de score, liée au score : vert fort, ambre moyen, ROUGE faible."""
     if score >= 0.90:
         return QColor("#2e7d32")
-    if score >= 0.75:
-        return QColor("#f39c12")
-    return QColor("#b06a00")
+    if score >= 0.86:
+        return QColor("#b06a00")
+    return QColor("#c0392b")
+
+
+def fiability_colors(score):
+    """(fond, texte) du badge Fiabilité, liés au score — ROUGE quand le score est
+    faible (≤ 0,85, p. ex. consensus de préfixe « À vérifier ») plutôt que gris."""
+    if score >= 0.90:
+        return ("#E8F5E9", "#2e7d32")   # vert
+    if score >= 0.86:
+        return ("#FFF8E1", "#b06a00")   # ambre
+    return ("#FDECEA", "#c0392b")       # rouge
 
 
 def is_safe_default(entry):
@@ -149,8 +157,16 @@ class SuggestionValidationDialog(QDialog):
         self._tree.setAlternatingRowColors(True)
         self._tree.setUniformRowHeights(True)
         self._tree.setIndentation(14)
+        # Sélection multiple pour pouvoir copier plusieurs références d'un coup
+        self._tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._tree.itemChanged.connect(self._on_item_changed)
         self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
+        # Copie des références : clic droit + Cmd/Ctrl+C
+        self._tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._tree.customContextMenuRequested.connect(self._on_context_menu)
+        copy_sc = QShortcut(QKeySequence.Copy, self._tree)
+        copy_sc.setContext(Qt.WidgetShortcut)
+        copy_sc.activated.connect(self._copy_selected_refs)
         header = self._tree.header()
         header.setStretchLastSection(False)
         # Référence (colonne la plus importante, longueur variable) absorbe l'espace ;
@@ -252,6 +268,7 @@ class SuggestionValidationDialog(QDialog):
 
         leaf.setText(COL_REF, ref_text)
         leaf.setToolTip(COL_REF, ref_text)
+        leaf.setData(COL_CHECK, _ROLE_REF, ref)   # ref_modele brute pour la copie
 
         # Valeurs retenues + score/fiabilité depuis le 1er candidat
         if cands:
@@ -272,9 +289,8 @@ class SuggestionValidationDialog(QDialog):
         score = float(cand.get('score', 0))
         leaf.setText(COL_SCORE, f"{int(score * 100)} %")
         leaf.setForeground(COL_SCORE, QBrush(score_color(score)))
-        label = tier_label(cand.get('confidence_tier'))
-        leaf.setText(COL_TIER, label)
-        bg, fg = _TIER_BADGE.get(label, ("#ECEFF1", "#546E7A"))
+        leaf.setText(COL_TIER, tier_label(cand.get('confidence_tier')))
+        bg, fg = fiability_colors(score)   # couleur liée au score (rouge si faible)
         leaf.setBackground(COL_TIER, QBrush(QColor(bg)))
         leaf.setForeground(COL_TIER, QBrush(QColor(fg)))
 
@@ -312,6 +328,32 @@ class SuggestionValidationDialog(QDialog):
         self._suppress = False
         self._refresh_parent_states()
         self._update_count()
+
+    def _on_context_menu(self, pos):
+        """Menu clic droit : copier la/les référence(s) des lignes sélectionnées."""
+        refs = self._selected_refs()
+        if not refs:
+            return
+        menu = QMenu(self)   # pas d'icône (rendu macOS non propre)
+        action = menu.addAction(f"Copier {pluralize(len(refs), 'référence')}")
+        action.triggered.connect(self._copy_selected_refs)
+        menu.exec_(self._tree.viewport().mapToGlobal(pos))
+
+    def _selected_refs(self):
+        """Références (ref_modele) des feuilles sélectionnées, dans l'ordre d'affichage."""
+        refs = []
+        for item in self._tree.selectedItems():
+            if item.data(COL_CHECK, _ROLE_IS_LEAF):
+                ref = item.data(COL_CHECK, _ROLE_REF)
+                if ref:
+                    refs.append(ref)
+        return refs
+
+    def _copy_selected_refs(self):
+        """Copie les références sélectionnées dans le presse-papiers (une par ligne)."""
+        refs = self._selected_refs()
+        if refs:
+            QApplication.clipboard().setText("\n".join(refs))
 
     def _mark_edited(self, leaf):
         leaf.setData(COL_CHECK, _ROLE_EDITED, True)

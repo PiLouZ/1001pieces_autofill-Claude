@@ -347,3 +347,27 @@ class TestSimilaritySuggestions:
         import_manager._preload_existing_devices()
         import_manager._pending_similarity_candidates = []
         assert import_manager._compute_pending_similarity_suggestions() == {}
+
+    def test_levier1_freres_complets_du_lot(self, import_manager):
+        """Levier 1 : une incomplète reçoit une suggestion grâce aux frères COMPLETS
+        du même lot (non encore en base), ajoutés à l'index de similarité."""
+        import_manager._preload_existing_devices()
+        import_manager._pending_similarity_candidates = [
+            {'id': 999, 'ref_modele': 'AHLN6W5E1', 'commercial_ref': 'AHLN6W5E'}
+        ]
+        # Sans frères du lot : aucune suggestion (rien en base pour AHLN)
+        import_manager._imported_complete_for_similarity = []
+        assert import_manager._compute_pending_similarity_suggestions() == {}
+        # Avec ≥ 3 frères complets du lot partageant le préfixe → consensus Brandt
+        import_manager._imported_complete_for_similarity = [
+            {'id': 101, 'ref_modele': 'AHLN9WA/1', 'commercial_ref': 'AHLN9WA',
+             'type': 'Hotte', 'manufacturer': 'Brandt'},
+            {'id': 102, 'ref_modele': 'AHLN9XA/1', 'commercial_ref': 'AHLN9XA',
+             'type': 'Hotte', 'manufacturer': 'Brandt'},
+            {'id': 103, 'ref_modele': 'AHLN9YA/1', 'commercial_ref': 'AHLN9YA',
+             'type': 'Hotte', 'manufacturer': 'Brandt'},
+        ]
+        suggestions = import_manager._compute_pending_similarity_suggestions()
+        assert 999 in suggestions
+        assert suggestions[999][0]['manufacturer'] == 'Brandt'
+        assert suggestions[999][0]['type'] == 'Hotte'

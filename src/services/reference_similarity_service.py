@@ -35,7 +35,10 @@ PREFIX_CONSENSUS_BY_DEFAULT = True
 
 # Palier C — consensus de préfixe : une famille de préfixe dominée à >= ratio par
 # une seule (type, marque) sur >= N appareils est considérée mono-marque fiable.
-_CONSENSUS_PREFIX_LEN = 4    # longueur du préfixe testé pour le consensus
+# Longueurs de préfixe testées, de la plus spécifique à la plus large : on tente
+# d'abord 4 car. ; si rien (famille trop éparse à 4), on retombe sur 3 car. Le
+# garde-fou de dominance (≥ ratio) protège contre un préfixe court multi-marques.
+_CONSENSUS_PREFIX_LENS = (4, 3)
 _CONSENSUS_MIN_GROUP = 3     # nb minimal d'appareils complets partageant le préfixe
 _CONSENSUS_MIN_RATIO = 0.90  # part minimale de la marque dominante
 _CONSENSUS_MAX_SCORE = 0.85  # score plafond (consensus < quasi-exact/fuzzy fort)
@@ -316,12 +319,25 @@ class ReferenceSimilarityService:
 
     def _prefix_consensus(self, qref_l: str, index: ReferenceIndex,
                           exclude_db_id: Optional[int]) -> Optional[SimilarityCandidate]:
-        """Palier C : si la famille de préfixe (4 car.) de la référence est dominée
-        à >= ratio par une seule (type, marque) sur >= N appareils complets, la
-        proposer. Sinon None (préfixe multi-marques = ambigu, ex. numériques rebadgés)."""
-        if len(qref_l) < _CONSENSUS_PREFIX_LEN:
+        """Palier C : si la famille de préfixe de la référence est dominée à >= ratio
+        par une seule (type, marque) sur >= N appareils complets, la proposer.
+
+        On teste du préfixe le plus spécifique au plus large (4 car. puis 3) : la
+        première longueur qui produit un consensus dominant gagne. Le garde-fou de
+        dominance protège un préfixe court partagé par plusieurs marques (rebadging)."""
+        for prefix_len in _CONSENSUS_PREFIX_LENS:
+            result = self._consensus_at(qref_l, index, exclude_db_id, prefix_len)
+            if result is not None:
+                return result
+        return None
+
+    def _consensus_at(self, qref_l: str, index: ReferenceIndex,
+                      exclude_db_id: Optional[int],
+                      prefix_len: int) -> Optional[SimilarityCandidate]:
+        """Consensus pour UNE longueur de préfixe donnée (cf. _prefix_consensus)."""
+        if len(qref_l) < prefix_len:
             return None
-        prefix = qref_l[:_CONSENSUS_PREFIX_LEN]
+        prefix = qref_l[:prefix_len]
         bucket3 = qref_l[:_PREFIX_LEN]
 
         # Collecter une entrée par db_id distinct (évite le double comptage
