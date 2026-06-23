@@ -26,8 +26,14 @@ from ..services.import_relations import (
 )
 from ..core.config import pluralize
 
-_SUCC_COLORS = ["#1565C0", "#00838F", "#2E7D32", "#4527A0", "#00695C", "#283593"]
-_EQUIV_COLORS = ["#F9A825", "#EF6C00", "#C75B39", "#AD1457", "#D84315"]
+# Couleurs alignées sur les bannières du tableau principal (table_controller.py) :
+# succession = famille BLEUE (#E3F2FD/#64B5F6/#0D47A1), équivalence = famille VIOLETTE
+# (#F3E5F5/#CE93D8/#6A1B9A). Nuances par index pour distinguer plusieurs groupes.
+_SUCC_COLORS = ["#0D47A1", "#1565C0", "#1976D2", "#1E88E5", "#42A5F5", "#5C6BC0"]
+_EQUIV_COLORS = ["#6A1B9A", "#8E24AA", "#9C27B0", "#AB47BC", "#7B1FA2", "#BA68C8"]
+# Fonds/bordures pâles officiels, partagés par les boîtes et les cartes courantes.
+_SUCC_BG, _SUCC_BORDER = "#E3F2FD", "#64B5F6"
+_EQUIV_BG, _EQUIV_BORDER = "#F3E5F5", "#CE93D8"
 
 
 def _succ_color(i):
@@ -200,9 +206,12 @@ class GroupBox(QFrame):
 
     def _build(self):
         self.setFrameShape(QFrame.StyledPanel)
-        col = _succ_color(self.index) if self.kind == KIND_SUCCESSION else _equiv_color(self.index)
+        is_succ = self.kind == KIND_SUCCESSION
+        col = _succ_color(self.index) if is_succ else _equiv_color(self.index)
+        bg = _SUCC_BG if is_succ else _EQUIV_BG
+        border = _SUCC_BORDER if is_succ else _EQUIV_BORDER
         self.setStyleSheet(
-            f"#groupBox {{ background: white; border: 1px solid #e9ecef;"
+            f"#groupBox {{ background: {bg}; border: 1px solid {border};"
             f" border-left: 4px solid {col}; border-radius: 4px; }}")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 4, 8, 4)
@@ -313,7 +322,7 @@ class GroupsZone(QWidget):
         b1.clicked.connect(lambda: self.add_group(KIND_SUCCESSION))
         self._lay.addWidget(b1)
 
-        self._lay.addWidget(_lbl("Groupes d'équivalence", bold=True, color="#EF6C00"))
+        self._lay.addWidget(_lbl("Groupes d'équivalence", bold=True, color="#6A1B9A"))
         self._equiv_anchor = QWidget()
         self._equiv_lay = QVBoxLayout(self._equiv_anchor)
         self._equiv_lay.setContentsMargins(0, 0, 0, 0)

@@ -437,18 +437,24 @@ class ImportDialog(QDialog):
         self.preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 11px;")
         self.preview_text.setReadOnly(True)
         self.preview_text.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        format_layout.addWidget(self.preview_text)
 
-        # Options techniques sous l'aperçu
+        # Aperçu à gauche / options techniques à droite (gagne de la hauteur,
+        # évite la redondance avec « Adapter le mapping »).
+        preview_row = QHBoxLayout()
+        preview_row.setSpacing(8)
+        preview_row.addWidget(self.preview_text, 1)
+
+        # Options techniques à droite de l'aperçu
         options_layout = QVBoxLayout()
         options_layout.setContentsMargins(10, 4, 10, 2)
         
         # Gestion de la 3ème colonne si applicable
         self.third_col_widget = QWidget()
         self.third_col_widget.setStyleSheet("background-color: #fff; border: 1px solid #e9ecef; border-radius: 4px;")
-        third_col_layout = QHBoxLayout(self.third_col_widget)
-        third_col_layout.setContentsMargins(10, 3, 10, 3)
-        
+        third_col_layout = QVBoxLayout(self.third_col_widget)
+        third_col_layout.setContentsMargins(10, 5, 10, 5)
+        third_col_layout.setSpacing(3)
+
         self.third_col_label = QLabel("Destination 3ème colonne:")
         self.third_col_label.setStyleSheet("font-weight: bold;")
         third_col_layout.addWidget(self.third_col_label)
@@ -462,14 +468,20 @@ class ImportDialog(QDialog):
         self.third_col_widget.hide()  # Caché par défaut
         
         # Option en-têtes CSV avec style cohérent
-        self.headers_checkbox = QCheckBox("Le fichier contient une ligne d'en-têtes (ignorer la première ligne)")
+        self.headers_checkbox = QCheckBox("1ʳᵉ ligne = en-têtes (ignorée)")
         self.headers_checkbox.setChecked(False)
         self.headers_checkbox.setToolTip("Cochez cette case si la première ligne de votre fichier contient les noms des colonnes")
         self.headers_checkbox.setStyleSheet("font-weight: bold; background-color: #fff; border: 1px solid #e9ecef; border-radius: 4px; padding: 8px 10px; margin-top: 5px;")
         options_layout.addWidget(self.headers_checkbox)
         self.headers_checkbox.hide()  # Caché par défaut, affiché seulement pour CSV
-        
-        format_layout.addLayout(options_layout)
+        options_layout.addStretch(1)
+
+        # Panneau d'options à droite — se rétrécit quand ses options sont masquées
+        self._format_options_panel = QWidget()
+        self._format_options_panel.setLayout(options_layout)
+        self._format_options_panel.setMaximumWidth(340)
+        preview_row.addWidget(self._format_options_panel, 0, Qt.AlignTop)
+        format_layout.addLayout(preview_row)
 
         # Conteneur de mapping de colonnes (v3.30.0 — sous l'aperçu et les options)
         self.mapping_container = QWidget()
@@ -516,10 +528,28 @@ class ImportDialog(QDialog):
                 row_ref.addWidget(info_btn)
             except Exception:
                 pass
-            row_ref.addStretch()
+            row_ref.addStretch(1)
+
+            # Cases « tout appliquer » alignées à droite de la ligne Référence
+            self._apply_all_equiv_checkbox = QCheckBox("Toutes équivalentes")
+            self._apply_all_equiv_checkbox.setStyleSheet("font-size: 11px; color: #6A1B9A;")
+            self._apply_all_equiv_checkbox.setToolTip(
+                "Regroupe les références encore non groupées comme équivalentes entre elles\n"
+                "(génère le groupe correspondant dans la zone « Relations entre références »)."
+            )
+            self._apply_all_equiv_checkbox.stateChanged.connect(self._on_apply_all_equiv_changed)
+            row_ref.addWidget(self._apply_all_equiv_checkbox)
+
+            self._apply_all_obs_checkbox = QCheckBox("Toutes obsolètes")
+            self._apply_all_obs_checkbox.setStyleSheet("font-size: 11px; color: #c0392b;")
+            self._apply_all_obs_checkbox.setToolTip(
+                "Cocher toutes les références importées comme obsolètes"
+            )
+            self._apply_all_obs_checkbox.stateChanged.connect(self._on_apply_all_obs_changed)
+            row_ref.addWidget(self._apply_all_obs_checkbox)
             ref_layout.addLayout(row_ref)
 
-            # Ligne 2 : Description + checkbox
+            # Ligne 2 : Description + case « Appliquer libellé »
             row_desc = QHBoxLayout()
             row_desc.setSpacing(8)
             desc_lbl2 = QLabel("Description:")
@@ -530,12 +560,7 @@ class ImportDialog(QDialog):
             self.common_ref_description.setPlaceholderText("Ex : Lot pièces lave-vaisselle mars 2024")
             self.common_ref_description.textChanged.connect(self._on_common_description_changed)
             row_desc.addWidget(self.common_ref_description)
-            ref_layout.addLayout(row_desc)
 
-            # Ligne 3 : cases "tout appliquer" sur une seule ligne
-            row_apply_all = QHBoxLayout()
-            row_apply_all.setSpacing(16)
-            row_apply_all.addSpacing(90)  # aligne avec l'input description
             self.apply_to_individual_checkbox = QCheckBox("Appliquer libellé")
             self.apply_to_individual_checkbox.setChecked(True)
             self.apply_to_individual_checkbox.setStyleSheet("font-size: 11px;")
@@ -543,25 +568,8 @@ class ImportDialog(QDialog):
                 "Duplique automatiquement cette description dans tous les champs libellé individuels"
             )
             self.apply_to_individual_checkbox.stateChanged.connect(self._on_apply_to_individual_changed)
-            row_apply_all.addWidget(self.apply_to_individual_checkbox)
-
-            self._apply_all_equiv_checkbox = QCheckBox("Toutes équivalentes")
-            self._apply_all_equiv_checkbox.setStyleSheet("font-size: 11px; color: #6c757d;")
-            self._apply_all_equiv_checkbox.setToolTip(
-                "Cocher toutes les références importées comme équivalentes entre elles"
-            )
-            self._apply_all_equiv_checkbox.stateChanged.connect(self._on_apply_all_equiv_changed)
-            row_apply_all.addWidget(self._apply_all_equiv_checkbox)
-
-            self._apply_all_obs_checkbox = QCheckBox("Toutes obsolètes")
-            self._apply_all_obs_checkbox.setStyleSheet("font-size: 11px; color: #c0392b;")
-            self._apply_all_obs_checkbox.setToolTip(
-                "Cocher toutes les références importées comme obsolètes"
-            )
-            self._apply_all_obs_checkbox.stateChanged.connect(self._on_apply_all_obs_changed)
-            row_apply_all.addWidget(self._apply_all_obs_checkbox)
-            row_apply_all.addStretch()
-            ref_layout.addLayout(row_apply_all)
+            row_desc.addWidget(self.apply_to_individual_checkbox)
+            ref_layout.addLayout(row_desc)
 
             ref_group.setLayout(ref_layout)
             layout.addWidget(ref_group)
@@ -712,14 +720,9 @@ class ImportDialog(QDialog):
             individual_group = QGroupBox("Références individuelles par fichier")
             individual_layout = QVBoxLayout()
 
-            info_and_option_layout = QVBoxLayout()
+            info_and_option_layout = QHBoxLayout()
             info_and_option_layout.setContentsMargins(0, 0, 0, 0)
-            info_and_option_layout.setSpacing(8)
-
-            individual_info = QLabel("Génération automatique des références de pièces basées sur les noms de fichiers")
-            individual_info.setStyleSheet("color: #666; font-style: italic; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
-            individual_info.setWordWrap(True)
-            info_and_option_layout.addWidget(individual_info)
+            info_and_option_layout.setSpacing(6)
 
             self.auto_file_references_checkbox = QCheckBox("Associer automatiquement les noms de fichiers comme références de pièces")
             self.auto_file_references_checkbox.setToolTip(
@@ -740,6 +743,21 @@ class ImportDialog(QDialog):
 
             self.auto_file_references_checkbox.stateChanged.connect(self._on_auto_references_changed)
             info_and_option_layout.addWidget(self.auto_file_references_checkbox)
+
+            try:
+                gen_info_btn = QPushButton()
+                gen_info_btn.setIcon(qta.icon('fa5s.info-circle', color='#0066cc'))
+                gen_info_btn.setIconSize(QSize(13, 13))
+                gen_info_btn.setFixedSize(20, 20)
+                gen_info_btn.setFlat(True)
+                gen_info_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
+                gen_info_btn.setToolTip(
+                    "Génération automatique des références de pièces basées sur les noms de fichiers."
+                )
+                info_and_option_layout.addWidget(gen_info_btn)
+            except Exception:
+                pass
+            info_and_option_layout.addStretch(1)
 
             individual_layout.addLayout(info_and_option_layout)
 
@@ -1299,7 +1317,7 @@ class ImportDialog(QDialog):
         if sample_data_preview:
             n_preview = len(sample_data_preview[0]) if sample_data_preview else 0
             header_line = "".join(f"Col{i+1:<15} " for i in range(n_preview))
-            lines = [f"{'='*60}", header_line, f"{'='*60}"]
+            lines = [header_line, f"{'='*60}"]
             for row in sample_data_preview:
                 line = ""
                 for j in range(min(n_preview, len(row))):
@@ -1422,7 +1440,7 @@ class ImportDialog(QDialog):
                 header_line = ""
                 for i in range(detected_columns):
                     header_line += f"Col{i+1:<15} "
-                preview_content += f"{'='*60}\n{header_line}\n{'='*60}\n"
+                preview_content += f"{header_line}\n{'='*60}\n"
             
             # Données d'exemple
             for row in sample_data:
