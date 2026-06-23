@@ -1,31 +1,32 @@
 """Panneau de déclaration des relations entre références importées (Lot 2).
 
-Carte UNIFIÉE par référence (mono = lot à une carte) : on déclare des liens
-(« Suit dans ce lot », « Équivalence », « Obsolète », liens vers la base), et le
-panneau DÉRIVE et affiche les états (têtes/courantes multiples, couleur de chaîne,
-fil d'Ariane, pastille de groupe) via `recompute_relations`.
+Agencement : QSplitter horizontal — cartes à gauche (succession + obsolète + liens
+base), zone « Groupes d'équivalence » en drag-drop à droite, récap sticky en bas.
 
-Widget autonome, testable en offscreen, sans dépendance au dialogue d'import.
+Succession SIMPLIFIÉE (l'utilisateur ne connaît pas l'ordre) : par réf, statut
+« Courante » (plusieurs possibles) OU « Ancienne version de [réf récente] » (combo
+ÉDITABLE : courantes du lot, réfs en base, ou saisie libre → fantôme). Chaque
+ancienne pointe directement vers sa courante (étoile).
+
+Équivalence : zone dédiée, on crée N groupes et on y glisse les pastilles de réf
+(une réf ∈ au plus un groupe). Source unique de vérité : l'état des QListWidget.
+
+Tout est dérivé via `recompute_relations`. Widget autonome (testable offscreen).
 """
 
 from PyQt5.QtCore import Qt, pyqtSignal, QStringListModel
 from PyQt5.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
-    QCheckBox, QPushButton, QScrollArea, QCompleter,
+    QCheckBox, QPushButton, QScrollArea, QCompleter, QRadioButton, QSplitter,
+    QListWidget, QListWidgetItem, QMenu, QAbstractItemView,
 )
 import qtawesome as qta
 
 from ..services.import_relations import RefRelation, recompute_relations
 from ..core.config import pluralize
 
-# Palettes : chaînes en teintes FROIDES, équivalences en teintes CHAUDES
-# (deux dimensions distinctes → ne pas confondre).
 _CHAIN_COLORS = ["#1565C0", "#00838F", "#2E7D32", "#4527A0", "#00695C", "#283593"]
-_EQUIV_COLORS = ["#EF6C00", "#AD1457", "#F9A825", "#5D4037", "#D84315"]
-
-# Sentinelles pour le combo d'équivalence
-_EQUIV_NONE = -1
-_EQUIV_NEW = -2
+_EQUIV_COLORS = ["#F9A825", "#EF6C00", "#C75B39", "#AD1457", "#D84315"]
 
 
 def _chain_color(cid):
@@ -37,12 +38,12 @@ def _equiv_color(gid):
 
 
 def _group_label(gid):
-    # 1 → « A », 2 → « B », … puis « G27 » au-delà de Z
     return chr(64 + gid) if 1 <= gid <= 26 else str(gid)
 
 
+# ── Carte d'une référence ─────────────────────────────────────────────────────
+
 class RefCard(QFrame):
-    """Carte d'une référence : contrôles de saisie des liens + affichage dérivé."""
     changed = pyqtSignal()
 
     def __init__(self, ref, filename="", is_solo=False, ref_model=None, parent=None):
@@ -50,7 +51,7 @@ class RefCard(QFrame):
         self.ref = ref
         self.filename = filename
         self.is_solo = is_solo
-        self._ref_model = ref_model      # QStringListModel partagé (autocomplétion base)
+        self._ref_model = ref_model
         self._suppress = False
         self.setObjectName("refCard")
         self._build()
@@ -61,7 +62,6 @@ class RefCard(QFrame):
         lay.setContentsMargins(10, 6, 10, 6)
         lay.setSpacing(4)
 
-        # Ligne 1 : réf + fichier (multi) + badge Courante (dérivé)
         row1 = QHBoxLayout()
         ref_lbl = QLabel(self.ref)
         ref_lbl.setStyleSheet("font-weight: bold; font-size: 12px; border: none;")
@@ -76,47 +76,47 @@ class RefCard(QFrame):
         self.head_badge = QLabel("")
         self.head_badge.setStyleSheet("border: none;")
         row1.addWidget(self.head_badge)
+        self.equiv_badge = QLabel("")
+        self.equiv_badge.setStyleSheet("border: none;")
+        row1.addWidget(self.equiv_badge)
         lay.addLayout(row1)
 
-        # Ligne 2 : description
         row2 = QHBoxLayout()
-        d_lbl = QLabel("Libellé :")
-        d_lbl.setStyleSheet("font-size: 11px; color: #495057; border: none;")
-        row2.addWidget(d_lbl)
+        row2.addWidget(self._lbl("Libellé :"))
         self.desc_input = QLineEdit()
         self.desc_input.setPlaceholderText("Description (optionnel)")
         row2.addWidget(self.desc_input, 1)
-        lay.addLayout(row2)
-
-        # Ligne 3 : Suit (combo) + Équivalence (combo + pastille) + Obsolète
-        row3 = QHBoxLayout()
-        if not self.is_solo:
-            row3.addWidget(self._mk_lbl("Suit :"))
-            self.suit_combo = QComboBox()
-            self.suit_combo.setMinimumWidth(110)
-            self.suit_combo.currentIndexChanged.connect(self._emit)
-            row3.addWidget(self.suit_combo)
-            row3.addWidget(self._mk_lbl("Éq. :"))
-            self.equiv_combo = QComboBox()
-            self.equiv_combo.setMinimumWidth(120)
-            self.equiv_combo.currentIndexChanged.connect(self._on_equiv_changed)
-            row3.addWidget(self.equiv_combo)
-            self.equiv_pastille = QLabel("")
-            self.equiv_pastille.setFixedWidth(14)
-            self.equiv_pastille.setStyleSheet("border: none;")
-            row3.addWidget(self.equiv_pastille)
-        else:
-            self.suit_combo = None
-            self.equiv_combo = None
-            self.equiv_pastille = None
-        row3.addStretch(1)
         self.obsolete_check = QCheckBox("Obsolète")
         self.obsolete_check.setStyleSheet("font-size: 11px; color: #c0392b; border: none;")
         self.obsolete_check.stateChanged.connect(self._emit)
-        row3.addWidget(self.obsolete_check)
-        lay.addLayout(row3)
+        row2.addWidget(self.obsolete_check)
+        lay.addLayout(row2)
 
-        # Ligne 4 : zone repliable « Lien avec la base »
+        # Statut succession (sauf solo : une seule réf, pas de lignée intra-lot)
+        if not self.is_solo:
+            row3 = QHBoxLayout()
+            row3.addWidget(self._lbl("Statut :"))
+            self.radio_current = QRadioButton("Courante")
+            self.radio_current.setAutoExclusive(False)
+            self.radio_current.toggled.connect(self._on_current_toggled)
+            row3.addWidget(self.radio_current)
+            self.radio_old = QRadioButton("Ancienne version de")
+            self.radio_old.setAutoExclusive(False)
+            self.radio_old.toggled.connect(self._on_old_toggled)
+            row3.addWidget(self.radio_old)
+            self.newer_combo = QComboBox()
+            self.newer_combo.setEditable(True)        # choisir OU saisir une réf libre
+            self.newer_combo.setInsertPolicy(QComboBox.NoInsert)
+            self.newer_combo.setMinimumWidth(150)
+            self.newer_combo.setEnabled(False)
+            self.newer_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou libre)")
+            self.newer_combo.editTextChanged.connect(self._emit)
+            row3.addWidget(self.newer_combo, 1)
+            lay.addLayout(row3)
+        else:
+            self.radio_current = self.radio_old = self.newer_combo = None
+
+        # Zone repliable « Lien avec la base »
         self.base_toggle = QPushButton("▸ Lien avec la base existante")
         self.base_toggle.setFlat(True)
         self.base_toggle.setCursor(Qt.PointingHandCursor)
@@ -131,20 +131,13 @@ class RefCard(QFrame):
         bz = QVBoxLayout(self.base_zone)
         bz.setContentsMargins(12, 2, 4, 4)
         bz.setSpacing(3)
-        r_a = QHBoxLayout()
-        r_a.addWidget(self._mk_lbl("Cette réf remplace :", 180))
+        ra = QHBoxLayout()
+        ra.addWidget(self._lbl("Cette réf remplace :", 170))
         self.replaces_input = QLineEdit()
         self.replaces_input.setPlaceholderText("Ancienne réf en base")
         self.replaces_input.textChanged.connect(self._emit)
-        r_a.addWidget(self.replaces_input, 1)
-        bz.addLayout(r_a)
-        r_b = QHBoxLayout()
-        r_b.addWidget(self._mk_lbl("Est remplacée par :", 180))
-        self.replaced_by_input = QLineEdit()
-        self.replaced_by_input.setPlaceholderText("Réf en base qui la remplace")
-        self.replaced_by_input.textChanged.connect(self._emit)
-        r_b.addWidget(self.replaced_by_input, 1)
-        bz.addLayout(r_b)
+        ra.addWidget(self.replaces_input, 1)
+        bz.addLayout(ra)
         self.phantom_warn = QLabel("")
         self.phantom_warn.setStyleSheet("color: #b06a00; font-size: 10px; border: none;")
         self.phantom_warn.setVisible(False)
@@ -153,145 +146,263 @@ class RefCard(QFrame):
         lay.addWidget(self.base_zone)
 
         if self._ref_model is not None:
-            for fld in (self.replaces_input, self.replaced_by_input):
+            for fld in [self.replaces_input] + ([self.newer_combo.lineEdit()] if self.newer_combo else []):
                 comp = QCompleter(self._ref_model, fld)
                 comp.setCaseSensitivity(Qt.CaseInsensitive)
                 comp.setFilterMode(Qt.MatchContains)
                 fld.setCompleter(comp)
 
-        # Ligne 5 : fil d'Ariane de chaîne (dérivé)
         self.breadcrumb = QLabel("")
         self.breadcrumb.setStyleSheet("color: #555; font-size: 10px; border: none;")
         self.breadcrumb.setVisible(False)
         lay.addWidget(self.breadcrumb)
 
-    def _mk_lbl(self, text, width=None):
+    def _lbl(self, text, width=None):
         lbl = QLabel(text)
         lbl.setStyleSheet("font-size: 11px; color: #495057; border: none;")
         if width:
             lbl.setFixedWidth(width)
         return lbl
 
+    def _on_current_toggled(self, checked):
+        if self._suppress:
+            return
+        if checked and self.radio_old and self.radio_old.isChecked():
+            self._suppress = True
+            self.radio_old.setChecked(False)
+            self._suppress = False
+        self.newer_combo.setEnabled(self.radio_old.isChecked())
+        self.changed.emit()
+
+    def _on_old_toggled(self, checked):
+        if self._suppress:
+            return
+        if checked and self.radio_current and self.radio_current.isChecked():
+            self._suppress = True
+            self.radio_current.setChecked(False)
+            self._suppress = False
+        self.newer_combo.setEnabled(self.radio_old.isChecked())
+        self.changed.emit()
+
     def _toggle_base(self):
         vis = not self.base_zone.isVisible()
         self.base_zone.setVisible(vis)
-        arrow = "▾" if vis else "▸"
-        self.base_toggle.setText(f"{arrow} Lien avec la base existante")
+        self.base_toggle.setText(("▾" if vis else "▸") + " Lien avec la base existante")
 
-    def _emit(self, *args):
+    def _emit(self, *a):
         if not self._suppress:
             self.changed.emit()
 
-    def _on_equiv_changed(self, *args):
-        if self._suppress:
-            return
-        # « + Nouveau groupe » : laisser le panneau allouer l'id puis recomposer
-        self.changed.emit()
-
-    # ── Saisie → relation ────────────────────────────────────────────────────
-    def get_relation(self):
-        suit = None
-        if self.suit_combo is not None:
-            data = self.suit_combo.currentData()
-            suit = data if data else None
-        equiv = None
-        if self.equiv_combo is not None:
-            gid = self.equiv_combo.currentData()
-            if isinstance(gid, int) and gid > 0:
-                equiv = gid
+    def get_relation(self, equiv_group=None):
+        is_current = bool(self.radio_current and self.radio_current.isChecked())
+        newer = None
+        if self.radio_old and self.radio_old.isChecked():
+            newer = (self.newer_combo.currentText().strip() or None)
         return RefRelation(
-            ref=self.ref,
-            suit_ref=suit,
-            equiv_group=equiv,
+            ref=self.ref, is_current=is_current, newer_ref=newer,
+            equiv_group=equiv_group,
             is_obsolete=self.obsolete_check.isChecked(),
             base_replaces=(self.replaces_input.text().strip() or None),
-            base_replaced_by=(self.replaced_by_input.text().strip() or None),
         )
 
-    def equiv_choice(self):
-        """Renvoie le choix d'équivalence courant : id (>0), _EQUIV_NEW ou _EQUIV_NONE."""
-        if self.equiv_combo is None:
-            return _EQUIV_NONE
-        return self.equiv_combo.currentData()
-
-    # ── États dérivés → affichage ────────────────────────────────────────────
-    def set_suit_options(self, options, current):
-        """options : liste de réfs éligibles comme prédécesseur. current : réf ou None."""
-        if self.suit_combo is None:
+    def set_newer_options(self, courantes):
+        """Repeuple la liste des courantes proposées (l'édition libre reste possible)."""
+        if self.newer_combo is None:
             return
         self._suppress = True
-        self.suit_combo.clear()
-        self.suit_combo.addItem("—", None)
-        for ref in options:
-            self.suit_combo.addItem(ref, ref)
-        idx = self.suit_combo.findData(current) if current else 0
-        self.suit_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        txt = self.newer_combo.currentText()
+        self.newer_combo.clear()
+        self.newer_combo.addItems([c for c in courantes if c != self.ref])
+        self.newer_combo.setCurrentText(txt)
         self._suppress = False
 
-    def set_equiv_options(self, group_ids, current):
-        if self.equiv_combo is None:
-            return
-        self._suppress = True
-        self.equiv_combo.clear()
-        self.equiv_combo.addItem("—", _EQUIV_NONE)
-        for gid in group_ids:
-            self.equiv_combo.addItem(f"Groupe {_group_label(gid)}", gid)
-        self.equiv_combo.addItem("+ Nouveau groupe", _EQUIV_NEW)
-        idx = self.equiv_combo.findData(current) if (isinstance(current, int) and current > 0) else 0
-        self.equiv_combo.setCurrentIndex(idx if idx >= 0 else 0)
-        self._suppress = False
-
-    def apply_derived(self, is_head, chain_id, breadcrumb, equiv_gid):
-        # Liseré de chaîne + badge courante
-        if chain_id is not None:
-            color = _chain_color(chain_id)
-            self.setStyleSheet(
-                "#refCard { background: white; border: 1px solid #e9ecef;"
-                f" border-left: 4px solid {color}; border-radius: 4px; }}")
-        else:
-            self.setStyleSheet(
-                "#refCard { background: white; border: 1px solid #e9ecef; border-radius: 4px; }")
+    def apply_derived(self, is_head, chain_id, breadcrumb, equiv_gid, base_set, lot_refs):
+        color = _chain_color(chain_id) if chain_id is not None else None
+        border = f"border-left: 4px solid {color};" if color else ""
+        self.setStyleSheet(
+            f"#refCard {{ background: white; border: 1px solid #e9ecef; {border} border-radius: 4px; }}")
         if is_head:
-            self.head_badge.setPixmap(qta.icon('fa5s.crown', color='#f39c12').pixmap(12, 12))
-            self.head_badge.setToolTip("Courante (référence la plus récente de sa chaîne)")
+            self.head_badge.setPixmap(qta.icon('fa5s.crown', color='#1565C0').pixmap(12, 12))
+            self.head_badge.setToolTip("Courante")
         else:
             self.head_badge.clear()
-            self.head_badge.setToolTip("")
+        if equiv_gid:
+            self.equiv_badge.setText(f"● Éq. {_group_label(equiv_gid)}")
+            self.equiv_badge.setStyleSheet(f"color: {_equiv_color(equiv_gid)}; border: none; font-size: 11px;")
+        else:
+            self.equiv_badge.setText("")
         if breadcrumb:
             self.breadcrumb.setText("Chaîne : " + " → ".join(breadcrumb))
             self.breadcrumb.setVisible(True)
         else:
             self.breadcrumb.setVisible(False)
-        # Pastille d'équivalence
-        if self.equiv_pastille is not None:
-            if equiv_gid:
-                c = _equiv_color(equiv_gid)
-                self.equiv_pastille.setText("●")
-                self.equiv_pastille.setStyleSheet(f"color: {c}; border: none; font-size: 14px;")
-            else:
-                self.equiv_pastille.setText("")
-
-    def set_phantom_warning(self, refs_missing):
-        if refs_missing:
-            self.phantom_warn.setText(
-                "⚠ Réf absente de la base (créée en fantôme) : " + ", ".join(refs_missing))
+        # Avertissement fantôme : réf citée (remplace / ancienne version de) absente
+        # de la base ET hors du lot (une réf du lot est valide, pas un fantôme).
+        missing = []
+        rel = self.get_relation()
+        for v in (rel.base_replaces, rel.newer_ref):
+            if v and v not in base_set and v not in lot_refs:
+                missing.append(v)
+        if missing:
+            self.phantom_warn.setText("⚠ Réf absente de la base (fantôme) : " + ", ".join(missing))
             self.phantom_warn.setVisible(True)
-            if not self.base_zone.isVisible():
-                self.base_toggle.setText("▸ Lien avec la base existante  ⚠")
         else:
             self.phantom_warn.setVisible(False)
 
 
-class RelationsPanel(QWidget):
-    """Liste de RefCards + récap dérivé. Recalcule la dérivation à chaque édition."""
+# ── Zone des groupes d'équivalence (drag-drop) ───────────────────────────────
 
+class _RefList(QListWidget):
+    """Liste de pastilles de réf acceptant le drag-drop entre conteneurs."""
+    dropped = pyqtSignal()
+
+    def __init__(self, group_id=None, parent=None):
+        super().__init__(parent)
+        self.group_id = group_id      # None = réservoir « Non groupées »
+        self.setDragDropMode(QAbstractItemView.DragDrop)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setFlow(QListWidget.LeftToRight)
+        self.setWrapping(True)
+        self.setResizeMode(QListWidget.Adjust)
+        self.setMaximumHeight(72)
+        self.setStyleSheet("QListWidget { border: 1px dashed #ccc; border-radius: 4px; }")
+
+    def dropEvent(self, event):
+        super().dropEvent(event)
+        self.dropped.emit()
+
+    def refs(self):
+        return [self.item(i).text() for i in range(self.count())]
+
+
+class EquivGroupsZone(QWidget):
+    changed = pyqtSignal()
+
+    def __init__(self, refs, parent=None):
+        super().__init__(parent)
+        self._all_refs = list(refs)
+        self._next_gid = 1
+        self._group_lists = {}     # gid → _RefList
+        self._build()
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        title = QLabel("Groupes d'équivalence")
+        title.setStyleSheet("font-weight: bold; font-size: 12px;")
+        lay.addWidget(title)
+        self._filter = QLineEdit()
+        self._filter.setPlaceholderText("Filtrer une réf…")
+        self._filter.addAction(qta.icon('fa5s.search', color='#888'), QLineEdit.LeadingPosition)
+        self._filter.textChanged.connect(self._apply_filter)
+        lay.addWidget(self._filter)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        self._content_lay = QVBoxLayout(content)
+        self._content_lay.setContentsMargins(2, 2, 2, 2)
+        self._content_lay.setSpacing(6)
+        self._content_lay.setAlignment(Qt.AlignTop)
+
+        # Réservoir « Non groupées »
+        self._content_lay.addWidget(self._mk_header("Non groupées", None))
+        self.reservoir = _RefList(group_id=None)
+        for r in self._all_refs:
+            self.reservoir.addItem(QListWidgetItem(r))
+        self.reservoir.dropped.connect(self._on_change)
+        self._content_lay.addWidget(self.reservoir)
+
+        scroll.setWidget(content)
+        lay.addWidget(scroll, 1)
+
+        add_btn = QPushButton("+ Nouveau groupe")
+        add_btn.clicked.connect(self.add_group)
+        lay.addWidget(add_btn)
+
+    def _mk_header(self, text, gid):
+        w = QWidget()
+        h = QHBoxLayout(w)
+        h.setContentsMargins(0, 2, 0, 0)
+        lbl = QLabel(text)
+        col = "#495057" if gid is None else _equiv_color(gid)
+        lbl.setStyleSheet(f"font-weight: bold; font-size: 11px; color: {col};")
+        h.addWidget(lbl)
+        h.addStretch(1)
+        if gid is not None:
+            empty = QPushButton("vider")
+            empty.setFlat(True)
+            empty.setStyleSheet("color: #0066cc; font-size: 10px; border: none;")
+            empty.clicked.connect(lambda: self._empty_group(gid))
+            h.addWidget(empty)
+            rem = QPushButton("supprimer")
+            rem.setFlat(True)
+            rem.setStyleSheet("color: #c0392b; font-size: 10px; border: none;")
+            rem.clicked.connect(lambda: self.remove_group(gid))
+            h.addWidget(rem)
+        return w
+
+    def add_group(self):
+        gid = self._next_gid
+        self._next_gid += 1
+        self._content_lay.addWidget(self._mk_header(f"Groupe {_group_label(gid)}", gid))
+        lst = _RefList(group_id=gid)
+        lst.dropped.connect(self._on_change)
+        self._group_lists[gid] = lst
+        self._content_lay.addWidget(lst)
+        self._on_change()
+        return gid
+
+    def _empty_group(self, gid):
+        lst = self._group_lists.get(gid)
+        if lst:
+            for r in lst.refs():
+                self.reservoir.addItem(QListWidgetItem(r))
+            lst.clear()
+            self._on_change()
+
+    def remove_group(self, gid):
+        self._empty_group(gid)
+        lst = self._group_lists.pop(gid, None)
+        if lst:
+            # retirer le header (widget juste avant la liste) + la liste
+            idx = self._content_lay.indexOf(lst)
+            lst.setParent(None)
+            if idx >= 1:
+                hdr = self._content_lay.itemAt(idx - 1).widget()
+                if hdr:
+                    hdr.setParent(None)
+        self._on_change()
+
+    def _apply_filter(self, text):
+        text = (text or "").strip().lower()
+        for lst in [self.reservoir] + list(self._group_lists.values()):
+            for i in range(lst.count()):
+                it = lst.item(i)
+                it.setHidden(bool(text) and text not in it.text().lower())
+
+    def _on_change(self, *a):
+        self.changed.emit()
+
+    def assignments(self):
+        """{ref → group_id} (source de vérité = état des listes)."""
+        out = {}
+        for gid, lst in self._group_lists.items():
+            for r in lst.refs():
+                out[r] = gid
+        return out
+
+
+# ── Panneau global ───────────────────────────────────────────────────────────
+
+class RelationsPanel(QWidget):
     def __init__(self, refs, is_solo=False, base_refs=None, parent=None):
-        """refs : liste de (ref, filename). base_refs : réfs existantes en base."""
         super().__init__(parent)
         self._is_solo = is_solo
         self._base_set = set(base_refs or [])
         self._ref_model = QStringListModel(sorted(self._base_set), self)
-        self._next_group = 1
         self._suppress = False
         self.cards = []
         self._build(refs)
@@ -302,8 +413,11 @@ class RelationsPanel(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
+        splitter = QSplitter(Qt.Horizontal)
+
+        # Gauche : cartes
+        left = QScrollArea()
+        left.setWidgetResizable(True)
         content = QWidget()
         self._cards_layout = QVBoxLayout(content)
         self._cards_layout.setContentsMargins(6, 6, 6, 6)
@@ -314,8 +428,18 @@ class RelationsPanel(QWidget):
             card.changed.connect(self.recompute)
             self.cards.append(card)
             self._cards_layout.addWidget(card)
-        scroll.setWidget(content)
-        lay.addWidget(scroll, 1)
+        left.setWidget(content)
+        splitter.addWidget(left)
+
+        # Droite : groupes d'équivalence (sauf solo)
+        if not self._is_solo:
+            self.groups_zone = EquivGroupsZone([r for r, _ in refs])
+            self.groups_zone.changed.connect(self.recompute)
+            splitter.addWidget(self.groups_zone)
+            splitter.setSizes([620, 380])
+        else:
+            self.groups_zone = None
+        lay.addWidget(splitter, 1)
 
         self.recap = QLabel("")
         self.recap.setWordWrap(True)
@@ -325,93 +449,48 @@ class RelationsPanel(QWidget):
         lay.addWidget(self.recap)
 
     def get_relations(self):
-        return [c.get_relation() for c in self.cards]
+        assign = self.groups_zone.assignments() if self.groups_zone else {}
+        return [c.get_relation(equiv_group=assign.get(c.ref)) for c in self.cards]
 
     def recompute(self):
         if self._suppress:
             return
         self._suppress = True
         try:
-            # Allouer un id pour les cartes ayant choisi « + Nouveau groupe »
-            for card in self.cards:
-                if card.equiv_choice() == _EQUIV_NEW:
-                    card._pending_new_group = self._next_group
-                    self._next_group += 1
-
-            relations = []
-            for card in self.cards:
-                rel = card.get_relation()
-                if getattr(card, '_pending_new_group', None) is not None:
-                    rel.equiv_group = card._pending_new_group
-                relations.append(rel)
-
+            relations = self.get_relations()
             derived = recompute_relations(relations)
             rel_by_ref = {r.ref: r for r in relations}
-            all_refs = [c.ref for c in self.cards]
-
-            # Successeurs déjà attribués (un prédécesseur ne sert qu'une fois)
-            used_pred = {r.suit_ref for r in relations if r.suit_ref}
-            # Map ref → fil d'Ariane (chaîne ordonnée à laquelle elle appartient)
-            crumb_by_ref = {}
+            courantes = sorted(derived.heads)
+            crumb = {}
             for chain in derived.chains:
                 for ref in chain:
-                    crumb_by_ref[ref] = chain if len(chain) > 1 else None
-
-            existing_groups = sorted({r.equiv_group for r in relations if r.equiv_group})
-
+                    crumb[ref] = chain if len(chain) > 1 else None
+            lot_refs = {c.ref for c in self.cards}
             for card in self.cards:
                 rel = rel_by_ref[card.ref]
-                # Options « Suit » : exclure soi, ses descendants (anti-cycle),
-                # et les prédécesseurs déjà pris par une autre carte.
-                descendants = self._descendants(card.ref, relations)
-                eligible = [r for r in all_refs
-                            if r != card.ref and r not in descendants
-                            and (r not in used_pred or r == rel.suit_ref)]
-                card.set_suit_options(eligible, rel.suit_ref)
-                card.set_equiv_options(existing_groups, rel.equiv_group)
+                card.set_newer_options(courantes)
                 card.apply_derived(
-                    is_head=(card.ref in derived.heads),
-                    chain_id=derived.chain_id_by_ref.get(card.ref),
-                    breadcrumb=crumb_by_ref.get(card.ref),
-                    equiv_gid=rel.equiv_group,
-                )
-                # Avertissement fantôme sur les liens base
-                missing = [v for v in (rel.base_replaces, rel.base_replaced_by)
-                           if v and v not in self._base_set]
-                card.set_phantom_warning(missing)
-                card._pending_new_group = None
+                        is_head=(card.ref in derived.heads),
+                        chain_id=derived.chain_id_by_ref.get(card.ref),
+                        breadcrumb=crumb.get(card.ref),
+                        equiv_gid=rel.equiv_group,
+                        base_set=self._base_set,
+                        lot_refs=lot_refs,
+                    )
         finally:
             self._suppress = False
-
         self._update_recap(relations, derived)
 
-    def _descendants(self, ref, relations):
-        """Réfs atteignables en suivant les successeurs depuis `ref` (pour anti-cycle)."""
-        succ = {}
-        for r in relations:
-            if r.suit_ref:
-                succ[r.suit_ref] = r.ref
-        out = set()
-        cur = succ.get(ref)
-        guard = 0
-        while cur and cur not in out and guard <= len(relations):
-            out.add(cur)
-            cur = succ.get(cur)
-            guard += 1
-        return out
-
     def _update_recap(self, relations, derived):
-        n = len(relations)
-        n_chains = len(derived.chains)
         heads = sorted(derived.heads)
         groups = derived.equiv_groups
         n_base = sum(1 for r in relations if r.base_replaces or r.base_replaced_by)
         n_obs = sum(1 for r in relations if r.is_obsolete)
-        phantoms = sorted({v for r in relations for v in (r.base_replaces, r.base_replaced_by)
-                           if v and v not in self._base_set})
-        parts = [pluralize(n, 'réf')]
-        if n_chains:
-            parts.append(pluralize(n_chains, 'chaîne'))
+        ungrouped = sum(1 for r in relations if r.equiv_group is None)
+        phantoms = sorted({v for r in relations for v in (r.base_replaces, r.newer_ref)
+                           if v and v not in self._base_set
+                           and v not in {c.ref for c in self.cards}})
+        parts = [pluralize(len(relations), 'réf')]
         if heads:
             parts.append(f"{pluralize(len(heads), 'courante')} ({', '.join(heads)})")
         for gid in sorted(groups):
@@ -420,6 +499,8 @@ class RelationsPanel(QWidget):
             parts.append(pluralize(n_base, 'lien base', 'liens base'))
         if n_obs:
             parts.append(pluralize(n_obs, 'obsolète'))
+        if self.groups_zone and ungrouped:
+            parts.append(f"{ungrouped} non groupée(s)")
         if phantoms:
             parts.append(f"{pluralize(len(phantoms), 'fantôme')} : {', '.join(phantoms)}")
         self.recap.setText(" · ".join(parts))

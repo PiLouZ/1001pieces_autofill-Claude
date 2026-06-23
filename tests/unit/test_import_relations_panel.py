@@ -1,13 +1,13 @@
-"""Tests du panneau de relations d'import (Lot 2) — logique de dérivation visuelle.
+"""Tests du panneau de relations d'import (Lot 2, modèle étoile + zone groupes).
 
-Offscreen via la fixture qapp. Vérifie les options « Suit » (anti-cycle,
-prédécesseur unique), les multi-courantes, l'allocation de groupe d'équivalence,
-l'avertissement fantôme et le récap.
+Offscreen via qapp. La simulation du drag-drop réel étant lourde, on manipule
+directement l'état des listes (ce que le drop produit) puis on resynchronise.
 """
 
 import pytest
+from PyQt5.QtWidgets import QListWidgetItem
 
-from src.ui.import_relations_panel import RelationsPanel, _EQUIV_NEW
+from src.ui.import_relations_panel import RelationsPanel
 
 
 def _panel(qapp, refs=None, base=None):
@@ -15,84 +15,100 @@ def _panel(qapp, refs=None, base=None):
     return RelationsPanel(refs, is_solo=False, base_refs=base or [])
 
 
-def _set_suit(card, pred):
-    card.suit_combo.setCurrentIndex(card.suit_combo.findData(pred))
-
-
 def _cards(panel):
     return {c.ref: c for c in panel.cards}
 
 
-class TestPanel:
-    def test_multi_courantes_dans_recap(self, qapp):
+def _move_to_group(panel, ref, gid):
+    """Simule le drop : retire la réf du réservoir, l'ajoute à la liste du groupe."""
+    res = panel.groups_zone.reservoir
+    for i in range(res.count()):
+        if res.item(i).text() == ref:
+            res.takeItem(i)
+            break
+    panel.groups_zone._group_lists[gid].addItem(QListWidgetItem(ref))
+    panel.groups_zone._on_change()
+
+
+class TestSuccession:
+    def test_courante_et_ancienne_version(self, qapp):
         panel = _panel(qapp)
         c = _cards(panel)
-        _set_suit(c["B2"], "B1"); _set_suit(c["B3"], "B2"); _set_suit(c["S2"], "S1")
+        c["B3"].radio_current.setChecked(True)
+        c["B1"].radio_old.setChecked(True)
+        c["B1"].newer_combo.setCurrentText("B3")
+        panel.recompute()
+        rels = {r.ref: r for r in panel.get_relations()}
+        assert rels["B3"].is_current is True
+        assert rels["B1"].newer_ref == "B3"
+        assert "1 courante (B3)" in panel.recap.text()
+
+    def test_radios_exclusifs_par_carte(self, qapp):
+        panel = _panel(qapp)
+        card = _cards(panel)["B1"]
+        card.radio_current.setChecked(True)
+        card.radio_old.setChecked(True)        # bascule
+        assert not card.radio_current.isChecked()
+        assert card.newer_combo.isEnabled()    # combo actif sur « ancienne version de »
+
+    def test_combo_newer_editable_libre_fantome(self, qapp):
+        panel = _panel(qapp, base=["EXISTE"])
+        card = _cards(panel)["B1"]
+        card.radio_old.setChecked(True)
+        card.newer_combo.setCurrentText("PAS_EN_BASE")   # saisie libre, hors base
+        panel.recompute()
+        assert panel.get_relations()[0].newer_ref == "PAS_EN_BASE"
+        assert "fantôme" in panel.recap.text()
+
+    def test_multi_courantes(self, qapp):
+        panel = _panel(qapp)
+        c = _cards(panel)
+        c["B3"].radio_current.setChecked(True)
+        c["S2"].radio_current.setChecked(True)
         panel.recompute()
         assert "2 courantes (B3, S2)" in panel.recap.text()
-        assert "2 chaînes" in panel.recap.text()
 
-    def test_suit_exclut_soi_et_descendants(self, qapp):
+
+class TestEquivalence:
+    def test_creation_et_affectation_groupe(self, qapp):
         panel = _panel(qapp)
-        c = _cards(panel)
-        _set_suit(c["B2"], "B1"); _set_suit(c["B3"], "B2")
+        gid = panel.groups_zone.add_group()
+        _move_to_group(panel, "B3", gid)
+        _move_to_group(panel, "S2", gid)
         panel.recompute()
-        # B1 ne doit pas pouvoir « suivre » ses descendants B2/B3, ni soi-même
-        opts = [c["B1"].suit_combo.itemData(i) for i in range(c["B1"].suit_combo.count())]
-        assert "B1" not in opts and "B2" not in opts and "B3" not in opts
-        assert "S1" in opts and "S2" in opts
+        assign = panel.groups_zone.assignments()
+        assert assign == {"B3": gid, "S2": gid}
+        assert f"Éq. A : B3, S2" in panel.recap.text()
+        # Pastille affichée sur la carte
+        assert "Éq. A" in _cards(panel)["B3"].equiv_badge.text()
 
-    def test_predecesseur_unique(self, qapp):
+    def test_une_ref_un_seul_groupe(self, qapp):
         panel = _panel(qapp)
-        c = _cards(panel)
-        _set_suit(c["B2"], "B1")
-        panel.recompute()
-        # B1 est pris comme prédécesseur par B2 → plus proposé aux autres cartes…
-        opts_s2 = [c["S2"].suit_combo.itemData(i) for i in range(c["S2"].suit_combo.count())]
-        assert "B1" not in opts_s2
-        # … mais reste l'option courante de B2 lui-même
-        opts_b2 = [c["B2"].suit_combo.itemData(i) for i in range(c["B2"].suit_combo.count())]
-        assert "B1" in opts_b2
+        g1 = panel.groups_zone.add_group()
+        g2 = panel.groups_zone.add_group()
+        _move_to_group(panel, "B3", g1)
+        # Déplacer B3 vers g2 : le drop l'aurait retiré de g1 ; on simule
+        panel.groups_zone._group_lists[g1].takeItem(0)
+        _move_to_group(panel, "B3", g2)
+        assert panel.groups_zone.assignments() == {"B3": g2}
 
-    def test_allocation_nouveau_groupe(self, qapp):
+    def test_vider_groupe_renvoie_au_reservoir(self, qapp):
         panel = _panel(qapp)
-        c = _cards(panel)
-        c["B3"].equiv_combo.setCurrentIndex(c["B3"].equiv_combo.findData(_EQUIV_NEW))
-        panel.recompute()
-        gid = c["B3"].get_relation().equiv_group
-        assert isinstance(gid, int) and gid >= 1
-        # Le nouveau groupe devient sélectionnable par une autre carte
-        opts_s2 = [c["S2"].equiv_combo.itemData(i) for i in range(c["S2"].equiv_combo.count())]
-        assert gid in opts_s2
+        gid = panel.groups_zone.add_group()
+        _move_to_group(panel, "B3", gid)
+        panel.groups_zone._empty_group(gid)
+        assert panel.groups_zone.assignments() == {}
+        assert "B3" in panel.groups_zone.reservoir.refs()
 
-    def test_avertissement_fantome(self, qapp):
-        panel = _panel(qapp, base=["EXISTE"])
-        c = _cards(panel)
-        c["B1"].replaces_input.setText("ABSENTE")
-        panel.recompute()
-        # isHidden() reflète l'état explicite (le panneau n'est pas affiché en test)
-        assert not c["B1"].phantom_warn.isHidden()
-        assert "fantôme" in panel.recap.text()
-        # Une réf base existante ne déclenche pas d'avertissement
-        c["B2"].replaces_input.setText("EXISTE")
-        panel.recompute()
-        assert c["B2"].phantom_warn.isHidden()
 
-    def test_courante_plus_obsolete_autorise(self, qapp):
-        panel = _panel(qapp)
-        c = _cards(panel)
-        _set_suit(c["B2"], "B1")            # B2 = tête
-        c["B2"].obsolete_check.setChecked(True)
-        panel.recompute()
-        rel = {r.ref: r for r in panel.get_relations()}["B2"]
-        assert rel.is_obsolete is True       # autorisé, aucune exclusion
-        assert "1 obsolète" in panel.recap.text()
-
-    def test_mode_solo_masque_chainage(self, qapp):
+class TestSolo:
+    def test_mode_solo_sans_chainage_ni_groupes(self, qapp):
         panel = RelationsPanel([("A", "a")], is_solo=True, base_refs=[])
         card = panel.cards[0]
-        assert card.suit_combo is None and card.equiv_combo is None
-        # En solo on garde Obsolète + liens base
-        assert card.obsolete_check is not None
-        card.replaces_input.setText("X")
-        assert panel.get_relations()[0].base_replaces == "X"
+        assert card.radio_current is None and card.newer_combo is None
+        assert panel.groups_zone is None
+        # On garde Obsolète + lien base « remplace »
+        card.obsolete_check.setChecked(True)
+        card.replaces_input.setText("OLD")
+        rel = panel.get_relations()[0]
+        assert rel.is_obsolete and rel.base_replaces == "OLD"
