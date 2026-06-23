@@ -185,8 +185,47 @@ class _RefList(QListWidget):
         super().dropEvent(event)
         self.dropped.emit()
 
+    def mimeData(self, items):
+        # Enrichit le mime interne (déplacements liste→liste préservés) d'un
+        # texte simple, pour que le champ « Courante » puisse lire la réf déposée.
+        md = super().mimeData(items)
+        if items:
+            md.setText(items[0].text())
+        return md
+
     def refs(self):
         return [self.item(i).text() for i in range(self.count())]
+
+
+class _CouranteLineEdit(QLineEdit):
+    """Champ de saisie de la courante acceptant le dépôt d'une réf (glisser)."""
+    ref_dropped = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasText():
+            e.acceptProposedAction()
+        else:
+            super().dragEnterEvent(e)
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasText():
+            e.acceptProposedAction()
+        else:
+            super().dragMoveEvent(e)
+
+    def dropEvent(self, e):
+        if e.mimeData().hasText():
+            txt = e.mimeData().text().strip()
+            if txt:
+                e.setDropAction(Qt.CopyAction)  # ne pas vider la liste source
+                e.accept()
+                self.ref_dropped.emit(txt)
+                return
+        super().dropEvent(e)
 
 
 # ── Boîte d'un groupe ─────────────────────────────────────────────────────────
@@ -243,14 +282,19 @@ class GroupBox(QFrame):
         crow.addWidget(_lbl(clbl, width=130))
         self.courante_combo = QComboBox()
         self.courante_combo.setEditable(True)
+        self.courante_combo.setLineEdit(_CouranteLineEdit())
         self.courante_combo.setInsertPolicy(QComboBox.NoInsert)
         self.courante_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou à créer)")
+        self.courante_combo.lineEdit().setToolTip(
+            "Saisir, choisir, ou glisser une réf ici. Double-cliquer un membre le promeut courante.")
         self.courante_combo.editTextChanged.connect(lambda *_: self.changed.emit())
+        self.courante_combo.lineEdit().ref_dropped.connect(self._on_courante_dropped)
         crow.addWidget(self.courante_combo, 1)
         lay.addLayout(crow)
 
         self.members = _RefList()
         self.members.dropped.connect(self.changed)
+        self.members.itemDoubleClicked.connect(self._promote_member)
         lay.addWidget(self.members)
 
         if self._ref_model is not None:
@@ -266,6 +310,22 @@ class GroupBox(QFrame):
         self.courante_combo.addItems(refs)
         self.courante_combo.setCurrentText(cur)
         self.courante_combo.blockSignals(False)
+
+    def _on_courante_dropped(self, ref):
+        """Réf glissée sur le champ Courante (la source n'est pas vidée)."""
+        self.courante_combo.setCurrentText(ref)
+        self.changed.emit()
+
+    def _promote_member(self, item):
+        """Double-clic sur un membre → le promeut courante. Pour une lignée, on
+        le retire des membres (une courante n'est pas sa propre ancienne version)."""
+        ref = item.text()
+        self.courante_combo.setCurrentText(ref)
+        if self.kind == KIND_SUCCESSION:
+            row = self.members.row(item)
+            if row >= 0:
+                self.members.takeItem(row)
+        self.changed.emit()
 
     def to_group(self):
         return Group(kind=self.kind,
