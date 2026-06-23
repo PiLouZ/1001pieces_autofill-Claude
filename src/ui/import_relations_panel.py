@@ -421,6 +421,26 @@ class GroupsZone(QWidget):
         self.changed.emit()
         return box
 
+    def add_all_to_new_equivalence(self):
+        """Crée un groupe d'équivalence regroupant les réfs encore *non groupées*
+        (réservoir) et les y déplace. Les lignées/groupes déjà constitués sont
+        laissés intacts. Retourne la boîte créée (ou None si réservoir vide)."""
+        refs = self.reservoir.refs()
+        if not refs:
+            return None
+        box = self.add_group(KIND_EQUIVALENCE)
+        self.reservoir.clear()
+        for r in refs:
+            box.members.addItem(QListWidgetItem(r))
+        self.changed.emit()
+        return box
+
+    def remove_auto_equivalence_group(self, box):
+        """Retire le groupe d'équivalence auto (case « Toutes équivalentes »
+        décochée), ses membres retournent au réservoir."""
+        if box is not None and box in self._equiv_boxes:
+            self._remove_box(box)
+
     def _empty_box(self, box):
         for r in box.members.refs():
             self.reservoir.addItem(QListWidgetItem(r))

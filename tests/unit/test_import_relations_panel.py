@@ -103,6 +103,31 @@ class TestCross:
         assert "équiv. croisée : B3, S2" in panel.recap.text()
 
 
+class TestAllEquiv:
+    def test_toutes_equivalentes_non_groupees(self, qapp):
+        """Lot 7 : ne regroupe que les réfs du réservoir, laisse la lignée intacte."""
+        panel = _panel(qapp)
+        succ = panel.groups_zone.add_group(KIND_SUCCESSION)
+        succ.courante_combo.setCurrentText("B3")
+        _move(panel, "B1", succ)          # B1 dans une lignée → non concerné
+        box = panel.groups_zone.add_all_to_new_equivalence()
+        assert box is not None and box.kind == KIND_EQUIVALENCE
+        # réservoir vidé, lignée (membre B1) préservée. B3 = courante par son nom
+        # mais reste un chip non groupé du réservoir → inclus dans « non groupées ».
+        assert panel.groups_zone.reservoir.refs() == []
+        assert sorted(box.members.refs()) == ["B2", "B3", "S1", "S2"]   # pas B1 (membre de lignée)
+        assert succ.members.refs() == ["B1"]
+        # décochage : retire le groupe auto, réfs de retour au réservoir
+        panel.groups_zone.remove_auto_equivalence_group(box)
+        assert sorted(panel.groups_zone.reservoir.refs()) == ["B2", "B3", "S1", "S2"]
+
+    def test_toutes_equivalentes_reservoir_vide(self, qapp):
+        panel = _panel(qapp, refs=[("B1", "b1")])
+        box = panel.groups_zone.add_group(KIND_SUCCESSION)
+        _move(panel, "B1", box)
+        assert panel.groups_zone.add_all_to_new_equivalence() is None
+
+
 class TestZone:
     def test_vider_groupe_renvoie_au_reservoir(self, qapp):
         panel = _panel(qapp)

@@ -1038,9 +1038,19 @@ class ImportDialog(QDialog):
                 desc_field.setText("")
     
     def _on_apply_all_equiv_changed(self, state):
-        """Coche/décoche toutes les cases 'Équivalente' individuelles."""
-        for check, _ in getattr(self, '_equiv_checkboxes', []):
-            check.setChecked(state == Qt.Checked)
+        """« Toutes équivalentes » : génère (ou retire) un groupe d'équivalence
+        regroupant les références encore *non groupées* (réservoir), sans toucher
+        aux lignées/groupes déjà constitués."""
+        zone = getattr(self, '_relations_groups_zone', None)
+        if zone is None:
+            return
+        if state == Qt.Checked:
+            self._auto_equiv_box = zone.add_all_to_new_equivalence()
+        else:
+            box = getattr(self, '_auto_equiv_box', None)
+            if box is not None:
+                zone.remove_auto_equivalence_group(box)
+            self._auto_equiv_box = None
 
     def _on_apply_all_obs_changed(self, state):
         """Coche/décoche toutes les cases 'Obsolète' individuelles."""
