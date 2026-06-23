@@ -100,6 +100,11 @@ class ImportConfiguration:
     # Références à marquer obsolètes lors de l'import
     obsolete_refs: Optional[List[str]] = None       # Réfs à marquer comme obsolètes après import
 
+    # Modèle « par groupes » (nouveau panneau de relations) — si renseigné, il PRIME
+    # sur les champs succession_*/equivalence_refs/obsolete_refs ci-dessus.
+    relations_groups: Optional[List] = None         # List[import_relations.Group]
+    relations_cards: Optional[List] = None           # List[import_relations.CardData]
+
     # Mapping personnalisé des colonnes (v3.30.0)
     # None = comportement positionnel actuel (défaut, zéro régression)
     # Clé   : nombre de colonnes du groupe de fichiers
@@ -2195,7 +2200,11 @@ class ImportManager:
                 results['similarity_suggestions'] = self._compute_pending_similarity_suggestions()
 
             if not dry_run:
-                self._apply_succession_from_config(config, results)
+                if getattr(config, 'relations_groups', None) is not None or \
+                        getattr(config, 'relations_cards', None) is not None:
+                    self._apply_relations_from_config(config, results)
+                else:
+                    self._apply_succession_from_config(config, results)
 
             if not dry_run and hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
@@ -2235,6 +2244,26 @@ class ImportManager:
 
         return results
     
+    def _apply_relations_from_config(self, config: ImportConfiguration, results: Dict) -> None:
+        """Applique le modèle « par groupes » du nouveau panneau de relations
+        (lignées de succession, groupes d'équivalence, courantes externes, obsolètes).
+        Non bloquant : un échec ne doit jamais casser un import.
+        """
+        try:
+            from ..services.import_relations import apply_relations
+            groups = config.relations_groups or []
+            cards = config.relations_cards or []
+            counts = apply_relations(groups, cards, self.db_manager)
+            results['succession_created'] = results.get('succession_created', 0) + counts.get('successions', 0)
+            results['equivalences_created'] = results.get('equivalences_created', 0) + counts.get('equivalences', 0)
+            results['obsoletes_marked'] = results.get('obsoletes_marked', 0) + counts.get('obsoletes', 0)
+            app_logger.info(
+                f"Relations import appliquées : {counts.get('successions', 0)} succession(s), "
+                f"{counts.get('equivalences', 0)} équivalence(s), {counts.get('obsoletes', 0)} obsolète(s)"
+                + (f", {counts['errors']} erreur(s)" if counts.get('errors') else ""))
+        except Exception as e:
+            app_logger.error(f"Application des relations d'import échouée (non bloquant) : {e}")
+
     def _apply_succession_from_config(self, config: ImportConfiguration, results: Dict) -> None:
         """
         Appliquer les relations de succession déclarées dans le dialogue d'import.

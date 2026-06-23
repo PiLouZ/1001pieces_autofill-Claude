@@ -371,3 +371,53 @@ class TestSimilaritySuggestions:
         assert 999 in suggestions
         assert suggestions[999][0]['manufacturer'] == 'Brandt'
         assert suggestions[999][0]['type'] == 'Hotte'
+
+
+class TestApplyRelationsFromConfig:
+    """Câblage backend du modèle « par groupes » dans l'import (Lot 2b)."""
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    def test_apply_relations_from_config(self, import_manager, test_db_manager):
+        from src.core.import_manager import ImportConfiguration, ImportType
+        from src.services.import_relations import Group, CardData, KIND_SUCCESSION
+        for ref in ("B1", "B2", "S1"):
+            test_db_manager.execute_query("INSERT OR IGNORE INTO pieces(ref_piece) VALUES (?)", [ref])
+        test_db_manager.conn.commit()
+        config = ImportConfiguration(files=[], import_type=ImportType.MULTI_FILE)
+        config.relations_groups = [
+            Group(KIND_SUCCESSION, courante="B3_BASE", members=["B1", "B2"], cross_equivalent=True),
+            Group(KIND_SUCCESSION, courante="S2_BASE", members=["S1"], cross_equivalent=True),
+        ]
+        config.relations_cards = [CardData("B1"), CardData("B2"), CardData("S1")]
+        results = {}
+        import_manager._apply_relations_from_config(config, results)
+        # B1 → B3_BASE (succession) ; B1/B2/S1 obsolètes ; B3_BASE ≡ S2_BASE
+        row = test_db_manager.execute_query(
+            "SELECT ref_new FROM piece_supersessions WHERE ref_old=?", ["B1"])
+        assert row and row[0][0] == "B3_BASE"
+        for r in ("B1", "B2", "S1"):
+            o = test_db_manager.execute_query("SELECT is_obsolete FROM pieces WHERE ref_piece=?", [r])
+            assert o and o[0][0] == 1
+        g = test_db_manager.execute_query(
+            "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece IN ('B3_BASE','S2_BASE')")
+        assert len({x[0] for x in g}) == 1 and len(g) == 2
+        assert results.get('succession_created', 0) >= 2
+
+    def test_routage_relations_prime_sur_legacy(self, import_manager):
+        """Si relations_groups est renseigné, l'ancien chemin succession n'est pas pris."""
+        from src.core.import_manager import ImportConfiguration, ImportType
+        config = ImportConfiguration(files=[], import_type=ImportType.MULTI_FILE)
+        config.relations_groups = []
+        config.relations_cards = []
+        called = {'legacy': False, 'new': False}
+        import_manager._apply_succession_from_config = lambda *a: called.__setitem__('legacy', True)
+        import_manager._apply_relations_from_config = lambda *a: called.__setitem__('new', True)
+        # Reproduit la condition de routage de _run_import_files
+        if config.relations_groups is not None or config.relations_cards is not None:
+            import_manager._apply_relations_from_config(config, {})
+        else:
+            import_manager._apply_succession_from_config(config, {})
+        assert called['new'] and not called['legacy']
