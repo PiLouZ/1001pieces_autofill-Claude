@@ -817,9 +817,11 @@ class ImportDialog(QDialog):
                 splitter = QSplitter(Qt.Horizontal)
                 splitter.addWidget(left_col)
                 splitter.addWidget(rel_group)
-                splitter.setStretchFactor(0, 3)
-                splitter.setStretchFactor(1, 4)
+                splitter.setStretchFactor(0, 2)
+                splitter.setStretchFactor(1, 3)
                 splitter.setChildrenCollapsible(False)
+                # Relations plus large par défaut (deux sous-colonnes succ.|équiv.)
+                splitter.setSizes([500, 760])
                 layout.addWidget(splitter, 1)
             else:
                 layout.addWidget(left_col, 1)

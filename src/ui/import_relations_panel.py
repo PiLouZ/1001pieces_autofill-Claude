@@ -297,43 +297,56 @@ class GroupsZone(QWidget):
         self._filter.textChanged.connect(self._apply_filter)
         lay.addWidget(self._filter)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        content = QWidget()
-        self._lay = QVBoxLayout(content)
-        self._lay.setContentsMargins(2, 2, 2, 2)
-        self._lay.setSpacing(4)
-        self._lay.setAlignment(Qt.AlignTop)
-
-        self._lay.addWidget(_lbl("Non groupées", bold=True))
+        # Réservoir « Non groupées » en ligne, pleine largeur, en haut
+        lay.addWidget(_lbl("Non groupées", bold=True))
         self.reservoir = _RefList()
         for r in self._all_refs:
             self.reservoir.addItem(QListWidgetItem(r))
         self.reservoir.dropped.connect(self.changed)
-        self._lay.addWidget(self.reservoir)
+        lay.addWidget(self.reservoir)
 
-        self._lay.addWidget(_lbl("Lignées de succession", bold=True, color="#1565C0"))
-        self._succ_anchor = QWidget()
-        self._succ_lay = QVBoxLayout(self._succ_anchor)
-        self._succ_lay.setContentsMargins(0, 0, 0, 0)
-        self._succ_lay.setSpacing(4)
-        self._lay.addWidget(self._succ_anchor)
-        b1 = QPushButton("+ Nouvelle lignée")
-        b1.clicked.connect(lambda: self.add_group(KIND_SUCCESSION))
-        self._lay.addWidget(b1)
+        # Deux colonnes côte à côte : succession (gauche) | équivalence (droite),
+        # chacune avec son propre ascenseur vertical.
+        cols = QHBoxLayout()
+        cols.setContentsMargins(0, 0, 0, 0)
+        cols.setSpacing(6)
 
-        self._lay.addWidget(_lbl("Groupes d'équivalence", bold=True, color="#6A1B9A"))
-        self._equiv_anchor = QWidget()
-        self._equiv_lay = QVBoxLayout(self._equiv_anchor)
-        self._equiv_lay.setContentsMargins(0, 0, 0, 0)
-        self._equiv_lay.setSpacing(4)
-        self._lay.addWidget(self._equiv_anchor)
-        b2 = QPushButton("+ Nouveau groupe d'équivalence")
-        b2.clicked.connect(lambda: self.add_group(KIND_EQUIVALENCE))
-        self._lay.addWidget(b2)
+        self._succ_lay, succ_col = self._build_group_column(
+            "Lignées de succession", "#1565C0",
+            "+ Nouvelle lignée", lambda: self.add_group(KIND_SUCCESSION))
+        cols.addWidget(succ_col, 1)
 
-        scroll.setWidget(content)
-        lay.addWidget(scroll, 1)
+        self._equiv_lay, equiv_col = self._build_group_column(
+            "Groupes d'équivalence", "#6A1B9A",
+            "+ Nouveau groupe d'équivalence", lambda: self.add_group(KIND_EQUIVALENCE))
+        cols.addWidget(equiv_col, 1)
+
+        lay.addLayout(cols, 1)
+
+    def _build_group_column(self, title, color, btn_text, on_add):
+        """Construit une colonne (titre + zone scrollable de boîtes + bouton d'ajout).
+        Retourne (layout_d_ancrage_des_boîtes, widget_colonne)."""
+        col = QWidget()
+        cl = QVBoxLayout(col)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(4)
+        cl.addWidget(_lbl(title, bold=True, color=color))
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        anchor = QWidget()
+        anchor_lay = QVBoxLayout(anchor)
+        anchor_lay.setContentsMargins(2, 2, 2, 2)
+        anchor_lay.setSpacing(4)
+        anchor_lay.setAlignment(Qt.AlignTop)
+        scroll.setWidget(anchor)
+        cl.addWidget(scroll, 1)
+
+        btn = QPushButton(btn_text)
+        btn.clicked.connect(on_add)
+        cl.addWidget(btn)
+        return anchor_lay, col
 
     def add_group(self, kind):
         boxes = self._succ_boxes if kind == KIND_SUCCESSION else self._equiv_boxes
