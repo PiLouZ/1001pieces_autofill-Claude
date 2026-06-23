@@ -17,7 +17,7 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QTextEdit, QGroupBox, QApplication,
                              QScrollArea, QWidget, QGridLayout, Qt, QTimer, QThread,
                              QCompleter, QStringListModel, QRadioButton, QButtonGroup,
-                             QSizePolicy, QSize, pyqtSignal)
+                             QSizePolicy, QSize, QSplitter, pyqtSignal)
 
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
@@ -341,7 +341,13 @@ class ImportDialog(QDialog):
         self.setWindowTitle("Importer depuis le presse-papiers" if is_clipboard else "Configuration d'importation")
         self.setModal(True)
         self.setMinimumWidth(1000)
-        self.setMinimumHeight(1000)
+        # Multi-fichiers : disposition en colonnes (cf _setup_ui) → moins de
+        # hauteur nécessaire mais plus de largeur. Fichier unique : inchangé.
+        if self.import_config.import_type == ImportType.MULTI_FILE:
+            self.setMinimumHeight(720)
+            self.resize(1280, 900)
+        else:
+            self.setMinimumHeight(1000)
 
         # PHASE 2.1: Flag pour indiquer si les données sont chargées
         self._data_loaded = False
@@ -572,8 +578,9 @@ class ImportDialog(QDialog):
             ref_layout.addLayout(row_desc)
 
             ref_group.setLayout(ref_layout)
-            layout.addWidget(ref_group)
-        
+            # Différé : ajouté à la colonne gauche du QSplitter (cf fin _setup_ui)
+            self._common_ref_group = ref_group
+
         self.individual_desc_fields = []
 
         if len(self.import_config.files) == 1:
@@ -782,11 +789,11 @@ class ImportDialog(QDialog):
             individual_layout.addWidget(scroll_area)
             individual_group.setLayout(individual_layout)
             individual_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            layout.addWidget(individual_group, 1)
 
             # ── Zone de relations « par groupes » (lignées de succession +
             # groupes d'équivalence), alimentée par les références du lot ──────
             self._relations_groups_zone = self._build_relations_zone()
+            rel_group = None
             if self._relations_groups_zone is not None:
                 rel_group = QGroupBox("Relations entre références (succession / équivalence)")
                 rel_layout = QVBoxLayout()
@@ -794,7 +801,28 @@ class ImportDialog(QDialog):
                 rel_layout.addWidget(self._relations_groups_zone)
                 rel_group.setLayout(rel_layout)
                 rel_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-                layout.addWidget(rel_group, 1)
+
+            # ── Disposition en colonnes : [Réf. commune + individuelles] | [Relations]
+            # Exploite la largeur (1280px) au lieu d'empiler verticalement deux
+            # zones à ascenseurs → fin des ascenseurs imbriqués.
+            left_col = QWidget()
+            left_layout = QVBoxLayout(left_col)
+            left_layout.setContentsMargins(0, 0, 0, 0)
+            left_layout.setSpacing(6)
+            if getattr(self, '_common_ref_group', None) is not None:
+                left_layout.addWidget(self._common_ref_group)
+            left_layout.addWidget(individual_group, 1)
+
+            if rel_group is not None:
+                splitter = QSplitter(Qt.Horizontal)
+                splitter.addWidget(left_col)
+                splitter.addWidget(rel_group)
+                splitter.setStretchFactor(0, 3)
+                splitter.setStretchFactor(1, 4)
+                splitter.setChildrenCollapsible(False)
+                layout.addWidget(splitter, 1)
+            else:
+                layout.addWidget(left_col, 1)
 
         # Boutons
         buttons_layout = QHBoxLayout()
