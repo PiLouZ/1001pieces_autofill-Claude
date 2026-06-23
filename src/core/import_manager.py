@@ -731,7 +731,7 @@ class ImportDialog(QDialog):
             info_and_option_layout.setContentsMargins(0, 0, 0, 0)
             info_and_option_layout.setSpacing(6)
 
-            self.auto_file_references_checkbox = QCheckBox("Associer automatiquement les noms de fichiers comme références de pièces")
+            self.auto_file_references_checkbox = QCheckBox("Réf. de pièce = nom de fichier (auto)")
             self.auto_file_references_checkbox.setToolTip(
                 "Si coché, chaque fichier génère automatiquement une référence de pièce basée sur son nom.\n"
                 "Si décoché, seuls les données contenues dans les fichiers sont importées."
@@ -806,8 +806,11 @@ class ImportDialog(QDialog):
             # Exploite la largeur (1280px) au lieu d'empiler verticalement deux
             # zones à ascenseurs → fin des ascenseurs imbriqués.
             left_col = QWidget()
+            # Plafonne la colonne gauche pour laisser la largeur à la zone Relations
+            # (sinon le champ Description pousse la poignée et étrique les 2 sous-colonnes).
+            left_col.setMaximumWidth(580)
             left_layout = QVBoxLayout(left_col)
-            left_layout.setContentsMargins(0, 0, 0, 0)
+            left_layout.setContentsMargins(0, 0, 10, 0)  # respiration vers la poignée
             left_layout.setSpacing(6)
             if getattr(self, '_common_ref_group', None) is not None:
                 left_layout.addWidget(self._common_ref_group)
@@ -820,6 +823,7 @@ class ImportDialog(QDialog):
                 splitter.setStretchFactor(0, 2)
                 splitter.setStretchFactor(1, 3)
                 splitter.setChildrenCollapsible(False)
+                splitter.setHandleWidth(12)   # poignée visible, colonnes aérées
                 # Relations plus large par défaut (deux sous-colonnes succ.|équiv.)
                 splitter.setSizes([500, 760])
                 layout.addWidget(splitter, 1)

@@ -57,17 +57,6 @@ class TestSuccession:
         panel.recompute()
         assert "fantôme" not in panel.recap.text()
 
-    def test_double_clic_membre_promu_courante(self, qapp):
-        """Lot 6 : double-clic sur un membre de lignée → courante + retrait des membres."""
-        panel = _panel(qapp)
-        box = panel.groups_zone.add_group(KIND_SUCCESSION)
-        _move(panel, "B1", box)
-        _move(panel, "B2", box)
-        box._promote_member(box.members.item(box.members.row(box.members.findItems("B2", Qt.MatchExactly)[0])))
-        g = panel.get_groups()[0]
-        assert g.courante == "B2"
-        assert g.members == ["B1"]            # B2 retiré des membres (lignée)
-
     def test_drop_sur_courante(self, qapp):
         """Lot 6 : réf glissée sur le champ Courante → renseigne sans vider la source."""
         panel = _panel(qapp)
@@ -88,6 +77,14 @@ class TestEquivalence:
         assert g.kind == KIND_EQUIVALENCE and sorted(g.members) == ["S1", "S2"]
         assert "obsolète" not in panel.recap.text()
         assert not _cards(panel)["S1"].equiv_badge.text() == ""   # pastille présente
+
+    def test_groupe_equivalence_sans_courante_ni_cross(self, qapp):
+        """Un groupe d'équivalence n'a ni « courante » ni case « Équivalente »."""
+        panel = _panel(qapp)
+        box = panel.groups_zone.add_group(KIND_EQUIVALENCE)
+        assert box.courante_combo is None
+        assert box.cross_check is None
+        assert box.to_group().courante is None and box.to_group().cross_equivalent is False
 
 
 class TestCross:

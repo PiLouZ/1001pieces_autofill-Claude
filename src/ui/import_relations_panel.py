@@ -16,7 +16,7 @@ Widget autonome (testable offscreen).
 from PyQt5.QtCore import Qt, pyqtSignal, QStringListModel
 from PyQt5.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
-    QCheckBox, QPushButton, QScrollArea, QCompleter, QSplitter,
+    QCheckBox, QPushButton, QScrollArea, QCompleter, QSplitter, QSizePolicy,
     QListWidget, QListWidgetItem, QAbstractItemView,
 )
 import qtawesome as qta
@@ -170,7 +170,7 @@ class RefCard(QFrame):
 class _RefList(QListWidget):
     dropped = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, expanding=False):
         super().__init__(parent)
         self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setDefaultDropAction(Qt.MoveAction)
@@ -178,7 +178,13 @@ class _RefList(QListWidget):
         self.setFlow(QListWidget.LeftToRight)
         self.setWrapping(True)
         self.setResizeMode(QListWidget.Adjust)
-        self.setMaximumHeight(64)
+        if expanding:
+            # Zone de dépôt d'une boîte de groupe : occupe toute la hauteur dispo
+            self.setMinimumHeight(110)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        else:
+            # Réservoir « Non groupées » : bandeau compact de pastilles
+            self.setMaximumHeight(80)
         self.setStyleSheet("QListWidget { border: 1px dashed #ccc; border-radius: 4px; }")
 
     def dropEvent(self, event):
@@ -256,15 +262,14 @@ class GroupBox(QFrame):
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(3)
 
+        is_succ = self.kind == KIND_SUCCESSION
+        self.courante_combo = None      # uniquement pour les lignées de succession
+        self.cross_check = None         # idem (équivalence inter-lignées)
+
         head = QHBoxLayout()
-        name = "Lignée" if self.kind == KIND_SUCCESSION else "Éq."
+        name = "Lignée" if is_succ else "Groupe"
         head.addWidget(_lbl(f"{name} {self.index + 1}", color=col, bold=True))
         head.addStretch(1)
-        self.cross_check = QCheckBox("Équivalente")
-        self.cross_check.setToolTip("Sa courante est équivalente à celle des autres groupes cochés")
-        self.cross_check.setStyleSheet("font-size: 10px; border: none;")
-        self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
-        head.addWidget(self.cross_check)
         empty = QPushButton("vider")
         empty.setFlat(True)
         empty.setStyleSheet("color: #0066cc; font-size: 10px; border: none;")
@@ -277,33 +282,48 @@ class GroupBox(QFrame):
         head.addWidget(rem)
         lay.addLayout(head)
 
-        crow = QHBoxLayout()
-        clbl = "Courante :" if self.kind == KIND_SUCCESSION else "Courante (repère) :"
-        crow.addWidget(_lbl(clbl, width=130))
-        self.courante_combo = QComboBox()
-        self.courante_combo.setEditable(True)
-        self.courante_combo.setLineEdit(_CouranteLineEdit())
-        self.courante_combo.setInsertPolicy(QComboBox.NoInsert)
-        self.courante_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou à créer)")
-        self.courante_combo.lineEdit().setToolTip(
-            "Saisir, choisir, ou glisser une réf ici. Double-cliquer un membre le promeut courante.")
-        self.courante_combo.editTextChanged.connect(lambda *_: self.changed.emit())
-        self.courante_combo.lineEdit().ref_dropped.connect(self._on_courante_dropped)
-        crow.addWidget(self.courante_combo, 1)
-        lay.addLayout(crow)
+        if is_succ:
+            # Courante = réf récente qui remplace les anciennes (notion propre à la succession)
+            crow = QHBoxLayout()
+            crow.addWidget(_lbl("Courante :", width=72))
+            self.courante_combo = QComboBox()
+            self.courante_combo.setEditable(True)
+            self.courante_combo.setLineEdit(_CouranteLineEdit())
+            self.courante_combo.setInsertPolicy(QComboBox.NoInsert)
+            self.courante_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou à créer)")
+            self.courante_combo.lineEdit().setToolTip("Saisir, choisir, ou glisser une réf ici.")
+            self.courante_combo.editTextChanged.connect(lambda *_: self.changed.emit())
+            self.courante_combo.lineEdit().ref_dropped.connect(self._on_courante_dropped)
+            crow.addWidget(self.courante_combo, 1)
+            lay.addLayout(crow)
 
-        self.members = _RefList()
+            # Équivalence inter-lignées : sur sa propre ligne (libellé long)
+            self.cross_check = QCheckBox("≡ Équivalente (inter-lignées)")
+            self.cross_check.setToolTip(
+                "Cochez cette case sur plusieurs lignées pour déclarer leurs courantes\n"
+                "équivalentes entre elles (même appareil, marques différentes).")
+            self.cross_check.setStyleSheet("font-size: 10px; border: none; color: #6A1B9A;")
+            self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
+            lay.addWidget(self.cross_check)
+
+            hint = "Anciennes versions (glissez ici) :"
+        else:
+            hint = "Réfs interchangeables (glissez ici) :"
+        lay.addWidget(_lbl(hint, size=10, color="#607d8b"))
+
+        self.members = _RefList(expanding=True)
         self.members.dropped.connect(self.changed)
-        self.members.itemDoubleClicked.connect(self._promote_member)
-        lay.addWidget(self.members)
+        lay.addWidget(self.members, 1)
 
-        if self._ref_model is not None:
+        if is_succ and self._ref_model is not None:
             comp = QCompleter(self._ref_model, self.courante_combo.lineEdit())
             comp.setCaseSensitivity(Qt.CaseInsensitive)
             comp.setFilterMode(Qt.MatchContains)
             self.courante_combo.lineEdit().setCompleter(comp)
 
     def set_courante_options(self, refs):
+        if self.courante_combo is None:
+            return
         cur = self.courante_combo.currentText()
         self.courante_combo.blockSignals(True)
         self.courante_combo.clear()
@@ -313,25 +333,17 @@ class GroupBox(QFrame):
 
     def _on_courante_dropped(self, ref):
         """Réf glissée sur le champ Courante (la source n'est pas vidée)."""
-        self.courante_combo.setCurrentText(ref)
-        self.changed.emit()
-
-    def _promote_member(self, item):
-        """Double-clic sur un membre → le promeut courante. Pour une lignée, on
-        le retire des membres (une courante n'est pas sa propre ancienne version)."""
-        ref = item.text()
-        self.courante_combo.setCurrentText(ref)
-        if self.kind == KIND_SUCCESSION:
-            row = self.members.row(item)
-            if row >= 0:
-                self.members.takeItem(row)
-        self.changed.emit()
+        if self.courante_combo is not None:
+            self.courante_combo.setCurrentText(ref)
+            self.changed.emit()
 
     def to_group(self):
         return Group(kind=self.kind,
-                     courante=(self.courante_combo.currentText().strip() or None),
+                     courante=((self.courante_combo.currentText().strip() or None)
+                               if self.courante_combo is not None else None),
                      members=self.members.refs(),
-                     cross_equivalent=self.cross_check.isChecked())
+                     cross_equivalent=(self.cross_check.isChecked()
+                                       if self.cross_check is not None else False))
 
 
 # ── Zone des groupes ──────────────────────────────────────────────────────────
