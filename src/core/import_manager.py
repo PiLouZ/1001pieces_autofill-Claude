@@ -143,7 +143,7 @@ class MappingGroupWidget(QWidget):
         ("Type d'appareil",  "type"),
         ("Fabricant",        "manufacturer"),
         ("Autre Référence",  "other_ref"),
-        ("Notes",            "notes"),
+        ("Notes / Description", "notes"),
     ]
 
     def __init__(self, n_cols: int, files: list, sample_data: list,
