@@ -628,6 +628,9 @@ class ImportDialog(QDialog):
             self.auto_file_references_checkbox.setVisible(False)
             layout.addWidget(self.auto_file_references_checkbox)
 
+            # Mono-fichier : pas de zone de relations « par groupes » (chemin legacy)
+            self._relations_groups_zone = None
+
             # ── Section succession repliable (liens entre réfs uniquement) ──────
             self.succ_replaces_input = None
             self.succ_replaced_by_input = None
@@ -763,6 +766,18 @@ class ImportDialog(QDialog):
             individual_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             layout.addWidget(individual_group, 1)
 
+            # ── Zone de relations « par groupes » (lignées de succession +
+            # groupes d'équivalence), alimentée par les références du lot ──────
+            self._relations_groups_zone = self._build_relations_zone()
+            if self._relations_groups_zone is not None:
+                rel_group = QGroupBox("Relations entre références (succession / équivalence)")
+                rel_layout = QVBoxLayout()
+                rel_layout.setContentsMargins(6, 6, 6, 6)
+                rel_layout.addWidget(self._relations_groups_zone)
+                rel_group.setLayout(rel_layout)
+                rel_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                layout.addWidget(rel_group, 1)
+
         # Boutons
         buttons_layout = QHBoxLayout()
 
@@ -887,26 +902,9 @@ class ImportDialog(QDialog):
             self.individual_desc_fields.append(desc_input)
 
             if self.import_config.import_type == ImportType.MULTI_FILE:
-                if self._succ_button_group is None:
-                    self._succ_button_group = QButtonGroup(self)
-                    self._succ_button_group.setExclusive(True)
-
-                radio = QRadioButton("Courante")
-                radio.setToolTip("Désigner cette réf. comme courante — les autres lui seront successées à l'import")
-                radio.setStyleSheet("font-size: 11px; color: #495057; background: transparent; border: none;")
-                self._succ_button_group.addButton(radio, i)
-                self._succ_radio_files.append(file)
-                row2.addWidget(radio)
-
-                equiv_check = QCheckBox("Équivalente")
-                equiv_check.setToolTip(
-                    "Marquer cette réf. comme équivalente à la pièce courante\n"
-                    "(même fonction, fabricant différent — les deux restent valides)"
-                )
-                equiv_check.setStyleSheet("font-size: 11px; color: #6c757d; background: transparent; border: none;")
-                self._equiv_checkboxes.append((equiv_check, file))
-                row2.addWidget(equiv_check)
-
+                # Succession / équivalence : désormais déclarées dans la zone
+                # « Relations entre références » (lignées + groupes). Sur la carte
+                # on ne garde que « Obsolète ».
                 obs_check = QCheckBox("Obsolète")
                 obs_check.setToolTip("Marquer cette référence comme obsolète (plus fabriquée)")
                 obs_check.setStyleSheet("font-size: 11px; color: #c0392b; background: transparent; border: none;")
@@ -922,6 +920,29 @@ class ImportDialog(QDialog):
         # Autocomplétion pour les champs de succession (fichier unique)
         self._setup_succession_autocomplete()
     
+    def _build_relations_zone(self):
+        """Construit la zone de relations « par groupes » (lignées de succession +
+        groupes d'équivalence) pour le multi-fichiers, alimentée par les références
+        du lot. Renvoie None si indisponible (≤ 1 réf ou erreur) — sans bloquer."""
+        try:
+            from ..ui.import_relations_panel import GroupsZone
+            from PyQt5.QtCore import QStringListModel
+            refs = [f.suggested_reference for f in self.import_config.files
+                    if getattr(f, 'suggested_reference', '')]
+            if len(refs) < 2:
+                return None
+            base_refs = []
+            if self.import_manager and hasattr(self.import_manager, 'db_manager'):
+                rows = self.import_manager.db_manager.execute_query(
+                    "SELECT ref_piece FROM pieces ORDER BY ref_piece LIMIT 5000") or []
+                base_refs = [r[0] for r in rows]
+            # Référence persistante sur le modèle (piège GC du QCompleter)
+            self._relations_base_model = QStringListModel(sorted(base_refs), self)
+            return GroupsZone(refs, ref_model=self._relations_base_model)
+        except Exception as e:
+            app_logger.warning(f"Zone de relations indisponible : {e}")
+            return None
+
     def _setup_succession_autocomplete(self):
         """Configurer l'autocomplétion sur les champs de succession (fichier unique)."""
         if self.succ_replaces_input is None:
@@ -1064,23 +1085,24 @@ class ImportDialog(QDialog):
             config.succession_replaces = self.succ_replaces_input.text().strip() or None
             config.succession_replaced_by = self.succ_replaced_by_input.text().strip() or None
 
-        # Succession — multi-fichiers (ref courante désignée)
+        # Succession / équivalence — multi-fichiers : modèle « par groupes » du
+        # nouveau panneau de relations (lignées + groupes d'équivalence). Prime sur
+        # les anciens champs et route vers _apply_relations_from_config.
         if (config.import_type == ImportType.MULTI_FILE
-                and self._succ_button_group is not None
-                and self._succ_button_group.checkedId() >= 0
-                and self._succ_radio_files):
-            checked_id = self._succ_button_group.checkedId()
-            if checked_id < len(self._succ_radio_files):
-                current_file = self._succ_radio_files[checked_id]
-                config.succession_current_ref = config.individual_references.get(current_file.path) or None
-
-        # Équivalences — multi-fichiers (cases cochées "Équivalente")
-        if config.import_type == ImportType.MULTI_FILE and self._equiv_checkboxes:
-            for equiv_check, file in self._equiv_checkboxes:
-                if equiv_check.isChecked():
-                    ref = config.individual_references.get(file.path, '') or ''
-                    if ref:
-                        config.equivalence_refs.append(ref)
+                and getattr(self, '_relations_groups_zone', None) is not None):
+            from ..services.import_relations import CardData
+            config.relations_groups = self._relations_groups_zone.groups()
+            obs_by_ref = {}
+            for obs_check, file in (self._obsolete_checkboxes or []):
+                ref = config.individual_references.get(file.path, '') or ''
+                if ref:
+                    obs_by_ref[ref] = obs_check.isChecked()
+            seen, cards = set(), []
+            for ref in config.individual_references.values():
+                if ref and ref not in seen:
+                    seen.add(ref)
+                    cards.append(CardData(ref=ref, is_obsolete=obs_by_ref.get(ref, False)))
+            config.relations_cards = cards
 
         # Obsolète — fichier unique
         if self._obsolete_checkbox is not None and self._obsolete_checkbox.isChecked():
@@ -1090,13 +1112,7 @@ class ImportDialog(QDialog):
             if ref:
                 config.obsolete_refs.append(ref)
 
-        # Obsolète — multi-fichiers (cases cochées "Obsolète")
-        if config.import_type == ImportType.MULTI_FILE and self._obsolete_checkboxes:
-            for obs_check, file in self._obsolete_checkboxes:
-                if obs_check.isChecked():
-                    ref = config.individual_references.get(file.path, '') or ''
-                    if ref:
-                        config.obsolete_refs.append(ref)
+        # (Obsolète multi-fichiers : désormais porté par relations_cards ci-dessus.)
 
         # Mapping de colonnes personnalisé (v3.30.0)
         from .config import Config

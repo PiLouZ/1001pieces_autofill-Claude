@@ -421,3 +421,45 @@ class TestApplyRelationsFromConfig:
         else:
             import_manager._apply_succession_from_config(config, {})
         assert called['new'] and not called['legacy']
+
+
+class TestDialogRelationsCollection:
+    """Collecte du modèle « par groupes » par le dialogue (Lot 2b 2/2)."""
+
+    def test_validate_collecte_relations_multi(self, qapp, test_db_manager):
+        from PyQt5.QtWidgets import QListWidgetItem
+        from src.core.import_manager import (
+            ImportManager, ImportDialog, ImportConfiguration, ImportFile,
+            ImportType, FileType)
+        from src.services.import_relations import KIND_SUCCESSION
+        im = ImportManager(db_manager=test_db_manager, parent_widget=None)
+        files = [ImportFile(f'/{r}.csv', FileType.CSV, r) for r in ('REF_A', 'REF_B', 'REF_C')]
+        cfg = ImportConfiguration(files=files, import_type=ImportType.MULTI_FILE)
+        dlg = ImportDialog(None, cfg, im)
+        dlg.auto_file_references_checkbox.setChecked(True)   # réfs = suggested_reference
+        z = dlg._relations_groups_zone
+        assert z is not None
+        box = z.add_group(KIND_SUCCESSION)
+        box.courante_combo.setCurrentText('REF_C')
+        res = z.reservoir
+        for ref in ('REF_A', 'REF_B'):
+            for i in range(res.count()):
+                if res.item(i).text() == ref:
+                    res.takeItem(i)
+                    break
+            box.members.addItem(QListWidgetItem(ref))
+        dlg._validate_and_accept()
+        rc = dlg.result_config
+        assert rc.relations_groups and rc.relations_groups[0].courante == 'REF_C'
+        assert sorted(rc.relations_groups[0].members) == ['REF_A', 'REF_B']
+        assert {c.ref for c in rc.relations_cards} == {'REF_A', 'REF_B', 'REF_C'}
+
+    def test_mono_fichier_pas_de_relations_groups(self, qapp, test_db_manager):
+        from src.core.import_manager import (
+            ImportManager, ImportDialog, ImportConfiguration, ImportFile,
+            ImportType, FileType)
+        im = ImportManager(db_manager=test_db_manager, parent_widget=None)
+        cfg = ImportConfiguration(files=[ImportFile('/a.csv', FileType.CSV, 'REF_A')],
+                                  import_type=ImportType.SINGLE_FILE)
+        dlg = ImportDialog(None, cfg, im)
+        assert dlg._relations_groups_zone is None   # chemin legacy mono inchangé
