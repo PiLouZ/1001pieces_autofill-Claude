@@ -1,44 +1,50 @@
-"""Panneau de déclaration des relations entre références importées (Lot 2).
+"""Panneau « par groupes » de déclaration des relations entre réfs importées (Lot 2).
 
-Agencement : QSplitter horizontal — cartes à gauche (succession + obsolète + liens
-base), zone « Groupes d'équivalence » en drag-drop à droite, récap sticky en bas.
+Agencement QSplitter : cartes à gauche (libellé, Obsolète, « remplace [base] »),
+zone groupes à droite, récap sticky en bas.
 
-Succession SIMPLIFIÉE (l'utilisateur ne connaît pas l'ordre) : par réf, statut
-« Courante » (plusieurs possibles) OU « Ancienne version de [réf récente] » (combo
-ÉDITABLE : courantes du lot, réfs en base, ou saisie libre → fantôme). Chaque
-ancienne pointe directement vers sa courante (étoile).
+Zone groupes (drag-drop) : un réservoir « Non groupées » + deux sections de boîtes :
+- **Lignées de succession** : Courante éditable (lot/base/à créer) + membres (anciennes
+  versions) + checkbox « Équivalente ».
+- **Groupes d'équivalence** : Courante repère optionnelle + membres (tous valides) +
+  checkbox « Équivalente ».
+La checkbox relie les courantes des groupes cochés. États dérivés via `derive`.
 
-Équivalence : zone dédiée, on crée N groupes et on y glisse les pastilles de réf
-(une réf ∈ au plus un groupe). Source unique de vérité : l'état des QListWidget.
-
-Tout est dérivé via `recompute_relations`. Widget autonome (testable offscreen).
+Widget autonome (testable offscreen).
 """
 
 from PyQt5.QtCore import Qt, pyqtSignal, QStringListModel
 from PyQt5.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
-    QCheckBox, QPushButton, QScrollArea, QCompleter, QRadioButton, QSplitter,
-    QListWidget, QListWidgetItem, QMenu, QAbstractItemView,
+    QCheckBox, QPushButton, QScrollArea, QCompleter, QSplitter,
+    QListWidget, QListWidgetItem, QAbstractItemView,
 )
 import qtawesome as qta
 
-from ..services.import_relations import RefRelation, recompute_relations
+from ..services.import_relations import (
+    Group, CardData, derive, KIND_SUCCESSION, KIND_EQUIVALENCE,
+)
 from ..core.config import pluralize
 
-_CHAIN_COLORS = ["#1565C0", "#00838F", "#2E7D32", "#4527A0", "#00695C", "#283593"]
+_SUCC_COLORS = ["#1565C0", "#00838F", "#2E7D32", "#4527A0", "#00695C", "#283593"]
 _EQUIV_COLORS = ["#F9A825", "#EF6C00", "#C75B39", "#AD1457", "#D84315"]
 
 
-def _chain_color(cid):
-    return _CHAIN_COLORS[cid % len(_CHAIN_COLORS)]
+def _succ_color(i):
+    return _SUCC_COLORS[i % len(_SUCC_COLORS)]
 
 
-def _equiv_color(gid):
-    return _EQUIV_COLORS[(gid - 1) % len(_EQUIV_COLORS)]
+def _equiv_color(i):
+    return _EQUIV_COLORS[i % len(_EQUIV_COLORS)]
 
 
-def _group_label(gid):
-    return chr(64 + gid) if 1 <= gid <= 26 else str(gid)
+def _lbl(text, size=11, color="#495057", width=None, bold=False):
+    w = QLabel(text)
+    w.setStyleSheet(f"font-size: {size}px; color: {color}; border: none;"
+                    + (" font-weight: bold;" if bold else ""))
+    if width:
+        w.setFixedWidth(width)
+    return w
 
 
 # ── Carte d'une référence ─────────────────────────────────────────────────────
@@ -52,7 +58,6 @@ class RefCard(QFrame):
         self.filename = filename
         self.is_solo = is_solo
         self._ref_model = ref_model
-        self._suppress = False
         self.setObjectName("refCard")
         self._build()
 
@@ -63,14 +68,11 @@ class RefCard(QFrame):
         lay.setSpacing(4)
 
         row1 = QHBoxLayout()
-        ref_lbl = QLabel(self.ref)
-        ref_lbl.setStyleSheet("font-weight: bold; font-size: 12px; border: none;")
-        row1.addWidget(ref_lbl)
+        row1.addWidget(_lbl(self.ref, size=12, color="#212121", bold=True))
         if not self.is_solo and self.filename:
-            f_lbl = QLabel(self.filename)
-            f_lbl.setStyleSheet("color: #666; font-size: 11px; border: none;")
-            f_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            row1.addWidget(f_lbl, 1)
+            f = _lbl(self.filename, color="#666")
+            f.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            row1.addWidget(f, 1)
         else:
             row1.addStretch(1)
         self.head_badge = QLabel("")
@@ -82,42 +84,17 @@ class RefCard(QFrame):
         lay.addLayout(row1)
 
         row2 = QHBoxLayout()
-        row2.addWidget(self._lbl("Libellé :"))
+        row2.addWidget(_lbl("Libellé :"))
         self.desc_input = QLineEdit()
         self.desc_input.setPlaceholderText("Description (optionnel)")
         row2.addWidget(self.desc_input, 1)
         self.obsolete_check = QCheckBox("Obsolète")
         self.obsolete_check.setStyleSheet("font-size: 11px; color: #c0392b; border: none;")
-        self.obsolete_check.stateChanged.connect(self._emit)
+        self.obsolete_check.stateChanged.connect(lambda *_: self.changed.emit())
         row2.addWidget(self.obsolete_check)
         lay.addLayout(row2)
 
-        # Statut succession (sauf solo : une seule réf, pas de lignée intra-lot)
-        if not self.is_solo:
-            row3 = QHBoxLayout()
-            row3.addWidget(self._lbl("Statut :"))
-            self.radio_current = QRadioButton("Courante")
-            self.radio_current.setAutoExclusive(False)
-            self.radio_current.toggled.connect(self._on_current_toggled)
-            row3.addWidget(self.radio_current)
-            self.radio_old = QRadioButton("Ancienne version de")
-            self.radio_old.setAutoExclusive(False)
-            self.radio_old.toggled.connect(self._on_old_toggled)
-            row3.addWidget(self.radio_old)
-            self.newer_combo = QComboBox()
-            self.newer_combo.setEditable(True)        # choisir OU saisir une réf libre
-            self.newer_combo.setInsertPolicy(QComboBox.NoInsert)
-            self.newer_combo.setMinimumWidth(150)
-            self.newer_combo.setEnabled(False)
-            self.newer_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou libre)")
-            self.newer_combo.editTextChanged.connect(self._emit)
-            row3.addWidget(self.newer_combo, 1)
-            lay.addLayout(row3)
-        else:
-            self.radio_current = self.radio_old = self.newer_combo = None
-
-        # Zone repliable « Lien avec la base »
-        self.base_toggle = QPushButton("▸ Lien avec la base existante")
+        self.base_toggle = QPushButton("▸ Cette réf remplace une réf en base")
         self.base_toggle.setFlat(True)
         self.base_toggle.setCursor(Qt.PointingHandCursor)
         self.base_toggle.setStyleSheet(
@@ -128,144 +105,74 @@ class RefCard(QFrame):
         lay.addWidget(self.base_toggle)
 
         self.base_zone = QWidget()
-        bz = QVBoxLayout(self.base_zone)
-        bz.setContentsMargins(12, 2, 4, 4)
-        bz.setSpacing(3)
-        ra = QHBoxLayout()
-        ra.addWidget(self._lbl("Cette réf remplace :", 170))
+        bz = QHBoxLayout(self.base_zone)
+        bz.setContentsMargins(12, 0, 4, 2)
+        bz.addWidget(_lbl("Remplace (réf base) :", width=150))
         self.replaces_input = QLineEdit()
         self.replaces_input.setPlaceholderText("Ancienne réf en base")
-        self.replaces_input.textChanged.connect(self._emit)
-        ra.addWidget(self.replaces_input, 1)
-        bz.addLayout(ra)
-        self.phantom_warn = QLabel("")
-        self.phantom_warn.setStyleSheet("color: #b06a00; font-size: 10px; border: none;")
-        self.phantom_warn.setVisible(False)
-        bz.addWidget(self.phantom_warn)
+        self.replaces_input.textChanged.connect(lambda *_: self.changed.emit())
+        bz.addWidget(self.replaces_input, 1)
         self.base_zone.setVisible(False)
         lay.addWidget(self.base_zone)
 
+        self.obs_hint = QLabel("")
+        self.obs_hint.setStyleSheet("color: #9e9e9e; font-size: 10px; border: none;")
+        self.obs_hint.setVisible(False)
+        lay.addWidget(self.obs_hint)
+
         if self._ref_model is not None:
-            for fld in [self.replaces_input] + ([self.newer_combo.lineEdit()] if self.newer_combo else []):
-                comp = QCompleter(self._ref_model, fld)
-                comp.setCaseSensitivity(Qt.CaseInsensitive)
-                comp.setFilterMode(Qt.MatchContains)
-                fld.setCompleter(comp)
-
-        self.breadcrumb = QLabel("")
-        self.breadcrumb.setStyleSheet("color: #555; font-size: 10px; border: none;")
-        self.breadcrumb.setVisible(False)
-        lay.addWidget(self.breadcrumb)
-
-    def _lbl(self, text, width=None):
-        lbl = QLabel(text)
-        lbl.setStyleSheet("font-size: 11px; color: #495057; border: none;")
-        if width:
-            lbl.setFixedWidth(width)
-        return lbl
-
-    def _on_current_toggled(self, checked):
-        if self._suppress:
-            return
-        if checked and self.radio_old and self.radio_old.isChecked():
-            self._suppress = True
-            self.radio_old.setChecked(False)
-            self._suppress = False
-        self.newer_combo.setEnabled(self.radio_old.isChecked())
-        self.changed.emit()
-
-    def _on_old_toggled(self, checked):
-        if self._suppress:
-            return
-        if checked and self.radio_current and self.radio_current.isChecked():
-            self._suppress = True
-            self.radio_current.setChecked(False)
-            self._suppress = False
-        self.newer_combo.setEnabled(self.radio_old.isChecked())
-        self.changed.emit()
+            comp = QCompleter(self._ref_model, self.replaces_input)
+            comp.setCaseSensitivity(Qt.CaseInsensitive)
+            comp.setFilterMode(Qt.MatchContains)
+            self.replaces_input.setCompleter(comp)
 
     def _toggle_base(self):
         vis = not self.base_zone.isVisible()
         self.base_zone.setVisible(vis)
-        self.base_toggle.setText(("▾" if vis else "▸") + " Lien avec la base existante")
+        self.base_toggle.setText(("▾" if vis else "▸") + " Cette réf remplace une réf en base")
 
-    def _emit(self, *a):
-        if not self._suppress:
-            self.changed.emit()
+    def get_card(self):
+        return CardData(ref=self.ref,
+                        is_obsolete=self.obsolete_check.isChecked(),
+                        base_replaces=(self.replaces_input.text().strip() or None))
 
-    def get_relation(self, equiv_group=None):
-        is_current = bool(self.radio_current and self.radio_current.isChecked())
-        newer = None
-        if self.radio_old and self.radio_old.isChecked():
-            newer = (self.newer_combo.currentText().strip() or None)
-        return RefRelation(
-            ref=self.ref, is_current=is_current, newer_ref=newer,
-            equiv_group=equiv_group,
-            is_obsolete=self.obsolete_check.isChecked(),
-            base_replaces=(self.replaces_input.text().strip() or None),
-        )
-
-    def set_newer_options(self, courantes):
-        """Repeuple la liste des courantes proposées (l'édition libre reste possible)."""
-        if self.newer_combo is None:
-            return
-        self._suppress = True
-        txt = self.newer_combo.currentText()
-        self.newer_combo.clear()
-        self.newer_combo.addItems([c for c in courantes if c != self.ref])
-        self.newer_combo.setCurrentText(txt)
-        self._suppress = False
-
-    def apply_derived(self, is_head, chain_id, breadcrumb, equiv_gid, base_set, lot_refs):
-        color = _chain_color(chain_id) if chain_id is not None else None
+    def apply_derived(self, is_courante, succ_gi, equiv_gi, obsolete_via_group):
+        color = _succ_color(succ_gi) if succ_gi is not None else None
         border = f"border-left: 4px solid {color};" if color else ""
         self.setStyleSheet(
             f"#refCard {{ background: white; border: 1px solid #e9ecef; {border} border-radius: 4px; }}")
-        if is_head:
+        if is_courante:
             self.head_badge.setPixmap(qta.icon('fa5s.crown', color='#1565C0').pixmap(12, 12))
-            self.head_badge.setToolTip("Courante")
+            self.head_badge.setToolTip("Courante d'une lignée")
         else:
             self.head_badge.clear()
-        if equiv_gid:
-            self.equiv_badge.setText(f"● Éq. {_group_label(equiv_gid)}")
-            self.equiv_badge.setStyleSheet(f"color: {_equiv_color(equiv_gid)}; border: none; font-size: 11px;")
+        if equiv_gi is not None:
+            self.equiv_badge.setText("●")
+            self.equiv_badge.setStyleSheet(f"color: {_equiv_color(equiv_gi)}; border: none; font-size: 14px;")
+            self.equiv_badge.setToolTip("Membre d'un groupe d'équivalence")
         else:
             self.equiv_badge.setText("")
-        if breadcrumb:
-            self.breadcrumb.setText("Chaîne : " + " → ".join(breadcrumb))
-            self.breadcrumb.setVisible(True)
+        if obsolete_via_group and not self.obsolete_check.isChecked():
+            self.obs_hint.setText("→ deviendra obsolète (ancienne version)")
+            self.obs_hint.setVisible(True)
         else:
-            self.breadcrumb.setVisible(False)
-        # Avertissement fantôme : réf citée (remplace / ancienne version de) absente
-        # de la base ET hors du lot (une réf du lot est valide, pas un fantôme).
-        missing = []
-        rel = self.get_relation()
-        for v in (rel.base_replaces, rel.newer_ref):
-            if v and v not in base_set and v not in lot_refs:
-                missing.append(v)
-        if missing:
-            self.phantom_warn.setText("⚠ Réf absente de la base (fantôme) : " + ", ".join(missing))
-            self.phantom_warn.setVisible(True)
-        else:
-            self.phantom_warn.setVisible(False)
+            self.obs_hint.setVisible(False)
 
 
-# ── Zone des groupes d'équivalence (drag-drop) ───────────────────────────────
+# ── Listes de pastilles drag-drop ─────────────────────────────────────────────
 
 class _RefList(QListWidget):
-    """Liste de pastilles de réf acceptant le drag-drop entre conteneurs."""
     dropped = pyqtSignal()
 
-    def __init__(self, group_id=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.group_id = group_id      # None = réservoir « Non groupées »
         self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setFlow(QListWidget.LeftToRight)
         self.setWrapping(True)
         self.setResizeMode(QListWidget.Adjust)
-        self.setMaximumHeight(72)
+        self.setMaximumHeight(64)
         self.setStyleSheet("QListWidget { border: 1px dashed #ccc; border-radius: 4px; }")
 
     def dropEvent(self, event):
@@ -276,23 +183,105 @@ class _RefList(QListWidget):
         return [self.item(i).text() for i in range(self.count())]
 
 
-class EquivGroupsZone(QWidget):
+# ── Boîte d'un groupe ─────────────────────────────────────────────────────────
+
+class GroupBox(QFrame):
+    changed = pyqtSignal()
+    remove_requested = pyqtSignal(object)
+    empty_requested = pyqtSignal(object)
+
+    def __init__(self, kind, index, ref_model=None, parent=None):
+        super().__init__(parent)
+        self.kind = kind
+        self.index = index
+        self._ref_model = ref_model
+        self.setObjectName("groupBox")
+        self._build()
+
+    def _build(self):
+        self.setFrameShape(QFrame.StyledPanel)
+        col = _succ_color(self.index) if self.kind == KIND_SUCCESSION else _equiv_color(self.index)
+        self.setStyleSheet(
+            f"#groupBox {{ background: white; border: 1px solid #e9ecef;"
+            f" border-left: 4px solid {col}; border-radius: 4px; }}")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(8, 4, 8, 4)
+        lay.setSpacing(3)
+
+        head = QHBoxLayout()
+        name = "Lignée" if self.kind == KIND_SUCCESSION else "Éq."
+        head.addWidget(_lbl(f"{name} {self.index + 1}", color=col, bold=True))
+        head.addStretch(1)
+        self.cross_check = QCheckBox("Équivalente")
+        self.cross_check.setToolTip("Sa courante est équivalente à celle des autres groupes cochés")
+        self.cross_check.setStyleSheet("font-size: 10px; border: none;")
+        self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
+        head.addWidget(self.cross_check)
+        empty = QPushButton("vider")
+        empty.setFlat(True)
+        empty.setStyleSheet("color: #0066cc; font-size: 10px; border: none;")
+        empty.clicked.connect(lambda: self.empty_requested.emit(self))
+        head.addWidget(empty)
+        rem = QPushButton("suppr")
+        rem.setFlat(True)
+        rem.setStyleSheet("color: #c0392b; font-size: 10px; border: none;")
+        rem.clicked.connect(lambda: self.remove_requested.emit(self))
+        head.addWidget(rem)
+        lay.addLayout(head)
+
+        crow = QHBoxLayout()
+        clbl = "Courante :" if self.kind == KIND_SUCCESSION else "Courante (repère) :"
+        crow.addWidget(_lbl(clbl, width=130))
+        self.courante_combo = QComboBox()
+        self.courante_combo.setEditable(True)
+        self.courante_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.courante_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou à créer)")
+        self.courante_combo.editTextChanged.connect(lambda *_: self.changed.emit())
+        crow.addWidget(self.courante_combo, 1)
+        lay.addLayout(crow)
+
+        self.members = _RefList()
+        self.members.dropped.connect(self.changed)
+        lay.addWidget(self.members)
+
+        if self._ref_model is not None:
+            comp = QCompleter(self._ref_model, self.courante_combo.lineEdit())
+            comp.setCaseSensitivity(Qt.CaseInsensitive)
+            comp.setFilterMode(Qt.MatchContains)
+            self.courante_combo.lineEdit().setCompleter(comp)
+
+    def set_courante_options(self, refs):
+        cur = self.courante_combo.currentText()
+        self.courante_combo.blockSignals(True)
+        self.courante_combo.clear()
+        self.courante_combo.addItems(refs)
+        self.courante_combo.setCurrentText(cur)
+        self.courante_combo.blockSignals(False)
+
+    def to_group(self):
+        return Group(kind=self.kind,
+                     courante=(self.courante_combo.currentText().strip() or None),
+                     members=self.members.refs(),
+                     cross_equivalent=self.cross_check.isChecked())
+
+
+# ── Zone des groupes ──────────────────────────────────────────────────────────
+
+class GroupsZone(QWidget):
     changed = pyqtSignal()
 
-    def __init__(self, refs, parent=None):
+    def __init__(self, refs, ref_model=None, parent=None):
         super().__init__(parent)
         self._all_refs = list(refs)
-        self._next_gid = 1
-        self._group_lists = {}     # gid → _RefList
+        self._ref_model = ref_model
+        self._succ_boxes = []
+        self._equiv_boxes = []
         self._build()
 
     def _build(self):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
-        title = QLabel("Groupes d'équivalence")
-        title.setStyleSheet("font-weight: bold; font-size: 12px;")
-        lay.addWidget(title)
         self._filter = QLineEdit()
         self._filter.setPlaceholderText("Filtrer une réf…")
         self._filter.addAction(qta.icon('fa5s.search', color='#888'), QLineEdit.LeadingPosition)
@@ -302,106 +291,95 @@ class EquivGroupsZone(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         content = QWidget()
-        self._content_lay = QVBoxLayout(content)
-        self._content_lay.setContentsMargins(2, 2, 2, 2)
-        self._content_lay.setSpacing(6)
-        self._content_lay.setAlignment(Qt.AlignTop)
+        self._lay = QVBoxLayout(content)
+        self._lay.setContentsMargins(2, 2, 2, 2)
+        self._lay.setSpacing(4)
+        self._lay.setAlignment(Qt.AlignTop)
 
-        # Réservoir « Non groupées »
-        self._content_lay.addWidget(self._mk_header("Non groupées", None))
-        self.reservoir = _RefList(group_id=None)
+        self._lay.addWidget(_lbl("Non groupées", bold=True))
+        self.reservoir = _RefList()
         for r in self._all_refs:
             self.reservoir.addItem(QListWidgetItem(r))
-        self.reservoir.dropped.connect(self._on_change)
-        self._content_lay.addWidget(self.reservoir)
+        self.reservoir.dropped.connect(self.changed)
+        self._lay.addWidget(self.reservoir)
+
+        self._lay.addWidget(_lbl("Lignées de succession", bold=True, color="#1565C0"))
+        self._succ_anchor = QWidget()
+        self._succ_lay = QVBoxLayout(self._succ_anchor)
+        self._succ_lay.setContentsMargins(0, 0, 0, 0)
+        self._succ_lay.setSpacing(4)
+        self._lay.addWidget(self._succ_anchor)
+        b1 = QPushButton("+ Nouvelle lignée")
+        b1.clicked.connect(lambda: self.add_group(KIND_SUCCESSION))
+        self._lay.addWidget(b1)
+
+        self._lay.addWidget(_lbl("Groupes d'équivalence", bold=True, color="#EF6C00"))
+        self._equiv_anchor = QWidget()
+        self._equiv_lay = QVBoxLayout(self._equiv_anchor)
+        self._equiv_lay.setContentsMargins(0, 0, 0, 0)
+        self._equiv_lay.setSpacing(4)
+        self._lay.addWidget(self._equiv_anchor)
+        b2 = QPushButton("+ Nouveau groupe d'équivalence")
+        b2.clicked.connect(lambda: self.add_group(KIND_EQUIVALENCE))
+        self._lay.addWidget(b2)
 
         scroll.setWidget(content)
         lay.addWidget(scroll, 1)
 
-        add_btn = QPushButton("+ Nouveau groupe")
-        add_btn.clicked.connect(self.add_group)
-        lay.addWidget(add_btn)
+    def add_group(self, kind):
+        boxes = self._succ_boxes if kind == KIND_SUCCESSION else self._equiv_boxes
+        layout = self._succ_lay if kind == KIND_SUCCESSION else self._equiv_lay
+        box = GroupBox(kind, len(boxes), ref_model=self._ref_model)
+        box.changed.connect(self.changed)
+        box.remove_requested.connect(self._remove_box)
+        box.empty_requested.connect(self._empty_box)
+        box.members.dropped.connect(self.changed)
+        boxes.append(box)
+        layout.addWidget(box)
+        self.changed.emit()
+        return box
 
-    def _mk_header(self, text, gid):
-        w = QWidget()
-        h = QHBoxLayout(w)
-        h.setContentsMargins(0, 2, 0, 0)
-        lbl = QLabel(text)
-        col = "#495057" if gid is None else _equiv_color(gid)
-        lbl.setStyleSheet(f"font-weight: bold; font-size: 11px; color: {col};")
-        h.addWidget(lbl)
-        h.addStretch(1)
-        if gid is not None:
-            empty = QPushButton("vider")
-            empty.setFlat(True)
-            empty.setStyleSheet("color: #0066cc; font-size: 10px; border: none;")
-            empty.clicked.connect(lambda: self._empty_group(gid))
-            h.addWidget(empty)
-            rem = QPushButton("supprimer")
-            rem.setFlat(True)
-            rem.setStyleSheet("color: #c0392b; font-size: 10px; border: none;")
-            rem.clicked.connect(lambda: self.remove_group(gid))
-            h.addWidget(rem)
-        return w
+    def _empty_box(self, box):
+        for r in box.members.refs():
+            self.reservoir.addItem(QListWidgetItem(r))
+        box.members.clear()
+        self.changed.emit()
 
-    def add_group(self):
-        gid = self._next_gid
-        self._next_gid += 1
-        self._content_lay.addWidget(self._mk_header(f"Groupe {_group_label(gid)}", gid))
-        lst = _RefList(group_id=gid)
-        lst.dropped.connect(self._on_change)
-        self._group_lists[gid] = lst
-        self._content_lay.addWidget(lst)
-        self._on_change()
-        return gid
-
-    def _empty_group(self, gid):
-        lst = self._group_lists.get(gid)
-        if lst:
-            for r in lst.refs():
-                self.reservoir.addItem(QListWidgetItem(r))
-            lst.clear()
-            self._on_change()
-
-    def remove_group(self, gid):
-        self._empty_group(gid)
-        lst = self._group_lists.pop(gid, None)
-        if lst:
-            # retirer le header (widget juste avant la liste) + la liste
-            idx = self._content_lay.indexOf(lst)
-            lst.setParent(None)
-            if idx >= 1:
-                hdr = self._content_lay.itemAt(idx - 1).widget()
-                if hdr:
-                    hdr.setParent(None)
-        self._on_change()
+    def _remove_box(self, box):
+        for r in box.members.refs():
+            self.reservoir.addItem(QListWidgetItem(r))
+        boxes = self._succ_boxes if box.kind == KIND_SUCCESSION else self._equiv_boxes
+        if box in boxes:
+            boxes.remove(box)
+        box.setParent(None)
+        # ré-indexer
+        for i, b in enumerate(boxes):
+            b.index = i
+        self.changed.emit()
 
     def _apply_filter(self, text):
         text = (text or "").strip().lower()
-        for lst in [self.reservoir] + list(self._group_lists.values()):
+        lists = [self.reservoir] + [b.members for b in self._succ_boxes + self._equiv_boxes]
+        for lst in lists:
             for i in range(lst.count()):
                 it = lst.item(i)
                 it.setHidden(bool(text) and text not in it.text().lower())
 
-    def _on_change(self, *a):
-        self.changed.emit()
+    def groups(self):
+        return [b.to_group() for b in self._succ_boxes + self._equiv_boxes]
 
-    def assignments(self):
-        """{ref → group_id} (source de vérité = état des listes)."""
-        out = {}
-        for gid, lst in self._group_lists.items():
-            for r in lst.refs():
-                out[r] = gid
-        return out
+    def all_boxes(self):
+        return self._succ_boxes + self._equiv_boxes
 
 
-# ── Panneau global ───────────────────────────────────────────────────────────
+# ── Panneau global ────────────────────────────────────────────────────────────
 
 class RelationsPanel(QWidget):
     def __init__(self, refs, is_solo=False, base_refs=None, parent=None):
         super().__init__(parent)
         self._is_solo = is_solo
         self._base_set = set(base_refs or [])
+        self._lot_refs = {r for r, _ in refs}
         self._ref_model = QStringListModel(sorted(self._base_set), self)
         self._suppress = False
         self.cards = []
@@ -412,31 +390,28 @@ class RelationsPanel(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
-
         splitter = QSplitter(Qt.Horizontal)
 
-        # Gauche : cartes
         left = QScrollArea()
         left.setWidgetResizable(True)
         content = QWidget()
-        self._cards_layout = QVBoxLayout(content)
-        self._cards_layout.setContentsMargins(6, 6, 6, 6)
-        self._cards_layout.setSpacing(6)
-        self._cards_layout.setAlignment(Qt.AlignTop)
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(6, 6, 6, 6)
+        cl.setSpacing(6)
+        cl.setAlignment(Qt.AlignTop)
         for ref, filename in refs:
             card = RefCard(ref, filename, is_solo=self._is_solo, ref_model=self._ref_model)
             card.changed.connect(self.recompute)
             self.cards.append(card)
-            self._cards_layout.addWidget(card)
+            cl.addWidget(card)
         left.setWidget(content)
         splitter.addWidget(left)
 
-        # Droite : groupes d'équivalence (sauf solo)
         if not self._is_solo:
-            self.groups_zone = EquivGroupsZone([r for r, _ in refs])
+            self.groups_zone = GroupsZone([r for r, _ in refs], ref_model=self._ref_model)
             self.groups_zone.changed.connect(self.recompute)
             splitter.addWidget(self.groups_zone)
-            splitter.setSizes([620, 380])
+            splitter.setSizes([560, 440])
         else:
             self.groups_zone = None
         lay.addWidget(splitter, 1)
@@ -448,59 +423,55 @@ class RelationsPanel(QWidget):
             " padding: 6px; font-size: 11px; color: #333;")
         lay.addWidget(self.recap)
 
-    def get_relations(self):
-        assign = self.groups_zone.assignments() if self.groups_zone else {}
-        return [c.get_relation(equiv_group=assign.get(c.ref)) for c in self.cards]
+    def get_groups(self):
+        return self.groups_zone.groups() if self.groups_zone else []
+
+    def get_cards(self):
+        return [c.get_card() for c in self.cards]
 
     def recompute(self):
         if self._suppress:
             return
         self._suppress = True
         try:
-            relations = self.get_relations()
-            derived = recompute_relations(relations)
-            rel_by_ref = {r.ref: r for r in relations}
-            courantes = sorted(derived.heads)
-            crumb = {}
-            for chain in derived.chains:
-                for ref in chain:
-                    crumb[ref] = chain if len(chain) > 1 else None
-            lot_refs = {c.ref for c in self.cards}
+            groups = self.get_groups()
+            cards = self.get_cards()
+            d = derive(groups, cards, self._lot_refs, self._base_set)
+            # Courantes proposées pour les combos (lot)
+            lot_sorted = sorted(self._lot_refs)
+            for box in (self.groups_zone.all_boxes() if self.groups_zone else []):
+                box.set_courante_options(lot_sorted)
             for card in self.cards:
-                rel = rel_by_ref[card.ref]
-                card.set_newer_options(courantes)
                 card.apply_derived(
-                        is_head=(card.ref in derived.heads),
-                        chain_id=derived.chain_id_by_ref.get(card.ref),
-                        breadcrumb=crumb.get(card.ref),
-                        equiv_gid=rel.equiv_group,
-                        base_set=self._base_set,
-                        lot_refs=lot_refs,
-                    )
+                    is_courante=(card.ref in d.courantes),
+                    succ_gi=d.succ_group_of.get(card.ref),
+                    equiv_gi=d.equiv_group_of.get(card.ref),
+                    obsolete_via_group=(card.ref in d.obsoletes),
+                )
         finally:
             self._suppress = False
-        self._update_recap(relations, derived)
+        self._update_recap(groups, cards, d)
 
-    def _update_recap(self, relations, derived):
-        heads = sorted(derived.heads)
-        groups = derived.equiv_groups
-        n_base = sum(1 for r in relations if r.base_replaces or r.base_replaced_by)
-        n_obs = sum(1 for r in relations if r.is_obsolete)
-        ungrouped = sum(1 for r in relations if r.equiv_group is None)
-        phantoms = sorted({v for r in relations for v in (r.base_replaces, r.newer_ref)
-                           if v and v not in self._base_set
-                           and v not in {c.ref for c in self.cards}})
-        parts = [pluralize(len(relations), 'réf')]
-        if heads:
-            parts.append(f"{pluralize(len(heads), 'courante')} ({', '.join(heads)})")
-        for gid in sorted(groups):
-            parts.append(f"Éq. {_group_label(gid)} : {', '.join(sorted(groups[gid]))}")
-        if n_base:
-            parts.append(pluralize(n_base, 'lien base', 'liens base'))
+    def _update_recap(self, groups, cards, d):
+        n = len(self.cards)
+        n_succ = sum(1 for g in groups if g.kind == KIND_SUCCESSION)
+        n_equiv = sum(1 for g in groups if g.kind == KIND_EQUIVALENCE)
+        courantes = sorted({g.courante for g in groups
+                            if g.kind == KIND_SUCCESSION and g.courante})
+        n_obs = len(d.obsoletes)
+        ungrouped = sum(1 for c in self.cards
+                        if c.ref not in d.succ_group_of and c.ref not in d.equiv_group_of)
+        parts = [pluralize(n, 'réf')]
+        if n_succ:
+            parts.append(f"{pluralize(n_succ, 'lignée')}" + (f" (courantes : {', '.join(courantes)})" if courantes else ""))
+        if n_equiv:
+            parts.append(pluralize(n_equiv, "groupe d'équiv.", "groupes d'équiv."))
+        if d.cross_courantes:
+            parts.append(f"équiv. croisée : {', '.join(d.cross_courantes)}")
         if n_obs:
             parts.append(pluralize(n_obs, 'obsolète'))
         if self.groups_zone and ungrouped:
             parts.append(f"{ungrouped} non groupée(s)")
-        if phantoms:
-            parts.append(f"{pluralize(len(phantoms), 'fantôme')} : {', '.join(phantoms)}")
+        if d.phantoms:
+            parts.append(f"{pluralize(len(d.phantoms), 'fantôme')} : {', '.join(sorted(d.phantoms))}")
         self.recap.setText(" · ".join(parts))

@@ -1,13 +1,14 @@
-"""Tests du panneau de relations d'import (Lot 2, modèle étoile + zone groupes).
+"""Tests du panneau « par groupes » (Lot 2). Offscreen via qapp.
 
-Offscreen via qapp. La simulation du drag-drop réel étant lourde, on manipule
-directement l'état des listes (ce que le drop produit) puis on resynchronise.
+Le drag-drop réel étant lourd, on simule le drop (retrait du réservoir + ajout à la
+liste membres d'une boîte), puis on resynchronise.
 """
 
 import pytest
 from PyQt5.QtWidgets import QListWidgetItem
 
 from src.ui.import_relations_panel import RelationsPanel
+from src.services.import_relations import KIND_SUCCESSION, KIND_EQUIVALENCE
 
 
 def _panel(qapp, refs=None, base=None):
@@ -19,96 +20,92 @@ def _cards(panel):
     return {c.ref: c for c in panel.cards}
 
 
-def _move_to_group(panel, ref, gid):
-    """Simule le drop : retire la réf du réservoir, l'ajoute à la liste du groupe."""
+def _move(panel, ref, box):
     res = panel.groups_zone.reservoir
     for i in range(res.count()):
         if res.item(i).text() == ref:
             res.takeItem(i)
             break
-    panel.groups_zone._group_lists[gid].addItem(QListWidgetItem(ref))
-    panel.groups_zone._on_change()
+    box.members.addItem(QListWidgetItem(ref))
+    panel.recompute()
 
 
 class TestSuccession:
-    def test_courante_et_ancienne_version(self, qapp):
+    def test_lignee_courante_lot(self, qapp):
         panel = _panel(qapp)
-        c = _cards(panel)
-        c["B3"].radio_current.setChecked(True)
-        c["B1"].radio_old.setChecked(True)
-        c["B1"].newer_combo.setCurrentText("B3")
-        panel.recompute()
-        rels = {r.ref: r for r in panel.get_relations()}
-        assert rels["B3"].is_current is True
-        assert rels["B1"].newer_ref == "B3"
-        assert "1 courante (B3)" in panel.recap.text()
+        box = panel.groups_zone.add_group(KIND_SUCCESSION)
+        box.courante_combo.setCurrentText("B3")
+        _move(panel, "B1", box)
+        _move(panel, "B2", box)
+        g = panel.get_groups()[0]
+        assert g.kind == KIND_SUCCESSION and g.courante == "B3"
+        assert sorted(g.members) == ["B1", "B2"]
+        # B3 = courante (couronne), B1/B2 deviendront obsolètes
+        assert not _cards(panel)["B3"].head_badge.pixmap().isNull()
+        assert "courantes : B3" in panel.recap.text()
+        assert "2 obsolètes" in panel.recap.text()
 
-    def test_radios_exclusifs_par_carte(self, qapp):
-        panel = _panel(qapp)
-        card = _cards(panel)["B1"]
-        card.radio_current.setChecked(True)
-        card.radio_old.setChecked(True)        # bascule
-        assert not card.radio_current.isChecked()
-        assert card.newer_combo.isEnabled()    # combo actif sur « ancienne version de »
-
-    def test_combo_newer_editable_libre_fantome(self, qapp):
+    def test_courante_externe_fantome(self, qapp):
         panel = _panel(qapp, base=["EXISTE"])
-        card = _cards(panel)["B1"]
-        card.radio_old.setChecked(True)
-        card.newer_combo.setCurrentText("PAS_EN_BASE")   # saisie libre, hors base
-        panel.recompute()
-        assert panel.get_relations()[0].newer_ref == "PAS_EN_BASE"
+        box = panel.groups_zone.add_group(KIND_SUCCESSION)
+        box.courante_combo.setCurrentText("EXT_HORS_BASE")
+        _move(panel, "B1", box)
         assert "fantôme" in panel.recap.text()
-
-    def test_multi_courantes(self, qapp):
-        panel = _panel(qapp)
-        c = _cards(panel)
-        c["B3"].radio_current.setChecked(True)
-        c["S2"].radio_current.setChecked(True)
+        # une courante déjà en base ne crée pas de fantôme
+        box.courante_combo.setCurrentText("EXISTE")
         panel.recompute()
-        assert "2 courantes (B3, S2)" in panel.recap.text()
+        assert "fantôme" not in panel.recap.text()
 
 
 class TestEquivalence:
-    def test_creation_et_affectation_groupe(self, qapp):
+    def test_groupe_sans_obsolescence(self, qapp):
         panel = _panel(qapp)
-        gid = panel.groups_zone.add_group()
-        _move_to_group(panel, "B3", gid)
-        _move_to_group(panel, "S2", gid)
+        box = panel.groups_zone.add_group(KIND_EQUIVALENCE)
+        _move(panel, "S1", box)
+        _move(panel, "S2", box)
+        g = panel.get_groups()[0]
+        assert g.kind == KIND_EQUIVALENCE and sorted(g.members) == ["S1", "S2"]
+        assert "obsolète" not in panel.recap.text()
+        assert not _cards(panel)["S1"].equiv_badge.text() == ""   # pastille présente
+
+
+class TestCross:
+    def test_cross_equivalent_courantes(self, qapp):
+        panel = _panel(qapp)
+        b1 = panel.groups_zone.add_group(KIND_SUCCESSION)
+        b1.courante_combo.setCurrentText("B3"); _move(panel, "B1", b1)
+        b1.cross_check.setChecked(True)
+        b2 = panel.groups_zone.add_group(KIND_SUCCESSION)
+        b2.courante_combo.setCurrentText("S2"); _move(panel, "S1", b2)
+        b2.cross_check.setChecked(True)
         panel.recompute()
-        assign = panel.groups_zone.assignments()
-        assert assign == {"B3": gid, "S2": gid}
-        assert f"Éq. A : B3, S2" in panel.recap.text()
-        # Pastille affichée sur la carte
-        assert "Éq. A" in _cards(panel)["B3"].equiv_badge.text()
+        assert "équiv. croisée : B3, S2" in panel.recap.text()
 
-    def test_une_ref_un_seul_groupe(self, qapp):
-        panel = _panel(qapp)
-        g1 = panel.groups_zone.add_group()
-        g2 = panel.groups_zone.add_group()
-        _move_to_group(panel, "B3", g1)
-        # Déplacer B3 vers g2 : le drop l'aurait retiré de g1 ; on simule
-        panel.groups_zone._group_lists[g1].takeItem(0)
-        _move_to_group(panel, "B3", g2)
-        assert panel.groups_zone.assignments() == {"B3": g2}
 
+class TestZone:
     def test_vider_groupe_renvoie_au_reservoir(self, qapp):
         panel = _panel(qapp)
-        gid = panel.groups_zone.add_group()
-        _move_to_group(panel, "B3", gid)
-        panel.groups_zone._empty_group(gid)
-        assert panel.groups_zone.assignments() == {}
-        assert "B3" in panel.groups_zone.reservoir.refs()
+        box = panel.groups_zone.add_group(KIND_SUCCESSION)
+        _move(panel, "B1", box)
+        panel.groups_zone._empty_box(box)
+        assert box.members.refs() == []
+        assert "B1" in panel.groups_zone.reservoir.refs()
+
+    def test_supprimer_groupe_renvoie_au_reservoir(self, qapp):
+        panel = _panel(qapp)
+        box = panel.groups_zone.add_group(KIND_EQUIVALENCE)
+        _move(panel, "S1", box)
+        panel.groups_zone._remove_box(box)
+        assert "S1" in panel.groups_zone.reservoir.refs()
+        assert panel.get_groups() == []
 
 
 class TestSolo:
-    def test_mode_solo_sans_chainage_ni_groupes(self, qapp):
+    def test_solo_sans_groupes(self, qapp):
         panel = RelationsPanel([("A", "a")], is_solo=True, base_refs=[])
-        card = panel.cards[0]
-        assert card.radio_current is None and card.newer_combo is None
         assert panel.groups_zone is None
-        # On garde Obsolète + lien base « remplace »
+        card = panel.cards[0]
         card.obsolete_check.setChecked(True)
         card.replaces_input.setText("OLD")
-        rel = panel.get_relations()[0]
-        assert rel.is_obsolete and rel.base_replaces == "OLD"
+        cd = panel.get_cards()[0]
+        assert cd.is_obsolete and cd.base_replaces == "OLD"

@@ -1,75 +1,68 @@
-"""Tests du cœur logique des relations d'import (modèle étoile, sans UI).
+"""Tests du cœur logique « par groupes » des relations d'import (sans UI).
 
-Modèle : une réf est « Courante » (is_current) OU « ancienne version de » une réf
-récente (newer_ref) — jamais les deux. Topologie en étoile : pas de cycle possible.
+Lignées de succession (courante + membres → obsolètes), groupes d'équivalence
+(tous valides), checkbox « équivalente entre groupes » (relie les courantes).
 """
 
 import pytest
 
 from src.services.import_relations import (
-    RefRelation, recompute_relations, apply_relations,
+    Group, CardData, derive, apply_relations,
+    KIND_SUCCESSION, KIND_EQUIVALENCE,
 )
 
 
-def _rel(ref, **kw):
-    return RefRelation(ref=ref, **kw)
+def _cards(*refs):
+    return [CardData(ref=r) for r in refs]
 
 
-# ── Dérivation pure ───────────────────────────────────────────────────────────
+# ── Dérivation ────────────────────────────────────────────────────────────────
 
-class TestRecompute:
-    def test_lignee_simple(self):
-        # B1, B2 anciennes versions de B3 (courante)
-        rels = [_rel("B3", is_current=True),
-                _rel("B1", newer_ref="B3"), _rel("B2", newer_ref="B3")]
-        d = recompute_relations(rels)
-        assert d.heads == {"B3"}
-        assert d.in_chain == {"B1", "B2", "B3"}
-        assert d.chain_id_by_ref["B1"] == d.chain_id_by_ref["B3"]
-        assert d.chains == [["B1", "B2", "B3"]]
-        assert d.warnings == []
+class TestDerive:
+    def test_lignee_courante_lot(self):
+        g = Group(KIND_SUCCESSION, courante="B3", members=["B1", "B2"])
+        d = derive([g], _cards("B1", "B2", "B3"), {"B1", "B2", "B3"}, set())
+        assert d.courantes == {"B3"}
+        assert d.obsoletes == {"B1", "B2"}            # membres ≠ courante
+        assert d.succ_group_of == {"B1": 0, "B2": 0}
+        assert d.phantoms == set() and d.warnings == []
 
-    def test_multi_courantes(self):
-        rels = [
-            _rel("B3", is_current=True), _rel("B1", newer_ref="B3"),
-            _rel("S2", is_current=True), _rel("S1", newer_ref="S2"),
-        ]
-        d = recompute_relations(rels)
-        assert d.heads == {"B3", "S2"}
-        assert d.chain_id_by_ref["B1"] != d.chain_id_by_ref["S1"]
+    def test_lignee_courante_externe_fantome(self):
+        g = Group(KIND_SUCCESSION, courante="EXT", members=["B1", "B2"])
+        d = derive([g], _cards("B1", "B2"), {"B1", "B2"}, base_refs=set())
+        assert "EXT" not in d.courantes            # pas de carte → pas de badge
+        assert "EXT" in d.phantoms                 # externe + hors base → fantôme
+        assert d.obsoletes == {"B1", "B2"}
 
-    def test_ref_isolee_pas_de_chaine(self):
-        d = recompute_relations([_rel("Z")])
-        assert d.heads == set() and d.in_chain == set()
+    def test_lignee_courante_en_base_pas_fantome(self):
+        g = Group(KIND_SUCCESSION, courante="EXISTE", members=["B1"])
+        d = derive([g], _cards("B1"), {"B1"}, base_refs={"EXISTE"})
+        assert d.phantoms == set()
 
-    def test_courante_et_ancienne_incoherent(self):
-        d = recompute_relations([_rel("A", is_current=True, newer_ref="B"), _rel("B", is_current=True)])
-        assert any("Courante ET ancienne" in m for _, m in d.warnings)
+    def test_groupe_equivalence_sans_obsolescence(self):
+        g = Group(KIND_EQUIVALENCE, members=["X", "Y", "Z"])
+        d = derive([g], _cards("X", "Y", "Z"), {"X", "Y", "Z"}, set())
+        assert d.obsoletes == set()
+        assert d.equiv_group_of == {"X": 0, "Y": 0, "Z": 0}
 
-    def test_self_reference(self):
-        d = recompute_relations([_rel("A", newer_ref="A")])
-        assert any("sa propre version" in m for _, m in d.warnings)
+    def test_cross_equivalent_courantes(self):
+        g1 = Group(KIND_SUCCESSION, courante="B3", members=["B1"], cross_equivalent=True)
+        g2 = Group(KIND_SUCCESSION, courante="S2", members=["S1"], cross_equivalent=True)
+        d = derive([g1, g2], _cards("B1", "B3", "S1", "S2"), {"B1", "B3", "S1", "S2"}, set())
+        assert sorted(d.cross_courantes) == ["B3", "S2"]
 
-    def test_double_recente_lot_et_base(self):
-        d = recompute_relations([_rel("A", newer_ref="B", base_replaced_by="C"), _rel("B", is_current=True)])
-        assert any("Deux réfs récentes" in m for _, m in d.warnings)
+    def test_warning_lignee_sans_courante(self):
+        d = derive([Group(KIND_SUCCESSION, courante=None, members=["B1"])],
+                   _cards("B1"), {"B1"}, set())
+        assert any("sans courante" in m for _, m in d.warnings)
 
-    def test_groupes_equivalence(self):
-        rels = [_rel("B3", is_current=True, equiv_group=1),
-                _rel("S2", is_current=True, equiv_group=1),
-                _rel("X", equiv_group=2), _rel("Y", equiv_group=2)]
-        d = recompute_relations(rels)
-        assert sorted(d.equiv_groups[1]) == ["B3", "S2"]
-        assert sorted(d.equiv_groups[2]) == ["X", "Y"]
-
-    def test_newer_ref_hors_lot_ok(self):
-        # « ancienne version de » une réf absente du lot (base/fantôme) : valide, pas d'erreur
-        d = recompute_relations([_rel("A", newer_ref="REF_BASE")])
-        assert "A" in d.in_chain
-        assert d.warnings == []
+    def test_warning_cross_seul(self):
+        d = derive([Group(KIND_SUCCESSION, courante="B3", members=["B1"], cross_equivalent=True)],
+                   _cards("B1", "B3"), {"B1", "B3"}, set())
+        assert any("au moins deux" in m for _, m in d.warnings)
 
 
-# ── Orchestration d'application ───────────────────────────────────────────────
+# ── Application ───────────────────────────────────────────────────────────────
 
 class FakeDB:
     def __init__(self):
@@ -86,53 +79,51 @@ class FakeDB:
 
 
 class TestApply:
-    def test_lignee_etoile(self):
-        rels = [_rel("B3", is_current=True), _rel("B1", newer_ref="B3"), _rel("B2", newer_ref="B3")]
-        db = FakeDB()
-        apply_relations(rels, db)
-        assert set(db.supersessions) == {("B1", "B3"), ("B2", "B3")}   # chaque ancienne → courante
+    def test_lignee(self):
+        g = Group(KIND_SUCCESSION, courante="EXT", members=["B1", "B2"])
+        apply_relations([g], _cards("B1", "B2"), db := FakeDB())
+        assert set(db.supersessions) == {("B1", "EXT"), ("B2", "EXT")}
+        assert set(db.obsoletes) == {"B1", "B2"}
 
-    def test_liens_base(self):
-        apply_relations([_rel("imp", base_replaces="OLD", base_replaced_by="NEW")], db := FakeDB())
-        assert ("OLD", "imp") in db.supersessions and ("imp", "NEW") in db.supersessions
+    def test_equivalence_par_paires(self):
+        g = Group(KIND_EQUIVALENCE, courante="C", members=["A", "B"])
+        apply_relations([g], _cards("A", "B"), db := FakeDB())
+        assert set(db.equivalences) == {("C", "A"), ("C", "B")}   # ancre = courante repère
+        assert db.obsoletes == []
 
-    def test_newer_ref_hors_base(self):
-        # « ancienne version de » une réf libre (pas en base) → supersession quand même
-        apply_relations([_rel("A", newer_ref="LIBRE999")], db := FakeDB())
-        assert ("A", "LIBRE999") in db.supersessions
+    def test_cross_equivalent(self):
+        g1 = Group(KIND_SUCCESSION, courante="B3", members=["B1"], cross_equivalent=True)
+        g2 = Group(KIND_SUCCESSION, courante="S2", members=["S1"], cross_equivalent=True)
+        apply_relations([g1, g2], _cards("B1", "S1"), db := FakeDB())
+        assert ("B3", "S2") in db.equivalences
 
-    def test_obsolete(self):
-        apply_relations([_rel("A", is_obsolete=True), _rel("B")], db := FakeDB())
-        assert db.obsoletes == ["A"]
-
-    def test_groupe_par_paires(self):
-        rels = [_rel("A", equiv_group=1), _rel("B", equiv_group=1), _rel("C", equiv_group=1)]
-        apply_relations(rels, db := FakeDB())
-        assert set(db.equivalences) == {("A", "B"), ("A", "C")}
+    def test_carte_obsolete_et_remplace(self):
+        cards = [CardData("R", is_obsolete=True, base_replaces="OLD")]
+        apply_relations([], cards, db := FakeDB())
+        assert "R" in db.obsoletes
+        assert ("OLD", "R") in db.supersessions
 
 
 class TestApplyRealDB:
     def test_persistance(self, test_db_manager):
-        for ref in ("R1", "R2", "R3", "R4", "R5"):
+        for ref in ("B1", "B2", "B3", "S1", "S2"):
             test_db_manager.execute_query("INSERT OR IGNORE INTO pieces(ref_piece) VALUES (?)", [ref])
         test_db_manager.conn.commit()
-        rels = [
-            _rel("R2", is_current=True), _rel("R1", newer_ref="R2"),   # R1 → R2
-            _rel("R3", base_replaces="OLDBASE"),                       # OLDBASE → R3
-            _rel("R4", is_obsolete=True, equiv_group=1),
-            _rel("R5", equiv_group=1),
+        groups = [
+            Group(KIND_SUCCESSION, courante="B3", members=["B1", "B2"], cross_equivalent=True),
+            Group(KIND_SUCCESSION, courante="S2", members=["S1"], cross_equivalent=True),
         ]
-        counts = apply_relations(rels, test_db_manager)
+        counts = apply_relations(groups, _cards("B1", "B2", "B3", "S1", "S2"), test_db_manager)
         assert counts['errors'] == 0
+        # B1 → B3 (succession)
         row = test_db_manager.execute_query(
-            "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?", ["R1"])
-        assert row and row[0][0] == "R2"
-        row = test_db_manager.execute_query(
-            "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?", ["OLDBASE"])
-        assert row and row[0][0] == "R3"
-        row = test_db_manager.execute_query(
-            "SELECT is_obsolete FROM pieces WHERE ref_piece = ?", ["R4"])
-        assert row and row[0][0] == 1
+            "SELECT ref_new FROM piece_supersessions WHERE ref_old = ?", ["B1"])
+        assert row and row[0][0] == "B3"
+        # B1, B2, S1 obsolètes
+        for r in ("B1", "B2", "S1"):
+            o = test_db_manager.execute_query("SELECT is_obsolete FROM pieces WHERE ref_piece=?", [r])
+            assert o and o[0][0] == 1
+        # B3 ≡ S2 (cross-équivalence)
         g = test_db_manager.execute_query(
-            "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece IN ('R4','R5')")
-        assert len({r[0] for r in g}) == 1 and len(g) == 2
+            "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece IN ('B3','S2')")
+        assert len({x[0] for x in g}) == 1 and len(g) == 2
