@@ -468,6 +468,7 @@ class ImportDialog(QDialog):
         self.third_col_combo = QComboBox()
         self.third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
         self.third_col_combo.setCurrentIndex(1)  # "Autre référence" présélectionné (choix le plus fréquent)
+        self.third_col_combo.currentIndexChanged.connect(self._sync_quick_third_col_to_mapping)
         third_col_layout.addWidget(self.third_col_combo)
         
         options_layout.addWidget(self.third_col_widget)
@@ -772,12 +773,17 @@ class ImportDialog(QDialog):
             scroll_area.setWidgetResizable(True)
             scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            # Fond transparent + sans cadre (pas de rectangle gris bordé)
+            scroll_area.setFrameShape(scroll_area.NoFrame)
+            scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+            scroll_area.viewport().setAutoFillBackground(False)
 
             scroll_area.setMinimumHeight(80)
             scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
             scroll_widget = QWidget()
             scroll_widget.setObjectName("scroll_content")
+            scroll_widget.setStyleSheet("#scroll_content { background: transparent; }")
 
             self.individual_refs_widget = QVBoxLayout(scroll_widget)
             self.individual_refs_widget.setContentsMargins(10, 10, 10, 10)
@@ -1061,6 +1067,41 @@ class ImportDialog(QDialog):
         for check, _ in getattr(self, '_obsolete_checkboxes', []):
             check.setChecked(state == Qt.Checked)
 
+    # ── Synchro combo rapide « Destination Description » ↔ Colonne 3 du mapping ──
+    _QUICK_THIRD_FIELDS = ['ignore', 'other_ref', 'notes']   # index combo rapide → valeur FIELD_CHOICES
+
+    def _third_col_mapping_combo(self):
+        """Combo « Colonne 3 » du groupe de mapping à 3 colonnes (ou None)."""
+        for w in getattr(self, '_mapping_widgets', []):
+            if getattr(w, '_n_cols', None) == 3 and len(getattr(w, '_combos', [])) >= 3:
+                return w._combos[2]
+        return None
+
+    def _sync_quick_third_col_to_mapping(self, *_):
+        """Combo rapide → Colonne 3 du mapping (sans réémettre de signal)."""
+        combo = self._third_col_mapping_combo()
+        if combo is None or not hasattr(self, 'third_col_combo'):
+            return
+        val = self._QUICK_THIRD_FIELDS[self.third_col_combo.currentIndex()]
+        idx = combo.findData(val)
+        if idx >= 0 and combo.currentIndex() != idx:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
+
+    def _on_mapping_third_col_changed(self, *_):
+        """Colonne 3 du mapping → combo rapide (si la valeur est représentable)."""
+        combo = self._third_col_mapping_combo()
+        if combo is None or not hasattr(self, 'third_col_combo'):
+            return
+        val = combo.currentData()
+        if val in self._QUICK_THIRD_FIELDS:
+            idx = self._QUICK_THIRD_FIELDS.index(val)
+            if self.third_col_combo.currentIndex() != idx:
+                self.third_col_combo.blockSignals(True)
+                self.third_col_combo.setCurrentIndex(idx)
+                self.third_col_combo.blockSignals(False)
+
     def _on_common_description_changed(self, text):
         """Met à jour automatiquement les champs individuels si la case est cochée"""
         if self.apply_to_individual_checkbox.isChecked():
@@ -1322,7 +1363,10 @@ class ImportDialog(QDialog):
         elif n_cols == 2:
             return ["ref_modele", "commercial_ref"], False
         elif n_cols == 3:
-            return ["ref_modele", "commercial_ref", "ignore"], False
+            # 3ᵉ colonne → « Autre référence » par défaut (= choix du combo rapide
+            # « Destination Description », le plus fréquent), pas « Ignorer » :
+            # les deux contrôles doivent être cohérents (le mapping prime à l'import).
+            return ["ref_modele", "commercial_ref", "other_ref"], False
         elif n_cols >= 4:
             mapping = ["type", "manufacturer", "ref_modele", "commercial_ref"]
             mapping += ["ignore"] * (n_cols - 4)
@@ -1423,9 +1467,14 @@ class ImportDialog(QDialog):
                 parent=self
             )
             widget.mapping_changed.connect(self._update_import_button)
+            if n_cols == 3:
+                widget.mapping_changed.connect(self._on_mapping_third_col_changed)
             self._mapping_widgets.append(widget)
             self.mapping_container_layout.addWidget(widget)
 
+        # Cohérence combo rapide « Destination Description » ↔ Colonne 3 du mapping
+        # (le mapping prime à l'import — ils ne doivent jamais se contredire).
+        self._on_mapping_third_col_changed()
         self._update_import_button()
 
     def _analyze_formats_and_preview_legacy(self):

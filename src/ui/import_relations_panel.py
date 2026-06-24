@@ -405,7 +405,9 @@ class GroupsZone(QWidget):
 
         self._succ_lay, succ_col = self._build_group_column(
             "Lignées de succession", "#1565C0",
-            "+ Nouvelle lignée", lambda: self.add_group(KIND_SUCCESSION))
+            "+ Nouvelle lignée", lambda: self.add_group(KIND_SUCCESSION),
+            extra=("≡ Toutes les lignées équivalentes", self.toggle_all_succ_cross,
+                   "Coche (ou décoche) « Équivalente (inter-lignées) » sur toutes les lignées"))
         cols.addWidget(succ_col, 1)
 
         self._equiv_lay, equiv_col = self._build_group_column(
@@ -415,8 +417,9 @@ class GroupsZone(QWidget):
 
         lay.addLayout(cols, 1)
 
-    def _build_group_column(self, title, color, btn_text, on_add):
-        """Construit une colonne (titre + zone scrollable de boîtes + bouton d'ajout).
+    def _build_group_column(self, title, color, btn_text, on_add, extra=None):
+        """Construit une colonne (titre + zone scrollable de boîtes + bouton(s)).
+        `extra` = (texte, callback, tooltip) pour un bouton supplémentaire.
         Retourne (layout_d_ancrage_des_boîtes, widget_colonne)."""
         col = QWidget()
         cl = QVBoxLayout(col)
@@ -427,7 +430,13 @@ class GroupsZone(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Fond transparent + sans cadre : la zone d'ascenseur ne doit pas afficher
+        # de rectangle gris bordé.
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.viewport().setAutoFillBackground(False)
         anchor = QWidget()
+        anchor.setStyleSheet("background: transparent;")
         anchor_lay = QVBoxLayout(anchor)
         anchor_lay.setContentsMargins(2, 2, 2, 2)
         anchor_lay.setSpacing(4)
@@ -435,10 +444,26 @@ class GroupsZone(QWidget):
         scroll.setWidget(anchor)
         cl.addWidget(scroll, 1)
 
+        if extra is not None:
+            ex_btn = QPushButton(extra[0])
+            ex_btn.setToolTip(extra[2] if len(extra) > 2 else "")
+            ex_btn.clicked.connect(extra[1])
+            cl.addWidget(ex_btn)
+
         btn = QPushButton(btn_text)
         btn.clicked.connect(on_add)
         cl.addWidget(btn)
         return anchor_lay, col
+
+    def toggle_all_succ_cross(self):
+        """Coche toutes les cases « Équivalente (inter-lignées) » des lignées
+        (ou les décoche si elles le sont déjà toutes)."""
+        boxes = [b for b in self._succ_boxes if b.cross_check is not None]
+        if not boxes:
+            return
+        new_state = not all(b.cross_check.isChecked() for b in boxes)
+        for b in boxes:
+            b.cross_check.setChecked(new_state)
 
     def add_group(self, kind):
         boxes = self._succ_boxes if kind == KIND_SUCCESSION else self._equiv_boxes
