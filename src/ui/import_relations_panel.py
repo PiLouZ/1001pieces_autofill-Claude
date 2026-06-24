@@ -312,7 +312,7 @@ class GroupBox(QFrame):
             self.cross_check.setToolTip(
                 "Cochez cette case sur plusieurs lignées pour déclarer leurs courantes\n"
                 "équivalentes entre elles (même appareil, marques différentes).")
-            self.cross_check.setStyleSheet("font-size: 10px; border: none; color: #6A1B9A;")
+            self.cross_check.setStyleSheet(f"font-size: 10px; border: none; color: {_EQUIV_COLORS[0]};")
             self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
             lay.addWidget(self.cross_check)
 
@@ -421,13 +421,13 @@ class GroupsZone(QWidget):
             "présentes et à venir (courantes de marques ≠ déclarées équivalentes).")
         self.all_equiv_check.stateChanged.connect(self._on_all_equiv_toggled)
         self._succ_lay, succ_col = self._build_group_column(
-            "Lignées de succession", "#1565C0",
+            "Lignées de succession", _SUCC_COLORS[1],
             "+ Nouvelle lignée", lambda: self.add_group(KIND_SUCCESSION),
             extra_widget=self.all_equiv_check)
         cols.addWidget(succ_col, 1)
 
         self._equiv_lay, equiv_col = self._build_group_column(
-            "Groupes d'équivalence", "#6A1B9A",
+            "Groupes d'équivalence", _EQUIV_COLORS[0],
             "+ Nouveau groupe d'équivalence", lambda: self.add_group(KIND_EQUIVALENCE))
         cols.addWidget(equiv_col, 1)
 

@@ -520,19 +520,10 @@ class ImportDialog(QDialog):
             self.common_ref_input.setFixedWidth(170)  # ~20 caractères
             row_ref.addWidget(self.common_ref_input)
             try:
-                import qtawesome as qta
-                info_btn = QPushButton()
-                info_btn.setIcon(qta.icon('fa5s.info-circle', color='#0066cc'))
-                info_btn.setIconSize(QSize(13, 13))
-                info_btn.setFixedSize(20, 20)
-                info_btn.setFlat(True)
-                info_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
-                info_btn.setToolTip(
+                row_ref.addWidget(self._make_info_button(
                     "La référence commune sera associée à TOUS les appareils importés.\n"
                     "Elle sera créée et enregistrée dans la base de données\n"
-                    "comme toute autre référence de pièce."
-                )
-                row_ref.addWidget(info_btn)
+                    "comme toute autre référence de pièce."))
             except Exception:
                 pass
             row_ref.addStretch(1)
@@ -753,16 +744,8 @@ class ImportDialog(QDialog):
             info_and_option_layout.addWidget(self.auto_file_references_checkbox)
 
             try:
-                gen_info_btn = QPushButton()
-                gen_info_btn.setIcon(qta.icon('fa5s.info-circle', color='#0066cc'))
-                gen_info_btn.setIconSize(QSize(13, 13))
-                gen_info_btn.setFixedSize(20, 20)
-                gen_info_btn.setFlat(True)
-                gen_info_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
-                gen_info_btn.setToolTip(
-                    "Génération automatique des références de pièces basées sur les noms de fichiers."
-                )
-                info_and_option_layout.addWidget(gen_info_btn)
+                info_and_option_layout.addWidget(self._make_info_button(
+                    "Génération automatique des références de pièces basées sur les noms de fichiers."))
             except Exception:
                 pass
             info_and_option_layout.addStretch(1)
@@ -1088,6 +1071,20 @@ class ImportDialog(QDialog):
             combo.blockSignals(True)
             combo.setCurrentIndex(idx)
             combo.blockSignals(False)
+
+    @staticmethod
+    def _make_info_button(tooltip: str):
+        """Petit bouton plat « ⓘ » (icône fa5s.info-circle) avec une infobulle.
+        Factorise le pattern réutilisé sur plusieurs zones du dialogue."""
+        import qtawesome as qta
+        btn = QPushButton()
+        btn.setIcon(qta.icon('fa5s.info-circle', color='#0066cc'))
+        btn.setIconSize(QSize(13, 13))
+        btn.setFixedSize(20, 20)
+        btn.setFlat(True)
+        btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
+        btn.setToolTip(tooltip)
+        return btn
 
     def _on_mapping_third_col_changed(self, *_):
         """Colonne 3 du mapping → combo rapide (si la valeur est représentable)."""
