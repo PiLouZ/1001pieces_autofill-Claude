@@ -114,7 +114,7 @@ class Config:
     # Complète (ne remplace JAMAIS) l'auto-complétion exacte de l'import.
     # Aucune application automatique : suggestions soumises à validation utilisateur.
     ENABLE_SIMILARITY_SUGGESTIONS = True
-    SIMILARITY_FUZZY_THRESHOLD = 0.90        # Seuil Palier B (difflib SequenceMatcher)
+    SIMILARITY_FUZZY_THRESHOLD = 0.80        # Seuil Palier B (difflib SequenceMatcher) — abaissé à 0.80 pour capturer les variantes simples
     SIMILARITY_ALLOW_NUMERIC_FUZZY = False   # Palier B exclu par défaut sur préfixe numérique (risque rebadging)
     SIMILARITY_PREFIX_CONSENSUS = True       # Palier C : consensus de préfixe (familles mono-marque)
 
