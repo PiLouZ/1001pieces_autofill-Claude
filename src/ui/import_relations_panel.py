@@ -315,8 +315,9 @@ class GroupBox(QFrame):
         self.members = _RefList(expanding=True)
         self.members.dropped.connect(self.changed)
         if is_succ:
-            # Double-clic sur une ancienne version → la promeut courante (visible
-            # dans le champ ci-dessus) et la retire des membres.
+            # Double-clic sur une réf → la renseigne comme courante (visible dans
+            # le champ). La réf RESTE dans la zone (l'app ne la traite pas comme
+            # obsolète puisqu'elle est aussi la courante).
             self.members.itemDoubleClicked.connect(self._promote_member)
         lay.addWidget(self.members, 1)
 
@@ -348,16 +349,12 @@ class GroupBox(QFrame):
             self.changed.emit()
 
     def _promote_member(self, item):
-        """Double-clic sur une ancienne version → la promeut courante (visible
-        dans le champ) et la retire des membres (une courante n'est pas sa propre
-        ancienne version). Réservé aux lignées (seules à avoir une courante)."""
+        """Double-clic sur une réf → la renseigne comme courante (visible dans le
+        champ), SANS la retirer de la zone. La dérivation/application ne la traite
+        pas comme obsolète puisqu'elle est aussi la courante. Réservé aux lignées."""
         if self.courante_input is None:
             return
-        ref = item.text()
-        self.courante_input.setText(ref)
-        row = self.members.row(item)
-        if row >= 0:
-            self.members.takeItem(row)
+        self.courante_input.setText(item.text())
         self.changed.emit()
 
     def to_group(self):

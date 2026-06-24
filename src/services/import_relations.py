@@ -67,12 +67,12 @@ def derive(groups: List[Group], cards: List[CardData],
                     cited_external.add(g.courante)
             for m in g.members:
                 out.succ_group_of[m] = gi
+                # Une courante peut figurer parmi les membres (elle y reste visible) :
+                # elle n'est alors ni obsolète ni auto-remplacée (cas géré, pas une erreur).
                 if g.courante and m != g.courante:
                     out.obsoletes.add(m)
                 if not g.courante:
                     out.warnings.append((m, "Lignée sans courante définie."))
-                if g.courante and m == g.courante:
-                    out.warnings.append((m, "La courante ne peut pas être sa propre ancienne version."))
         else:  # équivalence
             for m in g.members:
                 out.equiv_group_of[m] = gi

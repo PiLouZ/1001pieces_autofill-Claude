@@ -58,7 +58,8 @@ class TestSuccession:
         assert "fantôme" not in panel.recap.text()
 
     def test_double_clic_membre_promu_courante(self, qapp):
-        """Double-clic sur un membre de lignée → courante visible + retrait des membres."""
+        """Double-clic → renseigne la courante SANS retirer le chip de la zone ;
+        la courante listée parmi les membres n'est pas marquée obsolète."""
         panel = _panel(qapp)
         box = panel.groups_zone.add_group(KIND_SUCCESSION)
         _move(panel, "B1", box)
@@ -67,7 +68,11 @@ class TestSuccession:
         box._promote_member(item)
         g = panel.get_groups()[0]
         assert g.courante == "B2"
-        assert g.members == ["B1"]            # B2 retiré des membres (lignée)
+        assert sorted(g.members) == ["B1", "B2"]      # B2 reste visible dans la zone
+        # B2 (courante) n'est pas obsolète ; seul B1 l'est
+        from src.services.import_relations import derive
+        dd = derive(panel.get_groups(), panel.get_cards(), {"B1", "B2", "B3", "S1", "S2"}, set())
+        assert dd.obsoletes == {"B1"}
 
     def test_drop_sur_courante(self, qapp):
         """Lot 6 : réf glissée sur le champ Courante → renseigne sans vider la source."""
