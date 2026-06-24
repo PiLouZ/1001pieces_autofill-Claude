@@ -142,6 +142,50 @@ class AppareillsTableModel(QAbstractTableModel):
         self.cell_edited.emit(row, col, old_value, new_value)
         return True
 
+    def set_field_value(self, row: int, col: int, value) -> bool:
+        """Écrit une valeur sur une ligne CHARGÉE (présente dans _records), même hors
+        page virtuelle (row >= _display_count), SANS passer par un QModelIndex (que la
+        vue refuserait pour une ligne non affichée).
+
+        Réservé aux écritures programmatiques sur des lignes potentiellement non
+        affichées — typiquement l'application d'une suggestion Type/Marque validée sur
+        un appareil au-delà de la page virtuelle initiale. Émet TOUJOURS cell_edited
+        (sauvegarde / undo / historique en aval) ; n'émet dataChanged que si la ligne
+        est affichée (la vue ignore — et Qt invalide — un index hors rowCount()).
+
+        Contrairement à setData(), n'altère ni index() ni le contrat Qt du modèle :
+        aucun impact sur la sélection, le tri, la suppression ou les délégués.
+
+        Returns:
+            bool: True si la ligne est chargée et l'écriture effectuée.
+        """
+        if not (0 <= row < len(self._records)) or col >= len(Config.DB_HEADERS):
+            return False
+        old_value = self.value_at(row, col)
+        new_value = str(value)
+        record = list(self._records[row])
+        record[col + 1] = new_value
+        self._records[row] = tuple(record)
+        if row < self._display_count:
+            idx = self.index(row, col)
+            self.dataChanged.emit(idx, idx, [Qt.DisplayRole, Qt.EditRole])
+        self.cell_edited.emit(row, col, old_value, new_value)
+        return True
+
+    def value_at(self, row: int, col: int) -> str:
+        """Valeur texte d'une cellule lue directement depuis _records, sans le garde
+        d'affichage de data() (utilisable sur les lignes chargées hors page virtuelle).
+
+        Renvoie '' si la ligne est hors limites. Réplique le mapping de data() :
+        record[0] = db_id, données à partir de record[col+1] ; dernière colonne =
+        pieces_count (record[-1])."""
+        if not (0 <= row < len(self._records)):
+            return ""
+        record = self._records[row]
+        if col < len(Config.DB_HEADERS):
+            return str(record[col + 1] or "")
+        return str(record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0)
+
     def flags(self, index) -> Qt.ItemFlags:
         if not index.isValid() or index.row() >= self._display_count:
             return Qt.NoItemFlags

@@ -1005,18 +1005,31 @@ class MainWindow(QMainWindow):
         model = self.table_controller.model
         if not model or not decisions:
             return 0
-        save_service = getattr(self, 'event_driven_save_service', None)
-        # Collecte batch : _apply_cell_edit_logic détourne les écritures vers ce set.
-        if save_service is not None:
-            self._bulk_edit_collector = set()
+        # Application en mémoire (UI + undo + historique + provenance) via setData →
+        # cell_edited → _apply_cell_edit_logic. Le collecteur est armé pour que ce
+        # tronc commun n'enclenche PAS une sauvegarde par cellule (chemin (row,col)
+        # fragile au virtual scroll) ; la persistance réelle se fait ensuite par db_id.
+        self._bulk_edit_collector = set()
+        updates_by_db_id = {}
         try:
             for db_id, cand in decisions:
                 self._apply_suggestion_with_provenance(cand, model, db_id)
+                fields = {}
+                if (cand.get('type') or '').strip():
+                    fields['type'] = cand['type']
+                if (cand.get('manufacturer') or '').strip():
+                    fields['manufacturer'] = cand['manufacturer']
+                if fields:
+                    updates_by_db_id[db_id] = fields
         finally:
-            collector = getattr(self, '_bulk_edit_collector', None)
             self._bulk_edit_collector = None
-        if save_service is not None and collector:
-            save_service.save_cells_batch_immediate(collector)
+
+        # Persistance directe par db_id en UNE transaction : indépendante de la
+        # pagination (une ligne hors page virtuelle est sauvegardée correctement,
+        # là où la conversion (row,col)→item() la perdait silencieusement).
+        db_ops = getattr(self, 'database_operations_service', None)
+        if db_ops is not None and updates_by_db_id:
+            db_ops.save_cells_batch(updates_by_db_id)
 
         # Dissiper les indicateurs appliqués + rafraîchir la bannière.
         for db_id, _ in decisions:
@@ -3034,19 +3047,47 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'table') and self.table is not None:
             self._safe_remove_event_filter()
 
-        # Nettoyer le TableController
+        # Arrêt propre : workers de fond stoppés + base fermée (checkpoint WAL)
+        self._shutdown_cleanly()
+
+        event.accept()
+
+    def _shutdown_cleanly(self):
+        """Séquence d'arrêt propre, idempotente, partagée par closeEvent ET par
+        QApplication.aboutToQuit.
+
+        Sur macOS, Cmd+Q déclenche aboutToQuit mais PAS toujours closeEvent : sans
+        ce câblage, la base n'était jamais fermée proprement au quit (workers de
+        fond encore actifs, WAL non replié) — facteur de corruption. Cette méthode
+        garantit, quel que soit le chemin de sortie :
+          1. l'arrêt des QThread de fond (query/prefetch via table_controller,
+             import via import_manager) — plus aucune écriture en vol ;
+          2. la fermeture de la base avec checkpoint WAL.
+        """
+        if getattr(self, '_shutdown_done', False):
+            return
+        self._shutdown_done = True
+
+        # 1. Stopper les workers de fond AVANT de toucher à la connexion DB
         if hasattr(self, 'table_controller'):
             self._safe_cleanup_table_controller()
+        import_worker = getattr(getattr(self, 'import_manager', None), '_import_worker', None)
+        if import_worker is not None:
+            try:
+                if hasattr(import_worker, 'cancel'):
+                    import_worker.cancel()
+                if import_worker.isRunning():
+                    import_worker.wait()
+            except Exception:
+                pass
 
-        # Nettoyer le service d'historique groupé
+        # Nettoyer le service d'historique groupé (flush des modifs en attente)
         if hasattr(self, 'grouped_history_service'):
             self._safe_cleanup_grouped_history()
 
-        # Fermer la base de données
-        if hasattr(self, 'db_manager'):
+        # 2. Fermer la base de données (checkpoint WAL + optimize, idempotent)
+        if hasattr(self, 'db_manager') and self.db_manager is not None:
             self.db_manager.close()
-
-        event.accept()
 
     # Méthodes SEO - Phase 2.15: Délégation vers SEOService
     def _generate_meta_title(self):
@@ -3115,6 +3156,10 @@ def _safe_launch_main_window(app):
     window = MainWindow()
     # Appliquer les styles CSS globalement pour toutes les fenêtres
     app.setStyleSheet(window._get_modern_style())
+    # Fermeture propre garantie même sur Cmd+Q (macOS) : aboutToQuit est émis dans
+    # tous les cas de sortie, contrairement à closeEvent. _shutdown_cleanly est
+    # idempotent → aucun double-close si les deux chemins se déclenchent.
+    app.aboutToQuit.connect(window._shutdown_cleanly)
     window.show()
     sys.exit(app.exec_())
 

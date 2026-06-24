@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.58.1] - 2026-06-24
+
+### Correctif — Sécurisation de la fermeture (prévention corruption base)
+
+Suite à un incident de corruption de `appareils.db` (B-tree), durcissement de la séquence d'arrêt — la fermeture par **Cmd+Q** (macOS) ne passait pas toujours par `closeEvent`, laissant la base fermée sans checkpoint et des threads de fond potentiellement en cours d'écriture.
+
+- **`QApplication.aboutToQuit`** désormais câblé à une fermeture propre idempotente (`_shutdown_cleanly`) : émis dans **tous** les cas de sortie, contrairement à `closeEvent`.
+- **Arrêt des QThread de fond avant fermeture DB** : `query_worker` / `prefetch_worker` (via `TableController.stop_workers()`) et le worker d'import sont stoppés et attendus — plus aucune écriture en vol sur la connexion partagée au moment de quitter.
+- **`DatabaseManager.close()`** : `PRAGMA wal_checkpoint(TRUNCATE)` ajouté avant `optimize`/close (replie le journal WAL dans le fichier principal — un `-wal` non replié + arrêt brutal est un facteur connu de corruption) ; méthode rendue idempotente.
+
+### Correctif — Suggestions Type/Marque par similarité & virtual scroll
+
+Cohabitation des suggestions automatiques (à l'import) et manuelles (scan/menu) corrigée : les suggestions validées sur des lignes hors page virtuelle n'étaient pas sauvegardées.
+
+- **Cause racine** : le modèle `AppareillsTableModel` confondait « ligne chargée » (`len(_records)`, jusqu'à la taille de page) et « ligne affichée » (`_display_count`, plafonnée à `FETCH_INITIAL = 200`). Pour une ligne au-delà de la 200ᵉ, `setData()`/`index()` refusaient l'écriture → la validation d'une suggestion (fenêtre dédiée ou « tout valider ») était **silencieusement perdue**, et l'indicateur « lignes à compléter » restait actif.
+- **Nouvelle méthode `set_field_value(row, col, value)`** : écrit sur toute ligne **chargée** (présente dans `_records`), même hors page virtuelle, sans passer par un `QModelIndex` que la vue refuserait. Émet toujours `cell_edited` (sauvegarde / undo / historique) ; `dataChanged` seulement si la ligne est affichée. **`setData()` et `index()` restent strictement inchangés** (contrat Qt standard préservé → aucun impact sur sélection / tri / suppression). `apply_suggestion_pair` utilise désormais `set_field_value`. Méthode `value_at(row, col)` pour la lecture directe de `_records`.
+- **`_apply_suggestion_decisions`** : la persistance se fait **directement par `db_id`** (`save_cells_batch({db_id: {type, manufacturer}})`, une seule transaction), au lieu de la conversion `(row, col) → item()` qui dépendait elle aussi de l'état d'affichage. Robuste à la forte volumétrie et à la pagination.
+- **Tests** : 2 cas de non-régression ajoutés (écriture hors page persistée via `set_field_value` + `cell_edited` émis ; `setData()` refuse toujours le hors-page = contrat Qt préservé).
+
+**Vérifié** : 381 tests passent (2 nouveaux), 6 échecs préexistants inchangés = baseline ZERO REGRESSION. Fermeture testée (checkpoint WAL `-wal` tronqué, idempotence, données persistées). Application end-to-end d'une suggestion sur ligne row > 200 confirmée en offscreen.
+
+---
+
 ## [3.58.0] - 2026-06-24
 
 ### Refonte UX — Fenêtre d'import multi-fichiers (relations par groupes)

@@ -320,6 +320,48 @@ class TestSuggestionsSimilarite:
         m.add_pending_suggestions({2: [self._candidate()]})
         assert m.pending_suggestions_count == 2
 
+    def test_set_field_value_ligne_hors_page_virtuelle(self, qapp):
+        """Régression : une écriture programmatique (application de suggestion) sur une
+        ligne CHARGÉE mais hors page virtuelle (row >= _display_count) doit aboutir via
+        set_field_value — sinon les suggestions validées sur ces lignes étaient
+        silencieusement perdues (setData()/index() les refusaient)."""
+        if not Config.USE_VIRTUAL_SCROLL:
+            pytest.skip("virtual scroll désactivé")
+        n = Config.FETCH_INITIAL + 30
+        m = AppareillsTableModel()
+        m.load_records([make_record(db_id=i, type_="", manufacturer="") for i in range(1, n + 1)])
+        assert m._display_count < len(m._records)  # condition du bug
+
+        off_row = Config.FETCH_INITIAL + 10        # ligne hors page affichée
+        assert off_row >= m._display_count
+
+        emitted = []
+        m.cell_edited.connect(lambda r, c, ov, nv: emitted.append((r, c, ov, nv)))
+        assert m.set_field_value(off_row, 0, "Lave-linge") is True
+        assert m.set_field_value(off_row, 1, "Whirlpool") is True
+
+        # Persisté dans _records + valeurs lisibles via value_at (indépendant de l'affichage)
+        assert m.value_at(off_row, 0) == "Lave-linge"
+        assert m.value_at(off_row, 1) == "Whirlpool"
+        # cell_edited émis (alimente sauvegarde/undo/historique) avec old_value correct
+        assert emitted == [(off_row, 0, "", "Lave-linge"), (off_row, 1, "", "Whirlpool")]
+
+    def test_setData_inchange_refuse_hors_page(self, qapp):
+        """Non-régression : setData() (chemin Qt standard de la vue) reste STRICTEMENT
+        inchangé — il refuse toujours les lignes hors page. Seule set_field_value
+        franchit la frontière. Garantit l'absence d'impact sur sélection/suppression."""
+        if not Config.USE_VIRTUAL_SCROLL:
+            pytest.skip("virtual scroll désactivé")
+        n = Config.FETCH_INITIAL + 5
+        m = AppareillsTableModel()
+        m.load_records([make_record(db_id=i, type_="", manufacturer="") for i in range(1, n + 1)])
+        off_row = Config.FETCH_INITIAL + 2
+        # index() standard : invalide hors page (contrat Qt par défaut préservé)
+        assert m.index(off_row, 0).isValid() is False
+        assert m.setData(m.createIndex(off_row, 0), "X", Qt.EditRole) is False
+        assert m.value_at(off_row, 0) == ""  # rien écrit
+        assert m.rowCount() == m._display_count
+
     def test_suggestions_snapshot_structure(self, qapp):
         """suggestions_snapshot expose réf. + valeurs actuelles + candidats par db_id ;
         ignore les db_id sans enregistrement chargé."""

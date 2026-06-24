@@ -82,11 +82,14 @@ class AutoCompletionService(BaseService):
         row = model.find_row_by_db_id(db_id)
         if row is None:
             return False
+        # set_field_value (et non setData/index) : écrit même si la ligne est hors page
+        # virtuelle (row >= _display_count), où model.index() renverrait un index que la
+        # vue refuse. Voir AppareillsTableModel.set_field_value.
         ok = True
         if candidate.get('type'):
-            ok = model.setData(model.index(row, 0), candidate['type'], Qt.EditRole) and ok
+            ok = model.set_field_value(row, 0, candidate['type']) and ok
         if candidate.get('manufacturer'):
-            ok = model.setData(model.index(row, 1), candidate['manufacturer'], Qt.EditRole) and ok
+            ok = model.set_field_value(row, 1, candidate['manufacturer']) and ok
         return ok
 
     @handle_autocompletion_errors(return_value="")

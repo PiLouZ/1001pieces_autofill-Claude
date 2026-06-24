@@ -1483,15 +1483,31 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
     
     def close(self):
-        """Fermer la connexion à la base de données"""
+        """Fermer proprement la connexion à la base de données.
+
+        Idempotent. Ordre important pour la robustesse à la fermeture (notamment
+        Cmd+Q) :
+          1. wal_checkpoint(TRUNCATE) : replie le journal WAL dans le fichier
+             principal et le tronque. Garantit qu'aucune écriture ne reste
+             seulement dans le -wal au moment où le process se termine — un -wal
+             non replié + arrêt brutal est un facteur connu de corruption.
+          2. PRAGMA optimize : ANALYZE incrémental (plans de requêtes corrects sur
+             3,5M d'associations).
+        Aucune de ces étapes ne doit empêcher la fermeture (try/except chacune)."""
         if self.conn:
-            # Met à jour les statistiques du planificateur (ANALYZE incrémental) —
-            # 3,5M d'associations sans statistiques = plans de requêtes sous-optimaux
+            try:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error:
+                pass
             try:
                 self.conn.execute("PRAGMA optimize")
             except sqlite3.Error:
-                pass  # Ne jamais empêcher la fermeture propre
-            self.conn.close()
+                pass
+            try:
+                self.conn.close()
+            finally:
+                self.conn = None
+                self.cursor = None
     
     def __enter__(self):
         return self
