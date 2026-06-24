@@ -19,6 +19,7 @@ from .qt_imports import (
 
 # Imports Python standard consolidés
 import os
+from pathlib import Path
 from datetime import datetime
 
 # Helpers et utilitaires refactorisés
@@ -2154,174 +2155,12 @@ class MainWindow(QMainWindow):
         # Contenu du guide
         guide_text = QTextEdit()
         guide_text.setReadOnly(True)
-        guide_content = """
-<html><head><style>
-  body  { font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 13px;
-          color: #212529; padding: 10px 14px; }
-  h1    { font-size: 17px; color: #212529; margin: 0 0 10px 0; }
-  h2    { font-size: 14px; color: #343a40; margin: 18px 0 4px 0;
-          border-bottom: 1px solid #dee2e6; padding-bottom: 3px; }
-  h3    { font-size: 12px; color: #495057; margin: 10px 0 3px 0; }
-  ul,ol { margin: 3px 0; padding-left: 20px; }
-  li    { margin: 2px 0; }
-  b     { color: #343a40; }
-  code  { background: #f1f3f5; padding: 1px 4px; border-radius: 3px;
-          font-size: 12px; font-family: monospace; }
-  table { border-collapse: collapse; margin: 6px 0 10px 0; }
-  th    { background: #f8f9fa; padding: 4px 10px; font-size: 12px;
-          border: 1px solid #dee2e6; text-align: left; }
-  td    { padding: 3px 10px; font-size: 12px; border: 1px solid #dee2e6;
-          vertical-align: top; }
-  td.key { font-family: monospace; font-weight: bold; white-space: nowrap;
-           background: #f8f9fa; }
-  hr    { border: none; border-top: 1px solid #dee2e6; margin: 12px 0; }
-  .note { background: #f8f9fa; border-left: 3px solid #adb5bd;
-          padding: 6px 10px; margin: 8px 0; font-size: 12px; color: #495057; }
-  .new  { background: #e8f5e9; border-left: 3px solid #4caf50;
-          padding: 6px 10px; margin: 8px 0; font-size: 12px; color: #2e7d32; }
-</style></head><body>
-
-<h1>Guide d'utilisation — 1001pieces.com</h1>
-
-<h2>Démarrage rapide</h2>
-
-<h3>Import de données</h3>
-<ol>
-  <li><b>Import de fichiers</b> : bouton Import dans la barre d'outils, ou glisser/déposer un CSV ou PDF sur le tableau</li>
-  <li><b>Fenêtre de relations</b> (import multi-fichiers) : déclarez les lignées de succession et les groupes d'équivalence en glissant/déposant les références (bleu = succession, violet = équivalence)</li>
-  <li><b>Collage</b> : copiez des données depuis Excel/Calc et collez avec Cmd+V</li>
-  <li><b>Référence de pièce</b> : lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier</li>
-</ol>
-
-<h3>Navigation et édition</h3>
-<ul>
-  <li><b>Double-clic</b> sur une cellule pour l'éditer</li>
-  <li><b>Entrée</b> : valider et descendre à la cellule suivante</li>
-  <li><b>Suppr / Retour arrière</b> : effacer les cellules sélectionnées</li>
-</ul>
-
-<h3>Gestion des pièces</h3>
-<ul>
-  <li><b>Gestionnaire de pièces</b> : accessible via Gestion → Pièces</li>
-  <li><b>Sélection multiple</b> : Cmd+Clic pour sélectionner plusieurs pièces</li>
-</ul>
-
-<h3>Fonctionnalités avancées</h3>
-<ul>
-  <li><b>Glisser/Déposer</b> : déposez des fichiers CSV directement sur le tableau</li>
-  <li><b>Auto-complétion</b> : champs vides complétés automatiquement via Action → Autocomplétion</li>
-  <li><b>Recherche avancée</b> : utilisez <code>&amp;&amp;</code> (ET) et <code>||</code> (OU) dans la barre de recherche</li>
-  <li><b>Supersession</b> : gérez les références obsolètes et leurs successeurs via la bannière d'information</li>
-</ul>
-
-<hr/>
-
-<h2>✨ Nouveautés v3.58.0</h2>
-
-<h3>Relations par groupes à l'import multi-fichiers</h3>
-<div class="new">
-<b>Déclarez les lignées de succession et les groupes d'équivalence</b> directement pendant l'import. Une fenêtre dédiée vous permet de :
-<ul>
-  <li><b>Glisser-déposer les références</b> entre colonnes (Succession à gauche, Équivalence à droite)</li>
-  <li><b>Promouvoir une référence en « Courante »</b> : soit en la glissant vers le haut, soit en double-clic</li>
-  <li><b>Visualiser les groupes complets</b> : la colonne « Toutes équivalentes » affiche automatiquement toutes les références du groupe</li>
-  <li><b>Dérivation automatique</b> : les obsolescences se déduisent du graphe (si A → B → C courant, alors A et B sont marquées obsolètes)</li>
-</ul>
-Ces relations sont enregistrées dans la table de <b>supersession</b> et visibles dans le tableau principal via la bannière (bleu pour succession, violet pour équivalence).
-</div>
-
-<h3>Suggestions Type/Marque par similarité</h3>
-<div class="new">
-<b>Lors de l'import, les appareils dont le Type ou la Marque est absent</b> reçoivent automatiquement une <b>suggestion</b> basée sur la similarité de référence (variantes de suffixes, fuzzy matching, consensus de préfixe) :
-<ul>
-  <li><b>Indicateur visuel</b> : les cellules Type/Marque proposées affichent une icône magique (✨) et un fond clair</li>
-  <li><b>Validation utilisateur</b> : cliquez sur la cellule proposée pour voir tous les candidats, score de similarité, et choisir l'un d'eux</li>
-  <li><b>Bannière informative</b> : un compteur indique le nombre d'appareils en attente de validation</li>
-  <li><b>Protection contre le « rebadging »</b> : les suggestions sur préfixe numérique (codes génériques, beaucoup de marques différentes) sont désactivées par défaut</li>
-  <li><b>Annulation manuelle</b> : si vous éditez Type ou Marque manuellement, l'indicateur disparaît automatiquement</li>
-</ul>
-</div>
-
-<hr/>
-
-<h2>Raccourcis clavier</h2>
-
-<h3>Édition</h3>
-<table>
-  <tr><th>Raccourci</th><th>Action</th></tr>
-  <tr><td class="key">Cmd+N</td><td>Ajouter une nouvelle ligne</td></tr>
-  <tr><td class="key">Cmd+Z</td><td>Annuler la dernière action</td></tr>
-  <tr><td class="key">Cmd+Y</td><td>Rétablir l'action annulée</td></tr>
-  <tr><td class="key">Cmd+C</td><td>Copier la sélection</td></tr>
-  <tr><td class="key">Cmd+V</td><td>Coller depuis le presse-papiers</td></tr>
-  <tr><td class="key">Cmd+S</td><td>Sauvegarder toutes les modifications</td></tr>
-  <tr><td class="key">Cmd+D</td><td>Afficher les valeurs existantes de la colonne (autocomplétion)</td></tr>
-</table>
-
-<h3>Navigation</h3>
-<table>
-  <tr><th>Raccourci</th><th>Action</th></tr>
-  <tr><td class="key">Cmd+Haut</td><td>Aller à la cellule vide précédente (ou tout en haut)</td></tr>
-  <tr><td class="key">Cmd+Bas</td><td>Aller à la cellule vide suivante (ou tout en bas)</td></tr>
-  <tr><td class="key">Ctrl+Droite</td><td>Page suivante</td></tr>
-  <tr><td class="key">Ctrl+Gauche</td><td>Page précédente</td></tr>
-  <tr><td class="key">Ctrl+Début</td><td>Première page</td></tr>
-  <tr><td class="key">Ctrl+Fin</td><td>Dernière page</td></tr>
-</table>
-
-<h3>Recherche et affichage</h3>
-<table>
-  <tr><th>Raccourci</th><th>Action</th></tr>
-  <tr><td class="key">Cmd+F</td><td>Ouvrir la barre de recherche</td></tr>
-  <tr><td class="key">Échap</td><td>Effacer la recherche</td></tr>
-  <tr><td class="key">F5</td><td>Actualiser l'affichage</td></tr>
-  <tr><td class="key">F12</td><td>Ouvrir le visualiseur de logs</td></tr>
-</table>
-
-<hr/>
-
-<h2>Dépannage</h2>
-
-<h3>Problèmes d'import</h3>
-<ul>
-  <li>Vérifiez l'encodage du fichier (UTF-8 recommandé)</li>
-  <li>Assurez-vous que le fichier CSV a au moins 2 colonnes</li>
-  <li>Première ligne = en-têtes (ignorée lors de l'import)</li>
-</ul>
-
-<h3>Performance</h3>
-<ul>
-  <li>L'application pagine automatiquement les gros datasets</li>
-  <li>Utilisez les filtres de colonnes pour affiner l'affichage</li>
-</ul>
-
-<hr/>
-
-<h2>Déploiement sur une autre machine</h2>
-
-<h3>Générer le dossier d'export</h3>
-<ol>
-  <li>Menu <b>Gestion → Exporter l'application…</b></li>
-  <li>Choisissez un dossier de destination (Bureau recommandé)</li>
-  <li>Patientez 1-2 minutes (téléchargement des dépendances)</li>
-  <li>Un dossier <code>1001pieces_export_YYYYMMDD_HHMM/</code> est créé</li>
-</ol>
-
-<h3>Sur le poste cible (macOS)</h3>
-<p><b>Prérequis</b> : Python 3.10+ (<code>python3 --version</code> pour vérifier)</p>
-<ol>
-  <li><b>Double-cliquez sur <code>install.command</code></b> — installe les dépendances (une seule fois)</li>
-  <li><b>Double-cliquez sur <code>1001pieces_autofill.app</code></b> — lance l'application</li>
-</ol>
-<div class="note">Aucune connexion internet nécessaire sur le poste cible (les wheels sont inclus).</div>
-
-<hr/>
-
-<h2>Support</h2>
-<p>En cas de problème, consultez les logs via <b>Journal</b> dans la barre d'outils.</p>
-
-</body></html>
-"""
+        guide_path = Path(__file__).parent.parent.parent / "docs" / "guide_utilisation.html"
+        try:
+            guide_content = guide_path.read_text(encoding='utf-8')
+        except (FileNotFoundError, IOError) as e:
+            app_logger.warning(f"Guide d'utilisation non trouvé ({guide_path}): {e}")
+            guide_content = "<html><body><h1>Guide d'utilisation</h1><p>Guide non disponible.</p></body></html>"
         guide_text.setHtml(guide_content)
         layout.addWidget(guide_text)
 
