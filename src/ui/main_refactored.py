@@ -2177,6 +2177,8 @@ class MainWindow(QMainWindow):
   hr    { border: none; border-top: 1px solid #dee2e6; margin: 12px 0; }
   .note { background: #f8f9fa; border-left: 3px solid #adb5bd;
           padding: 6px 10px; margin: 8px 0; font-size: 12px; color: #495057; }
+  .new  { background: #e8f5e9; border-left: 3px solid #4caf50;
+          padding: 6px 10px; margin: 8px 0; font-size: 12px; color: #2e7d32; }
 </style></head><body>
 
 <h1>Guide d'utilisation — 1001pieces.com</h1>
@@ -2186,6 +2188,7 @@ class MainWindow(QMainWindow):
 <h3>Import de données</h3>
 <ol>
   <li><b>Import de fichiers</b> : bouton Import dans la barre d'outils, ou glisser/déposer un CSV ou PDF sur le tableau</li>
+  <li><b>Fenêtre de relations</b> (import multi-fichiers) : déclarez les lignées de succession et les groupes d'équivalence en glissant/déposant les références (bleu = succession, violet = équivalence)</li>
   <li><b>Collage</b> : copiez des données depuis Excel/Calc et collez avec Cmd+V</li>
   <li><b>Référence de pièce</b> : lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier</li>
 </ol>
@@ -2208,7 +2211,36 @@ class MainWindow(QMainWindow):
   <li><b>Glisser/Déposer</b> : déposez des fichiers CSV directement sur le tableau</li>
   <li><b>Auto-complétion</b> : champs vides complétés automatiquement via Action → Autocomplétion</li>
   <li><b>Recherche avancée</b> : utilisez <code>&amp;&amp;</code> (ET) et <code>||</code> (OU) dans la barre de recherche</li>
+  <li><b>Supersession</b> : gérez les références obsolètes et leurs successeurs via la bannière d'information</li>
 </ul>
+
+<hr/>
+
+<h2>✨ Nouveautés v3.58.0</h2>
+
+<h3>Relations par groupes à l'import multi-fichiers</h3>
+<div class="new">
+<b>Déclarez les lignées de succession et les groupes d'équivalence</b> directement pendant l'import. Une fenêtre dédiée vous permet de :
+<ul>
+  <li><b>Glisser-déposer les références</b> entre colonnes (Succession à gauche, Équivalence à droite)</li>
+  <li><b>Promouvoir une référence en « Courante »</b> : soit en la glissant vers le haut, soit en double-clic</li>
+  <li><b>Visualiser les groupes complets</b> : la colonne « Toutes équivalentes » affiche automatiquement toutes les références du groupe</li>
+  <li><b>Dérivation automatique</b> : les obsolescences se déduisent du graphe (si A → B → C courant, alors A et B sont marquées obsolètes)</li>
+</ul>
+Ces relations sont enregistrées dans la table de <b>supersession</b> et visibles dans le tableau principal via la bannière (bleu pour succession, violet pour équivalence).
+</div>
+
+<h3>Suggestions Type/Marque par similarité</h3>
+<div class="new">
+<b>Lors de l'import, les appareils dont le Type ou la Marque est absent</b> reçoivent automatiquement une <b>suggestion</b> basée sur la similarité de référence (variantes de suffixes, fuzzy matching, consensus de préfixe) :
+<ul>
+  <li><b>Indicateur visuel</b> : les cellules Type/Marque proposées affichent une icône magique (✨) et un fond clair</li>
+  <li><b>Validation utilisateur</b> : cliquez sur la cellule proposée pour voir tous les candidats, score de similarité, et choisir l'un d'eux</li>
+  <li><b>Bannière informative</b> : un compteur indique le nombre d'appareils en attente de validation</li>
+  <li><b>Protection contre le « rebadging »</b> : les suggestions sur préfixe numérique (codes génériques, beaucoup de marques différentes) sont désactivées par défaut</li>
+  <li><b>Annulation manuelle</b> : si vous éditez Type ou Marque manuellement, l'indicateur disparaît automatiquement</li>
+</ul>
+</div>
 
 <hr/>
 
