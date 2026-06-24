@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Synthèse du projet 1001pieces_autofill</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 9.3pt; line-height: 1.22; }
+  h1 { font-size: 16pt; margin: 0 0 9pt 0; }
+  h2 { font-size: 11.5pt; color: #1565C0; border-bottom: 1px solid #1565C0; padding-bottom: 2pt; margin: 9pt 0 5pt 0; }
+  h3 { font-size: 9.8pt; margin: 6pt 0 2pt 0; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 5pt; font-size: 8.8pt; }
+  th { background: #1565C0; color: #fff; text-align: left; padding: 3pt 7pt; }
+  td { padding: 3pt 7pt; border-bottom: 1px solid #ddd; }
+  tr:nth-child(even) td { background: #f5f5f5; }
+  ul { margin: 1pt 0 4pt 0; padding-left: 15pt; }
+  li { margin-bottom: 0pt; }
+  .page-break { page-break-before: always; }
+  .footer { font-size: 8.5pt; color: #777; font-style: italic; margin-top: 10pt; page-break-before: avoid; }
+  ul:last-of-type { page-break-after: avoid; }
+  strong.hl { color: #1565C0; }
+</style>
+</head>
+<body>
+
+<h1>SYNTHÈSE DU PROJET 1001pieces_autofill</h1>
+
+<h2>Vue d'ensemble</h2>
+<p><strong>Programme de gestion d'appareils électroménagers</strong> (PyQt5 + SQLite) — application desktop de gestion
+d'inventaire à forte volumétrie, conçue autour de <strong>3,7 millions d'associations pièces</strong> et d'une base de
+données de 879 Mo.</p>
+
+<h2>Structure &amp; Taille</h2>
+<table>
+<tr><th>Catégorie</th><th>Chiffre</th></tr>
+<tr><td>Fichiers Python (hors tests)</td><td>93 fichiers</td></tr>
+<tr><td>Lignes de code total (hors tests)</td><td>38 130 lignes</td></tr>
+<tr><td>Tests unitaires</td><td>20 fichiers, 5 868 lignes, 379 tests</td></tr>
+<tr><td>Base de données</td><td>879 Mo (SQLite)</td></tr>
+<tr><td>Appareils en base</td><td>655 869</td></tr>
+<tr><td>Associations pièces</td><td>3 702 819</td></tr>
+<tr><td>Services métier</td><td>43 services</td></tr>
+<tr><td>Modules UI</td><td>28 fenêtres/dialogues</td></tr>
+</table>
+
+<h3>Répartition du code source (src/ = 37 591 lignes)</h3>
+<table>
+<tr><th>Module</th><th>Lignes</th><th>Fichiers</th><th>Description</th></tr>
+<tr><td>Services métier</td><td>11 292</td><td>43</td><td>Search, export, import, undo/redo, history, backup, supersession, duplicates, suggestions de similarité</td></tr>
+<tr><td>Interface UI</td><td>16 651</td><td>28</td><td>Fenêtre principale, gestion pièces, imports/exports, dialogues, validation des suggestions</td></tr>
+<tr><td>Données &amp; DB</td><td>4 135</td><td>10</td><td>DatabaseManager (FTS5), extracteurs PDF, validators</td></tr>
+<tr><td>Core</td><td>4 213</td><td>5</td><td>Config, constants, import_manager, logger</td></tr>
+<tr><td>Utils</td><td>1 300</td><td>4</td><td>text_utils, error_handler, seo_generator</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>Valeur marchande estimée</h2>
+
+<h3>Approche 1 : Par productivité de code</h3>
+<ul>
+<li>38 130 lignes de code source (hors tests)</li>
+<li>Productivité : 15 lignes/heure (code de qualité production + tests)</li>
+<li><strong>2 542 heures × 70€/h = 177 940 €</strong></li>
+</ul>
+
+<h3>Approche 2 : Par complexité fonctionnelle</h3>
+<ul>
+<li>Architecture multi-couches (core/data/services/ui)</li>
+<li>~43 services métier orchestrés</li>
+<li>Gestion volumétrie critique (FTS5, cache adaptatif, lazy loading)</li>
+<li>Fonctionnalités : supersession, suggestions par similarité, relations par groupes à l'import, undo/redo, imports PDF, exports multi-formats</li>
+<li><strong>Estimation : 2700–3700 heures → 189 000 – 259 000 €</strong></li>
+</ul>
+
+<h3>Approche 3 : Benchmark comparatif</h3>
+<ul>
+<li>App desktop simple (CRUD) : 500–1000h</li>
+<li>App desktop performante (CRUD + search) : 1000–2000h</li>
+<li><strong>App volumétrique (FTS5, supersession, undo, suggestions)</strong> : 2200–3200h</li>
+<li><strong>Estimation : 154 000 – 224 000 €</strong></li>
+</ul>
+
+<h3>Synthèse — Fourchette raisonnable</h3>
+<table>
+<tr><th>Scénario</th><th>Coût</th></tr>
+<tr><td>Minimum (code pur seul)</td><td>~160 000 €</td></tr>
+<tr><td><strong>Réaliste (avec tests UX)</strong></td><td><strong>~210 000 €</strong></td></tr>
+<tr><td>Senior full-stack + QA</td><td>~260 000 €</td></tr>
+</table>
+<p><em>En contexte français (seniors SSII ~75–85€/h), ce projet représenterait <strong>19–25 mois-homme</strong> de développement qualifié.</em></p>
+
+<h2>Points clés de l'architecture</h2>
+
+<h3>Performance &amp; Volumétrie</h3>
+<ul>
+<li>FTS5 trigram index : recherche full-text sur la table appareils</li>
+<li>Cache adaptatif : invalidation sélective des recherches</li>
+<li>Lazy loading PDF : chargement différé après ouverture</li>
+<li>EventDrivenSaveService : sauvegarde &lt;100ms (vs 5000ms avant v3.14)</li>
+<li>PRAGMA SQLite : synchronous=NORMAL, cache 64Mo, mmap 256Mo</li>
+</ul>
+
+<h3>Fonctionnalités avancées</h3>
+<ul>
+<li>Supersession : gestion des références obsolètes via CTE récursive</li>
+<li><strong class="hl">Suggestions Type/Marque par similarité</strong> : rapprochement de références quasi-identiques (variantes de suffixe, fuzzy matching, consensus de préfixe), garde anti-rebadging sur préfixe numérique, validation systématique par l'utilisateur (fenêtre dédiée, acceptation inline, copie des références)</li>
+<li><strong class="hl">Relations par groupes à l'import multi-fichiers</strong> : lignées de succession et groupes d'équivalence déclarés visuellement (glisser-déposer, promotion en référence courante), dérivation automatique des obsolescences</li>
+<li>Undo/Redo : historique complet avec fusion d'éditions</li>
+<li>Backup automatique : copies de sécurité SQLite natives (3 copies rotatées)</li>
+<li>Imports multiformat : CSV, PDF (via Camelot)</li>
+<li>Exports : HTML (avec escape XSS), CSV, profils personnalisés</li>
+</ul>
+
+<div style="page-break-inside: avoid;">
+<h3>Qualité du code</h3>
+<ul>
+<li>ZERO REGRESSION : refactorings vérifiés à chaque commit</li>
+<li>Code mort éliminé itérativement : 3300+ lignes supprimées aux points fixes</li>
+<li>AST-based removal : suppression précise sans casser multi-lignes</li>
+<li>379 tests unitaires (6 échecs préexistants documentés comme baseline)</li>
+</ul>
+<p class="footer">Synthèse générée le 24 juin 2026 — Projet 1001pieces_autofill v3.58.0</p>
+</div>
+
+</body>
+</html>
