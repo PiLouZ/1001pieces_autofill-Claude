@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.58.0] - 2026-06-24
+
+### Refonte UX — Fenêtre d'import multi-fichiers (relations par groupes)
+
+Refonte ergonomique de la fenêtre d'import multi-fichiers, pilotée par un agent spécialiste ergonomie et plusieurs allers-retours de validation utilisateur. Le mode mono-fichier reste strictement inchangé.
+
+- **Disposition générale** : fenêtre 1280×900, `QSplitter` horizontal poignée fine (1px) séparant [Référence commune + individuelles] et [Relations]. Aperçu du fichier en 2 colonnes (aperçu à gauche, options de mapping à droite). Séparateur visuel inutile retiré de l'aperçu.
+- **Relations en deux colonnes** : réservoir de références en pleine largeur en haut, puis lignées de succession et groupes d'équivalence côte à côte, chacun avec ses propres couleurs officielles (succession = bleu, équivalence = violet — alignées sur les bannières existantes de `table_controller`).
+- **Promotion d'une référence en « Courante »** : par glisser-déposer sur le champ Courante, ou double-clic sur une référence membre — dans les deux cas la référence **reste visible** dans sa zone (l'application déduit seule qu'elle n'est pas obsolète), comportement jugé moins perturbant qu'un retrait automatique.
+- **« Toutes les lignées équivalentes entre elles »** : checkbox (et non bouton) qui coche toutes les lignées existantes **et** pré-coche automatiquement toute nouvelle lignée créée ensuite.
+- **« Toutes équivalentes » (réservoir)** : ne regroupe que les références non affectées à une lignée, sans toucher aux lignées déjà constituées.
+- **Finitions visuelles** : références en zones de glisser-déposer présentées en badges (chips), zones de dépôt avec léger fond pour mieux distinguer la zone sans épaissir le contour, fonds de zones défilantes rendus transparents (suppression du cadre gris).
+- **Correction d'une coquille** : le réglage rapide de la 3ᵉ colonne (en-tête de l'aperçu) et son équivalent dans le tableau de mapping étaient désynchronisés — synchronisés dans les deux sens.
+- **Factorisation** : bouton info (ⓘ) mutualisé via un helper unique (`_make_info_button`) ; couleurs officielles centralisées dans des constantes (`_SUCC_COLORS`/`_EQUIV_COLORS`) plutôt que des littéraux dupliqués.
+
+**Vérifié** : suite complète verte (6 échecs préexistants inchangés = baseline ZERO REGRESSION), rendus offscreen validés à chaque lot, mode mono-fichier non impacté (chemin séparé).
+
+---
+
 ## [3.57.0] - 2026-06-22
 
 ### Affinage du moteur de suggestions (cas réels)
