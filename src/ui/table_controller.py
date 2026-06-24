@@ -1886,8 +1886,32 @@ class TableController:
         column_name = Config.UI_HEADERS[logical_index] if logical_index < len(Config.UI_HEADERS) else f"Colonne {logical_index}"
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage widgets")
+    def stop_workers(self):
+        """Arrêter proprement les QThread de fond (query + prefetch) avant la
+        fermeture de la base. Indispensable au moment du quit : un worker encore
+        en cours d'écriture sur la connexion partagée au moment où le process se
+        termine est un risque de corruption de la base. Bloque jusqu'à la fin de
+        chaque worker (les requêtes sont courtes). Idempotent."""
+        if hasattr(self, 'prefetch_timer') and self.prefetch_timer is not None:
+            try:
+                self.prefetch_timer.stop()
+            except Exception:
+                pass
+        for attr in ('query_worker', 'prefetch_worker'):
+            worker = getattr(self, attr, None)
+            if worker is not None:
+                try:
+                    if worker.isRunning():
+                        worker.quit()
+                        worker.wait()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
     def cleanup(self):
         """Nettoyage sécurisé des widgets Qt pour éviter les erreurs de destruction"""
+        # Arrêter les workers de fond AVANT toute fermeture de connexion DB
+        self.stop_workers()
         # Nettoyer les références aux widgets qui pourraient être détruits
         if hasattr(self, 'advanced_search_input'):
             self.advanced_search_input = None

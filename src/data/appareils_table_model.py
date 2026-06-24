@@ -84,20 +84,6 @@ class AppareillsTableModel(QAbstractTableModel):
         self._display_count += to_fetch
         self.endInsertRows()
 
-    def index(self, row, column, parent=QModelIndex()):
-        """Crée un index pour toute ligne CHARGÉE (présente dans _records), pas
-        seulement affichée. La vue ne demande jamais d'index au-delà de rowCount()
-        (= _display_count), donc l'affichage est inchangé ; mais les écritures
-        programmatiques hors page virtuelle (application d'une suggestion Type/Marque)
-        ont besoin d'un index valide que le défaut QAbstractTableModel refuserait
-        (hasIndex teste rowCount()). data() reste gardé par _display_count : seul
-        l'accès en écriture par setData()/value_at() franchit la frontière d'affichage."""
-        if parent.isValid() or column < 0 or column >= len(self._headers):
-            return QModelIndex()
-        if 0 <= row < len(self._records):
-            return self.createIndex(row, column)
-        return QModelIndex()
-
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid() or index.row() >= self._display_count:
             return None
@@ -144,26 +130,45 @@ class AppareillsTableModel(QAbstractTableModel):
         if not index.isValid() or role != Qt.EditRole:
             return False
         row, col = index.row(), index.column()
-        # Écriture autorisée sur toute ligne CHARGÉE (présente dans _records), même
-        # si elle n'est pas encore exposée à la vue (virtual scroll : _display_count
-        # < len(_records)). Les écritures programmatiques (application d'une suggestion
-        # Type/Marque sur une ligne hors page) seraient sinon silencieusement perdues.
-        if not (0 <= row < len(self._records)):
+        if row >= self._display_count:
             return False
-        # old_value lu directement depuis _records (data() renvoie None hors page
-        # affichée, ce qui fausserait l'ancienne valeur des lignes non exposées).
-        old_value = self.value_at(row, col)
+        old_value = self.data(index, Qt.DisplayRole) or ""
         new_value = str(value)
         record = list(self._records[row])
         if col < len(Config.DB_HEADERS):
             record[col + 1] = new_value
         self._records[row] = tuple(record)
-        # La vue n'est notifiée que pour les lignes affichées (émettre dataChanged sur
-        # un index hors rowCount() est invalide pour Qt). cell_edited est en revanche
-        # TOUJOURS émis : il alimente sauvegarde, undo et historique, qui doivent
-        # fonctionner indépendamment de l'état d'affichage.
+        self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+        self.cell_edited.emit(row, col, old_value, new_value)
+        return True
+
+    def set_field_value(self, row: int, col: int, value) -> bool:
+        """Écrit une valeur sur une ligne CHARGÉE (présente dans _records), même hors
+        page virtuelle (row >= _display_count), SANS passer par un QModelIndex (que la
+        vue refuserait pour une ligne non affichée).
+
+        Réservé aux écritures programmatiques sur des lignes potentiellement non
+        affichées — typiquement l'application d'une suggestion Type/Marque validée sur
+        un appareil au-delà de la page virtuelle initiale. Émet TOUJOURS cell_edited
+        (sauvegarde / undo / historique en aval) ; n'émet dataChanged que si la ligne
+        est affichée (la vue ignore — et Qt invalide — un index hors rowCount()).
+
+        Contrairement à setData(), n'altère ni index() ni le contrat Qt du modèle :
+        aucun impact sur la sélection, le tri, la suppression ou les délégués.
+
+        Returns:
+            bool: True si la ligne est chargée et l'écriture effectuée.
+        """
+        if not (0 <= row < len(self._records)) or col >= len(Config.DB_HEADERS):
+            return False
+        old_value = self.value_at(row, col)
+        new_value = str(value)
+        record = list(self._records[row])
+        record[col + 1] = new_value
+        self._records[row] = tuple(record)
         if row < self._display_count:
-            self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+            idx = self.index(row, col)
+            self.dataChanged.emit(idx, idx, [Qt.DisplayRole, Qt.EditRole])
         self.cell_edited.emit(row, col, old_value, new_value)
         return True
 
