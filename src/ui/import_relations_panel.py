@@ -185,7 +185,16 @@ class _RefList(QListWidget):
         else:
             # Réservoir « Non groupées » : bandeau compact de pastilles
             self.setMaximumHeight(80)
-        self.setStyleSheet("QListWidget { border: 1px dashed #ccc; border-radius: 4px; }")
+        self.setSpacing(2)
+        # Contour fin inchangé + léger fond translucide pour distinguer la zone ;
+        # chaque réf est rendue comme un badge (pastille blanche arrondie).
+        self.setStyleSheet(
+            "QListWidget { border: 1px dashed #b0bec5; border-radius: 6px;"
+            " background: rgba(96,125,139,0.07); }"
+            "QListWidget::item { background: #ffffff; border: 1px solid #cfd8dc;"
+            " border-radius: 10px; padding: 2px 9px; margin: 2px; color: #263238; }"
+            "QListWidget::item:selected { background: #e3f2fd;"
+            " border: 1px solid #64b5f6; color: #0d47a1; }")
 
     def dropEvent(self, event):
         super().dropEvent(event)
@@ -403,11 +412,18 @@ class GroupsZone(QWidget):
         cols.setContentsMargins(0, 0, 0, 0)
         cols.setSpacing(6)
 
+        # Checkbox « toutes les lignées équivalentes » : coche les lignées
+        # existantes ET pré-coche les futures (cf add_group).
+        self.all_equiv_check = QCheckBox("Toutes les lignées équivalentes entre elles")
+        self.all_equiv_check.setStyleSheet("font-size: 11px; border: none;")
+        self.all_equiv_check.setToolTip(
+            "Coche « Équivalente (inter-lignées) » sur toutes les lignées,\n"
+            "présentes et à venir (courantes de marques ≠ déclarées équivalentes).")
+        self.all_equiv_check.stateChanged.connect(self._on_all_equiv_toggled)
         self._succ_lay, succ_col = self._build_group_column(
             "Lignées de succession", "#1565C0",
             "+ Nouvelle lignée", lambda: self.add_group(KIND_SUCCESSION),
-            extra=("≡ Toutes les lignées équivalentes", self.toggle_all_succ_cross,
-                   "Coche (ou décoche) « Équivalente (inter-lignées) » sur toutes les lignées"))
+            extra_widget=self.all_equiv_check)
         cols.addWidget(succ_col, 1)
 
         self._equiv_lay, equiv_col = self._build_group_column(
@@ -417,9 +433,9 @@ class GroupsZone(QWidget):
 
         lay.addLayout(cols, 1)
 
-    def _build_group_column(self, title, color, btn_text, on_add, extra=None):
-        """Construit une colonne (titre + zone scrollable de boîtes + bouton(s)).
-        `extra` = (texte, callback, tooltip) pour un bouton supplémentaire.
+    def _build_group_column(self, title, color, btn_text, on_add, extra_widget=None):
+        """Construit une colonne (titre + zone scrollable de boîtes + bouton d'ajout).
+        `extra_widget` = widget optionnel inséré avant le bouton d'ajout.
         Retourne (layout_d_ancrage_des_boîtes, widget_colonne)."""
         col = QWidget()
         cl = QVBoxLayout(col)
@@ -444,26 +460,20 @@ class GroupsZone(QWidget):
         scroll.setWidget(anchor)
         cl.addWidget(scroll, 1)
 
-        if extra is not None:
-            ex_btn = QPushButton(extra[0])
-            ex_btn.setToolTip(extra[2] if len(extra) > 2 else "")
-            ex_btn.clicked.connect(extra[1])
-            cl.addWidget(ex_btn)
+        if extra_widget is not None:
+            cl.addWidget(extra_widget)
 
         btn = QPushButton(btn_text)
         btn.clicked.connect(on_add)
         cl.addWidget(btn)
         return anchor_lay, col
 
-    def toggle_all_succ_cross(self):
-        """Coche toutes les cases « Équivalente (inter-lignées) » des lignées
-        (ou les décoche si elles le sont déjà toutes)."""
-        boxes = [b for b in self._succ_boxes if b.cross_check is not None]
-        if not boxes:
-            return
-        new_state = not all(b.cross_check.isChecked() for b in boxes)
-        for b in boxes:
-            b.cross_check.setChecked(new_state)
+    def _on_all_equiv_toggled(self, *_):
+        """Applique l'état de la checkbox à toutes les lignées existantes."""
+        checked = self.all_equiv_check.isChecked()
+        for b in self._succ_boxes:
+            if b.cross_check is not None:
+                b.cross_check.setChecked(checked)
 
     def add_group(self, kind):
         boxes = self._succ_boxes if kind == KIND_SUCCESSION else self._equiv_boxes
@@ -473,6 +483,11 @@ class GroupsZone(QWidget):
         box.remove_requested.connect(self._remove_box)
         box.empty_requested.connect(self._empty_box)
         box.members.dropped.connect(self.changed)
+        # Pré-coche « Équivalente » si la checkbox globale est active
+        if (kind == KIND_SUCCESSION and box.cross_check is not None
+                and getattr(self, 'all_equiv_check', None) is not None
+                and self.all_equiv_check.isChecked()):
+            box.cross_check.setChecked(True)
         boxes.append(box)
         layout.addWidget(box)
         self.changed.emit()

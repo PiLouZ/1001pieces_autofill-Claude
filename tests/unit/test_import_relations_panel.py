@@ -116,16 +116,21 @@ class TestCross:
         panel.recompute()
         assert "équiv. croisée : B3, S2" in panel.recap.text()
 
-    def test_bouton_toutes_lignees_equivalentes(self, qapp):
-        """Le bouton coche toutes les cases « Équivalente (inter-lignées) », puis décoche."""
+    def test_checkbox_toutes_lignees_equivalentes(self, qapp):
+        """La checkbox coche les lignées existantes ET pré-coche les futures."""
         panel = _panel(qapp)
-        b1 = panel.groups_zone.add_group(KIND_SUCCESSION)
-        b2 = panel.groups_zone.add_group(KIND_SUCCESSION)
+        z = panel.groups_zone
+        b1 = z.add_group(KIND_SUCCESSION)
+        b2 = z.add_group(KIND_SUCCESSION)
         assert not b1.cross_check.isChecked() and not b2.cross_check.isChecked()
-        panel.groups_zone.toggle_all_succ_cross()
+        z.all_equiv_check.setChecked(True)
         assert b1.cross_check.isChecked() and b2.cross_check.isChecked()
-        panel.groups_zone.toggle_all_succ_cross()   # re-clic → décoche tout
-        assert not b1.cross_check.isChecked() and not b2.cross_check.isChecked()
+        # une lignée créée APRÈS coche est pré-cochée
+        b3 = z.add_group(KIND_SUCCESSION)
+        assert b3.cross_check.isChecked()
+        # décoche → toutes les lignées existantes décochées
+        z.all_equiv_check.setChecked(False)
+        assert not b1.cross_check.isChecked() and not b3.cross_check.isChecked()
 
 
 class TestAllEquiv:

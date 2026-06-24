@@ -829,7 +829,7 @@ class ImportDialog(QDialog):
                 splitter.setStretchFactor(0, 2)
                 splitter.setStretchFactor(1, 3)
                 splitter.setChildrenCollapsible(False)
-                splitter.setHandleWidth(12)   # poignée visible, colonnes aérées
+                splitter.setHandleWidth(1)    # poignée fine ; l'aération vient des marges
                 # Relations plus large par défaut (deux sous-colonnes succ.|équiv.)
                 splitter.setSizes([500, 760])
                 layout.addWidget(splitter, 1)
