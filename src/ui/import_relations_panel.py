@@ -15,7 +15,7 @@ Widget autonome (testable offscreen).
 
 from PyQt5.QtCore import Qt, pyqtSignal, QStringListModel
 from PyQt5.QtWidgets import (
-    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
+    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QScrollArea, QCompleter, QSplitter, QSizePolicy,
     QListWidget, QListWidgetItem, QAbstractItemView,
 )
@@ -263,7 +263,7 @@ class GroupBox(QFrame):
         lay.setSpacing(3)
 
         is_succ = self.kind == KIND_SUCCESSION
-        self.courante_combo = None      # uniquement pour les lignées de succession
+        self.courante_input = None      # uniquement pour les lignées de succession
         self.cross_check = None         # idem (équivalence inter-lignées)
 
         head = QHBoxLayout()
@@ -286,21 +286,16 @@ class GroupBox(QFrame):
             # Courante = réf récente qui remplace les anciennes (notion propre à la succession)
             crow = QHBoxLayout()
             crow.addWidget(_lbl("Courante :", width=72))
-            self.courante_combo = QComboBox()
-            self.courante_combo.setEditable(True)
-            self.courante_combo.setLineEdit(_CouranteLineEdit())
-            self.courante_combo.setInsertPolicy(QComboBox.NoInsert)
-            # Fond blanc + texte foncé explicites : le fond pâle de la boîte ne doit
-            # pas rendre le texte illisible (indépendant du thème ambiant).
-            self.courante_combo.setStyleSheet(
-                "QComboBox { background: #ffffff; color: #212121; }"
-                "QComboBox QAbstractItemView { background: #ffffff; color: #212121; }")
-            self.courante_combo.lineEdit().setStyleSheet("background: #ffffff; color: #212121;")
-            self.courante_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou à créer)")
-            self.courante_combo.lineEdit().setToolTip("Saisir, choisir, ou glisser une réf ici.")
-            self.courante_combo.editTextChanged.connect(lambda *_: self.changed.emit())
-            self.courante_combo.lineEdit().ref_dropped.connect(self._on_courante_dropped)
-            crow.addWidget(self.courante_combo, 1)
+            # QLineEdit simple (et non QComboBox éditable : dans le thème réel de
+            # l'app, le sous-champ d'un combo éditable rend le texte illisible —
+            # les QLineEdit ordinaires, eux, s'affichent correctement).
+            self.courante_input = _CouranteLineEdit()
+            self.courante_input.setPlaceholderText("réf récente (lot, base ou à créer)")
+            self.courante_input.setToolTip("Saisir, choisir, ou glisser une réf ici.")
+            self.courante_input.setStyleSheet("background: #ffffff; color: #212121;")
+            self.courante_input.textChanged.connect(lambda *_: self.changed.emit())
+            self.courante_input.ref_dropped.connect(self._on_courante_dropped)
+            crow.addWidget(self.courante_input, 1)
             lay.addLayout(crow)
 
             # Équivalence inter-lignées : sur sa propre ligne (libellé long)
@@ -325,36 +320,41 @@ class GroupBox(QFrame):
             self.members.itemDoubleClicked.connect(self._promote_member)
         lay.addWidget(self.members, 1)
 
-        if is_succ and self._ref_model is not None:
-            comp = QCompleter(self._ref_model, self.courante_combo.lineEdit())
+        if is_succ:
+            # Complétion : réfs du lot (alimentées par set_courante_options) + base
+            self._base_refs_list = (self._ref_model.stringList()
+                                    if self._ref_model is not None else [])
+            self._courante_model = QStringListModel(list(self._base_refs_list), self)
+            comp = QCompleter(self._courante_model, self.courante_input)
             comp.setCaseSensitivity(Qt.CaseInsensitive)
             comp.setFilterMode(Qt.MatchContains)
-            self.courante_combo.lineEdit().setCompleter(comp)
+            self.courante_input.setCompleter(comp)
 
     def set_courante_options(self, refs):
-        if self.courante_combo is None:
+        """Met à jour les suggestions de complétion (réfs du lot d'abord, puis base).
+        Ne touche pas au texte saisi."""
+        if self.courante_input is None:
             return
-        cur = self.courante_combo.currentText()
-        self.courante_combo.blockSignals(True)
-        self.courante_combo.clear()
-        self.courante_combo.addItems(refs)
-        self.courante_combo.setCurrentText(cur)
-        self.courante_combo.blockSignals(False)
+        seen, combined = set(), []
+        for r in list(refs) + list(getattr(self, '_base_refs_list', [])):
+            if r and r not in seen:
+                seen.add(r); combined.append(r)
+        self._courante_model.setStringList(combined)
 
     def _on_courante_dropped(self, ref):
         """Réf glissée sur le champ Courante (la source n'est pas vidée)."""
-        if self.courante_combo is not None:
-            self.courante_combo.setCurrentText(ref)
+        if self.courante_input is not None:
+            self.courante_input.setText(ref)
             self.changed.emit()
 
     def _promote_member(self, item):
         """Double-clic sur une ancienne version → la promeut courante (visible
         dans le champ) et la retire des membres (une courante n'est pas sa propre
         ancienne version). Réservé aux lignées (seules à avoir une courante)."""
-        if self.courante_combo is None:
+        if self.courante_input is None:
             return
         ref = item.text()
-        self.courante_combo.setCurrentText(ref)
+        self.courante_input.setText(ref)
         row = self.members.row(item)
         if row >= 0:
             self.members.takeItem(row)
@@ -362,8 +362,8 @@ class GroupBox(QFrame):
 
     def to_group(self):
         return Group(kind=self.kind,
-                     courante=((self.courante_combo.currentText().strip() or None)
-                               if self.courante_combo is not None else None),
+                     courante=((self.courante_input.text().strip() or None)
+                               if self.courante_input is not None else None),
                      members=self.members.refs(),
                      cross_equivalent=(self.cross_check.isChecked()
                                        if self.cross_check is not None else False))

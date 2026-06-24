@@ -35,7 +35,7 @@ class TestSuccession:
     def test_lignee_courante_lot(self, qapp):
         panel = _panel(qapp)
         box = panel.groups_zone.add_group(KIND_SUCCESSION)
-        box.courante_combo.setCurrentText("B3")
+        box.courante_input.setText("B3")
         _move(panel, "B1", box)
         _move(panel, "B2", box)
         g = panel.get_groups()[0]
@@ -49,11 +49,11 @@ class TestSuccession:
     def test_courante_externe_fantome(self, qapp):
         panel = _panel(qapp, base=["EXISTE"])
         box = panel.groups_zone.add_group(KIND_SUCCESSION)
-        box.courante_combo.setCurrentText("EXT_HORS_BASE")
+        box.courante_input.setText("EXT_HORS_BASE")
         _move(panel, "B1", box)
         assert "fantôme" in panel.recap.text()
         # une courante déjà en base ne crée pas de fantôme
-        box.courante_combo.setCurrentText("EXISTE")
+        box.courante_input.setText("EXISTE")
         panel.recompute()
         assert "fantôme" not in panel.recap.text()
 
@@ -94,7 +94,7 @@ class TestEquivalence:
         """Un groupe d'équivalence n'a ni « courante » ni case « Équivalente »."""
         panel = _panel(qapp)
         box = panel.groups_zone.add_group(KIND_EQUIVALENCE)
-        assert box.courante_combo is None
+        assert box.courante_input is None
         assert box.cross_check is None
         assert box.to_group().courante is None and box.to_group().cross_equivalent is False
 
@@ -103,10 +103,10 @@ class TestCross:
     def test_cross_equivalent_courantes(self, qapp):
         panel = _panel(qapp)
         b1 = panel.groups_zone.add_group(KIND_SUCCESSION)
-        b1.courante_combo.setCurrentText("B3"); _move(panel, "B1", b1)
+        b1.courante_input.setText("B3"); _move(panel, "B1", b1)
         b1.cross_check.setChecked(True)
         b2 = panel.groups_zone.add_group(KIND_SUCCESSION)
-        b2.courante_combo.setCurrentText("S2"); _move(panel, "S1", b2)
+        b2.courante_input.setText("S2"); _move(panel, "S1", b2)
         b2.cross_check.setChecked(True)
         panel.recompute()
         assert "équiv. croisée : B3, S2" in panel.recap.text()
@@ -117,7 +117,7 @@ class TestAllEquiv:
         """Lot 7 : ne regroupe que les réfs du réservoir, laisse la lignée intacte."""
         panel = _panel(qapp)
         succ = panel.groups_zone.add_group(KIND_SUCCESSION)
-        succ.courante_combo.setCurrentText("B3")
+        succ.courante_input.setText("B3")
         _move(panel, "B1", succ)          # B1 dans une lignée → non concerné
         box = panel.groups_zone.add_all_to_new_equivalence()
         assert box is not None and box.kind == KIND_EQUIVALENCE

@@ -440,7 +440,7 @@ class TestDialogRelationsCollection:
         z = dlg._relations_groups_zone
         assert z is not None
         box = z.add_group(KIND_SUCCESSION)
-        box.courante_combo.setCurrentText('REF_C')
+        box.courante_input.setText('REF_C')
         res = z.reservoir
         for ref in ('REF_A', 'REF_B'):
             for i in range(res.count()):
