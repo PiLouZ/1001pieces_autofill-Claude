@@ -17,7 +17,7 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QTextEdit, QGroupBox, QApplication,
                              QScrollArea, QWidget, QGridLayout, Qt, QTimer, QThread,
                              QCompleter, QStringListModel, QRadioButton, QButtonGroup,
-                             QSizePolicy, QSize, pyqtSignal)
+                             QSizePolicy, QSize, QSplitter, pyqtSignal)
 
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
@@ -100,6 +100,11 @@ class ImportConfiguration:
     # Références à marquer obsolètes lors de l'import
     obsolete_refs: Optional[List[str]] = None       # Réfs à marquer comme obsolètes après import
 
+    # Modèle « par groupes » (nouveau panneau de relations) — si renseigné, il PRIME
+    # sur les champs succession_*/equivalence_refs/obsolete_refs ci-dessus.
+    relations_groups: Optional[List] = None         # List[import_relations.Group]
+    relations_cards: Optional[List] = None           # List[import_relations.CardData]
+
     # Mapping personnalisé des colonnes (v3.30.0)
     # None = comportement positionnel actuel (défaut, zéro régression)
     # Clé   : nombre de colonnes du groupe de fichiers
@@ -138,7 +143,7 @@ class MappingGroupWidget(QWidget):
         ("Type d'appareil",  "type"),
         ("Fabricant",        "manufacturer"),
         ("Autre Référence",  "other_ref"),
-        ("Notes",            "notes"),
+        ("Notes / Description", "notes"),
     ]
 
     def __init__(self, n_cols: int, files: list, sample_data: list,
@@ -336,7 +341,13 @@ class ImportDialog(QDialog):
         self.setWindowTitle("Importer depuis le presse-papiers" if is_clipboard else "Configuration d'importation")
         self.setModal(True)
         self.setMinimumWidth(1000)
-        self.setMinimumHeight(1000)
+        # Multi-fichiers : disposition en colonnes (cf _setup_ui) → moins de
+        # hauteur nécessaire mais plus de largeur. Fichier unique : inchangé.
+        if self.import_config.import_type == ImportType.MULTI_FILE:
+            self.setMinimumHeight(720)
+            self.resize(1280, 900)
+        else:
+            self.setMinimumHeight(1000)
 
         # PHASE 2.1: Flag pour indiquer si les données sont chargées
         self._data_loaded = False
@@ -432,18 +443,24 @@ class ImportDialog(QDialog):
         self.preview_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 11px;")
         self.preview_text.setReadOnly(True)
         self.preview_text.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        format_layout.addWidget(self.preview_text)
 
-        # Options techniques sous l'aperçu
+        # Aperçu à gauche / options techniques à droite (gagne de la hauteur,
+        # évite la redondance avec « Adapter le mapping »).
+        preview_row = QHBoxLayout()
+        preview_row.setSpacing(8)
+        preview_row.addWidget(self.preview_text, 1)
+
+        # Options techniques à droite de l'aperçu
         options_layout = QVBoxLayout()
         options_layout.setContentsMargins(10, 4, 10, 2)
         
         # Gestion de la 3ème colonne si applicable
         self.third_col_widget = QWidget()
         self.third_col_widget.setStyleSheet("background-color: #fff; border: 1px solid #e9ecef; border-radius: 4px;")
-        third_col_layout = QHBoxLayout(self.third_col_widget)
-        third_col_layout.setContentsMargins(10, 3, 10, 3)
-        
+        third_col_layout = QVBoxLayout(self.third_col_widget)
+        third_col_layout.setContentsMargins(10, 5, 10, 5)
+        third_col_layout.setSpacing(3)
+
         self.third_col_label = QLabel("Destination 3ème colonne:")
         self.third_col_label.setStyleSheet("font-weight: bold;")
         third_col_layout.addWidget(self.third_col_label)
@@ -451,20 +468,27 @@ class ImportDialog(QDialog):
         self.third_col_combo = QComboBox()
         self.third_col_combo.addItems(["Ignorer", "Autre référence", "Notes"])
         self.third_col_combo.setCurrentIndex(1)  # "Autre référence" présélectionné (choix le plus fréquent)
+        self.third_col_combo.currentIndexChanged.connect(self._sync_quick_third_col_to_mapping)
         third_col_layout.addWidget(self.third_col_combo)
         
         options_layout.addWidget(self.third_col_widget)
         self.third_col_widget.hide()  # Caché par défaut
         
         # Option en-têtes CSV avec style cohérent
-        self.headers_checkbox = QCheckBox("Le fichier contient une ligne d'en-têtes (ignorer la première ligne)")
+        self.headers_checkbox = QCheckBox("1ʳᵉ ligne = en-têtes (ignorée)")
         self.headers_checkbox.setChecked(False)
         self.headers_checkbox.setToolTip("Cochez cette case si la première ligne de votre fichier contient les noms des colonnes")
         self.headers_checkbox.setStyleSheet("font-weight: bold; background-color: #fff; border: 1px solid #e9ecef; border-radius: 4px; padding: 8px 10px; margin-top: 5px;")
         options_layout.addWidget(self.headers_checkbox)
         self.headers_checkbox.hide()  # Caché par défaut, affiché seulement pour CSV
-        
-        format_layout.addLayout(options_layout)
+        options_layout.addStretch(1)
+
+        # Panneau d'options à droite — se rétrécit quand ses options sont masquées
+        self._format_options_panel = QWidget()
+        self._format_options_panel.setLayout(options_layout)
+        self._format_options_panel.setMaximumWidth(340)
+        preview_row.addWidget(self._format_options_panel, 0, Qt.AlignTop)
+        format_layout.addLayout(preview_row)
 
         # Conteneur de mapping de colonnes (v3.30.0 — sous l'aperçu et les options)
         self.mapping_container = QWidget()
@@ -496,25 +520,34 @@ class ImportDialog(QDialog):
             self.common_ref_input.setFixedWidth(170)  # ~20 caractères
             row_ref.addWidget(self.common_ref_input)
             try:
-                import qtawesome as qta
-                info_btn = QPushButton()
-                info_btn.setIcon(qta.icon('fa5s.info-circle', color='#0066cc'))
-                info_btn.setIconSize(QSize(13, 13))
-                info_btn.setFixedSize(20, 20)
-                info_btn.setFlat(True)
-                info_btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
-                info_btn.setToolTip(
+                row_ref.addWidget(self._make_info_button(
                     "La référence commune sera associée à TOUS les appareils importés.\n"
                     "Elle sera créée et enregistrée dans la base de données\n"
-                    "comme toute autre référence de pièce."
-                )
-                row_ref.addWidget(info_btn)
+                    "comme toute autre référence de pièce."))
             except Exception:
                 pass
-            row_ref.addStretch()
+            row_ref.addStretch(1)
+
+            # Cases « tout appliquer » alignées à droite de la ligne Référence
+            self._apply_all_equiv_checkbox = QCheckBox("Toutes équivalentes")
+            self._apply_all_equiv_checkbox.setStyleSheet("font-size: 11px; color: #6A1B9A;")
+            self._apply_all_equiv_checkbox.setToolTip(
+                "Regroupe les références encore non groupées comme équivalentes entre elles\n"
+                "(génère le groupe correspondant dans la zone « Relations entre références »)."
+            )
+            self._apply_all_equiv_checkbox.stateChanged.connect(self._on_apply_all_equiv_changed)
+            row_ref.addWidget(self._apply_all_equiv_checkbox)
+
+            self._apply_all_obs_checkbox = QCheckBox("Toutes obsolètes")
+            self._apply_all_obs_checkbox.setStyleSheet("font-size: 11px; color: #c0392b;")
+            self._apply_all_obs_checkbox.setToolTip(
+                "Cocher toutes les références importées comme obsolètes"
+            )
+            self._apply_all_obs_checkbox.stateChanged.connect(self._on_apply_all_obs_changed)
+            row_ref.addWidget(self._apply_all_obs_checkbox)
             ref_layout.addLayout(row_ref)
 
-            # Ligne 2 : Description + checkbox
+            # Ligne 2 : Description + case « Appliquer libellé »
             row_desc = QHBoxLayout()
             row_desc.setSpacing(8)
             desc_lbl2 = QLabel("Description:")
@@ -525,12 +558,7 @@ class ImportDialog(QDialog):
             self.common_ref_description.setPlaceholderText("Ex : Lot pièces lave-vaisselle mars 2024")
             self.common_ref_description.textChanged.connect(self._on_common_description_changed)
             row_desc.addWidget(self.common_ref_description)
-            ref_layout.addLayout(row_desc)
 
-            # Ligne 3 : cases "tout appliquer" sur une seule ligne
-            row_apply_all = QHBoxLayout()
-            row_apply_all.setSpacing(16)
-            row_apply_all.addSpacing(90)  # aligne avec l'input description
             self.apply_to_individual_checkbox = QCheckBox("Appliquer libellé")
             self.apply_to_individual_checkbox.setChecked(True)
             self.apply_to_individual_checkbox.setStyleSheet("font-size: 11px;")
@@ -538,29 +566,13 @@ class ImportDialog(QDialog):
                 "Duplique automatiquement cette description dans tous les champs libellé individuels"
             )
             self.apply_to_individual_checkbox.stateChanged.connect(self._on_apply_to_individual_changed)
-            row_apply_all.addWidget(self.apply_to_individual_checkbox)
-
-            self._apply_all_equiv_checkbox = QCheckBox("Toutes équivalentes")
-            self._apply_all_equiv_checkbox.setStyleSheet("font-size: 11px; color: #6c757d;")
-            self._apply_all_equiv_checkbox.setToolTip(
-                "Cocher toutes les références importées comme équivalentes entre elles"
-            )
-            self._apply_all_equiv_checkbox.stateChanged.connect(self._on_apply_all_equiv_changed)
-            row_apply_all.addWidget(self._apply_all_equiv_checkbox)
-
-            self._apply_all_obs_checkbox = QCheckBox("Toutes obsolètes")
-            self._apply_all_obs_checkbox.setStyleSheet("font-size: 11px; color: #c0392b;")
-            self._apply_all_obs_checkbox.setToolTip(
-                "Cocher toutes les références importées comme obsolètes"
-            )
-            self._apply_all_obs_checkbox.stateChanged.connect(self._on_apply_all_obs_changed)
-            row_apply_all.addWidget(self._apply_all_obs_checkbox)
-            row_apply_all.addStretch()
-            ref_layout.addLayout(row_apply_all)
+            row_desc.addWidget(self.apply_to_individual_checkbox)
+            ref_layout.addLayout(row_desc)
 
             ref_group.setLayout(ref_layout)
-            layout.addWidget(ref_group)
-        
+            # Différé : ajouté à la colonne gauche du QSplitter (cf fin _setup_ui)
+            self._common_ref_group = ref_group
+
         self.individual_desc_fields = []
 
         if len(self.import_config.files) == 1:
@@ -622,6 +634,9 @@ class ImportDialog(QDialog):
             self.auto_file_references_checkbox.setChecked(True)
             self.auto_file_references_checkbox.setVisible(False)
             layout.addWidget(self.auto_file_references_checkbox)
+
+            # Mono-fichier : pas de zone de relations « par groupes » (chemin legacy)
+            self._relations_groups_zone = None
 
             # ── Section succession repliable (liens entre réfs uniquement) ──────
             self.succ_replaces_input = None
@@ -704,16 +719,11 @@ class ImportDialog(QDialog):
             individual_group = QGroupBox("Références individuelles par fichier")
             individual_layout = QVBoxLayout()
 
-            info_and_option_layout = QVBoxLayout()
+            info_and_option_layout = QHBoxLayout()
             info_and_option_layout.setContentsMargins(0, 0, 0, 0)
-            info_and_option_layout.setSpacing(8)
+            info_and_option_layout.setSpacing(6)
 
-            individual_info = QLabel("Génération automatique des références de pièces basées sur les noms de fichiers")
-            individual_info.setStyleSheet("color: #666; font-style: italic; padding: 8px; background-color: #f0f8ff; border-radius: 4px;")
-            individual_info.setWordWrap(True)
-            info_and_option_layout.addWidget(individual_info)
-
-            self.auto_file_references_checkbox = QCheckBox("Associer automatiquement les noms de fichiers comme références de pièces")
+            self.auto_file_references_checkbox = QCheckBox("Réf. de pièce = nom de fichier (auto)")
             self.auto_file_references_checkbox.setToolTip(
                 "Si coché, chaque fichier génère automatiquement une référence de pièce basée sur son nom.\n"
                 "Si décoché, seuls les données contenues dans les fichiers sont importées."
@@ -733,18 +743,30 @@ class ImportDialog(QDialog):
             self.auto_file_references_checkbox.stateChanged.connect(self._on_auto_references_changed)
             info_and_option_layout.addWidget(self.auto_file_references_checkbox)
 
+            try:
+                info_and_option_layout.addWidget(self._make_info_button(
+                    "Génération automatique des références de pièces basées sur les noms de fichiers."))
+            except Exception:
+                pass
+            info_and_option_layout.addStretch(1)
+
             individual_layout.addLayout(info_and_option_layout)
 
             scroll_area = QScrollArea()
             scroll_area.setWidgetResizable(True)
             scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            # Fond transparent + sans cadre (pas de rectangle gris bordé)
+            scroll_area.setFrameShape(scroll_area.NoFrame)
+            scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+            scroll_area.viewport().setAutoFillBackground(False)
 
             scroll_area.setMinimumHeight(80)
             scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
             scroll_widget = QWidget()
             scroll_widget.setObjectName("scroll_content")
+            scroll_widget.setStyleSheet("#scroll_content { background: transparent; }")
 
             self.individual_refs_widget = QVBoxLayout(scroll_widget)
             self.individual_refs_widget.setContentsMargins(10, 10, 10, 10)
@@ -756,7 +778,46 @@ class ImportDialog(QDialog):
             individual_layout.addWidget(scroll_area)
             individual_group.setLayout(individual_layout)
             individual_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            layout.addWidget(individual_group, 1)
+
+            # ── Zone de relations « par groupes » (lignées de succession +
+            # groupes d'équivalence), alimentée par les références du lot ──────
+            self._relations_groups_zone = self._build_relations_zone()
+            rel_group = None
+            if self._relations_groups_zone is not None:
+                rel_group = QGroupBox("Relations entre références (succession / équivalence)")
+                rel_layout = QVBoxLayout()
+                rel_layout.setContentsMargins(6, 6, 6, 6)
+                rel_layout.addWidget(self._relations_groups_zone)
+                rel_group.setLayout(rel_layout)
+                rel_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            # ── Disposition en colonnes : [Réf. commune + individuelles] | [Relations]
+            # Exploite la largeur (1280px) au lieu d'empiler verticalement deux
+            # zones à ascenseurs → fin des ascenseurs imbriqués.
+            left_col = QWidget()
+            # Plafonne la colonne gauche pour laisser la largeur à la zone Relations
+            # (sinon le champ Description pousse la poignée et étrique les 2 sous-colonnes).
+            left_col.setMaximumWidth(580)
+            left_layout = QVBoxLayout(left_col)
+            left_layout.setContentsMargins(0, 0, 10, 0)  # respiration vers la poignée
+            left_layout.setSpacing(6)
+            if getattr(self, '_common_ref_group', None) is not None:
+                left_layout.addWidget(self._common_ref_group)
+            left_layout.addWidget(individual_group, 1)
+
+            if rel_group is not None:
+                splitter = QSplitter(Qt.Horizontal)
+                splitter.addWidget(left_col)
+                splitter.addWidget(rel_group)
+                splitter.setStretchFactor(0, 2)
+                splitter.setStretchFactor(1, 3)
+                splitter.setChildrenCollapsible(False)
+                splitter.setHandleWidth(1)    # poignée fine ; l'aération vient des marges
+                # Relations plus large par défaut (deux sous-colonnes succ.|équiv.)
+                splitter.setSizes([500, 760])
+                layout.addWidget(splitter, 1)
+            else:
+                layout.addWidget(left_col, 1)
 
         # Boutons
         buttons_layout = QHBoxLayout()
@@ -882,26 +943,9 @@ class ImportDialog(QDialog):
             self.individual_desc_fields.append(desc_input)
 
             if self.import_config.import_type == ImportType.MULTI_FILE:
-                if self._succ_button_group is None:
-                    self._succ_button_group = QButtonGroup(self)
-                    self._succ_button_group.setExclusive(True)
-
-                radio = QRadioButton("Courante")
-                radio.setToolTip("Désigner cette réf. comme courante — les autres lui seront successées à l'import")
-                radio.setStyleSheet("font-size: 11px; color: #495057; background: transparent; border: none;")
-                self._succ_button_group.addButton(radio, i)
-                self._succ_radio_files.append(file)
-                row2.addWidget(radio)
-
-                equiv_check = QCheckBox("Équivalente")
-                equiv_check.setToolTip(
-                    "Marquer cette réf. comme équivalente à la pièce courante\n"
-                    "(même fonction, fabricant différent — les deux restent valides)"
-                )
-                equiv_check.setStyleSheet("font-size: 11px; color: #6c757d; background: transparent; border: none;")
-                self._equiv_checkboxes.append((equiv_check, file))
-                row2.addWidget(equiv_check)
-
+                # Succession / équivalence : désormais déclarées dans la zone
+                # « Relations entre références » (lignées + groupes). Sur la carte
+                # on ne garde que « Obsolète ».
                 obs_check = QCheckBox("Obsolète")
                 obs_check.setToolTip("Marquer cette référence comme obsolète (plus fabriquée)")
                 obs_check.setStyleSheet("font-size: 11px; color: #c0392b; background: transparent; border: none;")
@@ -917,6 +961,29 @@ class ImportDialog(QDialog):
         # Autocomplétion pour les champs de succession (fichier unique)
         self._setup_succession_autocomplete()
     
+    def _build_relations_zone(self):
+        """Construit la zone de relations « par groupes » (lignées de succession +
+        groupes d'équivalence) pour le multi-fichiers, alimentée par les références
+        du lot. Renvoie None si indisponible (≤ 1 réf ou erreur) — sans bloquer."""
+        try:
+            from ..ui.import_relations_panel import GroupsZone
+            from PyQt5.QtCore import QStringListModel
+            refs = [f.suggested_reference for f in self.import_config.files
+                    if getattr(f, 'suggested_reference', '')]
+            if len(refs) < 2:
+                return None
+            base_refs = []
+            if self.import_manager and hasattr(self.import_manager, 'db_manager'):
+                rows = self.import_manager.db_manager.execute_query(
+                    "SELECT ref_piece FROM pieces ORDER BY ref_piece LIMIT 5000") or []
+                base_refs = [r[0] for r in rows]
+            # Référence persistante sur le modèle (piège GC du QCompleter)
+            self._relations_base_model = QStringListModel(sorted(base_refs), self)
+            return GroupsZone(refs, ref_model=self._relations_base_model)
+        except Exception as e:
+            app_logger.warning(f"Zone de relations indisponible : {e}")
+            return None
+
     def _setup_succession_autocomplete(self):
         """Configurer l'autocomplétion sur les champs de succession (fichier unique)."""
         if self.succ_replaces_input is None:
@@ -964,14 +1031,73 @@ class ImportDialog(QDialog):
                 desc_field.setText("")
     
     def _on_apply_all_equiv_changed(self, state):
-        """Coche/décoche toutes les cases 'Équivalente' individuelles."""
-        for check, _ in getattr(self, '_equiv_checkboxes', []):
-            check.setChecked(state == Qt.Checked)
+        """« Toutes équivalentes » : génère (ou retire) un groupe d'équivalence
+        regroupant les références encore *non groupées* (réservoir), sans toucher
+        aux lignées/groupes déjà constitués."""
+        zone = getattr(self, '_relations_groups_zone', None)
+        if zone is None:
+            return
+        if state == Qt.Checked:
+            self._auto_equiv_box = zone.add_all_to_new_equivalence()
+        else:
+            box = getattr(self, '_auto_equiv_box', None)
+            if box is not None:
+                zone.remove_auto_equivalence_group(box)
+            self._auto_equiv_box = None
 
     def _on_apply_all_obs_changed(self, state):
         """Coche/décoche toutes les cases 'Obsolète' individuelles."""
         for check, _ in getattr(self, '_obsolete_checkboxes', []):
             check.setChecked(state == Qt.Checked)
+
+    # ── Synchro combo rapide « Destination Description » ↔ Colonne 3 du mapping ──
+    _QUICK_THIRD_FIELDS = ['ignore', 'other_ref', 'notes']   # index combo rapide → valeur FIELD_CHOICES
+
+    def _third_col_mapping_combo(self):
+        """Combo « Colonne 3 » du groupe de mapping à 3 colonnes (ou None)."""
+        for w in getattr(self, '_mapping_widgets', []):
+            if getattr(w, '_n_cols', None) == 3 and len(getattr(w, '_combos', [])) >= 3:
+                return w._combos[2]
+        return None
+
+    def _sync_quick_third_col_to_mapping(self, *_):
+        """Combo rapide → Colonne 3 du mapping (sans réémettre de signal)."""
+        combo = self._third_col_mapping_combo()
+        if combo is None or not hasattr(self, 'third_col_combo'):
+            return
+        val = self._QUICK_THIRD_FIELDS[self.third_col_combo.currentIndex()]
+        idx = combo.findData(val)
+        if idx >= 0 and combo.currentIndex() != idx:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
+
+    @staticmethod
+    def _make_info_button(tooltip: str):
+        """Petit bouton plat « ⓘ » (icône fa5s.info-circle) avec une infobulle.
+        Factorise le pattern réutilisé sur plusieurs zones du dialogue."""
+        import qtawesome as qta
+        btn = QPushButton()
+        btn.setIcon(qta.icon('fa5s.info-circle', color='#0066cc'))
+        btn.setIconSize(QSize(13, 13))
+        btn.setFixedSize(20, 20)
+        btn.setFlat(True)
+        btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
+        btn.setToolTip(tooltip)
+        return btn
+
+    def _on_mapping_third_col_changed(self, *_):
+        """Colonne 3 du mapping → combo rapide (si la valeur est représentable)."""
+        combo = self._third_col_mapping_combo()
+        if combo is None or not hasattr(self, 'third_col_combo'):
+            return
+        val = combo.currentData()
+        if val in self._QUICK_THIRD_FIELDS:
+            idx = self._QUICK_THIRD_FIELDS.index(val)
+            if self.third_col_combo.currentIndex() != idx:
+                self.third_col_combo.blockSignals(True)
+                self.third_col_combo.setCurrentIndex(idx)
+                self.third_col_combo.blockSignals(False)
 
     def _on_common_description_changed(self, text):
         """Met à jour automatiquement les champs individuels si la case est cochée"""
@@ -1059,23 +1185,24 @@ class ImportDialog(QDialog):
             config.succession_replaces = self.succ_replaces_input.text().strip() or None
             config.succession_replaced_by = self.succ_replaced_by_input.text().strip() or None
 
-        # Succession — multi-fichiers (ref courante désignée)
+        # Succession / équivalence — multi-fichiers : modèle « par groupes » du
+        # nouveau panneau de relations (lignées + groupes d'équivalence). Prime sur
+        # les anciens champs et route vers _apply_relations_from_config.
         if (config.import_type == ImportType.MULTI_FILE
-                and self._succ_button_group is not None
-                and self._succ_button_group.checkedId() >= 0
-                and self._succ_radio_files):
-            checked_id = self._succ_button_group.checkedId()
-            if checked_id < len(self._succ_radio_files):
-                current_file = self._succ_radio_files[checked_id]
-                config.succession_current_ref = config.individual_references.get(current_file.path) or None
-
-        # Équivalences — multi-fichiers (cases cochées "Équivalente")
-        if config.import_type == ImportType.MULTI_FILE and self._equiv_checkboxes:
-            for equiv_check, file in self._equiv_checkboxes:
-                if equiv_check.isChecked():
-                    ref = config.individual_references.get(file.path, '') or ''
-                    if ref:
-                        config.equivalence_refs.append(ref)
+                and getattr(self, '_relations_groups_zone', None) is not None):
+            from ..services.import_relations import CardData
+            config.relations_groups = self._relations_groups_zone.groups()
+            obs_by_ref = {}
+            for obs_check, file in (self._obsolete_checkboxes or []):
+                ref = config.individual_references.get(file.path, '') or ''
+                if ref:
+                    obs_by_ref[ref] = obs_check.isChecked()
+            seen, cards = set(), []
+            for ref in config.individual_references.values():
+                if ref and ref not in seen:
+                    seen.add(ref)
+                    cards.append(CardData(ref=ref, is_obsolete=obs_by_ref.get(ref, False)))
+            config.relations_cards = cards
 
         # Obsolète — fichier unique
         if self._obsolete_checkbox is not None and self._obsolete_checkbox.isChecked():
@@ -1085,13 +1212,7 @@ class ImportDialog(QDialog):
             if ref:
                 config.obsolete_refs.append(ref)
 
-        # Obsolète — multi-fichiers (cases cochées "Obsolète")
-        if config.import_type == ImportType.MULTI_FILE and self._obsolete_checkboxes:
-            for obs_check, file in self._obsolete_checkboxes:
-                if obs_check.isChecked():
-                    ref = config.individual_references.get(file.path, '') or ''
-                    if ref:
-                        config.obsolete_refs.append(ref)
+        # (Obsolète multi-fichiers : désormais porté par relations_cards ci-dessus.)
 
         # Mapping de colonnes personnalisé (v3.30.0)
         from .config import Config
@@ -1239,7 +1360,10 @@ class ImportDialog(QDialog):
         elif n_cols == 2:
             return ["ref_modele", "commercial_ref"], False
         elif n_cols == 3:
-            return ["ref_modele", "commercial_ref", "ignore"], False
+            # 3ᵉ colonne → « Autre référence » par défaut (= choix du combo rapide
+            # « Destination Description », le plus fréquent), pas « Ignorer » :
+            # les deux contrôles doivent être cohérents (le mapping prime à l'import).
+            return ["ref_modele", "commercial_ref", "other_ref"], False
         elif n_cols >= 4:
             mapping = ["type", "manufacturer", "ref_modele", "commercial_ref"]
             mapping += ["ignore"] * (n_cols - 4)
@@ -1278,7 +1402,7 @@ class ImportDialog(QDialog):
         if sample_data_preview:
             n_preview = len(sample_data_preview[0]) if sample_data_preview else 0
             header_line = "".join(f"Col{i+1:<15} " for i in range(n_preview))
-            lines = [f"{'='*60}", header_line, f"{'='*60}"]
+            lines = [header_line, f"{'='*60}"]
             for row in sample_data_preview:
                 line = ""
                 for j in range(min(n_preview, len(row))):
@@ -1340,9 +1464,14 @@ class ImportDialog(QDialog):
                 parent=self
             )
             widget.mapping_changed.connect(self._update_import_button)
+            if n_cols == 3:
+                widget.mapping_changed.connect(self._on_mapping_third_col_changed)
             self._mapping_widgets.append(widget)
             self.mapping_container_layout.addWidget(widget)
 
+        # Cohérence combo rapide « Destination Description » ↔ Colonne 3 du mapping
+        # (le mapping prime à l'import — ils ne doivent jamais se contredire).
+        self._on_mapping_third_col_changed()
         self._update_import_button()
 
     def _analyze_formats_and_preview_legacy(self):
@@ -1401,7 +1530,7 @@ class ImportDialog(QDialog):
                 header_line = ""
                 for i in range(detected_columns):
                     header_line += f"Col{i+1:<15} "
-                preview_content += f"{'='*60}\n{header_line}\n{'='*60}\n"
+                preview_content += f"{header_line}\n{'='*60}\n"
             
             # Données d'exemple
             for row in sample_data:
@@ -2195,7 +2324,11 @@ class ImportManager:
                 results['similarity_suggestions'] = self._compute_pending_similarity_suggestions()
 
             if not dry_run:
-                self._apply_succession_from_config(config, results)
+                if getattr(config, 'relations_groups', None) is not None or \
+                        getattr(config, 'relations_cards', None) is not None:
+                    self._apply_relations_from_config(config, results)
+                else:
+                    self._apply_succession_from_config(config, results)
 
             if not dry_run and hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
@@ -2235,6 +2368,26 @@ class ImportManager:
 
         return results
     
+    def _apply_relations_from_config(self, config: ImportConfiguration, results: Dict) -> None:
+        """Applique le modèle « par groupes » du nouveau panneau de relations
+        (lignées de succession, groupes d'équivalence, courantes externes, obsolètes).
+        Non bloquant : un échec ne doit jamais casser un import.
+        """
+        try:
+            from ..services.import_relations import apply_relations
+            groups = config.relations_groups or []
+            cards = config.relations_cards or []
+            counts = apply_relations(groups, cards, self.db_manager)
+            results['succession_created'] = results.get('succession_created', 0) + counts.get('successions', 0)
+            results['equivalences_created'] = results.get('equivalences_created', 0) + counts.get('equivalences', 0)
+            results['obsoletes_marked'] = results.get('obsoletes_marked', 0) + counts.get('obsoletes', 0)
+            app_logger.info(
+                f"Relations import appliquées : {counts.get('successions', 0)} succession(s), "
+                f"{counts.get('equivalences', 0)} équivalence(s), {counts.get('obsoletes', 0)} obsolète(s)"
+                + (f", {counts['errors']} erreur(s)" if counts.get('errors') else ""))
+        except Exception as e:
+            app_logger.error(f"Application des relations d'import échouée (non bloquant) : {e}")
+
     def _apply_succession_from_config(self, config: ImportConfiguration, results: Dict) -> None:
         """
         Appliquer les relations de succession déclarées dans le dialogue d'import.
