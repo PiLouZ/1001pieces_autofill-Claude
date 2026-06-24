@@ -290,6 +290,12 @@ class GroupBox(QFrame):
             self.courante_combo.setEditable(True)
             self.courante_combo.setLineEdit(_CouranteLineEdit())
             self.courante_combo.setInsertPolicy(QComboBox.NoInsert)
+            # Fond blanc + texte foncé explicites : le fond pâle de la boîte ne doit
+            # pas rendre le texte illisible (indépendant du thème ambiant).
+            self.courante_combo.setStyleSheet(
+                "QComboBox { background: #ffffff; color: #212121; }"
+                "QComboBox QAbstractItemView { background: #ffffff; color: #212121; }")
+            self.courante_combo.lineEdit().setStyleSheet("background: #ffffff; color: #212121;")
             self.courante_combo.lineEdit().setPlaceholderText("réf récente (lot, base ou à créer)")
             self.courante_combo.lineEdit().setToolTip("Saisir, choisir, ou glisser une réf ici.")
             self.courante_combo.editTextChanged.connect(lambda *_: self.changed.emit())
@@ -306,13 +312,17 @@ class GroupBox(QFrame):
             self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
             lay.addWidget(self.cross_check)
 
-            hint = "Anciennes versions (glissez ici) :"
+            hint = "Anciennes versions (glissez ici ; double-clic = courante) :"
         else:
             hint = "Réfs interchangeables (glissez ici) :"
         lay.addWidget(_lbl(hint, size=10, color="#607d8b"))
 
         self.members = _RefList(expanding=True)
         self.members.dropped.connect(self.changed)
+        if is_succ:
+            # Double-clic sur une ancienne version → la promeut courante (visible
+            # dans le champ ci-dessus) et la retire des membres.
+            self.members.itemDoubleClicked.connect(self._promote_member)
         lay.addWidget(self.members, 1)
 
         if is_succ and self._ref_model is not None:
@@ -336,6 +346,19 @@ class GroupBox(QFrame):
         if self.courante_combo is not None:
             self.courante_combo.setCurrentText(ref)
             self.changed.emit()
+
+    def _promote_member(self, item):
+        """Double-clic sur une ancienne version → la promeut courante (visible
+        dans le champ) et la retire des membres (une courante n'est pas sa propre
+        ancienne version). Réservé aux lignées (seules à avoir une courante)."""
+        if self.courante_combo is None:
+            return
+        ref = item.text()
+        self.courante_combo.setCurrentText(ref)
+        row = self.members.row(item)
+        if row >= 0:
+            self.members.takeItem(row)
+        self.changed.emit()
 
     def to_group(self):
         return Group(kind=self.kind,

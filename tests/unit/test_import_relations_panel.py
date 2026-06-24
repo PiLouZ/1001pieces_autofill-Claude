@@ -57,6 +57,18 @@ class TestSuccession:
         panel.recompute()
         assert "fantôme" not in panel.recap.text()
 
+    def test_double_clic_membre_promu_courante(self, qapp):
+        """Double-clic sur un membre de lignée → courante visible + retrait des membres."""
+        panel = _panel(qapp)
+        box = panel.groups_zone.add_group(KIND_SUCCESSION)
+        _move(panel, "B1", box)
+        _move(panel, "B2", box)
+        item = box.members.findItems("B2", Qt.MatchExactly)[0]
+        box._promote_member(item)
+        g = panel.get_groups()[0]
+        assert g.courante == "B2"
+        assert g.members == ["B1"]            # B2 retiré des membres (lignée)
+
     def test_drop_sur_courante(self, qapp):
         """Lot 6 : réf glissée sur le champ Courante → renseigne sans vider la source."""
         panel = _panel(qapp)
