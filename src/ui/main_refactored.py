@@ -1005,18 +1005,31 @@ class MainWindow(QMainWindow):
         model = self.table_controller.model
         if not model or not decisions:
             return 0
-        save_service = getattr(self, 'event_driven_save_service', None)
-        # Collecte batch : _apply_cell_edit_logic détourne les écritures vers ce set.
-        if save_service is not None:
-            self._bulk_edit_collector = set()
+        # Application en mémoire (UI + undo + historique + provenance) via setData →
+        # cell_edited → _apply_cell_edit_logic. Le collecteur est armé pour que ce
+        # tronc commun n'enclenche PAS une sauvegarde par cellule (chemin (row,col)
+        # fragile au virtual scroll) ; la persistance réelle se fait ensuite par db_id.
+        self._bulk_edit_collector = set()
+        updates_by_db_id = {}
         try:
             for db_id, cand in decisions:
                 self._apply_suggestion_with_provenance(cand, model, db_id)
+                fields = {}
+                if (cand.get('type') or '').strip():
+                    fields['type'] = cand['type']
+                if (cand.get('manufacturer') or '').strip():
+                    fields['manufacturer'] = cand['manufacturer']
+                if fields:
+                    updates_by_db_id[db_id] = fields
         finally:
-            collector = getattr(self, '_bulk_edit_collector', None)
             self._bulk_edit_collector = None
-        if save_service is not None and collector:
-            save_service.save_cells_batch_immediate(collector)
+
+        # Persistance directe par db_id en UNE transaction : indépendante de la
+        # pagination (une ligne hors page virtuelle est sauvegardée correctement,
+        # là où la conversion (row,col)→item() la perdait silencieusement).
+        db_ops = getattr(self, 'database_operations_service', None)
+        if db_ops is not None and updates_by_db_id:
+            db_ops.save_cells_batch(updates_by_db_id)
 
         # Dissiper les indicateurs appliqués + rafraîchir la bannière.
         for db_id, _ in decisions:

@@ -4,6 +4,21 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.58.1] - 2026-06-24
+
+### Correctif — Suggestions Type/Marque par similarité & virtual scroll
+
+Cohabitation des suggestions automatiques (à l'import) et manuelles (scan/menu) corrigée : les suggestions validées sur des lignes hors page virtuelle n'étaient pas sauvegardées.
+
+- **Cause racine** : le modèle `AppareillsTableModel` confondait « ligne chargée » (`len(_records)`, jusqu'à la taille de page) et « ligne affichée » (`_display_count`, plafonnée à `FETCH_INITIAL = 200`). Pour une ligne au-delà de la 200ᵉ, `index()` ne créait pas d'index valide et `setData()` refusait l'écriture → la validation d'une suggestion (fenêtre dédiée ou « tout valider ») était **silencieusement perdue**, et l'indicateur « lignes à compléter » restait actif.
+- **`setData()` / `index()`** : autorisent désormais l'accès en écriture à toute ligne **chargée** (présente dans `_records`), même non exposée à la vue. `data()` reste borné à `_display_count` (la vue n'expose pas plus de lignes qu'avant). `cell_edited` est toujours émis (alimente sauvegarde, undo, historique) ; `dataChanged` n'est émis que pour les lignes affichées. Nouvelle méthode `value_at(row, col)` (lecture directe de `_records`, indépendante de l'affichage).
+- **`_apply_suggestion_decisions`** : la persistance se fait désormais **directement par `db_id`** (`save_cells_batch({db_id: {type, manufacturer}})`, une seule transaction), au lieu de la conversion `(row, col) → item()` qui dépendait elle aussi de l'état d'affichage. Robuste à la forte volumétrie et à la pagination.
+- **Tests** : 2 cas de non-régression ajoutés (écriture hors page virtuelle persistée + `cell_edited` émis ; `data()` toujours borné à `_display_count`).
+
+**Vérifié** : 381 tests passent (2 nouveaux), 6 échecs préexistants inchangés = baseline ZERO REGRESSION. Persistance SQL confirmée sur base temporaire. Modèle testé en offscreen (écriture row > 200 → `_records` à jour + `cell_edited`).
+
+---
+
 ## [3.58.0] - 2026-06-24
 
 ### Refonte UX — Fenêtre d'import multi-fichiers (relations par groupes)

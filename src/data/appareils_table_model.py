@@ -84,6 +84,20 @@ class AppareillsTableModel(QAbstractTableModel):
         self._display_count += to_fetch
         self.endInsertRows()
 
+    def index(self, row, column, parent=QModelIndex()):
+        """Crée un index pour toute ligne CHARGÉE (présente dans _records), pas
+        seulement affichée. La vue ne demande jamais d'index au-delà de rowCount()
+        (= _display_count), donc l'affichage est inchangé ; mais les écritures
+        programmatiques hors page virtuelle (application d'une suggestion Type/Marque)
+        ont besoin d'un index valide que le défaut QAbstractTableModel refuserait
+        (hasIndex teste rowCount()). data() reste gardé par _display_count : seul
+        l'accès en écriture par setData()/value_at() franchit la frontière d'affichage."""
+        if parent.isValid() or column < 0 or column >= len(self._headers):
+            return QModelIndex()
+        if 0 <= row < len(self._records):
+            return self.createIndex(row, column)
+        return QModelIndex()
+
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid() or index.row() >= self._display_count:
             return None
@@ -130,17 +144,42 @@ class AppareillsTableModel(QAbstractTableModel):
         if not index.isValid() or role != Qt.EditRole:
             return False
         row, col = index.row(), index.column()
-        if row >= self._display_count:
+        # Écriture autorisée sur toute ligne CHARGÉE (présente dans _records), même
+        # si elle n'est pas encore exposée à la vue (virtual scroll : _display_count
+        # < len(_records)). Les écritures programmatiques (application d'une suggestion
+        # Type/Marque sur une ligne hors page) seraient sinon silencieusement perdues.
+        if not (0 <= row < len(self._records)):
             return False
-        old_value = self.data(index, Qt.DisplayRole) or ""
+        # old_value lu directement depuis _records (data() renvoie None hors page
+        # affichée, ce qui fausserait l'ancienne valeur des lignes non exposées).
+        old_value = self.value_at(row, col)
         new_value = str(value)
         record = list(self._records[row])
         if col < len(Config.DB_HEADERS):
             record[col + 1] = new_value
         self._records[row] = tuple(record)
-        self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+        # La vue n'est notifiée que pour les lignes affichées (émettre dataChanged sur
+        # un index hors rowCount() est invalide pour Qt). cell_edited est en revanche
+        # TOUJOURS émis : il alimente sauvegarde, undo et historique, qui doivent
+        # fonctionner indépendamment de l'état d'affichage.
+        if row < self._display_count:
+            self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
         self.cell_edited.emit(row, col, old_value, new_value)
         return True
+
+    def value_at(self, row: int, col: int) -> str:
+        """Valeur texte d'une cellule lue directement depuis _records, sans le garde
+        d'affichage de data() (utilisable sur les lignes chargées hors page virtuelle).
+
+        Renvoie '' si la ligne est hors limites. Réplique le mapping de data() :
+        record[0] = db_id, données à partir de record[col+1] ; dernière colonne =
+        pieces_count (record[-1])."""
+        if not (0 <= row < len(self._records)):
+            return ""
+        record = self._records[row]
+        if col < len(Config.DB_HEADERS):
+            return str(record[col + 1] or "")
+        return str(record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0)
 
     def flags(self, index) -> Qt.ItemFlags:
         if not index.isValid() or index.row() >= self._display_count:

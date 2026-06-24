@@ -320,6 +320,51 @@ class TestSuggestionsSimilarite:
         m.add_pending_suggestions({2: [self._candidate()]})
         assert m.pending_suggestions_count == 2
 
+    def test_setData_ligne_hors_page_virtuelle(self, qapp):
+        """Régression : une écriture programmatique (application de suggestion) sur une
+        ligne CHARGÉE mais hors page virtuelle (row >= _display_count) doit aboutir —
+        sinon les suggestions validées sur ces lignes étaient silencieusement perdues.
+
+        Reproduit le bug : avec USE_VIRTUAL_SCROLL, _display_count plafonne à
+        FETCH_INITIAL ; les lignes au-delà existaient dans _records mais setData() les
+        refusait (et index() ne créait même pas d'index valide)."""
+        if not Config.USE_VIRTUAL_SCROLL:
+            pytest.skip("virtual scroll désactivé")
+        n = Config.FETCH_INITIAL + 30
+        m = AppareillsTableModel()
+        m.load_records([make_record(db_id=i, type_="", manufacturer="") for i in range(1, n + 1)])
+        assert m._display_count < len(m._records)  # condition du bug
+
+        off_row = Config.FETCH_INITIAL + 10        # ligne hors page affichée
+        assert off_row >= m._display_count
+        idx_type = m.index(off_row, 0)
+        idx_mfr = m.index(off_row, 1)
+        assert idx_type.isValid() and idx_mfr.isValid()  # index créé malgré le hors-page
+
+        emitted = []
+        m.cell_edited.connect(lambda r, c, ov, nv: emitted.append((r, c, ov, nv)))
+        assert m.setData(idx_type, "Lave-linge", Qt.EditRole) is True
+        assert m.setData(idx_mfr, "Whirlpool", Qt.EditRole) is True
+
+        # Persisté dans _records + valeurs lisibles via value_at (indépendant de l'affichage)
+        assert m.value_at(off_row, 0) == "Lave-linge"
+        assert m.value_at(off_row, 1) == "Whirlpool"
+        # cell_edited émis (alimente sauvegarde/undo/historique) avec old_value correct
+        assert emitted == [(off_row, 0, "", "Lave-linge"), (off_row, 1, "", "Whirlpool")]
+
+    def test_data_reste_borne_a_display_count(self, qapp):
+        """Non-régression : malgré l'écriture hors page, data() (ce que VOIT la vue)
+        reste borné à _display_count — la vue n'expose pas plus de lignes qu'avant."""
+        if not Config.USE_VIRTUAL_SCROLL:
+            pytest.skip("virtual scroll désactivé")
+        n = Config.FETCH_INITIAL + 5
+        m = AppareillsTableModel()
+        m.load_records([make_record(db_id=i) for i in range(1, n + 1)])
+        off_row = Config.FETCH_INITIAL + 2
+        # data() via un index hors page → None (la vue ne demande jamais au-delà)
+        assert m.data(m.createIndex(off_row, 0), Qt.DisplayRole) is None
+        assert m.rowCount() == m._display_count
+
     def test_suggestions_snapshot_structure(self, qapp):
         """suggestions_snapshot expose réf. + valeurs actuelles + candidats par db_id ;
         ignore les db_id sans enregistrement chargé."""
