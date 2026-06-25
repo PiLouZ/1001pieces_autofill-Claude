@@ -433,6 +433,13 @@ class GroupsZone(QWidget):
 
         lay.addLayout(cols, 1)
 
+        # Pré-création d'une lignée vide + un groupe d'équivalence vide, pour que
+        # l'utilisateur puisse glisser directement des réfs sans cliquer sur « + »
+        # au préalable. Une boîte vide reste retirable (croix) et est ignorée par
+        # derive()/apply_relations() (aucun member ni courante).
+        self.add_group(KIND_SUCCESSION)
+        self.add_group(KIND_EQUIVALENCE)
+
     def _build_group_column(self, title, color, btn_text, on_add, extra_widget=None):
         """Construit une colonne (titre + zone scrollable de boîtes + bouton d'ajout).
         `extra_widget` = widget optionnel inséré avant le bouton d'ajout.

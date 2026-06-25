@@ -38,7 +38,7 @@ class TestSuccession:
         box.courante_input.setText("B3")
         _move(panel, "B1", box)
         _move(panel, "B2", box)
-        g = panel.get_groups()[0]
+        g = box.to_group()
         assert g.kind == KIND_SUCCESSION and g.courante == "B3"
         assert sorted(g.members) == ["B1", "B2"]
         # B3 = courante (couronne), B1/B2 deviendront obsolètes
@@ -66,7 +66,7 @@ class TestSuccession:
         _move(panel, "B2", box)
         item = box.members.findItems("B2", Qt.MatchExactly)[0]
         box._promote_member(item)
-        g = panel.get_groups()[0]
+        g = box.to_group()
         assert g.courante == "B2"
         assert sorted(g.members) == ["B1", "B2"]      # B2 reste visible dans la zone
         # B2 (courante) n'est pas obsolète ; seul B1 l'est
@@ -90,7 +90,7 @@ class TestEquivalence:
         box = panel.groups_zone.add_group(KIND_EQUIVALENCE)
         _move(panel, "S1", box)
         _move(panel, "S2", box)
-        g = panel.get_groups()[0]
+        g = box.to_group()
         assert g.kind == KIND_EQUIVALENCE and sorted(g.members) == ["S1", "S2"]
         assert "obsolète" not in panel.recap.text()
         assert not _cards(panel)["S1"].equiv_badge.text() == ""   # pastille présente
@@ -158,6 +158,33 @@ class TestAllEquiv:
         assert panel.groups_zone.add_all_to_new_equivalence() is None
 
 
+class TestPreseed:
+    def test_une_lignee_et_un_groupe_pre_crees(self, qapp):
+        """À la construction du panneau multi-fichiers, une lignée vide et un
+        groupe d'équivalence vide existent déjà (l'utilisateur peut glisser
+        directement sans cliquer sur « + »)."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        assert len(z._succ_boxes) == 1
+        assert len(z._equiv_boxes) == 1
+        assert z._succ_boxes[0].kind == KIND_SUCCESSION
+        assert z._equiv_boxes[0].kind == KIND_EQUIVALENCE
+
+    def test_groupes_pre_crees_vides_sans_effet(self, qapp):
+        """apply_relations() sur les deux groupes pré-créés (vides) ne génère
+        aucune entrée : zone vide = ignorée."""
+        from src.services.import_relations import apply_relations
+
+        class _NoopDb:
+            def add_supersession(self, *a): raise AssertionError("ne doit pas être appelé")
+            def add_equivalence(self, *a): raise AssertionError("ne doit pas être appelé")
+            def mark_obsolete(self, *a): raise AssertionError("ne doit pas être appelé")
+
+        panel = _panel(qapp)
+        counts = apply_relations(panel.get_groups(), panel.get_cards(), _NoopDb())
+        assert counts == {'successions': 0, 'equivalences': 0, 'obsoletes': 0, 'errors': 0}
+
+
 class TestZone:
     def test_vider_groupe_renvoie_au_reservoir(self, qapp):
         panel = _panel(qapp)
@@ -173,7 +200,9 @@ class TestZone:
         _move(panel, "S1", box)
         panel.groups_zone._remove_box(box)
         assert "S1" in panel.groups_zone.reservoir.refs()
-        assert panel.get_groups() == []
+        assert box not in panel.groups_zone.all_boxes()
+        # Seules les 2 boîtes pré-créées (vides) subsistent
+        assert all(not g.members and not g.courante for g in panel.get_groups())
 
 
 class TestSolo:
