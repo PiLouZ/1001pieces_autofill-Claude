@@ -3055,57 +3055,61 @@ class ImportManager:
         chunk_size = Config.BATCH_INSERT_SIZE
         
         
-        # Utiliser une transaction globale pour l'efficacité
+        # Utiliser une transaction globale pour l'efficacité.
+        # _query_lock : ce code tourne sur le thread _ImportWorker et accède à la
+        # connexion partagée en mode brut (get_connection) — il DOIT être sérialisé
+        # avec les accès du thread principal pour éviter la corruption du WAL.
         conn = self.db_manager.get_connection()
-        cursor = conn.cursor()
         all_new_ids = []
-        
-        try:
-            # Traiter par chunks pour optimiser SQLite
-            total_chunks = (len(devices_batch) + chunk_size - 1) // chunk_size
-            
-            for i in range(0, len(devices_batch), chunk_size):
-                chunk = devices_batch[i:i + chunk_size]
-                
-                # Préparer les données pour ce chunk
-                insert_data = []
-                for device in chunk:
-                    insert_data.append((
-                        device.get('type', ''),
-                        device.get('manufacturer', ''),
-                        device.get('ref_modele', ''),
-                        device.get('commercial_ref', ''),
-                        device.get('other_ref', ''),
-                        device.get('notes', ''),
-                        device.get('category', '')
-                    ))
-                
-                # CORRECTION: Insérer un par un pour récupérer les IDs correctement
-                # executemany() ne garantit pas cursor.lastrowid dans SQLite
-                chunk_ids = []
-                for device_data in insert_data:
-                    cursor.execute(query, device_data)
-                    if cursor.lastrowid is not None:
-                        chunk_ids.append(cursor.lastrowid)
-                    else:
-                        app_logger.debug("[ERR] Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
-                        conn.rollback()
-                        return []
-                
-                all_new_ids.extend(chunk_ids)
-                app_logger.debug("[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
-            
-            conn.commit()
-            app_logger.debug("[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
-            return all_new_ids
-            
-        except Exception as e:
-            conn.rollback()
-            app_logger.debug("[ERR] BATCH: Erreur insertion: {e}")
-            app_logger.debug("[ERR] BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
-            import traceback
-            app_logger.debug("[ERR] BATCH: Stack trace: {traceback.format_exc()}")
-            return []
+
+        with self.db_manager._query_lock:
+            cursor = conn.cursor()
+            try:
+                # Traiter par chunks pour optimiser SQLite
+                total_chunks = (len(devices_batch) + chunk_size - 1) // chunk_size
+
+                for i in range(0, len(devices_batch), chunk_size):
+                    chunk = devices_batch[i:i + chunk_size]
+
+                    # Préparer les données pour ce chunk
+                    insert_data = []
+                    for device in chunk:
+                        insert_data.append((
+                            device.get('type', ''),
+                            device.get('manufacturer', ''),
+                            device.get('ref_modele', ''),
+                            device.get('commercial_ref', ''),
+                            device.get('other_ref', ''),
+                            device.get('notes', ''),
+                            device.get('category', '')
+                        ))
+
+                    # CORRECTION: Insérer un par un pour récupérer les IDs correctement
+                    # executemany() ne garantit pas cursor.lastrowid dans SQLite
+                    chunk_ids = []
+                    for device_data in insert_data:
+                        cursor.execute(query, device_data)
+                        if cursor.lastrowid is not None:
+                            chunk_ids.append(cursor.lastrowid)
+                        else:
+                            app_logger.debug("[ERR] Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
+                            conn.rollback()
+                            return []
+
+                    all_new_ids.extend(chunk_ids)
+                    app_logger.debug("[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
+
+                conn.commit()
+                app_logger.debug("[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
+                return all_new_ids
+
+            except Exception as e:
+                conn.rollback()
+                app_logger.debug("[ERR] BATCH: Erreur insertion: {e}")
+                app_logger.debug("[ERR] BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
+                import traceback
+                app_logger.debug("[ERR] BATCH: Stack trace: {traceback.format_exc()}")
+                return []
     
     def _batch_update_devices(self, updates_batch: List[Tuple[int, Dict[str, Any]]]):
         """Mise à jour en lot des appareils existants"""
@@ -3123,19 +3127,21 @@ class ImportManager:
                 notes_updates.append((device_data['notes'], device_id))
         
         conn = self.db_manager.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            if other_ref_updates:
-                from .config import Config
-                cursor.executemany(Config.QUERIES['update_device_other_ref'], other_ref_updates)
-            if notes_updates:
-                from .config import Config
-                cursor.executemany(Config.QUERIES['update_device_notes'], notes_updates)
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            app_logger.debug("[ERR] BATCH: Erreur mise à jour: {e}")
+
+        # _query_lock : accès brut à la connexion partagée depuis _ImportWorker → sérialiser.
+        with self.db_manager._query_lock:
+            cursor = conn.cursor()
+            try:
+                if other_ref_updates:
+                    from .config import Config
+                    cursor.executemany(Config.QUERIES['update_device_other_ref'], other_ref_updates)
+                if notes_updates:
+                    from .config import Config
+                    cursor.executemany(Config.QUERIES['update_device_notes'], notes_updates)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                app_logger.debug("[ERR] BATCH: Erreur mise à jour: {e}")
     
     def _batch_create_associations(self, associations_batch: List[Tuple], new_device_ids: List[int]) -> Dict[str, int]:
         """Création en lot des associations pièces-appareils"""

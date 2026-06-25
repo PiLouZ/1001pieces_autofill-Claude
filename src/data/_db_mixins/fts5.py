@@ -14,6 +14,7 @@ import time
 
 from ...core.config import Config
 from ...core.logger import app_logger
+from . import with_query_lock
 
 
 class DatabaseFts5Mixin:
@@ -87,6 +88,7 @@ class DatabaseFts5Mixin:
             app_logger.error(f"Erreur création triggers FTS5 — l'index ne sera pas maintenu automatiquement : {e}")
             raise
 
+    @with_query_lock
     def rebuild_fts5(self, progress_callback=None) -> int:
         """Peupler (ou repeupler) l'index FTS5 depuis la table appareils.
 
@@ -141,6 +143,7 @@ class DatabaseFts5Mixin:
         app_logger.info(f"FTS5 rebuild : {total} enregistrements indexés en {elapsed:.1f}s")
         return total
 
+    @with_query_lock
     def get_fts5_row_count(self) -> int:
         """Retourne le nombre de documents réellement indexés dans FTS5 (0 si non peuplé).
 
