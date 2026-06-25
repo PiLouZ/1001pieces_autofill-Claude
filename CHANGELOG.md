@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.58.2] - 2026-06-25
+
+### Correctif critique — Corruption de la base par accès concurrent (vraie cause racine)
+
+Le durcissement de fermeture v3.58.1 traitait le mauvais problème : la corruption a **récidivé** le 2026-06-25. Le log le prouve — `Erreur mise à jour par lots: database disk image is malformed` survient **pendant une écriture en cours d'exécution**, pas à la fermeture.
+
+- **Cause racine** : la connexion sqlite3 et le curseur de `DatabaseManager` sont **uniques et partagés** entre le thread principal et les workers de fond (`DatabaseQueryWorker`, `_ImportWorker`). Le verrou `_query_lock` n'était appliqué qu'aux **lectures** (`load_data`, `count`) ; les **écritures** le contournaient. Comme sqlite3 **libère le GIL** pendant `execute`/`commit` (code C), deux threads pouvaient être simultanément dans le moteur sur la même connexion → corruption du WAL. La course observée : `update_multiple_cells_batch` (écriture, thread principal) vs `load_data` (lecture, `query_worker`).
+- **Correctif — sérialisation complète de la connexion partagée** : décorateur partagé `with_query_lock` (`src/data/_db_mixins/__init__.py`, module neutre) appliqué à **19 méthodes** de `database_manager.py` + **2** de `fts5.py` (`rebuild_fts5`, `get_fts5_row_count`). Les écritures **brutes** de l'import (`_batch_insert_devices`, `_batch_update_devices`, accès `get_connection().cursor()` sur le thread `_ImportWorker`) sont enveloppées dans `with self.db_manager._query_lock:`. `_query_lock` est un `RLock` réentrant : les méthodes verrouillées qui s'appellent entre elles ne se bloquent pas.
+- **Tests** : nouveau `tests/unit/test_db_concurrency.py` (3 tests) — sérialisation déterministe (écriture bloquée tant que le verrou est tenu), réentrance sans deadlock, martèlement concurrent lecture/écriture → `PRAGMA integrity_check = ok`.
+
 ## [3.58.1] - 2026-06-24
 
 ### Correctif — Sécurisation de la fermeture (prévention corruption base)

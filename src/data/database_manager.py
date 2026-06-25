@@ -17,7 +17,7 @@ from ..utils.error_handler import (
     handle_sqlite_column_errors, handle_database_errors,
     handle_database_operation_errors
 )
-from ._db_mixins import DatabaseError
+from ._db_mixins import DatabaseError, with_query_lock as _with_query_lock
 from ._db_mixins.fts5 import DatabaseFts5Mixin
 from ._db_mixins.supersession import DatabaseSupersessionMixin
 from ._db_mixins.setup import DatabaseSetupMixin
@@ -27,6 +27,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core.config import Config
+
 
 class SearchCache:
     """Cache optimisé pour les recherches - Phase 3"""
@@ -643,6 +644,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError(f"Erreur lors de la mise à jour de la cellule {column}")
         return result
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur mise à jour cellule")
     def _safe_update_cell(self, db_id: int, column: str, value: str) -> bool:
         """Helper sécurisé pour mettre à jour une cellule spécifique"""
@@ -668,6 +670,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError("Erreur lors de la mise à jour par lots")
         return result
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur mise à jour par lots")
     def _safe_update_multiple_cells_batch(self, updates_by_db_id: Dict[int, Dict[str, str]]) -> bool:
         """Helper sécurisé pour mettre à jour plusieurs cellules en une seule transaction"""
@@ -720,6 +723,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError("Erreur lors de l'insertion de l'appareil")
         return result
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=0, log_prefix="Erreur insertion appareil")
     def _safe_insert_appareil(self, data: Dict[str, Any]) -> int:
         """Helper sécurisé pour insérer un nouvel appareil"""
@@ -763,6 +767,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError("Erreur lors de la suppression des appareils")
         return result
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=-1, log_prefix="Erreur suppression appareils")
     def _safe_delete_appareils(self, ids: List[int]) -> int:
         """Helper sécurisé pour supprimer des appareils par ID"""
@@ -799,6 +804,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """Supprimer un appareil par ID et toutes ses associations de pièces"""
         return self._safe_delete_appareil(appareil_id)
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur suppression appareil")
     def _safe_delete_appareil(self, appareil_id: int) -> bool:
         """Helper sécurisé pour supprimer un appareil par ID"""
@@ -840,6 +846,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     
 
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value={}, log_prefix="Erreur nettoyage données")
     def _safe_clean_data(self) -> Dict[str, int]:
         """Helper sécurisé pour nettoyer les données"""
@@ -926,6 +933,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """Récupérer les pièces associées à un appareil (nouvelle structure)"""
         return self._safe_get_pieces_for_appareil(appareil_id)
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=[], log_prefix="Erreur récupération pièces")
     def _safe_get_pieces_for_appareil(self, appareil_id: int) -> List[Tuple]:
         """Helper sécurisé pour récupérer les pièces associées à un appareil"""
@@ -940,6 +948,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute(query, (appareil_id,))
         return self.cursor.fetchall()
     
+    @_with_query_lock
     @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage pièces appareil")
     def get_pieces_count_for_appareil(self, appareil_id: int) -> int:
         """Récupérer le nombre de pièces associées à un appareil (seulement celles qui existent)"""
@@ -953,6 +962,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         result = self.cursor.fetchone()
         return result[0] if result else 0
 
+    @_with_query_lock
     @handle_db_query_errors(return_value={}, log_prefix="Erreur comptage pièces batch")
     def get_pieces_count_batch(self, appareil_ids: List[int]) -> Dict[int, int]:
         """Récupérer le nombre de pièces pour une liste d'appareils en une seule requête.
@@ -980,6 +990,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError(f"Erreur lors de l'ajout de la pièce {ref_piece}")
         return result
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=0, log_prefix="Erreur ajout pièce")
     def _safe_add_piece(self, ref_piece: str, appareil_id: int, description: Optional[str] = None, confirm_callback=None) -> int:
         """Helper sécurisé pour ajouter une pièce à un appareil"""
@@ -1052,6 +1063,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError(f"Erreur lors de l'ajout/mise à jour de la pièce {ref_piece}")
         return result
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur ajout/mise à jour pièce")
     def _safe_add_or_update_piece_with_description(self, ref_piece: str, appareil_id: int, description: str = None, confirm_callback=None) -> tuple:
         """Helper sécurisé pour ajouter ou mettre à jour une pièce avec description"""
@@ -1136,6 +1148,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """
         return self._safe_rename_piece_catalog(old_ref_piece, new_ref_piece, description)
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur renommage pièce catalogue")
     def _safe_rename_piece_catalog(self, old_ref_piece: str, new_ref_piece: str, description: str) -> bool:
         """Helper sécurisé pour renommer une pièce du catalogue"""
@@ -1156,6 +1169,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         Retourne False si la référence existe déjà."""
         return self._safe_create_piece_standalone(ref_piece, description)
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur création pièce catalogue")
     def _safe_create_piece_standalone(self, ref_piece: str, description: str = None) -> bool:
         """Helper sécurisé pour créer une pièce orpheline dans le catalogue."""
@@ -1174,6 +1188,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """Supprimer une pièce du catalogue (toutes ses associations puis la pièce elle-même)."""
         return self._safe_delete_piece_catalog(ref_piece, commit)
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur suppression pièce catalogue")
     def _safe_delete_piece_catalog(self, ref_piece: str, commit: bool = True) -> None:
         """Helper sécurisé pour supprimer une pièce du catalogue (sans commit si appelée en boucle)"""
@@ -1190,6 +1205,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """Supprimer une pièce spécifique d'un appareil (nouvelle structure)"""
         return self._safe_delete_piece(ref_piece, appareil_id)
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur suppression pièce")
     def _safe_delete_piece(self, ref_piece: str, appareil_id: int) -> bool:
         """Helper sécurisé pour supprimer une pièce spécifique d'un appareil"""
@@ -1233,6 +1249,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """Récupérer les ref_modele en doublon avec leur nombre d'occurrences (recherche exacte uniquement)"""
         return self._safe_get_duplicate_ref_modeles()
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=[], log_prefix="Erreur récupération doublons ref_modele")
     def _safe_get_duplicate_ref_modeles(self) -> List[Tuple[str, int]]:
         """Helper sécurisé pour récupérer les ref_modele en doublon"""
@@ -1307,6 +1324,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.conn.rollback()
             raise DatabaseError(f"Erreur lors de la suppression des pièces dupliquées: {e}")
     
+    @_with_query_lock
     @handle_database_errors(title="Erreur récupération catégories")
     def get_categories(self) -> List[str]:
         """Récupérer toutes les catégories"""
@@ -1324,6 +1342,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute(query)
         return [row[0] for row in self.cursor.fetchall() if row[0]]
     
+    @_with_query_lock
     @handle_database_errors(title="Erreur mise à jour catégories")
     def update_categories(self, categories: List[str]) -> bool:
         """Mettre à jour la liste des catégories"""
@@ -1459,6 +1478,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError(f"Erreur lors de la sauvegarde de la décision pour {ref_modele}")
         return result
 
+    @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur sauvegarde décision référence")
     def _safe_save_reference_decision(self, ref_modele: str, decision: str, notes: str = None) -> bool:
         """Helper sécurisé pour sauvegarder une décision sur un doublon de référence"""
