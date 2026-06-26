@@ -16,6 +16,11 @@ Cas remontés par l'utilisateur : des références commerciales comme `HMG 280 X
 - **Vérifié sur la base réelle (655k lignes)** : les 4 cas signalés ne produisent plus aucune suggestion ; sur les 51 appareils incomplets, les 15 suggestions de consensus retirées étaient toutes des collisions inter-systèmes (`HMGS 2594 DBK`, `CMG 3693 DW`…), 0 suggestion légitime perdue. Suggestions des Paliers A/B (exact + fuzzy) inchangées.
 - **Tests** : `test_reference_similarity_service.py` étendu (signature de forme, clef `(NN)`, garde Palier C avec cas réels + désactivation/rollback) ; `test_levier1_freres_complets_du_lot` adapté (frères de même structure).
 
+### Correctif — Groupes de relations vides non collectés à l'import
+
+- Les boîtes vides pré-créées à l'ouverture du panneau multi-fichiers (lignée + groupe d'équivalence, v3.58.x) **fuyaient dans `config.relations_groups`** : `GroupsZone.groups()` renvoyait toutes les boîtes, y compris celles sans courante ni membre. Le traitement aval les ignorait (inoffensif), mais elles polluaient la structure et décalaient les index. Désormais `groups()` ne collecte que les groupes porteurs d'une courante **ou** d'au moins un membre — conforme à l'intention « zones vides ignorées au traitement ».
+- **Tests** : `TestDialogRelationsCollection` (2 tests) repassent au vert — la lecture disque du chargement différé (QTimer) est évitée en pré-renseignant `ImportFile.data`, et la collecte ne retient plus les groupes vides.
+
 ## [3.58.2] - 2026-06-25
 
 ### Correctif critique — Corruption de la base par accès concurrent (vraie cause racine)

@@ -547,7 +547,12 @@ class GroupsZone(QWidget):
                 it.setHidden(bool(text) and text not in it.text().lower())
 
     def groups(self):
-        return [b.to_group() for b in self._succ_boxes + self._equiv_boxes]
+        # Les boîtes vides pré-créées (une lignée + un groupe d'équivalence ouverts
+        # à l'affichage pour que l'utilisateur dépose directement ses réfs) ne sont
+        # PAS des relations réelles : on ne collecte que les groupes porteurs d'une
+        # courante OU d'au moins un membre. (Cf. « zones vides ignorées au traitement ».)
+        return [g for g in (b.to_group() for b in self._succ_boxes + self._equiv_boxes)
+                if g.courante or g.members]
 
     def all_boxes(self):
         return self._succ_boxes + self._equiv_boxes

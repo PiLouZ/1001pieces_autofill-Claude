@@ -439,6 +439,10 @@ class TestDialogRelationsCollection:
         from src.services.import_relations import KIND_SUCCESSION
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
         files = [ImportFile(f'/{r}.csv', FileType.CSV, r) for r in ('REF_A', 'REF_B', 'REF_C')]
+        # Pré-renseigner les données : le dialogue planifie un chargement différé
+        # (QTimer) qui lirait les chemins fictifs sur disque → évité ici.
+        for f in files:
+            f.data = [['Référence', 'Type', 'Marque'], [f.suggested_reference, 'Four', 'Bosch']]
         cfg = ImportConfiguration(files=files, import_type=ImportType.MULTI_FILE)
         dlg = ImportDialog(None, cfg, im)
         dlg.auto_file_references_checkbox.setChecked(True)   # réfs = suggested_reference
@@ -464,7 +468,10 @@ class TestDialogRelationsCollection:
             ImportManager, ImportDialog, ImportConfiguration, ImportFile,
             ImportType, FileType)
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
-        cfg = ImportConfiguration(files=[ImportFile('/a.csv', FileType.CSV, 'REF_A')],
-                                  import_type=ImportType.SINGLE_FILE)
+        f = ImportFile('/a.csv', FileType.CSV, 'REF_A')
+        # Pré-renseigner les données (cf. note test multi) : évite la lecture disque
+        # du chargement différé sur le chemin fictif.
+        f.data = [['Référence', 'Type', 'Marque'], ['REF_A', 'Four', 'Bosch']]
+        cfg = ImportConfiguration(files=[f], import_type=ImportType.SINGLE_FILE)
         dlg = ImportDialog(None, cfg, im)
         assert dlg._relations_groups_zone is None   # chemin legacy mono inchangé
