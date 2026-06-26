@@ -350,21 +350,26 @@ class TestSimilaritySuggestions:
 
     def test_levier1_freres_complets_du_lot(self, import_manager):
         """Levier 1 : une incomplète reçoit une suggestion grâce aux frères COMPLETS
-        du même lot (non encore en base), ajoutés à l'index de similarité."""
+        du même lot (non encore en base), ajoutés à l'index de similarité.
+
+        Les frères partagent le préfixe ET la structure de la référence
+        (cf. garde de signature de forme du Palier C) — une vraie famille de
+        modèles a une structure homogène. Les refs restent suffisamment éloignées
+        (distance d'édition) pour exercer le consensus, pas le fuzzy."""
         import_manager._preload_existing_devices()
         import_manager._pending_similarity_candidates = [
-            {'id': 999, 'ref_modele': 'AHLN6W5E1', 'commercial_ref': 'AHLN6W5E'}
+            {'id': 999, 'ref_modele': 'AHLN1ZZ/1', 'commercial_ref': 'AHLN1ZZ'}
         ]
         # Sans frères du lot : aucune suggestion (rien en base pour AHLN)
         import_manager._imported_complete_for_similarity = []
         assert import_manager._compute_pending_similarity_suggestions() == {}
-        # Avec ≥ 3 frères complets du lot partageant le préfixe → consensus Brandt
+        # Avec ≥ 3 frères complets du lot, même préfixe + même structure → consensus Brandt
         import_manager._imported_complete_for_similarity = [
             {'id': 101, 'ref_modele': 'AHLN9WA/1', 'commercial_ref': 'AHLN9WA',
              'type': 'Hotte', 'manufacturer': 'Brandt'},
-            {'id': 102, 'ref_modele': 'AHLN9XA/1', 'commercial_ref': 'AHLN9XA',
+            {'id': 102, 'ref_modele': 'AHLN8XB/1', 'commercial_ref': 'AHLN8XB',
              'type': 'Hotte', 'manufacturer': 'Brandt'},
-            {'id': 103, 'ref_modele': 'AHLN9YA/1', 'commercial_ref': 'AHLN9YA',
+            {'id': 103, 'ref_modele': 'AHLN7YC/1', 'commercial_ref': 'AHLN7YC',
              'type': 'Hotte', 'manufacturer': 'Brandt'},
         ]
         suggestions = import_manager._compute_pending_similarity_suggestions()

@@ -32,6 +32,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 FUZZY_THRESHOLD = 0.90
 ALLOW_NUMERIC_FUZZY_BY_DEFAULT = False
 PREFIX_CONSENSUS_BY_DEFAULT = True
+ENFORCE_SHAPE_BY_DEFAULT = True
 
 # Palier C — consensus de préfixe : une famille de préfixe dominée à >= ratio par
 # une seule (type, marque) sur >= N appareils est considérée mono-marque fiable.
@@ -43,11 +44,18 @@ _CONSENSUS_MIN_GROUP = 3     # nb minimal d'appareils complets partageant le pr�
 _CONSENSUS_MIN_RATIO = 0.90  # part minimale de la marque dominante
 _CONSENSUS_MAX_SCORE = 0.85  # score plafond (consensus < quasi-exact/fuzzy fort)
 
-# Suffixe de variante : « /XX » (1 à 3 caractères alphanumériques) en fin de
-# référence — couvre les codes de build numériques (/01, /58) ET alphanumériques
-# (/C4, /IX, /G) du domaine électroménager. L'ambiguïté éventuelle de regroupement
-# retombe toujours sur une validation humaine (jamais d'application auto).
-_SUFFIX_VARIANT_RE = re.compile(r'^(?P<base>.+?)/(?P<suffix>[A-Za-z0-9]{1,3})$')
+# Suffixe de variante : clef de build de 1 à 3 caractères alphanumériques en fin
+# de référence, sous deux formes équivalentes du domaine électroménager :
+#   - « /XX » : codes numériques (/01, /58) ET alphanumériques (/C4, /IX, /G) ;
+#   - « (XX) » : clef parenthésée des marques du groupe BSH (Bosch, Siemens, Neff,
+#     Constructa, Balay, Gaggenau, Junker, Viva, Blaupunkt), p.ex. 3EMN378B(00) où
+#     la ref technique = ref commerciale + clef. Retirer cette clef permet au
+#     Palier A de reconnaître 3EMN378B(00) ≡ 3EMN378B (même appareil).
+# L'ambiguïté éventuelle de regroupement retombe toujours sur une validation
+# humaine (jamais d'application auto).
+_SUFFIX_VARIANT_RE = re.compile(
+    r'^(?P<base>.+?)(?:/(?P<s_slash>[A-Za-z0-9]{1,3})|\((?P<s_paren>[A-Za-z0-9]{1,3})\))$'
+)
 _ALPHA_PREFIX_RE = re.compile(r'^[A-Za-z]{3}')
 _NUMERIC_PREFIX_RE = re.compile(r'^\d{3}')
 
@@ -56,10 +64,11 @@ _PREFIX_LEN = 3
 
 
 def strip_variant_suffix(ref: str) -> str:
-    """Retire un suffixe /XX (1 à 3 caractères alphanumériques) de fin de
-    référence. Idempotent.
+    """Retire une clef de variante de fin de référence (1 à 3 car. alphanumériques),
+    sous forme « /XX » ou « (XX) ». Idempotent.
 
     Ex: 'SMU6ZCS10S/58' -> 'SMU6ZCS10S' ; 'HE517BBS4/C4' -> 'HE517BBS4' ;
+        '3EMN378B(00)' -> '3EMN378B' (clef BSH parenthésée) ;
         'WAQ283' -> 'WAQ283' (inchangé) ; 'AWO/C6304' -> 'AWO/C6304' (suffixe > 3).
     """
     ref = (ref or '').strip()
@@ -103,6 +112,57 @@ def detect_prefix_kind(ref: str) -> str:
     if _NUMERIC_PREFIX_RE.match(ref):
         return 'numeric'
     return 'other'
+
+
+def reference_shape_signature(ref: str) -> str:
+    """Signature de structure d'une référence : la séquence des suites de
+    caractères, chacune décrite par sa nature (L=lettres, D=chiffres) ET sa
+    longueur, après retrait de la clef de variante. Les séparateurs (espace,
+    tiret, etc.) sont notés 'S' sans longueur (1 ou plusieurs espaces = même
+    séparation).
+
+    La longueur des suites est indispensable : sans elle, 'HMG200X' (HMG+200+X)
+    et 'HMG730BGB' (HMG+730+BGB) auraient la même forme grossière « L D L »,
+    alors qu'ils appartiennent à deux systèmes de nommage distincts.
+
+    Sert à distinguer deux *systèmes de nommage* qui ne partagent qu'un préfixe
+    de lettres mais ont des formats incompatibles :
+        'HMG 280 X'          -> 'L3SD3SL1'    (bloc commercial espacé)
+        'HMG200X'            -> 'L3D3L1'       (bloc commercial contigu, X final)
+        'HMG636BS1'          -> 'L3D3L2D1'     (bloc technique BSH)
+        'HMG730BGB'          -> 'L3D3L3'       (micro-ondes Bosch)
+        'HMFvh 5501-20A 111' -> 'L5SD4SD2L1SD3' (réf Liebherr)
+    Deux références de structures différentes ne peuvent pas appartenir au même
+    système de référence : on n'autorise donc pas le consensus de marque (Palier C)
+    entre elles. C'est exactement ce qui évite de proposer « Bosch » pour
+    'HMG 280 X' ou 'HMG200X' (coïncidences sur 3 lettres de tête).
+    """
+    base = strip_variant_suffix(ref)
+    sig: List[str] = []
+    run_cls = ''
+    run_len = 0
+
+    def _flush():
+        if run_cls == 'S':
+            sig.append('S')
+        elif run_cls:
+            sig.append(f'{run_cls}{run_len}')
+
+    for ch in base:
+        if ch.isalpha():
+            cls = 'L'
+        elif ch.isdigit():
+            cls = 'D'
+        else:
+            cls = 'S'
+        if cls == run_cls:
+            run_len += 1
+        else:
+            _flush()
+            run_cls = cls
+            run_len = 1
+    _flush()
+    return ''.join(sig)
 
 
 @dataclass(frozen=True)
@@ -152,10 +212,15 @@ class ReferenceSimilarityService:
 
     def __init__(self, allow_numeric_fuzzy: bool = ALLOW_NUMERIC_FUZZY_BY_DEFAULT,
                  fuzzy_threshold: float = FUZZY_THRESHOLD,
-                 enable_prefix_consensus: bool = PREFIX_CONSENSUS_BY_DEFAULT):
+                 enable_prefix_consensus: bool = PREFIX_CONSENSUS_BY_DEFAULT,
+                 enforce_shape_compatibility: bool = ENFORCE_SHAPE_BY_DEFAULT):
         self.allow_numeric_fuzzy = allow_numeric_fuzzy
         self.fuzzy_threshold = fuzzy_threshold
         self.enable_prefix_consensus = enable_prefix_consensus
+        # Garde de compatibilité de structure (cf. reference_shape_signature) :
+        # le consensus de préfixe (Palier C) ne regroupe que des références du même
+        # système de nommage. Désactivable pour rollback (ZERO REGRESSION).
+        self.enforce_shape_compatibility = enforce_shape_compatibility
 
     # ── Construction de l'index (une seule fois par session) ────────────────
     @staticmethod
@@ -339,6 +404,14 @@ class ReferenceSimilarityService:
             return None
         prefix = qref_l[:prefix_len]
         bucket3 = qref_l[:_PREFIX_LEN]
+        # La garde de structure ne vise que la collision de *préfixes de lettres*
+        # (deux systèmes de nommage alpha partageant 3 lettres de tête). Sur un
+        # préfixe purement numérique, le consensus est déjà gouverné par le seul
+        # garde-fou numérique (allow_numeric_fuzzy) et les longueurs y varient
+        # légitimement — on n'y applique donc pas la signature de forme.
+        apply_shape = (self.enforce_shape_compatibility
+                       and detect_prefix_kind(qref_l) != 'numeric')
+        query_sig = reference_shape_signature(qref_l) if apply_shape else None
 
         # Collecter une entrée par db_id distinct (évite le double comptage
         # ref_modele/commercial_ref/base d'un même appareil).
@@ -348,6 +421,10 @@ class ReferenceSimilarityService:
             if cand_key in processed_keys or not cand_key.startswith(prefix):
                 continue
             processed_keys.add(cand_key)
+            # Garde de structure : ne regrouper que des références du même système
+            # de nommage (évite « HMG 280 X » -> Bosch via le bloc « HMG636BS1 »).
+            if query_sig is not None and reference_shape_signature(cand_key) != query_sig:
+                continue
             for entry in index.by_ref.get(cand_key, []):
                 if exclude_db_id is not None and entry['db_id'] == exclude_db_id:
                     continue

@@ -2825,6 +2825,7 @@ class MainWindow(QMainWindow):
             allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,
             fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
             enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
+            enforce_shape_compatibility=Config.SIMILARITY_ENFORCE_SHAPE,
         )
         found = {}
         for db_id, ref_modele, commercial_ref in incomplete:

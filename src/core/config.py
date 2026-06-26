@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.58.2"
+    VERSION = "3.59.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -117,6 +117,7 @@ class Config:
     SIMILARITY_FUZZY_THRESHOLD = 0.80        # Seuil Palier B (difflib SequenceMatcher) — abaissé à 0.80 pour capturer les variantes simples
     SIMILARITY_ALLOW_NUMERIC_FUZZY = False   # Palier B exclu par défaut sur préfixe numérique (risque rebadging)
     SIMILARITY_PREFIX_CONSENSUS = True       # Palier C : consensus de préfixe (familles mono-marque)
+    SIMILARITY_ENFORCE_SHAPE = True          # Garde de structure : consensus restreint au même système de nommage (anti « HMG 280 X » -> Bosch)
 
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3
