@@ -4,6 +4,30 @@ Centralise les fonctions de nettoyage et normalisation de texte
 """
 
 import re
+import unicodedata
+
+
+def strip_accents(text):
+    """
+    Retire les accents/diacritiques d'un texte pour une comparaison insensible
+    aux accents (recherche, filtrage d'auto-complétion).
+
+    Décompose chaque caractère accentué en sa forme de base + marque combinante
+    (Unicode NFKD), puis supprime les marques. Couvre toutes les voyelles
+    accentuées et la cédille sans table de correspondance à maintenir.
+
+    Ex: 'Jünker' -> 'Junker' ; 'Crémaillère' -> 'Cremaillere' ; 'çà' -> 'ca'.
+
+    Args:
+        text: Le texte à normaliser (str ou None).
+
+    Returns:
+        str: Le texte sans accents (chaîne vide si entrée vide/None).
+    """
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize('NFKD', str(text))
+    return ''.join(c for c in nfkd if not unicodedata.combining(c))
 
 
 def clean_display_text(text):

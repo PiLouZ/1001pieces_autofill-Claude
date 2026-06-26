@@ -12,6 +12,7 @@ from ..core.logger import app_logger
 from ..core.config import Config
 from .base_service import BaseService
 from ..utils.error_handler import handle_autocompletion_errors
+from ..utils.text_utils import strip_accents
 
 class AutoCompletionService(BaseService):
     """Service dédié à l'autocomplétion des cellules"""
@@ -158,6 +159,9 @@ class AutoCompletionService(BaseService):
         def update_list():
             """Mettre à jour la liste selon le filtre"""
             filter_text = input_field.text().lower()
+            # Comparaison insensible aux accents : « ju » doit retrouver « Jünker »
+            # comme « Juno » (et inversement). La valeur insérée garde ses accents.
+            filter_norm = strip_accents(filter_text)
             values_list.clear()
 
             # Section « Suggestions » en tête, uniquement sans filtre actif.
@@ -178,7 +182,7 @@ class AutoCompletionService(BaseService):
             # Ajouter les items filtrés
             filtered_values = []
             for value in all_values:
-                if not filter_text or filter_text in value.lower():
+                if not filter_norm or filter_norm in strip_accents(value.lower()):
                     filtered_values.append(value)
                     item = QListWidgetItem(value)
                     values_list.addItem(item)

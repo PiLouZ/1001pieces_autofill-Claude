@@ -4,6 +4,14 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.59.1] - 2026-06-26
+
+### Auto-complétion Type/Marque — filtrage insensible aux accents
+
+- La fenêtre d'auto-complétion (CMD+D ou saisie en cellule Type/Marque) filtrait avec un `in` brut sensible aux accents : taper « Ju » ne retrouvait pas la marque « Jünker » (le `ü` ≠ `u`). Désormais la comparaison normalise les accents des deux côtés → « Ju » retrouve à la fois « Juno » et « Jünker » (et inversement « Jü »). Couvre toutes les voyelles accentuées et la cédille (é/è/ê/ë, à/â/ä, ï/î, ô/ö, ù/û/ü, ç…) sans table à maintenir.
+- Nouvelle fonction utilitaire centralisée `strip_accents` (`src/utils/text_utils.py`, décomposition Unicode NFKD + suppression des marques combinantes). La valeur réellement insérée conserve ses accents (la sélection « correspondance exacte » reste stricte).
+- **Tests** : `tests/unit/test_text_utils.py` (7 tests) — normalisation + scénario réel « Ju » → Jünker/Juno.
+
 ## [3.59.0] - 2026-06-26
 
 ### Affinage des suggestions Type/Marque — garde de structure de référence (Palier C)
