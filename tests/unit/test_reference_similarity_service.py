@@ -15,6 +15,7 @@ from src.services.reference_similarity_service import (
     SimilarityCandidate,
     strip_variant_suffix,
     detect_prefix_kind,
+    reference_shape_signature,
 )
 
 
@@ -39,6 +40,16 @@ class TestStripVariantSuffix:
         assert strip_variant_suffix("ABC/1234") == "ABC/1234"
         assert strip_variant_suffix("AWO/C6304") == "AWO/C6304"
 
+    def test_retire_clef_parenthesee_bsh(self):
+        # Clef parenthésée (XX) du groupe BSH : ref technique = ref commerciale + clef.
+        assert strip_variant_suffix("3EMN378B(00)") == "3EMN378B"
+        assert strip_variant_suffix("BA036100(00)") == "BA036100"
+        assert strip_variant_suffix("5Z11CR10X0(A1)") == "5Z11CR10X0"
+
+    def test_clef_parenthesee_trop_longue_non_retiree(self):
+        # > 3 caractères entre parenthèses = pas une clef de variante.
+        assert strip_variant_suffix("ABC(1234)") == "ABC(1234)"
+
     def test_chaine_vide_ou_none(self):
         assert strip_variant_suffix("") == ""
         assert strip_variant_suffix(None) == ""
@@ -61,6 +72,36 @@ class TestDetectPrefixKind:
         assert detect_prefix_kind("A1") == "other"     # trop court
         assert detect_prefix_kind("A1B2C3") == "other"  # mixte d'emblée
         assert detect_prefix_kind("") == "other"
+
+
+class TestReferenceShapeSignature:
+    def test_bloc_espace_vs_bloc_contigu(self):
+        # Le cœur du correctif : 'HMG 280 X' et 'HMG636BS1' partagent 3 lettres
+        # mais sont deux systèmes de nommage distincts → signatures différentes.
+        assert reference_shape_signature("HMG 280 X") == "L3SD3SL1"
+        assert reference_shape_signature("HMG636BS1") == "L3D3L2D1"
+        assert reference_shape_signature("HMG 280 X") != reference_shape_signature("HMG636BS1")
+
+    def test_longueur_de_suite_discrimine_blocs_contigus(self):
+        # Sans la longueur des suites, 'HMG200X' et 'HMG730BGB' seraient confondus
+        # (tous deux « L D L »). Avec la longueur, ils diffèrent → pas de consensus.
+        assert reference_shape_signature("HMG200X") == "L3D3L1"
+        assert reference_shape_signature("HMG730BGB") == "L3D3L3"
+        assert reference_shape_signature("HMG200X") != reference_shape_signature("HMG730BGB")
+
+    def test_ref_liebherr_distincte(self):
+        # 'HMF 250 X' ≠ 'HMFvh 5501-20A 111' (Liebherr) → pas le même système.
+        assert reference_shape_signature("HMF 250 X") == "L3SD3SL1"
+        assert reference_shape_signature("HMF 250 X") != reference_shape_signature("HMFvh 5501-20A 111")
+
+    def test_clef_variante_ignoree(self):
+        # La clef /NN ou (NN) ne fait pas partie de la structure.
+        assert reference_shape_signature("HMG636BS1/01") == reference_shape_signature("HMG636BS1")
+        assert reference_shape_signature("3EMN378B(00)") == reference_shape_signature("3EMN378B")
+
+    def test_variantes_meme_structure(self):
+        # Deux références de la même famille espacée partagent leur signature.
+        assert reference_shape_signature("HMG 280 X") == reference_shape_signature("HMG 281 X")
 
 
 # ── Helpers de construction d'index ──────────────────────────────────────────
@@ -354,6 +395,72 @@ class TestPalierCConsensus:
         svc = ReferenceSimilarityService()
         cands = svc.find_candidates("ADXN999", "ADXN999", _index(rows))
         assert cands == []
+
+
+class TestPalierCShapeGate:
+    """Garde de structure (signature de forme) sur le consensus de préfixe.
+
+    Cas réels remontés par l'utilisateur : des références commerciales espacées
+    ('HMG 280 X', 'HMF 250 X') étaient faussement rattachées à des familles de
+    blocs contigus (Bosch 'HMG636BS1', Liebherr 'HMFvh...') sur la seule
+    coïncidence des 3 lettres de tête.
+    """
+
+    def _bosch_hmg_family(self):
+        # Famille Bosch en blocs contigus 'HMG636BS1' (préfixe 'hmg' dominé Bosch).
+        return [(i, f"HMG636BS{i}/01", f"HMG636BS{i}", "Four", "Bosch")
+                for i in range(1, 6)]
+
+    def test_bloc_espace_n_est_pas_rattache_au_bloc_contigu(self):
+        # 'HMG 280 X' (LSDSL) ne doit PAS être suggéré Bosch (HMG636BS1 = LDLD).
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("38900020", "HMG 280 X", _index(self._bosch_hmg_family()))
+        assert cands == []
+
+    def test_voisin_espace_legitime_conserve(self):
+        # Si un appareil COMPLET de la même structure espacée existe, le consensus
+        # doit le proposer (la garde n'élimine que les structures incompatibles).
+        rows = [
+            (1, "REF001", "HMG 280 X", "Four", "Brandt"),
+            (2, "REF002", "HMG 281 X", "Four", "Brandt"),
+            (3, "REF003", "HMG 282 X", "Four", "Brandt"),
+        ]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("38900099", "HMG 285 X", _index(rows))
+        # Toujours proposé (la garde n'élimine que les structures incompatibles) —
+        # ici via le fuzzy de même structure (1 chiffre d'écart), tier B ou C.
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Brandt"
+        assert cands[0].confidence_tier in ("B_fuzzy_alpha", "C_prefix_consensus")
+
+    def test_desactivation_garde_restaure_ancien_comportement(self):
+        # Avec la garde désactivée, l'ancien rattachement (faux positif) revient :
+        # garantit que le correctif est bien la cause de la différence (et rollback).
+        svc = ReferenceSimilarityService(enforce_shape_compatibility=False)
+        cands = svc.find_candidates("38900020", "HMG 280 X", _index(self._bosch_hmg_family()))
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Bosch"
+
+    def test_garde_n_affecte_pas_familles_homogenes(self):
+        # Non-régression : une famille de blocs contigus reste proposée pour une
+        # requête de même structure.
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("HMG636XY9", "HMG636XY9", _index(self._bosch_hmg_family()))
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Bosch"
+
+
+class TestPalierANumericKeyBSH:
+    def test_clef_parenthesee_match_commercial(self):
+        # Scénario BSH réel : un appareil a ref_modele '3EMN378B(00)' et commercial
+        # '3EMN378B'. Une ligne importée avec commercial '3EMN378B' doit matcher via
+        # la base partagée '3EMN378B' (clef parenthésée retirée).
+        rows = [(1, "3EMN378B(00)", "3EMN378B", "Four", "Balay")]
+        svc = ReferenceSimilarityService()
+        cands = svc.find_candidates("", "3EMN378B", _index(rows))
+        assert len(cands) == 1
+        assert cands[0].manufacturer == "Balay"
+        assert cands[0].confidence_tier == "A_suffix_variant"
 
 
 class TestPalierCNumericGuard:

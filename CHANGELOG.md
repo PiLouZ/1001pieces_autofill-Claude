@@ -4,6 +4,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.59.0] - 2026-06-26
+
+### Affinage des suggestions Type/Marque — garde de structure de référence (Palier C)
+
+Cas remontés par l'utilisateur : des références commerciales comme `HMG 280 X`, `HMG200X`, `HMG281X` recevaient une suggestion **Four / Bosch**, et `HMF 250 X` une suggestion **Réfrigérateur / Liebherr** — des marques *impossibles* pour ces appareils.
+
+- **Cause** : le **consensus de préfixe (Palier C)** se rabattait sur un préfixe de **3 lettres** et regroupait alors deux *systèmes de nommage distincts* qui ne partageaient que ces 3 lettres de tête — la référence interrogée (bloc espacé `HMG 280 X` ou bloc contigu `HMG200X`) et la famille technique Bosch contiguë `HMG636BS1`/`HMG730BGB`. Le consensus 4 caractères se protégeait déjà (aucune famille `HMG ` / `HMG2`), mais le repli à 3 caractères surclassait cette protection.
+- **Correctif — signature de structure** : nouvelle fonction `reference_shape_signature` (suite de natures de caractères L/D + longueurs, séparateurs notés `S`, clef de variante retirée). Le Palier C ne regroupe désormais que des références de **même structure** : `HMG 280 X` (`L3SD3SL1`) ≠ `HMG636BS1` (`L3D3L2D1`) ≠ `HMG200X` (`L3D3L1`) ≠ `HMG730BGB` (`L3D3L3`). Les vraies variantes d'une même famille (même préfixe + même structure) restent proposées. Garde restreinte aux préfixes **non purement numériques** (les numéros de catalogue varient légitimement en longueur). Désactivable via `Config.SIMILARITY_ENFORCE_SHAPE` (rollback).
+- **Clef BSH parenthésée** : `strip_variant_suffix` reconnaît désormais aussi la clef `(NN)` (groupe BSH : `3EMN378B(00)` ≡ `3EMN378B`), en plus de `/NN` — améliore la reconnaissance exacte (Palier A) des variantes BSH.
+- **Vérifié sur la base réelle (655k lignes)** : les 4 cas signalés ne produisent plus aucune suggestion ; sur les 51 appareils incomplets, les 15 suggestions de consensus retirées étaient toutes des collisions inter-systèmes (`HMGS 2594 DBK`, `CMG 3693 DW`…), 0 suggestion légitime perdue. Suggestions des Paliers A/B (exact + fuzzy) inchangées.
+- **Tests** : `test_reference_similarity_service.py` étendu (signature de forme, clef `(NN)`, garde Palier C avec cas réels + désactivation/rollback) ; `test_levier1_freres_complets_du_lot` adapté (frères de même structure).
+
 ## [3.58.2] - 2026-06-25
 
 ### Correctif critique — Corruption de la base par accès concurrent (vraie cause racine)
