@@ -53,6 +53,20 @@ def _add_col(config_service: ExportConfigService, header: str, source: str):
     config_service.save_config(cfg)
 
 
+def _set_details(config_service: ExportConfigService, **kwargs):
+    """Écrire des clés du profil HTML Détails PAR DÉFAUT (source de vérité depuis
+    la migration profils v3.40.0). La section legacy 'html.details' est un miroir
+    reconstruit depuis ce profil à la sauvegarde : y écrire directement serait
+    écrasé. `generate_html_details` lit `get_html_details_config()` → ce profil."""
+    cfg = config_service.get_config()
+    name = cfg['html'].get('details_default_profile')
+    for p in cfg['html']['details_profiles']:
+        if p.get('name') == name:
+            p.update(kwargs)
+            break
+    config_service.save_config(cfg)
+
+
 # ─── Tests {modele_complet} — rendu CSV ──────────────────────────────────────
 
 class TestCsvModeleComplet:
@@ -150,11 +164,8 @@ class TestHtmlRendering:
 
     def test_template_personnalise_separateur(self, config_service):
         """Template {separateur} : tiret uniquement quand les deux refs présentes"""
-        cfg = config_service.get_config()
-        cfg['html']['details']['model_line_template'] = (
-            '<div><b>{ref_modele}</b>{separateur}{ref_commerciale}</div>'
-        )
-        config_service.save_config(cfg)
+        _set_details(config_service,
+                     model_line_template='<div><b>{ref_modele}</b>{separateur}{ref_commerciale}</div>')
 
         html_deux = HtmlExportService.generate_html_details(self._deux_refs)
         assert '<b>MOD-1</b> - COM-1' in html_deux
@@ -165,9 +176,7 @@ class TestHtmlRendering:
 
     def test_template_personnalise_modele_complet(self, config_service):
         """Template {modele_complet} : rendu correct selon la présence des refs"""
-        cfg = config_service.get_config()
-        cfg['html']['details']['model_line_template'] = '<li>{modele_complet}</li>'
-        config_service.save_config(cfg)
+        _set_details(config_service, model_line_template='<li>{modele_complet}</li>')
 
         html = HtmlExportService.generate_html_details(self._deux_refs)
         assert '<li>MOD-1 - COM-1</li>' in html
@@ -197,9 +206,7 @@ class TestHtmlCharLimit:
 
     def test_fallback_quand_limite_depassee(self, config_service):
         """Quand full dépasse la limite, repasse en mode ref unique"""
-        cfg = config_service.get_config()
-        cfg['html']['details']['char_limit'] = 200
-        config_service.save_config(cfg)
+        _set_details(config_service, char_limit=200)
 
         data = self._make_data(50)
         html = HtmlExportService.generate_html_details(data)
@@ -208,9 +215,7 @@ class TestHtmlCharLimit:
 
     def test_message_trop_volumineux_en_dernier_recours(self, config_service):
         """Quand même le fallback dépasse, affiche le message d'erreur dédié"""
-        cfg = config_service.get_config()
-        cfg['html']['details']['char_limit'] = 1
-        config_service.save_config(cfg)
+        _set_details(config_service, char_limit=1)
 
         html = HtmlExportService.generate_html_details(self._make_data(100))
         assert 'trop volumineuses' in html

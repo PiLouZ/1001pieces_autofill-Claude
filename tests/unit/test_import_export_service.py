@@ -221,22 +221,19 @@ class TestImportExportService:
                 mock_process.assert_not_called()
 
     def test_import_csv_from_path_with_import_manager(self, import_export_service):
-        """Test import CSV avec ImportManager disponible"""
+        """Import CSV (glisser/déposer) : délègue à ImportManager.import_files
+        avec ouverture du dialogue et callback de fin d'import."""
         test_file = "/tmp/test.csv"
-        mock_result = {'success': True, 'stats': {'added': 5, 'updated': 2}}
-
-        import_export_service.import_manager.import_file.return_value = mock_result
 
         with patch('os.path.exists', return_value=True):
-            with patch.object(import_export_service, '_get_import_options_unified', return_value={'has_headers': True}):
-                with patch.object(import_export_service, '_show_import_results_new') as mock_show:
-                    import_export_service.import_csv_from_path(test_file)
+            import_export_service.import_csv_from_path(test_file)
 
-                    # Vérifier que ImportManager a été appelé
-                    import_export_service.import_manager.import_file.assert_called_once()
-
-                    # Vérifier que les résultats ont été affichés
-                    mock_show.assert_called_once_with(mock_result)
+        # ImportManager.import_files appelé avec le fichier, le dialogue et le callback
+        import_export_service.import_manager.import_files.assert_called_once()
+        args, kwargs = import_export_service.import_manager.import_files.call_args
+        assert args[0] == [test_file]
+        assert kwargs.get('show_dialog') is True
+        assert kwargs.get('callback') == import_export_service.parent_window._on_import_complete
 
     def test_import_csv_from_path_no_file(self, import_export_service):
         """Test import CSV avec fichier inexistant"""
@@ -260,13 +257,13 @@ class TestImportExportService:
                 import_export_service.import_manager.import_file.assert_not_called()
 
     def test_import_pdf_from_path(self, import_export_service):
-        """Test import PDF via FileProcessingService"""
+        """Import PDF : délègue à FileProcessingService.import_pdf_files"""
         test_file = "/tmp/test.pdf"
 
         import_export_service.import_pdf_from_path(test_file)
 
         # Vérifier que FileProcessingService a été appelé
-        import_export_service.file_processing_service.process_pdf_file.assert_called_once_with(test_file)
+        import_export_service.file_processing_service.import_pdf_files.assert_called_once_with(test_file)
 
     def test_import_pdf_from_path_no_service(self, import_export_service):
         """Test import PDF sans FileProcessingService"""

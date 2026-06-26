@@ -21,6 +21,12 @@ Cas remontés par l'utilisateur : des références commerciales comme `HMG 280 X
 - Les boîtes vides pré-créées à l'ouverture du panneau multi-fichiers (lignée + groupe d'équivalence, v3.58.x) **fuyaient dans `config.relations_groups`** : `GroupsZone.groups()` renvoyait toutes les boîtes, y compris celles sans courante ni membre. Le traitement aval les ignorait (inoffensif), mais elles polluaient la structure et décalaient les index. Désormais `groups()` ne collecte que les groupes porteurs d'une courante **ou** d'au moins un membre — conforme à l'intention « zones vides ignorées au traitement ».
 - **Tests** : `TestDialogRelationsCollection` (2 tests) repassent au vert — la lecture disque du chargement différé (QTimer) est évitée en pré-renseignant `ImportFile.data`, et la collecte ne retient plus les groupes vides.
 
+### Maintenance — suite de tests entièrement au vert (404 passed)
+
+Réalignement de 6 tests obsolètes sur l'API courante (tests seuls, aucun code de prod modifié) :
+- `test_import_export_service` (2) : `import_csv_from_path` délègue à `ImportManager.import_files([...], show_dialog=True, callback=…)` (et non `import_file`) ; `import_pdf_from_path` à `FileProcessingService.import_pdf_files` (et non `process_pdf_file`).
+- `test_export_rendering` (4) : depuis la migration profils HTML Détails (v3.40.0), la source de vérité est le **profil par défaut** (`details_profiles`), pas le miroir legacy `html.details` (reconstruit depuis le profil à la sauvegarde). Les tests écrivent désormais sur le profil par défaut via un helper `_set_details`.
+
 ## [3.58.2] - 2026-06-25
 
 ### Correctif critique — Corruption de la base par accès concurrent (vraie cause racine)
