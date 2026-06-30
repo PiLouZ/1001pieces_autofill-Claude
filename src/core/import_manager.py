@@ -2320,8 +2320,11 @@ class ImportManager:
 
             # Suggestions Type/Marque par similarité (additif, non bloquant) : calcul
             # en un seul lot sur les lignes incomplètes collectées pendant l'import.
+            # On transmet progress_cb pour rendre cette phase visible (sinon la barre
+            # reste figée sur « Finalisation… » pendant tout le calcul → effet "planté").
             if not dry_run:
-                results['similarity_suggestions'] = self._compute_pending_similarity_suggestions()
+                results['similarity_suggestions'] = \
+                    self._compute_pending_similarity_suggestions(progress_cb=progress_cb)
 
             if not dry_run:
                 if getattr(config, 'relations_groups', None) is not None or \
@@ -2917,13 +2920,16 @@ class ImportManager:
 
         return cache
 
-    def _compute_pending_similarity_suggestions(self) -> Dict[int, list]:
+    def _compute_pending_similarity_suggestions(self, progress_cb=None) -> Dict[int, list]:
         """Calcule les suggestions Type/Marque par similarité pour les lignes
         restées incomplètes après le mécanisme exact (collectées pendant la boucle
         d'import dans self._pending_similarity_candidates).
 
         ADDITIF, aucune écriture : ne fait que proposer. Ne doit JAMAIS faire
         échouer un import (try/except interne, retourne {} en cas de souci).
+
+        :param progress_cb: callable(value, maximum, label) optionnel — rend la phase
+            visible dans la ProgressDialog (sinon la barre semble figée → "planté").
 
         Returns:
             Dict[db_id, List[dict]] — candidats par appareil (SimilarityCandidate.to_dict()).
@@ -2956,7 +2962,14 @@ class ImportManager:
                 enforce_shape_compatibility=Config.SIMILARITY_ENFORCE_SHAPE,
             )
             suggestions_by_db_id: Dict[int, list] = {}
-            for device_data in self._pending_similarity_candidates:
+            total_pending = len(self._pending_similarity_candidates)
+            # Throttle des mises à jour de progression : ~1 % ou tous les 50 items
+            # (au moins 1), pour ne pas saturer le signal sur de gros volumes.
+            step = max(1, total_pending // 100, 50)
+            if progress_cb:
+                progress_cb(0, total_pending,
+                            f"Recherche de suggestions… (0/{total_pending})")
+            for idx, device_data in enumerate(self._pending_similarity_candidates):
                 db_id = device_data.get('id')
                 if not db_id:
                     continue
@@ -2968,6 +2981,10 @@ class ImportManager:
                 )
                 if candidates:
                     suggestions_by_db_id[db_id] = [c.to_dict() for c in candidates]
+                if progress_cb and (idx % step == 0 or idx == total_pending - 1):
+                    done = idx + 1
+                    progress_cb(done, total_pending,
+                                f"Recherche de suggestions… ({done}/{total_pending})")
             app_logger.info(
                 f"Suggestions par similarité : {len(suggestions_by_db_id)} appareil(s) "
                 f"sur {len(self._pending_similarity_candidates)} ligne(s) incomplète(s)"

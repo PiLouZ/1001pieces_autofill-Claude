@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.59.3] - 2026-06-30
+
+### Suggestions par similarité — retours visuels sur les temps d'attente
+
+Sur un gros import (~30k lignes), deux traitements longs paraissaient « planter » l'application faute de retour visuel. Aucun changement d'algorithme ni de logique de sauvegarde : uniquement de la visibilité.
+
+- **Recherche de suggestions après import** : ce calcul tourne déjà dans le worker thread, mais la barre restait figée sur « Finalisation… 100 % » pendant tout son déroulé. Elle affiche désormais une phase dédiée **« Recherche de suggestions… (X/Y) »** avec barre animée (progression transmise depuis le worker, throttlée ~1 %/50 items). Le dialogue reste ouvert jusqu'à la vraie fin du traitement.
+- **Validation de nombreuses suggestions** (fenêtre de validation / « tout valider ») : l'application en masse s'exécute sur le thread UI (setData + undo + historique par appareil) et gelait l'interface sans retour. Au-delà de 50 décisions, une `ProgressDialog` **« Application des suggestions… (X/Y) »** (puis « Enregistrement… ») est affichée et rafraîchie via `processEvents()`. Sans bouton Annuler (une application partielle serait incohérente). Sous le seuil : comportement inchangé, aucun dialogue.
+- **Tests** : `test_import_manager_core.py` — `test_progress_cb_invoque_pendant_le_calcul` (la phase notifie bien sa progression).
+
 ## [3.59.2] - 2026-06-30
 
 ### Nettoyage des doublons — bouton « Re-analyser »

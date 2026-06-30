@@ -328,6 +328,27 @@ class TestSimilaritySuggestions:
         assert best['type'] == 'Lave-vaisselle'
         assert best['confidence_tier'] == 'A_suffix_variant'
 
+    def test_progress_cb_invoque_pendant_le_calcul(self, import_manager):
+        """La phase de recherche de suggestions notifie sa progression (sinon la
+        barre semble figée → impression de plantage). Le libellé doit l'identifier."""
+        import_manager._batch_insert_devices([{
+            'type': 'Lave-vaisselle', 'manufacturer': 'Bosch',
+            'ref_modele': 'SMU6ZCS10S/58', 'commercial_ref': '',
+            'other_ref': '', 'notes': '', 'category': '',
+        }])
+        import_manager._preload_existing_devices()
+        import_manager._pending_similarity_candidates = [
+            {'id': 999999, 'ref_modele': 'SMU6ZCS10S/82', 'commercial_ref': ''}
+        ]
+        calls = []
+        import_manager._compute_pending_similarity_suggestions(
+            progress_cb=lambda v, m, lbl: calls.append((v, m, lbl))
+        )
+        assert calls, "progress_cb jamais appelé pendant le calcul des suggestions"
+        assert any("suggestion" in lbl.lower() for _, _, lbl in calls)
+        # Le maximum annoncé correspond au nombre de lignes incomplètes traitées.
+        assert calls[-1][1] == 1
+
     def test_flag_desactive_retourne_vide(self, import_manager):
         """Avec le flag à False, aucun calcul même si des candidats existent."""
         from src.core.config import Config

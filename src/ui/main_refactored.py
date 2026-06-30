@@ -1005,6 +1005,22 @@ class MainWindow(QMainWindow):
         model = self.table_controller.model
         if not model or not decisions:
             return 0
+
+        # Au-delà de ce seuil, l'application (setData ×2 + undo + historique par
+        # appareil, sur le thread UI) prend assez de temps pour donner l'impression
+        # d'un gel : on affiche alors une ProgressDialog rafraîchie via processEvents.
+        BULK_PROGRESS_THRESHOLD = 50
+        total = len(decisions)
+        progress = None
+        if total > BULK_PROGRESS_THRESHOLD:
+            from .progress_dialog import ProgressDialog
+            # Pas de bouton Annuler : une application partielle serait incohérente.
+            progress = ProgressDialog("Application des suggestions", None, 0, total, self)
+            progress.show()
+            QApplication.processEvents()
+        # Throttle du rafraîchissement (~1 % ou tous les 50 items, au moins 1).
+        step = max(1, total // 100, 50)
+
         # Application en mémoire (UI + undo + historique + provenance) via setData →
         # cell_edited → _apply_cell_edit_logic. Le collecteur est armé pour que ce
         # tronc commun n'enclenche PAS une sauvegarde par cellule (chemin (row,col)
@@ -1012,7 +1028,7 @@ class MainWindow(QMainWindow):
         self._bulk_edit_collector = set()
         updates_by_db_id = {}
         try:
-            for db_id, cand in decisions:
+            for idx, (db_id, cand) in enumerate(decisions):
                 self._apply_suggestion_with_provenance(cand, model, db_id)
                 fields = {}
                 if (cand.get('type') or '').strip():
@@ -1021,12 +1037,20 @@ class MainWindow(QMainWindow):
                     fields['manufacturer'] = cand['manufacturer']
                 if fields:
                     updates_by_db_id[db_id] = fields
+                if progress is not None and (idx % step == 0 or idx == total - 1):
+                    done = idx + 1
+                    progress.setValue(done)
+                    progress.setLabelText(f"Application des suggestions… ({done}/{total})")
+                    QApplication.processEvents()
         finally:
             self._bulk_edit_collector = None
 
         # Persistance directe par db_id en UNE transaction : indépendante de la
         # pagination (une ligne hors page virtuelle est sauvegardée correctement,
         # là où la conversion (row,col)→item() la perdait silencieusement).
+        if progress is not None:
+            progress.setLabelText("Enregistrement…")
+            QApplication.processEvents()
         db_ops = getattr(self, 'database_operations_service', None)
         if db_ops is not None and updates_by_db_id:
             db_ops.save_cells_batch(updates_by_db_id)
@@ -1035,6 +1059,8 @@ class MainWindow(QMainWindow):
         for db_id, _ in decisions:
             model.clear_suggestion(db_id)
         self.table_controller._update_similarity_banner()
+        if progress is not None:
+            progress.close()
         return len(decisions)
 
     def _open_suggestion_validation_dialog(self):
