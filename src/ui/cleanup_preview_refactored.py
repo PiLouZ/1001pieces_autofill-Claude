@@ -237,12 +237,26 @@ class CleanupPreviewDialog(QDialog):
             "QPushButton { background-color: #6c757d; color: white;"
             " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
         )
-        
-        # Initialement désactivés
+
+        # Bouton de relance de l'analyse (vérification manuelle à la demande) —
+        # utilitaire distinct du flux Prévisualiser → Appliquer, donc placé à gauche.
+        self.reanalyze_btn = QPushButton("Re-analyser")
+        self.reanalyze_btn.setIcon(qta.icon('fa5s.sync-alt', color='white'))
+        self.reanalyze_btn.setIconSize(QSize(12, 12))
+        self.reanalyze_btn.setToolTip("Relancer la détection des doublons")
+        self.reanalyze_btn.setStyleSheet(
+            "QPushButton { background-color: #17a2b8; color: white;"
+            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
+            "QPushButton:disabled { background-color: #b8dce3; color: #f0f0f0; }"
+        )
+
+        # Initialement désactivés (jusqu'à la fin de la première analyse)
         self.preview_btn.setEnabled(False)
         self.apply_btn.setEnabled(False)
-        
+        self.reanalyze_btn.setEnabled(False)
+
         self.control_layout.addWidget(self.cancel_btn)
+        self.control_layout.addWidget(self.reanalyze_btn)
         self.control_layout.addStretch()
         self.control_layout.addWidget(self.preview_btn)
         self.control_layout.addWidget(self.apply_btn)
@@ -266,7 +280,50 @@ class CleanupPreviewDialog(QDialog):
         self.preview_btn.clicked.connect(self._preview_changes)
         self.apply_btn.clicked.connect(self._apply_cleanup)
         self.cancel_btn.clicked.connect(self.reject)
+        self.reanalyze_btn.clicked.connect(self._restart_analysis)
         
+    def _restart_analysis(self, checked=False):
+        """Relancer une analyse complète des doublons sans rouvrir la fenêtre.
+
+        Reconstitue l'état « chargement » (les callbacks d'analyse pilotent deux
+        modes mutuellement exclusifs : `_loading_widget` vs `main_widget`) puis
+        rappelle le service. Le service se garde déjà d'un double lancement, mais
+        on désactive aussi les boutons côté UI pendant le scan.
+        """
+        # Ne pas relancer si une analyse est déjà en cours
+        worker = getattr(self.analysis_service, 'analysis_worker', None)
+        if worker is not None and worker.isRunning():
+            return
+
+        # Réinitialiser l'animation de la barre de chargement
+        self._loading_ceiling = 0.0
+        self._loading_display = 0.0
+        if self._loading_bar:
+            self._loading_bar.setValue(0)
+        if self._loading_step_label:
+            self._loading_step_label.setText("Initialisation…")
+
+        # Les marquages « distincts » de la session précédente sont déjà persistés
+        # en base et exclus par la requête d'analyse : la nouvelle analyse les
+        # reflète. On repart donc d'un compteur d'aperçu vierge.
+        self._distinct_marked_session = 0
+
+        # Repasser en mode chargement
+        if self.main_widget:
+            self.main_widget.setVisible(False)
+        if self._loading_widget:
+            self._loading_widget.setVisible(True)
+        if self._loading_timer:
+            self._loading_timer.start()
+
+        # Désactiver les actions pendant le scan
+        self.preview_btn.setEnabled(False)
+        self.apply_btn.setEnabled(False)
+        self.reanalyze_btn.setEnabled(False)
+
+        app_logger.info("Relance manuelle de l'analyse des doublons")
+        self.analysis_service.start_analysis()
+
     def _on_analysis_progress(self, progress: int, message: str):
         """Gérer la progression de l'analyse.
 
@@ -320,8 +377,14 @@ class CleanupPreviewDialog(QDialog):
         if self.pieces_widget and 'duplicate_pieces' in results:
             self.pieces_widget.populate_pieces(results['duplicate_pieces'])
 
-        # Activer les boutons
+        # Rafraîchir l'onglet « Références distinctes » pour rester cohérent avec
+        # ce nouveau scan (utile notamment après une relance manuelle).
+        if self.distinct_widget:
+            self.distinct_widget.load_distinct_references()
+
+        # Activer les boutons (réactive aussi « Re-analyser » après un scan)
         self.preview_btn.setEnabled(True)
+        self.reanalyze_btn.setEnabled(True)
         self._update_buttons_state()
 
         app_logger.info("Interface de nettoyage mise à jour avec les résultats d'analyse")
@@ -332,6 +395,8 @@ class CleanupPreviewDialog(QDialog):
             self._loading_timer.stop()
         if self._loading_widget:
             self._loading_widget.setVisible(False)
+        # Réactiver « Re-analyser » pour permettre de retenter après un échec
+        self.reanalyze_btn.setEnabled(True)
         show_error(self, "Erreur d'analyse", f"Erreur lors de l'analyse des doublons:\n{error_message}")
         
     def _on_groups_marked_distinct(self, marked: list):

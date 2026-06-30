@@ -4,6 +4,14 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.59.2] - 2026-06-30
+
+### Nettoyage des doublons — bouton « Re-analyser »
+
+- La fenêtre « Nettoyage des doublons » lançait son analyse une seule fois à l'ouverture, sans moyen de la relancer : il fallait fermer puis rouvrir la fenêtre pour vérifier l'état après avoir marqué des références distinctes ou modifié la base. Nouveau bouton **« Re-analyser »** (à gauche, à côté d'« Annuler ») qui relance la détection complète à la demande, sans rouvrir la fenêtre.
+- Le bouton est désactivé pendant un scan (pas de double lancement, l'UI reflète la garde déjà présente côté service) et réactivé en fin d'analyse comme en cas d'erreur (pour pouvoir retenter). La relance reconstitue l'état « chargement » (barre de progression réinitialisée), repart d'un compteur d'aperçu vierge — les marquages « distincts » étant déjà persistés et exclus par la requête, la nouvelle analyse les reflète — et rafraîchit l'onglet « Références distinctes ».
+- Purement additif sur l'UI du dialogue : aucun changement de l'algorithme de détection, aucune écriture en base.
+
 ## [3.59.1] - 2026-06-26
 
 ### Auto-complétion Type/Marque — filtrage insensible aux accents
