@@ -1972,15 +1972,21 @@ class ImportManager:
         progress.canceled.connect(worker.cancel)
 
         def _on_finished(results):
-            progress.close()
             worker.wait()
             results['processing_time_ms'] = int((_time.perf_counter() - t0) * 1000)
             if source == 'drag_drop':
                 results['import_source'] = 'drag_drop'
+            # Le dialogue reste ouvert pendant le rafraîchissement post-import
+            # (callback -> table_controller.load_data(), coûteux sur gros volumes,
+            # + historique) : le fermer ici laissait un silence total entre la fin
+            # de l'import et le tableau à jour, perçu comme un plantage.
+            progress.setLabelText("Mise à jour de l'affichage…")
+            QApplication.processEvents()
             if hasattr(self, 'main_window') and self.main_window:
                 self._trigger_post_import_updates()
             if callback:
                 callback(results)
+            progress.close()
             if dialog:
                 dialog.deleteLater()
             self._import_worker = None

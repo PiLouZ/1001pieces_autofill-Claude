@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.59.4] - 2026-06-30
+
+### Import — le dialogue de progression ne disparaît plus avant le rafraîchissement du tableau
+
+Suite au retour utilisateur sur le correctif v3.59.3 : la vraie zone de silence n'était pas la recherche de suggestions (déjà visible dans le worker, simplement trop rapide à percevoir quand peu de lignes restent incomplètes sur un gros import) mais **le rafraîchissement post-import**. `_on_finished` (`import_manager.py`, chemin non-bloquant `_launch_real_import`) appelait `progress.close()` **avant** `callback(results)`, lequel déclenche `table_controller.load_data()` (rechargement du tableau, coûteux sur gros volumes) et l'écriture dans l'historique — d'où le dialogue qui disparaît puis un silence total jusqu'au tableau à jour.
+
+- Le dialogue reste désormais ouvert le temps de ce rafraîchissement, avec un libellé dédié **« Mise à jour de l'affichage… »** (spinner toujours animé), et ne se ferme qu'une fois le tableau et l'historique à jour.
+- Vérifié empiriquement (script offscreen avec faux worker) : `callback` (rafraîchissement) s'exécute désormais avant `progress.close()`, plus l'inverse.
+- Aucun changement sur le calcul des suggestions lui-même (v3.59.3, toujours actif).
+
 ## [3.59.3] - 2026-06-30
 
 ### Suggestions par similarité — retours visuels sur les temps d'attente
