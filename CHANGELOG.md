@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.59.5] - 2026-07-01
+
+### Suggestions par similarité — la vraie latence identifiée via les logs (construction de l'index)
+
+Retour utilisateur : la latence persistait après v3.59.4, même sur 2 petits PDF. Diagnostic par lecture des logs applicatifs (`data/logs/detailed.log`) plutôt que par supposition : entre `« [OK] Import terminé »` et `« Relations import appliquées »`, **2,6 secondes** de silence pour seulement **2 lignes incomplètes** à traiter.
+
+- **Cause réelle** : `_compute_pending_similarity_suggestions` construit `reference_index` (`ReferenceSimilarityService.build_reference_index`) sur **tous les appareils de la base** (potentiellement plusieurs centaines de milliers de lignes) — ce coût est indépendant du nombre de lignes incomplètes du lot importé. Le libellé de progression ajouté en v3.59.3 ne couvrait que la boucle de recherche elle-même (quasi instantanée sur 2 lignes) ; la construction de l'index, elle, restait totalement silencieuse.
+- **Correctif** : un libellé dédié **« Préparation de l'index de suggestions… »** est désormais émis juste avant la construction de l'index, couvrant la véritable étape coûteuse.
+- **Tests** : `test_progress_cb_invoque_pendant_le_calcul` étendu — vérifie que ce libellé est bien le premier émis.
+
 ## [3.59.4] - 2026-06-30
 
 ### Import — le dialogue de progression ne disparaît plus avant le rafraîchissement du tableau

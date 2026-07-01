@@ -348,6 +348,13 @@ class TestSimilaritySuggestions:
         assert any("suggestion" in lbl.lower() for _, _, lbl in calls)
         # Le maximum annoncé correspond au nombre de lignes incomplètes traitées.
         assert calls[-1][1] == 1
+        # Le coût réel dominant est la construction de l'index (potentiellement
+        # des centaines de milliers de lignes), PAS la boucle de recherche (souvent
+        # quelques lignes) : un libellé doit couvrir cette étape en premier, sinon
+        # elle reste silencieuse malgré la présence de progress_cb (cas réel :
+        # 2 lignes incomplètes traitées en <10ms, mais ~2,6s de silence observés
+        # avant, faute de ce libellé).
+        assert calls[0][2] == "Préparation de l'index de suggestions…"
 
     def test_flag_desactive_retourne_vide(self, import_manager):
         """Avec le flag à False, aucun calcul même si des candidats existent."""

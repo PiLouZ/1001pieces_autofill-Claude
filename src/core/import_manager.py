@@ -2960,6 +2960,13 @@ class ImportManager:
                                  dev.get('type', ''), dev.get('manufacturer', '')))
             if not rows:
                 return {}
+            # Coût réel dominant : construire l'index (tous les appareils de la base,
+            # potentiellement plusieurs centaines de milliers de lignes) prend souvent
+            # plus longtemps que la boucle de recherche elle-même (quelques lignes
+            # incomplètes) — sans ce libellé, cette étape était totalement silencieuse.
+            if progress_cb:
+                progress_cb(0, len(self._pending_similarity_candidates) or 1,
+                            "Préparation de l'index de suggestions…")
             reference_index = ReferenceSimilarityService.build_reference_index(rows)
             service = ReferenceSimilarityService(
                 allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,
