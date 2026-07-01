@@ -2649,8 +2649,9 @@ class ImportManager:
 
             # Insérer ou trouver l'appareil
             device_id = self._insert_or_find_device(device_data)
-            
+
             if device_id:
+                device_data['id'] = device_id  # pour la collecte des suggestions (ci-dessous)
                 if device_data.get('is_new', False):
                     results['new_entries'] += 1
                     # Vérifier si l'appareil CRÉÉ nécessite une complétion manuelle
@@ -2658,7 +2659,21 @@ class ImportManager:
                         results['manual_completion'] += 1
                 else:
                     results['matches_found'] += 1
-                
+
+                # Suggestions par similarité (ADDITIF) : chemin « standard » (< BATCH_THRESHOLD
+                # lignes), symétrique de la collecte du chemin batch (_process_data_import_batch).
+                # Manquant jusqu'ici — les petits imports (PDF courts, etc.) ne déclenchaient
+                # donc jamais le calcul automatique de suggestions après import.
+                from .config import Config
+                if (Config.ENABLE_SIMILARITY_SUGGESTIONS
+                        and hasattr(self, '_pending_similarity_candidates')):
+                    _is_complete = ((device_data.get('type') or '').strip()
+                                    and (device_data.get('manufacturer') or '').strip())
+                    if not _is_complete:
+                        self._pending_similarity_candidates.append(device_data)
+                    else:
+                        self._imported_complete_for_similarity.append(device_data)
+
                 # Associer les références (chaque paire référence-libellé)
                 for reference, label in references_and_labels:
                     if reference:

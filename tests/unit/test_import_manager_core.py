@@ -328,6 +328,37 @@ class TestSimilaritySuggestions:
         assert best['type'] == 'Lave-vaisselle'
         assert best['confidence_tier'] == 'A_suffix_variant'
 
+    def test_collecte_suggestions_chemin_standard_petit_fichier(self, import_manager):
+        """NON-RÉGRESSION (bug réel remonté par l'utilisateur, 2026-07-01) : un import
+        de moins de BATCH_THRESHOLD (50) lignes passe par _process_data_import (chemin
+        « standard »), PAS _process_data_import_batch. La collecte pour les suggestions
+        par similarité n'existait historiquement QUE dans le chemin batch — les petits
+        imports (ex. PDF courts) ne déclenchaient donc JAMAIS de suggestion automatique
+        après import, même avec des lignes réellement incomplètes. Vérifie ici le vrai
+        pipeline bout-en-bout (_run_import_files), pas seulement le calcul isolé."""
+        import_manager._preload_existing_devices()
+        import_manager._pending_similarity_candidates = []
+        import_manager._imported_complete_for_similarity = []
+
+        # FileType.CLIPBOARD utilise les données pré-chargées (file.data) sans relire
+        # depuis le disque, contrairement à FileType.CSV — pratique en test isolé.
+        config = ImportConfiguration(
+            files=[ImportFile(
+                path='Collage', type=FileType.CLIPBOARD,
+                suggested_reference='REF', suggested_label='REF',
+                data=[['NEWREF001', 'COMREF001']],  # 1 seule ligne < BATCH_THRESHOLD
+            )],
+            import_type=ImportType.SINGLE_FILE,
+        )
+
+        results = import_manager._run_import_files(config)
+
+        assert len(import_manager._pending_similarity_candidates) == 1
+        assert import_manager._pending_similarity_candidates[0]['ref_modele'] == 'NEWREF001'
+        # L'id doit être réinjecté (nécessaire au calcul différé des suggestions).
+        assert import_manager._pending_similarity_candidates[0].get('id')
+        assert results['successful_files'] == 1
+
     def test_progress_cb_invoque_pendant_le_calcul(self, import_manager):
         """La phase de recherche de suggestions notifie sa progression (sinon la
         barre semble figée → impression de plantage). Le libellé doit l'identifier."""

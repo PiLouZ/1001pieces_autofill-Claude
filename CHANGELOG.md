@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.59.6] - 2026-07-01
+
+### Suggestions par similarité — bug réel : jamais déclenchées sur les petits imports (< 50 lignes)
+
+Retour utilisateur, confirmé par un test en direct : suggestions absentes après import automatique, apparues seulement via le scan manuel (menu Données). Diagnostic par comparaison des logs d'un import réel avec le code (et non plus seulement par lecture) : transition « Import terminé » → « Relations import appliquées » en 7 ms — bien trop rapide pour un calcul réel — alors que le compteur de lignes incomplètes de la base passait de 0 à 9 au même moment.
+
+- **Cause réelle** : l'import possède **deux chemins de traitement par fichier** selon le volume — `_process_data_import_batch` (≥ 50 lignes, `BATCH_THRESHOLD`) et `_process_data_import` (chemin « standard », < 50 lignes). La collecte des lignes incomplètes pour les suggestions par similarité (`_pending_similarity_candidates`) n'avait été câblée que dans le chemin **batch** depuis l'introduction de la fonctionnalité (v3.55.0) — le chemin standard, utilisé par tout import de moins de 50 lignes (PDF courts, petits CSV), ne l'a jamais alimentée. Bug préexistant, non lié aux correctifs v3.59.3-3.59.5 de cette session.
+- **Correctif** : la même logique de collecte (ligne incomplète → `_pending_similarity_candidates`, ligne complète → `_imported_complete_for_similarity`, avec réinjection de l'id) est désormais câblée symétriquement dans `_process_data_import`.
+- **Tests** : `test_collecte_suggestions_chemin_standard_petit_fichier` — exercice du vrai pipeline bout-en-bout (`_run_import_files`, pas seulement le calcul isolé) sur un import d'1 ligne ; confirmé en échec sans le correctif (`git stash`), au vert avec.
+
 ## [3.59.5] - 2026-07-01
 
 ### Suggestions par similarité — la vraie latence identifiée via les logs (construction de l'index)
