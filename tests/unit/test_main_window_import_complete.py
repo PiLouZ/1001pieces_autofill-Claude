@@ -71,6 +71,7 @@ class TestOnImportCompleteExportButtons:
         main_window.advanced_search_service = MagicMock()
         main_window.table_controller = MagicMock()
         main_window.ui_component_service = MagicMock()
+        main_window.seo_service = MagicMock()
         main_window._show_import_results_new = MagicMock()
         return main_window
 
@@ -83,6 +84,16 @@ class TestOnImportCompleteExportButtons:
         main_window_full.table_controller.load_data.assert_called_once_with('REFA', is_search=True)
         main_window_full.ui_component_service.update_export_buttons_state_by_search.assert_called_once_with(True)
 
+    def test_ref_courante_reactive_les_boutons_meta_seo(self, main_window_full):
+        """Boutons « Méta Title »/« Méta Desc » (seo_service) — même signal
+        court-circuité que les boutons d'export, doivent aussi être réactivés."""
+        main_window_full.db_manager.get_pieces_statuses_batch.return_value = {
+            'REFA': {'status': 'current'},
+        }
+        main_window_full._on_import_complete({'imported_refs': ['REFA']})
+
+        main_window_full.seo_service.update_seo_buttons_state.assert_called_once_with()
+
     def test_aucune_ref_courante_ne_touche_pas_les_boutons_export(self, main_window_full):
         main_window_full.db_manager.get_pieces_statuses_batch.return_value = {
             'OLDREF': {'status': 'superseded', 'ref_new': 'X'},
@@ -91,3 +102,4 @@ class TestOnImportCompleteExportButtons:
 
         main_window_full.table_controller.load_data.assert_called_once_with()
         main_window_full.ui_component_service.update_export_buttons_state_by_search.assert_not_called()
+        main_window_full.seo_service.update_seo_buttons_state.assert_not_called()
