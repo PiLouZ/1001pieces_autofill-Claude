@@ -1948,6 +1948,11 @@ class MainWindow(QMainWindow):
                     self.search_input.setText(current_ref)
                     self.search_input.blockSignals(False)
                 self.table_controller.load_data(current_ref, is_search=True)
+                # blockSignals ci-dessus empêche search_with_debounce de tourner
+                # (évite un double chargement) — mais c'est aussi ce signal qui
+                # active normalement les boutons d'export : à réactiver manuellement.
+                if hasattr(self, 'ui_component_service') and self.ui_component_service:
+                    self.ui_component_service.update_export_buttons_state_by_search(True)
             else:
                 self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
 
