@@ -149,6 +149,10 @@ class TableController:
         self._equivalence_term = None
         self._equivalence_group = []          # autres membres du groupe (sans le term)
 
+        # Recherche étendue : False (défaut) = ref_piece exacte, True = LIKE '%term%'
+        # (inclut les refs contenant le terme, ex: "086565" matche aussi "C00865650")
+        self._extend_search_active = False
+
         # Référence vers le widget table (sera initialisée par create_table_widget)
         self.table = None
         self.model = None  # AppareillsTableModel — initialisé par create_table_widget()
@@ -388,6 +392,23 @@ class TableController:
         # Sera connecté par MainWindow à AdvancedSearchService
         # self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
         search_layout2.addWidget(self.advanced_search_input, 1, Qt.AlignVCenter)
+
+        # Bouton "Étendre la recherche" : par défaut, la recherche par référence est
+        # exacte (ref_piece = terme). Coché, elle redevient partielle (LIKE '%terme%'),
+        # ce qui peut inclure des références plus longues contenant le terme recherché.
+        self.extend_search_btn = QToolButton()
+        self.extend_search_btn.setCheckable(True)
+        self.extend_search_btn.setIcon(qta.icon('fa5s.search-plus', color='#555555'))
+        self.extend_search_btn.setToolTip(
+            "Étendre la recherche : inclure les références contenant le terme recherché\n"
+            "(par défaut, seule la référence exacte est recherchée)"
+        )
+        self.extend_search_btn.setStyleSheet(
+            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
+            "QToolButton:checked { background: #e7f1ff; border-color: #0078d4; }"
+        )
+        self.extend_search_btn.toggled.connect(self._toggle_extend_search)
+        search_layout2.addWidget(self.extend_search_btn, 0, Qt.AlignVCenter)
 
         # Bouton historique des recherches
         self.history_btn = QToolButton()
@@ -698,6 +719,11 @@ class TableController:
             parsed_term = self.parent_window.search_service.parse_advanced_search(search_term)
             if parsed_term:  # Si parsing réussi, utiliser le terme parsé
                 effective_search_term = parsed_term
+
+        # Injecter le flag de recherche étendue si actif (case à cocher)
+        if self._extend_search_active and isinstance(effective_search_term, dict):
+            effective_search_term = dict(effective_search_term)
+            effective_search_term['extend_search'] = True
 
         # Injecter le flag bypass supersession si actif (mode "superseded")
         if self._supersession_bypass and isinstance(effective_search_term, dict):
@@ -1675,6 +1701,11 @@ class TableController:
                 self.supersession_banner_label.setText(_t(prefix + preds_disp))
                 self.supersession_overflow_btn.setVisible(False)
             self.supersession_banner_label.setToolTip("")
+
+    def _toggle_extend_search(self, checked: bool):
+        """Basculer entre recherche exacte (défaut) et recherche étendue (LIKE substring)."""
+        self._extend_search_active = checked
+        self.load_data(self.current_search_term, is_search=True)
 
     def _toggle_supersession_bypass(self):
         """Basculer l'état du bouton selon le mode actif."""

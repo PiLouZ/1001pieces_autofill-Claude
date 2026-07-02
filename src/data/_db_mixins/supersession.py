@@ -386,18 +386,23 @@ class DatabaseSupersessionMixin:
             app_logger.error(f"Erreur get_appareils_for_piece_ref({ref_piece}): {e}")
             return []
 
-    def _resolve_refs_via_supersession(self, term: str) -> list:
+    def _resolve_refs_via_supersession(self, term: str, extend_search: bool = False) -> list:
         """
         Retourner les refs courantes des pièces dont une ancienne ref correspond au terme.
         Utilisé pour étendre la recherche aux références supersédées.
+
+        extend_search=False (défaut) : correspondance exacte sur ref_old.
+        extend_search=True           : correspondance partielle (LIKE '%term%').
 
         Returns:
             list de refs courantes (sans doublon), vide si aucune correspondance.
         """
         try:
+            op = "LIKE" if extend_search else "="
+            param = f"%{term}%" if extend_search else term
             old_matches = self.execute_query(
-                "SELECT DISTINCT ref_old FROM piece_supersessions WHERE ref_old LIKE ?",
-                [f"%{term}%"]
+                f"SELECT DISTINCT ref_old FROM piece_supersessions WHERE ref_old {op} ?",
+                [param]
             ) or []
             resolved = []
             for (ref_old,) in old_matches:
@@ -410,22 +415,29 @@ class DatabaseSupersessionMixin:
             return []
 
     def _build_pieces_only_condition(self, term: str, bypass: bool = False,
-                                     extra_refs: list = None) -> dict:
+                                     extra_refs: list = None,
+                                     extend_search: bool = False) -> dict:
         """
         Construire la condition SQL pour la recherche par ref_piece (SEARCH_PIECES_ONLY).
 
-        bypass=True  : cherche uniquement la ref telle quelle (sans résolution supersession).
-        extra_refs   : refs supplémentaires à inclure en UNION (ex : prédécesseurs pour expansion).
+        bypass=True     : cherche uniquement la ref telle quelle (sans résolution supersession).
+        extra_refs      : refs supplémentaires à inclure en UNION (ex : prédécesseurs pour expansion).
+        extend_search   : False (défaut) = correspondance exacte sur ref_piece ;
+                          True = correspondance partielle (LIKE '%term%'), y compris
+                          pour la résolution de supersession.
         """
+        op = "LIKE" if extend_search else "="
+        param_term = f"%{term}%" if extend_search else term
+
         if bypass:
             return {
                 'query_type': 'pieces_only',
-                'condition': self._piece_association_subquery("LIKE"),
-                'params': [f"%{term}%"]
+                'condition': self._piece_association_subquery(op),
+                'params': [param_term]
             }
 
         # Résoudre la chaîne forward (term est peut-être une ancienne ref)
-        resolved = self._resolve_refs_via_supersession(term)
+        resolved = self._resolve_refs_via_supersession(term, extend_search=extend_search)
 
         # Combiner avec les refs supplémentaires explicites (ex : prédécesseurs)
         all_extra = list(resolved)
@@ -440,14 +452,14 @@ class DatabaseSupersessionMixin:
                 f"a.id IN ("
                 f"SELECT pa.appareil_id FROM piece_associations pa "
                 f"WHERE pa.piece_id IN ("
-                f"SELECT id FROM pieces WHERE ref_piece LIKE ? "
+                f"SELECT id FROM pieces WHERE ref_piece {op} ? "
                 f"UNION SELECT id FROM pieces WHERE ref_piece IN ({placeholders})"
                 f"))"
             )
-            params = [f"%{term}%"] + all_extra
+            params = [param_term] + all_extra
         else:
-            condition = self._piece_association_subquery("LIKE")
-            params = [f"%{term}%"]
+            condition = self._piece_association_subquery(op)
+            params = [param_term]
         return {'query_type': 'pieces_only', 'condition': condition, 'params': params}
 
     def _supersession_chain_cte(self, direction: str = "forward") -> str:

@@ -2342,6 +2342,17 @@ class ImportManager:
             if not dry_run and hasattr(self.db_manager, 'cache_invalidation'):
                 self.db_manager.cache_invalidation.invalidate_after_import(results)
 
+            # Références pièce importées, dans l'ordre des fichiers (sans doublon ni vide) —
+            # utilisé pour charger automatiquement la recherche sur la référence courante.
+            seen_refs = set()
+            imported_refs = []
+            for ref in config.individual_references.values():
+                ref = (ref or '').strip()
+                if ref and ref not in seen_refs:
+                    seen_refs.add(ref)
+                    imported_refs.append(ref)
+            results['imported_refs'] = imported_refs
+
             return results
 
         finally:

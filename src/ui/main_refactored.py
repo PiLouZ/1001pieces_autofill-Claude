@@ -1930,14 +1930,48 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'advanced_search_service'):
                 self.advanced_search_service.clear_search()
             self.table_controller.clear_column_filters()
+            # Recherche exacte (pas de résultats parasites par ref contenant le terme)
+            if hasattr(self.table_controller, 'extend_search_btn'):
+                self.table_controller.extend_search_btn.blockSignals(True)
+                self.table_controller.extend_search_btn.setChecked(False)
+                self.table_controller.extend_search_btn.blockSignals(False)
+                self.table_controller._extend_search_active = False
 
-            self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
+            # Si l'import contient une référence de pièce courante (non supersédée),
+            # charger directement le tableau sur la recherche de cette référence —
+            # la première importée en cas de plusieurs candidates.
+            current_ref = self._find_first_current_ref(results.get('imported_refs', []))
+
+            if current_ref:
+                if hasattr(self, 'search_input') and self.search_input:
+                    self.search_input.blockSignals(True)
+                    self.search_input.setText(current_ref)
+                    self.search_input.blockSignals(False)
+                self.table_controller.load_data(current_ref, is_search=True)
+            else:
+                self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
 
             # Installer les suggestions Type/Marque par similarité calculées pendant
             # l'import (indicateur + bannière conditionnelle). Stockées par db_id :
             # s'affichent dès que les lignes concernées deviennent visibles.
             if hasattr(self.table_controller, 'set_similarity_suggestions'):
                 self.table_controller.set_similarity_suggestions(results.get('similarity_suggestions'))
+
+    def _find_first_current_ref(self, imported_refs: list) -> Optional[str]:
+        """Retourner la première référence pièce importée qui est "courante"
+        (non supersédée par une autre), ou None si aucune ne l'est.
+
+        "Courante" = statut différent de 'superseded' (get_pieces_statuses_batch) :
+        une pièce obsolète ou qui en remplace d'autres reste une référence courante,
+        seule une ancienne référence remplacée par une plus récente est exclue.
+        """
+        if not imported_refs:
+            return None
+        statuses = self.db_manager.get_pieces_statuses_batch(imported_refs)
+        for ref in imported_refs:
+            if statuses.get(ref, {}).get('status') != 'superseded':
+                return ref
+        return None
 
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""

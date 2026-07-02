@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.60.0] - 2026-07-02
+
+### Recherche par pièce exacte par défaut + case « Étendre la recherche »
+
+Retour utilisateur : recherche de la référence "086565" (10 appareils attendus) remontait 317 résultats. Cause diagnostiquée en base : la condition de recherche `pieces_only` faisait un `LIKE '%terme%'` (substring) au lieu d'une correspondance exacte, matchant accessoirement `C00865650` (contient "086565"). Pire, la résolution de supersession (`_resolve_refs_via_supersession`) faisait elle aussi un `LIKE` sur `piece_supersessions.ref_old`, ce qui déclenchait une expansion vers `1740800500` (299 appareils) via la chaîne de succession de `C00865650`.
+
+- **Changement de comportement par défaut** : la recherche par référence pièce est désormais **exacte** (`ref_piece = terme`) au lieu de partielle. Corrige mécaniquement le cas remonté (10 résultats pour "086565").
+- **Nouvelle case à cocher « Étendre la recherche »** (icône loupe+, à côté du champ de recherche) : réactive l'ancien comportement `LIKE '%terme%'` (y compris pour la résolution de supersession), pour les cas où l'utilisateur veut volontairement une recherche partielle.
+- Flag `extend_search` propagé de bout en bout : case à cocher → `TableController.build_effective_search_term` → `database_manager._build_search_condition_optimized` (branches simple/`&&`/`||`) → `_build_pieces_only_condition`/`_resolve_refs_via_supersession` (`src/data/_db_mixins/supersession.py`). L'export hérite automatiquement du flag (délégation existante à `build_effective_search_term` depuis v3.54.1). Les filtres colonnes (Type, Fabricant...) ne sont pas concernés — mécanisme séparé, restent en recherche partielle par nature.
+- **Tests** : 413 tests existants au vert (aucune régression). Vérifié en base réelle : mode exact → 10, mode étendu → 317 (comportement identique à l'ancien défaut). Résolution de supersession sur une ancienne ref exacte (ex: `AS6018690` → `AS0071596`) toujours fonctionnelle en mode par défaut.
+
+### Import — chargement automatique du tableau sur la référence courante importée
+
+Demande utilisateur : après un import contenant une ou plusieurs références de pièces, si au moins une est une référence "courante" (non supersédée par une autre), afficher directement dans le tableau les résultats de recherche de cette référence — plutôt que la vue "sans filtre" affichée jusqu'ici après tout import.
+
+- `ImportManager._run_import_files` (`src/core/import_manager.py`) expose désormais `results['imported_refs']` : les références réellement importées (`config.individual_references`), dans l'ordre des fichiers, dédupliquées et sans valeur vide.
+- `MainWindow._on_import_complete` (`src/ui/main_refactored.py`) : après la réinitialisation habituelle des filtres (y compris la case « Étendre la recherche », remise à l'état décoché = recherche exacte), recherche la **première** référence importée dont le statut n'est pas `superseded` (via `get_pieces_statuses_batch`, déjà existant pour les bannières de supersession) et lance directement `table_controller.load_data(ref, is_search=True)` sur cette référence — le champ de recherche est mis à jour en cohérence. Si aucune référence courante n'est trouvée (toutes supersédées, ou aucune ref), comportement inchangé (tableau sans filtre).
+- **Tests** : `test_run_import_files_expose_imported_refs` (import_manager) + 5 tests `TestFindFirstCurrentRef` (nouveau fichier `tests/unit/test_main_window_import_complete.py`) couvrant liste vide, première ref courante, ref supersédée ignorée au profit de la suivante, toutes supersédées, et statuts `obsolete`/`replacing` traités comme courants. 419 tests au total, tous au vert.
+
 ## [3.59.6] - 2026-07-01
 
 ### Suggestions par similarité — bug réel : jamais déclenchées sur les petits imports (< 50 lignes)

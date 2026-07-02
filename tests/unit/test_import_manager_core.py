@@ -359,6 +359,27 @@ class TestSimilaritySuggestions:
         assert import_manager._pending_similarity_candidates[0].get('id')
         assert results['successful_files'] == 1
 
+    def test_run_import_files_expose_imported_refs(self, import_manager):
+        """results['imported_refs'] contient les refs importées, dans l'ordre, sans
+        doublon ni vide — utilisé pour charger automatiquement la recherche sur la
+        référence courante après import (v3.60.0)."""
+        config = ImportConfiguration(
+            files=[
+                ImportFile(path='f1', type=FileType.CLIPBOARD,
+                           suggested_reference='REFA', suggested_label='REFA',
+                           data=[['REFA', 'COMA']]),
+                ImportFile(path='f2', type=FileType.CLIPBOARD,
+                           suggested_reference='REFB', suggested_label='REFB',
+                           data=[['REFB', 'COMB']]),
+            ],
+            import_type=ImportType.MULTI_FILE,
+        )
+        config.individual_references = {'f1': 'REFA', 'f2': 'REFB'}
+
+        results = import_manager._run_import_files(config)
+
+        assert results['imported_refs'] == ['REFA', 'REFB']
+
     def test_progress_cb_invoque_pendant_le_calcul(self, import_manager):
         """La phase de recherche de suggestions notifie sa progression (sinon la
         barre semble figée → impression de plantage). Le libellé doit l'identifier."""

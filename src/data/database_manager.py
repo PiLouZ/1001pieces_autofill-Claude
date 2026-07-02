@@ -194,11 +194,13 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
             if Config.SEARCH_PIECES_ONLY:
                 bypass = search_term.get('bypass_supersession', False)
+                extend_search = search_term.get('extend_search', False)
                 extra_refs = list(search_term.get('expand_predecessors', []))
                 for r in search_term.get('expand_equivalents', []):
                     if r not in extra_refs:
                         extra_refs.append(r)
-                return self._build_pieces_only_condition(term, bypass=bypass, extra_refs=extra_refs)
+                return self._build_pieces_only_condition(term, bypass=bypass, extra_refs=extra_refs,
+                                                          extend_search=extend_search)
 
             search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
             search_conditions.append(self._piece_association_subquery("LIKE"))
@@ -215,14 +217,16 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
             # Phase 5: Recherche uniquement dans les pièces associées
             if Config.SEARCH_PIECES_ONLY:
+                extend_search = search_term.get('extend_search', False)
+                op = "LIKE" if extend_search else "="
                 pieces_conditions = [
-                    self._piece_association_subquery("LIKE")
+                    self._piece_association_subquery(op)
                     for _ in terms
                 ]
                 return {
                     'query_type': 'pieces_only',
                     'condition': f"({' AND '.join(pieces_conditions)})",
-                    'params': [f"%{t}%" for t in terms]
+                    'params': [f"%{t}%" if extend_search else t for t in terms]
                 }
 
             and_conditions = []
@@ -250,6 +254,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
             # Phase 5: Recherche uniquement dans les pièces associées
             if Config.SEARCH_PIECES_ONLY:
+                extend_search = search_term.get('extend_search', False)
+                op = "LIKE" if extend_search else "="
                 group_conditions = []
                 all_params = []
                 for group in groups:
@@ -258,14 +264,14 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                         continue
                     if group['type'] == 'and':
                         and_conds = [
-                            self._piece_association_subquery("LIKE")
+                            self._piece_association_subquery(op)
                             for _ in g_terms
                         ]
                         group_conditions.append(f"({' AND '.join(and_conds)})")
-                        all_params.extend([f"%{t}%" for t in g_terms])
+                        all_params.extend([f"%{t}%" if extend_search else t for t in g_terms])
                     else:  # simple
-                        group_conditions.append(self._piece_association_subquery("LIKE"))
-                        all_params.append(f"%{g_terms[0]}%")
+                        group_conditions.append(self._piece_association_subquery(op))
+                        all_params.append(f"%{g_terms[0]}%" if extend_search else g_terms[0])
                 if group_conditions:
                     return {
                         'query_type': 'pieces_only',
