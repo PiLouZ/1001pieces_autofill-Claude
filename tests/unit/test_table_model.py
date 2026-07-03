@@ -382,3 +382,73 @@ class TestSuggestionsSimilarite:
         assert by_id[1]['current_type'] == ""
         assert by_id[2]['current_manufacturer'] == "Bosch"
         assert by_id[1]['candidates'] == [cand]
+
+
+class TestFindEmptyCellRow:
+    """Navigation cellule vide (Type/Fabricant) — respecte l'ordre des records
+    tel que chargé (donc le tri/filtres/recherche déjà appliqués par load_data),
+    contrairement à une recherche SQL indépendante par id."""
+
+    def test_trouve_vers_le_bas(self, model):
+        model.load_records([
+            make_record(db_id=1, type_="Four"),
+            make_record(db_id=2, type_=""),
+            make_record(db_id=3, type_="Four"),
+        ])
+        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') == 1
+
+    def test_trouve_vers_le_haut(self, model):
+        model.load_records([
+            make_record(db_id=1, type_=""),
+            make_record(db_id=2, type_="Four"),
+            make_record(db_id=3, type_=""),
+        ])
+        assert model.find_empty_cell_row(col=0, start_row=1, direction='up') == 0
+
+    def test_respecte_ordre_des_records_pas_id(self, model):
+        """Les records sont fournis dans un ordre de tri arbitraire (pas par id
+        croissant) : la recherche doit suivre CET ordre, pas l'id."""
+        model.load_records([
+            make_record(db_id=99, type_="Four"),   # row 0
+            make_record(db_id=2, type_=""),         # row 1 — vide, id pourtant petit
+            make_record(db_id=50, type_="Four"),    # row 2
+        ])
+        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') == 1
+
+    def test_rien_trouve_sur_la_page_retourne_none(self, model):
+        model.load_records([
+            make_record(db_id=1, type_="Four"),
+            make_record(db_id=2, type_="Lave-linge"),
+        ])
+        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') is None
+
+    def test_manufacturer_independant_de_type(self, model):
+        model.load_records([
+            make_record(db_id=1, type_="Four", manufacturer="Bosch"),
+            make_record(db_id=2, type_="Four", manufacturer=""),
+        ])
+        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') is None
+        assert model.find_empty_cell_row(col=1, start_row=0, direction='down') == 1
+
+    def test_colonne_invalide_retourne_none(self, model):
+        model.load_records([make_record(db_id=1, type_="")])
+        assert model.find_empty_cell_row(col=2, start_row=0, direction='down') is None
+
+    def test_ignore_lignes_pas_encore_revelees_par_virtual_scroll(self, model, monkeypatch):
+        """find_empty_cell_row doit chercher dans TOUS les records chargés,
+        y compris au-delà de _display_count (pas encore affichés à l'écran)."""
+        from src.core.config import Config
+        monkeypatch.setattr(Config, 'USE_VIRTUAL_SCROLL', True)
+        monkeypatch.setattr(Config, 'FETCH_INITIAL', 1)
+        model.load_records([
+            make_record(db_id=1, type_="Four"),
+            make_record(db_id=2, type_=""),  # au-delà de _display_count=1
+        ])
+        assert model.rowCount() == 1  # virtual scroll : 1 seule ligne révélée
+        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') == 1
+        model.reveal_row(1)
+        assert model.rowCount() == 2  # révélation forcée réussie
+
+    def test_loaded_record_count(self, model):
+        model.load_records([make_record(db_id=1), make_record(db_id=2)])
+        assert model.loaded_record_count() == 2

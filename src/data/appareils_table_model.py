@@ -10,6 +10,8 @@ Usage :
     view.setModel(model)
 """
 
+from typing import Optional
+
 import qtawesome as qta
 from PyQt5.QtCore import Qt, QAbstractTableModel, QEvent, QModelIndex, QRect, QRectF, QSize, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QPainter
@@ -224,6 +226,39 @@ class AppareillsTableModel(QAbstractTableModel):
         Remplace item(row, col).data(Qt.UserRole) dans les 20+ endroits du code.
         """
         return self._records[row][0] if 0 <= row < len(self._records) else None
+
+    def loaded_record_count(self) -> int:
+        """Nombre de lignes chargées en mémoire pour la page courante (peut être
+        supérieur à rowCount()/_display_count tant que le virtual scroll n'a pas
+        tout révélé — utilisé pour la navigation cellule vide, qui doit pouvoir
+        atteindre une ligne pas encore affichée)."""
+        return len(self._records)
+
+    def find_empty_cell_row(self, col: int, start_row: int, direction: str) -> Optional[int]:
+        """Cherche, dans les lignes déjà chargées de la page courante (pas
+        seulement celles révélées par le virtual scroll), la prochaine ligne où
+        la colonne col (0=Type, 1=Fabricant) est vide, depuis start_row.
+
+        Retourne None si rien trouvé sur cette page : l'appelant doit alors
+        passer à la page précédente/suivante pour poursuivre la recherche —
+        c'est ce qui permet à la navigation de respecter le tri/filtres/
+        recherche courants au lieu d'imposer une vue indépendante."""
+        if col not in (0, 1):
+            return None
+        step = 1 if direction == 'down' else -1
+        r = start_row + step
+        while 0 <= r < len(self._records):
+            val = self._records[r][col + 1]
+            if not val or not str(val).strip():
+                return r
+            r += step
+        return None
+
+    def reveal_row(self, row: int):
+        """Force la révélation (virtual scroll) jusqu'à la ligne row incluse,
+        pour qu'elle devienne sélectionnable/visible dans la vue."""
+        while row >= self._display_count and self.canFetchMore():
+            self.fetchMore()
 
     def update_record_db_id(self, row: int, db_id: int):
         """Met à jour le db_id (record[0]) d'une ligne existante.

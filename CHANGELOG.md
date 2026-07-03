@@ -4,6 +4,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.61.0] - 2026-07-03 (branche `feature/empty-cell-navigation`)
+
+### Navigation vers la prochaine/précédente cellule vide (Type/Fabricant)
+
+Deux boutons chevron (↑/↓) ajoutés à côté des contrôles de pagination pour finaliser rapidement les Type/Fabricant manquants, **en gardant la ligne dans son contexte visuel** (tri de colonne, lignes voisines) — pas de vue isolée/filtrée qui ferait perdre les repères.
+
+- **Navigation dans le modèle chargé** : `AppareillsTableModel.find_empty_cell_row(col, start_row, direction)` — itère dans les records déjà chargés pour la page courante (y compris au-delà de ce que le virtual scroll a révélé), dans l'ordre exact du tri/filtres/recherche actifs. `reveal_row(row)` force l'affichage virtual-scroll jusqu'à la ligne trouvée. Si rien sur la page courante, `TableController._on_skip_empty_cell` avance/recule d'une page via `load_data()` avec les **mêmes paramètres** (tri, recherche, filtres) et poursuit la recherche — jamais de requête SQL indépendante du contexte affiché.
+- **État des boutons** : grisés si la cellule sous le focus n'est pas Type/Fabricant, ou si aucune ligne incomplète n'existe dans le périmètre courant (recherche/filtres actifs, vérification globale via `count_data(..., incomplete_filter=True)` — même définition du « vide » que le bouton « Lignes à traiter »). Une ligne avec suggestion Type/Marque en attente est incluse automatiquement (les suggestions ne sont calculées que pour des lignes déjà incomplètes).
+- **Fin de direction atteinte** : plus de `QMessageBox.information` bloquant — le bouton concerné se grise silencieusement (`_empty_cells_search_exhausted['up'/'down']`, remis à zéro à chaque nouveau contexte affiché dans `load_data()`), pour ne pas interrompre l'utilisateur au milieu d'une série de complétions. Retour utilisateur : un message à chaque bord de recherche cassait le rythme.
+- **Synchronisation pagination** : le changement de page pendant le balayage passe désormais par `NavigationService.go_to_page()` (nouvelle méthode `_goto_page_preserving_context`) au lieu de muter `current_page` puis appeler `load_data()` directement. Bug corrigé : `NavigationService` maintient son propre `current_page` interne, relu par `_update_pagination_controls()` pour l'affichage (champ de page, boutons «/») — le contourner laissait l'affichage de pagination désynchronisé du `current_page` réel après un saut inter-page.
+- **Itération de conception** : une première version (SQL indépendante par `id` + filtre colonne Référence modèle pour "téléporter" la vue) a été écartée après retour utilisateur — elle isolait la ligne cible de son contexte. Refonte pour naviguer dans les données déjà triées/filtrées telles qu'affichées.
+- **Tests** : `tests/unit/test_table_model.py::TestFindEmptyCellRow` — 8 tests (ordre respecté indépendamment de l'id, indépendance type/manufacturer, virtual scroll, colonne invalide). Vérifié en bout-en-bout (rendu offscreen + script) : tri par référence modèle appliqué, navigation `up`/`down` atterrit sur la bonne cellule avec l'ordre de tri intact, saut inter-page avec pagination affichée correctement synchronisée (champ de page, boutons prev/next), et grisage silencieux sans modal quand une direction est épuisée.
+
 ## [3.60.1] - 2026-07-03
 
 ### Retour en arrière : auto-chargement post-import (v3.60.0) causait des régressions
