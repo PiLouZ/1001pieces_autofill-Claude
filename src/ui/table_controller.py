@@ -89,6 +89,12 @@ class TableController:
         self.page_size = UIConfig.DEFAULT_PAGE_SIZE  # Utiliser la constante commune
         self.total_pages = 1
         self.total_rows = 0
+
+        # Navigation cellule vide (Type/Fabricant) : direction(s) où le balayage
+        # complet (toutes pages, contexte courant) n'a rien trouvé — remis à False
+        # à chaque changement de contexte (recherche/tri/filtres), voir load_data()
+        # et _on_header_click().
+        self._empty_cells_search_exhausted = {'up': False, 'down': False}
         
         # Variables de tri
         self.current_sort_column = -1
@@ -767,6 +773,14 @@ class TableController:
 
         # CORRECTION: Mettre à jour current_search_term pour tous les appels load_data
         self.current_search_term = search_term
+
+        # Nouveau contexte affiché (recherche/filtres) : les directions
+        # précédemment marquées épuisées peuvent de nouveau contenir des
+        # cellules vides (ex: nouveau terme de recherche moins restrictif).
+        # _on_skip_empty_cell() re-marque la direction concernée juste après
+        # son propre balayage complet, donc pas d'interférence avec les
+        # rechargements de page qu'il déclenche lui-même en cours de route.
+        self._empty_cells_search_exhausted = {'up': False, 'down': False}
 
         # Cacher les bannières (supersession + équivalence) si aucune recherche active
         if not search_term:
@@ -1783,11 +1797,11 @@ class TableController:
         return column_filters
 
     def _update_empty_cell_buttons_state(self):
-        """Grise/dégrise les boutons de saut selon la colonne focus, et selon
-        l'existence d'au moins une ligne incomplète dans le périmètre courant
-        (recherche/filtres actifs) — vérification globale, indépendante de la
-        direction précise (la précision par direction est gérée au clic, pour
-        éviter de parcourir tout le tableau à chaque changement de sélection)."""
+        """Grise/dégrise les boutons de saut selon la colonne focus, l'existence
+        d'au moins une ligne incomplète dans le périmètre courant (recherche/
+        filtres actifs), et l'épuisement éventuel de chaque direction (mémorisé
+        par le dernier balayage complet de _on_skip_empty_cell, remis à zéro à
+        chaque nouveau contexte affiché — voir load_data())."""
         if not hasattr(self, 'skip_empty_up_btn'):
             return
 
@@ -1802,8 +1816,21 @@ class TableController:
             effective_search_term, self._live_column_filters(), incomplete_filter=True
         ) > 0
 
-        self.skip_empty_up_btn.setEnabled(has_incomplete)
-        self.skip_empty_down_btn.setEnabled(has_incomplete)
+        self.skip_empty_up_btn.setEnabled(has_incomplete and not self._empty_cells_search_exhausted['up'])
+        self.skip_empty_down_btn.setEnabled(has_incomplete and not self._empty_cells_search_exhausted['down'])
+
+    def _goto_page_preserving_context(self, page: int):
+        """Change de page en gardant tri/recherche/filtres, via le chemin
+        canonique NavigationService.go_to_page() quand disponible : ce service
+        maintient son propre current_page interne, relu ensuite par
+        _update_pagination_controls() pour l'affichage (champ de page, boutons
+        «/») — muter self.current_page puis appeler load_data() directement
+        désynchronise cet affichage du current_page réel."""
+        if self.navigation_service:
+            self.navigation_service.go_to_page(page)
+        else:
+            self.current_page = page
+            self.load_data(self.current_search_term)
 
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur saut cellule vide")
     def _on_skip_empty_cell(self, direction: str):
@@ -1831,29 +1858,25 @@ class TableController:
                 return
 
             # Rien sur cette page : poursuivre sur la page suivante/précédente,
-            # avec exactement les mêmes tri/recherche/filtres (load_data ne fait
-            # que changer current_page, déjà lu depuis self à chaque appel).
+            # avec exactement les mêmes tri/recherche/filtres.
             if direction == 'down':
                 if self.page_size == -1 or self.current_page >= self.total_pages:
                     break
-                self.current_page += 1
-                self.load_data(self.current_search_term)
+                self._goto_page_preserving_context(self.current_page + 1)
                 row = -1  # prochaine recherche démarre juste avant la 1ère ligne
             else:
                 if self.page_size == -1 or self.current_page <= 1:
                     break
-                self.current_page -= 1
-                self.load_data(self.current_search_term)
+                self._goto_page_preserving_context(self.current_page - 1)
                 row = self.model.loaded_record_count()  # juste après la dernière ligne
             scanned_pages += 1
 
-        self.skip_empty_up_btn.setEnabled(False) if direction == 'up' else self.skip_empty_down_btn.setEnabled(False)
-        if hasattr(self.parent_window, 'user_interaction_service'):
-            self.parent_window.user_interaction_service.show_info(
-                f"Aucune autre cellule {column_name.title()} vide "
-                f"{'avant' if direction == 'up' else 'après'} celle-ci "
-                f"(dans la recherche/les filtres actifs)."
-            )
+        # Balayage complet (toutes les pages du périmètre courant) sans résultat :
+        # mémoriser l'épuisement de cette direction plutôt qu'afficher un message
+        # bloquant — le bouton se grise silencieusement, sans interrompre l'utilisateur
+        # au milieu d'une série de complétions.
+        self._empty_cells_search_exhausted[direction] = True
+        self._update_empty_cell_buttons_state()
 
     def _toggle_supersession_bypass(self):
         """Basculer l'état du bouton selon le mode actif."""
