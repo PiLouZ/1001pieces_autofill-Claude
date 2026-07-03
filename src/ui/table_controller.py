@@ -325,6 +325,11 @@ class TableController:
         self.table = CustomTableView()
         self.table.setModel(self.model)
         self.table.main_window = self.parent_window
+        # Boutons de saut vers cellule vide (Type/Fabricant) : leur état dépend
+        # de la colonne sous le focus, réévalué à chaque changement de cellule.
+        self.table.selectionModel().currentChanged.connect(
+            lambda current, previous: self._update_empty_cell_buttons_state()
+        )
         # Delegate des colonnes Type/Marque : suggestion en case + icône cliquable.
         self._suggestion_delegate = SuggestionCellDelegate(self.table)
         self._suggestion_delegate.accept_handler = self._on_suggestion_icon_clicked
@@ -1208,6 +1213,49 @@ class TableController:
         self.last_button.setStyleSheet(_btn_style)
         pagination_layout.addWidget(self.last_button)
 
+        # Séparateur avant les boutons de saut vers cellule vide
+        from PyQt5.QtWidgets import QFrame as _QFrame
+        _nav_separator = _QFrame()
+        _nav_separator.setFrameShape(_QFrame.VLine)
+        _nav_separator.setFrameShadow(_QFrame.Plain)
+        _nav_separator.setStyleSheet("color: #ced4da;")
+        _nav_separator.setFixedHeight(14)
+        pagination_layout.addSpacing(6)
+        pagination_layout.addWidget(_nav_separator)
+        pagination_layout.addSpacing(6)
+
+        # Boutons de saut vers la cellule vide précédente/suivante (Type/Fabricant
+        # uniquement) : grisés tant qu'aucune cellule de ces colonnes n'a le focus,
+        # ou qu'aucune cellule vide n'existe dans la direction demandée.
+        import qtawesome as _qta_nav
+        self.skip_empty_up_btn = QToolButton()
+        self.skip_empty_up_btn.setIcon(_qta_nav.icon('fa5s.chevron-up', color='#555555'))
+        self.skip_empty_up_btn.setToolTip(
+            "Cellule vide précédente (Type/Fabricant)\n"
+            "Sélectionnez d'abord une cellule Type ou Fabricant"
+        )
+        self.skip_empty_up_btn.setEnabled(False)
+        self.skip_empty_up_btn.setStyleSheet(
+            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
+            "QToolButton:disabled { color: #ccc; background: #f8f9fa; }"
+        )
+        self.skip_empty_up_btn.clicked.connect(lambda: self._on_skip_empty_cell('up'))
+        pagination_layout.addWidget(self.skip_empty_up_btn)
+
+        self.skip_empty_down_btn = QToolButton()
+        self.skip_empty_down_btn.setIcon(_qta_nav.icon('fa5s.chevron-down', color='#555555'))
+        self.skip_empty_down_btn.setToolTip(
+            "Cellule vide suivante (Type/Fabricant)\n"
+            "Sélectionnez d'abord une cellule Type ou Fabricant"
+        )
+        self.skip_empty_down_btn.setEnabled(False)
+        self.skip_empty_down_btn.setStyleSheet(
+            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
+            "QToolButton:disabled { color: #ccc; background: #f8f9fa; }"
+        )
+        self.skip_empty_down_btn.clicked.connect(lambda: self._on_skip_empty_cell('down'))
+        pagination_layout.addWidget(self.skip_empty_down_btn)
+
         pagination_layout.addStretch()
 
         self.size_label = QLabel(f"Total: {self.total_rows} lignes")
@@ -1706,6 +1754,116 @@ class TableController:
         """Basculer entre recherche exacte (défaut) et recherche étendue (LIKE substring)."""
         self._extend_search_active = checked
         self.load_data(self.current_search_term, is_search=True)
+
+    # ── Navigation cellule vide (Type/Fabricant) ────────────────────────────
+
+    def _current_empty_nav_column(self) -> Optional[str]:
+        """Nom de colonne DB ('type'/'manufacturer') si la cellule sous le focus
+        appartient à l'une des deux colonnes navigables, sinon None."""
+        index = self.table.currentIndex()
+        if not index.isValid():
+            return None
+        if index.column() == 0:
+            return 'type'
+        if index.column() == 1:
+            return 'manufacturer'
+        return None
+
+    def _update_empty_cell_buttons_state(self):
+        """Grise/dégrise les boutons de saut selon la colonne focus et l'existence
+        d'une cellule vide dans chaque direction depuis la ligne courante."""
+        if not hasattr(self, 'skip_empty_up_btn'):
+            return
+
+        column_name = self._current_empty_nav_column()
+        if column_name is None:
+            self.skip_empty_up_btn.setEnabled(False)
+            self.skip_empty_down_btn.setEnabled(False)
+            return
+
+        db_id = self.model.get_db_id(self.table.currentIndex().row()) if self.model else None
+        if not db_id:
+            self.skip_empty_up_btn.setEnabled(False)
+            self.skip_empty_down_btn.setEnabled(False)
+            return
+
+        service = getattr(self.parent_window, 'empty_cell_navigation_service', None)
+        if not service:
+            return
+        self.skip_empty_up_btn.setEnabled(
+            service.find_next_empty(column_name, db_id, 'up') is not None
+        )
+        self.skip_empty_down_btn.setEnabled(
+            service.find_next_empty(column_name, db_id, 'down') is not None
+        )
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur saut cellule vide")
+    def _on_skip_empty_cell(self, direction: str):
+        """Sauter vers la prochaine/précédente cellule vide de la colonne focus.
+
+        Passe par le filtre de colonne « Référence modèle » (comme un lien direct)
+        pour amener la ligne cible à l'écran quels que soient recherche/tri/page en
+        cours, puis sélectionne précisément la cellule visée via son db_id."""
+        column_name = self._current_empty_nav_column()
+        if column_name is None or not self.model:
+            return
+
+        current_index = self.table.currentIndex()
+        db_id = self.model.get_db_id(current_index.row())
+        if not db_id:
+            return
+
+        service = getattr(self.parent_window, 'empty_cell_navigation_service', None)
+        if not service:
+            return
+
+        found = service.find_next_empty(column_name, db_id, direction)
+        if found is None:
+            if direction == 'up':
+                self.skip_empty_up_btn.setEnabled(False)
+            else:
+                self.skip_empty_down_btn.setEnabled(False)
+            if hasattr(self.parent_window, 'user_interaction_service'):
+                self.parent_window.user_interaction_service.show_info(
+                    f"Aucune autre cellule {column_name.title()} vide "
+                    f"{'avant' if direction == 'up' else 'après'} celle-ci."
+                )
+            return
+
+        target_db_id, target_ref_modele = found
+        self._goto_db_id(target_db_id, target_ref_modele, column_name)
+
+    def _goto_db_id(self, target_db_id: int, ref_modele: str, column_name: str):
+        """Amène la ligne target_db_id à l'écran (filtre colonne Référence modèle,
+        comme les liens directs existants), page 1, puis sélectionne la cellule
+        column_name de cette ligne précisément par db_id."""
+        if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'search_input'):
+            self.parent_window.search_input.blockSignals(True)
+            self.parent_window.search_input.clear()
+            self.parent_window.search_input.blockSignals(False)
+
+        self.clear_column_filters()
+        ref_modele_filter = self.filter_widgets.get(2)
+        if ref_modele_filter is not None:
+            ref_modele_filter.blockSignals(True)
+            ref_modele_filter.setText(ref_modele or '')
+            ref_modele_filter.blockSignals(False)
+
+        self.current_page = 1
+        self.load_data(None)
+
+        row = self.model.find_row_by_db_id(target_db_id)
+        if row is None:
+            app_logger.warning(
+                f"_goto_db_id: db_id {target_db_id} non trouvé après filtrage sur '{ref_modele}'"
+            )
+            return
+
+        col = 0 if column_name == 'type' else 1
+        target_index = self.model.index(row, col)
+        self.table.setCurrentIndex(target_index)
+        self.table.scrollTo(target_index)
+        self.table.setFocus()
 
     def _toggle_supersession_bypass(self):
         """Basculer l'état du bouton selon le mode actif."""

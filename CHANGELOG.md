@@ -4,6 +4,17 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.61.0] - 2026-07-03 (branche `feature/empty-cell-navigation`)
+
+### Navigation vers la prochaine/précédente cellule vide (Type/Fabricant)
+
+Deux boutons chevron (↑/↓) ajoutés à côté des contrôles de pagination pour finaliser rapidement les Type/Fabricant manquants sans parcourir manuellement 661k lignes.
+
+- **Nouveau service** : `EmptyCellNavigationService` — requête SQL indexée (`idx_appareils_type`/`idx_appareils_manufacturer`), retourne la prochaine ligne où la colonne ciblée est vide, en parcourant les `id` depuis la ligne courante (croissant pour ↓, décroissant pour ↑). Réutilise la même définition du « vide » que `_get_incomplete_condition()` (bouton « Lignes à traiter ») — une ligne avec suggestion Type/Marque en attente est automatiquement incluse, puisque les suggestions ne sont calculées que pour des lignes déjà incomplètes.
+- **Comportement des boutons** : grisés si la cellule sous le focus n'est pas Type ou Fabricant, ou si aucune cellule vide n'existe dans la direction demandée (état réévalué à chaque changement de sélection).
+- **Navigation** : passe par le filtre de colonne « Référence modèle » (même mécanisme que les liens directs existants — bannières supersession/équivalence), amenant la ligne cible à l'écran quels que soient recherche/tri/page en cours, puis sélectionne précisément la cellule visée par son `db_id` (jamais par index de ligne brut, compatible virtual scroll).
+- **Tests** : `tests/unit/test_empty_cell_navigation_service.py` — 6 tests (direction bas/haut, indépendance type/manufacturer, colonne/direction invalides, aucune cellule vide).
+
 ## [3.60.1] - 2026-07-03
 
 ### Retour en arrière : auto-chargement post-import (v3.60.0) causait des régressions
