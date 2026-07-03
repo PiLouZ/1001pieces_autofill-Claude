@@ -4,6 +4,17 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.60.1] - 2026-07-03
+
+### Retour en arrière : auto-chargement post-import (v3.60.0) causait des régressions
+
+Retour utilisateur : la vue ne suivait pas toujours après import (rechargement manuel de l'app nécessaire) et la croix × native du champ Recherche par pièce disparaissait de façon aléatoire — dans les deux cas uniquement avec la recherche automatique post-import, jamais avec une recherche manuelle. Cause : le chargement automatique programmatique (`setText()` + `blockSignals`) court-circuitait le chemin normal du champ de recherche, déjà à l'origine de deux correctifs précédents sur les boutons d'export/méta SEO grisés (`eb5a996`, `73368bf`) — signe que ce rafistolage successif ne traitait que les symptômes.
+
+- **Retiré** : `MainWindow._find_first_current_ref` et tout le bloc d'auto-chargement dans `_on_import_complete`. Après un import, le comportement redevient celui d'avant v3.60.0 : toutes les recherches sont vidées (champ, filtres, case « Étendre la recherche ») et le tableau se recharge sans filtre. La recherche exacte par défaut (fix du bug 086565 → 317 résultats) est conservée.
+- **Nouveau** : menu contextuel du panneau Historique — clic droit sur un terme sélectionné (ou le mot sous le curseur à défaut) propose « Rechercher « terme » dans le champ pièce », qui reporte le terme dans le champ de recherche par le chemin normal (pas de `blockSignals`, comportement identique à une saisie manuelle).
+- **Fix suggestions par similarité — fenêtre de progression invisible** : la fenêtre de progression ne montrait jamais les phases « Préparation de l'index… » / « Recherche de suggestions… » alors qu'elles s'exécutaient bien (79 suggestions trouvées, confirmé par vidéo utilisateur). Cause : contrairement au chemin synchrone (`_execute_import`), le chemin asynchrone (`_launch_real_import`/`_launch_preview`, chemin normal des imports non-bloquants) ne forçait jamais `QApplication.processEvents()` après chaque mise à jour de progression reçue du thread worker — Qt pouvait alors regrouper plusieurs changements de libellé sans jamais peindre les états intermédiaires à l'écran avant la fermeture du dialogue. `processEvents()` ajouté aux deux connexions `progress_updated`.
+- **Suppression** : `tests/unit/test_main_window_import_complete.py` (dédié entièrement à la fonctionnalité retirée). `results['imported_refs']` reste alimenté côté `import_manager.py` (inoffensif, potentiellement réutile).
+
 ## [3.60.0] - 2026-07-02
 
 ### Recherche par pièce exacte par défaut + case « Étendre la recherche »

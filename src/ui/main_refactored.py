@@ -673,7 +673,14 @@ class MainWindow(QMainWindow):
         
         # Connecter la gestion des liens
         self.history_list.anchorClicked.connect(self._handle_history_link)
-        
+
+        # Menu contextuel étendu : rechercher le texte sélectionné (ou le mot sous le
+        # curseur à défaut) directement dans le champ Recherche par pièce.
+        self.history_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.history_list.customContextMenuRequested.connect(
+            self._show_history_context_menu
+        )
+
         history_layout.addWidget(self.history_list)
         
         pieces_splitter.addWidget(history_widget)
@@ -1531,6 +1538,39 @@ class MainWindow(QMainWindow):
         url_str = url.toString() if isinstance(url, QUrl) else str(url)
         self._safe_handle_history_link(url_str)
 
+    def _show_history_context_menu(self, pos):
+        """Menu contextuel du panneau Historique : ajoute une entrée pour rechercher
+        le texte sélectionné (ou, à défaut, le mot sous le curseur) dans le champ
+        Recherche par pièce — sans dupliquer le menu standard (copier, tout
+        sélectionner...) fourni nativement par QTextBrowser."""
+        from .qt_imports import QTextCursor
+
+        cursor = self.history_list.textCursor()
+        term = cursor.selectedText().strip()
+        if not term:
+            cursor = self.history_list.cursorForPosition(pos)
+            cursor.select(QTextCursor.WordUnderCursor)
+            term = cursor.selectedText().strip()
+
+        menu = self.history_list.createStandardContextMenu(pos)
+        if term:
+            menu.addSeparator()
+            search_action = menu.addAction(f"Rechercher « {term} » dans le champ pièce")
+            search_action.triggered.connect(
+                lambda checked=False, t=term: self._search_piece_from_history(t)
+            )
+        menu.exec_(self.history_list.viewport().mapToGlobal(pos))
+
+    def _search_piece_from_history(self, term: str):
+        """Reporter un terme de l'historique dans le champ Recherche par pièce et
+        déclencher la recherche — chemin normal (textChanged → search_with_debounce),
+        pas de blockSignals : le comportement (croix native, boutons liés) reste
+        identique à une saisie manuelle."""
+        if not hasattr(self, 'search_input') or not self.search_input:
+            return
+        self.search_input.setText(term)
+        self.search_input.setFocus()
+
     def _add_piece(self):
         """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService"""
         self.piece_management_service.add_piece()
@@ -1930,55 +1970,22 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'advanced_search_service'):
                 self.advanced_search_service.clear_search()
             self.table_controller.clear_column_filters()
-            # Recherche exacte (pas de résultats parasites par ref contenant le terme)
+            # Recherche exacte par défaut (pas de résultats parasites par ref contenant
+            # le terme) : la case reste réinitialisée après import, mais l'affichage
+            # post-import n'est plus une recherche automatique (cf. ci-dessous).
             if hasattr(self.table_controller, 'extend_search_btn'):
                 self.table_controller.extend_search_btn.blockSignals(True)
                 self.table_controller.extend_search_btn.setChecked(False)
                 self.table_controller.extend_search_btn.blockSignals(False)
                 self.table_controller._extend_search_active = False
 
-            # Si l'import contient une référence de pièce courante (non supersédée),
-            # charger directement le tableau sur la recherche de cette référence —
-            # la première importée en cas de plusieurs candidates.
-            current_ref = self._find_first_current_ref(results.get('imported_refs', []))
-
-            if current_ref:
-                if hasattr(self, 'search_input') and self.search_input:
-                    self.search_input.blockSignals(True)
-                    self.search_input.setText(current_ref)
-                    self.search_input.blockSignals(False)
-                self.table_controller.load_data(current_ref, is_search=True)
-                # blockSignals ci-dessus empêche search_with_debounce de tourner
-                # (évite un double chargement) — mais c'est aussi ce signal qui
-                # active normalement les boutons d'export et méta SEO : à réactiver manuellement.
-                if hasattr(self, 'ui_component_service') and self.ui_component_service:
-                    self.ui_component_service.update_export_buttons_state_by_search(True)
-                if hasattr(self, 'seo_service') and self.seo_service:
-                    self.seo_service.update_seo_buttons_state()
-            else:
-                self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
+            self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
 
             # Installer les suggestions Type/Marque par similarité calculées pendant
             # l'import (indicateur + bannière conditionnelle). Stockées par db_id :
             # s'affichent dès que les lignes concernées deviennent visibles.
             if hasattr(self.table_controller, 'set_similarity_suggestions'):
                 self.table_controller.set_similarity_suggestions(results.get('similarity_suggestions'))
-
-    def _find_first_current_ref(self, imported_refs: list) -> Optional[str]:
-        """Retourner la première référence pièce importée qui est "courante"
-        (non supersédée par une autre), ou None si aucune ne l'est.
-
-        "Courante" = statut différent de 'superseded' (get_pieces_statuses_batch) :
-        une pièce obsolète ou qui en remplace d'autres reste une référence courante,
-        seule une ancienne référence remplacée par une plus récente est exclue.
-        """
-        if not imported_refs:
-            return None
-        statuses = self.db_manager.get_pieces_statuses_batch(imported_refs)
-        for ref in imported_refs:
-            if statuses.get(ref, {}).get('status') != 'superseded':
-                return ref
-        return None
 
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""

@@ -1967,7 +1967,8 @@ class ImportManager:
         worker.progress_updated.connect(
             lambda v, m, lbl: (progress.setRange(0, m),
                                progress.setValue(v),
-                               progress.setLabelText(lbl))
+                               progress.setLabelText(lbl),
+                               QApplication.processEvents())
         )
         progress.canceled.connect(worker.cancel)
 
@@ -2018,7 +2019,8 @@ class ImportManager:
         preview_worker.progress_updated.connect(
             lambda v, m, lbl: (progress.setRange(0, m),
                                progress.setValue(v),
-                               progress.setLabelText(lbl))
+                               progress.setLabelText(lbl),
+                               QApplication.processEvents())
         )
         progress.canceled.connect(preview_worker.cancel)
 

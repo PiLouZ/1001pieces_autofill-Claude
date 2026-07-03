@@ -28,7 +28,7 @@ from PyQt5.QtCore import (
 # GUI et graphiques
 from PyQt5.QtGui import (
     QKeySequence, QPainter, QPen, QColor, QBrush, QKeyEvent,
-    QFont, QPixmap, QIcon, QImage, QPalette, QCursor
+    QFont, QPixmap, QIcon, QImage, QPalette, QCursor, QTextCursor
 )
 
 # Types d'événements Qt couramment utilisés
@@ -55,7 +55,7 @@ __all__ = [
     
     # GUI
     'QKeySequence', 'QPainter', 'QPen', 'QColor', 'QBrush', 'QKeyEvent',
-    'QFont', 'QPixmap', 'QIcon', 'QImage', 'QPalette', 'QCursor',
+    'QFont', 'QPixmap', 'QIcon', 'QImage', 'QPalette', 'QCursor', 'QTextCursor',
     
     # Aliases
     'QtEvent', 'QEventType'
