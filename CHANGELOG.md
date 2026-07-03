@@ -4,6 +4,17 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.61.2] - 2026-07-03
+
+### Fix racine : la fenêtre de progression d'import disparaissait avant la fin réelle du traitement
+
+Le vrai sujet derrière le fix 3.61.1 (celui-ci n'en était qu'un symptôme corrigé en aveugle). Analyse frame par frame de la vidéo (2026-07-02, décodage séquentiel — le seek par timestamp de `cv2` est peu fiable sur un enregistrement d'écran à faible mouvement, keyframes espacées) : la fenêtre « Importation en cours » disparaît dès la fin de la phase d'import des fichiers (~4,5s), puis **rien n'est visible pendant ~2,5s** (calcul des suggestions + rechargement du tableau, tous deux invisibles) avant que tableau/bannière/historique ne se mettent à jour d'un coup.
+
+- **Cause** : `ProgressDialog.setValue()` (`src/ui/progress_dialog.py`) se fermait automatiquement dès que `value >= maximum` — comportement calqué sur `QProgressDialog` standard. Or ce dialogue est **réutilisé sur plusieurs phases successives à échelles différentes** dans une même opération (import de N fichiers, puis recherche de suggestions sur M candidats, puis « Mise à jour de l'affichage… ») via des `setRange()`/`setValue()` distincts. Fin de la phase 1 (fichiers) → `value == maximum` → fermeture automatique → les phases 2 et 3 tournent ensuite sur une fenêtre déjà fermée, invisibles pour l'utilisateur, jusqu'à ce que le code appelant referme (`close()`) une fenêtre qui l'était déjà.
+- **Second point d'impact identique repéré en auditant tous les appelants** : `MainWindow._apply_suggestion_decisions` (application groupée de suggestions validées) — même schéma, le dernier élément de la boucle amène `value == total` et fermait la fenêtre avant l'étape « Enregistrement… ».
+- **Fix** : suppression de la fermeture automatique dans `setValue()`. Tous les appelants (import ×3 chemins, aperçu dry-run, application groupée de suggestions, traitement de fichiers volumineux) ferment déjà explicitement via `close()` à la toute fin — aucun ne dépendait du comportement implicite.
+- **Tests** : `tests/unit/test_progress_dialog.py` — 3 tests (non-fermeture à `value == maximum`, réutilisation multi-phases avec changement de `setRange()`, fermeture explicite toujours fonctionnelle). Confirmé cassé sans le fix (3/3 échouent), corrigé avec.
+
 ## [3.61.1] - 2026-07-03
 
 ### Fix critique : le total de lignes restait figé après import, provoquant des imports en double

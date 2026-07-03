@@ -128,9 +128,14 @@ class ProgressDialog(QDialog):
         self._value = max(self._minimum, min(value, self._maximum))
         self._bar.setValue(self._value)
         self._update_counter()
-        # Fermeture automatique quand la valeur atteint le maximum
-        if self._maximum > 0 and self._value >= self._maximum:
-            self.close()
+        # PAS de fermeture automatique à value == maximum (contrairement à
+        # QProgressDialog) : ce dialogue est réutilisé sur plusieurs phases
+        # successives à échelles différentes (ex. import de N fichiers, puis
+        # recherche de suggestions sur M candidats, puis mise à jour de
+        # l'affichage) via des setRange()/setValue() distincts. Une fermeture
+        # ici masquait le dialogue dès la fin de la 1ère phase alors que les
+        # phases suivantes (invisibles pour l'utilisateur) tournaient encore.
+        # Chaque appelant ferme explicitement via close() à la toute fin.
 
     def setRange(self, minimum: int, maximum: int):
         self._minimum = minimum
