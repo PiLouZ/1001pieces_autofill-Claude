@@ -555,3 +555,34 @@ class TestDialogRelationsCollection:
         cfg = ImportConfiguration(files=[f], import_type=ImportType.SINGLE_FILE)
         dlg = ImportDialog(None, cfg, im)
         assert dlg._relations_groups_zone is None   # chemin legacy mono inchangé
+
+
+class TestBatchInsertCacheInvalidation:
+    """NON-RÉGRESSION : après un import, le tableau affiche le nouveau total
+    de lignes (pas l'ancien) — bug constaté par l'utilisateur (vidéo du
+    2026-07-02) où le total restait figé après import, laissant croire à un
+    échec et provoquant un ré-import en double du même fichier."""
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    def test_total_count_reflete_import_batch(self, import_manager, test_db_manager):
+        """_batch_insert_devices (chemin réel de l'import, cursor brut hors des
+        méthodes normales de DatabaseManager) doit invalider _total_count_cache,
+        sinon count_data() sans filtre reste périmé après l'import."""
+        test_db_manager.insert_appareil({
+            'ref_modele': 'REF0', 'commercial_ref': '', 'type': 'Four',
+            'manufacturer': 'Bosch', 'other_ref': '', 'notes': '', 'category': '',
+        })
+        count_before = test_db_manager.count_data(None, None)
+
+        new_ids = import_manager._batch_insert_devices([
+            {'type': 'Congélateur', 'manufacturer': 'Whirlpool', 'ref_modele': f'AFG{i}',
+             'commercial_ref': '', 'other_ref': '', 'notes': '', 'category': ''}
+            for i in range(5)
+        ])
+        assert len(new_ids) == 5
+
+        count_after = test_db_manager.count_data(None, None)
+        assert count_after == count_before + 5

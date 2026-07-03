@@ -4,6 +4,17 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.61.1] - 2026-07-03
+
+### Fix critique : le total de lignes restait figé après import, provoquant des imports en double
+
+Signalé par vidéo (2026-07-02) : après un import, les nouvelles lignes apparaissaient bien dans le tableau, mais le total affiché en bas ("Total: N lignes") ne changeait jamais. Sans confirmation visuelle que l'import avait fonctionné, l'utilisateur relance le même import — créant des doublons en base (150 appareils insérés deux fois dans la vidéo, `Doublons traités: 0` à chaque fois puisque ce sont bien 2 imports distincts, pas une détection de doublon en défaut).
+
+- **Cause** : `ImportManager._batch_insert_devices` (chemin réel utilisé pendant un import — chunking + `cursor.execute()` sur la connexion brute pour la performance) contourne entièrement les méthodes d'insertion normales de `DatabaseManager`. Celles-ci appellent systématiquement `invalidate_search_cache(invalidate_total_count=True)` après écriture ; le chemin batch ne le faisait jamais. Résultat : `DatabaseManager._total_count_cache` (cache scalaire dédié au cas "aucun filtre", pour éviter un `COUNT(*)` sur 661k lignes à chaque effacement du champ de recherche) restait périmé indéfiniment après un import — jusqu'à la première autre écriture individuelle (edit de cellule, etc.) qui l'invalidait incidemment.
+- **Pourquoi le contenu du tableau se rafraîchissait quand même** : la liste de lignes (requête `LIMIT`/`OFFSET`) passe par un cache différent (`search_cache`, clé composite incluant l'offset), qui n'avait simplement jamais été peuplé pour cette page précise avant l'import — d'où un cache miss, donc des données fraîches. Seul le compteur scalaire restait figé.
+- **Fix** : `self.db_manager.invalidate_search_cache(invalidate_total_count=True)` ajouté juste après le `conn.commit()` de `_batch_insert_devices`, à l'identique du pattern déjà appliqué sur tous les chemins d'insertion normaux.
+- **Reproduit et vérifié** : script reproduisant exactement `_batch_insert_devices` + `count_data()` sans filtre — confirmé cassé sans le fix (total figé), confirmé corrigé avec. Nouveau test permanent : `tests/unit/test_import_manager_core.py::TestBatchInsertCacheInvalidation`.
+
 ## [3.61.0] - 2026-07-03 (branche `feature/empty-cell-navigation`)
 
 ### Navigation vers la prochaine/précédente cellule vide (Type/Fabricant)

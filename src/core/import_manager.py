@@ -3159,6 +3159,11 @@ class ImportManager:
                     app_logger.debug("[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
 
                 conn.commit()
+                # Insertion en lot via cursor brut (hors des méthodes normales de
+                # DatabaseManager) : invalider explicitement le cache de comptage,
+                # sinon count_data() sans filtre (utilisé par load_data() post-import)
+                # continue de renvoyer le total d'avant import.
+                self.db_manager.invalidate_search_cache(invalidate_total_count=True)
                 app_logger.debug("[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
                 return all_new_ids
 
