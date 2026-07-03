@@ -1769,9 +1769,25 @@ class TableController:
             return 'manufacturer'
         return None
 
+    def _live_column_filters(self) -> dict:
+        """Filtres de colonne actuellement saisis (même logique que load_data),
+        utilisés pour que la vérification d'existence de cellule vide respecte
+        exactement le même périmètre que ce qui est affiché à l'écran."""
+        column_filters = {}
+        for col_idx, filter_widget in self.filter_widgets.items():
+            if filter_widget is not None:
+                filter_text = (filter_widget.currentText() if isinstance(filter_widget, QComboBox)
+                                else filter_widget.text()).strip()
+                if filter_text:
+                    column_filters[col_idx] = filter_text
+        return column_filters
+
     def _update_empty_cell_buttons_state(self):
-        """Grise/dégrise les boutons de saut selon la colonne focus et l'existence
-        d'une cellule vide dans chaque direction depuis la ligne courante."""
+        """Grise/dégrise les boutons de saut selon la colonne focus, et selon
+        l'existence d'au moins une ligne incomplète dans le périmètre courant
+        (recherche/filtres actifs) — vérification globale, indépendante de la
+        direction précise (la précision par direction est gérée au clic, pour
+        éviter de parcourir tout le tableau à chaque changement de sélection)."""
         if not hasattr(self, 'skip_empty_up_btn'):
             return
 
@@ -1781,89 +1797,63 @@ class TableController:
             self.skip_empty_down_btn.setEnabled(False)
             return
 
-        db_id = self.model.get_db_id(self.table.currentIndex().row()) if self.model else None
-        if not db_id:
-            self.skip_empty_up_btn.setEnabled(False)
-            self.skip_empty_down_btn.setEnabled(False)
-            return
+        effective_search_term = self.build_effective_search_term(self.current_search_term)
+        has_incomplete = self.db_manager.count_data(
+            effective_search_term, self._live_column_filters(), incomplete_filter=True
+        ) > 0
 
-        service = getattr(self.parent_window, 'empty_cell_navigation_service', None)
-        if not service:
-            return
-        self.skip_empty_up_btn.setEnabled(
-            service.find_next_empty(column_name, db_id, 'up') is not None
-        )
-        self.skip_empty_down_btn.setEnabled(
-            service.find_next_empty(column_name, db_id, 'down') is not None
-        )
+        self.skip_empty_up_btn.setEnabled(has_incomplete)
+        self.skip_empty_down_btn.setEnabled(has_incomplete)
 
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur saut cellule vide")
     def _on_skip_empty_cell(self, direction: str):
-        """Sauter vers la prochaine/précédente cellule vide de la colonne focus.
-
-        Passe par le filtre de colonne « Référence modèle » (comme un lien direct)
-        pour amener la ligne cible à l'écran quels que soient recherche/tri/page en
-        cours, puis sélectionne précisément la cellule visée via son db_id."""
+        """Sauter vers la prochaine/précédente cellule vide de la colonne focus,
+        en conservant le contexte courant (tri, recherche, filtres) : on parcourt
+        les pages du tableau telles que triées/filtrées à l'écran, jamais une
+        vue indépendante — la ligne cible apparaît avec son environnement."""
         column_name = self._current_empty_nav_column()
         if column_name is None or not self.model:
             return
-
-        current_index = self.table.currentIndex()
-        db_id = self.model.get_db_id(current_index.row())
-        if not db_id:
-            return
-
-        service = getattr(self.parent_window, 'empty_cell_navigation_service', None)
-        if not service:
-            return
-
-        found = service.find_next_empty(column_name, db_id, direction)
-        if found is None:
-            if direction == 'up':
-                self.skip_empty_up_btn.setEnabled(False)
-            else:
-                self.skip_empty_down_btn.setEnabled(False)
-            if hasattr(self.parent_window, 'user_interaction_service'):
-                self.parent_window.user_interaction_service.show_info(
-                    f"Aucune autre cellule {column_name.title()} vide "
-                    f"{'avant' if direction == 'up' else 'après'} celle-ci."
-                )
-            return
-
-        target_db_id, target_ref_modele = found
-        self._goto_db_id(target_db_id, target_ref_modele, column_name)
-
-    def _goto_db_id(self, target_db_id: int, ref_modele: str, column_name: str):
-        """Amène la ligne target_db_id à l'écran (filtre colonne Référence modèle,
-        comme les liens directs existants), page 1, puis sélectionne la cellule
-        column_name de cette ligne précisément par db_id."""
-        if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'search_input'):
-            self.parent_window.search_input.blockSignals(True)
-            self.parent_window.search_input.clear()
-            self.parent_window.search_input.blockSignals(False)
-
-        self.clear_column_filters()
-        ref_modele_filter = self.filter_widgets.get(2)
-        if ref_modele_filter is not None:
-            ref_modele_filter.blockSignals(True)
-            ref_modele_filter.setText(ref_modele or '')
-            ref_modele_filter.blockSignals(False)
-
-        self.current_page = 1
-        self.load_data(None)
-
-        row = self.model.find_row_by_db_id(target_db_id)
-        if row is None:
-            app_logger.warning(
-                f"_goto_db_id: db_id {target_db_id} non trouvé après filtrage sur '{ref_modele}'"
-            )
-            return
-
         col = 0 if column_name == 'type' else 1
-        target_index = self.model.index(row, col)
-        self.table.setCurrentIndex(target_index)
-        self.table.scrollTo(target_index)
-        self.table.setFocus()
+
+        row = self.table.currentIndex().row()
+        max_pages_to_scan = max(self.total_pages, 1)
+        scanned_pages = 0
+
+        while scanned_pages <= max_pages_to_scan:
+            found_row = self.model.find_empty_cell_row(col, row, direction)
+            if found_row is not None:
+                self.model.reveal_row(found_row)
+                target_index = self.model.index(found_row, col)
+                self.table.setCurrentIndex(target_index)
+                self.table.scrollTo(target_index)
+                self.table.setFocus()
+                return
+
+            # Rien sur cette page : poursuivre sur la page suivante/précédente,
+            # avec exactement les mêmes tri/recherche/filtres (load_data ne fait
+            # que changer current_page, déjà lu depuis self à chaque appel).
+            if direction == 'down':
+                if self.page_size == -1 or self.current_page >= self.total_pages:
+                    break
+                self.current_page += 1
+                self.load_data(self.current_search_term)
+                row = -1  # prochaine recherche démarre juste avant la 1ère ligne
+            else:
+                if self.page_size == -1 or self.current_page <= 1:
+                    break
+                self.current_page -= 1
+                self.load_data(self.current_search_term)
+                row = self.model.loaded_record_count()  # juste après la dernière ligne
+            scanned_pages += 1
+
+        self.skip_empty_up_btn.setEnabled(False) if direction == 'up' else self.skip_empty_down_btn.setEnabled(False)
+        if hasattr(self.parent_window, 'user_interaction_service'):
+            self.parent_window.user_interaction_service.show_info(
+                f"Aucune autre cellule {column_name.title()} vide "
+                f"{'avant' if direction == 'up' else 'après'} celle-ci "
+                f"(dans la recherche/les filtres actifs)."
+            )
 
     def _toggle_supersession_bypass(self):
         """Basculer l'état du bouton selon le mode actif."""

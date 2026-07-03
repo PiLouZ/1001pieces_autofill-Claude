@@ -259,10 +259,6 @@ class MainWindow(QMainWindow):
         from ..services.incomplete_button_service import IncompleteButtonService
         self.incomplete_button_service = IncompleteButtonService(self.db_manager, self)
 
-        # Navigation vers la prochaine/précédente cellule vide (Type/Fabricant)
-        from ..services.empty_cell_navigation_service import EmptyCellNavigationService
-        self.empty_cell_navigation_service = EmptyCellNavigationService(self.db_manager, self, self)
-
         # Service optimisé pour l'indication des doublons
         from ..services.duplicate_indicator_service import DuplicateIndicatorService
         self.duplicate_indicator_service = DuplicateIndicatorService(self.db_manager, self)
