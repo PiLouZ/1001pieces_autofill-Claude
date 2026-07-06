@@ -96,6 +96,39 @@ def derive(groups: List[Group], cards: List[CardData],
     return out
 
 
+def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[str, int]:
+    """Compter les relations qui SERAIENT créées par apply_relations, sans écrire.
+    Miroir exact de sa logique (déduplication et cas old == new compris) —
+    utilisé par le récap en direct du panneau et le garde-fou à la validation."""
+    counts = {'successions': 0, 'equivalences': 0, 'obsoletes': 0}
+    obsoletes: Set[str] = set()
+
+    for g in groups:
+        if g.kind == KIND_SUCCESSION and g.courante:
+            for m in g.members:
+                if m and m != g.courante:
+                    counts['successions'] += 1
+                    obsoletes.add(m)
+        elif g.kind == KIND_EQUIVALENCE:
+            members = [m for i, m in enumerate(g.members) if m and m not in g.members[:i]]
+            if g.courante and g.courante not in members:
+                members = [g.courante] + members
+            counts['equivalences'] += max(0, len(members) - 1)
+
+    for c in cards:
+        if c.is_obsolete:
+            obsoletes.add(c.ref)
+        if c.base_replaces and c.base_replaces != c.ref:
+            counts['successions'] += 1
+
+    cross = [g.courante for g in groups if g.cross_equivalent and g.courante]
+    cross = [c for i, c in enumerate(cross) if c not in cross[:i]]
+    counts['equivalences'] += max(0, len(cross) - 1)
+
+    counts['obsoletes'] = len(obsoletes)
+    return counts
+
+
 def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str, int]:
     """Applique le modèle en base via `db`. Retourne un récap de comptes.
     Ne lève jamais (les primitives renvoient (ok, msg) ou bool)."""

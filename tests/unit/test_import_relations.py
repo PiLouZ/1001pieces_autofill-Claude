@@ -127,3 +127,48 @@ class TestApplyRealDB:
         g = test_db_manager.execute_query(
             "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece IN ('B3','S2')")
         assert len({x[0] for x in g}) == 1 and len(g) == 2
+
+
+class TestCountPlanned:
+    """count_planned_relations = miroir sans écriture d'apply_relations (v3.62.0).
+    Alimente le récap en direct du panneau et le garde-fou à la validation."""
+
+    def test_miroir_apply_relations(self):
+        from src.services.import_relations import count_planned_relations
+        groups = [
+            Group(KIND_SUCCESSION, courante="B3", members=["B1", "B2"], cross_equivalent=True),
+            Group(KIND_SUCCESSION, courante="S2", members=["S1"], cross_equivalent=True),
+            Group(KIND_EQUIVALENCE, members=["E1", "E2", "E3"]),
+        ]
+        cards = [CardData("B1"), CardData("X", is_obsolete=True, base_replaces="OLD")]
+        planned = count_planned_relations(groups, cards)
+        applied = apply_relations(groups, cards, FakeDB())
+        assert planned['successions'] == applied['successions'] == 4   # B1,B2,S1 + OLD→X
+        assert planned['equivalences'] == applied['equivalences'] == 3  # E1≡E2≡E3 (2) + B3≡S2 (1)
+        assert planned['obsoletes'] == applied['obsoletes'] == 4        # B1,B2,S1,X
+
+    def test_cas_sans_effet(self):
+        """Les déclarations « sans effet » comptent bien 0 (base du garde-fou)."""
+        from src.services.import_relations import count_planned_relations
+        # Lignée sans courante → 0 succession ; cross coché sur UNE seule lignée → 0 équiv ;
+        # groupe d'équivalence à une réf → 0 équiv.
+        groups = [
+            Group(KIND_SUCCESSION, courante=None, members=["B1", "B2"]),
+            Group(KIND_SUCCESSION, courante="S2", members=["S1"], cross_equivalent=True),
+            Group(KIND_EQUIVALENCE, members=["E1"]),
+        ]
+        planned = count_planned_relations(groups, [])
+        assert planned['equivalences'] == 0
+        assert planned['successions'] == 1        # S1 → S2 uniquement
+        assert planned['obsoletes'] == 1          # S1
+
+    def test_courante_membre_et_doublons(self):
+        """Courante listée parmi les membres : ni comptée en succession ni en équiv double."""
+        from src.services.import_relations import count_planned_relations
+        groups = [
+            Group(KIND_SUCCESSION, courante="B2", members=["B1", "B2"]),
+            Group(KIND_EQUIVALENCE, courante="E1", members=["E1", "E2", "E2"]),
+        ]
+        planned = count_planned_relations(groups, [])
+        assert planned['successions'] == 1        # B1 → B2 (B2 == courante ignorée)
+        assert planned['equivalences'] == 1       # E1 ≡ E2 (doublon E2 dédupliqué)

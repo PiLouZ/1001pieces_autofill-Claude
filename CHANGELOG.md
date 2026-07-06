@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.62.0] - 2026-07-06 (branche `fix/import-equivalence-feedback`)
+
+### Fix : déclarations d'équivalence perdues silencieusement à l'import multi-fichiers
+
+Signalé par l'utilisateur (2026-07-06) : « lorsqu'on importe plusieurs références, la liaison pièce équivalente ne semble plus se faire ». Diagnostic par les logs : les imports du 06/07 (09:42, 14:46, 14:49) affichent tous « 0 équivalence(s) » alors que des options d'équivalence avaient été cochées. La mécanique d'écriture (`apply_relations` → `add_equivalence`) fonctionne — ce sont les déclarations qui étaient perdues **sans aucun retour visuel**, à cause de trois no-op silencieux introduits par la refonte de la fenêtre d'import (v3.59, merge `d720195`) :
+
+- « **Toutes équivalentes** » (en-tête du dialogue) ne regroupe que les réfs du réservoir « Non groupées » : réservoir vide → aucune action, mais la case restait cochée.
+- « **Toutes les lignées équivalentes entre elles** » / « **Équivalente (inter-lignées)** » ne relient que les **courantes de lignées** : avec moins de deux lignées à courante renseignée → 0 équivalence, sans avertissement.
+- Les avertissements existaient dans `derive()` (`import_relations.py`) mais n'étaient **jamais affichés** : le dialogue réel n'embarque que `GroupsZone`, pas `RelationsPanel` (récap + warnings), resté utilisé uniquement par les tests.
+
+**Corrections** (aucun changement de la logique d'application en base) :
+- **Récap en direct dans la zone de relations** (`GroupsZone`) : « Sera appliqué : N successions · M équivalences · K obsolètes · X réfs non groupées », mis à jour à chaque glisser-déposer/coche, + bandeau orange listant les déclarations sans effet (lignée sans courante, groupe d'équivalence à une seule réf, case inter-lignées sans deux courantes).
+- **Grisage des cases inopérantes** (avec infobulle expliquant pourquoi) : « Toutes équivalentes » grisée si le réservoir est vide ; « Toutes les lignées équivalentes » grisée sous deux lignées à courante. Jamais grisées quand cochées (toujours décochables). Si « Toutes équivalentes » est cochée alors que le réservoir est vide, elle se décoche d'elle-même au lieu de rester cochée sans effet.
+- **Garde-fou à la validation** : si une option d'équivalence est cochée mais que l'état déclaré ne produira aucune équivalence, un avertissement (non bloquant, `show()` + callbacks) propose « Importer quand même » ou « Revenir au dialogue ».
+- Nouvelle fonction pure `count_planned_relations(groups, cards)` (`src/services/import_relations.py`) : miroir sans écriture d'`apply_relations`, partagée par le récap et le garde-fou.
+
 ## [3.61.2] - 2026-07-03
 
 ### Fix racine : la fenêtre de progression d'import disparaissait avant la fin réelle du traitement

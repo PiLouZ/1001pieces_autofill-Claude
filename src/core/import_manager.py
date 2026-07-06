@@ -782,6 +782,11 @@ class ImportDialog(QDialog):
             # ── Zone de relations « par groupes » (lignées de succession +
             # groupes d'équivalence), alimentée par les références du lot ──────
             self._relations_groups_zone = self._build_relations_zone()
+            # État de la case « Toutes équivalentes » synchronisé sur le contenu du
+            # réservoir (grisée si aucune réf non groupée → coche sans effet).
+            if self._relations_groups_zone is not None:
+                self._relations_groups_zone.changed.connect(self._update_apply_all_equiv_state)
+            self._update_apply_all_equiv_state()
             rel_group = None
             if self._relations_groups_zone is not None:
                 rel_group = QGroupBox("Relations entre références (succession / équivalence)")
@@ -1039,11 +1044,41 @@ class ImportDialog(QDialog):
             return
         if state == Qt.Checked:
             self._auto_equiv_box = zone.add_all_to_new_equivalence()
+            if self._auto_equiv_box is None:
+                # Réservoir vide → la coche n'a produit aucun groupe : la décocher
+                # plutôt que la laisser cochée sans effet (no-op silencieux).
+                self._apply_all_equiv_checkbox.blockSignals(True)
+                self._apply_all_equiv_checkbox.setChecked(False)
+                self._apply_all_equiv_checkbox.blockSignals(False)
         else:
             box = getattr(self, '_auto_equiv_box', None)
             if box is not None:
                 zone.remove_auto_equivalence_group(box)
             self._auto_equiv_box = None
+        self._update_apply_all_equiv_state()
+
+    def _update_apply_all_equiv_state(self, *_):
+        """Griser « Toutes équivalentes » quand elle serait sans effet (réservoir
+        « Non groupées » vide) — jamais quand elle est cochée (décochable en tout temps)."""
+        cb = getattr(self, '_apply_all_equiv_checkbox', None)
+        if cb is None:
+            return
+        zone = getattr(self, '_relations_groups_zone', None)
+        if zone is None:
+            cb.setEnabled(False)
+            cb.setToolTip("Zone de relations indisponible : cette case n'a aucun effet.")
+            return
+        active = cb.isChecked() or zone.reservoir.count() > 0
+        cb.setEnabled(active)
+        if active:
+            cb.setToolTip(
+                "Regroupe les références encore non groupées comme équivalentes entre elles\n"
+                "(génère le groupe correspondant dans la zone « Relations entre références »).")
+        else:
+            cb.setToolTip(
+                "Aucune référence dans « Non groupées » : cette case n'aurait aucun effet.\n"
+                "Sortez d'abord des réfs des lignées/groupes, ou déclarez l'équivalence\n"
+                "directement dans la zone « Relations entre références ».")
 
     def _on_apply_all_obs_changed(self, state):
         """Coche/décoche toutes les cases 'Obsolète' individuelles."""
@@ -1225,9 +1260,67 @@ class ImportDialog(QDialog):
             if mapping:
                 config.column_mapping = mapping
 
+        # Garde-fou : une option d'équivalence est cochée mais l'état déclaré ne
+        # produira AUCUNE équivalence → avertir avant de lancer l'import (sinon
+        # l'utilisateur découvre après coup que sa déclaration a été perdue).
+        warning = self._equivalence_warning_message(config)
+        if warning:
+            self._confirm_import_sans_equivalence(config, warning)
+            return
+
         self.result_config = config
         self.accept()
-    
+
+    def _equivalence_warning_message(self, config) -> Optional[str]:
+        """Message d'avertissement si une intention d'équivalence est déclarée mais
+        qu'aucune équivalence ne sera créée. None si tout est cohérent."""
+        zone = getattr(self, '_relations_groups_zone', None)
+        if zone is None or config.relations_groups is None:
+            return None
+        from ..services.import_relations import count_planned_relations, KIND_EQUIVALENCE
+        counts = count_planned_relations(config.relations_groups,
+                                         config.relations_cards or [])
+        if counts['equivalences'] > 0:
+            return None
+        cb = getattr(self, '_apply_all_equiv_checkbox', None)
+        intent = (
+            (cb is not None and cb.isChecked())
+            or zone.all_equiv_check.isChecked()
+            or any(b.cross_check is not None and b.cross_check.isChecked()
+                   for b in zone._succ_boxes)
+            or any(g.kind == KIND_EQUIVALENCE for g in config.relations_groups)
+        )
+        if not intent:
+            return None
+        details = zone.warnings()
+        msg = ("Une option d'équivalence est cochée, mais en l'état "
+               "AUCUNE liaison d'équivalence ne sera créée par cet import.")
+        if details:
+            msg += "\n\n" + "\n".join(f"• {d}" for d in details)
+        msg += "\n\nImporter quand même (sans équivalence) ?"
+        return msg
+
+    def _confirm_import_sans_equivalence(self, config, message: str):
+        """Avertissement non bloquant (show + callbacks, jamais exec_) : importer
+        quand même, ou revenir au dialogue pour corriger la déclaration."""
+        from PyQt5.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Aucune équivalence ne sera créée")
+        box.setText(message)
+        btn_import = box.addButton("Importer quand même", QMessageBox.AcceptRole)
+        box.addButton("Revenir au dialogue", QMessageBox.RejectRole)
+        box.setWindowModality(Qt.WindowModal)
+
+        def _on_finished(*_):
+            if box.clickedButton() is btn_import:
+                self.result_config = config
+                self.accept()
+            box.deleteLater()
+
+        box.finished.connect(_on_finished)
+        box.show()
+
     def get_configuration(self) -> Optional[ImportConfiguration]:
         """Récupérer la configuration résultat"""
         return self.result_config

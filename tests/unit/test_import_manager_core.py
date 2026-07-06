@@ -586,3 +586,74 @@ class TestBatchInsertCacheInvalidation:
 
         count_after = test_db_manager.count_data(None, None)
         assert count_after == count_before + 5
+
+
+class TestEquivalenceGuardDialog:
+    """v3.62.0 : garde-fous contre la perte silencieuse des déclarations
+    d'équivalence dans le dialogue d'import multi-fichiers."""
+
+    def _dialog(self, test_db_manager, refs=('REF_A', 'REF_B', 'REF_C')):
+        from src.core.import_manager import (
+            ImportManager, ImportDialog, ImportConfiguration, ImportFile,
+            ImportType, FileType)
+        im = ImportManager(db_manager=test_db_manager, parent_widget=None)
+        files = [ImportFile(f'/{r}.csv', FileType.CSV, r) for r in refs]
+        for f in files:
+            f.data = [['Référence', 'Type', 'Marque'], [f.suggested_reference, 'Four', 'Bosch']]
+        cfg = ImportConfiguration(files=files, import_type=ImportType.MULTI_FILE)
+        dlg = ImportDialog(None, cfg, im)
+        dlg.auto_file_references_checkbox.setChecked(True)
+        return dlg
+
+    def test_toutes_equivalentes_passe_sans_garde_fou(self, qapp, test_db_manager):
+        """Cas nominal : réservoir plein + case cochée → équivalences collectées,
+        validation directe (pas d'avertissement)."""
+        from src.services.import_relations import KIND_EQUIVALENCE
+        dlg = self._dialog(test_db_manager)
+        dlg._apply_all_equiv_checkbox.setChecked(True)
+        dlg._validate_and_accept()
+        rc = dlg.result_config
+        assert rc is not None
+        equiv = [g for g in rc.relations_groups if g.kind == KIND_EQUIVALENCE]
+        assert len(equiv) == 1 and sorted(equiv[0].members) == ['REF_A', 'REF_B', 'REF_C']
+
+    def test_toutes_equivalentes_reservoir_vide_se_decoche(self, qapp, test_db_manager):
+        """Réservoir vide : la coche ne produit rien → elle se décoche d'elle-même
+        (plus de case cochée sans effet) et se grise."""
+        from PyQt5.QtWidgets import QListWidgetItem
+        from src.services.import_relations import KIND_SUCCESSION
+        dlg = self._dialog(test_db_manager)
+        z = dlg._relations_groups_zone
+        box = z.add_group(KIND_SUCCESSION)
+        for ref in ('REF_A', 'REF_B', 'REF_C'):
+            for i in range(z.reservoir.count()):
+                if z.reservoir.item(i).text() == ref:
+                    z.reservoir.takeItem(i)
+                    break
+            box.members.addItem(QListWidgetItem(ref))
+        z.changed.emit()
+        assert not dlg._apply_all_equiv_checkbox.isEnabled()
+        dlg._apply_all_equiv_checkbox.setChecked(True)     # coche programmatique
+        assert not dlg._apply_all_equiv_checkbox.isChecked()  # auto-décochée
+
+    def test_garde_fou_intention_sans_equivalence(self, qapp, test_db_manager):
+        """« Toutes les lignées équivalentes » cochée sans 2 courantes → la
+        validation passe par l'avertissement au lieu d'accepter en silence."""
+        dlg = self._dialog(test_db_manager)
+        dlg._relations_groups_zone.all_equiv_check.setChecked(True)
+        captured = {}
+        dlg._confirm_import_sans_equivalence = \
+            lambda config, msg: captured.update(config=config, msg=msg)
+        dlg._validate_and_accept()
+        assert dlg.result_config is None                  # pas d'accept direct
+        assert "AUCUNE liaison d'équivalence" in captured['msg']
+        # « Importer quand même » = le chemin du callback : config prête à l'emploi
+        assert captured['config'].relations_groups is not None
+
+    def test_pas_de_garde_fou_sans_intention(self, qapp, test_db_manager):
+        """Aucune option d'équivalence cochée → import direct, aucun avertissement."""
+        dlg = self._dialog(test_db_manager)
+        called = []
+        dlg._confirm_import_sans_equivalence = lambda *a: called.append(a)
+        dlg._validate_and_accept()
+        assert dlg.result_config is not None and not called
