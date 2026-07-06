@@ -22,7 +22,8 @@ from PyQt5.QtWidgets import (
 import qtawesome as qta
 
 from ..services.import_relations import (
-    Group, CardData, derive, KIND_SUCCESSION, KIND_EQUIVALENCE,
+    Group, CardData, derive, count_planned_relations,
+    KIND_SUCCESSION, KIND_EQUIVALENCE,
 )
 from ..core.config import pluralize
 
@@ -433,12 +434,33 @@ class GroupsZone(QWidget):
 
         lay.addLayout(cols, 1)
 
+        # Récap en direct : ce qui SERA réellement appliqué à l'import (successions /
+        # équivalences / non groupées) + avertissements sur les déclarations sans effet
+        # (case cochée mais aucune équivalence produite, lignée sans courante, etc.).
+        # C'est le filet contre les « no-op silencieux » : sans lui, une case peut
+        # rester cochée alors qu'elle ne produira rien.
+        self.recap_label = QLabel("")
+        self.recap_label.setWordWrap(True)
+        self.recap_label.setStyleSheet(
+            "background: #f1f3f5; border: 1px solid #dee2e6; border-radius: 4px;"
+            " padding: 5px; font-size: 11px; color: #333;")
+        lay.addWidget(self.recap_label)
+        self.warnings_label = QLabel("")
+        self.warnings_label.setWordWrap(True)
+        self.warnings_label.setStyleSheet(
+            "background: #fff3e0; border: 1px solid #ffb74d; border-radius: 4px;"
+            " padding: 5px; font-size: 11px; color: #e65100;")
+        self.warnings_label.setVisible(False)
+        lay.addWidget(self.warnings_label)
+        self.changed.connect(self._update_recap)
+
         # Pré-création d'une lignée vide + un groupe d'équivalence vide, pour que
         # l'utilisateur puisse glisser directement des réfs sans cliquer sur « + »
         # au préalable. Une boîte vide reste retirable (croix) et est ignorée par
         # derive()/apply_relations() (aucun member ni courante).
         self.add_group(KIND_SUCCESSION)
         self.add_group(KIND_EQUIVALENCE)
+        self._update_recap()
 
     def _build_group_column(self, title, color, btn_text, on_add, extra_widget=None):
         """Construit une colonne (titre + zone scrollable de boîtes + bouton d'ajout).
@@ -481,6 +503,9 @@ class GroupsZone(QWidget):
         for b in self._succ_boxes:
             if b.cross_check is not None:
                 b.cross_check.setChecked(checked)
+        # Émettre même sans lignée : le récap et l'état des cases du dialogue
+        # doivent réagir à la coche elle-même (cas « cochée mais sans effet »).
+        self.changed.emit()
 
     def add_group(self, kind):
         boxes = self._succ_boxes if kind == KIND_SUCCESSION else self._equiv_boxes
@@ -556,6 +581,72 @@ class GroupsZone(QWidget):
 
     def all_boxes(self):
         return self._succ_boxes + self._equiv_boxes
+
+    def planned_counts(self):
+        """Relations qui seront réellement appliquées à l'import (état courant)."""
+        return count_planned_relations(self.groups(), [])
+
+    def warnings(self):
+        """Déclarations actuellement sans effet (liste de messages, vide si tout va bien)."""
+        msgs = []
+        groups = self.groups()
+        n_courantes = sum(1 for g in groups if g.kind == KIND_SUCCESSION and g.courante)
+        for g in groups:
+            if g.kind == KIND_SUCCESSION and g.members and not g.courante:
+                msgs.append(f"Une lignée contient {pluralize(len(g.members), 'réf')} mais "
+                            "n'a pas de courante : aucune succession ne sera créée.")
+            elif g.kind == KIND_EQUIVALENCE:
+                effective = set(g.members) | ({g.courante} if g.courante else set())
+                if len(effective) == 1:
+                    msgs.append("Un groupe d'équivalence ne contient qu'une seule réf : "
+                                "aucune équivalence ne sera créée.")
+        cross = {g.courante for g in groups if g.cross_equivalent and g.courante}
+        cross_checked = sum(1 for g in groups
+                            if g.kind == KIND_SUCCESSION and g.cross_equivalent)
+        if cross_checked and len(cross) < 2:
+            msgs.append("« Équivalente (inter-lignées) » est cochée mais moins de deux "
+                        "lignées ont une courante : aucune équivalence croisée ne sera créée.")
+        elif self.all_equiv_check.isChecked() and n_courantes < 2:
+            msgs.append("« Toutes les lignées équivalentes entre elles » est cochée mais "
+                        "moins de deux lignées ont une courante : aucune équivalence "
+                        "ne sera créée par cette case.")
+        return msgs
+
+    def _update_recap(self, *_):
+        """Rafraîchir le récap (ce qui sera appliqué) + avertissements + grisage
+        de la case « Toutes les lignées équivalentes » quand elle serait sans effet."""
+        if not hasattr(self, 'recap_label'):
+            return   # appelé pendant _build, avant la création du récap
+        counts = self.planned_counts()
+        parts = [
+            f"Sera appliqué : {pluralize(counts['successions'], 'succession')}",
+            pluralize(counts['equivalences'], 'équivalence'),
+            pluralize(counts['obsoletes'], 'obsolète'),
+        ]
+        n_reservoir = self.reservoir.count()
+        if n_reservoir:
+            parts.append(f"{pluralize(n_reservoir, 'réf non groupée', 'réfs non groupées')}")
+        self.recap_label.setText(" · ".join(parts))
+
+        msgs = self.warnings()
+        self.warnings_label.setText("\n".join(f"• {m}" for m in msgs))
+        self.warnings_label.setVisible(bool(msgs))
+
+        # Case « Toutes les lignées équivalentes » : sans effet sous 2 lignées avec
+        # courante → grisée (mais jamais verrouillée cochée : décochable en tout temps).
+        n_courantes = sum(1 for b in self._succ_boxes
+                          if b.courante_input is not None
+                          and b.courante_input.text().strip())
+        active = self.all_equiv_check.isChecked() or n_courantes >= 2
+        self.all_equiv_check.setEnabled(active)
+        if active:
+            self.all_equiv_check.setToolTip(
+                "Coche « Équivalente (inter-lignées) » sur toutes les lignées,\n"
+                "présentes et à venir (courantes de marques ≠ déclarées équivalentes).")
+        else:
+            self.all_equiv_check.setToolTip(
+                "Nécessite au moins deux lignées avec une courante renseignée\n"
+                "(elle relie les courantes des lignées entre elles).")
 
 
 # ── Panneau global ────────────────────────────────────────────────────────────

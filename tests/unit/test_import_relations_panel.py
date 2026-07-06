@@ -214,3 +214,74 @@ class TestSolo:
         card.replaces_input.setText("OLD")
         cd = panel.get_cards()[0]
         assert cd.is_obsolete and cd.base_replaces == "OLD"
+
+
+class TestRecapEtGardesFous:
+    """v3.62.0 : récap en direct + avertissements + grisage des cases sans effet
+    (les déclarations d'équivalence ne doivent plus se perdre en silence)."""
+
+    def test_recap_compte_les_equivalences(self, qapp):
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        box = z.add_group(KIND_EQUIVALENCE)
+        _move(panel, "S1", box)
+        _move(panel, "S2", box)
+        z._update_recap()
+        assert "1 équivalence" in z.recap_label.text()
+        assert not z.warnings_label.isVisible() or z.warnings_label.text() == ""
+
+    def test_warning_lignee_sans_courante(self, qapp):
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        box = z.add_group(KIND_SUCCESSION)
+        _move(panel, "B1", box)
+        z._update_recap()
+        assert "0 succession" in z.recap_label.text()
+        assert "pas de courante" in z.warnings_label.text()
+
+    def test_warning_toutes_lignees_equivalentes_sans_deux_courantes(self, qapp):
+        """Le no-op silencieux du rapport utilisateur (import 06/07 14:49) :
+        case cochée, mais < 2 lignées avec courante → 0 équivalence, désormais signalé."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        z.all_equiv_check.setChecked(True)
+        z._update_recap()
+        assert "0 équivalence" in z.recap_label.text()
+        assert "aucune équivalence" in z.warnings_label.text()
+
+    def test_warning_cross_une_seule_lignee(self, qapp):
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        box = z.add_group(KIND_SUCCESSION)
+        box.courante_input.setText("B3")
+        _move(panel, "B1", box)
+        box.cross_check.setChecked(True)
+        z._update_recap()
+        assert "aucune équivalence croisée" in z.warnings_label.text()
+
+    def test_grisage_toutes_lignees_equivalentes(self, qapp):
+        """Grisée sous 2 lignées à courante ; réactivée à 2 ; jamais verrouillée cochée."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        z._update_recap()
+        assert not z.all_equiv_check.isEnabled()          # 0 courante
+        b1 = z.add_group(KIND_SUCCESSION); b1.courante_input.setText("B3")
+        z._update_recap()
+        assert not z.all_equiv_check.isEnabled()          # 1 courante
+        b2 = z.add_group(KIND_SUCCESSION); b2.courante_input.setText("S2")
+        z._update_recap()
+        assert z.all_equiv_check.isEnabled()              # 2 courantes
+        # cochée puis courantes retirées → reste décochable (jamais grisée cochée)
+        z.all_equiv_check.setChecked(True)
+        b2.courante_input.setText("")
+        z._update_recap()
+        assert z.all_equiv_check.isEnabled()
+
+    def test_recap_reagit_a_la_coche_globale(self, qapp):
+        """_on_all_equiv_toggled émet changed même sans lignée : le récap se met à jour."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        z.all_equiv_check.setChecked(True)
+        assert "aucune équivalence" in z.warnings_label.text()
+        z.all_equiv_check.setChecked(False)
+        assert z.warnings_label.text() == ""
