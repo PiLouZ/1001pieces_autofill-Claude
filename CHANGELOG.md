@@ -4,6 +4,21 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.63.0] - 2026-07-10 (branche `fix/pieces-manager-qa`)
+
+### Fix : gestionnaire de pièces — rafraîchissement, boutons +, focus édition
+
+QA ciblée (demande utilisateur) sur la fenêtre de gestion des pièces, notamment le symptôme « il faut forcer un rafraîchissement pour voir les bonnes listes, surtout en arrivant via le widget pièce de la fenêtre principale ».
+
+- **Rafraîchissement — 4 causes distinctes trouvées et corrigées** (`src/ui/pieces_manager.py`) :
+  - La fenêtre est créée une fois puis réutilisée (cache sur `main_window.pieces_manager`) via un simple `show()` — les données restaient figées au tout premier chargement. `showEvent` recharge désormais à chaque ré-affichage.
+  - `open_on_piece` (point d'entrée du widget pièce) pouvait chercher une référence dans une table encore vide (chargement initial différé de 50 ms non écoulé) ou périmée (fenêtre déjà visible) : rechargement synchrone ajouté avant la recherche.
+  - 10 actions de la colonne de droite (ajout/retrait d'équivalence, de succession, obsolète, chips ×) ne repeignaient qu'à partir de caches (`all_statuses`/`all_pieces_data`) jamais recalculés après l'écriture en base → colonne Statut et refs fantômes périmées. Elles rechargent maintenant réellement depuis la DB.
+  - Cause la plus fine : `selectRow()` est un no-op **silencieux** quand Qt a déjà déplacé la sélection résiduelle pendant le refill du tableau (sous `blockSignals`) — la ligne *paraissait* sélectionnée mais aucun signal ne partait, laissant le panneau de droite affiché sur l'ancienne pièce. Synchronisation explicite des panneaux ajoutée après `selectRow`.
+- **Boutons colonne de droite simplifiés** : les 3 boutons verbeux (« + Ajouter une équivalence… », « + Ajouter une référence remplacée… », « + Déclarer remplacée par… ») sont remplacés par une icône **+** compacte (qtawesome), libellé complet conservé en tooltip, comportement inchangé.
+- **Focus du champ en édition** : double-clic sur le libellé (colonne 1) → le champ Libellé est présélectionné dans `PieceEditDialog` ; toute autre colonne → champ Référence (comportement historique conservé pour F2 et le bouton crayon).
+- **Vérifié** : 24/24 scénarios QA offscreen dédiés (réouverture, CRUD, mutations de relations, sélection sticky, focus d'édition), suite complète 439 passed, `compileall` OK.
+
 ## [3.62.0] - 2026-07-06 (branche `fix/import-equivalence-feedback`)
 
 ### Fix : déclarations d'équivalence perdues silencieusement à l'import multi-fichiers
