@@ -52,6 +52,63 @@ class SEOGenerator:
         "Économique et écologique : {description} {reference} pour {type_appareil} {fabricants}, réparez au lieu de remplacer",
     ]
 
+    # ── L2 : templates contextuels (rejoignent le pool SEULEMENT si leur signal est actif) ──
+    # Forte compatibilité : la pièce équipe beaucoup de modèles d'appareils différents.
+    META_DESCRIPTION_TEMPLATES_COMPAT = [
+        "{description_cap} {reference} compatible avec de nombreux {type_appareil} {fabricants} — trouvez la vôtre",
+        "Pièce multi-modèles : {description} {reference} pour {type_appareil} {fabricants} — large compatibilité",
+    ]
+    # Supersession : la référence courante remplace une ancienne réf (capte les
+    # recherches encore faites sur l'ancienne référence {ref_old}).
+    META_DESCRIPTION_TEMPLATES_SUPERSESSION = [
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — remplace l'ancienne référence {ref_old}",
+        "{description_cap} {reference} remplace {ref_old} — pièce compatible {type_appareil} {fabricants}",
+    ]
+    # Seuil « large compatibilité » (nb de modèles) et poids des templates contextuels
+    # dans le tirage pondéré. Réglables : un poids > 1 favorise sans forcer (la diversité
+    # du pool générique reste possible).
+    COMPAT_MODELS_THRESHOLD = 20
+    CONTEXT_TEMPLATE_WEIGHT = 6.0
+
+    # ── L3 : templates par segment d'appareil (micro-moments à fort intent) ──
+    # Clés = sortie de _normalize_type(). Matching par clé la plus longue contenue
+    # (via _segment_templates_for) pour gérer "lave-linge top", "four micro-ondes".
+    # Fallback systématique sur le pool générique si le type n'a pas d'entrée.
+    SEGMENT_DESCRIPTION_TEMPLATES = {
+        "lave-linge": [
+            "Plus d'essorage ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
+            "Fuite sur votre {type_appareil} {fabricants} ? {description_cap} {reference} en stock — Chronopost J+1 avant 13h",
+        ],
+        "lave-vaisselle": [
+            "Débordement ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
+            "Ne vidange plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, retrait en magasin possible",
+        ],
+        "réfrigérateur": [
+            "Plus de froid ? {description_cap} {reference} pour {type_appareil} {fabricants} — OEM, Chronopost J+1 avant 13h",
+            "Trop de givre ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
+        ],
+        "sèche-linge": [
+            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
+            "Linge encore humide ? {description_cap} {reference} pour {type_appareil} {fabricants} — retour possible sous 21 jours",
+        ],
+        "four": [
+            "Plus de chaleur ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
+            "Réparez votre {type_appareil} {fabricants} : {description_cap} {reference} en stock, Chronopost J+1 avant 13h",
+        ],
+        "hotte": [
+            "N'aspire plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
+            "Hotte {fabricants} bruyante ? {description_cap} {reference} en stock — retrait en magasin possible",
+        ],
+        "congélateur": [
+            "Ne congèle plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
+            "Givre excessif ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
+        ],
+        "micro-ondes": [
+            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — OEM, expédition avant 15h",
+            "Plateau bloqué ? {description_cap} {reference} pour {type_appareil} {fabricants}, Chronopost J+1 avant 13h",
+        ],
+    }
+
     # Méta title — 3 gabarits, référence (courante) TOUJOURS en position 0.
     # La troncature coupant par la fin, la référence en position 0 n'est jamais
     # tronquée. Les 3 variantes diversifient le CTR sans casser les invariants :
@@ -186,24 +243,29 @@ class SEOGenerator:
     @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
                                  fabricants: List[str], max_length: int = 150,
-                                 n_modeles: int = 0) -> Dict[str, any]:
+                                 n_modeles: int = 0, ref_old: Optional[str] = None) -> Dict[str, any]:
         """
-        Générer une méta description aléatoire (pool varié pour l'unicité à
-        grande échelle). La référence est la référence courante (résolue en
-        amont) ; les anciennes références ne sont pas mentionnées.
+        Générer une méta description via un tirage pondéré contextuel (L2/L3) :
+        pool générique (unicité à grande échelle) enrichi de templates de segment
+        (type d'appareil), de forte compatibilité (n_modeles) et de supersession
+        (ref_old), favorisés sans jamais évincer la diversité générique.
+        La référence est la référence courante (résolue en amont) ; ref_old, si
+        fourni, est la référence obsolète remplacée (mentionnée par les gabarits
+        supersession uniquement).
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=False)
         type_clean = self._normalize_type(type_appareil)
+        ref_old_clean = ref_old.strip() if ref_old else None
 
         article = self._get_article(description_clean)
         description_with_article = f"{article} {description_clean}"
 
-        template = random.choice(self.META_DESCRIPTION_TEMPLATES)
+        template = self._choose_description_template(type_clean, n_modeles, ref_old_clean)
 
         fabricants_str = self._select_fabricants_for_description(
             fabricants, template, reference_clean, description_with_article, type_clean, max_length,
-            ref_old=None
+            ref_old=ref_old_clean
         )
 
         # ── Instancier le template ────────────────────────────────────────────
@@ -213,6 +275,7 @@ class SEOGenerator:
             reference=reference_clean,
             type_appareil=type_clean,
             fabricants=fabricants_str,
+            ref_old=(ref_old_clean or ""),
         )
 
         description_text = template.format(**fmt_kwargs)
@@ -228,6 +291,8 @@ class SEOGenerator:
             'fabricants_used': fabricants_str,
             'fabricants_count': len(fabricants),
             'n_modeles': n_modeles,
+            'ref_old': ref_old_clean,
+            'is_supersession': bool(ref_old_clean) and '{ref_old}' in template,
         }
 
         self.last_generation_info['description'] = generation_info
@@ -238,6 +303,49 @@ class SEOGenerator:
             'info': generation_info
         }
     
+    def _segment_templates_for(self, type_norm: str) -> List[str]:
+        """
+        Retourne les templates de segment pour un type d'appareil normalisé.
+        Matching par la clé la plus LONGUE contenue dans le type (et non ==), pour
+        gérer les variantes ("lave-linge top" → "lave-linge", "four micro-ondes" →
+        "micro-ondes" plutôt que "four"). Retourne [] si aucun segment ne correspond.
+        """
+        if not type_norm:
+            return []
+        best_key = None
+        for key in self.SEGMENT_DESCRIPTION_TEMPLATES:
+            if key in type_norm and (best_key is None or len(key) > len(best_key)):
+                best_key = key
+        return self.SEGMENT_DESCRIPTION_TEMPLATES[best_key] if best_key else []
+
+    def _choose_description_template(self, type_norm: str, n_modeles: int,
+                                     ref_old: Optional[str]) -> str:
+        """
+        Tirage pondéré du gabarit de description (L2/L3).
+        Le pool générique (25 templates) est TOUJOURS présent — garantie d'unicité
+        et de diversité à grande échelle. Les templates contextuels (segment,
+        forte compatibilité, supersession) ne rejoignent le pool que si leur signal
+        est actif, avec un poids > 1 : favorisés sans jamais évincer le générique.
+        """
+        pool = list(self.META_DESCRIPTION_TEMPLATES)
+        weights = [1.0] * len(pool)
+
+        def _boost(templates: List[str]) -> None:
+            for tpl in templates:
+                pool.append(tpl)
+                weights.append(self.CONTEXT_TEMPLATE_WEIGHT)
+
+        # L3 — segment d'appareil (micro-moments à fort intent)
+        _boost(self._segment_templates_for(type_norm))
+        # L2 — forte compatibilité (la pièce équipe beaucoup de modèles)
+        if n_modeles >= self.COMPAT_MODELS_THRESHOLD:
+            _boost(self.META_DESCRIPTION_TEMPLATES_COMPAT)
+        # L2 — supersession (mention explicite de l'ancienne référence)
+        if ref_old:
+            _boost(self.META_DESCRIPTION_TEMPLATES_SUPERSESSION)
+
+        return random.choices(pool, weights=weights, k=1)[0]
+
     def _maximize_brands_in_title(self, fabricants: List[str], template: str,
                                 max_length: int, **template_kwargs) -> str:
         """Maximiser le nombre de marques dans le titre selon le template choisi"""
