@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.64.0] - 2026-07-10 (branche `feature/seo-meta-v2`)
+
+### SEO : diversification des méta titles + 7 nouveaux angles de description
+
+Refonte des générateurs des deux boutons **Méta Title** et **Méta Desc** (`src/utils/seo_generator.py`), après audit SEO dédié et alignement sur la politique commerciale réelle de 1001pieces.com (CGV + page livraison).
+
+- **Méta title — 3 gabarits au lieu d'un seul** (tirés au hasard, `META_TITLE_TEMPLATES`) pour diversifier le CTR sans casser les invariants : la référence reste **toujours en position 0** (jamais tronquée) et au moins une marque est garantie. Variantes : baseline, connecteur « pour », et marques en avant.
+- **Méta descriptions — 18 → 25 templates.** 7 nouveaux angles, tous conformes aux conditions réelles (aucune mention de garantie, jugée trop spécifique aux pièces) :
+  - **Qualité** : « pièce OEM ou alternative de qualité OEM ».
+  - **Retour** : « retour possible sous 21 jours après réception » (frais à la charge du client → wording factuel, pas de « gratuit »).
+  - **Expédition le jour même** : « validez avant 15h, expédié le jour même ».
+  - **Express Chronopost** : « livraison Chronopost dès le lendemain avant 13h ».
+  - **Retrait magasin** : « à retirer en magasin dès la commande validée ».
+  - **Livraison standard** : « livraison à domicile en 48 à 72h en métropole » (La Poste).
+  - **Écologie/économie** : « réparez au lieu de remplacer ».
+- **Robustesse** : normalisation des espaces du titre (`" ".join(split())`) — un `{fabricants}` vide au milieu d'un gabarit ne laisse plus de double espace. Sortie identique au chemin normal (fabricants renseignés).
+- **Vérifié** : script offscreen dédié (3 variantes × 6 cas + 25 templates : longueurs ≤ 60/150, aucun double espace, aucun placeholder non résolu, référence en tête), suite complète **439 passed**, `compileall` OK.
+
 ## [3.63.0] - 2026-07-10 (branche `fix/pieces-manager-qa`)
 
 ### Fix : gestionnaire de pièces — rafraîchissement, boutons +, focus édition

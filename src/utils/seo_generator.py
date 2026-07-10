@@ -10,7 +10,7 @@ from .error_handler import handle_seo_generation_errors
 class SEOGenerator:
     """Générateur de métadonnées SEO pour pièces détachées électroménager"""
     
-    # Pool unique de méta descriptions (18 templates — angles variés)
+    # Pool unique de méta descriptions (25 templates — angles variés)
     META_DESCRIPTION_TEMPLATES = [
         # Achat direct
         "Commandez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste pièces détachées",
@@ -36,14 +36,34 @@ class SEOGenerator:
         # DIY
         "{description_cap} {reference} pour {type_appareil} {fabricants} — réparez facilement votre appareil sans faire appel à un technicien",
         "Faites-le vous-même : {description} {reference} pour {type_appareil} {fabricants}, la réparation à portée de main",
+        # Qualité pièce (OEM / compatible certifiée) — USP réel, pas de mention de garantie
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM ou alternative de qualité OEM",
+        # Retour (21 jours après réception, frais à la charge du client → wording factuel)
+        "Commandez {description} {reference} pour {type_appareil} {fabricants} — retour possible sous 21 jours après réception",
+        # Expédition le jour même (commande validée avant 15h en jour ouvré)
+        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} — validez avant 15h, expédié le jour même",
+        # Livraison express Chronopost (le lendemain avant 13h)
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — livraison Chronopost dès le lendemain avant 13h",
+        # Retrait en magasin (immédiat après validation de la commande)
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — à retirer en magasin dès la commande validée",
+        # Livraison standard (La Poste, 48 à 72h en métropole)
+        "Trouvez {description} {reference} pour {type_appareil} {fabricants} — livraison à domicile en 48 à 72h en métropole",
+        # Écologie / économie (réparer plutôt que remplacer)
+        "Économique et écologique : {description} {reference} pour {type_appareil} {fabricants}, réparez au lieu de remplacer",
     ]
 
-    # Méta title — gabarit UNIQUE, référence (courante) TOUJOURS en tête.
-    # La diversité/unicité des titres vient des données (réf unique + libellé +
-    # marques), pas du gabarit. La troncature coupant par la fin, la référence
-    # en position 0 n'est jamais tronquée. Les anciennes références ne sont pas
-    # mentionnées (décision produit).
-    META_TITLE_TEMPLATE = "{reference} {description} {type_appareil} {fabricants}"
+    # Méta title — 3 gabarits, référence (courante) TOUJOURS en position 0.
+    # La troncature coupant par la fin, la référence en position 0 n'est jamais
+    # tronquée. Les 3 variantes diversifient le CTR sans casser les invariants :
+    # chacune commence par {reference} et contient {fabricants} (au moins une
+    # marque garantie par _maximize_brands_in_title). Le gabarit est tiré au
+    # hasard, comme les descriptions ; la réf unique par pièce garantit déjà
+    # l'unicité. Les anciennes références ne sont pas mentionnées (décision produit).
+    META_TITLE_TEMPLATES = [
+        "{reference} {description} {type_appareil} {fabricants}",       # baseline
+        "{reference} {description} pour {type_appareil} {fabricants}",  # connecteur naturel
+        "{reference} {description} {fabricants} {type_appareil}",       # marques en avant
+    ]
 
     # Mots de liaison à supprimer en priorité pour préserver les marques
     FILLER_WORDS = [
@@ -117,14 +137,14 @@ class SEOGenerator:
                            fabricants: List[str], max_length: int = 60) -> Dict[str, any]:
         """
         Générer un méta title : référence (courante) en tête, puis libellé,
-        type d'appareil et marques, via le gabarit unique META_TITLE_TEMPLATE.
+        type d'appareil et marques, via un gabarit tiré de META_TITLE_TEMPLATES.
         Au moins une marque est privilégiée dans la limite de longueur.
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=True)
         type_clean = self._normalize_type(type_appareil)
 
-        template = self.META_TITLE_TEMPLATE
+        template = random.choice(self.META_TITLE_TEMPLATES)
         template_kwargs = dict(
             reference=reference_clean,
             description=description_clean,
@@ -135,7 +155,10 @@ class SEOGenerator:
             fabricants, template, max_length, **template_kwargs
         )
 
-        raw_title = template.format(fabricants=fabricants_optimaux, **template_kwargs).strip()
+        # " ".join(split()) : réduit tout espace multiple à un seul et nettoie les bords
+        # (cas d'un {fabricants} vide au milieu du gabarit → double espace). Sortie
+        # identique au chemin normal où les fabricants sont renseignés.
+        raw_title = " ".join(template.format(fabricants=fabricants_optimaux, **template_kwargs).split())
         base_title = raw_title
         if len(raw_title) > max_length:
             base_title = self._optimize_title_with_brands(raw_title, fabricants_optimaux, max_length)
