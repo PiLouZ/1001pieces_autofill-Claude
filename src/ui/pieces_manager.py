@@ -133,10 +133,25 @@ class PiecesManagerWindow(QDialog):
         screen = QApplication.primaryScreen().availableGeometry()
         self.resize(min(1300, screen.width() - 80), min(800, screen.height() - 80))
         
+        self._data_loaded = False
         self._init_ui()
         # Afficher la fenêtre d'abord, charger les données après le premier rendu
-        QTimer.singleShot(50, self._load_pieces_data)
-        
+        # (sauf si open_on_piece a déjà déclenché un chargement synchrone entre-temps)
+        QTimer.singleShot(50, self._initial_load)
+
+    def _initial_load(self):
+        """Chargement initial différé — ignoré si les données sont déjà chargées."""
+        if not self._data_loaded:
+            self._load_pieces_data()
+
+    def showEvent(self, event):
+        """La fenêtre est mise en cache par piece_management_service et réutilisée :
+        recharger les données à chaque ré-affichage, sinon elles restent figées
+        au premier chargement (listes et statuts périmés)."""
+        super().showEvent(event)
+        if self._data_loaded:
+            self._load_pieces_data()
+
     def _init_ui(self):
         """Initialiser l'interface utilisateur"""
         layout = QVBoxLayout()
@@ -402,10 +417,14 @@ class PiecesManagerWindow(QDialog):
         lbl_eq.setStyleSheet("color: #8e44ad; font-weight: bold; font-size: 11px;")
         equiv_hdr.addWidget(lbl_eq)
         equiv_hdr.addStretch()
-        self.btn_link_equiv = QPushButton("+ Ajouter une équivalence…")
+        self.btn_link_equiv = QPushButton()
+        self.btn_link_equiv.setIcon(qta.icon('fa5s.plus', color='#8e44ad'))
+        self.btn_link_equiv.setIconSize(QSize(11, 11))
+        self.btn_link_equiv.setFixedSize(20, 20)
+        self.btn_link_equiv.setToolTip("Ajouter une équivalence")
         self.btn_link_equiv.setStyleSheet(
-            "QPushButton { color: #8e44ad; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
+            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton:hover { background: rgba(142,68,173,0.12); }"
         )
         self.btn_link_equiv.setFlat(True)
         self.btn_link_equiv.setEnabled(False)
@@ -448,10 +467,14 @@ class PiecesManagerWindow(QDialog):
         lbl_rep.setStyleSheet("color: #2980b9; font-weight: bold; font-size: 11px;")
         replaces_hdr.addWidget(lbl_rep)
         replaces_hdr.addStretch()
-        self.btn_mark_replaces = QPushButton("+ Ajouter une référence remplacée…")
+        self.btn_mark_replaces = QPushButton()
+        self.btn_mark_replaces.setIcon(qta.icon('fa5s.plus', color='#2980b9'))
+        self.btn_mark_replaces.setIconSize(QSize(11, 11))
+        self.btn_mark_replaces.setFixedSize(20, 20)
+        self.btn_mark_replaces.setToolTip("Ajouter une référence remplacée")
         self.btn_mark_replaces.setStyleSheet(
-            "QPushButton { color: #2980b9; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
+            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton:hover { background: rgba(41,128,185,0.12); }"
         )
         self.btn_mark_replaces.setFlat(True)
         self.btn_mark_replaces.clicked.connect(self._on_mark_replaces)
@@ -478,10 +501,14 @@ class PiecesManagerWindow(QDialog):
         lbl_sup.setStyleSheet("color: #e67e22; font-weight: bold; font-size: 11px;")
         superseded_hdr.addWidget(lbl_sup)
         superseded_hdr.addStretch()
-        self.btn_mark_superseded = QPushButton("+ Déclarer remplacée par…")
+        self.btn_mark_superseded = QPushButton()
+        self.btn_mark_superseded.setIcon(qta.icon('fa5s.plus', color='#e67e22'))
+        self.btn_mark_superseded.setIconSize(QSize(11, 11))
+        self.btn_mark_superseded.setFixedSize(20, 20)
+        self.btn_mark_superseded.setToolTip("Déclarer remplacée par une autre référence")
         self.btn_mark_superseded.setStyleSheet(
-            "QPushButton { color: #e67e22; font-size: 11px; border: none; }"
-            "QPushButton:hover { text-decoration: underline; }"
+            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton:hover { background: rgba(230,126,34,0.12); }"
         )
         self.btn_mark_superseded.setFlat(True)
         self.btn_mark_superseded.clicked.connect(self._on_mark_superseded)
@@ -715,6 +742,7 @@ class PiecesManagerWindow(QDialog):
         results = self.db_manager.execute_query(query_fast) or []
         self.all_pieces_data = results
         self.all_statuses = {}
+        self._data_loaded = True
         self.stats_label.setText(f"{pluralize(len(results), 'référence')} — chargement des données…")
         self._update_table_display()
         # Phase 2 : données complètes après le premier rendu
@@ -1047,15 +1075,24 @@ class PiecesManagerWindow(QDialog):
         self._update_table_display()
 
     def _on_double_click_piece(self, item):
-        """Double-clic sur une ligne → édition immédiate."""
-        self._edit_selected_piece()
+        """Double-clic sur une ligne → édition immédiate.
+        Le champ correspondant à la colonne double-cliquée est présélectionné
+        dans le dialogue (colonne 1 = libellé, sinon référence)."""
+        focus_field = 'desc' if item.column() == 1 else 'ref'
+        self._edit_selected_piece(focus_field=focus_field)
 
     def open_on_piece(self, ref: str):
         """Ouvrir le gestionnaire et se positionner sur la pièce donnée.
         Point d'entrée public utilisé par piece_management_service."""
-        self.show()
+        was_visible = self.isVisible()
+        self.show()   # showEvent recharge les données si la fenêtre était cachée
         self.raise_()
         self.activateWindow()
+        # Fenêtre déjà visible (pas de showEvent) ou chargement initial encore
+        # différé (QTimer 50ms pas écoulé) : recharger avant de chercher la ref,
+        # sinon la recherche s'exécute sur une table périmée ou vide.
+        if was_visible or not self._data_loaded:
+            self._load_pieces_data()
         self._search_in_manager(ref)
 
     def _search_in_manager(self, ref: str):
@@ -1075,6 +1112,12 @@ class PiecesManagerWindow(QDialog):
             if item and (item.data(Qt.UserRole) or item.text()) == ref:
                 self.pieces_table.selectRow(row)
                 self.pieces_table.scrollToItem(item)
+                # selectRow est un no-op SILENCIEUX si la ligne était déjà
+                # sélectionnée (sélection résiduelle déplacée par Qt pendant le
+                # refill sous blockSignals) : itemSelectionChanged ne part pas
+                # et les panneaux restent sur l'ancienne pièce. Synchroniser
+                # explicitement (idempotent si le signal a bien été émis).
+                self._on_piece_selected()
                 break
 
     def _inject_ref_in_search(self, ref: str):
@@ -1607,7 +1650,9 @@ class PiecesManagerWindow(QDialog):
         if details_lines:
             self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
-            self._update_table_display()
+            # Recharger depuis la DB : add_supersession peut créer des refs
+            # fantômes et modifier les statuts — le cache all_statuses est périmé
+            self._load_pieces_data()
         if errors:
             QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
 
@@ -1643,7 +1688,7 @@ class PiecesManagerWindow(QDialog):
         if details_lines:
             self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
-            self._update_table_display()
+            self._load_pieces_data()
         if errors:
             QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
 
@@ -1709,7 +1754,7 @@ class PiecesManagerWindow(QDialog):
         if details_lines:
             self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
-            self._update_table_display()
+            self._load_pieces_data()
         if errors:
             QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
@@ -1737,7 +1782,7 @@ class PiecesManagerWindow(QDialog):
         if details_lines:
             self._notify_history("Succession :\n" + "\n".join(details_lines))
             self._refresh_succession_panel(self._current_ref_piece)
-            self._update_table_display()
+            self._load_pieces_data()
 
     _format_refs_recap = staticmethod(_format_refs_recap)
 
@@ -1794,7 +1839,7 @@ class PiecesManagerWindow(QDialog):
         self._notify_history(
             f"Équivalence :\n==> {len(refs)} pièces fusionnées en un groupe ({self._format_refs_recap(refs)})"
         )
-        self._update_table_display()
+        self._load_pieces_data()
         if errors:
             QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
@@ -1920,7 +1965,7 @@ class PiecesManagerWindow(QDialog):
         if details_lines:
             self._notify_history("Équivalence :\n" + "\n".join(details_lines))
             self._refresh_equivalence_panel(ref_piece)
-            self._update_table_display()
+            self._load_pieces_data()
         if errors:
             QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
@@ -1939,7 +1984,7 @@ class PiecesManagerWindow(QDialog):
         self.db_manager.remove_equivalence(ref_piece)
         self._notify_history(f"Équivalence :\n==> '{ref_piece}' → (retiré du groupe)")
         self._refresh_equivalence_panel(ref_piece)
-        self._update_table_display()
+        self._load_pieces_data()
 
     def _on_remove_superseded_by(self, ref_new: str):
         """Supprimer le lien 'Remplacée par ref_new' pour la pièce courante (chip ×)."""
@@ -1949,7 +1994,7 @@ class PiecesManagerWindow(QDialog):
         self.db_manager.remove_supersession(ref_piece)
         self._notify_history(f"Succession :\n==> '{ref_piece}' → (succession annulée)")
         self._refresh_succession_panel(ref_piece)
-        self._update_table_display()
+        self._load_pieces_data()
 
     def _on_remove_replaces(self, ref_old: str):
         """Supprimer le lien 'ref_old est remplacée par pièce courante' (chip ×)."""
@@ -1958,7 +2003,7 @@ class PiecesManagerWindow(QDialog):
         self.db_manager.remove_supersession(ref_old)
         self._notify_history(f"Succession :\n==> '{ref_old}' → (succession annulée)")
         self._refresh_succession_panel(self._current_ref_piece)
-        self._update_table_display()
+        self._load_pieces_data()
 
     def _on_remove_equiv(self, equiv_ref: str):
         """Retirer un membre spécifique du groupe d'équivalence (chip ×)."""
@@ -1967,7 +2012,7 @@ class PiecesManagerWindow(QDialog):
         self.db_manager.remove_equivalence(equiv_ref)
         self._notify_history(f"Équivalence :\n==> '{equiv_ref}' → (retiré du groupe)")
         self._refresh_equivalence_panel(self._current_ref_piece)
-        self._update_table_display()
+        self._load_pieces_data()
 
     def _notify_history(self, message: str):
         """Envoyer un message à l'historique principal si disponible."""
@@ -2132,10 +2177,10 @@ class PiecesManagerWindow(QDialog):
             summary = f"Suppression de la pièce '{ref_piece}' ({pluralize(nb_associations, 'association')})"
             self.parent().user_interaction_service.add_to_history(summary)
     
-    def _do_edit_piece(self, current_ref: str, current_desc: str):
+    def _do_edit_piece(self, current_ref: str, current_desc: str, focus_field: str = 'ref'):
         """Logique commune d'édition d'une pièce : dialogue, validation, mise à jour DB, historique."""
         equivalents = self.db_manager.get_equivalents(current_ref)
-        dialog = PieceEditDialog(self, current_ref, current_desc, equivalents)
+        dialog = PieceEditDialog(self, current_ref, current_desc, equivalents, focus_field=focus_field)
 
         def _on_accepted():
             new_ref, new_desc, propagate = dialog.get_values()
@@ -2176,7 +2221,7 @@ class PiecesManagerWindow(QDialog):
         dialog.show()
 
     @handle_ui_errors(log_prefix="Erreur modification pièce", show_message=True)
-    def _edit_selected_piece(self, checked=False):
+    def _edit_selected_piece(self, checked=False, focus_field: str = 'ref'):
         """Modifier la pièce sélectionnée"""
         current_row = self.pieces_table.currentRow()
         if current_row < 0:
@@ -2190,7 +2235,7 @@ class PiecesManagerWindow(QDialog):
         current_ref = ref_item.data(Qt.UserRole) or ref_item.text()
         desc_item = self.pieces_table.item(current_row, 1)
         current_desc = desc_item.text() if desc_item else ""
-        self._do_edit_piece(current_ref, current_desc)
+        self._do_edit_piece(current_ref, current_desc, focus_field=focus_field)
 
     @handle_ui_errors(log_prefix="Erreur modification pièce (row)", show_message=True)
     def _edit_piece_at_row(self, row: int):
@@ -2246,7 +2291,7 @@ class PiecesManagerWindow(QDialog):
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""
     
-    def __init__(self, parent, current_ref, current_desc, equivalents=None):
+    def __init__(self, parent, current_ref, current_desc, equivalents=None, focus_field='ref'):
         super().__init__(parent)
         self.setWindowTitle("Modifier la pièce")
         self.setModal(True)
@@ -2300,9 +2345,10 @@ class PieceEditDialog(QDialog):
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
         
-        # Focus sur le champ référence
-        self.ref_input.selectAll()
-        self.ref_input.setFocus()
+        # Présélectionner le champ correspondant à la colonne double-cliquée
+        target = self.desc_input if focus_field == 'desc' else self.ref_input
+        target.selectAll()
+        target.setFocus()
         
     def get_values(self):
         """Retourner les valeurs saisies"""
