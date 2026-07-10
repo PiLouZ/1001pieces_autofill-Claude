@@ -93,6 +93,7 @@ class ImportConfiguration:
     succession_replaces: Optional[str] = None       # Réf existante que cette réf remplace (ref_old=existing, ref_new=imported)
     succession_replaced_by: Optional[str] = None    # Réf existante qui remplace cette réf (ref_old=imported, ref_new=existing)
     succession_current_ref: Optional[str] = None    # Multi-fichiers : réf désignée comme courante (les autres lui sont successées)
+    equivalence_ref: Optional[str] = None           # Fichier unique : réf existante équivalente à cette réf
 
     # Équivalences déclarées lors de l'import (multi-fichiers)
     equivalence_refs: Optional[List[str]] = None    # Réfs cochées comme équivalentes à la courante (ou entre elles si pas de courante)
@@ -641,6 +642,7 @@ class ImportDialog(QDialog):
             # ── Section succession repliable (liens entre réfs uniquement) ──────
             self.succ_replaces_input = None
             self.succ_replaced_by_input = None
+            self.equiv_input = None
             self._succ_button_group = None
             self._succ_radio_files = []
             self._equiv_checkboxes = []
@@ -701,6 +703,18 @@ class ImportDialog(QDialog):
             row2.addWidget(self.succ_replaced_by_input)
             succ_layout.addLayout(row2)
 
+            row3 = QHBoxLayout()
+            lbl3 = QLabel("Cette réf. est équivalente à :")
+            lbl3.setStyleSheet("font-weight: bold; background: transparent; border: none;")
+            lbl3.setFixedWidth(220)
+            row3.addWidget(lbl3)
+            self.equiv_input = QLineEdit()
+            self.equiv_input.setPlaceholderText("Réf. existante équivalente à cette réf. (ex : REF789)")
+            self.equiv_input.setMinimumHeight(30)
+            self.equiv_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px;")
+            row3.addWidget(self.equiv_input)
+            succ_layout.addLayout(row3)
+
             self._succ_content.setVisible(True)
             succ_container_layout.addWidget(self._succ_content)
             layout.addWidget(succ_container)
@@ -710,6 +724,7 @@ class ImportDialog(QDialog):
             # ── Mode multi-fichiers — scroll area références individuelles ───────
             self.succ_replaces_input = None
             self.succ_replaced_by_input = None
+            self.equiv_input = None
             self._succ_button_group = None
             self._succ_radio_files = []
             self._equiv_checkboxes = []
@@ -1000,7 +1015,7 @@ class ImportDialog(QDialog):
                 "SELECT ref_piece FROM pieces ORDER BY ref_piece LIMIT 5000"
             ) or []
             ref_list = [r[0] for r in rows]
-            for field in [self.succ_replaces_input, self.succ_replaced_by_input]:
+            for field in [self.succ_replaces_input, self.succ_replaced_by_input, self.equiv_input]:
                 model = QStringListModel(ref_list, field)
                 completer = QCompleter(model, field)
                 completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -1219,6 +1234,7 @@ class ImportDialog(QDialog):
         if len(config.files) == 1 and self.succ_replaces_input is not None:
             config.succession_replaces = self.succ_replaces_input.text().strip() or None
             config.succession_replaced_by = self.succ_replaced_by_input.text().strip() or None
+            config.equivalence_ref = self.equiv_input.text().strip() or None
 
         # Succession / équivalence — multi-fichiers : modèle « par groupes » du
         # nouveau panneau de relations (lignées + groupes d'équivalence). Prime sur
@@ -2510,6 +2526,7 @@ class ImportManager:
         Fichier unique :
           - succession_replaces    → (ref_old=existing, ref_new=imported_ref)
           - succession_replaced_by → (ref_old=imported_ref, ref_new=existing)
+          - equivalence_ref        → add_equivalence(imported_ref, equivalence_ref)
         Multi-fichiers :
           - succession_current_ref → toutes les autres refs pointent vers la ref courante
         """
@@ -2541,6 +2558,14 @@ class ImportManager:
                     self.db_manager.inherit_phantom_description(file_ref, config.succession_replaced_by)
                 else:
                     app_logger.warning(f"Succession import non créée ({file_ref} → {config.succession_replaced_by}) : {msg}")
+
+            if config.equivalence_ref:
+                ok, msg = self.db_manager.add_equivalence(file_ref, config.equivalence_ref)
+                if ok:
+                    results['equivalences_created'] = results.get('equivalences_created', 0) + 1
+                    app_logger.info(f"Équivalence import : {file_ref} ≡ {config.equivalence_ref}")
+                else:
+                    app_logger.warning(f"Équivalence import non créée ({file_ref} ≡ {config.equivalence_ref}) : {msg}")
 
         # --- Multi-fichiers ---
         elif config.import_type == ImportType.MULTI_FILE:
