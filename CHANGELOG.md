@@ -4,6 +4,23 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.64.0] - 2026-07-10 (branche `feature/seo-meta-v2`)
+
+### SEO : méta titles diversifiés + descriptions contextuelles (segment, compatibilité, supersession)
+
+Refonte des générateurs des deux boutons **Méta Title** et **Méta Desc** (`src/utils/seo_generator.py`), après audit SEO dédié et alignement sur la politique commerciale réelle de 1001pieces.com (CGV + page livraison).
+
+**Méta title (L1) — 3 gabarits au lieu d'un seul** (tirés au hasard, `META_TITLE_TEMPLATES`) pour diversifier le CTR sans casser les invariants : la référence reste **toujours en position 0** (jamais tronquée) et au moins une marque est garantie. Variantes : baseline, connecteur « pour », marques en avant. Robustesse : normalisation des espaces du titre (`" ".join(split())`) — un `{fabricants}` vide au milieu d'un gabarit ne laisse plus de double espace.
+
+**Méta descriptions (L1) — 18 → 25 templates génériques.** 7 nouveaux angles, tous conformes aux conditions réelles (aucune mention de garantie, jugée trop spécifique aux pièces) : qualité « pièce OEM ou alternative de qualité OEM » ; retour « sous 21 jours après réception » (frais à la charge du client → factuel, pas de « gratuit ») ; expédition « validez avant 15h, expédié le jour même » ; express « Chronopost dès le lendemain avant 13h » ; retrait « en magasin dès la commande validée » ; standard « La Poste 48 à 72h en métropole » ; écologie « réparez au lieu de remplacer ».
+
+**Méta descriptions (L2/L3) — sélection contextuelle pondérée** (`random.choices`). Le pool générique (25 templates) est **toujours présent** (garantie d'unicité à grande échelle) ; des templates contextuels ne rejoignent le pool que si leur signal est actif, favorisés par un poids > 1 sans jamais évincer le générique :
+- **L3 — 16 templates par segment d'appareil** (8 types × 2), branchés sur des micro-moments à fort intent (lave-vaisselle « débordement », réfrigérateur « plus de froid », sèche-linge « ne chauffe plus »…). Matching par la **clé la plus longue contenue** dans le type normalisé (gère « lave-linge top », « four micro-ondes » → micro-ondes) ; fallback systématique sur le générique si le type est inconnu.
+- **L2 — forte compatibilité** : si la pièce équipe ≥ 20 modèles (`n_modeles`), ajout de 2 templates « compatible avec de nombreux… ».
+- **L2 — supersession** : nouveau paramètre `ref_old` (référence obsolète déjà résolue par `_resolve_supersession`) → 2 templates mentionnant explicitement l'ancienne référence (« remplace {ref_old} »), pour capter les recherches encore faites dessus. Auparavant l'ancienne réf était résolue mais jamais mentionnée.
+
+**Vérifié** : deux scripts offscreen dédiés (L1 : 3 variantes × 6 cas + 25 templates ; L2/L3 : routing des 12 types dont pièges, rendu des 20 templates contextuels ≤ 150, 200 tirages supersession/compat + 50 sans signal — aucun placeholder résiduel, aucune supersession parasite, référence en tête), suite complète **439 passed**, `compileall` OK.
+
 ## [3.63.0] - 2026-07-10 (branche `fix/pieces-manager-qa`)
 
 ### Fix : gestionnaire de pièces — rafraîchissement, boutons +, focus édition

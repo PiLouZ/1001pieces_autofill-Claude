@@ -145,6 +145,7 @@ class SEOService:
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
             n_modeles=n_modeles,
+            ref_old=ref_obsolete,  # None si la réf n'est pas supersédée
         )
 
         QApplication.clipboard().setText(result['description'])
