@@ -785,6 +785,143 @@ class TestDedupKeyRespectsColumnMapping:
         assert results['associations_existing'] == 10
 
 
+class TestReimportAppareilsMonoReference:
+    """NON-RÉGRESSION (bug réel constaté par l'utilisateur, 2026-09-01) : ré-importer
+    le MÊME lot d'appareils créait des doublons au lieu de retrouver les existants.
+
+    Cause : le cache du chemin batch était construit ET interrogé sous la garde
+    `if ref_modele and commercial_ref` (un ET), alors que la requête SQL
+    `preload_all_devices` sélectionne en OU. Tout appareil mono-référence était donc
+    chargé depuis la base puis jeté avant d'entrer dans le cache — un ré-import ne
+    pouvait pas le retrouver. Mesuré : 2ᵉ import de 60 lignes → 60 nouveaux appareils
+    (120 en base) au lieu de 60 correspondances.
+
+    Le chemin standard (< BATCH_THRESHOLD) s'en sortait pour « ref_modele seule »
+    grâce à une requête de repli, mais pas pour le cas miroir « commercial_ref
+    seule » — corrigé ici aussi (v3.65.1).
+    """
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    @staticmethod
+    def _config(nb_lignes, champ_ref='ref_modele', ref_piece='PIECE900'):
+        """Collage « Type | Marque | Référence » avec type/marque VIDES : une seule
+        des deux références principales est renseignée (cas déclencheur du bug)."""
+        data = [['', '', f'WW{i:05d}EE'] for i in range(nb_lignes)]
+        config = ImportConfiguration(
+            files=[ImportFile(path='Collage', type=FileType.CLIPBOARD,
+                              suggested_reference=ref_piece, suggested_label='',
+                              data=data)],
+            import_type=ImportType.SINGLE_FILE,
+        )
+        config.individual_references = {'Collage': ref_piece}
+        config.column_mapping = {3: ['type', 'manufacturer', champ_ref]}
+        return config
+
+    def _compter_appareils(self, import_manager):
+        return import_manager.db_manager.execute_query(
+            "SELECT COUNT(*) FROM appareils")[0][0]
+
+    def test_reimport_batch_ref_modele_seule(self, import_manager):
+        """LE CAS DU BUG : 60 lignes (≥ BATCH_THRESHOLD) avec ref_modele seule.
+        Le 2ᵉ import doit RETROUVER les 60 appareils, pas les recréer."""
+        premier = import_manager._run_import_files(self._config(60))
+        second = import_manager._run_import_files(self._config(60))
+
+        assert premier['new_entries'] == 60
+        assert second['new_entries'] == 0, \
+            f"{second['new_entries']} appareils recréés au ré-import (doublons)"
+        assert second['matches_found'] == 60
+        assert self._compter_appareils(import_manager) == 60
+
+    def test_reimport_batch_commercial_ref_seule(self, import_manager):
+        """Cas miroir dans le chemin batch : seule commercial_ref est renseignée."""
+        premier = import_manager._run_import_files(self._config(60, 'commercial_ref'))
+        second = import_manager._run_import_files(self._config(60, 'commercial_ref'))
+
+        assert premier['new_entries'] == 60
+        assert second['new_entries'] == 0
+        assert second['matches_found'] == 60
+        assert self._compter_appareils(import_manager) == 60
+
+    def test_reimport_standard_commercial_ref_seule(self, import_manager):
+        """Cas miroir dans le chemin STANDARD (< 50 lignes) : aucune des deux
+        requêtes de _insert_or_find_device ne couvrait « commercial_ref seule »
+        (la 1ʳᵉ exige les deux références, la 2ᵉ exige ref_modele)."""
+        import_manager._run_import_files(self._config(10, 'commercial_ref'))
+        import_manager._run_import_files(self._config(10, 'commercial_ref'))
+
+        assert self._compter_appareils(import_manager) == 10
+
+    def test_reimport_standard_ref_modele_seule_inchange(self, import_manager):
+        """NON-RÉGRESSION : ce cas fonctionnait DÉJÀ avant le correctif (repli sur
+        ref_modele) — il doit continuer à fonctionner à l'identique."""
+        import_manager._run_import_files(self._config(10))
+        second = import_manager._run_import_files(self._config(10))
+
+        assert second['new_entries'] == 0
+        assert self._compter_appareils(import_manager) == 10
+
+    def test_reimport_batch_deux_references_inchange(self, import_manager):
+        """NON-RÉGRESSION : le cas « deux références renseignées » fonctionnait déjà
+        (seul cas que le cache acceptait) — il ne doit pas être dégradé."""
+        def config():
+            data = [['Four', 'Bosch', f'HBA{i:04d}', f'SER{i:04d}'] for i in range(60)]
+            c = ImportConfiguration(
+                files=[ImportFile(path='Collage', type=FileType.CLIPBOARD,
+                                  suggested_reference='PIECE901', suggested_label='',
+                                  data=data)],
+                import_type=ImportType.SINGLE_FILE,
+            )
+            c.individual_references = {'Collage': 'PIECE901'}
+            return c
+
+        import_manager._run_import_files(config())
+        second = import_manager._run_import_files(config())
+
+        assert second['new_entries'] == 0
+        assert second['matches_found'] == 60
+        assert self._compter_appareils(import_manager) == 60
+
+    def test_appareil_partiel_ne_matche_pas_appareil_complet(self, import_manager):
+        """GARDE ANTI-RÉGRESSION ESSENTIELLE du correctif : élargir le cache ne doit
+        PAS relâcher la sévérité de la correspondance. Un appareil « ref_modele
+        seule » ne doit jamais être confondu avec un appareil complet partageant
+        cette ref_modele — la clé reste la composite « ref|commercial_ref », donc
+        « HBA0001| » ne peut pas matcher « HBA0001|SER0001 »."""
+        import_manager._batch_insert_devices([{
+            'type': 'Four', 'manufacturer': 'Bosch',
+            'ref_modele': 'HBA0001', 'commercial_ref': 'SER0001',
+            'other_ref': '', 'notes': '', 'category': '',
+        }])
+        cache = import_manager._preload_existing_devices()
+
+        # Ligne partielle : même ref_modele, mais SANS commercial_ref
+        partiel = {'ref_modele': 'HBA0001', 'commercial_ref': ''}
+        assert import_manager._find_in_cache(partiel, cache) is None
+
+        # La ligne complète, elle, est bien retrouvée
+        complet = {'ref_modele': 'HBA0001', 'commercial_ref': 'SER0001'}
+        assert import_manager._find_in_cache(complet, cache) is not None
+
+    def test_cache_contient_les_appareils_mono_reference(self, import_manager):
+        """Test unitaire de la cause racine : les appareils mono-référence chargés
+        par la requête SQL (qui sélectionne en OU) doivent bien atterrir dans le
+        cache, au lieu d'être filtrés par une garde en ET."""
+        import_manager._batch_insert_devices([
+            {'type': '', 'manufacturer': '', 'ref_modele': 'REFSEULE',
+             'commercial_ref': '', 'other_ref': '', 'notes': '', 'category': ''},
+            {'type': '', 'manufacturer': '', 'ref_modele': '',
+             'commercial_ref': 'COMSEULE', 'other_ref': '', 'notes': '', 'category': ''},
+        ])
+        cache = import_manager._preload_existing_devices()
+
+        assert 'refseule|' in cache
+        assert '|comseule' in cache
+
+
 class TestReferencePieceManquanteCollage:
     """CORRECTIF 3 : le collage part d'un champ de référence de pièce VIDE (contrairement
     à l'import fichier où elle est déduite du nom de fichier) et rien ne bloquait

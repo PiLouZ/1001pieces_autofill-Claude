@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.66.1] - 2026-09-01 (branche `fix/reimport-doublons-cache-mono-reference`)
+
+### Fix : ré-importer le même lot créait des doublons au lieu de retrouver les appareils
+
+Bug remonté par l'utilisateur et reproduit : un 2ᵉ import du **même** lot de 60 lignes créait 60 **nouveaux** appareils (120 en base) au lieu d'en retrouver 60. **Préexistant, pas une régression** — comportement identique sur `main` avant les correctifs v3.64.1/v3.65.0.
+
+**Cause : un `and` là où il fallait un `or`.** La requête SQL `preload_all_devices` sélectionne correctement les appareils en **OU** (`ref_modele != '' OR commercial_ref != ''`), mais `_preload_existing_devices` les filtrait ensuite avec `if ref_modele and commercial_ref`. Tout appareil **mono-référence** était donc chargé depuis la base puis jeté avant d'entrer dans le cache. `_find_in_cache` portait la même garde en ET : même présent, l'appareil n'aurait jamais été cherché.
+
+Le premier import donnait pourtant le bon compte, ce qui rendait le bug invisible : la déduplication **intra-fichier** passe par `_build_device_key`, qui construit la même clé composite **sans aucune garde**. Trois fonctions manipulaient la même notion d'identité sous trois conditions différentes — elles sont désormais alignées.
+
+**Aucune règle de correspondance nouvelle.** La clé reste la composite `ref_modele|commercial_ref`, donc `« HBA0001| »` ne peut pas matcher `« HBA0001|SER0001 »` : un appareil partiel ne correspond qu'à un autre appareil partiel, jamais à un appareil complet. La sévérité documentée dans `_insert_or_find_device` (« évite les faux positifs comme 2108002 vs 2108002000 ») est préservée telle quelle — le correctif se contente de ne plus jeter d'entrées.
+
+**Trou miroir corrigé dans le chemin standard.** La comparaison des deux chemins a révélé un second défaut : le cas « `commercial_ref` seule » n'était géré **par aucun** des deux chemins. `_insert_or_find_device` disposait d'un repli pour « `ref_modele` seule » mais pas de son symétrique — chaque ré-import recréait les appareils. Le repli miroir est ajouté, testé **après** celui sur `ref_modele` pour que celle-ci reste l'identifiant prioritaire quand les deux pourraient correspondre.
+
+**Effet de bord assumé, et voulu.** `_build_autocomplete_cache` dérive du même cache : l'auto-complétion Type/Marque voit désormais les appareils mono-référence. C'est une correction, pas un élargissement fortuit — `_apply_autocomplete_from_cache` interroge déjà le cache par `ref_modele` seule, mais la construction ne pouvait jamais l'alimenter.
+
+**Un test de la v3.66.0 encodait le bug comme comportement attendu.** `test_import_fonctionnellement_inchange` (`tests/unit/test_logger_volume.py`) enchaînait deux imports du **même** jeu dans la **même** base et exigeait des compteurs identiques, pour vérifier que le niveau de verbosité ne change rien. Il ne passait que parce que le ré-import était buggé et recréait les appareils à l'identique — une fois le bug corrigé, le 2ᵉ passage retrouve légitimement les 60 appareils et les compteurs diffèrent. Comparer un import initial à un ré-import ne mesure plus la verbosité : les deux passages portent désormais sur des préfixes de référence distincts. `test_reduction_du_nombre_de_lignes`, porteur de la même faille latente mais encore vert, est aligné par cohérence.
+
+**Vérifié** : les 4 chemins avant/après mesurés sur base neuve (batch et standard × `ref_modele` seule et `commercial_ref` seule) passent tous de « doublons » à « retrouvés ». 7 tests ajoutés (`TestReimportAppareilsMonoReference`), dont la garde inverse « un appareil partiel ne matche pas un appareil complet ». Les 4 tests ciblant le bug ont été **confirmés en échec sur le code non corrigé**, les 3 gardes de non-régression passant dans les deux états. Suite complète **471 passed**, `compileall` OK.
+
 ## [3.66.0] - 2026-09-01 (branche `fix/logs-rotation-volume`)
 
 ### Logs : rotation par taille + agrégation des messages par-appareil
@@ -29,6 +49,7 @@ Ces messages passent derrière `Config.LOG_VERBOSE_PER_DEVICE` (défaut `False`)
 Corrigé au passage : dans `_process_data_import`, un `from .config import Config` situé au milieu de la fonction rendait `Config` local à **toute** la fonction, exposant les usages antérieurs à un `UnboundLocalError`. L'import est hissé en tête.
 
 **Vérifié** : 7 tests ajoutés (`tests/unit/test_logger_volume.py`), dont les garde-fous inverses — les handlers redeviennent de simples `FileHandler` si la rotation est désactivée, et le niveau de verbosité ne change **rien** au résultat de l'import (compteurs comparés terme à terme). Plafond de rotation vérifié en écriture réelle. Mesure sur un import identique de 400 lignes : **1 625 → 25 lignes de log (−98,5 %)**, soit 4,1 → 0,06 ligne par appareil ; ce cas maximise l'auto-complétion, le gain sur une charge mixte sera plus proche de 60-70 %. Suite complète **464 passed**, `compileall` OK.
+
 
 ## [3.65.0] - 2026-09-01 (branche `fix/import-collage-dedup-mapping`)
 

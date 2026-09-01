@@ -123,8 +123,12 @@ class TestVolumeParAppareil:
         return ImportManager(db_manager=test_db_manager, parent_widget=None)
 
     @staticmethod
-    def _config(nb, mapping=None):
-        data = [['', '', f'WW{i:05d}EE'] for i in range(nb)]
+    def _config(nb, mapping=None, prefixe='WW'):
+        """`prefixe` permet à deux passages successifs d'importer des appareils
+        INÉDITS. Sans lui, le 2ᵉ passage est un ré-import : il retrouve les
+        appareils du 1ᵉʳ au lieu d'en créer (v3.66.1), et les deux passages ne
+        sont plus comparables — voir test_import_fonctionnellement_inchange."""
+        data = [['', '', f'{prefixe}{i:05d}EE'] for i in range(nb)]
         config = ImportConfiguration(
             files=[ImportFile(path='Collage', type=FileType.CLIPBOARD,
                               suggested_reference='PIECE900', suggested_label='',
@@ -138,11 +142,13 @@ class TestVolumeParAppareil:
     def test_reduction_du_nombre_de_lignes(self, import_manager, log_dir, monkeypatch):
         """Un import identique doit produire nettement moins de lignes de log
         en mode agrégé qu'en mode historique."""
-        def volume(verbose):
+        def volume(verbose, prefixe):
             monkeypatch.setattr(Config, 'LOG_VERBOSE_PER_DEVICE', verbose)
             sous_dossier = tempfile.mkdtemp(dir=log_dir)
             lg = _logger_isole(sous_dossier)
-            import_manager._run_import_files(self._config(60))
+            # Préfixe distinct par passage : les deux partagent la même base, et un
+            # ré-import ne produit pas le même volume de log qu'un import initial.
+            import_manager._run_import_files(self._config(60, prefixe=prefixe))
             for h in lg.logger.handlers:
                 h.flush()
             total = 0
@@ -151,8 +157,8 @@ class TestVolumeParAppareil:
                     total += sum(1 for _ in fh)
             return total
 
-        lignes_verbose = volume(True)
-        lignes_agrege = volume(False)
+        lignes_verbose = volume(True, 'VB')
+        lignes_agrege = volume(False, 'AG')
         assert lignes_agrege < lignes_verbose / 2, (
             f"réduction insuffisante : {lignes_verbose} → {lignes_agrege}")
 
@@ -191,11 +197,18 @@ class TestVolumeParAppareil:
 
     def test_import_fonctionnellement_inchange(self, import_manager, monkeypatch):
         """NON-RÉGRESSION : le niveau de verbosité des logs ne doit RIEN changer au
-        résultat de l'import. Les deux passages sont comparés terme à terme."""
+        résultat de l'import. Les deux passages sont comparés terme à terme.
+
+        Les deux passages doivent porter sur des appareils DIFFÉRENTS (préfixes
+        distincts) : ils partagent la même base, donc réutiliser le même jeu ferait
+        du 2ᵉ passage un ré-import, qui retrouve légitimement les 60 appareils au
+        lieu d'en créer 60. Comparer un import initial à un ré-import ne mesure
+        plus la verbosité. Le test ne passait avant la v3.66.1 que parce que le
+        ré-import était buggé et recréait les appareils à l'identique."""
         monkeypatch.setattr(Config, 'LOG_VERBOSE_PER_DEVICE', False)
-        agrege = import_manager._run_import_files(self._config(60))
+        agrege = import_manager._run_import_files(self._config(60, prefixe='AG'))
         monkeypatch.setattr(Config, 'LOG_VERBOSE_PER_DEVICE', True)
-        verbose = import_manager._run_import_files(self._config(60))
+        verbose = import_manager._run_import_files(self._config(60, prefixe='VB'))
 
         compteurs = ('total_imported', 'new_entries', 'matches_found',
                      'duplicates_in_file', 'associations_created')
