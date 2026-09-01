@@ -4,6 +4,42 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.65.0] - 2026-09-01 (branche `fix/import-collage-dedup-mapping`)
+
+### Ligne d'en-tête enfin ignorée à l'import + diagnostic des logs restauré
+
+Deux suites du diagnostic de la v3.64.1, relevées en analysant le chemin d'import.
+
+**L'option « 1ʳᵉ ligne = en-têtes (ignorée) » ne faisait rien.** `ImportConfiguration.has_headers` était déclaré et renseigné depuis la case à cocher, mais **jamais lu** dans tout `src/` : la ligne d'en-tête d'un CSV ou d'un collage était importée comme un appareil réel. Le flag est désormais consommé dans `_import_single_file`, **restreint à CSV et collage** — l'extracteur PDF retire déjà l'en-tête, et `has_headers` étant global, l'appliquer au PDF supprimerait une vraie ligne de données lors d'un import mixte.
+
+**La case était masquée pour le collage** (`setVisible(has_csv)`, aux deux endroits qui pilotent son affichage) : l'utilisateur ne pouvait même pas déclarer son en-tête, alors que les données collées viennent le plus souvent d'un tableur, en-tête comprise. Elle est maintenant proposée pour CSV **et** collage.
+
+**Incohérence détection ↔ import corrigée.** `_detect_csv_header_mapping` reconnaissait déjà une ligne d'en-tête et s'en servait pour inférer le mapping des colonnes — puis l'application l'importait quand même comme un appareil. La case est désormais **pré-cochée** quand une en-tête est détectée, l'utilisateur restant libre de décocher.
+
+**Synonymes `reference` / `ref` ajoutés à `ref_modele`.** Un en-tête « Type | Marque | Référence » ne produisait aucun mapping `ref_modele`, ce qui **grisait le bouton Importer** sans explication. La correspondance étant exacte (`cell_norm in syns`), aucune collision n'est possible avec « ref commerciale » ou « autre ref » — couvert par un test dédié.
+
+**Diagnostic des logs restauré : 12 `f`-strings manquantes.** Douze `app_logger.debug()` contenaient des accolades de formatage sans préfixe `f` et journalisaient le texte littéral au lieu des valeurs. Particulièrement handicapant sur les chemins d'erreur : `[ERR] BATCH: Erreur insertion: {e}` n'a jamais affiché une seule exception. Vérifié par un contrôleur AST dédié confirmant que les 55 f-strings de log du fichier ont tous leurs noms résolvables dans leur portée — une conversion à l'aveugle risquait d'introduire un `NameError` déclenché seulement sur un chemin d'erreur rare.
+
+**Vérifié** : 10 tests de non-régression ajoutés (`TestLigneEnTeteIgnoree`, `TestDetectionEnTeteReference`, `TestCaseEnTeteVisibleCollage`), dont les garde-fous inverses — `has_headers=False` laisse le comportement historique strictement inchangé, et un import PDF ne perd aucune ligne. Vérification bout-en-bout avec le vrai `PasteDataProcessor` sur un collage de 121 lignes en-tête comprise : case pré-cochée, mapping inféré `['type', 'manufacturer', 'ref_modele']`, 120 appareils en base, 0 parasite. Suite complète **457 passed**, `compileall` OK.
+
+## [3.64.1] - 2026-09-01 (branche `fix/import-collage-dedup-mapping`)
+
+### Fix : import par copier-coller — 309 lignes sur 310 perdues silencieusement
+
+Bug remonté par l'utilisateur et **confirmé par les logs d'exécution** (`data/logs/detailed.log`, 2026-09-01 08:52) : un collage de 310 lignes n'importait qu'**un seul appareil**, sans aucune association (`Vérification: 1 lignes traitées vs 0 lignes avec associations`). Reproduit 4 fois le même matin.
+
+**Cause racine.** La clé de déduplication était recalculée **positionnellement** (`row[0]|row[1]`) dans `_process_data_import` et `_process_data_import_batch`, en ignorant le mapping de colonnes déclaré par l'utilisateur. Sur un collage « Type | Marque | Référence » — le format naturel — la clé valait `lave-linge|samsung` pour **toutes** les lignes : la première passait, les 309 suivantes étaient classées « doublon » et jetées. La colonne qui les distingue (la référence) n'était jamais regardée. Bug **latent depuis la v3.30.0**, quand le mapping de colonnes a été introduit sans mettre à jour la clé de dédup restée sur une heuristique antérieure ; le déclencheur est la *forme* des données collées, d'où l'impression d'une régression soudaine.
+
+**Correctif 1 — clé de déduplication alignée sur le mapping.** La ligne est désormais parsée **avant** le contrôle de doublon, et la clé dérivée des champs réellement résolus via le nouveau helper `ImportManager._build_device_key`. Zéro régression sur l'import fichier : en mode positionnel `_parse_row_data` produit exactement les mêmes valeurs que l'ancienne heuristique (2-3 colonnes → `row[0]/row[1]` ; ≥ 4 colonnes → `row[2]/row[3]`). Effet de bord bénéfique : `_parse_row_data`, jusqu'ici appelé deux fois par ligne dupliquée, ne l'est plus qu'une.
+
+**Correctif 2 — le chemin batch ne perd plus les vrais doublons.** Au-delà de 50 lignes, un doublon dont l'appareil attendait encore son insertion échouait au `_find_in_cache` : ni insertion, ni association (perte pure). Un index local au fichier (`first_occurrence_by_key`) rattache maintenant le doublon au couple `(data_index, existing_id)` de sa première occurrence ; la mémoïsation de `_batch_create_associations` réattribue le bon id sans désaligner le compteur de `new_device_ids`. `seen_device_refs` reste un `set` partagé entre fichiers, inchangé.
+
+**Correctif 3 — garde-fou sur la référence de pièce vide.** Contrairement à l'import fichier (référence déduite du nom de fichier), le collage part d'un champ éditable vide et rien ne bloquait l'import : d'où les appareils créés sans rattachement observés dans les logs. Avertissement non bloquant avant validation (`show()` + callbacks, jamais `exec_()`), factorisé avec le garde-fou d'équivalence v3.62.0 dans `_confirm_import_malgre_avertissement`.
+
+Corrigé au passage : deux `app_logger.debug` écrits sans préfixe `f`, qui journalisaient `{device_key}` littéralement et masquaient le diagnostic.
+
+**Vérifié** : 8 tests de non-régression ajoutés (`TestDedupKeyRespectsColumnMapping`, `TestReferencePieceManquanteCollage`), écrits **avant** le correctif et rouges sur le bug réel (`assert 1 == 310`, `assert 0 == 10`) ; garde-fous inverses verts avant *et* après (vrais doublons toujours dédupliqués, import 4 colonnes positionnel inchangé). Vérification bout-en-bout avec le vrai `PasteDataProcessor` sur 310 lignes tabulées : 310 appareils en base, 310 associations, colonnes correctement mappées. Suite complète **447 passed**, `compileall` OK.
+
 ## [3.64.0] - 2026-07-10 (branche `feature/seo-meta-v2`)
 
 ### SEO : méta titles diversifiés + descriptions contextuelles (segment, compatibilité, supersession)

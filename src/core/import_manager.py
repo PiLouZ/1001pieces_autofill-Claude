@@ -1284,6 +1284,13 @@ class ImportDialog(QDialog):
             self._confirm_import_sans_equivalence(config, warning)
             return
 
+        # Garde-fou : collage sans référence de pièce → appareils orphelins.
+        warning_ref = self._reference_manquante_warning_message(config)
+        if warning_ref:
+            self._confirm_import_malgre_avertissement(
+                config, "Aucune pièce ne sera associée", warning_ref)
+            return
+
         self.result_config = config
         self.accept()
 
@@ -1316,13 +1323,37 @@ class ImportDialog(QDialog):
         msg += "\n\nImporter quand même (sans équivalence) ?"
         return msg
 
+    def _reference_manquante_warning_message(self, config) -> Optional[str]:
+        """Message d'avertissement si un collage va être importé SANS référence de
+        pièce : les appareils seront créés mais rattachés à aucune pièce, alors que
+        l'association pièce↔appareils est l'objet même de l'import. None si une
+        référence est renseignée ou si l'import ne provient pas d'un collage.
+
+        Contrairement à l'import fichier (référence déduite du nom de fichier), le
+        collage part d'un champ éditable vide : l'oubli est facile et silencieux."""
+        if config.common_reference:
+            return None
+        collages = [f for f in config.files if f.type == FileType.CLIPBOARD]
+        if not collages:
+            return None
+        if any((config.individual_references.get(f.path) or '').strip() for f in collages):
+            return None
+        return ("Aucune référence de pièce n'est renseignée : les appareils seront "
+                "créés mais ne seront associés à AUCUNE pièce.\n\n"
+                "Importer quand même (sans association) ?")
+
     def _confirm_import_sans_equivalence(self, config, message: str):
+        """Avertissement non bloquant : aucune équivalence ne sera créée."""
+        self._confirm_import_malgre_avertissement(
+            config, "Aucune équivalence ne sera créée", message)
+
+    def _confirm_import_malgre_avertissement(self, config, titre: str, message: str):
         """Avertissement non bloquant (show + callbacks, jamais exec_) : importer
         quand même, ou revenir au dialogue pour corriger la déclaration."""
         from PyQt5.QtWidgets import QMessageBox
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("Aucune équivalence ne sera créée")
+        box.setWindowTitle(titre)
         box.setText(message)
         btn_import = box.addButton("Importer quand même", QMessageBox.AcceptRole)
         box.addButton("Revenir au dialogue", QMessageBox.RejectRole)
@@ -1409,9 +1440,15 @@ class ImportDialog(QDialog):
         norm = ImportDialog._normalize_header
 
         synonyms: Dict[str, List[str]] = {
+            # « reference » / « ref » seuls désignent la réf. modèle : c'est l'entête
+            # le plus courant à la main, et son absence ici laissait le mapping sans
+            # ref_modele — donc le bouton Importer grisé sans explication.
+            # La correspondance est EXACTE (cell_norm in syns), aucune collision
+            # possible avec « ref commerciale » ou « autre ref ».
             'ref_modele':     ['ref_modele', 'ref modele', 'refmodele',
                                'ref technique', 'ref. technique', 'reference technique',
-                               'ref. modele', 'reference modele', 'modele'],
+                               'ref. modele', 'reference modele', 'modele',
+                               'reference', 'ref'],
             'commercial_ref': ['commercial_ref', 'ref commerciale', 'ref. commerciale',
                                'reference commerciale', 'ref comm', 'commercial'],
             'manufacturer':   ['fabricant', 'manufacturer', 'marque', 'brand'],
@@ -1542,13 +1579,17 @@ class ImportDialog(QDialog):
         else:
             self.third_col_widget.setVisible(False)
 
-        # ── Option en-têtes CSV ──
-        has_csv = any(
-            f.type == FileType.CSV
+        # ── Option en-têtes (CSV et collage) ──
+        # Le collage est concerné au même titre que le CSV : ses données viennent
+        # le plus souvent d'un tableur, entête comprise. La case lui était masquée,
+        # rendant l'entête impossible à déclarer — elle était donc importée comme
+        # un appareil.
+        has_headers_option = any(
+            f.type in (FileType.CSV, FileType.CLIPBOARD)
             for files in self._file_groups.values()
             for f in files
         )
-        self.headers_checkbox.setVisible(has_csv)
+        self.headers_checkbox.setVisible(has_headers_option)
 
         # ── Vider et afficher le conteneur de mapping ──
         while self.mapping_container_layout.count():
@@ -1559,10 +1600,12 @@ class ImportDialog(QDialog):
         self.mapping_container.setVisible(True)
 
         # Créer un MappingGroupWidget par groupe (trié par nb colonnes)
+        any_headers_detected = False
         for n_cols, files in sorted(self._file_groups.items()):
             _, sample_data = self._safe_analyze_file_format(files[0])
             is_recognized = self._is_format_recognized(n_cols, files, sample_data)
             default_mapping, headers_detected = self._get_default_mapping(n_cols, files, sample_data)
+            any_headers_detected = any_headers_detected or headers_detected
             widget = MappingGroupWidget(
                 n_cols=n_cols,
                 files=files,
@@ -1577,6 +1620,16 @@ class ImportDialog(QDialog):
                 widget.mapping_changed.connect(self._on_mapping_third_col_changed)
             self._mapping_widgets.append(widget)
             self.mapping_container_layout.addWidget(widget)
+
+        # Cohérence détection d'entêtes ↔ case « 1ʳᵉ ligne = en-têtes ».
+        # Si _detect_csv_header_mapping a reconnu une ligne d'entête (elle a servi à
+        # inférer le mapping), la case est pré-cochée : sans cela l'application
+        # détectait l'entête PUIS l'importait comme un appareil. L'utilisateur reste
+        # libre de décocher.
+        # (has_headers_option, pas isVisible() : la visibilité réelle dépend de
+        # l'affichage du dialogue, or cette méthode tourne aussi avant.)
+        if any_headers_detected and has_headers_option:
+            self.headers_checkbox.setChecked(True)
 
         # Cohérence combo rapide « Destination Description » ↔ Colonne 3 du mapping
         # (le mapping prime à l'import — ils ne doivent jamais se contredire).
@@ -1664,9 +1717,11 @@ class ImportDialog(QDialog):
         else:
             self.third_col_widget.hide()
         
-        # Afficher les options CSV si nécessaire
-        has_csv = any(f.type == FileType.CSV for f in self.import_config.files)
-        if has_csv:
+        # Afficher l'option en-têtes si nécessaire (CSV et collage, cf. _analyze_formats_and_preview)
+        has_headers_option = any(
+            f.type in (FileType.CSV, FileType.CLIPBOARD) for f in self.import_config.files
+        )
+        if has_headers_option:
             self.headers_checkbox.show()
         else:
             self.headers_checkbox.hide()
@@ -2637,7 +2692,18 @@ class ImportManager:
         
         if not data:
             raise ValueError("Aucune donnée trouvée dans le fichier")
-        
+
+        # Ligne d'en-tête déclarée par l'utilisateur : la retirer avant traitement.
+        # Restreint à CSV et collage — l'extracteur PDF supprime déjà l'entête, et
+        # config.has_headers est global : sur un import mixte, l'appliquer au PDF
+        # supprimerait une vraie ligne de données. La case n'est d'ailleurs proposée
+        # que pour ces deux types.
+        if config.has_headers and file.type in (FileType.CSV, FileType.CLIPBOARD):
+            app_logger.debug(f" En-tête ignorée pour {file.path}: {data[0]}")
+            data = data[1:]
+            if not data:
+                raise ValueError("Le fichier ne contient qu'une ligne d'en-tête")
+
         # Nouvelle logique: références et libellés séparés
         references_and_labels = []  # Liste de tuples (référence, libellé)
         
@@ -2671,7 +2737,7 @@ class ImportManager:
                 dry_run=dry_run,
             )
         else:
-            app_logger.debug(" Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
+            app_logger.debug(f" Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
             return self._process_data_import(
                 data, 
                 references_and_labels,  # Maintenant liste de tuples (ref, label)
@@ -2726,54 +2792,32 @@ class ImportManager:
             # Compter chaque ligne non vide comme extraite du fichier
             results['total_lines_extracted'] += 1
             
-            # Extraire les références pour vérification doublon - LOGIQUE INTELLIGENTE
-            # Si on a 4+ colonnes et les 2 premières sont très répétitives, utiliser colonnes 2-3
-            if len(row) >= 4:
-                col0 = str(row[0]).strip() if row[0] is not None else ""
-                col1 = str(row[1]).strip() if row[1] is not None else ""  
-                col2 = str(row[2]).strip() if row[2] is not None else ""
-                col3 = str(row[3]).strip() if row[3] is not None else ""
-                
-                # Si col2 et col3 semblent plus uniques (contiennent des chiffres/codes), les privilégier
-                if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
-                    ref_modele = col2
-                    commercial_ref = col3
-                else:
-                    ref_modele = col0
-                    commercial_ref = col1
-            else:
-                # Format standard 2-3 colonnes
-                ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
-                commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
-            
+            # Parser AVANT tout : la clé de déduplication doit être dérivée du mapping
+            # de colonnes réellement appliqué, pas devinée par position.
+            device_data = self._parse_row_data(row, config)
+            if not device_data:
+                continue
+
             # Vérifier si c'est un doublon dans le fichier
-            device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+            ref_modele, commercial_ref, device_key = self._build_device_key(device_data)
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
                 app_logger.debug(f"   Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
                 # Trouver l'appareil existant et créer l'association même pour les doublons
-                device_data_dup = self._parse_row_data(row, config)
-                if device_data_dup:
-                    device_id_dup = self._insert_or_find_device(device_data_dup)
-                    if device_id_dup:
-                        for reference, label in references_and_labels:
-                            if reference:
-                                assoc_result = self._safe_create_association(reference, device_id_dup, label)
-                                if assoc_result:
-                                    if assoc_result.get('created'):
-                                        results['associations_created'] += 1
-                                    else:
-                                        results['associations_existing'] += 1
+                device_id_dup = self._insert_or_find_device(device_data)
+                if device_id_dup:
+                    for reference, label in references_and_labels:
+                        if reference:
+                            assoc_result = self._safe_create_association(reference, device_id_dup, label)
+                            if assoc_result:
+                                if assoc_result.get('created'):
+                                    results['associations_created'] += 1
+                                else:
+                                    results['associations_existing'] += 1
                 continue  # L'appareil n'est pas recompté dans total_imported
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                app_logger.debug("[OK] LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
-            
-            # Traiter la ligne selon le mode d'import
-            device_data = self._parse_row_data(row, config)
-
-            if not device_data:
-                continue
+                app_logger.debug(f"[OK] LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
 
             # Compter APRÈS parse pour cohérence avec le chemin batch
             results['total_imported'] += 1
@@ -2812,7 +2856,7 @@ class ImportManager:
                         if assoc_result:
                             if assoc_result.get('created'):
                                 results['associations_created'] += 1
-                                app_logger.debug("  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
+                                app_logger.debug(f"  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
                             else:
                                 results['associations_existing'] += 1
         
@@ -2854,6 +2898,10 @@ class ImportManager:
         existing_updates = []
         associations_batch = []
         processed_line_index = 0  # Compteur pour les lignes réellement traitées (hors continue)
+        # 1ʳᵉ occurrence de chaque clé DANS CE FICHIER : {device_key: (data_index, existing_id)}.
+        # Local au fichier, contrairement à seen_device_refs qui est partagé entre
+        # fichiers — associations_batch et processed_line_index le sont aussi.
+        first_occurrence_by_key = {}
         
         # Configuration pour progress optimisé
         from .config import Config
@@ -2872,47 +2920,38 @@ class ImportManager:
 
             results['total_lines_extracted'] += 1
 
+            # Parser AVANT tout : la clé de déduplication doit être dérivée du mapping
+            # de colonnes réellement appliqué, pas devinée par position.
+            device_data = self._parse_row_data(row, config)
+            if not device_data:
+                continue  # Ligne non parsable, ne pas compter
+
             # MODIFICATION BATCH: Détection doublons INTER-fichiers (entre tous les fichiers)
-            # LOGIQUE INTELLIGENTE identique à la version standard
-            if len(row) >= 4:
-                col0 = str(row[0]).strip() if row[0] is not None else ""
-                col1 = str(row[1]).strip() if row[1] is not None else ""
-                col2 = str(row[2]).strip() if row[2] is not None else ""
-                col3 = str(row[3]).strip() if row[3] is not None else ""
+            ref_modele, commercial_ref, device_key = self._build_device_key(device_data)
 
-                # Si col2 et col3 semblent plus uniques (contiennent des chiffres/codes), les privilégier
-                if (col2 and col3 and (any(c.isdigit() for c in col2) or any(c.isdigit() for c in col3))):
-                    ref_modele = col2
-                    commercial_ref = col3
-                else:
-                    ref_modele = col0
-                    commercial_ref = col1
-            else:
-                # Format standard 2-3 colonnes
-                ref_modele = str(row[0]).strip() if len(row) >= 1 and row[0] is not None else ""
-                commercial_ref = str(row[1]).strip() if len(row) >= 2 and row[1] is not None else ""
-
-            device_key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if device_key in seen_device_refs and (ref_modele or commercial_ref):
                 results['duplicates_in_file'] += 1
                 app_logger.debug(f"   BATCH Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
-                # Trouver l'appareil dans le cache et préparer l'association
-                device_data_dup = self._parse_row_data(row, config)
-                if device_data_dup:
-                    dup_existing_id = self._find_in_cache(device_data_dup, existing_devices_cache)
-                    if dup_existing_id:
-                        for reference, label in references_and_labels:
-                            if reference:
-                                associations_batch.append((reference, label, processed_line_index, dup_existing_id))
+                # Rattacher l'association à la 1ʳᵉ occurrence. Si elle vient du même
+                # fichier, on réutilise son (data_index, existing_id) : la mémoïsation
+                # de _batch_create_associations réattribue alors le bon id SANS
+                # consommer d'entrée de new_device_ids, y compris quand l'appareil
+                # est encore en attente d'insertion. Sinon (doublon inter-fichiers),
+                # on ne peut compter que sur un appareil déjà présent en base.
+                first_occurrence = first_occurrence_by_key.get(device_key)
+                if first_occurrence is not None:
+                    dup_index, dup_existing_id = first_occurrence
+                else:
+                    dup_index = processed_line_index
+                    dup_existing_id = self._find_in_cache(device_data, existing_devices_cache)
+                if first_occurrence is not None or dup_existing_id:
+                    for reference, label in references_and_labels:
+                        if reference:
+                            associations_batch.append((reference, label, dup_index, dup_existing_id))
                 continue
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
                 app_logger.debug(f"[OK] BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
-
-            # Parser les données AVANT de compter total_imported
-            device_data = self._parse_row_data(row, config)
-            if not device_data:
-                continue  # Ligne non parsable, ne pas compter
 
             # MAINTENANT on compte comme ligne réellement traitée
             results['total_imported'] += 1
@@ -2922,6 +2961,10 @@ class ImportManager:
 
             # Vérifier si existe en cache (pas de requête SQL !)
             existing_id = self._find_in_cache(device_data, existing_devices_cache)
+
+            # Mémoriser la résolution de cette ligne pour d'éventuels doublons suivants
+            if device_key:
+                first_occurrence_by_key.setdefault(device_key, (processed_line_index, existing_id))
 
             if existing_id:
                 # Appareil existant
@@ -3269,12 +3312,12 @@ class ImportManager:
                         if cursor.lastrowid is not None:
                             chunk_ids.append(cursor.lastrowid)
                         else:
-                            app_logger.debug("[ERR] Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
+                            app_logger.debug(f"[ERR] Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
                             conn.rollback()
                             return []
 
                     all_new_ids.extend(chunk_ids)
-                    app_logger.debug("[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
+                    app_logger.debug(f"[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
 
                 conn.commit()
                 # Insertion en lot via cursor brut (hors des méthodes normales de
@@ -3282,15 +3325,15 @@ class ImportManager:
                 # sinon count_data() sans filtre (utilisé par load_data() post-import)
                 # continue de renvoyer le total d'avant import.
                 self.db_manager.invalidate_search_cache(invalidate_total_count=True)
-                app_logger.debug("[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
+                app_logger.debug(f"[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
                 return all_new_ids
 
             except Exception as e:
                 conn.rollback()
-                app_logger.debug("[ERR] BATCH: Erreur insertion: {e}")
-                app_logger.debug("[ERR] BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
+                app_logger.debug(f"[ERR] BATCH: Erreur insertion: {e}")
+                app_logger.debug(f"[ERR] BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
                 import traceback
-                app_logger.debug("[ERR] BATCH: Stack trace: {traceback.format_exc()}")
+                app_logger.debug(f"[ERR] BATCH: Stack trace: {traceback.format_exc()}")
                 return []
     
     def _batch_update_devices(self, updates_batch: List[Tuple[int, Dict[str, Any]]]):
@@ -3323,7 +3366,7 @@ class ImportManager:
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                app_logger.debug("[ERR] BATCH: Erreur mise à jour: {e}")
+                app_logger.debug(f"[ERR] BATCH: Erreur mise à jour: {e}")
     
     def _batch_create_associations(self, associations_batch: List[Tuple], new_device_ids: List[int]) -> Dict[str, int]:
         """Création en lot des associations pièces-appareils"""
@@ -3355,7 +3398,7 @@ class ImportManager:
                     device_id_mapping[cache_key] = device_id
                     new_device_counter += 1
                 else:
-                    app_logger.debug("[!] BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
+                    app_logger.debug(f"[!] BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
                     continue
             
             assoc_result = self._safe_create_association(reference, device_id, label)
@@ -3365,9 +3408,27 @@ class ImportManager:
                 else:
                     results['existing'] += 1
         
-        app_logger.debug(" BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
+        app_logger.debug(f" BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
         return results
     
+    @staticmethod
+    def _build_device_key(device_data: Dict[str, Any]) -> Tuple[str, str, str]:
+        """Clé d'identité d'un appareil pour la détection de doublons.
+
+        Dérivée des données DÉJÀ parsées par `_parse_row_data`, donc du mapping de
+        colonnes réellement appliqué. Avant v3.64.1 la clé était recalculée par
+        position (`row[0]`/`row[1]`) en ignorant le mapping : sur un collage
+        « Type | Marque | Référence », toutes les lignes recevaient la même clé
+        (ex. « lave-linge|samsung ») et 309 lignes sur 310 étaient jetées comme
+        doublons (bug constaté le 2026-09-01).
+
+        Returns:
+            (ref_modele, commercial_ref, device_key)
+        """
+        ref_modele = (device_data.get('ref_modele') or '').strip()
+        commercial_ref = (device_data.get('commercial_ref') or '').strip()
+        return ref_modele, commercial_ref, f"{ref_modele.lower()}|{commercial_ref.lower()}"
+
     def _parse_row_data(self, row: List[str], config: ImportConfiguration) -> Optional[Dict[str, Any]]:
         """Parser une ligne de données selon la configuration"""
         if not row:
@@ -3457,7 +3518,7 @@ class ImportManager:
             params = list(update_data.values()) + [device_id]
 
             self.db_manager.execute_query(update_query, params)
-            app_logger.debug(" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
+            app_logger.debug(f" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur insertion appareil")
     def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:

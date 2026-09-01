@@ -7,6 +7,7 @@ import pytest
 import tempfile
 import os
 from unittest.mock import Mock, patch
+from PyQt5.QtWidgets import QLineEdit
 
 from src.core.import_manager import (
     ImportManager, ImportType, FileType, ImportFile,
@@ -657,3 +658,312 @@ class TestEquivalenceGuardDialog:
         dlg._confirm_import_sans_equivalence = lambda *a: called.append(a)
         dlg._validate_and_accept()
         assert dlg.result_config is not None and not called
+
+
+class TestDedupKeyRespectsColumnMapping:
+    """NON-RÉGRESSION (bug réel constaté par l'utilisateur, logs du 2026-09-01) :
+    un collage de 310 lignes « Type | Marque | Référence » n'importait qu'UNE seule
+    ligne, les 309 autres étant classées « doublon » et jetées silencieusement.
+
+    Cause : la clé de déduplication était calculée positionnellement (row[0]|row[1])
+    en ignorant le mapping de colonnes déclaré par l'utilisateur. Sur ce format, la
+    clé valait « lave-linge|samsung » pour TOUTES les lignes — la colonne qui les
+    distingue (la référence, en position 2) n'était jamais regardée.
+
+    La clé doit désormais être dérivée de _parse_row_data, donc du mapping réel.
+    """
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    @staticmethod
+    def _config_collage(nb_lignes, mapping=None, ref_piece='PIECE001'):
+        """Collage « Type | Marque | Référence » — toutes les lignes distinctes."""
+        data = [['Lave-linge', 'Samsung', f'WW{i:05d}EE'] for i in range(nb_lignes)]
+        config = ImportConfiguration(
+            files=[ImportFile(path='Collage', type=FileType.CLIPBOARD,
+                              suggested_reference=ref_piece, suggested_label='',
+                              data=data)],
+            import_type=ImportType.SINGLE_FILE,
+        )
+        config.individual_references = {'Collage': ref_piece}
+        config.column_mapping = mapping if mapping is not None else {
+            3: ['type', 'manufacturer', 'ref_modele']
+        }
+        return config
+
+    def test_collage_310_lignes_chemin_batch(self, import_manager):
+        """Le cas exact des logs : 310 lignes ≥ BATCH_THRESHOLD (50) → chemin batch,
+        où la perte était TOTALE (la branche doublon ne faisait qu'un _find_in_cache,
+        sans insertion ni association)."""
+        results = import_manager._run_import_files(self._config_collage(310))
+
+        assert results['total_imported'] == 310, \
+            f"310 lignes distinctes attendues, {results['total_imported']} importées"
+        assert results['duplicates_in_file'] == 0
+        assert results['new_entries'] == 310
+
+    def test_collage_10_lignes_chemin_standard(self, import_manager):
+        """Même jeu sous le seuil de 50 → chemin standard (_process_data_import),
+        où la perte était partielle mais les compteurs faux."""
+        results = import_manager._run_import_files(self._config_collage(10))
+
+        assert results['total_imported'] == 10
+        assert results['duplicates_in_file'] == 0
+
+    def test_associations_creees_pour_chaque_ligne(self, import_manager):
+        """Les lignes rejetées ne créaient aucune association : l'import produisait
+        des appareils orphelins (« 1 lignes traitées vs 0 lignes avec associations »)."""
+        results = import_manager._run_import_files(self._config_collage(60))
+
+        assert results['associations_created'] == 60
+
+    def test_vrais_doublons_toujours_detectes(self, import_manager):
+        """NON-RÉGRESSION inverse : la déduplication doit rester active quand les
+        lignes sont RÉELLEMENT identiques après mapping."""
+        data = [['Lave-linge', 'Samsung', 'WW80T4020EE']] * 5
+        config = ImportConfiguration(
+            files=[ImportFile(path='Collage', type=FileType.CLIPBOARD,
+                              suggested_reference='PIECE001', suggested_label='',
+                              data=data)],
+            import_type=ImportType.SINGLE_FILE,
+        )
+        config.individual_references = {'Collage': 'PIECE001'}
+        config.column_mapping = {3: ['type', 'manufacturer', 'ref_modele']}
+
+        results = import_manager._run_import_files(config)
+
+        assert results['total_imported'] == 1
+        assert results['duplicates_in_file'] == 4
+
+    def test_positionnel_4_colonnes_inchange(self, import_manager):
+        """GARDE ANTI-RÉGRESSION du correctif : sans column_mapping, un import
+        4 colonnes « Type | Marque | Réf | RéfCom » (chiffres en col. 3/4) doit
+        donner exactement les mêmes comptages qu'avant — _parse_row_data mappe
+        déjà row[2]/row[3] sur ref_modele/commercial_ref, comme l'heuristique."""
+        data = [['Four', 'Bosch', f'HBA{i:04d}', f'SER{i:04d}'] for i in range(60)]
+        config = ImportConfiguration(
+            files=[ImportFile(path='Collage', type=FileType.CLIPBOARD,
+                              suggested_reference='PIECE002', suggested_label='',
+                              data=data)],
+            import_type=ImportType.SINGLE_FILE,
+        )
+        config.individual_references = {'Collage': 'PIECE002'}
+
+        results = import_manager._run_import_files(config)
+
+        assert results['total_imported'] == 60
+        assert results['duplicates_in_file'] == 0
+        assert results['new_entries'] == 60
+
+    def test_doublon_batch_sur_appareil_en_attente(self, import_manager):
+        """CORRECTIF 2 : dans le chemin batch, un doublon dont l'appareil n'est pas
+        ENCORE en base (il attend dans new_devices_batch) échouait au _find_in_cache
+        et perdait son association — ni insertion, ni rattachement. Il doit être
+        rattaché à la 1ʳᵉ occurrence via son (data_index, existing_id)."""
+        # 60 appareils distincts (≥ BATCH_THRESHOLD) + 10 répétitions du 1er
+        data = [['Lave-linge', 'Samsung', f'WW{i:05d}EE'] for i in range(60)]
+        data += [['Lave-linge', 'Samsung', 'WW00000EE']] * 10
+
+        config = ImportConfiguration(
+            files=[ImportFile(path='Collage', type=FileType.CLIPBOARD,
+                              suggested_reference='PIECE003', suggested_label='',
+                              data=data)],
+            import_type=ImportType.SINGLE_FILE,
+        )
+        config.individual_references = {'Collage': 'PIECE003'}
+        config.column_mapping = {3: ['type', 'manufacturer', 'ref_modele']}
+
+        results = import_manager._run_import_files(config)
+
+        assert results['total_imported'] == 60
+        assert results['duplicates_in_file'] == 10
+        # Les 10 doublons sont rattachés au MÊME appareil que la 1ʳᵉ occurrence :
+        # l'association existe déjà → comptée « existante », plus jamais perdue.
+        assert results['associations_created'] == 60
+        assert results['associations_existing'] == 10
+
+
+class TestReferencePieceManquanteCollage:
+    """CORRECTIF 3 : le collage part d'un champ de référence de pièce VIDE (contrairement
+    à l'import fichier où elle est déduite du nom de fichier) et rien ne bloquait
+    l'import. Résultat observé le 2026-09-01 : « 1 lignes traitées vs 0 lignes avec
+    associations » — des appareils créés sans aucun rattachement à une pièce."""
+
+    def _dialog(self, test_db_manager, ref_piece=''):
+        from src.core.import_manager import ImportDialog
+        im = ImportManager(db_manager=test_db_manager, parent_widget=None)
+        f = ImportFile('Collage', FileType.CLIPBOARD, '', '')
+        f.data = [['Lave-linge', 'Samsung', 'WW80T4020EE']]
+        cfg = ImportConfiguration(files=[f], import_type=ImportType.SINGLE_FILE)
+        dlg = ImportDialog(None, cfg, im)
+        ref_input = dlg.findChild(QLineEdit, 'ref_input_Collage')
+        assert ref_input is not None, "le collage doit exposer un champ de référence éditable"
+        ref_input.setText(ref_piece)
+        return dlg
+
+    def test_avertissement_si_reference_vide(self, qapp, test_db_manager):
+        """Référence vide → avertissement au lieu d'un accept silencieux."""
+        dlg = self._dialog(test_db_manager, ref_piece='')
+        captured = {}
+        dlg._confirm_import_malgre_avertissement = \
+            lambda config, titre, msg: captured.update(config=config, titre=titre, msg=msg)
+
+        dlg._validate_and_accept()
+
+        assert dlg.result_config is None                 # pas d'accept direct
+        assert "AUCUNE pièce" in captured['msg']
+        assert captured['config'] is not None            # « Importer quand même » possible
+
+    def test_pas_d_avertissement_si_reference_saisie(self, qapp, test_db_manager):
+        """NON-RÉGRESSION : référence renseignée → import direct, aucun avertissement."""
+        dlg = self._dialog(test_db_manager, ref_piece='AS6015830')
+        called = []
+        dlg._confirm_import_malgre_avertissement = lambda *a: called.append(a)
+
+        dlg._validate_and_accept()
+
+        assert dlg.result_config is not None and not called
+        assert dlg.result_config.individual_references['Collage'] == 'AS6015830'
+
+
+class TestLigneEnTeteIgnoree:
+    """L'option « 1ʳᵉ ligne = en-têtes (ignorée) » était enregistrée dans
+    ImportConfiguration.has_headers mais JAMAIS lue : la ligne d'en-tête d'un CSV ou
+    d'un collage était importée comme un appareil réel. Pire, la case était masquée
+    pour le collage — l'utilisateur ne pouvait même pas déclarer son en-tête."""
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    @staticmethod
+    def _config(has_headers, type_fichier=FileType.CLIPBOARD):
+        data = [['Type', 'Marque', 'Référence'],
+                ['Lave-linge', 'Samsung', 'WW80T4020EE'],
+                ['Lave-linge', 'Samsung', 'WW90T4040EE']]
+        config = ImportConfiguration(
+            files=[ImportFile(path='Collage', type=type_fichier,
+                              suggested_reference='PIECE100', suggested_label='',
+                              data=data)],
+            import_type=ImportType.SINGLE_FILE,
+        )
+        config.individual_references = {'Collage': 'PIECE100'}
+        config.column_mapping = {3: ['type', 'manufacturer', 'ref_modele']}
+        config.has_headers = has_headers
+        return config
+
+    def test_entete_ignoree_quand_declaree(self, import_manager, test_db_manager):
+        """has_headers=True → la ligne d'en-tête n'est plus importée."""
+        results = import_manager._run_import_files(self._config(has_headers=True))
+
+        assert results['total_imported'] == 2
+        # L'en-tête ne doit pas avoir créé d'appareil « Type / Marque / Référence »
+        parasites = test_db_manager.execute_query(
+            "SELECT COUNT(*) FROM appareils WHERE ref_modele = 'Référence'")[0][0]
+        assert parasites == 0
+
+    def test_non_regression_sans_declaration(self, import_manager, test_db_manager):
+        """NON-RÉGRESSION : has_headers=False (défaut) → comportement inchangé,
+        les 3 lignes sont traitées comme avant."""
+        results = import_manager._run_import_files(self._config(has_headers=False))
+
+        assert results['total_imported'] == 3
+        parasites = test_db_manager.execute_query(
+            "SELECT COUNT(*) FROM appareils WHERE ref_modele = 'Référence'")[0][0]
+        assert parasites == 1  # l'en-tête est bien importée, comme historiquement
+
+    def test_entete_non_retiree_pour_pdf(self, import_manager):
+        """GARDE : has_headers est global. L'extracteur PDF retire déjà l'en-tête —
+        l'appliquer une seconde fois supprimerait une vraie ligne de données lors
+        d'un import mixte CSV + PDF."""
+        from unittest.mock import patch
+        config = self._config(has_headers=True, type_fichier=FileType.PDF)
+        config.files[0].path = '/faux/chemin.pdf'
+        config.individual_references = {'/faux/chemin.pdf': 'PIECE100'}
+        donnees_pdf = [['Lave-linge', 'Samsung', 'WW10T634'],
+                       ['Lave-linge', 'Samsung', 'WW11T635']]
+
+        with patch.object(ImportManager, 'load_pdf_data', return_value=donnees_pdf):
+            results = import_manager._run_import_files(config)
+
+        assert results['total_imported'] == 2   # aucune ligne perdue
+
+    def test_fichier_reduit_a_son_entete(self, import_manager):
+        """Un fichier ne contenant QUE son en-tête ne doit pas partir en import vide."""
+        config = self._config(has_headers=True)
+        config.files[0].data = [['Type', 'Marque', 'Référence']]
+
+        results = import_manager._run_import_files(config)
+
+        assert results['successful_files'] == 0
+
+
+class TestDetectionEnTeteReference:
+    """« Référence » et « Ref » seuls ne figuraient pas dans les synonymes de
+    ref_modele : un en-tête « Type | Marque | Référence » ne produisait aucun
+    mapping ref_modele, ce qui grisait le bouton Importer sans explication."""
+
+    def test_reference_seule_reconnue(self):
+        from src.core.import_manager import ImportDialog
+        mapping = ImportDialog._detect_csv_header_mapping(
+            [['Type', 'Marque', 'Référence']], 3)
+        assert mapping == ['type', 'manufacturer', 'ref_modele']
+
+    def test_ref_seule_reconnue(self):
+        from src.core.import_manager import ImportDialog
+        mapping = ImportDialog._detect_csv_header_mapping([['Ref', 'Fabricant']], 2)
+        assert mapping == ['ref_modele', 'manufacturer']
+
+    def test_pas_de_collision_avec_ref_commerciale(self):
+        """NON-RÉGRESSION : la correspondance est exacte, « Ref commerciale » et
+        « Autre ref » ne doivent pas basculer sur ref_modele."""
+        from src.core.import_manager import ImportDialog
+        mapping = ImportDialog._detect_csv_header_mapping(
+            [['Référence', 'Ref commerciale', 'Autre ref']], 3)
+        assert mapping == ['ref_modele', 'commercial_ref', 'other_ref']
+
+
+class TestCaseEnTeteVisibleCollage:
+    """La case « 1ʳᵉ ligne = en-têtes » n'était affichée que pour les CSV."""
+
+    def _dialog(self, test_db_manager, type_fichier, data):
+        from src.core.import_manager import ImportDialog
+        im = ImportManager(db_manager=test_db_manager, parent_widget=None)
+        f = ImportFile('Collage', type_fichier, 'REF', '')
+        f.data = data
+        cfg = ImportConfiguration(files=[f], import_type=ImportType.SINGLE_FILE)
+        dlg = ImportDialog(None, cfg, im)
+        # Le dialogue peuple son UI en différé (QTimer.singleShot 50 ms, lazy loading) :
+        # en test synchrone le timer ne se déclenche jamais. On appelle le même point
+        # d'entrée que le timer pour exercer le vrai chemin, sans dépendre du temps.
+        dlg._load_data_deferred()
+        return dlg
+
+    def test_case_visible_pour_collage(self, qapp, test_db_manager):
+        dlg = self._dialog(test_db_manager, FileType.CLIPBOARD,
+                           [['Type', 'Marque', 'Référence'],
+                            ['Lave-linge', 'Samsung', 'WW80T4020EE']])
+        assert dlg.headers_checkbox.isVisibleTo(dlg)
+
+    def test_case_prechochee_si_entete_detectee(self, qapp, test_db_manager):
+        """Cohérence : si la détection a reconnu un en-tête (et s'en est servie pour
+        inférer le mapping), la case doit être cochée — sinon l'application détecte
+        l'en-tête PUIS l'importe comme un appareil."""
+        dlg = self._dialog(test_db_manager, FileType.CLIPBOARD,
+                           [['Type', 'Marque', 'Référence'],
+                            ['Lave-linge', 'Samsung', 'WW80T4020EE']])
+        assert dlg.headers_checkbox.isChecked()
+        # Renseigner la référence de pièce, sinon le garde-fou v3.64.1 intercepte
+        # la validation (collage sans référence = appareils orphelins).
+        dlg.findChild(QLineEdit, 'ref_input_Collage').setText('AS6015830')
+        dlg._validate_and_accept()
+        assert dlg.result_config.has_headers is True
+
+    def test_case_non_cochee_sans_entete(self, qapp, test_db_manager):
+        """NON-RÉGRESSION : données sans en-tête → case décochée, rien n'est sauté."""
+        dlg = self._dialog(test_db_manager, FileType.CLIPBOARD,
+                           [['Lave-linge', 'Samsung', 'WW80T4020EE'],
+                            ['Lave-linge', 'Samsung', 'WW90T4040EE']])
+        assert not dlg.headers_checkbox.isChecked()
