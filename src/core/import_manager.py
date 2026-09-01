@@ -1440,9 +1440,15 @@ class ImportDialog(QDialog):
         norm = ImportDialog._normalize_header
 
         synonyms: Dict[str, List[str]] = {
+            # « reference » / « ref » seuls désignent la réf. modèle : c'est l'entête
+            # le plus courant à la main, et son absence ici laissait le mapping sans
+            # ref_modele — donc le bouton Importer grisé sans explication.
+            # La correspondance est EXACTE (cell_norm in syns), aucune collision
+            # possible avec « ref commerciale » ou « autre ref ».
             'ref_modele':     ['ref_modele', 'ref modele', 'refmodele',
                                'ref technique', 'ref. technique', 'reference technique',
-                               'ref. modele', 'reference modele', 'modele'],
+                               'ref. modele', 'reference modele', 'modele',
+                               'reference', 'ref'],
             'commercial_ref': ['commercial_ref', 'ref commerciale', 'ref. commerciale',
                                'reference commerciale', 'ref comm', 'commercial'],
             'manufacturer':   ['fabricant', 'manufacturer', 'marque', 'brand'],
@@ -1573,13 +1579,17 @@ class ImportDialog(QDialog):
         else:
             self.third_col_widget.setVisible(False)
 
-        # ── Option en-têtes CSV ──
-        has_csv = any(
-            f.type == FileType.CSV
+        # ── Option en-têtes (CSV et collage) ──
+        # Le collage est concerné au même titre que le CSV : ses données viennent
+        # le plus souvent d'un tableur, entête comprise. La case lui était masquée,
+        # rendant l'entête impossible à déclarer — elle était donc importée comme
+        # un appareil.
+        has_headers_option = any(
+            f.type in (FileType.CSV, FileType.CLIPBOARD)
             for files in self._file_groups.values()
             for f in files
         )
-        self.headers_checkbox.setVisible(has_csv)
+        self.headers_checkbox.setVisible(has_headers_option)
 
         # ── Vider et afficher le conteneur de mapping ──
         while self.mapping_container_layout.count():
@@ -1590,10 +1600,12 @@ class ImportDialog(QDialog):
         self.mapping_container.setVisible(True)
 
         # Créer un MappingGroupWidget par groupe (trié par nb colonnes)
+        any_headers_detected = False
         for n_cols, files in sorted(self._file_groups.items()):
             _, sample_data = self._safe_analyze_file_format(files[0])
             is_recognized = self._is_format_recognized(n_cols, files, sample_data)
             default_mapping, headers_detected = self._get_default_mapping(n_cols, files, sample_data)
+            any_headers_detected = any_headers_detected or headers_detected
             widget = MappingGroupWidget(
                 n_cols=n_cols,
                 files=files,
@@ -1608,6 +1620,16 @@ class ImportDialog(QDialog):
                 widget.mapping_changed.connect(self._on_mapping_third_col_changed)
             self._mapping_widgets.append(widget)
             self.mapping_container_layout.addWidget(widget)
+
+        # Cohérence détection d'entêtes ↔ case « 1ʳᵉ ligne = en-têtes ».
+        # Si _detect_csv_header_mapping a reconnu une ligne d'entête (elle a servi à
+        # inférer le mapping), la case est pré-cochée : sans cela l'application
+        # détectait l'entête PUIS l'importait comme un appareil. L'utilisateur reste
+        # libre de décocher.
+        # (has_headers_option, pas isVisible() : la visibilité réelle dépend de
+        # l'affichage du dialogue, or cette méthode tourne aussi avant.)
+        if any_headers_detected and has_headers_option:
+            self.headers_checkbox.setChecked(True)
 
         # Cohérence combo rapide « Destination Description » ↔ Colonne 3 du mapping
         # (le mapping prime à l'import — ils ne doivent jamais se contredire).
@@ -1695,9 +1717,11 @@ class ImportDialog(QDialog):
         else:
             self.third_col_widget.hide()
         
-        # Afficher les options CSV si nécessaire
-        has_csv = any(f.type == FileType.CSV for f in self.import_config.files)
-        if has_csv:
+        # Afficher l'option en-têtes si nécessaire (CSV et collage, cf. _analyze_formats_and_preview)
+        has_headers_option = any(
+            f.type in (FileType.CSV, FileType.CLIPBOARD) for f in self.import_config.files
+        )
+        if has_headers_option:
             self.headers_checkbox.show()
         else:
             self.headers_checkbox.hide()
@@ -2668,7 +2692,18 @@ class ImportManager:
         
         if not data:
             raise ValueError("Aucune donnée trouvée dans le fichier")
-        
+
+        # Ligne d'en-tête déclarée par l'utilisateur : la retirer avant traitement.
+        # Restreint à CSV et collage — l'extracteur PDF supprime déjà l'entête, et
+        # config.has_headers est global : sur un import mixte, l'appliquer au PDF
+        # supprimerait une vraie ligne de données. La case n'est d'ailleurs proposée
+        # que pour ces deux types.
+        if config.has_headers and file.type in (FileType.CSV, FileType.CLIPBOARD):
+            app_logger.debug(f" En-tête ignorée pour {file.path}: {data[0]}")
+            data = data[1:]
+            if not data:
+                raise ValueError("Le fichier ne contient qu'une ligne d'en-tête")
+
         # Nouvelle logique: références et libellés séparés
         references_and_labels = []  # Liste de tuples (référence, libellé)
         

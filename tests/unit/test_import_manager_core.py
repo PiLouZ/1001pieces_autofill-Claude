@@ -826,3 +826,144 @@ class TestReferencePieceManquanteCollage:
 
         assert dlg.result_config is not None and not called
         assert dlg.result_config.individual_references['Collage'] == 'AS6015830'
+
+
+class TestLigneEnTeteIgnoree:
+    """L'option « 1ʳᵉ ligne = en-têtes (ignorée) » était enregistrée dans
+    ImportConfiguration.has_headers mais JAMAIS lue : la ligne d'en-tête d'un CSV ou
+    d'un collage était importée comme un appareil réel. Pire, la case était masquée
+    pour le collage — l'utilisateur ne pouvait même pas déclarer son en-tête."""
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    @staticmethod
+    def _config(has_headers, type_fichier=FileType.CLIPBOARD):
+        data = [['Type', 'Marque', 'Référence'],
+                ['Lave-linge', 'Samsung', 'WW80T4020EE'],
+                ['Lave-linge', 'Samsung', 'WW90T4040EE']]
+        config = ImportConfiguration(
+            files=[ImportFile(path='Collage', type=type_fichier,
+                              suggested_reference='PIECE100', suggested_label='',
+                              data=data)],
+            import_type=ImportType.SINGLE_FILE,
+        )
+        config.individual_references = {'Collage': 'PIECE100'}
+        config.column_mapping = {3: ['type', 'manufacturer', 'ref_modele']}
+        config.has_headers = has_headers
+        return config
+
+    def test_entete_ignoree_quand_declaree(self, import_manager, test_db_manager):
+        """has_headers=True → la ligne d'en-tête n'est plus importée."""
+        results = import_manager._run_import_files(self._config(has_headers=True))
+
+        assert results['total_imported'] == 2
+        # L'en-tête ne doit pas avoir créé d'appareil « Type / Marque / Référence »
+        parasites = test_db_manager.execute_query(
+            "SELECT COUNT(*) FROM appareils WHERE ref_modele = 'Référence'")[0][0]
+        assert parasites == 0
+
+    def test_non_regression_sans_declaration(self, import_manager, test_db_manager):
+        """NON-RÉGRESSION : has_headers=False (défaut) → comportement inchangé,
+        les 3 lignes sont traitées comme avant."""
+        results = import_manager._run_import_files(self._config(has_headers=False))
+
+        assert results['total_imported'] == 3
+        parasites = test_db_manager.execute_query(
+            "SELECT COUNT(*) FROM appareils WHERE ref_modele = 'Référence'")[0][0]
+        assert parasites == 1  # l'en-tête est bien importée, comme historiquement
+
+    def test_entete_non_retiree_pour_pdf(self, import_manager):
+        """GARDE : has_headers est global. L'extracteur PDF retire déjà l'en-tête —
+        l'appliquer une seconde fois supprimerait une vraie ligne de données lors
+        d'un import mixte CSV + PDF."""
+        from unittest.mock import patch
+        config = self._config(has_headers=True, type_fichier=FileType.PDF)
+        config.files[0].path = '/faux/chemin.pdf'
+        config.individual_references = {'/faux/chemin.pdf': 'PIECE100'}
+        donnees_pdf = [['Lave-linge', 'Samsung', 'WW10T634'],
+                       ['Lave-linge', 'Samsung', 'WW11T635']]
+
+        with patch.object(ImportManager, 'load_pdf_data', return_value=donnees_pdf):
+            results = import_manager._run_import_files(config)
+
+        assert results['total_imported'] == 2   # aucune ligne perdue
+
+    def test_fichier_reduit_a_son_entete(self, import_manager):
+        """Un fichier ne contenant QUE son en-tête ne doit pas partir en import vide."""
+        config = self._config(has_headers=True)
+        config.files[0].data = [['Type', 'Marque', 'Référence']]
+
+        results = import_manager._run_import_files(config)
+
+        assert results['successful_files'] == 0
+
+
+class TestDetectionEnTeteReference:
+    """« Référence » et « Ref » seuls ne figuraient pas dans les synonymes de
+    ref_modele : un en-tête « Type | Marque | Référence » ne produisait aucun
+    mapping ref_modele, ce qui grisait le bouton Importer sans explication."""
+
+    def test_reference_seule_reconnue(self):
+        from src.core.import_manager import ImportDialog
+        mapping = ImportDialog._detect_csv_header_mapping(
+            [['Type', 'Marque', 'Référence']], 3)
+        assert mapping == ['type', 'manufacturer', 'ref_modele']
+
+    def test_ref_seule_reconnue(self):
+        from src.core.import_manager import ImportDialog
+        mapping = ImportDialog._detect_csv_header_mapping([['Ref', 'Fabricant']], 2)
+        assert mapping == ['ref_modele', 'manufacturer']
+
+    def test_pas_de_collision_avec_ref_commerciale(self):
+        """NON-RÉGRESSION : la correspondance est exacte, « Ref commerciale » et
+        « Autre ref » ne doivent pas basculer sur ref_modele."""
+        from src.core.import_manager import ImportDialog
+        mapping = ImportDialog._detect_csv_header_mapping(
+            [['Référence', 'Ref commerciale', 'Autre ref']], 3)
+        assert mapping == ['ref_modele', 'commercial_ref', 'other_ref']
+
+
+class TestCaseEnTeteVisibleCollage:
+    """La case « 1ʳᵉ ligne = en-têtes » n'était affichée que pour les CSV."""
+
+    def _dialog(self, test_db_manager, type_fichier, data):
+        from src.core.import_manager import ImportDialog
+        im = ImportManager(db_manager=test_db_manager, parent_widget=None)
+        f = ImportFile('Collage', type_fichier, 'REF', '')
+        f.data = data
+        cfg = ImportConfiguration(files=[f], import_type=ImportType.SINGLE_FILE)
+        dlg = ImportDialog(None, cfg, im)
+        # Le dialogue peuple son UI en différé (QTimer.singleShot 50 ms, lazy loading) :
+        # en test synchrone le timer ne se déclenche jamais. On appelle le même point
+        # d'entrée que le timer pour exercer le vrai chemin, sans dépendre du temps.
+        dlg._load_data_deferred()
+        return dlg
+
+    def test_case_visible_pour_collage(self, qapp, test_db_manager):
+        dlg = self._dialog(test_db_manager, FileType.CLIPBOARD,
+                           [['Type', 'Marque', 'Référence'],
+                            ['Lave-linge', 'Samsung', 'WW80T4020EE']])
+        assert dlg.headers_checkbox.isVisibleTo(dlg)
+
+    def test_case_prechochee_si_entete_detectee(self, qapp, test_db_manager):
+        """Cohérence : si la détection a reconnu un en-tête (et s'en est servie pour
+        inférer le mapping), la case doit être cochée — sinon l'application détecte
+        l'en-tête PUIS l'importe comme un appareil."""
+        dlg = self._dialog(test_db_manager, FileType.CLIPBOARD,
+                           [['Type', 'Marque', 'Référence'],
+                            ['Lave-linge', 'Samsung', 'WW80T4020EE']])
+        assert dlg.headers_checkbox.isChecked()
+        # Renseigner la référence de pièce, sinon le garde-fou v3.64.1 intercepte
+        # la validation (collage sans référence = appareils orphelins).
+        dlg.findChild(QLineEdit, 'ref_input_Collage').setText('AS6015830')
+        dlg._validate_and_accept()
+        assert dlg.result_config.has_headers is True
+
+    def test_case_non_cochee_sans_entete(self, qapp, test_db_manager):
+        """NON-RÉGRESSION : données sans en-tête → case décochée, rien n'est sauté."""
+        dlg = self._dialog(test_db_manager, FileType.CLIPBOARD,
+                           [['Lave-linge', 'Samsung', 'WW80T4020EE'],
+                            ['Lave-linge', 'Samsung', 'WW90T4040EE']])
+        assert not dlg.headers_checkbox.isChecked()
