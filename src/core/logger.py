@@ -54,12 +54,33 @@ class AppLogger:
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
     
+    def _file_handler(self, filename: str, max_bytes: int, backup_count: int):
+        """Handler fichier avec rotation par taille.
+
+        Auparavant un logging.FileHandler simple, sans aucun plafond : detailed.log
+        atteignait 2,3 Go (~19 M lignes) le 2026-09-01. La rotation borne le disque
+        de façon définitive ; Config.LOG_ROTATION_ENABLED permet de revenir au
+        comportement historique si besoin.
+        """
+        from .config import Config
+        chemin = os.path.join(self.log_dir, filename)
+        if getattr(Config, 'LOG_ROTATION_ENABLED', True):
+            from logging.handlers import RotatingFileHandler
+            return RotatingFileHandler(
+                chemin, maxBytes=max_bytes, backupCount=backup_count,
+                encoding='utf-8'
+            )
+        return logging.FileHandler(chemin, encoding='utf-8')
+
     def setup_handlers(self):
         """Configure les handlers de logging"""
+        from .config import Config
+
         # Handler pour fichier détaillé
-        detailed_handler = logging.FileHandler(
-            os.path.join(self.log_dir, "detailed.log"),
-            encoding='utf-8'
+        detailed_handler = self._file_handler(
+            "detailed.log",
+            getattr(Config, 'LOG_MAX_BYTES_DETAILED', 20 * 1024 * 1024),
+            getattr(Config, 'LOG_BACKUP_COUNT_DETAILED', 5),
         )
         detailed_handler.setLevel(logging.DEBUG)
         detailed_formatter = logging.Formatter(
@@ -69,9 +90,10 @@ class AppLogger:
         self.logger.addHandler(detailed_handler)
         
         # Handler pour erreurs uniquement
-        error_handler = logging.FileHandler(
-            os.path.join(self.log_dir, "errors.log"),
-            encoding='utf-8'
+        error_handler = self._file_handler(
+            "errors.log",
+            getattr(Config, 'LOG_MAX_BYTES_SECONDARY', 5 * 1024 * 1024),
+            getattr(Config, 'LOG_BACKUP_COUNT_SECONDARY', 3),
         )
         error_handler.setLevel(logging.ERROR)
         error_formatter = logging.Formatter(
@@ -81,9 +103,10 @@ class AppLogger:
         self.logger.addHandler(error_handler)
         
         # Handler pour opérations sur les données
-        data_handler = logging.FileHandler(
-            os.path.join(self.log_dir, "data_operations.log"),
-            encoding='utf-8'
+        data_handler = self._file_handler(
+            "data_operations.log",
+            getattr(Config, 'LOG_MAX_BYTES_SECONDARY', 5 * 1024 * 1024),
+            getattr(Config, 'LOG_BACKUP_COUNT_SECONDARY', 3),
         )
         data_handler.setLevel(logging.INFO)
         data_formatter = logging.Formatter(

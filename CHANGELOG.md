@@ -4,6 +4,32 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.66.0] - 2026-09-01 (branche `fix/logs-rotation-volume`)
+
+### Logs : rotation par taille + agrégation des messages par-appareil
+
+`data/logs/detailed.log` atteignait **2,3 Go / ~19 M lignes** le 2026-09-01, sur un disque à 85 % d'occupation. Mesures relevées avant correctif : **89,6 % de DEBUG**, 10,3 % d'INFO, **0,1 % d'ERROR+WARNING**. Deux causes cumulées, traitées séparément.
+
+**Cause 1 — aucune rotation.** Les trois handlers fichier étaient de simples `logging.FileHandler` en mode append : aucun plafond, croissance infinie depuis la création du projet. Ils passent en `RotatingFileHandler` via le nouveau helper `AppLogger._file_handler`, avec des tailles configurables (`Config.LOG_MAX_BYTES_*`, `LOG_BACKUP_COUNT_*`). **Plafond total garanti : 130 Mo** (100 pour `detailed.log`, 15 chacun pour `errors.log` et `data_operations.log`). `Config.LOG_ROTATION_ENABLED = False` restaure le comportement historique.
+
+**Cause 2 — des messages émis une fois par appareil traité**, dans une application conçue pour en gérer des centaines de milliers. Le volume était proportionnel à la volumétrie métier, pas au temps : un import de 310 lignes écrivait ~176 000 lignes de log (~21 Mo). Les cinq premiers producteurs représentaient à eux seuls plus d'un million de lignes :
+
+| Lignes | Message |
+|---|---|
+| 326 495 | `[OK] Type complété: '' -> '…'` |
+| 221 788 | `[OK] Fabricant complété: '' -> '…'` |
+| 167 341 | `Groupe N: total=N, sélectionnés=N` |
+| 129 697 | `[OK] BATCH LIGNE ACCEPTÉE: Ajout …` |
+| 107 859 | `[OK] Fabricant complété: '' -> '…'` |
+
+Ces messages passent derrière `Config.LOG_VERBOSE_PER_DEVICE` (défaut `False`) et sont remplacés par des totaux : `ImportManager._log_resume_import` pour l'import, un total enrichi dans `CleanupUIService.get_merge_groups` pour le nettoyage de doublons.
+
+**La synthèse est plus diagnostique que ce qu'elle remplace.** Elle rapporte le nombre de **clés d'appareil distinctes** face au nombre de lignes, et émet un `WARNING` explicite quand plusieurs lignes se réduisent à une seule identité. Le bug de déduplication de la v3.64.1 — invisible autrement qu'en lisant 309 lignes DEBUG identiques — serait désormais signalé en une ligne : « 310 lignes n'ont produit que 1 clé(s) distincte(s) — vérifiez le mapping des colonnes ».
+
+Corrigé au passage : dans `_process_data_import`, un `from .config import Config` situé au milieu de la fonction rendait `Config` local à **toute** la fonction, exposant les usages antérieurs à un `UnboundLocalError`. L'import est hissé en tête.
+
+**Vérifié** : 7 tests ajoutés (`tests/unit/test_logger_volume.py`), dont les garde-fous inverses — les handlers redeviennent de simples `FileHandler` si la rotation est désactivée, et le niveau de verbosité ne change **rien** au résultat de l'import (compteurs comparés terme à terme). Plafond de rotation vérifié en écriture réelle. Mesure sur un import identique de 400 lignes : **1 625 → 25 lignes de log (−98,5 %)**, soit 4,1 → 0,06 ligne par appareil ; ce cas maximise l'auto-complétion, le gain sur une charge mixte sera plus proche de 60-70 %. Suite complète **464 passed**, `compileall` OK.
+
 ## [3.65.0] - 2026-09-01 (branche `fix/import-collage-dedup-mapping`)
 
 ### Ligne d'en-tête enfin ignorée à l'import + diagnostic des logs restauré

@@ -393,7 +393,11 @@ class DuplicateDevicesWidget(QWidget):
         
     def get_merge_groups(self) -> List[Dict[str, Any]]:
         """Obtenir les groupes de fusion d'appareils"""
+        from ..core.config import Config
+
         merge_groups = []
+        nb_doublons_a_supprimer = 0
+        nb_sans_selection = 0
         root = self.devices_tree.invisibleRootItem()
 
         for i in range(root.childCount()):
@@ -410,8 +414,11 @@ class DuplicateDevicesWidget(QWidget):
                     if device_item.checkState(0) == Qt.Checked:
                         selected_devices.append(device_id)
 
-            # DEBUG: Log des sélections
-            app_logger.debug(f"Groupe {i}: total={len(group_devices)}, sélectionnés={len(selected_devices)}")
+            # Comptage agrégé plutôt qu'une ligne par groupe (v3.66.0) : sur une base
+            # de plusieurs centaines de milliers d'appareils, ces trois messages
+            # produisaient des centaines de milliers de lignes par nettoyage.
+            if Config.LOG_VERBOSE_PER_DEVICE:
+                app_logger.debug(f"Groupe {i}: total={len(group_devices)}, sélectionnés={len(selected_devices)}")
 
             # S'il y a exactement UN appareil sélectionné, créer un groupe de fusion
             if len(selected_devices) == 1 and len(group_devices) > 1:
@@ -424,13 +431,20 @@ class DuplicateDevicesWidget(QWidget):
                     'master_id': master_id,
                     'duplicate_ids': duplicate_ids
                 })
-                app_logger.info(f"Groupe de fusion créé: maître={master_id} (sélectionné), doublons à supprimer={duplicate_ids}")
+                nb_doublons_a_supprimer += len(duplicate_ids)
+                if Config.LOG_VERBOSE_PER_DEVICE:
+                    app_logger.info(f"Groupe de fusion créé: maître={master_id} (sélectionné), doublons à supprimer={duplicate_ids}")
             elif len(selected_devices) > 1:
+                # Conservé à l'unité : rare, actionnable, et bloque une fusion.
                 app_logger.warning(f"Groupe {i}: Plus d'un appareil sélectionné - fusion impossible")
             elif len(selected_devices) == 0:
-                app_logger.debug(f"Groupe {i}: Aucun appareil sélectionné - pas de fusion")
+                nb_sans_selection += 1
 
-        app_logger.info(f"Total groupes de fusion: {len(merge_groups)}")
+        app_logger.info(
+            f"Total groupes de fusion: {len(merge_groups)} "
+            f"({nb_doublons_a_supprimer} doublons à supprimer, "
+            f"{nb_sans_selection} groupes sans sélection)"
+        )
         return merge_groups
 
     def _selected_groups(self) -> List[QTreeWidgetItem]:

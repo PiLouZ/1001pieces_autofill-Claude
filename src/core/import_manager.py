@@ -1903,6 +1903,16 @@ class ImportManager:
         # Clé: (file_path, mtime), Valeur: sample_data
         # Évite de recharger les mêmes fichiers
         self._file_metadata_cache = {}
+
+        # Compteurs de log agrégés (v3.66.0) : les messages par-appareil sont
+        # comptés puis journalisés en une seule ligne, au lieu d'une ligne chacun.
+        # Initialisés ici car _try_auto_complete est aussi appelable hors import.
+        self._log_counters = self._nouveaux_compteurs_log()
+
+    @staticmethod
+    def _nouveaux_compteurs_log() -> Dict[str, int]:
+        """Compteurs de log remis à zéro (un jeu par import)."""
+        return {'autocomplete_type': 0, 'autocomplete_manufacturer': 0}
     
     def load_csv_data(self, file_path: str, max_rows: Optional[int] = None) -> List[List[str]]:
         """
@@ -2410,6 +2420,7 @@ class ImportManager:
         """
         # Stocker le cancel_check pour les sous-méthodes (_process_data_import_batch, etc.)
         self._import_cancel_check = cancel_check
+        self._log_counters = self._nouveaux_compteurs_log()
 
         cache_service = getattr(self.db_manager, 'cache_invalidation', None)
         if cache_service and not dry_run:
@@ -2519,12 +2530,42 @@ class ImportManager:
                     imported_refs.append(ref)
             results['imported_refs'] = imported_refs
 
+            self._log_resume_import(results, seen_device_refs)
             return results
 
         finally:
             self._import_cancel_check = None
             if cache_service:
                 cache_service.resume_invalidation(force_invalidate=True)
+
+    def _log_resume_import(self, results: Dict[str, Any], seen_device_refs: set) -> None:
+        """Une ligne de synthèse en fin d'import, en remplacement des messages
+        par-appareil (v3.66.0).
+
+        Le rapport « lignes traitées / clés d'appareil distinctes » est volontairement
+        mis en avant : c'est l'indicateur qui aurait rendu immédiatement visible le
+        bug de déduplication du 2026-09-01 (310 lignes → 1 seule clé distincte), là
+        où il fallait auparavant lire 309 lignes de log identiques pour le repérer.
+        """
+        traitees = results.get('total_imported', 0)
+        doublons = results.get('duplicates_in_file', 0)
+        distinctes = len(seen_device_refs)
+        compteurs = self._log_counters
+        app_logger.info(
+            f"[Import] Synthèse : {traitees} lignes traitées, {distinctes} clés "
+            f"d'appareil distinctes, {doublons} doublons "
+            f"— auto-complétion : {compteurs['autocomplete_type']} types, "
+            f"{compteurs['autocomplete_manufacturer']} fabricants"
+        )
+        # Signal fort : beaucoup de lignes pour une seule identité d'appareil.
+        # Le total inclut les doublons — c'est justement là qu'elles atterrissent
+        # quand le mapping écrase l'identité (309 des 310 lignes le 2026-09-01).
+        lignes = traitees + doublons
+        if lignes > 1 and distinctes <= 1:
+            app_logger.warning(
+                f"[Import] {lignes} lignes n'ont produit que {distinctes} clé(s) "
+                f"distincte(s) — vérifiez le mapping des colonnes."
+            )
 
     def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
         """Exécuter l'import de façon synchrone (chemins drag-drop et fallback).
@@ -2768,9 +2809,14 @@ class ImportManager:
             return {'created': association_created, 'assoc_id': assoc_id}
         return None
 
-    def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]], 
+    def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]],
                            config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Traiter l'import des données avec les références et libellés séparés"""
+        # Import hissé en tête : un « from .config import Config » plus bas dans la
+        # fonction rendrait Config local à TOUTE la fonction (UnboundLocalError sur
+        # les usages antérieurs).
+        from .config import Config
+
         results = {
             'total_imported': 0,
             'matches_found': 0,
@@ -2817,7 +2863,8 @@ class ImportManager:
                 continue  # L'appareil n'est pas recompté dans total_imported
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                app_logger.debug(f"[OK] LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+                if Config.LOG_VERBOSE_PER_DEVICE:
+                    app_logger.debug(f"[OK] LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
 
             # Compter APRÈS parse pour cohérence avec le chemin batch
             results['total_imported'] += 1
@@ -2839,7 +2886,7 @@ class ImportManager:
                 # lignes), symétrique de la collecte du chemin batch (_process_data_import_batch).
                 # Manquant jusqu'ici — les petits imports (PDF courts, etc.) ne déclenchaient
                 # donc jamais le calcul automatique de suggestions après import.
-                from .config import Config
+                # (Config est importé en tête de fonction.)
                 if (Config.ENABLE_SIMILARITY_SUGGESTIONS
                         and hasattr(self, '_pending_similarity_candidates')):
                     _is_complete = ((device_data.get('type') or '').strip()
@@ -2951,7 +2998,8 @@ class ImportManager:
                 continue
             elif ref_modele or commercial_ref:
                 seen_device_refs.add(device_key)
-                app_logger.debug(f"[OK] BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+                if Config.LOG_VERBOSE_PER_DEVICE:
+                    app_logger.debug(f"[OK] BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
 
             # MAINTENANT on compte comme ligne réellement traitée
             results['total_imported'] += 1
@@ -3572,6 +3620,8 @@ class ImportManager:
         Returns:
             bool: True si au moins un champ a été complété
         """
+        from .config import Config
+
         type_empty = not appareil_data.get('type', '').strip()
         manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
 
@@ -3610,12 +3660,19 @@ class ImportManager:
 
         if results:
             found_type, found_manufacturer = results[0][0], results[0][1]
+            # Agrégé plutôt qu'unitaire (v3.66.0) : ces deux messages représentaient
+            # à eux seuls ~550 000 lignes de log, soit le premier poste de volume.
+            # Le total est journalisé une fois en fin d'import (_log_resume_import).
             if type_empty:
                 appareil_data['type'] = found_type
-                app_logger.debug(f"  [OK] Type complété: '' -> '{found_type}'")
+                self._log_counters['autocomplete_type'] += 1
+                if Config.LOG_VERBOSE_PER_DEVICE:
+                    app_logger.debug(f"  [OK] Type complété: '' -> '{found_type}'")
             if manufacturer_empty:
                 appareil_data['manufacturer'] = found_manufacturer
-                app_logger.debug(f"  [OK] Fabricant complété: '' -> '{found_manufacturer}'")
+                self._log_counters['autocomplete_manufacturer'] += 1
+                if Config.LOG_VERBOSE_PER_DEVICE:
+                    app_logger.debug(f"  [OK] Fabricant complété: '' -> '{found_manufacturer}'")
             return True
 
         return False

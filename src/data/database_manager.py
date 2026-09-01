@@ -1080,7 +1080,11 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             if cleaned:
                 clean_description = cleaned
 
-        app_logger.debug(f"   Traitement {ref_piece} avec description: '{clean_description}'")
+        # Appelé une fois par association pièce↔appareil : sur un import de plusieurs
+        # milliers de lignes, ce seul message pesait des dizaines de milliers de
+        # lignes de log. Le total est journalisé par l'appelant (v3.66.0).
+        if Config.LOG_VERBOSE_PER_DEVICE:
+            app_logger.debug(f"   Traitement {ref_piece} avec description: '{clean_description}'")
         description_updated = False
 
         # Étape 1: Vérifier si la pièce existe déjà
