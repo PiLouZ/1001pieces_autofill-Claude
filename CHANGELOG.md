@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.64.1] - 2026-09-01 (branche `fix/import-collage-dedup-mapping`)
+
+### Fix : import par copier-coller — 309 lignes sur 310 perdues silencieusement
+
+Bug remonté par l'utilisateur et **confirmé par les logs d'exécution** (`data/logs/detailed.log`, 2026-09-01 08:52) : un collage de 310 lignes n'importait qu'**un seul appareil**, sans aucune association (`Vérification: 1 lignes traitées vs 0 lignes avec associations`). Reproduit 4 fois le même matin.
+
+**Cause racine.** La clé de déduplication était recalculée **positionnellement** (`row[0]|row[1]`) dans `_process_data_import` et `_process_data_import_batch`, en ignorant le mapping de colonnes déclaré par l'utilisateur. Sur un collage « Type | Marque | Référence » — le format naturel — la clé valait `lave-linge|samsung` pour **toutes** les lignes : la première passait, les 309 suivantes étaient classées « doublon » et jetées. La colonne qui les distingue (la référence) n'était jamais regardée. Bug **latent depuis la v3.30.0**, quand le mapping de colonnes a été introduit sans mettre à jour la clé de dédup restée sur une heuristique antérieure ; le déclencheur est la *forme* des données collées, d'où l'impression d'une régression soudaine.
+
+**Correctif 1 — clé de déduplication alignée sur le mapping.** La ligne est désormais parsée **avant** le contrôle de doublon, et la clé dérivée des champs réellement résolus via le nouveau helper `ImportManager._build_device_key`. Zéro régression sur l'import fichier : en mode positionnel `_parse_row_data` produit exactement les mêmes valeurs que l'ancienne heuristique (2-3 colonnes → `row[0]/row[1]` ; ≥ 4 colonnes → `row[2]/row[3]`). Effet de bord bénéfique : `_parse_row_data`, jusqu'ici appelé deux fois par ligne dupliquée, ne l'est plus qu'une.
+
+**Correctif 2 — le chemin batch ne perd plus les vrais doublons.** Au-delà de 50 lignes, un doublon dont l'appareil attendait encore son insertion échouait au `_find_in_cache` : ni insertion, ni association (perte pure). Un index local au fichier (`first_occurrence_by_key`) rattache maintenant le doublon au couple `(data_index, existing_id)` de sa première occurrence ; la mémoïsation de `_batch_create_associations` réattribue le bon id sans désaligner le compteur de `new_device_ids`. `seen_device_refs` reste un `set` partagé entre fichiers, inchangé.
+
+**Correctif 3 — garde-fou sur la référence de pièce vide.** Contrairement à l'import fichier (référence déduite du nom de fichier), le collage part d'un champ éditable vide et rien ne bloquait l'import : d'où les appareils créés sans rattachement observés dans les logs. Avertissement non bloquant avant validation (`show()` + callbacks, jamais `exec_()`), factorisé avec le garde-fou d'équivalence v3.62.0 dans `_confirm_import_malgre_avertissement`.
+
+Corrigé au passage : deux `app_logger.debug` écrits sans préfixe `f`, qui journalisaient `{device_key}` littéralement et masquaient le diagnostic.
+
+**Vérifié** : 8 tests de non-régression ajoutés (`TestDedupKeyRespectsColumnMapping`, `TestReferencePieceManquanteCollage`), écrits **avant** le correctif et rouges sur le bug réel (`assert 1 == 310`, `assert 0 == 10`) ; garde-fous inverses verts avant *et* après (vrais doublons toujours dédupliqués, import 4 colonnes positionnel inchangé). Vérification bout-en-bout avec le vrai `PasteDataProcessor` sur 310 lignes tabulées : 310 appareils en base, 310 associations, colonnes correctement mappées. Suite complète **447 passed**, `compileall` OK.
+
 ## [3.64.0] - 2026-07-10 (branche `feature/seo-meta-v2`)
 
 ### SEO : méta titles diversifiés + descriptions contextuelles (segment, compatibilité, supersession)
