@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.65.0"
+    VERSION = "3.66.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -118,6 +118,22 @@ class Config:
     SIMILARITY_ALLOW_NUMERIC_FUZZY = False   # Palier B exclu par défaut sur préfixe numérique (risque rebadging)
     SIMILARITY_PREFIX_CONSENSUS = True       # Palier C : consensus de préfixe (familles mono-marque)
     SIMILARITY_ENFORCE_SHAPE = True          # Garde de structure : consensus restreint au même système de nommage (anti « HMG 280 X » -> Bosch)
+
+    # Rotation des fichiers de log (v3.66.0)
+    # Sans rotation, detailed.log grossissait indéfiniment : 2,3 Go / ~19 M lignes
+    # constatés le 2026-09-01, dont 89,6 % de DEBUG. Le volume est proportionnel à
+    # la volumétrie métier (un message par appareil traité), pas au temps.
+    # Plafond total garanti : 100 + 15 + 15 = 130 Mo.
+    LOG_ROTATION_ENABLED = True
+    LOG_MAX_BYTES_DETAILED = 20 * 1024 * 1024   # 20 Mo par fichier
+    LOG_BACKUP_COUNT_DETAILED = 5               # + 5 archives → 120 Mo max
+    LOG_MAX_BYTES_SECONDARY = 5 * 1024 * 1024   # errors.log et data_operations.log
+    LOG_BACKUP_COUNT_SECONDARY = 3              # → 20 Mo max chacun
+
+    # Logs par-appareil agrégés plutôt qu'unitaires (v3.66.0).
+    # True = comportement historique (une ligne DEBUG par appareil), utile pour
+    # déboguer un import précis mais très volumineux.
+    LOG_VERBOSE_PER_DEVICE = False
 
     # ==========================================================================
     # COULEURS - Centralisation PRIORITÉ 3
