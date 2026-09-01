@@ -2702,7 +2702,7 @@ class ImportManager:
                 dry_run=dry_run,
             )
         else:
-            app_logger.debug(" Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
+            app_logger.debug(f" Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
             return self._process_data_import(
                 data, 
                 references_and_labels,  # Maintenant liste de tuples (ref, label)
@@ -2821,7 +2821,7 @@ class ImportManager:
                         if assoc_result:
                             if assoc_result.get('created'):
                                 results['associations_created'] += 1
-                                app_logger.debug("  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
+                                app_logger.debug(f"  ✨ Association créée: {reference} → {label} pour appareil {device_id}")
                             else:
                                 results['associations_existing'] += 1
         
@@ -3277,12 +3277,12 @@ class ImportManager:
                         if cursor.lastrowid is not None:
                             chunk_ids.append(cursor.lastrowid)
                         else:
-                            app_logger.debug("[ERR] Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
+                            app_logger.debug(f"[ERR] Chunk {i//chunk_size + 1}: Impossible de récupérer l'ID pour un appareil")
                             conn.rollback()
                             return []
 
                     all_new_ids.extend(chunk_ids)
-                    app_logger.debug("[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
+                    app_logger.debug(f"[OK] Chunk {i//chunk_size + 1}: {len(chunk_ids)} appareils insérés")
 
                 conn.commit()
                 # Insertion en lot via cursor brut (hors des méthodes normales de
@@ -3290,15 +3290,15 @@ class ImportManager:
                 # sinon count_data() sans filtre (utilisé par load_data() post-import)
                 # continue de renvoyer le total d'avant import.
                 self.db_manager.invalidate_search_cache(invalidate_total_count=True)
-                app_logger.debug("[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
+                app_logger.debug(f"[OK] BATCH FINAL: {len(all_new_ids)} appareils insérés au total")
                 return all_new_ids
 
             except Exception as e:
                 conn.rollback()
-                app_logger.debug("[ERR] BATCH: Erreur insertion: {e}")
-                app_logger.debug("[ERR] BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
+                app_logger.debug(f"[ERR] BATCH: Erreur insertion: {e}")
+                app_logger.debug(f"[ERR] BATCH: IDs partiels récupérés avant erreur: {len(all_new_ids)}")
                 import traceback
-                app_logger.debug("[ERR] BATCH: Stack trace: {traceback.format_exc()}")
+                app_logger.debug(f"[ERR] BATCH: Stack trace: {traceback.format_exc()}")
                 return []
     
     def _batch_update_devices(self, updates_batch: List[Tuple[int, Dict[str, Any]]]):
@@ -3331,7 +3331,7 @@ class ImportManager:
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                app_logger.debug("[ERR] BATCH: Erreur mise à jour: {e}")
+                app_logger.debug(f"[ERR] BATCH: Erreur mise à jour: {e}")
     
     def _batch_create_associations(self, associations_batch: List[Tuple], new_device_ids: List[int]) -> Dict[str, int]:
         """Création en lot des associations pièces-appareils"""
@@ -3363,7 +3363,7 @@ class ImportManager:
                     device_id_mapping[cache_key] = device_id
                     new_device_counter += 1
                 else:
-                    app_logger.debug("[!] BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
+                    app_logger.debug(f"[!] BATCH: Pas assez d'IDs pour les nouveaux appareils (index {data_index})")
                     continue
             
             assoc_result = self._safe_create_association(reference, device_id, label)
@@ -3373,7 +3373,7 @@ class ImportManager:
                 else:
                     results['existing'] += 1
         
-        app_logger.debug(" BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
+        app_logger.debug(f" BATCH: Associations - Créées: {results['created']}, Existantes: {results['existing']}")
         return results
     
     @staticmethod
@@ -3483,7 +3483,7 @@ class ImportManager:
             params = list(update_data.values()) + [device_id]
 
             self.db_manager.execute_query(update_query, params)
-            app_logger.debug(" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
+            app_logger.debug(f" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur insertion appareil")
     def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
