@@ -3147,10 +3147,22 @@ class ImportManager:
         cache = {}
         for row in rows:
             device_id, ref_modele, commercial_ref, device_type, manufacturer, other_ref, notes = row
-            
-            # Indexer par ref_modele + commercial_ref pour recherche rapide
-            if ref_modele and commercial_ref:
-                key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
+
+            # Indexer par ref_modele + commercial_ref pour recherche rapide.
+            #
+            # v3.65.1 — la garde était `and` alors que la requête SQL ci-dessus
+            # sélectionne en `OR` : tout appareil mono-référence (ref_modele SANS
+            # commercial_ref, ou l'inverse) était chargé depuis la base puis jeté
+            # ici. Il n'entrait donc JAMAIS dans le cache, et un ré-import du même
+            # lot le recréait au lieu de le retrouver (bug constaté le 2026-09-01 :
+            # 2ᵉ import de 60 lignes → 60 nouveaux appareils au lieu de 60 matches).
+            #
+            # La clé reste la composite `ref|commercial_ref` : « WW001| » ne peut pas
+            # matcher « WW001|CR001 ». Un appareil partiel ne correspond donc qu'à un
+            # autre appareil partiel, jamais à un appareil complet — la sévérité de
+            # _insert_or_find_device (« évite 2108002 vs 2108002000 ») est préservée.
+            if ref_modele or commercial_ref:
+                key = f"{(ref_modele or '').lower()}|{(commercial_ref or '').lower()}"
                 cache[key] = {
                     'id': device_id,
                     'ref_modele': ref_modele,
@@ -3298,15 +3310,22 @@ class ImportManager:
                 device_data['manufacturer'] = cache_entry['manufacturer']
     
     def _find_in_cache(self, device_data: Dict[str, Any], cache: Dict[str, Dict]) -> Optional[int]:
-        """Trouver un appareil dans le cache (pas de SQL!)"""
+        """Trouver un appareil dans le cache (pas de SQL!)
+
+        v3.65.1 — garde passée de `and` à `or`, symétriquement à
+        _preload_existing_devices : une ligne mono-référence ne tentait même pas la
+        recherche. La clé composite est identique à celle de _build_device_key, donc
+        les trois notions d'identité (clé de dédup, construction du cache, lecture du
+        cache) sont désormais alignées sur la même condition.
+        """
         ref_modele = (device_data.get('ref_modele') or '').strip()
         commercial_ref = (device_data.get('commercial_ref') or '').strip()
-        
-        if ref_modele and commercial_ref:
+
+        if ref_modele or commercial_ref:
             key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if key in cache:
                 return cache[key]['id']
-        
+
         return None
     
     def _needs_update(self, device_data: Dict[str, Any]) -> bool:
@@ -3604,6 +3623,26 @@ class ImportManager:
                 if results_ref:
                     return results_ref[0][0]
 
+            # Cas miroir : seule commercial_ref correspond (v3.65.1).
+            #
+            # Ce repli n'existait pas : un lot ne renseignant QUE commercial_ref
+            # n'était retrouvé par aucune des deux requêtes ci-dessus (la 1ʳᵉ exige
+            # les deux références non vides, la 2ᵉ exige ref_modele). Chaque
+            # ré-import recréait donc les appareils. Trou symétrique du bug du
+            # chemin batch corrigé dans _preload_existing_devices / _find_in_cache.
+            #
+            # Testé APRÈS le repli sur ref_modele : quand les deux pourraient
+            # matcher, ref_modele reste l'identifiant prioritaire.
+            if commercial_ref and commercial_ref.strip():
+                search_query_com = """
+                    SELECT id FROM appareils
+                    WHERE commercial_ref = ? AND commercial_ref != ''
+                       AND (ref_modele = '' OR ref_modele IS NULL)
+                    LIMIT 1
+                """
+                results_com = self.db_manager.execute_query(search_query_com, [commercial_ref])
+                if results_com:
+                    return results_com[0][0]
 
         # Créer un nouvel appareil
         device_id = self.db_manager.insert_appareil(device_data)
