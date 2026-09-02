@@ -34,3 +34,11 @@
 - GitHub CLI : `~/bin/gh`
 - Lancement app : `python3 run.py` ou double-clic `1001pieces_autofill.command`
 - Rebuild index FTS5 : menu Gestion → "Index de recherche FTS5" → "Construire l'index"
+
+## Routage Codebase-Memory
+Avant toute exploration, estime le coût attendu de chaque stratégie :
+`C_graph = tokens des appels MCP + contexte retourné + vérifications nécessaires`
+`C_files = tokens des recherches + contenu des fichiers lus`
+Utilise Codebase-Memory uniquement si `C_graph < C_files`. Sinon, utilise directement les outils classiques.
+Réévalue ce choix après chaque appel et abandonne le graphe si son coût marginal dépasse les lectures qu'il remplace.
+Objectif : minimiser la consommation totale de tokens à qualité de réponse constante.
