@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.69.0] - 2026-09-03 (branche `chore/dead-code-lot2`)
+
+### Fin de la consolidation des exports — 3 modules supprimés, 731 lignes
+
+Suite et fin du nettoyage entamé en v3.68.1. Contrairement au lot précédent, ces suppressions demandaient des décisions d'architecture : trois modules entiers disparaissent. Livrées en **trois commits séparés**, chacun vérifié indépendamment, pour rester révocables un par un.
+
+**Étape 1 — `src/services/table_widget_service.py` (239 lignes).** `CustomTableWidget` avait été remplacée par `CustomTableView`, qui se présente explicitement comme « QTableView de remplacement » ; la classe d'origine n'était plus importée nulle part. `TableWidgetService`, dans le même fichier, était instanciée une fois par `TableController` mais l'attribut n'était jamais relu — et la classe ne contient qu'un `__init__` stockant `db_manager`, sans aucune méthode. Le fichier entier était mort, pas seulement la classe remplacée.
+
+**Étape 2 — `src/services/export_service.py` (213 lignes).** `ExportService` n'était jamais instanciée. **Piège traité avant suppression** : le module servait de relais d'import pour `ExportFormat`, qui vit en réalité dans `core/constants.py`. Trois modules vivants l'importaient à travers lui — `main_refactored`, `ui_component_service` et `import_export_service`. Le troisième n'a été trouvé qu'à l'exécution de la suite de tests, une recherche initiale l'ayant masqué par un filtre trop large : d'où la vérification après chaque étape plutôt qu'à la fin.
+
+**Étape 3 — la chaîne `ExportType.LEGACY` et `src/data/data_exporter.py` (279 lignes).** Le shim de compatibilité né lors de la consolidation de 2025-09 n'a jamais eu d'appelant ; le nettoyage de v3.54.4, borné à `main_refactored.py`, avait coupé le dernier fil sans suivre le graphe. Sont retirés : le membre `LEGACY`, son aiguillage, `_handle_legacy_export`, `_handle_csv_reference_selection`, `_handle_csv_export_legacy`, `_handle_standard_export`, puis `DataExporter` et son unique point d'entrée.
+
+**Déplacement, pas suppression** : `_neutraliser_formule_csv` et `_assainir_ligne_csv` — la neutralisation d'injection de formules CSV — vivaient au niveau module dans `data_exporter.py` et sont consommées par `export_manager` et `supersession_report_service`. Elles rejoignent `export_config_service.py`, qui porte déjà le rendu CSV. Le comportement est repris verbatim.
+
+**Vérifié après chaque étape** : suite complète **508 passed**, `compileall` OK, **tous les modules de `src/` importés un par un** (91 → 88 au fil des suppressions, 0 échec), `MainWindow` instanciée. L'étape 3 ajoute un contrôle fonctionnel : un export CSV réellement écrit sur disque, et la neutralisation de formules exercée depuis son nouveau domicile.
+
+**Conservé volontairement** : `ExportFormat.JSON` et `ExportFormat.XML` sont désormais des membres d'énumération sans consommateur. Ils restent en place — retirer des membres d'énumération est un risque d'une autre nature que supprimer du code inatteignable, pour un gain nul.
+
 ## [3.68.1] - 2026-09-03 (branche `chore/dead-code-safe`)
 
 ### Suppression de code mort — 253 lignes, aucun changement de comportement

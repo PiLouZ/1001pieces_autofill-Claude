@@ -10,9 +10,9 @@ from enum import Enum
 class ExportFormat(Enum):
     """Formats d'export supportés - VERSION UNIFIÉE
     
-    Remplace les définitions incohérentes de:
-    - data_exporter.py (Enum avec valeurs minuscules)
-    - services/export_service.py (classe avec valeurs majuscules)
+    Source unique depuis la consolidation des définitions incohérentes
+    qui coexistaient dans data_exporter.py et services/export_service.py
+    (ces deux modules ont été supprimés en v3.69.0).
     """
     CSV = "CSV"
     JSON = "JSON" 

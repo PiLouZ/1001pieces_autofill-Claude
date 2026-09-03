@@ -13,7 +13,7 @@ from ..ui.qt_imports import (QFileDialog, QApplication, QProgressDialog, QMessag
                             QPushButton, QComboBox, Qt, pyqtSignal, QInputDialog)
 
 from ..core.logger import app_logger
-from ..services.export_service import ExportFormat
+from ..core.constants import ExportFormat
 from ..services.export_manager import ExportManagerService, ExportType
 from .base_service import BaseService, service_operation, safe_operation
 

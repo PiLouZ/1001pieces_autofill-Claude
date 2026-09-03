@@ -15,7 +15,7 @@ from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QToolButton, QWi
                              QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
                              Qt, QTimer, QFont, QMenu, QPoint)
 
-from ..services.export_service import ExportFormat
+from ..core.constants import ExportFormat
 from src.core.logger import app_logger
 
 class UIComponentService:
