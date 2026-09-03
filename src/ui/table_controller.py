@@ -1463,10 +1463,6 @@ class TableController:
         # Un seul rechargement après RAZ de tous les champs
         self.load_data(self.current_search_term, is_search=bool(self.current_search_term))
 
-    def _add_export_buttons(self, layout):
-        """Ajouter les boutons d'export - délégué vers MainWindow"""
-        if hasattr(self.parent_window, '_add_export_buttons'):
-            self.parent_window._add_export_buttons(layout)
     
     def _on_advanced_search_changed(self, text: str):
         """Gestionnaire de changement du texte de recherche avancée avec timer automatique"""

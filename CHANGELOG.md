@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.68.1] - 2026-09-03 (branche `chore/dead-code-safe`)
+
+### Suppression de code mort — 253 lignes, aucun changement de comportement
+
+Inventaire établi via le graphe de code (`codebase-memory`) puis **confirmé un par un au grep** : chaque symbole retiré avait zéro appelant réel.
+
+Retiré de `src/utils/error_handler.py` (−189 lignes) : cinq décorateurs jamais appliqués (`handle_db_signal_errors`, `handle_file_errors`, `handle_validation_errors`, `handle_highlight_errors`, `handle_paste_results_errors`), les classes `SafeOperation` et `ErrorReporter`, et la fonction `safe_execute`. Ces sept derniers symboles n'apparaissaient plus que dans le bloc d'exemples en fin de fichier — bloc réaligné sur ce qui existe réellement.
+
+Retiré ailleurs (−64 lignes) : `get_last_export_info()` dans ses trois copies (`data_exporter`, `export_service`, `export_manager`), `TableController._add_export_buttons` (délégation vers une méthode absente du parent, sans appelant), et `CustomReferenceService._get_active_column_filters` — doublon exact de la version vivante d'`ExportManagerService`.
+
+**L'attribut `_last_export_info` est conservé** dans `export_manager` : seul l'accesseur était mort, l'attribut reste lu par `_show_export_status()`. La vérification a évité une régression silencieuse sur le message de statut des exports HTML.
+
+**Le graphe seul ne suffisait pas.** Le critère « zéro arête entrante » produit trois familles de faux positifs qu'il a fallu écarter à la main : les overrides Qt (`keyboardSearch`, `eventFilter`, `enterEvent`…), appelés par Qt et jamais par le code ; les appels via attribut (`self.history_widget.set_db_manager(...)`), dont le receveur n'est pas inférable ; et les accès de classe (`Config.X`, `Messages.Y`), qui ne sont pas des appels. Le graphe réduit le champ — 2 052 méthodes à 67 candidats en un appel — le grep tranche.
+
+**Vérifié** : suite complète **508 passed** (inchangée, aucun test ne portait sur ces symboles), `compileall` OK, `MainWindow` instanciée, et **les 91 modules de `src/` importés un par un sans échec** — contrôle indispensable ici, les décorateurs retirés étant atteints par des imports paresseux que `run.py` ne couvre pas.
+
+### Non traité : la chaîne `ExportType.LEGACY` n'est pas sans risque
+
+Prévue dans ce lot, elle en a été retirée après cartographie : supprimer `LEGACY` entraîne `_handle_legacy_export`, `_handle_csv_reference_selection`, `_handle_csv_export_legacy` **et** `_handle_standard_export`, dont dépend l'unique appel à `DataExporter.export_search_results`. La classe `DataExporter` entière (~300 lignes) deviendrait morte. Décision à prendre séparément.
+
 ## [3.68.0] - 2026-09-03 (branche `feature/csv-export-config-honored`)
 
 ### L'onglet CSV de « Configuration des exports » pilote enfin l'export réel

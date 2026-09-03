@@ -138,28 +138,6 @@ def handle_db_query_errors(return_value=None, log_prefix="Erreur DB query"):
         return wrapper
     return decorator
 
-def handle_db_signal_errors(error_signal_name="error_occurred"):
-    """
-    Décorateur spécialisé pour les méthodes émettant des signaux en cas d'erreur
-    Usage: @handle_db_signal_errors(error_signal_name="error_occurred")
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                from ..core.logger import app_logger
-                app_logger.error(f"Erreur {func.__name__}: {e}")
-
-                # Émettre le signal d'erreur si l'objet l'a
-                if args and hasattr(args[0], error_signal_name):
-                    error_signal = getattr(args[0], error_signal_name)
-                    if hasattr(error_signal, 'emit'):
-                        error_signal.emit(str(e))
-                return None
-        return wrapper
-    return decorator
 
 def handle_sqlite_column_errors(log_message="Erreur ajout colonne"):
     """
@@ -283,15 +261,6 @@ def handle_async_worker_errors(log_prefix="Erreur worker asynchrone", emit_signa
         return wrapper
     return decorator
 
-def handle_file_errors(title: str = "Erreur de fichier"):
-    """
-    Décorateur spécialisé pour les erreurs de fichiers
-    """
-    return handle_errors(
-        title=title,
-        exceptions=(IOError, OSError, FileNotFoundError, PermissionError),
-        return_on_error=None
-    )
 
 def handle_import_errors(title: str = "Erreur d'import"):
     """
@@ -313,15 +282,6 @@ def handle_export_errors(title: str = "Erreur d'export"):
         return_on_error=False
     )
 
-def handle_validation_errors(title: str = "Erreur de validation"):
-    """
-    Décorateur spécialisé pour les erreurs de validation
-    """
-    return handle_errors(
-        title=title,
-        exceptions=(ValueError, TypeError),
-        return_on_error=None
-    )
 
 def handle_seo_generation_errors(title: str = "Erreur génération SEO"):
     """
@@ -434,16 +394,6 @@ def handle_search_errors(return_value=None, title: str = "Erreur recherche"):
         return_on_error=return_value
     )
 
-def handle_highlight_errors(return_value=False, title: str = "Erreur mise en évidence"):
-    """
-    Décorateur spécialisé pour les opérations de mise en évidence de recherche
-    """
-    return handle_errors(
-        title=title,
-        message="Erreur lors de la mise en évidence de recherche.",
-        show_message=False,  # Logging seulement pour ne pas gêner l'utilisateur
-        return_on_error=return_value
-    )
 
 def handle_event_handler_errors(return_value=None, title: str = "Erreur gestionnaire d'événement"):
     """
@@ -489,148 +439,9 @@ def handle_navigation_errors(return_value=None, title: str = "Erreur navigation"
         return_on_error=return_value
     )
 
-class SafeOperation:
-    """
-    Context manager pour les opérations sécurisées
-    Alternative au décorateur pour les blocs de code
-    
-    Usage:
-        with SafeOperation(self, "Erreur de traitement") as safe:
-            # Code pouvant lever des exceptions
-            result = operation_dangereuse()
-            safe.set_result(result)
-        
-        if safe.success:
-            print(f"Succès: {safe.result}")
-        else:
-            print(f"Échec: {safe.error}")
-    """
-    
-    def __init__(self, parent=None, error_title: str = ErrorHandlerConfig.DEFAULT_ERROR_TITLE, 
-                 show_message: bool = True, log_error: bool = True):
-        self.parent = parent
-        self.error_title = error_title
-        self.show_message = show_message
-        self.log_error = log_error
-        
-        self.success = False
-        self.error = None
-        self.result = None
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            # Une exception s'est produite
-            self.success = False
-            self.error = str(exc_val)
-            
-            # Log de l'erreur
-            if self.log_error:
-                error_logger.error(f"Erreur dans SafeOperation: {self.error}", exc_info=True)
-            
-            # Message utilisateur
-            if self.show_message:
-                if ErrorHandlerConfig.SHOW_TRACEBACK_IN_DETAILS:
-                    details = ''.join(traceback.format_exception(exc_type, exc_val, exc_tb))
-                    MessageHelper.show_detailed_error(self.parent, self.error, details, self.error_title)
-                else:
-                    MessageHelper.show_error(self.parent, self.error, self.error_title)
-            
-            # Supprimer l'exception pour éviter qu'elle se propage
-            return True
-        else:
-            # Aucune exception
-            self.success = True
-    
-    def set_result(self, result: Any):
-        """Définir le résultat de l'opération"""
-        self.result = result
 
-class ErrorReporter:
-    """
-    Collecteur d'erreurs pour les opérations en lot
-    Utile pour traiter plusieurs éléments et rapporter tous les échecs
-    """
-    
-    def __init__(self, parent=None):
-        self.parent = parent
-        self.errors = []
-        self.successes = 0
-        self.total_operations = 0
-    
-    def run_operation(self, operation: Callable, operation_name: str = "", *args, **kwargs) -> Any:
-        """
-        Exécuter une opération et enregistrer le résultat
-        
-        Args:
-            operation: Fonction à exécuter
-            operation_name: Nom descriptif de l'opération
-            *args, **kwargs: Arguments pour l'opération
-            
-        Returns:
-            Résultat de l'opération ou None en cas d'échec
-        """
-        self.total_operations += 1
-        
-        try:
-            result = operation(*args, **kwargs)
-            self.successes += 1
-            return result
-        except Exception as e:
-            error_info = {
-                'operation': operation_name or operation.__name__,
-                'error': str(e),
-                'args': args,
-                'kwargs': kwargs
-            }
-            self.errors.append(error_info)
-            
-            # Log de l'erreur
-            error_logger.error(
-                f"Erreur dans {error_info['operation']}: {error_info['error']}",
-                exc_info=True
-            )
-            
-            return None
-    
-    def get_summary(self) -> str:
-        """Obtenir un résumé des opérations"""
-        if not self.errors:
-            return f"Toutes les opérations réussies ({self.successes}/{self.total_operations})"
-
-        summary = f"Résumé: {self.successes} succès, {len(self.errors)} échecs sur {self.total_operations} opérations\n\n"
-        
-        for i, error in enumerate(self.errors, 1):
-            summary += f"{i}. {error['operation']}: {error['error']}\n"
-        
-        return summary
-    
-    def show_summary(self, title: str = "Résumé des opérations"):
-        """Afficher le résumé à l'utilisateur"""
-        summary = self.get_summary()
-        
-        if self.errors:
-            MessageHelper.show_warning(self.parent, summary, title)
-        else:
-            MessageHelper.show_success(self.parent, summary, title)
 
 # Fonctions utilitaires pour les cas d'usage courants
-def safe_execute(operation: Callable, parent=None, error_title: str = "Erreur", 
-                default_return: Any = None, *args, **kwargs) -> Any:
-    """
-    Exécuter une opération de manière sécurisée
-    
-    Usage:
-        result = safe_execute(fonction_dangereuse, self, "Erreur custom", default_value, arg1, arg2)
-    """
-    try:
-        return operation(*args, **kwargs)
-    except Exception as e:
-        error_logger.error(f"Erreur dans safe_execute: {str(e)}", exc_info=True)
-        MessageHelper.show_error(parent, str(e), error_title)
-        return default_return
 
 def safe_call_method(obj, method_name: str, *args, **kwargs) -> Any:
     """
@@ -649,16 +460,6 @@ def safe_call_method(obj, method_name: str, *args, **kwargs) -> Any:
         error_logger.error(f"Erreur lors de l'appel de {method_name}: {str(e)}", exc_info=True)
         return None
 
-def handle_paste_results_errors(return_value=None, title: str = "Erreur résultats collage"):
-    """
-    Décorateur pour gérer les erreurs lors de l'affichage/logging des résultats de collage
-    """
-    return handle_errors(
-        title=title,
-        message="Erreur lors du traitement des résultats de collage.",
-        show_message=False,
-        return_on_error=return_value
-    )
 
 def handle_log_viewer_errors(return_value=None, title: str = "Erreur visionneur de logs"):
     """
@@ -742,24 +543,10 @@ EXEMPLES D'UTILISATION:
         # Code de sauvegarde
         pass
 
-3. Context manager:
-    with SafeOperation(self, "Erreur de traitement") as safe:
-        result = operation_complexe()
-        safe.set_result(result)
-    
-    if safe.success:
-        print(safe.result)
-
-4. Traitement en lot:
-    reporter = ErrorReporter(self)
-    
-    for item in items:
-        reporter.run_operation(process_item, f"Traitement {item}", item)
-    
-    reporter.show_summary("Traitement terminé")
-
-5. Exécution sécurisée:
-    result = safe_execute(fonction_dangereuse, self, "Erreur", valeur_par_defaut, arg1, arg2)
+3. Décorateur spécialisé (un par famille d'erreurs) :
+    @handle_export_errors(title="Erreur export CSV")
+    def _execute_csv_export(self, data, reference):
+        ...
 """
 
 def handle_database_operation_errors(return_value=None, log_prefix="Erreur base de données"):
