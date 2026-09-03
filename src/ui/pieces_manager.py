@@ -2034,13 +2034,25 @@ class PiecesManagerWindow(QDialog):
                 ref_piece, description, nb_appareils, types_appareils = row[0], row[1], row[2], row[3]
                 writer.writerow([ref_piece, description, nb_appareils, types_appareils or ""])
 
+    def _chemin_export_par_defaut(self, nom_fichier: str) -> str:
+        """Chemin proposé par défaut dans le dialogue de sauvegarde.
+
+        Ouvre le sélecteur dans le dossier d'export configuré (Bureau par
+        défaut) plutôt que dans le dernier dossier utilisé par le système.
+        """
+        import os
+        from ..services.export_config_service import resolve_output_dir
+        service = getattr(self.parent(), 'export_config_service', None)
+        return os.path.join(resolve_output_dir(service), nom_fichier)
+
     @handle_ui_errors(log_prefix="Erreur export pièces", show_message=True)
     def _export_pieces(self, checked=False):
         """Exporter la liste des pièces"""
         from .qt_imports import QFileDialog
 
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Exporter les pièces", "pieces_everyParts.csv",
+            self, "Exporter les pièces",
+            self._chemin_export_par_defaut("pieces_everyParts.csv"),
             "Fichiers CSV (*.csv)"
         )
 
@@ -2060,7 +2072,8 @@ class PiecesManagerWindow(QDialog):
         rows = [row for row in self._get_filtered_data() if row[0] in selected_refs]
 
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Exporter la sélection", "pieces_selection.csv",
+            self, "Exporter la sélection",
+            self._chemin_export_par_defaut("pieces_selection.csv"),
             "Fichiers CSV (*.csv)"
         )
 

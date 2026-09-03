@@ -153,6 +153,9 @@ class CleanupPreviewDialog(QDialog):
         self.distinct_widget.set_db_manager(self.db_manager)
 
         self.history_widget = self.ui_service.create_history_widget()
+        self.history_widget.export_config_service = getattr(
+            self.parent_window, 'export_config_service', None
+        )
         self.history_widget.set_db_manager(self.db_manager)
 
         _pages = [

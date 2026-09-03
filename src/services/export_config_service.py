@@ -22,6 +22,10 @@ from src.core.logger import app_logger
 
 # Valeurs par défaut = comportement actuel exact (zéro régression)
 DEFAULT_CONFIG: Dict[str, Any] = {
+    # Dossier de destination des exports fichier. "" = Bureau de l'utilisateur.
+    # Volontairement stocké vide plutôt qu'en absolu : la config reste portable
+    # d'une machine à l'autre et "par défaut le Bureau" y reste vrai.
+    "output_dir": "",
     "csv": {
         "separator": ";",
         "encoding": "utf-8",
@@ -131,6 +135,8 @@ class ExportConfigService(BaseService):
         n'est perdue. 'details' reste synchronisé sur le profil par défaut.
         """
         merged = copy.deepcopy(DEFAULT_CONFIG)
+        if isinstance(loaded.get('output_dir'), str):
+            merged['output_dir'] = loaded['output_dir']
         if 'csv' in loaded:
             merged['csv'].update(loaded['csv'])
         if 'html' in loaded:
@@ -197,6 +203,34 @@ class ExportConfigService(BaseService):
         self._config = copy.deepcopy(DEFAULT_CONFIG)
         self._write()
         app_logger.info("[OK] export_config.json réinitialisé aux valeurs par défaut")
+
+    # ─── Dossier de destination des exports ──────────────────────────────────
+
+    @staticmethod
+    def get_default_output_dir() -> str:
+        """Dossier d'export par défaut : le Bureau de l'utilisateur."""
+        return os.path.join(os.path.expanduser("~"), "Desktop")
+
+    def get_output_dir(self) -> str:
+        """Dossier de destination des exports fichier (chemin absolu).
+
+        Repli sur le Bureau si aucun dossier n'est configuré, ou si le dossier
+        configuré n'est plus utilisable (disque externe débranché, dossier
+        renommé ou passé en lecture seule) : un export ne doit jamais échouer
+        à cause d'un réglage devenu obsolète.
+        """
+        configured = (self._config.get('output_dir') or '').strip()
+        if not configured:
+            return self.get_default_output_dir()
+
+        expanded = os.path.abspath(os.path.expanduser(configured))
+        if os.path.isdir(expanded) and os.access(expanded, os.W_OK):
+            return expanded
+
+        app_logger.warning(
+            f"[!] Dossier d'export inutilisable ({configured}), repli sur le Bureau"
+        )
+        return self.get_default_output_dir()
 
     # ─── Accesseurs CSV ──────────────────────────────────────────────────────
 
@@ -299,3 +333,21 @@ class ExportConfigService(BaseService):
         for key, value in context.items():
             template = template.replace('{' + key + '}', html.escape(str(value or ''), quote=True))
         return template
+
+
+# ─── Résolution du dossier d'export ──────────────────────────────────────────
+
+def resolve_output_dir(service) -> str:
+    """Dossier de destination des exports, avec repli systématique sur le Bureau.
+
+    Point d'entrée unique pour les appelants qui n'ont pas la garantie de
+    disposer du service (widgets construits sans parent, services créés avant
+    la fenêtre principale). Le repli reproduit exactement le comportement
+    historique — écriture sur le Bureau — donc aucun appelant ne peut régresser.
+    """
+    if service is not None:
+        try:
+            return service.get_output_dir()
+        except Exception as e:
+            app_logger.warning(f"[!] Dossier d'export illisible ({e}), repli sur le Bureau")
+    return ExportConfigService.get_default_output_dir()
