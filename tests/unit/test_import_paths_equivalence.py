@@ -179,43 +179,30 @@ SCENARIOS = {
 }
 
 
-# ─── Divergences constatées au 2026-09-03 ────────────────────────────────────
-# Marquées xfail(strict=True) : la suite reste verte, mais le jour où l'une est
-# corrigée le test passe en XPASS et échoue — obligeant à retirer le marqueur.
-# Ce ne sont pas des tests « à ignorer », ce sont des constats sous surveillance.
+# ─── Historique : deux divergences trouvées puis corrigées ───────────────────
+# Ces tests ont été écrits en v3.69.1 et ont immédiatement révélé deux écarts,
+# marqués alors xfail(strict=True). Corrigés en v3.69.2 dans _insert_or_find_device :
+#
+#   A. NULL contre chaîne vide — le chemin standard n'insérait que les colonnes
+#      présentes et laissait SQLite écrire NULL là où le batch écrit ''.
+#      « WHERE type = '' » ne ramenait donc pas les mêmes lignes selon la taille
+#      du fichier importé.
+#
+#   B. Replis de résolution asymétriques — une ligne COMPLÈTE se rattachait à un
+#      appareil PARTIEL existant côté standard, et sa référence commerciale était
+#      perdue : 2 appareils au lieu de 3. Les replis sont désormais gardés pour
+#      ne s'appliquer qu'aux lignes elles-mêmes partielles, reproduisant la clé
+#      composite du chemin batch.
+#
+# Les marqueurs xfail ont été retirés : ces tests doivent passer. S'ils échouent
+# à nouveau, c'est qu'un des deux chemins a redérivé.
 
-MOTIF_NULL_VS_VIDE = (
-    "Divergence A : quand type/manufacturer ne sont pas fournis (imports à 2 ou "
-    "3 colonnes, mapping partiel), le chemin standard écrit NULL en base là où le "
-    "chemin batch écrit une chaîne vide. Même affichage, mais 'WHERE type = \'\''  "
-    "et 'WHERE type IS NULL' ne ramènent pas les mêmes lignes — et un ré-import "
-    "peut ne pas retrouver l'appareil."
-)
-
-MOTIF_REPLI_ASYMETRIQUE = (
-    "Divergence B : le chemin standard (_insert_or_find_device) résout en trois "
-    "paliers — couple exact, puis repli ref_modele seule, puis repli commercial_ref "
-    "seule. Le chemin batch (_find_in_cache) n'a qu'une clé composite. Conséquence "
-    "mesurée : une ligne COMPLÈTE se rattache à un appareil PARTIEL existant côté "
-    "standard, et sa référence commerciale est perdue — 2 appareils au lieu de 3. "
-    "La doctrine documentée en v3.66.1 (« un appareil partiel ne correspond qu'à un "
-    "autre appareil partiel ») est celle que respecte le chemin batch."
-)
-
-SCENARIOS_DIVERGENTS = {
-    "mono_reference_et_complete_melangees": MOTIF_REPLI_ASYMETRIQUE,
-}
 
 
 class TestEquivalenceLotUnique:
     """Un seul lot : le cas d'un fichier isolé."""
 
-    @pytest.mark.parametrize("nom", [
-        pytest.param(n, marks=pytest.mark.xfail(strict=True,
-                                                reason=SCENARIOS_DIVERGENTS[n]))
-        if n in SCENARIOS_DIVERGENTS else n
-        for n in sorted(SCENARIOS)
-    ])
+    @pytest.mark.parametrize("nom", sorted(SCENARIOS))
     def test_chemins_equivalents(self, qapp, nom):
         _assert_equivalents([SCENARIOS[nom]])
 
@@ -260,7 +247,6 @@ class TestEquivalenceMultiLots:
 class TestEquivalenceConfiguration:
     """Les options de configuration ne doivent pas faire diverger les chemins."""
 
-    @pytest.mark.xfail(strict=True, reason=MOTIF_NULL_VS_VIDE)
     def test_troisieme_colonne_en_other_ref(self, qapp):
         lignes = [
             ['SC4520', 'PowerBrush 20', 'AUTRE_REF_1'],
@@ -268,7 +254,6 @@ class TestEquivalenceConfiguration:
         ]
         _assert_equivalents([lignes], {'third_column_choice': 'other_ref'})
 
-    @pytest.mark.xfail(strict=True, reason=MOTIF_NULL_VS_VIDE)
     def test_troisieme_colonne_en_notes(self, qapp):
         lignes = [
             ['SC4520', 'PowerBrush 20', 'une note'],
@@ -276,7 +261,6 @@ class TestEquivalenceConfiguration:
         ]
         _assert_equivalents([lignes], {'third_column_choice': 'notes'})
 
-    @pytest.mark.xfail(strict=True, reason=MOTIF_NULL_VS_VIDE)
     def test_mapping_de_colonnes_personnalise(self, qapp):
         lignes = [
             ['Samsung', 'SC4520', 'Aspirateur'],
@@ -285,7 +269,6 @@ class TestEquivalenceConfiguration:
         mapping = {3: ['manufacturer', 'ref_modele', 'type']}
         _assert_equivalents([lignes], {'column_mapping': mapping})
 
-    @pytest.mark.xfail(strict=True, reason=MOTIF_NULL_VS_VIDE)
     def test_deux_colonnes_seulement(self, qapp):
         lignes = [['SC4520', 'PowerBrush 20'], ['SC4521', 'PowerBrush 30']]
         _assert_equivalents([lignes])
