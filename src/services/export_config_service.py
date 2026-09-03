@@ -418,3 +418,26 @@ def format_csv_filename(pattern: str, export_ref: str, timestamp: str = '') -> s
     return base or DEFAULT_CONFIG['csv']['filename_pattern'].format(
         export_ref=export_ref, timestamp=timestamp
     )
+
+
+# ─── Sécurité CSV ────────────────────────────────────────────────────────────
+# Déplacés depuis data_exporter.py (supprimé en v3.69.0) : ils appartiennent au
+# module qui porte déjà le rendu CSV, et non à un exporteur devenu inatteignable.
+
+def _neutraliser_formule_csv(valeur):
+    """Neutraliser l'injection de formule CSV (ouverture dans Excel/LibreOffice).
+
+    Une cellule commençant par '=', '+' ou '@' serait interprétée comme une
+    formule par le tableur. Les données provenant d'imports externes (PDF/CSV),
+    on préfixe d'une apostrophe — convention tableur pour forcer le texte.
+    Le tiret '-' n'est volontairement pas traité (peut apparaître en tête de
+    références réelles, et n'est pas exploitable seul).
+    """
+    if isinstance(valeur, str) and valeur and valeur[0] in ('=', '+', '@'):
+        return "'" + valeur
+    return valeur
+
+
+def _assainir_ligne_csv(row):
+    """Appliquer la neutralisation de formules à toutes les cellules d'une ligne"""
+    return [_neutraliser_formule_csv(cell) for cell in row]

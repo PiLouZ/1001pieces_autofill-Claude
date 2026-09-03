@@ -10,7 +10,8 @@ Responsabilités consolidées :
 - Gestion des erreurs harmonisée
 - Support des recherches simples et multiples
 
- Remplace : MainExportService, LegacyExportService, ExportService
+ Consolidation achevée en v3.69.0 : les trois services fusionnés ici ont été
+ supprimés, leur chemin d'accès n'ayant jamais été branché à l'interface.
  Économie estimée : ~300 lignes de code dupliqué
 """
 
@@ -30,7 +31,6 @@ from ..utils.error_handler import handle_export_errors
 class ExportType(Enum):
     """Types d'export supportés"""
     MAIN = "main"           # Export principal avec dialogue référence
-    LEGACY = "legacy"       # Export legacy avec fallbacks
     QUICK = "quick"         # Export rapide sans dialogue
 
 class ReferenceSelectionResult:
@@ -46,7 +46,7 @@ class ExportManagerService:
     
     Centralise toutes les logiques d'export précédemment dispersées dans :
     - MainExportService (export principal)
-    - LegacyExportService (export legacy) 
+    - LegacyExportService (export legacy)
     - ExportService (export de base)
     """
     
@@ -66,7 +66,7 @@ class ExportManagerService:
 
         Args:
             export_format: Format d'export (CSV, HTML_BRANDS, HTML_DETAILS)
-            export_type: Type d'export (MAIN, LEGACY, QUICK)
+            export_type: Type d'export (MAIN, QUICK)
             profile_name: Profil HTML Détails à utiliser (None = profil par défaut)
 
         Returns:
@@ -80,8 +80,6 @@ class ExportManagerService:
         # Traitement selon le type d'export
         if export_type == ExportType.MAIN:
             return self._handle_main_export(search_term, export_format)
-        elif export_type == ExportType.LEGACY:
-            return self._handle_legacy_export(search_term, export_format)
         elif export_type == ExportType.QUICK:
             return self._handle_quick_export(search_term, export_format, profile_name=profile_name)
         else:
@@ -110,20 +108,6 @@ class ExportManagerService:
             export_format
         )
     
-    @handle_export_errors(title="Erreur export legacy")
-    def _handle_legacy_export(self, search_term: str, export_format: ExportFormat) -> bool:
-        """Gérer l'export legacy avec fallbacks"""
-        # Pour CSV, toujours demander confirmation de référence
-        if export_format == ExportFormat.CSV:
-            selection_result = self._handle_csv_reference_selection(search_term)
-            if selection_result.cancelled:
-                return False
-
-            # Export CSV simplifié
-            return self._handle_csv_export_legacy(selection_result.reference)
-
-        # Pour les autres formats, utiliser l'export standard
-        return self._handle_standard_export(search_term, export_format)
     
     def _handle_quick_export(self, search_term: str, export_format: ExportFormat,
                              profile_name: str = None) -> bool:
@@ -189,28 +173,6 @@ class ExportManagerService:
         else:
             return ReferenceSelectionResult("", "", cancelled=True)
     
-    def _handle_csv_reference_selection(self, search_term: str) -> ReferenceSelectionResult:
-        """Sélection spécialisée pour CSV (legacy)"""
-        # Vérifier si références multiples
-        multi_terms = self._get_multi_reference_terms()
-        
-        if multi_terms:
-            title = "Référence pour l'export CSV"
-            message = (f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                      f"Choisissez la référence à utiliser pour la première colonne :")
-            default = multi_terms[0]
-        else:
-            title = "Référence pour l'export CSV"
-            message = (f"Référence détectée : {search_term}\n"
-                      f"Confirmez ou modifiez la référence à utiliser pour la première colonne :")
-            default = search_term
-        
-        selected_reference = self._show_reference_dialog(title, message, default)
-        
-        if selected_reference:
-            return ReferenceSelectionResult(selected_reference, search_term)
-        else:
-            return ReferenceSelectionResult("", "", cancelled=True)
     
     # ===== DIALOGUES UNIFIÉS =====
     
@@ -316,10 +278,9 @@ class ExportManagerService:
         confirmée dans le dialogue d'export, pas le terme de recherche.
         """
         from datetime import datetime
-        from ..data.data_exporter import _assainir_ligne_csv
         from .export_config_service import (
             resolve_output_dir, get_csv_settings, render_csv_row_with,
-            format_csv_filename
+            format_csv_filename, _assainir_ligne_csv
         )
 
         service = getattr(self.main_window, 'export_config_service', None)
@@ -339,7 +300,7 @@ class ExportManagerService:
             for record in data:
                 # Compléter les records courts : le renderer attend 6 champs
                 record = tuple(record) + ('',) * (6 - len(record)) if len(record) < 6 else record
-                # Neutralisation injection de formules (même traitement que data_exporter)
+                # Neutralisation injection de formules avant écriture
                 writer.writerow(_assainir_ligne_csv(
                     render_csv_row_with(reglages['columns'], record, reference)
                 ))
@@ -405,39 +366,7 @@ class ExportManagerService:
 
         return True
     
-    @handle_export_errors(title="Erreur export CSV legacy")
-    def _handle_csv_export_legacy(self, reference: str) -> bool:
-        """Gérer l'export CSV legacy"""
-        result = self.main_window._export_displayed_table_as_csv(reference)
-        if result:
-            self._add_to_history(f"Export CSV: {result}")
-            self.main_window.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-            return True
-        return False
     
-    @handle_export_errors(title="Erreur export standard")
-    def _handle_standard_export(self, search_term: str, export_format: ExportFormat) -> bool:
-        """Gérer l'export standard (autres formats)"""
-        # Récupérer les filtres actifs
-        column_filters = self._get_active_column_filters()
-        incomplete_filter = getattr(self.main_window, 'show_incomplete_only', False)
-
-        # Export via DataExporter
-        result = self.main_window.exporter.export_search_results(
-            search_term, export_format,
-            column_filters=column_filters,
-            incomplete_filter=incomplete_filter
-        )
-
-        # Traitement du résultat
-        if export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
-            QApplication.clipboard().setText(result)
-            self._show_export_status(export_format, result)
-        else:
-            self.main_window.statusbar.showMessage(result, Config.LONG_STATUS_MESSAGE_TIMEOUT)
-            self._add_to_history(f"Export {export_format.value}: {result}")
-
-        return True
     
     # ===== UTILITAIRES =====
     

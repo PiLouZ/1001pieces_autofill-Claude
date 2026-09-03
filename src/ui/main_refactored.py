@@ -56,7 +56,6 @@ from src.core.logger import app_logger
 from src.core.import_manager import ImportManager
 from src.data.database_manager import DatabaseManager, DatabaseError
 from src.data.data_validator import DataValidator, ValidationResult
-from src.data.data_exporter import DataExporter, ExportError
 from .style_manager import StyleManager
 from .table_controller import TableController
 from .paste_data_processor import PasteDataProcessor
@@ -153,13 +152,12 @@ class MainWindow(QMainWindow):
         self.db_manager = DatabaseManager()
         self.validator = DataValidator()
 
-        # Service de config des exports (doit être créé avant DataExporter et HtmlExportService)
+        # Service de config des exports (doit être créé avant HtmlExportService)
         from ..services.export_config_service import ExportConfigService
         from ..services.html_export_service import HtmlExportService as _HtmlExportService
         self.export_config_service = ExportConfigService(self)
         _HtmlExportService.set_config_service(self.export_config_service)
 
-        self.exporter = DataExporter(self.db_manager, self.export_config_service)
         self.device_manager = DeviceManager(self.db_manager)
 
         # Sauvegarde automatique avant opérations destructives (nettoyage, import)

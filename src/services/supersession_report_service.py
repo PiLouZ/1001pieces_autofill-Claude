@@ -13,8 +13,7 @@ from datetime import datetime
 
 from .base_service import BaseService
 from ..core.logger import app_logger
-from ..data.data_exporter import _assainir_ligne_csv
-from .export_config_service import resolve_output_dir
+from .export_config_service import resolve_output_dir, _assainir_ligne_csv
 
 
 class SupersessionReportService(BaseService):
