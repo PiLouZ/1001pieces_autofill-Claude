@@ -21,7 +21,6 @@ from ..utils.error_handler import (
 )
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
-from ..services.table_widget_service import TableWidgetService
 from .pieces_list_service import PieceRelationsPopup
 
 def _truncate_refs(refs: list, max_inline: int = 3) -> tuple:
@@ -82,7 +81,6 @@ class TableController:
         self.parent_window = parent_window
         self.db_manager = db_manager
         self.pieces_count_service = PiecesCountService(db_manager)
-        self.table_widget_service = TableWidgetService(db_manager)
         
         # Variables de pagination
         self.current_page = 1
