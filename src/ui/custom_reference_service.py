@@ -31,30 +31,6 @@ class CustomReferenceService:
     def __init__(self, main_window):
         self.main_window = main_window
     
-    def _get_active_column_filters(self) -> Dict[int, str]:
-        """
-        Récupérer les filtres de colonnes actifs
-        
-        Returns:
-            Dict: Mapping colonne -> filtre actif
-        """
-        column_filters = {}
-        
-        if (hasattr(self.main_window, 'table_controller') and 
-            hasattr(self.main_window.table_controller, 'filter_widgets')):
-            
-            for col_idx, filter_widget in self.main_window.table_controller.filter_widgets.items():
-                if filter_widget is not None:  # Skip removed filters
-                    from .qt_imports import QComboBox
-                    if isinstance(filter_widget, QComboBox):
-                        filter_text = filter_widget.currentText().strip()
-                    else:  # QLineEdit
-                        filter_text = filter_widget.text().strip()
-                    
-                    if filter_text:
-                        column_filters[col_idx] = filter_text
-        
-        return column_filters
     
     
     

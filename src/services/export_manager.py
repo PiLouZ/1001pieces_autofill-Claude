@@ -53,11 +53,8 @@ class ExportManagerService:
     def __init__(self, main_window):
         self.main_window = main_window
         # PHASE 6 CONSOLIDATION - Service HTML direct, pas de couche intermédiaire
-        self._last_export_info = None  # Pour compatibilité avec get_last_export_info()
+        self._last_export_info = None  # Alimenté par l'export HTML, lu par _show_export_status()
     
-    def get_last_export_info(self):
-        """Récupérer les informations du dernier export HTML - Compatibilité avec ExportService"""
-        return self._last_export_info
         
     # ===== INTERFACE PUBLIQUE UNIFIÉE =====
 

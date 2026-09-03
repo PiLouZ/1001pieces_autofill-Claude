@@ -170,9 +170,6 @@ class DataExporter:
 
         return html_output
     
-    def get_last_export_info(self):
-        """Récupérer les informations du dernier export HTML détails"""
-        return getattr(self, '_last_export_info', None)
 
     @handle_export_errors(title="Erreur export XML")
     def _export_to_xml(self, data: List[Tuple], filename: str, search_term: str) -> str:

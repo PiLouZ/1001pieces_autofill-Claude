@@ -100,9 +100,6 @@ class ExportService(BaseService):
         
         return html_output
 
-    def get_last_export_info(self):
-        """Récupérer les informations du dernier export HTML détails"""
-        return getattr(self, '_last_export_info', None)
     
     def _prepare_export_data(self, results: List[tuple], include_pieces: bool = True) -> List[Dict[str, Any]]:
         """Préparer les données pour l'export"""
