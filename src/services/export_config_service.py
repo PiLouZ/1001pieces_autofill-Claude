@@ -279,47 +279,15 @@ class ExportConfigService(BaseService):
 
     # ─── Rendu CSV ───────────────────────────────────────────────────────────
 
-    def render_csv_row(self, record: Tuple, search_term: str = '') -> List[str]:
+    def render_csv_row(self, record: Tuple, export_ref: str = '') -> List[str]:
         """
         Générer une ligne CSV depuis un record selon la config colonnes.
 
         record = (type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece)
+        export_ref = référence d'export retenue pour ce lot (celle confirmée dans
+            le dialogue d'export), substituée à {export_ref}.
         """
-        type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-
-        ref_m = ref_modele or ''
-        ref_c = commercial_ref or ''
-        modele_complet = f"{ref_m} - {ref_c}".strip(' -') if (ref_m and ref_c) else (ref_m or ref_c)
-        separateur = ' - ' if (ref_m and ref_c) else ''
-
-        context = {
-            'export_ref':     search_term or '',
-            'ref_piece':      ref_piece or '',
-            'type_app':       type_app or '',
-            'manufacturer':   manufacturer or '',
-            'ref_modele':     ref_m,
-            'commercial_ref': ref_c,
-            'other_ref':      other_ref or '',
-            'modele_complet': modele_complet,
-            'separateur':     separateur,
-        }
-
-        return [
-            self._render_source(col['source'], context)
-            for col in self._config['csv']['columns']
-        ]
-
-    def _render_source(self, source: str, context: Dict) -> str:
-        """Substituer les {variables} dans une source de colonne CSV"""
-        try:
-            result = source.format(**context)
-            # Nettoyer les assemblages vides ex: " - " quand les deux champs sont vides
-            result = result.strip()
-            if result in ('-', ' - ', '- ', ' -'):
-                result = ''
-            return result
-        except (KeyError, ValueError):
-            return source
+        return render_csv_row_with(self._config['csv']['columns'], record, export_ref)
 
     # ─── Rendu HTML ──────────────────────────────────────────────────────────
 
@@ -351,3 +319,102 @@ def resolve_output_dir(service) -> str:
         except Exception as e:
             app_logger.warning(f"[!] Dossier d'export illisible ({e}), repli sur le Bureau")
     return ExportConfigService.get_default_output_dir()
+
+
+# ─── Rendu CSV partagé ───────────────────────────────────────────────────────
+
+def _render_source(source: str, context: Dict) -> str:
+    """Substituer les {variables} dans une source de colonne CSV"""
+    try:
+        result = source.format(**context)
+        # Nettoyer les assemblages vides ex: " - " quand les deux champs sont vides
+        result = result.strip()
+        if result in ('-', ' - ', '- ', ' -'):
+            result = ''
+        return result
+    except (KeyError, ValueError):
+        return source
+
+
+def render_csv_row_with(columns: List[Dict], record: Tuple, export_ref: str = '') -> List[str]:
+    """Rendre une ligne CSV pour un jeu de colonnes donné.
+
+    Renderer unique de l'application : ExportConfigService.render_csv_row y
+    délègue, et les appelants dépourvus de service passent les colonnes par
+    défaut. Deux écrivains CSV divergents étaient précisément la cause du
+    bug corrigé en v3.68.0 — il ne doit exister qu'un seul rendu.
+    """
+    type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
+
+    ref_m = ref_modele or ''
+    ref_c = commercial_ref or ''
+    modele_complet = f"{ref_m} - {ref_c}".strip(' -') if (ref_m and ref_c) else (ref_m or ref_c)
+    separateur = ' - ' if (ref_m and ref_c) else ''
+
+    context = {
+        'export_ref':     export_ref or '',
+        'ref_piece':      ref_piece or '',
+        'type_app':       type_app or '',
+        'manufacturer':   manufacturer or '',
+        'ref_modele':     ref_m,
+        'commercial_ref': ref_c,
+        'other_ref':      other_ref or '',
+        'modele_complet': modele_complet,
+        'separateur':     separateur,
+    }
+
+    return [_render_source(col['source'], context) for col in columns]
+
+
+def get_csv_settings(service) -> Dict[str, Any]:
+    """Réglages CSV effectifs, avec repli sur les défauts si le service est absent.
+
+    Même contrat que resolve_output_dir : le repli reproduit le comportement
+    historique, aucun appelant ne peut donc régresser faute de service.
+    """
+    defauts = DEFAULT_CONFIG['csv']
+    if service is None:
+        return {
+            'columns':          copy.deepcopy(defauts['columns']),
+            'headers':          [c['header'] for c in defauts['columns']],
+            'separator':        defauts['separator'],
+            'encoding':         defauts['encoding'],
+            'filename_pattern': defauts['filename_pattern'],
+        }
+    return {
+        'columns':          service.get_csv_columns(),
+        'headers':          service.get_csv_headers(),
+        'separator':        service.get_csv_separator(),
+        'encoding':         service.get_csv_encoding(),
+        'filename_pattern': service.get_csv_filename_pattern(),
+    }
+
+
+def format_csv_filename(pattern: str, export_ref: str, timestamp: str = '') -> str:
+    """Appliquer le pattern de nom de fichier, sans jamais faire échouer l'export.
+
+    Le pattern est saisi librement dans la fenêtre de configuration : une
+    variable inconnue ou une accolade mal fermée ne doit pas empêcher
+    l'export, et un séparateur de chemin ne doit pas écrire hors du dossier
+    de destination choisi.
+    """
+    try:
+        nom = pattern.format(export_ref=export_ref, timestamp=timestamp)
+    except (KeyError, IndexError, ValueError) as e:
+        app_logger.warning(
+            f"[!] Pattern de nom de fichier invalide ({pattern!r} : {e}), "
+            f"utilisation du pattern par défaut"
+        )
+        nom = DEFAULT_CONFIG['csv']['filename_pattern'].format(
+            export_ref=export_ref, timestamp=timestamp
+        )
+
+    base = os.path.basename(nom).strip()
+    if base != nom.strip():
+        app_logger.warning(
+            f"[!] Séparateur de chemin dans le nom de fichier ({nom!r}), "
+            f"conservé sous {base!r} dans le dossier d'export"
+        )
+    return base or DEFAULT_CONFIG['csv']['filename_pattern'].format(
+        export_ref=export_ref, timestamp=timestamp
+    )

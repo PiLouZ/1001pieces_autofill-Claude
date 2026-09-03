@@ -214,7 +214,15 @@ class TestExportCsvEcritDansLeDossierConfigure:
     def test_contenu_inchange_par_rapport_au_comportement_historique(
         self, config_service, tmp_path
     ):
-        """ZERO REGRESSION : seul le dossier change, pas une virgule du CSV."""
+        """ZERO REGRESSION : la configuration **par défaut** reproduit à l'octet
+        près le CSV historique.
+
+        Rôle d'origine (v3.67.0) : prouver que rendre le dossier configurable ne
+        touchait pas au contenu. Rôle depuis la v3.68.0, où la configuration
+        pilote réellement l'export : prouver que les valeurs par défaut sont
+        bien l'ancien format codé en dur. Un échec ici signifie que les défauts
+        ont dérivé — c'est le CSV livré aux utilisateurs qui change.
+        """
         cible = tmp_path / "exports"
         cible.mkdir()
         config_service._config['output_dir'] = str(cible)

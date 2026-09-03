@@ -96,36 +96,25 @@ class DataExporter:
         return result
     
     @handle_export_errors(title="Erreur export CSV")
-    def _export_to_csv(self, data: List[Tuple], filename: str, search_term: str) -> str:
-        """Exporter vers CSV (colonnes pilotées par ExportConfigService si disponible)"""
-        cfg = self.export_config_service
+    def _export_to_csv(self, data: List[Tuple], filename: str, export_ref: str) -> str:
+        """Exporter vers CSV (colonnes pilotées par ExportConfigService).
 
-        separator = cfg.get_csv_separator() if cfg else ';'
-        encoding  = cfg.get_csv_encoding()  if cfg else 'utf-8'
-        headers   = cfg.get_csv_headers()   if cfg else [
-            'product', 'type', 'manufacturer',
-            'modele_name', 'reference_modele', 'commercial_reference'
-        ]
+        Passe par le renderer partagé render_csv_row_with : il ne doit exister
+        qu'un seul rendu CSV dans l'application. Le repli sans service est porté
+        par get_csv_settings, plus par une copie locale de la logique.
+        """
+        from src.services.export_config_service import get_csv_settings, render_csv_row_with
 
-        with open(filename, 'w', newline='', encoding=encoding) as csvfile:
-            writer = csv.writer(csvfile, delimiter=separator)
-            writer.writerow(headers)
+        reglages = get_csv_settings(self.export_config_service)
+
+        with open(filename, 'w', newline='', encoding=reglages['encoding']) as csvfile:
+            writer = csv.writer(csvfile, delimiter=reglages['separator'])
+            writer.writerow(reglages['headers'])
 
             for record in data:
-                if cfg:
-                    row = cfg.render_csv_row(record, search_term)
-                else:
-                    type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece = record
-                    modele_complet = f"{ref_modele or ''} - {commercial_ref or ''}".strip(' -')
-                    row = [
-                        ref_piece or search_term,
-                        type_app or '',
-                        manufacturer or '',
-                        modele_complet,
-                        ref_modele or '',
-                        commercial_ref or ''
-                    ]
-                writer.writerow(_assainir_ligne_csv(row))
+                writer.writerow(_assainir_ligne_csv(
+                    render_csv_row_with(reglages['columns'], record, export_ref)
+                ))
 
         return f"Fichier CSV créé: {filename}"
     
@@ -245,11 +234,14 @@ class DataExporter:
         
         # Construire le nom de fichier selon le format standardisé
         if export_format == ExportFormat.CSV:
-            pattern = (
-                self.export_config_service.get_csv_filename_pattern()
-                if self.export_config_service else '{term}_everyParts.csv'
+            from src.services.export_config_service import (
+                get_csv_settings, format_csv_filename
             )
-            filename = pattern.format(export_ref=clean_term, timestamp=timestamp)
+            filename = format_csv_filename(
+                get_csv_settings(self.export_config_service)['filename_pattern'],
+                export_ref=clean_term,
+                timestamp=timestamp,
+            )
         else:
             filename = f"{clean_term}_{timestamp}.{export_format.lowercase}"
         
