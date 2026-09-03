@@ -23,6 +23,11 @@ data/*_backup.db
 data/*.db.bak
 data/backups/
 
+# Configuration locale des exports (chemin de dossier propre à chaque poste).
+# Le fichier est recréé au premier lancement depuis les valeurs par défaut ;
+# data/export_config.example.json documente la structure attendue.
+data/export_config.json
+
 # Logs
 logs/
 data/logs/

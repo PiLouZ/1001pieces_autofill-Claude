@@ -1,4 +1,5 @@
 {
+  "output_dir": "",
   "csv": {
     "separator": ";",
     "encoding": "utf-8",
@@ -44,18 +45,11 @@
     },
     "details_profiles": [
       {
+        "name": "Format standard",
         "brand_header_template": "<div id=\"{marque}\"><b><u>{marque}</u></b></div>",
         "model_line_template": "<div>{modele_complet}</div>",
         "group_separator": "<div>&nbsp;</div>",
-        "char_limit": 195000,
-        "name": "Format standard"
-      },
-      {
-        "brand_header_template": "<div id=\"{marque}\"><b><u>{marque}</u></b></div>",
-        "model_line_template": "<div>{modele_complet}{separateur}{other_ref}</div>",
-        "group_separator": "<div>&nbsp;</div>",
-        "char_limit": 195000,
-        "name": "Format étendu"
+        "char_limit": 195000
       }
     ],
     "details_default_profile": "Format standard"
