@@ -4,6 +4,33 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.69.1] - 2026-09-03 (branche `test/import-paths-equivalence`)
+
+### Garde-fou : les deux chemins d'import sont désormais comparés par les tests
+
+`_process_data_import` (chemin standard, < 50 lignes) et `_process_data_import_batch` (>= 50 lignes ou dry-run) implémentent le même contrat métier par deux stratégies différentes — SQL immédiat d'un côté, cache mémoire et écriture différée de l'autre. L'aiguillage se fait sur le **volume**, l'utilisateur ne choisit donc pas son chemin.
+
+Rien n'affirmait qu'ils devaient rester équivalents. Ils ont pourtant divergé au moins trois fois : le code en porte les cicatrices en commentaires, et la v3.66.1 a corrigé un bug de production né de cette dérive. **20 tests d'équivalence** comparent désormais les deux chemins sur le même jeu de données — compteurs, état final de la base et candidats à la similarité — pour un lot isolé, plusieurs lots partageant `seen_device_refs` (déduplication inter-fichiers), différentes options de configuration, et de part et d'autre du seuil de bascule.
+
+**Aucune modification du code de production dans cette version.**
+
+### Deux divergences constatées, marquées `xfail(strict=True)`
+
+La suite reste verte, mais le jour où l'une est corrigée le test passe en XPASS et échoue — obligeant à retirer le marqueur. Ce ne sont pas des tests désactivés, ce sont des constats sous surveillance.
+
+**Divergence A — `NULL` contre chaîne vide.** Quand `type` et `manufacturer` ne sont pas fournis (imports à 2 ou 3 colonnes, mapping partiel), le chemin standard écrit `NULL` en base là où le chemin batch écrit `''`. Même affichage, mais `WHERE type = ''` et `WHERE type IS NULL` ne ramènent pas les mêmes lignes — et un ré-import peut ne pas retrouver l'appareil. Même famille que le bug corrigé en v3.68.0 sur l'export CSV.
+
+**Divergence B — replis de résolution asymétriques, avec perte de données.** Le chemin standard résout en trois paliers (couple exact, puis repli `ref_modele` seule, puis repli `commercial_ref` seule) ; le chemin batch n'a qu'une clé composite. Conséquence **mesurée** sur trois lignes — `(SC4520, '')`, `(SC4520, PowerBrush 20)`, `('', PowerBrush 20)` :
+
+| Chemin | Appareils créés | Effet |
+|---|---|---|
+| standard (< 50 lignes) | **2** | la ligne complète se rattache à l'appareil partiel ; `PowerBrush 20` est perdue |
+| batch (>= 50 lignes) | **3** | le couple complet est conservé |
+
+Le même fichier donne donc un résultat différent selon sa taille, et le petit fichier perd de l'information. La doctrine documentée en v3.66.1 — « un appareil partiel ne correspond qu'à un autre appareil partiel, jamais à un appareil complet » — est celle que respecte le chemin batch.
+
+**Vérifié** : suite complète **523 passed, 5 xfailed**, `compileall` OK. Les 5 xfail ont été contrôlés sous `--runxfail` : ils échouent réellement, les marqueurs ne masquent pas des tests qui passeraient.
+
 ## [3.69.0] - 2026-09-03 (branche `chore/dead-code-lot2`)
 
 ### Fin de la consolidation des exports — 3 modules supprimés, 731 lignes
