@@ -4,6 +4,28 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.68.0] - 2026-09-03 (branche `feature/csv-export-config-honored`)
+
+### L'onglet CSV de « Configuration des exports » pilote enfin l'export réel
+
+Colonnes, séparateur, encodage et pattern de nom de fichier étaient **sans effet** sur l'export CSV. `ExportManagerService._execute_csv_export` — le chemin réellement emprunté par le bouton CSV — réécrivait ces quatre réglages en dur et ne consultait jamais `ExportConfigService` (zéro occurrence dans le fichier). Le seul écrivain qui respectait la configuration, `DataExporter.render_csv_row`, n'était atteignable que par `ExportType.LEGACY`, que personne n'appelle.
+
+**`{export_ref}` vaut la référence confirmée dans le dialogue d'export**, conformément à l'arbitrage utilisateur — pas le terme de recherche. Le paramètre de `render_csv_row` est renommé `search_term` → `export_ref` : il portait un nom qui décrivait l'usage de l'ancien chemin mort, pas la sémantique attendue.
+
+**Un seul rendu CSV dans l'application.** Deux écrivains divergents étaient la cause du bug ; il en reste un, `render_csv_row_with()`, auquel `ExportConfigService.render_csv_row` délègue et que `data_exporter._export_to_csv` utilise désormais aussi — sa branche de repli codée en dur (troisième variante du même calcul) est supprimée. Les replis sans service passent par `get_csv_settings()`, même contrat que `resolve_output_dir()` de la v3.67.0 : le repli reproduit exactement le comportement historique.
+
+**Effet mesuré sur les données réelles : 159 lignes sur 690 418 (0,023 %).** L'écart a été calculé exhaustivement sur `appareils.db` avant d'écrire une ligne de code. Ce sont **exactement** les 159 appareils à `commercial_ref` NULL, dont la colonne `modele_name` contenait littéralement la chaîne `« None »` — `"60F49 - None"` devient `"60F49"`. C'est une correction de bug, pas un changement de format. Aucune autre ligne ne change : à configuration par défaut, le CSV est identique à l'octet près.
+
+Les 34 références à tiret final (`'CFI-3GLSTABUT1-'`, `'BRCIS 3180E-'`…), que le `strip(' -')` rognait potentiellement, se sont révélées **non impactées** : leur seconde référence est renseignée, le tiret se trouve donc en milieu de chaîne où les deux logiques coïncident.
+
+**Robustesse d'un réglage désormais saisi librement.** Le pattern de nom vient d'un champ texte de l'UI : `format_csv_filename()` neutralise une variable inconnue ou une accolade mal fermée (repli sur le pattern par défaut, avertissement en log) au lieu de faire échouer l'export, et réduit le résultat à un nom de fichier — un pattern contenant `../` ne peut pas écrire hors du dossier d'export choisi.
+
+**Vérifié** : 17 tests ajoutés (`tests/unit/test_csv_export_config.py`). Les **10 tests ciblant le bug ont été confirmés en échec** sur `export_manager.py` remis dans son état d'avant correction, les 7 gardes de non-régression passant dans les deux états. Export de bout en bout rejoué sur de vraies lignes de `appareils.db`, à configuration par défaut puis personnalisée. Le test sentinelle `test_contenu_inchange_par_rapport_au_comportement_historique` est conservé et re-documenté : il prouve désormais que les valeurs par défaut *sont* l'ancien format codé en dur. Suite complète **508 passed**, `compileall` OK.
+
+### Connu, non traité ici
+
+`ExportType.LEGACY` reste du code mort : `_handle_csv_export_legacy` appelle `main_window._export_displayed_table_as_csv`, méthode qui n'existe plus. Aucun appelant, donc aucun risque — nettoyage à faire séparément.
+
 ## [3.67.0] - 2026-09-03 (branche `feature/export-output-dir`)
 
 ### Dossier d'export configurable (par défaut : le Bureau)

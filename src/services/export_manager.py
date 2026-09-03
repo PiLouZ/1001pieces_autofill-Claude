@@ -312,42 +312,40 @@ class ExportManagerService:
     
     @handle_export_errors(title="Erreur export CSV")
     def _execute_csv_export(self, data: List, reference: str) -> bool:
-        """Exécuter l'export CSV avec format standardisé"""
+        """Exécuter l'export CSV selon la configuration utilisateur.
+
+        Colonnes, séparateur, encodage et pattern de nom proviennent de la
+        fenêtre « Configuration des exports ». {export_ref} vaut la référence
+        confirmée dans le dialogue d'export, pas le terme de recherche.
+        """
+        from datetime import datetime
         from ..data.data_exporter import _assainir_ligne_csv
-        filename = f"{reference}_everyParts.csv"
-
-        from .export_config_service import resolve_output_dir
-        output_dir = resolve_output_dir(
-            getattr(self.main_window, 'export_config_service', None)
+        from .export_config_service import (
+            resolve_output_dir, get_csv_settings, render_csv_row_with,
+            format_csv_filename
         )
-        full_path = os.path.join(output_dir, filename)
 
-        with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.writer(csvfile, delimiter=';')
+        service = getattr(self.main_window, 'export_config_service', None)
+        reglages = get_csv_settings(service)
 
-            # En-têtes standardisés
-            headers = ['product', 'type', 'manufacturer', 'modele_name', 'reference_modele', 'commercial_reference']
-            writer.writerow(headers)
+        filename = format_csv_filename(
+            reglages['filename_pattern'],
+            export_ref=reference,
+            timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+        )
+        full_path = os.path.join(resolve_output_dir(service), filename)
 
-            # Données formatées
-            for row in data:
-                type_val = row[0] if len(row) > 0 else ''
-                manufacturer_val = row[1] if len(row) > 1 else ''
-                ref_modele_val = row[2] if len(row) > 2 else ''
-                commercial_ref_val = row[3] if len(row) > 3 else ''
+        with open(full_path, 'w', newline='', encoding=reglages['encoding']) as csvfile:
+            writer = csv.writer(csvfile, delimiter=reglages['separator'])
+            writer.writerow(reglages['headers'])
 
-                modele_name = f"{ref_modele_val} - {commercial_ref_val}".strip(' -')
-
-                csv_row = [
-                    reference,                    # product
-                    type_val,                     # type
-                    manufacturer_val,             # manufacturer
-                    modele_name,                  # modele_name
-                    ref_modele_val,               # reference_modele
-                    commercial_ref_val            # commercial_reference
-                ]
+            for record in data:
+                # Compléter les records courts : le renderer attend 6 champs
+                record = tuple(record) + ('',) * (6 - len(record)) if len(record) < 6 else record
                 # Neutralisation injection de formules (même traitement que data_exporter)
-                writer.writerow(_assainir_ligne_csv(csv_row))
+                writer.writerow(_assainir_ligne_csv(
+                    render_csv_row_with(reglages['columns'], record, reference)
+                ))
 
         self._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")
         return True
