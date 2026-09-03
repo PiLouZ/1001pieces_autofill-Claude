@@ -40,7 +40,7 @@ from ..core.constants import UIConfig, Messages, DatabaseConfig
 from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
-from ..services.export_service import ExportFormat
+from ..core.constants import ExportFormat
 from ..services.navigation_service import NavigationService
 from ..services.cell_editing_service import CellEditingService
 # PHASE 4 : Remplacement par ExportManagerService unifié
