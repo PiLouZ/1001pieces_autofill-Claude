@@ -14,6 +14,7 @@ from datetime import datetime
 from .base_service import BaseService
 from ..core.logger import app_logger
 from ..data.data_exporter import _assainir_ligne_csv
+from .export_config_service import resolve_output_dir
 
 
 class SupersessionReportService(BaseService):
@@ -23,7 +24,7 @@ class SupersessionReportService(BaseService):
         super().__init__(parent_window, parent)
 
     def export_chains_csv(self) -> str:
-        """Exporter toutes les supersessions vers un CSV sur le Bureau.
+        """Exporter toutes les supersessions vers un CSV dans le dossier d'export.
 
         Colonnes : ref_remplacee ; ref_remplacante ; ref_finale
         ref_finale = bout de la chaîne (suit les ref_new successives,
@@ -59,7 +60,10 @@ class SupersessionReportService(BaseService):
             return current
 
         filename = f"supersessions_{datetime.now().strftime('%Y%m%d')}.csv"
-        full_path = os.path.join(os.path.expanduser("~"), "Desktop", filename)
+        output_dir = resolve_output_dir(
+            getattr(self.parent_window, 'export_config_service', None)
+        )
+        full_path = os.path.join(output_dir, filename)
 
         with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile, delimiter=';')

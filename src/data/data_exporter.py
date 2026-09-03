@@ -253,12 +253,12 @@ class DataExporter:
         else:
             filename = f"{clean_term}_{timestamp}.{export_format.lowercase}"
         
-        # Obtenir le chemin du Bureau
-        import os
-        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        
+        # Dossier de destination configuré (repli Bureau)
+        from src.services.export_config_service import resolve_output_dir
+        output_dir = resolve_output_dir(self.export_config_service)
+
         # Créer le chemin complet
-        full_path = os.path.join(desktop_path, filename)
+        full_path = os.path.join(output_dir, filename)
         
         return full_path
     

@@ -6,13 +6,15 @@ Onglet CSV  : colonnes (en-tête + source/assemblage), séparateur, encodage, pa
 Onglet HTML : templates marques et détails avec preview en temps réel
 """
 
+import os
+
 import qtawesome as qta
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QMessageBox, QInputDialog, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox,
-    QEvent
+    QEvent, QFileDialog
 )
 from src.core.logger import app_logger
 
@@ -154,6 +156,10 @@ class ExportConfigDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
+        # Bandeau commun : dossier de destination (concerne tous les exports
+        # fichier, pas seulement le CSV) — donc au-dessus des onglets.
+        layout.addLayout(self._build_output_dir_bar())
+
         # Barre de navigation (remplace QTabWidget)
         nav_layout = QHBoxLayout()
         nav_layout.setSpacing(4)
@@ -198,6 +204,81 @@ class ExportConfigDialog(QDialog):
 
         # Activer le premier onglet
         self._nav_group.button(0).setChecked(True)
+
+    def _build_output_dir_bar(self) -> QHBoxLayout:
+        """Bandeau du dossier de destination des exports fichier.
+
+        Commun aux onglets : le réglage ne concerne pas que le CSV (rapport de
+        supersession, export de la liste des pièces...). Les exports HTML vont
+        dans le presse-papier et ne sont pas concernés.
+        """
+        self._output_dir = ''
+
+        bar = QHBoxLayout()
+        bar.setSpacing(6)
+        bar.addWidget(self._section_label("Dossier d'export :"))
+
+        self.output_dir_input = QLineEdit()
+        self.output_dir_input.setReadOnly(True)
+        self.output_dir_input.setToolTip(
+            "Dossier de destination des exports fichier (CSV, rapports).\n"
+            "Les exports HTML sont copiés dans le presse-papier : ils ne sont pas concernés."
+        )
+        bar.addWidget(self.output_dir_input, 1)
+
+        browse_btn = QPushButton("Parcourir…")
+        browse_btn.setIcon(qta.icon('fa5s.folder-open', color='#495057'))
+        browse_btn.setIconSize(QSize(11, 11))
+        browse_btn.setStyleSheet(
+            "QPushButton { padding: 2px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
+        )
+        browse_btn.clicked.connect(self._browse_output_dir)
+        bar.addWidget(browse_btn)
+
+        self.output_dir_reset_btn = QPushButton()
+        self.output_dir_reset_btn.setIcon(qta.icon('fa5s.undo', color='#495057'))
+        self.output_dir_reset_btn.setIconSize(QSize(11, 11))
+        self.output_dir_reset_btn.setFixedSize(28, 26)
+        self.output_dir_reset_btn.setToolTip("Revenir au Bureau (valeur par défaut)")
+        self.output_dir_reset_btn.setStyleSheet(
+            "QPushButton { padding: 2px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
+        )
+        self.output_dir_reset_btn.clicked.connect(lambda: self._set_output_dir(''))
+        bar.addWidget(self.output_dir_reset_btn)
+
+        return bar
+
+    def _set_output_dir(self, value: str):
+        """Mettre à jour le dossier d'export : valeur stockée + affichage.
+
+        La valeur stockée reste vide pour « Bureau » (config portable) ; le champ
+        affiche toujours le chemin réellement utilisé. Un dossier configuré mais
+        devenu inutilisable est signalé en rouge plutôt que masqué.
+        """
+        self._output_dir = (value or '').strip()
+
+        if self._output_dir:
+            self.output_dir_input.setText(self._output_dir)
+            utilisable = os.path.isdir(self._output_dir) and os.access(self._output_dir, os.W_OK)
+            self.output_dir_input.setStyleSheet(
+                '' if utilisable else "QLineEdit { color: #dc3545; }"
+            )
+        else:
+            self.output_dir_input.setText(self.export_config_service.get_default_output_dir())
+            self.output_dir_input.setStyleSheet('')
+
+        self.output_dir_reset_btn.setEnabled(bool(self._output_dir))
+
+    def _browse_output_dir(self):
+        """Sélection du dossier de destination (dialogue de fichiers natif)."""
+        depart = self.output_dir_input.text() or self.export_config_service.get_default_output_dir()
+        choisi = QFileDialog.getExistingDirectory(
+            self, "Choisir le dossier de destination des exports", depart
+        )
+        if choisi:
+            self._set_output_dir(choisi)
 
     def _build_csv_tab(self) -> QWidget:
         tab = QWidget()
@@ -484,6 +565,9 @@ class ExportConfigDialog(QDialog):
     def _load_config_into_ui(self):
         config = self.export_config_service.get_config()
 
+        # Dossier de destination (commun aux onglets)
+        self._set_output_dir(config.get('output_dir', ''))
+
         # CSV
         csv_cfg = config.get('csv', {})
         self._populate_csv_table(csv_cfg.get('columns', []))
@@ -739,6 +823,7 @@ class ExportConfigDialog(QDialog):
                 })
 
         return {
+            "output_dir": self._output_dir,
             "csv": {
                 "separator":        self.csv_sep_input.text() or ';',
                 "encoding":         self.csv_enc_combo.currentText(),
@@ -768,11 +853,37 @@ class ExportConfigDialog(QDialog):
         if not config['csv']['columns']:
             QMessageBox.warning(self, "Validation", "Le CSV doit avoir au moins une colonne.")
             return
+        if not self._confirmer_dossier_export():
+            return
         if self.export_config_service.save_config(config):
             app_logger.info("[OK] Configuration des exports sauvegardée")
             self.close()
         else:
             QMessageBox.critical(self, "Erreur", "Impossible de sauvegarder la configuration.")
+
+    def _confirmer_dossier_export(self) -> bool:
+        """Alerter si le dossier configuré est inutilisable, sans bloquer.
+
+        On n'interdit pas l'enregistrement : un dossier sur disque externe
+        actuellement débranché reste un réglage légitime. L'export retombera
+        sur le Bureau le moment venu (cf. ExportConfigService.get_output_dir).
+        """
+        if not self._output_dir:
+            return True
+        if os.path.isdir(self._output_dir) and os.access(self._output_dir, os.W_OK):
+            return True
+
+        reponse = QMessageBox.question(
+            self,
+            "Dossier d'export",
+            f"Le dossier suivant est introuvable ou non accessible en écriture :\n"
+            f"{self._output_dir}\n\n"
+            "Les exports retomberont sur le Bureau tant qu'il reste inutilisable.\n"
+            "Enregistrer quand même ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        return reponse == QMessageBox.Yes
 
     def _on_cancel(self):
         self.close()

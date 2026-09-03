@@ -920,6 +920,8 @@ class ActionHistoryWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.db_manager = None
+        # Injecté par le dialogue parent (widget créé sans parent Qt exploitable)
+        self.export_config_service = None
         self.history_actions = []
         self.init_ui()
 
@@ -1128,10 +1130,13 @@ class ActionHistoryWidget(QWidget):
             return
 
         # Demander le nom du fichier
+        import os
+        from .export_config_service import resolve_output_dir
+        nom_defaut = f"historique_nettoyage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Exporter l'historique",
-            f"historique_nettoyage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            os.path.join(resolve_output_dir(self.export_config_service), nom_defaut),
             "Fichiers CSV (*.csv)"
         )
 

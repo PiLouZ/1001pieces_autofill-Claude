@@ -316,8 +316,11 @@ class ExportManagerService:
         from ..data.data_exporter import _assainir_ligne_csv
         filename = f"{reference}_everyParts.csv"
 
-        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        full_path = os.path.join(desktop_path, filename)
+        from .export_config_service import resolve_output_dir
+        output_dir = resolve_output_dir(
+            getattr(self.main_window, 'export_config_service', None)
+        )
+        full_path = os.path.join(output_dir, filename)
 
         with open(full_path, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile, delimiter=';')

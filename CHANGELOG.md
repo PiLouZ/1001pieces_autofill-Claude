@@ -4,6 +4,28 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.67.0] - 2026-09-03 (branche `feature/export-output-dir`)
+
+### Dossier d'export configurable (par défaut : le Bureau)
+
+La fenêtre **Outils → « Configuration des exports… »** gagne un bandeau **« Dossier d'export »**, placé au-dessus des onglets CSV/HTML : le réglage ne concerne pas que le CSV, il gouverne aussi le rapport de supersession (F8) et les exports du gestionnaire de pièces. Les exports HTML partent dans le presse-papier et ne sont pas concernés.
+
+**Le Bureau n'était pas un réglage, c'était une constante recopiée.** `os.path.join(os.path.expanduser("~"), "Desktop")` figurait en dur dans trois fichiers (`export_manager.py`, `data_exporter.py`, `supersession_report_service.py`) et trois `QFileDialog` ouvraient sur le dernier dossier système au lieu du Bureau. Le Bureau n'est désormais écrit qu'à **un seul endroit** : `ExportConfigService.get_default_output_dir()`.
+
+**Stocké vide, pas en absolu.** La clé racine `output_dir` de `data/export_config.json` vaut `""` pour « Bureau ». La config reste ainsi portable d'une machine à l'autre, et « par défaut le Bureau » y reste vrai même si le fichier est recopié ailleurs.
+
+**Un export ne peut pas échouer sur un réglage devenu obsolète.** `get_output_dir()` vérifie l'existence *et* le droit d'écriture, et retombe sur le Bureau avec un avertissement en log si le dossier a disparu (disque externe débranché, dossier renommé ou passé en lecture seule). Le résolveur partagé `resolve_output_dir(service)` applique le même repli aux appelants qui n'ont pas la garantie de disposer du service — le repli reproduit exactement le comportement historique, donc aucun appelant ne peut régresser.
+
+**Piège évité à la sauvegarde.** `_merge_with_defaults()` ne traitait explicitement que les sections `csv` et `html` : une clé racine non gérée aurait été silencieusement remise à vide à chaque enregistrement. Un test verrouille ce point.
+
+**Signalement UI plutôt que masquage.** Un dossier configuré mais inutilisable s'affiche en rouge dans le champ, et l'enregistrement demande confirmation sans bloquer — un dossier sur disque externe momentanément débranché reste un réglage légitime.
+
+**Vérifié** : 20 tests ajoutés (`tests/unit/test_export_output_dir.py`), dont trois de bout en bout sur `_execute_csv_export`, le chemin réellement emprunté par le bouton CSV. L'un d'eux fige le contenu exact du CSV produit aujourd'hui (en-têtes, séparateur, assemblage `modele_name`) : seul le dossier change, pas une virgule du fichier. Rendu offscreen contrôlé dans les trois états (défaut, personnalisé, dossier cassé). Suite complète **491 passed**, `compileall` OK.
+
+### Connu, non traité ici
+
+L'onglet CSV (colonnes, séparateur, encodage, pattern de nom) reste **sans effet** sur l'export réel : `ExportManagerService._execute_csv_export` réécrit ces valeurs en dur et ne consulte pas `ExportConfigService`. Le seul écrivain qui respecte la configuration, `DataExporter.render_csv_row`, n'est atteignable que par `ExportType.LEGACY`, que personne n'appelle. Correction prévue dans une PR séparée, car elle change le CSV produit aujourd'hui.
+
 ## [3.66.1] - 2026-09-01 (branche `fix/reimport-doublons-cache-mono-reference`)
 
 ### Fix : ré-importer le même lot créait des doublons au lieu de retrouver les appareils
