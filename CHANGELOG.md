@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.69.2] - 2026-09-03 (branche `fix/import-paths-divergences`)
+
+### Fix : le même fichier ne donne plus un résultat différent selon sa taille
+
+Correction des deux divergences que les tests d'équivalence de la v3.69.1 avaient révélées entre le chemin d'import standard (< 50 lignes) et le chemin batch. **Arbitrage utilisateur : le chemin batch fait référence.** Les cinq marqueurs `xfail(strict=True)` sont retirés — les tests passent désormais.
+
+**Divergence B — perte de référence commerciale.** `_insert_or_find_device` résolvait en trois paliers : couple exact, puis repli « ref_modele seule », puis repli « commercial_ref seule ». Les deux replis n'étaient gardés que sur la référence *recherchée*, jamais sur la forme de la **ligne entrante**. Une ligne complète pouvait donc se rattacher à un appareil partiel existant — et comme rien ne réécrivait ensuite l'appareil, sa référence commerciale était perdue. Sur trois lignes, le chemin standard créait 2 appareils là où le batch en créait 3.
+
+Les deux replis exigent désormais que la ligne entrante soit elle-même partielle : une ligne complète ne correspond qu'à un appareil complet. La clé composite du chemin batch (`_find_in_cache`) est ainsi reproduite à l'identique, et la doctrine posée en v3.66.1 — « un appareil partiel ne correspond qu'à un autre appareil partiel » — est enfin tenue des deux côtés.
+
+**Les replis ne sont pas supprimés, seulement gardés.** Ils avaient été ajoutés en v3.65.1/v3.66.1 pour corriger un ré-import qui recréait les appareils mono-référence ; les retirer aurait rouvert ce bug. Devenus mutuellement exclusifs, ils n'ont plus de priorité à arbitrer entre eux.
+
+**Divergence A — `NULL` contre chaîne vide.** Le chemin standard construisait son `INSERT` avec les seules clés présentes dans les données, laissant SQLite écrire `NULL` sur les colonnes absentes ; le chemin batch lie systématiquement les sept colonnes avec `.get(champ, '')`. Selon la taille du fichier importé, `WHERE type = ''` ne ramenait donc pas les mêmes lignes. Le chemin standard complète maintenant les champs absents à `''`, sur une **copie** des données — `_batch_insert_devices` ne mute pas non plus le dictionnaire, qui sert ensuite à la collecte des suggestions par similarité.
+
+**Vérifié** : suite complète **528 passed** (les 5 ex-`xfail` inclus), `compileall` OK, 88 modules importés, `MainWindow` instanciée. Contrôle sur **données réelles** — 35 lignes tirées de `appareils.db` (complètes, mono-référence, références à slash ou tiret final) : les deux chemins produisent 25 appareils identiques, **zéro valeur `NULL` écrite**, et le ré-import n'en recrée aucun (garde v3.66.1 tenue).
+
+### Note sur les données existantes
+
+Ce correctif aligne les **écritures futures**. Les lignes déjà en base avec `NULL` sur `type`, `manufacturer` ou `commercial_ref` — issues d'imports antérieurs par le chemin standard — restent telles quelles. Leur normalisation serait une migration de données, à décider séparément.
+
 ## [3.69.1] - 2026-09-03 (branche `test/import-paths-equivalence`)
 
 ### Garde-fou : les deux chemins d'import sont désormais comparés par les tests

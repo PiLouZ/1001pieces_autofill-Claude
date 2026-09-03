@@ -3589,10 +3589,20 @@ class ImportManager:
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur insertion appareil")
     def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
-        """Insérer ou trouver un appareil existant"""
+        """Insérer ou trouver un appareil existant.
+
+        La résolution reproduit exactement la clé composite du chemin batch
+        (_find_in_cache) : une ligne complète ne correspond qu'à un appareil
+        complet, une ligne partielle qu'à un appareil partiel de même forme.
+        Verrouillé par tests/unit/test_import_paths_equivalence.py.
+        """
+        # Import hissé en tête : un « from .config import Config » plus bas
+        # rendrait Config local à TOUTE la fonction (piège connu du projet).
+        from .config import Config
+
         # Chercher d'abord un appareil existant
-        ref_modele = device_data.get('ref_modele', '')
-        commercial_ref = device_data.get('commercial_ref', '')
+        ref_modele = (device_data.get('ref_modele') or '').strip()
+        commercial_ref = (device_data.get('commercial_ref') or '').strip()
 
         if ref_modele or commercial_ref:
             # Recherche stricte : un appareil est identique si TOUTES les références principales correspondent
@@ -3611,8 +3621,13 @@ class ImportManager:
                 self._update_existing_device(existing_id, device_data)
                 return existing_id
 
-            # Si pas de match exact, vérifier si seule ref_modele correspond (cas spécial)
-            if ref_modele and ref_modele.strip():
+            # Repli « ref_modele seule » — ne s'applique QUE si la ligne entrante est
+            # elle-même partielle. Sans cette garde, une ligne COMPLÈTE se rattachait
+            # à un appareil partiel existant et sa référence commerciale était perdue :
+            # 2 appareils au lieu de 3 sur le chemin standard, 3 sur le chemin batch
+            # (divergence B mesurée en v3.69.1). La doctrine v3.66.1 — « un appareil
+            # partiel ne correspond qu'à un autre appareil partiel » — est ainsi tenue.
+            if ref_modele and not commercial_ref:
                 search_query_ref = """
                     SELECT id FROM appareils
                     WHERE ref_modele = ? AND ref_modele != ''
@@ -3631,9 +3646,10 @@ class ImportManager:
             # ré-import recréait donc les appareils. Trou symétrique du bug du
             # chemin batch corrigé dans _preload_existing_devices / _find_in_cache.
             #
-            # Testé APRÈS le repli sur ref_modele : quand les deux pourraient
-            # matcher, ref_modele reste l'identifiant prioritaire.
-            if commercial_ref and commercial_ref.strip():
+            # Garde symétrique du repli ci-dessus : les deux sont désormais
+            # mutuellement exclusifs (l'un exige commercial_ref vide, l'autre
+            # ref_modele vide), il n'y a donc plus de priorité à arbitrer.
+            if commercial_ref and not ref_modele:
                 search_query_com = """
                     SELECT id FROM appareils
                     WHERE commercial_ref = ? AND commercial_ref != ''
@@ -3644,8 +3660,16 @@ class ImportManager:
                 if results_com:
                     return results_com[0][0]
 
-        # Créer un nouvel appareil
-        device_id = self.db_manager.insert_appareil(device_data)
+        # Créer un nouvel appareil.
+        # Champs absents complétés à '' — exactement ce que fait _batch_insert_devices
+        # avec ses device.get(champ, ''). Sans cela le chemin standard n'insérait que
+        # les colonnes présentes et laissait SQLite écrire NULL, si bien que
+        # « WHERE type = '' » ne ramenait pas les mêmes lignes selon la taille du
+        # fichier importé (divergence A mesurée en v3.69.1).
+        # Copie et non mutation : device_data sert ensuite à la collecte des
+        # suggestions par similarité, que le chemin batch ne modifie pas non plus.
+        donnees_insert = {entete: device_data.get(entete, '') for entete in Config.DB_HEADERS}
+        device_id = self.db_manager.insert_appareil(donnees_insert)
         if device_id:
             device_data['is_new'] = True
         return device_id
