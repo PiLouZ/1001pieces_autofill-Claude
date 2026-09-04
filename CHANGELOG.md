@@ -4,6 +4,33 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.71.2] - 2026-09-04 (branche `perf/preview-analysis-memo`)
+
+### L'aperçu d'import n'analyse plus chaque fichier qu'une seule fois
+
+`_analyze_formats_and_preview` interrogeait le même fichier jusqu'à quatre fois : une pour le regroupement par nombre de colonnes, une pour l'aperçu, une pour reconnaître le format, une pour les options de colonnes.
+
+Sur un CSV c'est gratuit — les données sont déjà chargées, l'analyse n'est qu'une tranche de liste. **Sur un PDF, chaque appel relance l'extraction.** Mesuré sur trois PDF d'exemple : **6 analyses pour 3 fichiers**, dont 4 sur le premier.
+
+`_analyse_format_memo` mémoïse le résultat pour la durée d'une passe.
+
+| Cas | Avant | Après | Gain |
+|---|---|---|---|
+| 3 fichiers PDF | 0,320 s — **6 analyses** | **0,167 s** — **3 analyses** | ×1,9 |
+| 1 fichier CSV | 0,004 s — 3 analyses | 0,003 s — **1 analyse** | ×1,3 |
+
+Exactement **une analyse par fichier**, plus aucun doublon. Aperçu affiché **identique** dans les deux cas.
+
+**Le cache est local à une passe**, vidé en entrée de `_analyze_formats_and_preview`. C'est délibéré : le chargement paresseux peut peupler `fichier.data` entre deux passes, et un cache persistant servirait alors un résultat obsolète. Un test le vérifie en modifiant les données entre deux appels.
+
+### Portée honnête
+
+J'annonçais ×3 sur la foi d'une première mesure ; la mesure rigoureuse — avec préchauffage et médiane sur cinq exécutions — donne **×1,9**. La première comparaison était faussée : la version corrigée avait tourné en premier, à froid, et payait l'initialisation de Camelot que la seconde trouvait déjà en cache.
+
+Le gain reste réel mais modeste : ~0,15 s à l'ouverture de la fenêtre d'import, et seulement pour les PDF.
+
+**Vérifié** : 7 tests ajoutés (`tests/unit/test_import_preview_memo.py`) — une analyse par fichier sur trois configurations, cache bien vidé entre les passes, données rechargées bien revues, aperçu inchangé. Suite complète **619 passed**, `compileall` OK, 89 modules importés.
+
 ## [3.71.1] - 2026-09-04 (branche `perf/similarity-prefix-query`)
 
 ### Fix : les suggestions de similarité s'arrêtaient silencieusement de fonctionner
