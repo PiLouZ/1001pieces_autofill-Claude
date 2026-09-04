@@ -145,7 +145,9 @@ class ExportManagerService:
         title, message = self._get_reference_dialog_messages(export_format, search_term)
 
         # Afficher le dialogue
-        selected_reference = self._show_reference_dialog(title, message, default_reference)
+        selected_reference = self._show_reference_dialog(
+            title, message, default_reference, export_format
+        )
 
         if selected_reference:
             # Utiliser parsed_term (avec flags des bannières actives) si disponible
@@ -166,8 +168,10 @@ class ExportManagerService:
         title, message = self._get_multiple_reference_dialog_messages(export_format, terms)
         
         # Afficher le dialogue
-        selected_reference = self._show_reference_dialog(title, message, default_reference)
-        
+        selected_reference = self._show_reference_dialog(
+            title, message, default_reference, export_format
+        )
+
         if selected_reference:
             return ReferenceSelectionResult(selected_reference, parsed_term)
         else:
@@ -176,12 +180,16 @@ class ExportManagerService:
     
     # ===== DIALOGUES UNIFIÉS =====
     
-    def _show_reference_dialog(self, title: str, message: str, default_reference: str) -> Optional[str]:
-        """Afficher dialogue de sélection de référence unifié"""
+    def _show_reference_dialog(self, title: str, message: str, default_reference: str,
+                               export_format: ExportFormat = None) -> Optional[str]:
+        """Afficher dialogue de saisie de la référence d'export"""
         # Utiliser le service de dialogue unifié si disponible
         if hasattr(self.main_window, 'dialog_service'):
+            destination = self._destination_export(export_format)
             return self.main_window.dialog_service.show_reference_selection_dialog(
-                title, message, default_reference
+                title, message, default_reference,
+                destination=destination,
+                bouton_valider="Exporter" if destination else "OK",
             )
         else:
             # Fallback avec QInputDialog
@@ -191,31 +199,84 @@ class ExportManagerService:
             )
             return selected_reference if ok else None
     
+    # Libellés d'affichage : ExportFormat.value est un identifiant technique
+    # ("HTML_DETAILS"), pas un texte à montrer dans un titre de fenêtre.
+    _LIBELLES_FORMAT = {
+        ExportFormat.CSV:          "CSV",
+        ExportFormat.HTML_BRANDS:  "HTML — Marques",
+        ExportFormat.HTML_DETAILS: "HTML — Détails",
+    }
+
+    @classmethod
+    def _libelle_format(cls, export_format: ExportFormat) -> str:
+        return cls._LIBELLES_FORMAT.get(export_format, getattr(export_format, 'value', ''))
+
+    def _destination_export(self, export_format: ExportFormat) -> Optional[Dict[str, Any]]:
+        """Décrire où ira le fichier, pour les exports qui en écrivent un.
+
+        None pour les exports HTML : ils vont dans le presse-papier, il n'y a
+        pas de destination à annoncer.
+
+        Le nom de fichier est calculé par `format_csv_filename`, celui-là même
+        qu'utilise l'écriture réelle : l'aperçu ne peut donc pas diverger du
+        fichier produit.
+        """
+        if export_format != ExportFormat.CSV:
+            return None
+
+        from datetime import datetime
+        from .export_config_service import (
+            resolve_output_dir, get_csv_settings, format_csv_filename
+        )
+
+        service = getattr(self.main_window, 'export_config_service', None)
+        reglages = get_csv_settings(service)
+        horodatage = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        def nom_fichier(reference: str) -> str:
+            return format_csv_filename(reglages['filename_pattern'], reference, horodatage)
+
+        def changer_dossier():
+            """Ouvrir le sélecteur et mémoriser le choix dans la configuration."""
+            from ..ui.qt_imports import QFileDialog
+            choisi = QFileDialog.getExistingDirectory(
+                self.main_window,
+                "Choisir le dossier de destination des exports",
+                resolve_output_dir(service),
+            )
+            if choisi and service:
+                config = service.get_config()
+                config['output_dir'] = choisi
+                service.save_config(config)
+                app_logger.info(f"[Export] Dossier de destination changé : {choisi}")
+            return choisi or None
+
+        return {
+            'dossier': resolve_output_dir(service),
+            'nom_fichier': nom_fichier,
+            'changer': changer_dossier,
+        }
+
     def _get_reference_dialog_messages(self, export_format: ExportFormat, search_term: str) -> Tuple[str, str]:
         """Obtenir les messages de dialogue selon le format"""
         if export_format == ExportFormat.CSV:
-            title = "Référence pour l'export CSV"
-            message = (f"Référence détectée : {search_term}\n"
-                      f"Cette référence sera utilisée dans la première colonne du fichier CSV.\n"
-                      f"Confirmez ou modifiez la référence :")
+            title = "Export CSV"
+            message = "Elle apparaîtra dans la première colonne du fichier et dans son nom."
         else:
-            title = f"Référence pour l'export {export_format.value}"
-            message = (f"Référence détectée : {search_term}\n"
-                      f"Confirmez ou modifiez la référence à utiliser :")
+            title = f"Export {self._libelle_format(export_format)}"
+            message = "Confirmez ou modifiez la référence à utiliser."
         
         return title, message
     
     def _get_multiple_reference_dialog_messages(self, export_format: ExportFormat, terms: List[str]) -> Tuple[str, str]:
         """Obtenir les messages pour références multiples"""
-        title = f"Référence pour l'export {export_format.value}"
-        
+        title = f"Export {self._libelle_format(export_format)}"
+
         if len(terms) == 1:
-            message = (f"Terme de recherche unique détecté : {terms[0]}\n"
-                      f"Confirmez ou modifiez la référence :")
+            message = "Confirmez ou modifiez la référence à utiliser."
         else:
-            message = (f"Recherche multiple détectée avec {len(terms)} termes.\n"
-                      f"Premier terme suggéré : {terms[0]}\n"
-                      f"Confirmez ou saisissez la référence à utiliser :")
+            message = (f"Recherche multiple : {len(terms)} termes détectés, "
+                       f"le premier est proposé. Confirmez ou saisissez la référence.")
         
         return title, message
     
