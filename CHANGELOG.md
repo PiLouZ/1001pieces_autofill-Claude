@@ -4,6 +4,20 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.70.1] - 2026-09-04 (branche `refactor/popup-position-mixin`)
+
+### Factorisation : `show_at_cursor` était dupliquée entre deux fichiers
+
+`HistoryDetailPopup` (`ui/history_view_dialog.py`) et `PieceRelationsPopup` (`ui/pieces_list_service.py`) portaient la même méthode de positionnement — **21 lignes de code strictement identiques**, vérifié par comparaison ligne à ligne après retrait des docstrings. Le docstring de la première le reconnaissait d'ailleurs : « Même pattern que PieceRelationsPopup ».
+
+Le code vit désormais dans `PopupAuCurseurMixin` (`ui/popup_positioning.py`), placé **avant** `QDialog` dans les bases pour que sa méthode l'emporte. Les **5 points d'appel** (`pieces_manager`, `table_controller` ×2, et les deux fichiers concernés) sont inchangés : `popup.show_at_cursor()` continue de fonctionner à l'identique.
+
+**Le meilleur commentaire était du côté de la copie.** `pieces_list_service` expliquait pourquoi le `QTimer.singleShot(0)` existe — différer d'un tick pour que le clic déclencheur soit consommé, sinon le `Qt.Popup` se referme aussitôt. `history_view_dialog` avait perdu cette explication ; elle est désormais commune aux deux.
+
+Le décalage curseur/popup, écrit quatre fois en dur, devient la constante `MARGE_CURSEUR`. Trois imports devenus inutiles sont retirés de `history_view_dialog` (`QApplication`, `QCursor`, `QTimer`) et un de `pieces_list_service` (`QCursor`).
+
+**Vérifié — positionnement rigoureusement inchangé.** Les positions calculées ont été relevées **avant** la modification pour les deux popups sur cinq emplacements de curseur (centre, coin haut-gauche, bord droit, bord bas, coin bas-droit), puis comparées **après** : **10 cas sur 10 identiques**, replis de bord compris. 10 tests ajoutés (`tests/unit/test_popup_positioning.py`), dont deux qui échoueront si l'un des popups redéfinit localement la méthode — la duplication ne peut pas revenir en silence. Suite complète **567 passed**, `compileall` OK, 89 modules importés, `MainWindow` instanciée.
+
 ## [3.70.0] - 2026-09-04 (branche `feat/export-dialog-destination`)
 
 ### La fenêtre d'export CSV annonce où ira le fichier

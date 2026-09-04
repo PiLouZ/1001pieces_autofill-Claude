@@ -12,7 +12,8 @@ import qtawesome as qta
 from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
                           QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
-                          QCursor, QTimer, QApplication)
+                          QTimer, QApplication)
+from .popup_positioning import PopupAuCurseurMixin
 from src.core.logger import app_logger
 
 
@@ -43,7 +44,7 @@ def _format_piece_edit_history(old_ref: str, new_ref: str,
 
 # ── Popup de synthèse des relations ────────────────────────────────────────────
 
-class PieceRelationsPopup(QDialog):
+class PieceRelationsPopup(PopupAuCurseurMixin, QDialog):
     """
     Popup léger affichant la synthèse complète des relations d'une pièce :
     obsolescence, supersession (↳/↑) et équivalences (≡).
@@ -180,41 +181,6 @@ class PieceRelationsPopup(QDialog):
 
         return w
 
-    def show_at_cursor(self):
-        """
-        Positionner le popup près du curseur et l'afficher.
-        Le QTimer.singleShot(0) diffère l'affichage d'un tick pour que le clic
-        qui a déclenché l'appel soit entièrement consommé avant l'ouverture —
-        évite la fermeture immédiate du Qt.Popup sur les parents de haut niveau.
-        Le popup est replié au-dessus / à gauche du curseur s'il déborderait de l'écran.
-        """
-        cursor_pos = QCursor.pos()
-
-        def _do_show():
-            self.adjustSize()
-            pw = self.width()  or self.WIDTH
-            ph = self.height() or self.MAX_HEIGHT
-
-            screen = QApplication.screenAt(cursor_pos)
-            if screen is None:
-                screen = QApplication.primaryScreen()
-            avail = screen.availableGeometry()
-
-            x = cursor_pos.x() + 4
-            y = cursor_pos.y() + 4
-
-            if x + pw > avail.right():
-                x = cursor_pos.x() - pw - 4
-            if y + ph > avail.bottom():
-                y = cursor_pos.y() - ph - 4
-
-            x = max(avail.left(), x)
-            y = max(avail.top(), y)
-
-            self.move(x, y)
-            self.show()
-
-        QTimer.singleShot(0, _do_show)
 
 
 # ── Helpers label ───────────────────────────────────────────────────────────────
