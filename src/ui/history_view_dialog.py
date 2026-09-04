@@ -7,11 +7,12 @@ from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
     Qt, QHeaderView, QSizePolicy, QMessageBox, QColor,
-    QScrollArea, QFrame, QWidget, QApplication, QCursor, QTimer,
+    QScrollArea, QFrame, QWidget,
 )
 from PyQt5.QtWidgets import QDateEdit
 from PyQt5.QtCore import QDate
 import qtawesome as qta
+from .popup_positioning import PopupAuCurseurMixin
 
 _PAGE_SIZE = 100
 
@@ -40,7 +41,7 @@ _DETAIL_ACTION_TYPES = {'import', 'export', 'delete', 'piece', 'undo'}
 
 # ── Popup de détails ──────────────────────────────────────────────────────────
 
-class HistoryDetailPopup(QDialog):
+class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
     """
     Popup contextuel affichant le détail complet d'une entrée d'historique.
     Même pattern que PieceRelationsPopup : Qt.Popup + repositionnement bords d'écran.
@@ -181,35 +182,6 @@ class HistoryDetailPopup(QDialog):
 
         return w
 
-    def show_at_cursor(self):
-        """Positionner le popup près du curseur, replié si nécessaire."""
-        cursor_pos = QCursor.pos()
-
-        def _do_show():
-            self.adjustSize()
-            pw = self.width()  or self.WIDTH
-            ph = self.height() or self.MAX_HEIGHT
-
-            screen = QApplication.screenAt(cursor_pos)
-            if screen is None:
-                screen = QApplication.primaryScreen()
-            avail = screen.availableGeometry()
-
-            x = cursor_pos.x() + 4
-            y = cursor_pos.y() + 4
-
-            if x + pw > avail.right():
-                x = cursor_pos.x() - pw - 4
-            if y + ph > avail.bottom():
-                y = cursor_pos.y() - ph - 4
-
-            x = max(avail.left(), x)
-            y = max(avail.top(), y)
-
-            self.move(x, y)
-            self.show()
-
-        QTimer.singleShot(0, _do_show)
 
 
 # ── Dialogue principal ────────────────────────────────────────────────────────
