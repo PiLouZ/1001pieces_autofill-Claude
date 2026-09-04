@@ -15,6 +15,24 @@ from unittest.mock import Mock, MagicMock
 # Ajouter le chemin source
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+# ── Isolation des logs ───────────────────────────────────────────────────────
+# À poser AVANT le premier import de src.core.logger : le logger s'instancie au
+# niveau module (app_logger = AppLogger()) et fige son répertoire à ce moment-là.
+#
+# Sans cela, la suite écrit dans data/logs/ : sur six mois, ~80 % des 6 909
+# lignes d'errors.log provenaient des tests (« colonne_invalide »,
+# « invalid_price », « Erreur de test », mocks rendant None…), noyant les rares
+# vraies erreurs de production. Le fichier en devenait inexploitable.
+_REPERTOIRE_LOGS_TEST = tempfile.mkdtemp(prefix='autofill_logs_test_')
+os.environ['AUTOFILL_LOG_DIR'] = _REPERTOIRE_LOGS_TEST
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Retirer le répertoire de logs temporaire en fin de session."""
+    import shutil
+    shutil.rmtree(_REPERTOIRE_LOGS_TEST, ignore_errors=True)
+
+
 from src.core.config import Config
 from src.data.database_manager import DatabaseManager
 from src.core.logger import app_logger

@@ -4,6 +4,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.71.3] - 2026-09-04 (branche `test/isolate-logs`)
+
+### La suite de tests n'écrit plus dans les logs de production
+
+Parti pour faire remonter les erreurs SQL avalées, l'analyse a montré que le problème était ailleurs.
+
+**Sur six mois de logs** (2026-03-12 → 2026-09-04), `data/logs/errors.log` comptait **6 909 lignes**, dont environ **80 % produites par la suite de tests** :
+
+| Occurrences | Message | Origine |
+|---|---|---|
+| 1 306 | `NoneType takes no arguments` | `test_sorting_filtering_service.py` |
+| 594 | `no such column: colonne_invalide` | 3 fichiers de test |
+| 396 | `could not convert string to float: 'invalid_price'` | `test_database_operations_service.py` |
+| 396 | `DatabaseManager non disponible` | mocks |
+| 199 | `Échec import: Erreur de test` | littéralement |
+
+Les vraies erreurs de production s'y comptaient sur les doigts : **209** le 2026-06-24 — la journée de corruption de base, déjà documentée et résolue —, **2** échecs `SELECT`, et **53** « fichier ne contient qu'une ligne d'en-tête », erreur utilisateur correctement traitée.
+
+Autrement dit : le fichier était inexploitable pour ce à quoi il sert. **Ce n'est pas l'avalement des erreurs qui les rendait invisibles, c'est le bruit.**
+
+### Le correctif
+
+Le logger accepte une variable d'environnement `AUTOFILL_LOG_DIR`. Absente — le cas normal — le comportement est strictement inchangé. `tests/conftest.py` la pose vers un répertoire temporaire **avant le premier import** de `src.core.logger` : le logger s'instancie au niveau module et fige son répertoire à ce moment-là. Le répertoire est retiré en fin de session via `pytest_sessionfinish`.
+
+**Vérifié** : après une suite complète de 626 tests, `errors.log` et `detailed.log` de production sont **inchangés à l'octet près** (803 889 et 4 589 094). Les logs de test atterrissent bien dans le répertoire temporaire.
+
+7 tests ajoutés (`tests/unit/test_logs_isolation.py`) : variable posée, logger hors production, répertoire bien temporaire, handlers pointant hors production, et — via un rechargement du module — le défaut qui reste `data/logs` sans la variable.
+
+**Un test réancré en cours de route** : il vérifiait d'abord la *croissance* d'`errors.log`, ce qui échouait dans la suite complète — `test_logger_volume.py` modifie les niveaux de log, et l'assertion mesurait alors l'ordre des tests plutôt que l'isolation. Il porte désormais sur la **destination des handlers**, propriété structurelle et indépendante de l'ordre.
+
+### Non retenu : faire lever `execute_query`
+
+Envisagé puis écarté, mesures à l'appui. Cela demandait d'auditer **51 sites d'appel** et de décider pour chacun ce qu'un échec doit produire, pour une classe d'erreur survenue **deux fois en six mois**. Les erreurs sont d'ailleurs déjà journalisées en `ERROR` par le décorateur — ce qui manquait, c'était de pouvoir les lire.
+
 ## [3.71.2] - 2026-09-04 (branche `perf/preview-analysis-memo`)
 
 ### L'aperçu d'import n'analyse plus chaque fichier qu'une seule fois
