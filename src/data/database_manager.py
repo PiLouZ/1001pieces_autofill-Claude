@@ -154,7 +154,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         # Branche FTS5 — activée uniquement si USE_FTS5=True ET SEARCH_PIECES_ONLY=False.
         # L'index FTS5 couvre les colonnes d'appareils uniquement ; quand on recherche
         # dans pieces.ref_piece, FTS5 n'est pas applicable → fallback LIKE pièces.
-        if Config.USE_FTS5 and not Config.SEARCH_PIECES_ONLY:
+        if self.fts5_utilisable():
             fts_condition = self.build_fts5_condition(search_term)
             if fts_condition is not None:
                 return fts_condition

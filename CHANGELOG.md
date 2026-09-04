@@ -4,6 +4,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.71.0] - 2026-09-04 (branche `feat/fts5-index-on-demand`)
+
+### L'index FTS5 n'est plus maintenu tant qu'il ne peut pas servir
+
+L'index FTS5 couvre les colonnes d'appareils. Quand `Config.SEARCH_PIECES_ONLY` vaut `True` — la configuration de production — la recherche porte sur `pieces.ref_piece` et **l'index est inatteignable**.
+
+**Il l'a toujours été.** Au commit qui l'introduit (`9f9d588`, v3.18.0, 2026-03-11), la garde `not Config.SEARCH_PIECES_ONLY` est déjà présente et le drapeau vaut déjà `True` depuis deux jours (`b13e0f1`, v3.15.0, « Phase 5 »). Le drapeau n'a jamais rebasculé. L'index n'a donc jamais servi une seule recherche, tout en étant peuplé et tenu à jour.
+
+### Ce qu'il coûtait, mesuré sur la base réelle
+
+| | |
+|---|---|
+| Espace disque | **198 Mo** — 20 % de la base (1 000 → 802 Mo après suppression + VACUUM) |
+| Écritures | **×6,7 plus lentes** — 12 100 lignes/s contre 80 600 sans les triggers |
+| Sur un import de 100 000 lignes | **+7 s** |
+
+Les trois triggers `appareils_fts_ai/ad/au` se déclenchaient à chaque insertion, mise à jour et suppression d'appareil — donc à chaque import — pour alimenter un index que rien ne lisait.
+
+### Ce qui change
+
+L'infrastructure est désormais **alignée sur ce que la configuration permet**, à l'ouverture de la base : créée si l'index peut servir, retirée sinon. `rebuild_fts5()` recrée la table et les triggers avant de peupler, si bien que « Construire l'index » du menu repart de zéro le jour où `SEARCH_PIECES_ONLY` repasse à `False`.
+
+**Aucune capacité n'est perdue** : les 253 lignes de `_db_mixins/fts5.py`, le menu et la reconstruction restent en place. Seul le coût permanent disparaît.
+
+La règle « FTS5 est-il utilisable ? » devient `fts5_utilisable()` — source unique, dont se sert aussi la condition de recherche qui la réécrivait en dur.
+
+### Effet constaté
+
+Sur une copie de la base de production : **8 objets FTS5 avant ouverture, 0 après** (0,37 s, une seule fois). Les insertions passent de 12 100 à **108 800 lignes/s — ×9**.
+
+L'espace disque se libère au prochain `VACUUM` : la suppression rend les pages réutilisables, mais ne réduit pas le fichier. `VACUUM` prend ~12 s sur 1 Go — c'est un geste délibéré, pas une opération de démarrage.
+
+**Vérifié** : 9 tests ajoutés (`tests/unit/test_fts5_infrastructure.py`) — prédicat partagé, création/suppression selon la configuration, idempotence, reconstruction depuis zéro, statut lisible sans table, écritures possibles sans triggers. Les 20 tests de caractérisation de la recherche passent : **le SQL produit est inchangé**. Suite complète **596 passed**, `compileall` OK.
+
 ## [3.70.3] - 2026-09-04 (branche `refactor/search-condition-decompose`)
 
 ### Décomposition de `_build_search_condition_optimized` — SQL identique au caractère près

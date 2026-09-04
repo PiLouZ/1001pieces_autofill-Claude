@@ -22,6 +22,49 @@ class DatabaseFts5Mixin:
 
     # ── FTS5 Full-Text Search ────────────────────────────────────────────────
 
+    @staticmethod
+    def fts5_utilisable() -> bool:
+        """L'index FTS5 peut-il servir à une recherche ?
+
+        Non si `SEARCH_PIECES_ONLY` : l'index couvre les colonnes d'appareils,
+        or la recherche porte alors sur `pieces.ref_piece`. Source unique de
+        cette règle — la condition de recherche s'en sert aussi.
+        """
+        return Config.USE_FTS5 and not Config.SEARCH_PIECES_ONLY
+
+    def _synchroniser_infrastructure_fts5(self):
+        """Aligner l'infrastructure FTS5 sur ce que la configuration permet.
+
+        Appelé à l'ouverture de la base. Tant que l'index est inutilisable, le
+        maintenir coûte cher pour rien : ~20 % du poids de la base, et des
+        écritures ~6,7× plus lentes à cause des trois triggers, qui se
+        déclenchent à chaque import. On le supprime donc plutôt que de le tenir
+        à jour — « Construire l'index » du menu le recrée intégralement le jour
+        où `SEARCH_PIECES_ONLY` repasse à False.
+        """
+        if self.fts5_utilisable():
+            self._setup_fts5()
+        else:
+            self._supprimer_infrastructure_fts5()
+
+    def _supprimer_infrastructure_fts5(self):
+        """Retirer les triggers et la table d'index FTS5 s'ils existent."""
+        try:
+            existe = self.cursor.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='appareils_fts'"
+            ).fetchone()
+            for trigger in ('appareils_fts_ai', 'appareils_fts_ad', 'appareils_fts_au'):
+                self.cursor.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+            self.cursor.execute("DROP TABLE IF EXISTS appareils_fts")
+            self.conn.commit()
+            if existe:
+                app_logger.info(
+                    "FTS5 : index et triggers retirés (inutilisables tant que "
+                    "SEARCH_PIECES_ONLY=True). L'espace disque se libère au prochain VACUUM."
+                )
+        except Exception as e:
+            app_logger.warning(f"FTS5 : suppression de l'infrastructure impossible ({e})")
+
     def _setup_fts5(self):
         """Créer la table FTS5 et les triggers de synchronisation.
 
@@ -104,6 +147,10 @@ class DatabaseFts5Mixin:
             Nombre d'enregistrements indexés.
         """
         t0 = time.time()
+
+        # L'infrastructure a pu être retirée (index inutilisable) : la recréer
+        # avant de peupler, pour que « Construire l'index » reparte de zéro.
+        self._setup_fts5()
 
         # Vider l'index existant via la commande spéciale FTS5
         # Note : DELETE FROM ne fonctionne pas sur une external content table —

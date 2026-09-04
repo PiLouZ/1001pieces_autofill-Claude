@@ -120,8 +120,9 @@ class DatabaseSetupMixin:
         # Table d'historique des modifications (persistance inter-sessions)
         self._setup_modifications_history_table()
 
-        # Infrastructure FTS5 (table + triggers) — population via rebuild_fts5()
-        self._setup_fts5()
+        # Infrastructure FTS5 : créée seulement si l'index est utilisable,
+        # retirée sinon (population via rebuild_fts5())
+        self._synchroniser_infrastructure_fts5()
 
         # Table de supersession des références pièces
         self._setup_supersession_table()
