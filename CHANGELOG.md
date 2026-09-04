@@ -4,6 +4,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.71.1] - 2026-09-04 (branche `perf/similarity-prefix-query`)
+
+### Fix : les suggestions de similarité s'arrêtaient silencieusement de fonctionner
+
+`_compute_similarity_suggestions` sélectionne les appareils déjà renseignés dont une référence partage un préfixe de 3 caractères avec les lignes incomplètes. La requête enchaînait **une paire de « OR … LIKE ? » par préfixe**.
+
+**Au-delà d'environ 500 préfixes distincts, SQLite refusait la requête** — `Expression tree is too large`, profondeur maximale 1000 — et `execute_query` avalait l'exception. L'utilisateur lisait « aucune proposition » alors que des centaines l'attendaient.
+
+Mesuré sur une copie de la base réelle, en simulant l'état d'après-import :
+
+| Lignes incomplètes | Préfixes | Avant | Après |
+|---|---|---|---|
+| 300 | 300 | 8,88 s — **110 suggestions** | **0,53 s** — 110 ✅ |
+| 600 | 600 | 0,00 s — **0 suggestion** ❌ | **0,58 s** — **272** |
+| 1 200 | 1 200 | 0,00 s — **0 suggestion** ❌ | **1,21 s** — **586** |
+
+Ce n'était pas de la lenteur : au-delà du seuil, la fonctionnalité ne produisait plus rien.
+
+### Le correctif
+
+La chaîne de `OR … LIKE` devient `LOWER(SUBSTR(col, 1, 3)) IN (…)`. Un `IN` est un **nœud d'expression unique** : la limite de profondeur ne s'applique plus. Sur la requête seule, **41× plus rapide** à 400 préfixes (11,13 s → 0,27 s) ; **×17 de bout en bout** à 300 préfixes.
+
+Le découpage en lots — la solution qu'on imagine spontanément — a été mesuré puis écarté : **11,55 s contre 11,13 s**, aucun gain. Le coût n'est pas le nombre de requêtes mais l'évaluation de l'arbre de `OR`.
+
+**Résultat strictement identique** : 52 136 lignes sélectionnées des deux côtés sur la base réelle, **0 écart**.
+
+**Effet de bord souhaitable** : `LIKE 'k3_%'` traitait « _ » comme un joker. Vos 33 références `K3_TYP…` sont désormais comparées à la lettre — un test vérifie qu'un préfixe `s_4` ne ramène plus `SC4520`, ce que l'ancienne forme faisait.
+
+### Portée honnête du gain
+
+Le gain de bout en bout dépend de la diversité des références. Quand les préfixes sont peu nombreux (références homogènes), il tombe à ×2–3 : le coût restant vient alors du calcul de similarité **par ligne**, pas du SQL. C'est mesuré, pas supposé — l'optimisation traite le SQL, pas le reste.
+
+**Vérifié** : 16 tests ajoutés (`tests/unit/test_similarity_prefix_query.py`), dont un qui **reproduit l'échec de l'ancienne stratégie** (`pytest.raises(OperationalError, match="Expression tree is too large")`) — le défaut corrigé est prouvé réel, pas supposé. Équivalence de sélection vérifiée contre l'ancienne forme sur cinq jeux de préfixes. Suite complète **612 passed**, `compileall` OK, 89 modules importés.
+
 ## [3.71.0] - 2026-09-04 (branche `feat/fts5-index-on-demand`)
 
 ### L'index FTS5 n'est plus maintenu tant qu'il ne peut pas servir
