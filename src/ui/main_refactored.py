@@ -1882,7 +1882,11 @@ class MainWindow(QMainWindow):
         # Utiliser le nombre de lignes originales si disponible, sinon calculer
         original_line_count = results.get('original_line_count', total_processed + duplicates_ignored)
         summary += f"Lignes traitées : {original_line_count}\n"
-        
+
+        alerte = results.get('alerte_mapping')
+        if alerte:
+            summary += f"[!] {alerte}\n"
+
         # Section Appareils avec sous-détails
         summary += "Appareils :\n"
         
@@ -2036,7 +2040,15 @@ class MainWindow(QMainWindow):
         if not file_details:
             total_lines_extracted = results.get('total_imported', 0) + results.get('duplicates_in_file', 0)
 
-        summary += f"     ==> Lignes traitées : {total_lines_extracted}\n\n"
+        summary += f"     ==> Lignes traitées : {total_lines_extracted}\n"
+
+        # Signal de mapping suspect : remonté ici et non plus seulement en log.
+        # 25 des 495 imports de l'historique le déclenchaient sans que rien ne
+        # l'affiche — un import silencieusement faux passait inaperçu.
+        alerte = results.get('alerte_mapping')
+        if alerte:
+            summary += f"     [!] {alerte}\n"
+        summary += "\n"
 
         # Section Appareils (format exact)
         summary += "Appareils :\n"
