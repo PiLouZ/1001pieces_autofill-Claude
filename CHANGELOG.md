@@ -23,6 +23,27 @@ Le correctif est strictement symétrique des deux branches voisines. Aucune gara
 **Deux chemins écartés après vérification.** Le multi-fichiers n'est pas concerné : `_apply_succession_from_config` s'exécute **après** le traitement de l'import, donc les références des autres fichiers sont déjà des pièces réelles portant leur propre libellé, et aucun fantôme n'est créé. Le panneau de relations (`services/import_relations.py`) n'a aucune notion de libellé — il ne manipule que des références.
 
 **Vérifié** : 6 tests ajoutés (`tests/unit/test_import_phantom_label.py`). Le test ciblant le défaut a été **confirmé en échec** sur le code non corrigé, les 5 gardes passant dans les deux états — dont « un libellé existant n'est jamais écrasé » et « rien à hériter si la source n'a pas de libellé ». Suite complète **534 passed** sur cette branche (528 sur `main` + 6 ajoutés), `compileall` OK.
+## [3.69.3] - 2026-09-03 (branche `feat/import-mapping-warning-ui`)
+
+### L'alerte de mapping remonte enfin dans la synthèse d'import
+
+Un collage ou un CSV dont les colonnes sont mal alignées produit un import **silencieusement faux** : toutes les lignes s'écrasent sur une seule identité d'appareil. La détection existait — `_log_resume_import` la calcule depuis longtemps — mais elle n'écrivait qu'une ligne de log que personne ne va lire pendant un import.
+
+**Calibré sur l'historique réel avant de coder** : sur les **495 imports** retrouvés dans les logs, **25 (5 %)** déclenchaient déjà cette condition. Un élargissement du seuil a été envisagé puis écarté — un critère « ratio lignes/clés ≥ 3 » attrape exactement les mêmes 25, et « ≥ 10 » n'en attrape aucun. La règle de détection était donc déjà bien calibrée ; **le défaut n'était pas la détection mais l'absence d'affichage.**
+
+La synthèse affiche désormais :
+
+```
+Fichier CSV : 3 lignes extraites
+     ==> Lignes traitées : 3
+     [!] 3 lignes n'ont produit que 1 identité(s) d'appareil — vérifiez le mapping des colonnes
+Appareils :
+     ==> Créés : 2
+```
+
+**Une seule source pour la règle.** Le message est composé dans `_log_resume_import` et transporté par `results['alerte_mapping']` ; les deux constructeurs de synthèse — import CSV/collage (`_safe_show_import_results_new`) et import PDF (`_generate_console_summary`) — le consomment tel quel sans réévaluer la condition. `results['cles_distinctes']` est exposé dans tous les cas, y compris sans alerte, pour faciliter le diagnostic.
+
+**Vérifié** : 6 tests ajoutés (`tests/unit/test_import_mapping_alert.py`), suite complète **534 passed**, `compileall` OK. Rendu contrôlé de bout en bout sur `MainWindow` : la synthèse d'un import suspect porte l'alerte, celle d'un import sain ne la porte pas.
 
 ## [3.69.2] - 2026-09-03 (branche `fix/import-paths-divergences`)
 

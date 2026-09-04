@@ -2561,11 +2561,16 @@ class ImportManager:
         # Le total inclut les doublons — c'est justement là qu'elles atterrissent
         # quand le mapping écrase l'identité (309 des 310 lignes le 2026-09-01).
         lignes = traitees + doublons
+        results['cles_distinctes'] = distinctes
         if lignes > 1 and distinctes <= 1:
-            app_logger.warning(
-                f"[Import] {lignes} lignes n'ont produit que {distinctes} clé(s) "
-                f"distincte(s) — vérifiez le mapping des colonnes."
+            # Message calculé ici et transporté dans results : les deux constructeurs
+            # de synthèse (import CSV/collage et import PDF) le consomment tel quel,
+            # plutôt que de réévaluer la condition chacun de leur côté.
+            results['alerte_mapping'] = (
+                f"{lignes} lignes n'ont produit que {distinctes} identité(s) "
+                f"d'appareil — vérifiez le mapping des colonnes"
             )
+            app_logger.warning(f"[Import] {results['alerte_mapping']}.")
 
     def _execute_import(self, config: ImportConfiguration) -> Dict[str, Any]:
         """Exécuter l'import de façon synchrone (chemins drag-drop et fallback).

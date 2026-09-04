@@ -191,9 +191,13 @@ class TestVolumeParAppareil:
 
         with _capture(logging.WARNING) as cap:
             import_manager._run_import_files(config)
-        alertes = [m for m in cap.messages if 'clé(s) distincte(s)' in m]
+        # Ancré sur ce qui est stable — la mention du mapping et le nombre de lignes —
+        # et non sur la formulation : depuis la v3.69.3 ce message s'affiche aussi
+        # dans la synthèse d'import, et il est rédigé pour l'utilisateur
+        # (« identité d'appareil ») plutôt qu'en termes techniques.
+        alertes = [m for m in cap.messages if 'vérifiez le mapping' in m]
         assert alertes, "aucune alerte alors que toutes les lignes ont la même clé"
-        assert 'vérifiez le mapping' in alertes[0]
+        assert '60 lignes' in alertes[0]
 
     def test_import_fonctionnellement_inchange(self, import_manager, monkeypatch):
         """NON-RÉGRESSION : le niveau de verbosité des logs ne doit RIEN changer au
