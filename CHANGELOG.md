@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.69.4] - 2026-09-04 (branche `fix/phantom-label-equivalence`)
+
+### Fix : le libellé importé n'atteignait pas le fantôme d'une équivalence
+
+Défaut remonté par l'utilisateur et reproduit : à l'import, le libellé saisi est bien attribué à la pièce importée, mais la référence partenaire — créée en « fantôme » car elle n'est pas importée — ne le recevait **que selon le type de relation déclarée**.
+
+| Relation déclarée dans le dialogue d'import | Libellé hérité par le fantôme |
+|---|---|
+| « remplace » (`succession_replaces`) | ✅ |
+| « remplacée par » (`succession_replaced_by`) | ✅ |
+| **« équivalente à » (`equivalence_ref`)** | ❌ **avant ce correctif** |
+
+**Le mécanisme existait déjà** : `inherit_phantom_description(source, target)` recopie le libellé de la pièce importée vers le fantôme. Il avait exactement deux appelants, tous deux dans les branches de succession. La branche équivalence, écrite juste en dessous, ne l'appelait pas. Le comportement dépendait donc du type de relation, jamais des données — ce que l'utilisateur décrivait par « selon certains cas ».
+
+Le correctif est strictement symétrique des deux branches voisines. Aucune garantie nouvelle : le SQL de `inherit_phantom_description` n'écrit que sur les pièces **fantômes** dont la description est **vide**, et ne fait rien si la source n'a pas de libellé.
+
+**Deux chemins écartés après vérification.** Le multi-fichiers n'est pas concerné : `_apply_succession_from_config` s'exécute **après** le traitement de l'import, donc les références des autres fichiers sont déjà des pièces réelles portant leur propre libellé, et aucun fantôme n'est créé. Le panneau de relations (`services/import_relations.py`) n'a aucune notion de libellé — il ne manipule que des références.
+
+**Vérifié** : 6 tests ajoutés (`tests/unit/test_import_phantom_label.py`). Le test ciblant le défaut a été **confirmé en échec** sur le code non corrigé, les 5 gardes passant dans les deux états — dont « un libellé existant n'est jamais écrasé » et « rien à hériter si la source n'a pas de libellé ». Suite complète **534 passed** sur cette branche (528 sur `main` + 6 ajoutés), `compileall` OK.
+
 ## [3.69.2] - 2026-09-03 (branche `fix/import-paths-divergences`)
 
 ### Fix : le même fichier ne donne plus un résultat différent selon sa taille
