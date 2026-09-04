@@ -2100,8 +2100,8 @@ class ImportManager:
             # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
             if callback:
                 # Mode non-bloquant: show() au lieu de exec_()
-                dialog.accepted.connect(lambda: self._on_import_dialog_accepted(dialog, callback))
-                dialog.rejected.connect(lambda: self._on_import_dialog_rejected(dialog, callback))
+                dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'import'))
+                dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
                 dialog.show()
                 return None  # Retour immédiat, résultat via callback
             else:
@@ -2138,8 +2138,8 @@ class ImportManager:
         )
         dialog = ImportDialog(self.parent_widget, config, import_manager=self)
         if callback:
-            dialog.accepted.connect(lambda: self._on_import_dialog_accepted(dialog, callback))
-            dialog.rejected.connect(lambda: self._on_import_dialog_rejected(dialog, callback))
+            dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'import'))
+            dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
             dialog.show()
         else:
             if dialog.exec_() == QDialog.Accepted:
@@ -2260,37 +2260,7 @@ class ImportManager:
         preview_worker.error_occurred.connect(_on_preview_error)
         preview_worker.start()
 
-    def _on_import_dialog_accepted(self, dialog, callback):
-        """
-        Callback appelé quand le dialogue d'import est accepté (mode non-bloquant).
-        Lance d'abord une analyse dry-run (ImportPreviewDialog), puis le vrai import.
-        """
-        config = dialog.get_configuration()
-        if not config:
-            if callback:
-                callback(None)
-            dialog.deleteLater()
-            return
 
-        t0 = _time.perf_counter()
-        if config.show_preview:
-            self._launch_preview(config, callback, t0, dialog=dialog, source='import')
-        else:
-            self._launch_real_import(config, callback, t0, dialog=dialog, source='import')
-
-    def _on_import_dialog_rejected(self, dialog, callback):
-        """
-        Callback appelé quand le dialogue d'import est annulé (mode non-bloquant)
-
-        PHASE 2.2: Permet de gérer l'annulation proprement
-        """
-        try:
-            # Import annulé, appeler le callback avec None
-            if callback:
-                callback(None)
-        finally:
-            # Nettoyer le dialogue
-            dialog.deleteLater()
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import drag&drop")
     def import_from_drag_drop(self, file_paths: List[str], callback: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
@@ -2362,8 +2332,8 @@ class ImportManager:
         # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
         if callback:
             # Mode non-bloquant pour drag&drop
-            dialog.accepted.connect(lambda: self._on_drag_drop_dialog_accepted(dialog, callback))
-            dialog.rejected.connect(lambda: self._on_drag_drop_dialog_rejected(dialog, callback))
+            dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'drag_drop'))
+            dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
             dialog.show()
             return None  # Retour immédiat, résultat via callback
         else:
@@ -2393,10 +2363,19 @@ class ImportManager:
 
             return results
 
-    def _on_drag_drop_dialog_accepted(self, dialog, callback):
+
+    
+    def _on_dialog_accepted(self, dialog, callback, source):
         """
-        Callback appelé quand le dialogue drag&drop est accepté (mode non-bloquant).
+        Callback appelé quand un dialogue d'import est accepté (mode non-bloquant).
         Lance d'abord une analyse dry-run (ImportPreviewDialog), puis le vrai import.
+
+        Socle commun des chemins fichier et drag&drop, qui ne différaient que par
+        la valeur de `source` transmise en aval.
+
+        Args:
+            source: 'import' (fichier ou collage) ou 'drag_drop', propagé tel quel
+                    à _launch_preview / _launch_real_import.
         """
         config = dialog.get_configuration()
         if not config:
@@ -2407,15 +2386,16 @@ class ImportManager:
 
         t0 = _time.perf_counter()
         if config.show_preview:
-            self._launch_preview(config, callback, t0, dialog=dialog, source='drag_drop')
+            self._launch_preview(config, callback, t0, dialog=dialog, source=source)
         else:
-            self._launch_real_import(config, callback, t0, dialog=dialog, source='drag_drop')
+            self._launch_real_import(config, callback, t0, dialog=dialog, source=source)
 
-    def _on_drag_drop_dialog_rejected(self, dialog, callback):
+    def _on_dialog_rejected(self, dialog, callback):
         """
-        Callback appelé quand le dialogue drag&drop est annulé (mode non-bloquant)
+        Callback appelé quand un dialogue d'import est annulé (mode non-bloquant).
 
-        PHASE 2.2: Gestion propre de l'annulation
+        PHASE 2.2: Gestion propre de l'annulation. Les chemins fichier et
+        drag&drop en portaient deux versions strictement identiques.
         """
         try:
             # Import annulé, appeler le callback avec None
@@ -2424,7 +2404,7 @@ class ImportManager:
         finally:
             # Nettoyer le dialogue
             dialog.deleteLater()
-    
+
     def _detect_file_type(self, file_path: str) -> Optional[FileType]:
         """Détecter le type de fichier"""
         ext = os.path.splitext(file_path)[1].lower()
