@@ -138,11 +138,18 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         )
 
     def _build_search_condition_optimized(self, search_term):
-        """Phase 3: Condition de recherche optimisée selon le type de requête.
+        """Construire la condition SQL de recherche.
 
-        Si Config.USE_FTS5=True et que l'index est peuplé, délègue à
+        Aiguillage sur deux axes : le type d'entrée (chaîne, ou dict simple /
+        and / or) et le mode `Config.SEARCH_PIECES_ONLY`. Chaque type délègue à
+        une méthode dédiée, qui gère elle-même ses deux modes.
+
+        Si Config.USE_FTS5=True et SEARCH_PIECES_ONLY=False, délègue à
         build_fts5_condition(). Fallback automatique sur LIKE si le type de
         recherche n'est pas supporté par FTS5 (regex, groupes imbriqués).
+
+        Le SQL produit est figé par tests/unit/test_search_condition_characterization.py
+        (176 points de mesure) : toute modification y devient visible.
         """
         # Branche FTS5 — activée uniquement si USE_FTS5=True ET SEARCH_PIECES_ONLY=False.
         # L'index FTS5 couvre les colonnes d'appareils uniquement ; quand on recherche
@@ -153,177 +160,188 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 return fts_condition
             # Fallback silencieux sur LIKE pour les types non supportés
 
-        # Si c'est une chaîne simple (ancienne API), traiter comme recherche simple
         if isinstance(search_term, str):
-            if not search_term.strip():
-                return None
+            return self._condition_depuis_chaine(search_term)
 
-            term = search_term.strip()
-
-            # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
-            if Config.SEARCH_PIECES_ONLY:
-                return self._build_pieces_only_condition(term)  # string path — pas de bypass possible
-
-            # DÉSACTIVÉ TEMPORAIREMENT: Recherches optimisées à cause de problèmes de paramètres
-            # Utiliser toujours la recherche LIKE classique pour garantir la stabilité
-
-            # Recherche LIKE classique (plus lente)
-            search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append(self._piece_association_subquery("LIKE"))
-            return {
-                'query_type': 'like',
-                'condition': f"({' OR '.join(search_conditions)})",
-                'params': [f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1)
-            }
-        
-        # Si c'est None, pas de recherche
         if not search_term:
             return None
-        
-        # Recherche avancée
-        search_type = search_term.get('type', 'simple')
-        
-        if search_type == 'simple':
-            # Recherche simple avec un seul terme
-            terms = search_term.get('terms', [])
-            if not terms:
-                return None
 
-            term = terms[0]
+        constructeurs = {
+            'simple': self._condition_simple,
+            'and':    self._condition_et,
+            'or':     self._condition_ou,
+        }
+        constructeur = constructeurs.get(search_term.get('type', 'simple'))
+        return constructeur(search_term) if constructeur else None
 
-            # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
-            if Config.SEARCH_PIECES_ONLY:
-                bypass = search_term.get('bypass_supersession', False)
-                extend_search = search_term.get('extend_search', False)
-                extra_refs = list(search_term.get('expand_predecessors', []))
-                for r in search_term.get('expand_equivalents', []):
-                    if r not in extra_refs:
-                        extra_refs.append(r)
-                return self._build_pieces_only_condition(term, bypass=bypass, extra_refs=extra_refs,
-                                                          extend_search=extend_search)
+    # ─── Briques de construction des conditions ──────────────────────────────
 
-            search_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-            search_conditions.append(self._piece_association_subquery("LIKE"))
+    def _condition_terme_toutes_colonnes(self, terme):
+        """Le terme recherché dans TOUTES les colonnes d'appareil, ou dans la
+        référence d'une pièce associée.
+
+        Brique de base du mode LIKE : ce bloc était écrit à l'identique en cinq
+        endroits de la construction des conditions.
+
+        Returns:
+            (condition SQL, liste de paramètres)
+        """
+        conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
+        conditions.append(self._piece_association_subquery("LIKE"))
+        return (
+            f"({' OR '.join(conditions)})",
+            [f"%{terme}%"] * (len(Config.DB_HEADERS) + 1),
+        )
+
+    @staticmethod
+    def _operateur_correspondance(extend_search):
+        """Opérateur SQL selon le mode : correspondance exacte, ou partielle."""
+        return "LIKE" if extend_search else "="
+
+    @staticmethod
+    def _parametre_correspondance(terme, extend_search):
+        """Paramètre associé à l'opérateur de correspondance."""
+        return f"%{terme}%" if extend_search else terme
+
+    # ─── Un constructeur par type de recherche ───────────────────────────────
+
+    def _condition_depuis_chaine(self, search_term):
+        """Recherche simple passée en chaîne (ancienne API)."""
+        if not search_term.strip():
+            return None
+
+        term = search_term.strip()
+
+        # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
+        if Config.SEARCH_PIECES_ONLY:
+            return self._build_pieces_only_condition(term)  # string path — pas de bypass possible
+
+        # Recherche LIKE classique (plus lente).
+        # Note : les paramètres sont construits depuis search_term NON trimmé,
+        # contrairement à la branche pieces_only ci-dessus qui utilise term.
+        # Incohérence d'origine, conservée telle quelle et figée par les tests
+        # de caractérisation (cas « chaine_avec_espaces »).
+        condition, _ = self._condition_terme_toutes_colonnes(term)
+        return {
+            'query_type': 'like',
+            'condition': condition,
+            'params': [f"%{search_term}%"] * (len(Config.DB_HEADERS) + 1),
+        }
+
+    def _condition_simple(self, search_term):
+        """Recherche avancée à terme unique."""
+        terms = search_term.get('terms', [])
+        if not terms:
+            return None
+
+        term = terms[0]
+
+        # Phase 5: Recherche uniquement dans les pièces associées (avec supersession)
+        if Config.SEARCH_PIECES_ONLY:
+            extra_refs = list(search_term.get('expand_predecessors', []))
+            for r in search_term.get('expand_equivalents', []):
+                if r not in extra_refs:
+                    extra_refs.append(r)
+            return self._build_pieces_only_condition(
+                term,
+                bypass=search_term.get('bypass_supersession', False),
+                extra_refs=extra_refs,
+                extend_search=search_term.get('extend_search', False),
+            )
+
+        condition, params = self._condition_terme_toutes_colonnes(term)
+        return {'condition': condition, 'params': params}
+
+    def _condition_et(self, search_term):
+        """Recherche AND (&&) : tous les termes doivent être trouvés."""
+        terms = search_term.get('terms', [])
+        if not terms:
+            return None
+
+        # Phase 5: Recherche uniquement dans les pièces associées
+        if Config.SEARCH_PIECES_ONLY:
+            extend_search = search_term.get('extend_search', False)
+            op = self._operateur_correspondance(extend_search)
             return {
-                'condition': f"({' OR '.join(search_conditions)})",
-                'params': [f"%{term}%"] * (len(Config.DB_HEADERS) + 1)
+                'query_type': 'pieces_only',
+                'condition': f"({' AND '.join(self._piece_association_subquery(op) for _ in terms)})",
+                'params': [self._parametre_correspondance(t, extend_search) for t in terms],
             }
-        
-        elif search_type == 'and':
-            # Recherche avec opérateur AND (&&) - tous les termes doivent être trouvés
-            terms = search_term.get('terms', [])
+
+        conditions, params = [], []
+        for term in terms:
+            # Chaque terme doit être trouvé dans au moins une colonne
+            condition_terme, params_terme = self._condition_terme_toutes_colonnes(term)
+            conditions.append(condition_terme)
+            params.extend(params_terme)
+
+        if not conditions:
+            return None
+        return {'condition': f"({' AND '.join(conditions)})", 'params': params}
+
+    def _condition_ou(self, search_term):
+        """Recherche OR : groupes combinés, chaque groupe étant simple ou AND."""
+        groups = search_term.get('groups', [])
+        if not groups:
+            return None
+
+        # Phase 5: Recherche uniquement dans les pièces associées
+        if Config.SEARCH_PIECES_ONLY:
+            return self._condition_ou_pieces_only(
+                groups, search_term.get('extend_search', False))
+
+        conditions, params = [], []
+        for group in groups:
+            terms = group.get('terms', [])
             if not terms:
-                return None
+                continue
 
-            # Phase 5: Recherche uniquement dans les pièces associées
-            if Config.SEARCH_PIECES_ONLY:
-                extend_search = search_term.get('extend_search', False)
-                op = "LIKE" if extend_search else "="
-                pieces_conditions = [
-                    self._piece_association_subquery(op)
-                    for _ in terms
-                ]
-                return {
-                    'query_type': 'pieces_only',
-                    'condition': f"({' AND '.join(pieces_conditions)})",
-                    'params': [f"%{t}%" if extend_search else t for t in terms]
-                }
+            if group['type'] == 'and':
+                # Groupe AND : tous les termes doivent être présents
+                sous_conditions = []
+                for term in terms:
+                    condition_terme, params_terme = self._condition_terme_toutes_colonnes(term)
+                    sous_conditions.append(condition_terme)
+                    params.extend(params_terme)
+                if sous_conditions:
+                    conditions.append(f"({' AND '.join(sous_conditions)})")
 
-            and_conditions = []
-            all_params = []
+            elif group['type'] == 'simple':
+                # Groupe simple : premier terme recherché dans toutes les colonnes
+                condition_terme, params_terme = self._condition_terme_toutes_colonnes(terms[0])
+                conditions.append(condition_terme)
+                params.extend(params_terme)
 
-            for term in terms:
-                # Chaque terme doit être trouvé dans au moins une colonne
-                term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                term_conditions.append(self._piece_association_subquery("LIKE"))
+        if not conditions:
+            return None
+        return {'condition': f"({' OR '.join(conditions)})", 'params': params}
 
-                and_conditions.append(f"({' OR '.join(term_conditions)})")
-                all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
+    def _condition_ou_pieces_only(self, groups, extend_search):
+        """Variante pieces_only de la recherche OR."""
+        op = self._operateur_correspondance(extend_search)
+        conditions, params = [], []
 
-            if and_conditions:
-                return {
-                    'condition': f"({' AND '.join(and_conditions)})",
-                    'params': all_params
-                }
+        for group in groups:
+            terms = group.get('terms', [])
+            if not terms:
+                continue
 
-        elif search_type == 'or':
-            # Recherche avec groupes OR
-            groups = search_term.get('groups', [])
-            if not groups:
-                return None
+            if group['type'] == 'and':
+                conditions.append(
+                    f"({' AND '.join(self._piece_association_subquery(op) for _ in terms)})")
+                params.extend(self._parametre_correspondance(t, extend_search) for t in terms)
+            else:  # simple
+                conditions.append(self._piece_association_subquery(op))
+                params.append(self._parametre_correspondance(terms[0], extend_search))
 
-            # Phase 5: Recherche uniquement dans les pièces associées
-            if Config.SEARCH_PIECES_ONLY:
-                extend_search = search_term.get('extend_search', False)
-                op = "LIKE" if extend_search else "="
-                group_conditions = []
-                all_params = []
-                for group in groups:
-                    g_terms = group.get('terms', [])
-                    if not g_terms:
-                        continue
-                    if group['type'] == 'and':
-                        and_conds = [
-                            self._piece_association_subquery(op)
-                            for _ in g_terms
-                        ]
-                        group_conditions.append(f"({' AND '.join(and_conds)})")
-                        all_params.extend([f"%{t}%" if extend_search else t for t in g_terms])
-                    else:  # simple
-                        group_conditions.append(self._piece_association_subquery(op))
-                        all_params.append(f"%{g_terms[0]}%" if extend_search else g_terms[0])
-                if group_conditions:
-                    return {
-                        'query_type': 'pieces_only',
-                        'condition': f"({' OR '.join(group_conditions)})",
-                        'params': all_params
-                    }
-                return None
+        if not conditions:
+            return None
+        return {
+            'query_type': 'pieces_only',
+            'condition': f"({' OR '.join(conditions)})",
+            'params': params,
+        }
 
-            group_conditions = []
-            all_params = []
-
-            for group in groups:
-                if group['type'] == 'and':
-                    # Groupe AND : tous les termes doivent être présents
-                    terms = group.get('terms', [])
-                    if not terms:
-                        continue
-
-                    and_conditions = []
-                    for term in terms:
-                        # Chaque terme doit être trouvé dans au moins une colonne
-                        term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                        term_conditions.append(self._piece_association_subquery("LIKE"))
-
-                        and_conditions.append(f"({' OR '.join(term_conditions)})")
-                        all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
-
-                    if and_conditions:
-                        group_conditions.append(f"({' AND '.join(and_conditions)})")
-
-                elif group['type'] == 'simple':
-                    # Groupe simple : terme unique à rechercher dans toutes les colonnes
-                    terms = group.get('terms', [])
-                    if not terms:
-                        continue
-
-                    term = terms[0]  # Premier terme du groupe simple
-                    # Chercher le terme dans toutes les colonnes
-                    term_conditions = [f"a.[{h}] LIKE ?" for h in Config.DB_HEADERS]
-                    term_conditions.append(self._piece_association_subquery("LIKE"))
-
-                    group_conditions.append(f"({' OR '.join(term_conditions)})")
-                    all_params.extend([f"%{term}%"] * (len(Config.DB_HEADERS) + 1))
-
-            if group_conditions:
-                return {
-                    'condition': f"({' OR '.join(group_conditions)})",
-                    'params': all_params
-                }
-
-        return None
-    
     def _parse_search_term_for_export(self, search_term):
         """Parser un terme de recherche pour l'export - reproduit la logique de _parse_advanced_search"""
         # Si c'est déjà un objet parsé, le retourner tel quel

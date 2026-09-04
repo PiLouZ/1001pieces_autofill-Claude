@@ -41,6 +41,10 @@ ENTREES = [
     ("chaine_espaces",         "   "),
     ("none",                   None),
     ("chaine_simple",          "AS6015830"),
+    # Fige une incohérence réelle : en mode LIKE les paramètres utilisent la chaîne
+    # NON trimmée ('%  X  %'), là où le mode pieces_only utilise la version trimmée.
+    # Défaut latent hors chemin de production — figé ici, pas corrigé.
+    ("chaine_avec_espaces",    "  AS6015830  "),
     ("simple_sans_terme",      {'type': 'simple', 'terms': []}),
     ("simple",                 {'type': 'simple', 'terms': ['AS6015830']}),
     ("simple_bypass",          {'type': 'simple', 'terms': ['A1'], 'bypass_supersession': True}),
