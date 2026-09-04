@@ -44,6 +44,20 @@
     ]
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %"
+    ],
+    "query_type": "like"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
@@ -264,6 +278,13 @@
     ]
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
+    "params": [
+     "\"AS6015830\""
+    ],
+    "query_type": "fts5"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
@@ -445,6 +466,13 @@
     "query_type": "pieces_only"
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
@@ -560,6 +588,13 @@
     "query_type": "pieces_only"
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
@@ -703,6 +738,20 @@
     ]
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %",
+     "%  AS6015830  %"
+    ],
+    "query_type": "like"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
@@ -923,6 +972,13 @@
     ]
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
+    "params": [
+     "\"AS6015830\""
+    ],
+    "query_type": "fts5"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
@@ -1104,6 +1160,13 @@
     "query_type": "pieces_only"
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
@@ -1215,6 +1278,13 @@
     "query_type": "pieces_only"
    },
    "and_sans_terme": null,
+   "chaine_avec_espaces": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
    "chaine_espaces": null,
    "chaine_simple": {
     "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
