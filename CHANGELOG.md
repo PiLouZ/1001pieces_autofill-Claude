@@ -4,6 +4,32 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.70.3] - 2026-09-04 (branche `refactor/search-condition-decompose`)
+
+### Décomposition de `_build_search_condition_optimized` — SQL identique au caractère près
+
+Suite de la v3.70.2, qui posait le filet. La fonction la plus risquée du dépôt — 186 lignes, complexité cognitive 97, imbrication 7 — est découpée en huit méthodes nommées, **sans qu'une virgule du SQL produit ne change**.
+
+| | Avant | Après |
+|---|---|---|
+| Plus longue fonction | **186 lignes** | **36 lignes** |
+| Imbrication maximale | **7** | **3** |
+| Branches (~cyclomatique) | **38** | **10** |
+
+Le moteur de la complexité était une duplication : le bloc construisant « ce terme dans toutes les colonnes d'appareil, ou dans une pièce associée » était écrit **cinq fois à l'identique**. Il devient `_condition_terme_toutes_colonnes()`, qui retourne `(condition, params)`.
+
+Le reste suit la structure réelle du problème — un aiguillage sur le type d'entrée, chaque type gérant ses deux modes : `_condition_depuis_chaine`, `_condition_simple`, `_condition_et`, `_condition_ou` et sa variante `_condition_ou_pieces_only`. La fonction principale n'est plus qu'un aiguillage de 36 lignes ; la cascade de `if/elif` sur le type devient une table de constructeurs.
+
+**Une incohérence figée, pas corrigée.** Le chemin chaîne en mode LIKE construit ses paramètres depuis `search_term` **non trimmé** (`'%  X  %'`), là où la branche pieces_only utilise la version trimmée. Défaut latent, hors chemin de production. La matrice de caractérisation a été **étendue avant** la décomposition (cas « chaine_avec_espaces », 176 points au lieu de 168) pour que ce comportement soit ni perdu ni corrigé par inadvertance. Le corriger sera une décision séparée.
+
+**Vérifié — deux niveaux.**
+
+Les 20 tests de caractérisation passent : le SQL est identique sur les **176 points de mesure** (22 entrées × 4 combinaisons de drapeaux × 2 états de base). Ces mêmes tests avaient été éprouvés en v3.70.2 : un simple espace en trop les fait échouer.
+
+Contrôle différentiel sur la **vraie base de production** (~690 000 appareils) : cinq termes de recherche joués avant et après la modification — SQL, nombre de résultats et empreinte SHA-256 des données retournées **identiques dans les cinq cas**.
+
+Suite complète **587 passed**, `compileall` OK, 89 modules importés, `MainWindow` instanciée.
+
 ## [3.70.2] - 2026-09-04 (branche `test/search-condition-characterization`)
 
 ### Filet de sécurité sur `_build_search_condition_optimized`
