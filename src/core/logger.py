@@ -14,8 +14,15 @@ from enum import Enum
 from ..utils.error_handler import handle_logger_errors
 
 # Répertoire de logs absolu : <racine_projet>/data/logs/
+#
+# La variable d'environnement AUTOFILL_LOG_DIR le redirige ailleurs. Elle existe
+# pour que la suite de tests n'écrive pas dans les logs de production : sur six
+# mois, ~80 % des 6 909 lignes d'errors.log provenaient des tests (mocks,
+# « colonne_invalide », « Erreur de test »…), noyant les rares vraies erreurs.
+# Absente — le cas normal — le comportement est inchangé.
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-_DEFAULT_LOG_DIR = str(_PROJECT_ROOT / "data" / "logs")
+_DEFAULT_LOG_DIR = (os.environ.get('AUTOFILL_LOG_DIR')
+                    or str(_PROJECT_ROOT / "data" / "logs"))
 
 class LogLevel(Enum):
     """Niveaux de logging personnalisés"""
