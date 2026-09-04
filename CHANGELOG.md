@@ -4,6 +4,33 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.72.0] - 2026-09-04 (branche `refactor/import-paths-shared-core`)
+
+### Les deux chemins d'import partagent enfin leur socle commun
+
+Suite de la v3.69.1, qui avait posé le filet. `_process_data_import` (standard, < 50 lignes) et `_process_data_import_batch` portaient la même séquence de préparation de ligne, dupliquée : ignorer les lignes vides, compter la ligne extraite, parser selon le mapping, dériver la clé d'identité, décider si c'est un doublon. Seule la **résolution** de l'appareil diffère — SQL immédiat d'un côté, cache et écriture différée de l'autre.
+
+**Le chantier a été choisi sur mesure, pas sur intuition.** Le croisement de la complexité cognitive et de l'historique git — via `git log -L :fonction:fichier`, qui suit une méthode à travers les commits — a montré que ces deux méthodes cumulaient **44 commits** pour une complexité de 92 et 81. Les deux plus complexes du fichier *et* les plus retouchées. À l'inverse, `load_csv_data` (cognitif 32) n'avait pas bougé depuis un an : y toucher aurait été du risque pur.
+
+Deux socles extraits :
+
+- **`_preparer_ligne(row, config, seen_device_refs, results, prefixe_log)`** rend un verdict — `LIGNE_IGNOREE`, `LIGNE_DOUBLON` ou `LIGNE_A_TRAITER` — et porte les compteurs communs. Chaque chemin garde ensuite sa stratégie de résolution.
+- **`_collecter_candidat_similarite(device_data, actif)`** range la ligne pour le calcul différé des suggestions Type/Marque. Le chemin standard ne l'avait reçu qu'en v3.55.0, après qu'on eut constaté que les petits imports ne déclenchaient jamais de suggestions.
+
+| | Avant | Après |
+|---|---|---|
+| `_process_data_import` | 99 l. / cognitif 81 | **70 l. / 57** |
+| `_process_data_import_batch` | 222 l. / cognitif 92 | **196 l. / 69** |
+| Complexité cumulée | 173 | **143** (−17 %) |
+
+**Le total de lignes augmente** (321 → 348) : les deux socles portent des docstrings expliquant *pourquoi* ils existent. Le gain n'est pas la brièveté, c'est que le contrat partagé ne peut plus diverger — il avait déjà dérivé trois fois, dont une en produisant un bug de production.
+
+### Le filet a servi immédiatement
+
+En branchant le chemin batch, j'avais oublié de retirer son incrément `results['total_imported']` — la ligne était comptée deux fois. **Les 20 tests d'équivalence ont échoué en une seconde**, en pointant la divergence : `total_imported: 3` contre `6`. Sans eux, le défaut serait passé : ces compteurs s'affichent dans la synthèse d'import, personne ne les recompte à la main.
+
+**Vérifié** : les 20 tests d'équivalence passent, suite complète **642 passed**, `compileall` OK, 89 modules importés, `MainWindow` instanciée. Contrôle différentiel sur **50 lignes réelles** tirées de `appareils.db` (complètes, mono-référence, références à slash ou tiret final), en import initial et en ré-import : compteurs et état de base **identiques à `main`**, et les deux chemins toujours équivalents entre eux.
+
 ## [3.71.4] - 2026-09-04 (branche `refactor/three-duplicate-pairs`)
 
 ### Trois paires de code dupliqué factorisées — quatre écartées après relecture

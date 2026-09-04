@@ -2829,6 +2829,95 @@ class ImportManager:
             return {'created': association_created, 'assoc_id': assoc_id}
         return None
 
+    def _collecter_candidat_similarite(self, device_data, actif=True):
+        """Ranger une ligne importée pour le calcul différé des suggestions Type/Marque.
+
+        Une ligne restée incomplète après le mécanisme exact devient un candidat ;
+        une ligne complète devient une référence de comparaison pour ses frères du
+        même lot. On stocke la RÉFÉRENCE à device_data : l'id, réinjecté plus tard
+        pour les nouveaux appareils, sera visible au moment du calcul.
+
+        Les deux chemins d'import portaient ce bloc à l'identique — le chemin
+        standard ne l'avait d'ailleurs reçu qu'en v3.55.0, après qu'on eut constaté
+        que les petits imports ne déclenchaient jamais de suggestions.
+
+        Args:
+            actif: False en dry-run, où l'on ne collecte rien.
+        """
+        from .config import Config
+
+        if not (actif and Config.ENABLE_SIMILARITY_SUGGESTIONS
+                and hasattr(self, '_pending_similarity_candidates')):
+            return
+
+        complet = ((device_data.get('type') or '').strip()
+                   and (device_data.get('manufacturer') or '').strip())
+        if complet:
+            self._imported_complete_for_similarity.append(device_data)
+        else:
+            self._pending_similarity_candidates.append(device_data)
+
+    # Verdicts rendus par _preparer_ligne
+    LIGNE_IGNOREE = 'ignoree'      # vide ou non parsable : rien à faire
+    LIGNE_DOUBLON = 'doublon'      # identité déjà vue : rattacher l'association
+    LIGNE_A_TRAITER = 'a_traiter'  # identité nouvelle : résoudre l'appareil
+
+    def _preparer_ligne(self, row, config, seen_device_refs, results, prefixe_log=''):
+        """Étapes communes aux deux chemins d'import, jusqu'à la décision de traiter.
+
+        `_process_data_import` (standard) et `_process_data_import_batch` portaient
+        la même séquence : ignorer les lignes vides, compter la ligne extraite,
+        parser selon le mapping, dériver la clé d'identité, décider si c'est un
+        doublon. Seule la **résolution** de l'appareil diffère ensuite — SQL
+        immédiat d'un côté, cache et écriture différée de l'autre.
+
+        Cette séquence avait déjà divergé trois fois (ordre parse/clé, moment du
+        comptage, collecte des suggestions), dont une fois en produisant un bug
+        de production. Les tests d'équivalence
+        (tests/unit/test_import_paths_equivalence.py) verrouillent le résultat ;
+        ce socle commun supprime la possibilité même de la dérive.
+
+        Args:
+            prefixe_log: inséré dans les messages de debug pour distinguer les
+                deux chemins ('' ou 'BATCH ').
+
+        Returns:
+            (verdict, device_data, device_key) — les deux derniers valent None
+            pour LIGNE_IGNOREE.
+        """
+        from .config import Config
+
+        if not row or not any(cell.strip() if cell is not None else False for cell in row):
+            return self.LIGNE_IGNOREE, None, None
+
+        # Compter chaque ligne non vide comme extraite du fichier
+        results['total_lines_extracted'] += 1
+
+        # Parser AVANT tout : la clé de déduplication doit être dérivée du mapping
+        # de colonnes réellement appliqué, pas devinée par position.
+        device_data = self._parse_row_data(row, config)
+        if not device_data:
+            return self.LIGNE_IGNOREE, None, None   # Ligne non parsable, ne pas compter
+
+        # Détection des doublons INTER-fichiers (seen_device_refs est partagé)
+        ref_modele, commercial_ref, device_key = self._build_device_key(device_data)
+
+        if device_key in seen_device_refs and (ref_modele or commercial_ref):
+            results['duplicates_in_file'] += 1
+            app_logger.debug(
+                f"   {prefixe_log}Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
+            return self.LIGNE_DOUBLON, device_data, device_key
+
+        if ref_modele or commercial_ref:
+            seen_device_refs.add(device_key)
+            if Config.LOG_VERBOSE_PER_DEVICE:
+                app_logger.debug(
+                    f"[OK] {prefixe_log}LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
+
+        # Compté seulement maintenant : une ligne ignorée ou doublon n'y entre pas
+        results['total_imported'] += 1
+        return self.LIGNE_A_TRAITER, device_data, device_key
+
     def _process_data_import(self, data: List[List[str]], references_and_labels: List[Tuple[str, str]],
                            config: ImportConfiguration, file: ImportFile, seen_device_refs: set) -> Dict[str, Any]:
         """Traiter l'import des données avec les références et libellés séparés"""
@@ -2852,23 +2941,13 @@ class ImportManager:
         # Détecter comme doublon des lignes identiques même dans des fichiers différents
         
         for row in data:
-            if not row or not any(cell.strip() if cell is not None else False for cell in row):
-                continue
-            
-            # Compter chaque ligne non vide comme extraite du fichier
-            results['total_lines_extracted'] += 1
-            
-            # Parser AVANT tout : la clé de déduplication doit être dérivée du mapping
-            # de colonnes réellement appliqué, pas devinée par position.
-            device_data = self._parse_row_data(row, config)
-            if not device_data:
+            verdict, device_data, device_key = self._preparer_ligne(
+                row, config, seen_device_refs, results)
+
+            if verdict == self.LIGNE_IGNOREE:
                 continue
 
-            # Vérifier si c'est un doublon dans le fichier
-            ref_modele, commercial_ref, device_key = self._build_device_key(device_data)
-            if device_key in seen_device_refs and (ref_modele or commercial_ref):
-                results['duplicates_in_file'] += 1
-                app_logger.debug(f"   Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
+            if verdict == self.LIGNE_DOUBLON:
                 # Trouver l'appareil existant et créer l'association même pour les doublons
                 device_id_dup = self._insert_or_find_device(device_data)
                 if device_id_dup:
@@ -2881,13 +2960,6 @@ class ImportManager:
                                 else:
                                     results['associations_existing'] += 1
                 continue  # L'appareil n'est pas recompté dans total_imported
-            elif ref_modele or commercial_ref:
-                seen_device_refs.add(device_key)
-                if Config.LOG_VERBOSE_PER_DEVICE:
-                    app_logger.debug(f"[OK] LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
-
-            # Compter APRÈS parse pour cohérence avec le chemin batch
-            results['total_imported'] += 1
 
             # Insérer ou trouver l'appareil
             device_id = self._insert_or_find_device(device_data)
@@ -2902,19 +2974,7 @@ class ImportManager:
                 else:
                     results['matches_found'] += 1
 
-                # Suggestions par similarité (ADDITIF) : chemin « standard » (< BATCH_THRESHOLD
-                # lignes), symétrique de la collecte du chemin batch (_process_data_import_batch).
-                # Manquant jusqu'ici — les petits imports (PDF courts, etc.) ne déclenchaient
-                # donc jamais le calcul automatique de suggestions après import.
-                # (Config est importé en tête de fonction.)
-                if (Config.ENABLE_SIMILARITY_SUGGESTIONS
-                        and hasattr(self, '_pending_similarity_candidates')):
-                    _is_complete = ((device_data.get('type') or '').strip()
-                                    and (device_data.get('manufacturer') or '').strip())
-                    if not _is_complete:
-                        self._pending_similarity_candidates.append(device_data)
-                    else:
-                        self._imported_complete_for_similarity.append(device_data)
+                self._collecter_candidat_similarite(device_data)
 
                 # Associer les références (chaque paire référence-libellé)
                 for reference, label in references_and_labels:
@@ -2982,23 +3042,13 @@ class ImportManager:
                     app_logger.info(f"[!] Traitement batch annulé à la ligne {idx}/{len(data)}")
                     break
 
-            if not row or not any(cell.strip() if cell is not None else False for cell in row):
+            verdict, device_data, device_key = self._preparer_ligne(
+                row, config, seen_device_refs, results, prefixe_log='BATCH ')
+
+            if verdict == self.LIGNE_IGNOREE:
                 continue
 
-            results['total_lines_extracted'] += 1
-
-            # Parser AVANT tout : la clé de déduplication doit être dérivée du mapping
-            # de colonnes réellement appliqué, pas devinée par position.
-            device_data = self._parse_row_data(row, config)
-            if not device_data:
-                continue  # Ligne non parsable, ne pas compter
-
-            # MODIFICATION BATCH: Détection doublons INTER-fichiers (entre tous les fichiers)
-            ref_modele, commercial_ref, device_key = self._build_device_key(device_data)
-
-            if device_key in seen_device_refs and (ref_modele or commercial_ref):
-                results['duplicates_in_file'] += 1
-                app_logger.debug(f"   BATCH Doublon inter-fichiers traité: {ref_modele} | {commercial_ref}")
+            if verdict == self.LIGNE_DOUBLON:
                 # Rattacher l'association à la 1ʳᵉ occurrence. Si elle vient du même
                 # fichier, on réutilise son (data_index, existing_id) : la mémoïsation
                 # de _batch_create_associations réattribue alors le bon id SANS
@@ -3016,13 +3066,9 @@ class ImportManager:
                         if reference:
                             associations_batch.append((reference, label, dup_index, dup_existing_id))
                 continue
-            elif ref_modele or commercial_ref:
-                seen_device_refs.add(device_key)
-                if Config.LOG_VERBOSE_PER_DEVICE:
-                    app_logger.debug(f"[OK] BATCH LIGNE ACCEPTÉE: Ajout {device_key} aux références vues")
 
-            # MAINTENANT on compte comme ligne réellement traitée
-            results['total_imported'] += 1
+            # Ligne à traiter : la résolution passe par le cache, pas par SQL
+            # (le comptage de la ligne traitée est fait par _preparer_ligne)
 
             # Utiliser cache auto-complétion pour améliorer les données (pas de SQL!)
             self._apply_autocomplete_from_cache(device_data, autocomplete_cache)
@@ -3047,19 +3093,7 @@ class ImportManager:
                     results['manual_completion'] += 1
                 new_devices_batch.append(device_data)
 
-            # Suggestions par similarité (ADDITIF) : collecter les lignes restées
-            # incomplètes APRÈS le mécanisme exact, pour calcul différé en fin d'import.
-            # On stocke la RÉFÉRENCE à device_data : l'id (réinjecté plus bas pour les
-            # nouveaux appareils) sera visible au moment du calcul.
-            if (not dry_run and Config.ENABLE_SIMILARITY_SUGGESTIONS
-                    and hasattr(self, '_pending_similarity_candidates')):
-                _is_complete = ((device_data.get('type') or '').strip()
-                                and (device_data.get('manufacturer') or '').strip())
-                if not _is_complete:
-                    self._pending_similarity_candidates.append(device_data)
-                else:
-                    # Frère complet du lot → référence supplémentaire pour la similarité.
-                    self._imported_complete_for_similarity.append(device_data)
+            self._collecter_candidat_similarite(device_data, actif=not dry_run)
 
             # Préparer associations (sera traitée après insertion batch)
             # CORRECTION: Utiliser processed_line_index pour avoir des indices consécutifs
