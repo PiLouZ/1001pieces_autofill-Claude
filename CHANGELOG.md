@@ -4,6 +4,37 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.70.0] - 2026-09-04 (branche `feat/export-dialog-destination`)
+
+### La fenêtre d'export CSV annonce où ira le fichier
+
+La fenêtre demandait une référence sans jamais dire ce qu'elle deviendrait. Depuis la v3.68.0 le nom du fichier est pourtant piloté par un pattern configurable : **la référence saisie détermine aussi le nom du fichier**, et rien ne le montrait.
+
+Elle affiche désormais le dossier de destination — celui de « Configuration des exports », v3.67.0 — **et le nom réel du fichier**, recalculé à chaque frappe :
+
+```
+📁  /Users/emg1/Desktop/everyParts à cumuler        Changer…
+    AS6015830_everyParts.csv
+```
+
+Le lien **Changer…** ouvre le sélecteur de dossier et **mémorise le choix dans la configuration** : c'est le même réglage que celui de la fenêtre de configuration, pas un choix à usage unique.
+
+**L'aperçu ne peut pas diverger du fichier écrit** : il passe par `format_csv_filename`, la même fonction qu'utilise l'écriture réelle. Un test le vérifie sur quatre patterns, dont un invalide.
+
+### Agencement revu
+
+La fenêtre annonçait « Référence détectée : AS6015830 » puis affichait `AS6015830` dans le champ juste en dessous — trois lignes de texte pour redire ce que le champ montrait déjà. Le champ passe en premier, agrandi et pré-sélectionné ; l'explication tient sur une ligne en gris sous lui. `OK` devient **Exporter**, en vert comme le bouton Enregistrer de la fenêtre de configuration.
+
+**Le bloc destination est conditionnel** : il n'apparaît que pour les exports qui écrivent un fichier. Les exports HTML vont dans le presse-papier et gardent une fenêtre minimale, avec un bouton `OK`.
+
+**Titres lisibles** : `ExportFormat.value` est un identifiant technique — la fenêtre affichait « Export HTML_DETAILS ». Une table de libellés donne « Export HTML — Détails ».
+
+**Vérifié** : 17 tests ajoutés (`tests/unit/test_export_dialog_destination.py`), suite complète **545 passed**, `compileall` OK, 88 modules importés, `MainWindow` instanciée. Rendu offscreen contrôlé sur le **vrai** dialogue (pas une maquette) dans les deux cas, CSV et HTML.
+
+### Connu, non traité ici
+
+Le dialogue reste modal bloquant (`exec_()`), contrairement à la convention « `show()` + callback » du projet. Le corriger suppose de remonter une valeur de retour à travers `_handle_reference_selection` — refonte d'une autre ampleur, à décider séparément.
+
 ## [3.69.2] - 2026-09-03 (branche `fix/import-paths-divergences`)
 
 ### Fix : le même fichier ne donne plus un résultat différent selon sa taille

@@ -20,7 +20,8 @@ from enum import Enum
 from ..ui.qt_imports import (
     QInputDialog, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit, 
-    QListWidget, QListWidgetItem, QMessageBox, QDialogButtonBox
+    QListWidget, QListWidgetItem, QMessageBox, QDialogButtonBox,
+    QWidget, QFrame, QSize
 )
 from ..ui.qt_imports import Qt
 from ..ui.qt_imports import QFont
@@ -261,48 +262,81 @@ class ComplexDialogs:
     
     @_handle_dialog_errors(default_return=None, context="dialogue sélection référence")
     def show_reference_selection_dialog(self, title: str, message: str,
-                                      default_reference: str = "") -> Optional[str]:
+                                      default_reference: str = "",
+                                      destination: Optional[Dict[str, Any]] = None,
+                                      bouton_valider: str = "OK") -> Optional[str]:
         """
-        Dialogue de sélection/modification de référence
+        Dialogue de saisie de la référence d'export.
 
         Args:
-            title: Titre du dialogue
-            message: Message explicatif
-            default_reference: Référence par défaut
+            title: Titre de la fenêtre
+            message: Phrase d'aide affichée sous le champ
+            default_reference: Référence pré-remplie et pré-sélectionnée
+            destination: Pour les exports qui écrivent un fichier, un dict
+                {'dossier': str, 'nom_fichier': callable(ref) -> str,
+                 'changer': callable() -> str | None}. Affiche le dossier et le
+                nom du fichier qui sera écrit, recalculé à chaque frappe.
+                None pour les exports sans fichier (HTML → presse-papier).
+            bouton_valider: Libellé du bouton de validation
 
         Returns:
-            Référence sélectionnée ou None si annulé
+            Référence saisie, ou None si annulé
         """
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle(title)
         dialog.setModal(True)
-        dialog.setMinimumWidth(500)
+        dialog.setMinimumWidth(520)
 
         layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 14, 16, 12)
 
-        # Message explicatif
-        message_label = QLabel(message)
-        message_label.setWordWrap(True)
-        message_label.setStyleSheet("margin: 10px;")
-        layout.addWidget(message_label)
+        # ── Le champ d'abord : c'est la seule action de cette fenêtre ────────
+        titre_champ = QLabel("Référence d'export")
+        police = QFont()
+        police.setBold(True)
+        titre_champ.setFont(police)
+        layout.addWidget(titre_champ)
 
-        # Champ de référence
-        ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence :"))
         ref_input = QLineEdit(default_reference)
-        ref_input.setPlaceholderText("Entrez la référence...")
-        ref_input.selectAll()  # Sélectionner tout le texte par défaut
-        ref_layout.addWidget(ref_input)
-        layout.addLayout(ref_layout)
+        ref_input.setPlaceholderText("Entrez la référence…")
+        ref_input.setStyleSheet("QLineEdit { padding: 6px; font-size: 13px; }")
+        layout.addWidget(ref_input)
 
-        # Boutons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        layout.addWidget(button_box)
+        if message:
+            aide = QLabel(message)
+            aide.setWordWrap(True)
+            aide.setStyleSheet("color: #6c757d; font-size: 11px;")
+            layout.addWidget(aide)
+
+        # ── Bloc destination (exports fichier uniquement) ────────────────────
+        if destination:
+            layout.addWidget(self._separateur_horizontal())
+            bloc, maj_nom_fichier = self._bloc_destination(destination, ref_input)
+            layout.addWidget(bloc)
+            ref_input.textChanged.connect(maj_nom_fichier)
+
+        # ── Boutons ──────────────────────────────────────────────────────────
+        pied = QHBoxLayout()
+        pied.addStretch()
+        annuler = QPushButton("Annuler")
+        annuler.setStyleSheet("QPushButton { padding: 4px 12px; }")
+        annuler.clicked.connect(dialog.reject)
+        valider = QPushButton(bouton_valider)
+        valider.setDefault(True)
+        valider.setStyleSheet(
+            "QPushButton { background-color: #28a745; color: white; padding: 5px 14px;"
+            " border-radius: 4px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #218838; }"
+        )
+        valider.clicked.connect(dialog.accept)
+        pied.addWidget(annuler)
+        pied.addWidget(valider)
+        layout.addLayout(pied)
 
         dialog.setLayout(layout)
         ref_input.setFocus()
+        ref_input.selectAll()
 
         if dialog.exec_() == QDialog.Accepted:
             reference = ref_input.text().strip()
@@ -311,6 +345,76 @@ class ComplexDialogs:
                 return reference
 
         return None
+
+    @staticmethod
+    def _separateur_horizontal() -> QFrame:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #dee2e6;")
+        return sep
+
+    def _bloc_destination(self, destination: Dict[str, Any], ref_input: QLineEdit):
+        """Bloc « où ira le fichier » : dossier, nom réel, et lien pour changer.
+
+        Retourne (widget, callback de mise à jour du nom de fichier).
+        """
+        import qtawesome as qta
+
+        bloc = QWidget()
+        bloc.setStyleSheet(
+            "QWidget { background: #f8f9fa; border: 1px solid #e9ecef;"
+            " border-radius: 4px; }"
+        )
+        ligne = QHBoxLayout(bloc)
+        ligne.setContentsMargins(10, 8, 10, 8)
+        ligne.setSpacing(8)
+
+        icone = QLabel()
+        icone.setPixmap(qta.icon('fa5s.folder-open', color='#6c757d').pixmap(QSize(16, 16)))
+        icone.setStyleSheet("border: none;")
+        icone.setAlignment(Qt.AlignTop)
+        ligne.addWidget(icone)
+
+        colonne = QVBoxLayout()
+        colonne.setSpacing(2)
+        lbl_dossier = QLabel(destination.get('dossier', ''))
+        lbl_dossier.setStyleSheet("color: #6c757d; font-size: 11px; border: none;")
+        lbl_fichier = QLabel()
+        police = QFont()
+        police.setBold(True)
+        lbl_fichier.setFont(police)
+        lbl_fichier.setStyleSheet("color: #212529; font-size: 12px; border: none;")
+        colonne.addWidget(lbl_dossier)
+        colonne.addWidget(lbl_fichier)
+        ligne.addLayout(colonne, 1)
+
+        nom_pour = destination.get('nom_fichier')
+
+        def maj_nom_fichier(texte=None):
+            ref = (texte if texte is not None else ref_input.text()).strip()
+            lbl_fichier.setText(nom_pour(ref or '…') if nom_pour else '')
+
+        maj_nom_fichier()
+
+        changer = destination.get('changer')
+        if changer:
+            btn = QPushButton("Changer…")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(
+                "QPushButton { border: none; background: transparent;"
+                " color: #0066cc; font-size: 11px; }"
+                "QPushButton:hover { text-decoration: underline; }"
+            )
+
+            def _changer():
+                nouveau = changer()
+                if nouveau:
+                    lbl_dossier.setText(nouveau)
+
+            btn.clicked.connect(_changer)
+            ligne.addWidget(btn, 0, Qt.AlignTop)
+
+        return bloc, maj_nom_fichier
     
     @_handle_dialog_errors(default_return=None, context="popup autocomplétion")
     def show_autocompletion_popup(self, suggestions: List[str],
@@ -436,9 +540,13 @@ class UnifiedDialogService:
         return self.complex.get_import_options_unified(**kwargs)
     
     def show_reference_selection_dialog(self, title: str, message: str, 
-                                      default_reference: str = "") -> Optional[str]:
-        """Dialogue de sélection de référence"""
-        return self.complex.show_reference_selection_dialog(title, message, default_reference)
+                                      default_reference: str = "",
+                                      destination: Optional[Dict[str, Any]] = None,
+                                      bouton_valider: str = "OK") -> Optional[str]:
+        """Dialogue de saisie de la référence d'export"""
+        return self.complex.show_reference_selection_dialog(
+            title, message, default_reference, destination, bouton_valider
+        )
     
     def show_autocompletion_popup(self, suggestions: List[str], 
                                 current_value: str = "") -> Optional[str]:
