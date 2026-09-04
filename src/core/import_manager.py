@@ -2665,6 +2665,11 @@ class ImportManager:
                 if ok:
                     results['equivalences_created'] = results.get('equivalences_created', 0) + 1
                     app_logger.info(f"Équivalence import : {file_ref} ≡ {config.equivalence_ref}")
+                    # La réf saisie est créée en fantôme → hériter du libellé importé.
+                    # Manquait ici alors que les deux branches de succession ci-dessus
+                    # le faisaient : le libellé n'atteignait le fantôme que selon le
+                    # type de relation déclarée, jamais selon les données.
+                    self.db_manager.inherit_phantom_description(file_ref, config.equivalence_ref)
                 else:
                     app_logger.warning(f"Équivalence import non créée ({file_ref} ≡ {config.equivalence_ref}) : {msg}")
 
