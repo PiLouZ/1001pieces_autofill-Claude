@@ -1,0 +1,1312 @@
+{
+ "base_avec_supersession": {
+  "pieces_only=False,fts5=False": {
+   "and_deux_termes": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%"
+    ],
+    "query_type": "like"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_and": {
+    "condition": "(((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "or_groupe_simple": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) OR ((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%"
+    ]
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%"
+    ]
+   },
+   "simple_bypass": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_equivalents": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_extend": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_pred_et_equiv": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_predecesseurs": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  },
+  "pieces_only=False,fts5=True": {
+   "and_deux_termes": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
+    "params": [
+     "\"AS6015830\""
+    ],
+    "query_type": "fts5"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_and": {
+    "condition": "(((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "or_groupe_simple": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) OR ((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%"
+    ]
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
+    "params": [
+     "\"AS6015830\""
+    ],
+    "query_type": "fts5"
+   },
+   "simple_bypass": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_equivalents": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_extend": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_pred_et_equiv": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_predecesseurs": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  },
+  "pieces_only=True,fts5=False": {
+   "and_deux_termes": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%B2%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_and": {
+    "condition": "((a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_simple": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) OR (a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2",
+     "C3"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_bypass": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_equivalents": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?)))",
+    "params": [
+     "A1",
+     "A2",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_extend": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ? UNION SELECT id FROM pieces WHERE ref_piece IN (?)))",
+    "params": [
+     "%A1%",
+     "A2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_pred_et_equiv": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?,?)))",
+    "params": [
+     "A1",
+     "A2",
+     "P1",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_predecesseurs": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?,?)))",
+    "params": [
+     "A1",
+     "A2",
+     "P1",
+     "P2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  },
+  "pieces_only=True,fts5=True": {
+   "and_deux_termes": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%B2%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_and": {
+    "condition": "((a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_simple": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) OR (a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2",
+     "C3"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_bypass": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_equivalents": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?)))",
+    "params": [
+     "A1",
+     "A2",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_extend": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ? UNION SELECT id FROM pieces WHERE ref_piece IN (?)))",
+    "params": [
+     "%A1%",
+     "A2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_pred_et_equiv": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?,?)))",
+    "params": [
+     "A1",
+     "A2",
+     "P1",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_predecesseurs": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?,?)))",
+    "params": [
+     "A1",
+     "A2",
+     "P1",
+     "P2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  }
+ },
+ "base_vide": {
+  "pieces_only=False,fts5=False": {
+   "and_deux_termes": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%"
+    ],
+    "query_type": "like"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_and": {
+    "condition": "(((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "or_groupe_simple": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) OR ((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%"
+    ]
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%",
+     "%AS6015830%"
+    ]
+   },
+   "simple_bypass": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_equivalents": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_extend": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_pred_et_equiv": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_predecesseurs": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  },
+  "pieces_only=False,fts5=True": {
+   "and_deux_termes": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
+    "params": [
+     "\"AS6015830\""
+    ],
+    "query_type": "fts5"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_and": {
+    "condition": "(((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%"
+    ]
+   },
+   "or_groupe_simple": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) OR ((a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))) AND (a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%B2%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%",
+     "%C3%"
+    ]
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "a.id IN (SELECT rowid FROM appareils_fts WHERE appareils_fts MATCH ?)",
+    "params": [
+     "\"AS6015830\""
+    ],
+    "query_type": "fts5"
+   },
+   "simple_bypass": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_equivalents": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_extend": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_pred_et_equiv": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_predecesseurs": {
+    "condition": "(a.[type] LIKE ? OR a.[manufacturer] LIKE ? OR a.[ref_modele] LIKE ? OR a.[commercial_ref] LIKE ? OR a.[other_ref] LIKE ? OR a.[category] LIKE ? OR a.[notes] LIKE ? OR a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%",
+     "%A1%"
+    ]
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  },
+  "pieces_only=True,fts5=False": {
+   "and_deux_termes": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%B2%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_and": {
+    "condition": "((a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_simple": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) OR (a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2",
+     "C3"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_bypass": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_equivalents": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?)))",
+    "params": [
+     "A1",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_extend": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))",
+    "params": [
+     "%A1%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_pred_et_equiv": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?)))",
+    "params": [
+     "A1",
+     "P1",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_predecesseurs": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?)))",
+    "params": [
+     "A1",
+     "P1",
+     "P2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  },
+  "pieces_only=True,fts5=True": {
+   "and_deux_termes": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%",
+     "%B2%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "and_sans_terme": null,
+   "chaine_espaces": null,
+   "chaine_simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "chaine_vide": null,
+   "none": null,
+   "or_extend": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?)))",
+    "params": [
+     "%A1%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_and": {
+    "condition": "((a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_simple": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_groupe_vide": null,
+   "or_mixte": {
+    "condition": "(a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) OR (a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)) AND a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))))",
+    "params": [
+     "A1",
+     "B2",
+     "C3"
+    ],
+    "query_type": "pieces_only"
+   },
+   "or_sans_groupe": null,
+   "simple": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "AS6015830"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_bypass": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?))",
+    "params": [
+     "A1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_equivalents": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?)))",
+    "params": [
+     "A1",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_extend": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece LIKE ?))",
+    "params": [
+     "%A1%"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_pred_et_equiv": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?)))",
+    "params": [
+     "A1",
+     "P1",
+     "E1"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_predecesseurs": {
+    "condition": "a.id IN (SELECT pa.appareil_id FROM piece_associations pa WHERE pa.piece_id IN (SELECT id FROM pieces WHERE ref_piece = ? UNION SELECT id FROM pieces WHERE ref_piece IN (?,?)))",
+    "params": [
+     "A1",
+     "P1",
+     "P2"
+    ],
+    "query_type": "pieces_only"
+   },
+   "simple_sans_terme": null,
+   "type_inconnu": null
+  }
+ }
+}
