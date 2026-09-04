@@ -4,6 +4,30 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.70.2] - 2026-09-04 (branche `test/search-condition-characterization`)
+
+### Filet de sécurité sur `_build_search_condition_optimized`
+
+`DatabaseManager._build_search_condition_optimized` construit le SQL de **toute** la recherche de l'application, sur ~690 000 appareils. Complexité cognitive 97 sur 186 lignes — la fonction la plus risquée du dépôt — et **aucun test direct** ne la couvrait. 20 tests de caractérisation figent désormais sa sortie exacte, préalable indispensable à toute décomposition.
+
+**Aucune modification du code de production dans cette version.**
+
+### Deux constats qui ont motivé leur écriture
+
+**Le chemin de production n'était pas testé.** `Config.SEARCH_PIECES_ONLY` vaut `True` en production et **aucun code de `src/` ne le modifie** — or `tests/conftest.py:56` le force à `False` pour la fixture de base de données. La suite exerçait donc les branches LIKE, et jamais le mode réellement utilisé. La couverture était inversée.
+
+**La branche FTS5 est inatteignable en production.** Elle est gardée par `not SEARCH_PIECES_ONLY`, si bien qu'activer ou désactiver l'index ne change **rien** au SQL produit. Un test le vérifie explicitement en comparant les deux relevés. C'est cohérent avec la note de `CLAUDE.md` (« SEARCH_PIECES_ONLY désactive FTS5 »), mais le vérifier valait mieux que le supposer.
+
+### Ce que couvrent les tests
+
+Une matrice de **21 entrées** — chaîne vide, espaces, `None`, chaîne simple, dicts `simple` / `and` / `or` avec termes vides, termes multiples, groupes mixtes, et les options `bypass_supersession`, `extend_search`, `expand_predecessors`, `expand_equivalents` — croisée avec les **4 combinaisons** de `SEARCH_PIECES_ONLY` × `USE_FTS5`, sur **2 états de base** (vide, et avec une chaîne de supersession `A1 → A2` : la construction du SQL dépend du contenu de la base par `_resolve_refs_via_supersession`).
+
+Soit **168 points de mesure**, figés dans `tests/fixtures/search_conditions_golden.json`. Le régénérer est un acte délibéré (`_ecrire_instantane()`), et le diff montre alors précisément quel SQL change.
+
+S'y ajoutent des invariants lisibles : **autant de placeholders `?` que de paramètres** sur les 168 cas — un décalage provoquerait une erreur SQLite à l'exécution —, les 8 entrées sans recherche rendent bien `None`, et en mode production toutes les conditions sont de type `pieces_only`.
+
+**Vérifié — le filet mord.** Deux perturbations délibérées ont été injectées puis retirées : un **espace supplémentaire** dans la sous-requête fait échouer 8 tests ; un **paramètre oublié** en fait échouer 5, dont l'invariant placeholders/paramètres. Relevés confirmés **déterministes** (deux exécutions identiques). Suite complète **587 passed**, `compileall` OK.
+
 ## [3.70.1] - 2026-09-04 (branche `refactor/popup-position-mixin`)
 
 ### Factorisation : `show_at_cursor` était dupliquée entre deux fichiers
