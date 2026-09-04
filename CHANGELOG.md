@@ -4,6 +4,34 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.72.1] - 2026-09-04 (branche `test/multi-file-relations`)
+
+### Trou de couverture comblé : les relations d'un import multi-fichiers
+
+`_apply_succession_from_config` crée en base les successions, équivalences et marqueurs d'obsolescence déclarés dans la fenêtre d'import. Sa branche **fichier unique** était couverte depuis la v3.69.4 ; sa branche **multi-fichiers** ne l'était par **aucun test**, alors qu'elle écrit dans `piece_supersessions`, `piece_equivalence_groups` et `pieces.is_obsolete`.
+
+Le trou a été repéré en mesurant la couverture des champs de configuration : `succession_current_ref`, `equivalence_refs` et `obsolete_refs` n'apparaissaient dans aucun fichier de test.
+
+**Aucune modification du code de production dans cette version.**
+
+13 tests couvrent désormais les deux modes du panneau de relations : une **référence courante** désignée — toutes les autres pointent vers elle —, ou **aucune** (« Option B ») où seuls les équivalents se lient, au premier d'entre eux. S'y ajoutent l'obsolescence, la coexistence succession/équivalence, et le fait qu'une relation refusée n'interrompt pas les suivantes.
+
+### Deux tests qui ne testaient rien
+
+Les tests ont été validés par **mutation du code source** — trois altérations délibérées, puis vérification qu'elles font bien échouer la suite. L'exercice a révélé un défaut dans **mes propres tests** :
+
+`_apply_succession_from_config` teste `len(config.files) == 1` **avant** la branche multi-fichiers. Deux tests écrits avec un seul fichier partaient donc dans le chemin fichier-unique et ne vérifiaient rien de la branche visée. Corrigés à deux fichiers minimum, et le helper de configuration porte désormais cet avertissement.
+
+Un troisième test observait seulement l'état de la base après coup, ce qui laissait passer une régression : la couche base refuse déjà l'auto-référence, si bien que le test mesurait ce garde-fou-là plutôt que celui de la boucle. Il vérifie maintenant que `add_supersession` n'est **pas appelée** pour la référence courante.
+
+| Mutation | Tests en échec |
+|---|---|
+| Sens de la succession inversé | **5** |
+| Référence courante non ignorée | **2** |
+| Pivot d'équivalence sans repli | **1** |
+
+**Vérifié** : suite complète **655 passed**, `compileall` OK.
+
 ## [3.72.0] - 2026-09-04 (branche `refactor/import-paths-shared-core`)
 
 ### Les deux chemins d'import partagent enfin leur socle commun
