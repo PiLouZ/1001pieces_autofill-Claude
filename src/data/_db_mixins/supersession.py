@@ -339,31 +339,37 @@ class DatabaseSupersessionMixin:
             app_logger.error(f"Erreur get_pieces_statuses_batch: {e}")
             return {ref: {'status': 'current', 'ref_new': None, 'refs_old': None, 'is_obsolete': False, 'equivalents': None} for ref in refs}
 
-    def mark_obsolete(self, ref_piece: str) -> bool:
-        """Marquer une pièce comme obsolète (plus fabriquée). Indépendant de la succession."""
+    def _definir_obsolescence(self, ref_piece: str, obsolete: bool, operation: str) -> bool:
+        """Poser ou retirer le marqueur d'obsolescence d'une pièce.
+
+        Socle commun de mark_obsolete / unmark_obsolete, qui ne différaient que
+        par la valeur écrite. Les regrouper garantit que le verrou, le commit et
+        la gestion d'erreur restent identiques des deux côtés — une divergence y
+        serait silencieuse.
+
+        Args:
+            operation: nom de l'appelant, pour que le message d'erreur reste
+                       aussi précis qu'avant.
+        """
         try:
             with self._query_lock:
                 self.cursor.execute(
-                    "UPDATE pieces SET is_obsolete = 1 WHERE ref_piece = ?", [ref_piece]
+                    "UPDATE pieces SET is_obsolete = ? WHERE ref_piece = ?",
+                    [1 if obsolete else 0, ref_piece]
                 )
                 self.conn.commit()
             return True
         except Exception as e:
-            app_logger.error(f"Erreur mark_obsolete({ref_piece}): {e}")
+            app_logger.error(f"Erreur {operation}({ref_piece}): {e}")
             return False
+
+    def mark_obsolete(self, ref_piece: str) -> bool:
+        """Marquer une pièce comme obsolète (plus fabriquée). Indépendant de la succession."""
+        return self._definir_obsolescence(ref_piece, True, 'mark_obsolete')
 
     def unmark_obsolete(self, ref_piece: str) -> bool:
         """Retirer le marqueur obsolète d'une pièce."""
-        try:
-            with self._query_lock:
-                self.cursor.execute(
-                    "UPDATE pieces SET is_obsolete = 0 WHERE ref_piece = ?", [ref_piece]
-                )
-                self.conn.commit()
-            return True
-        except Exception as e:
-            app_logger.error(f"Erreur unmark_obsolete({ref_piece}): {e}")
-            return False
+        return self._definir_obsolescence(ref_piece, False, 'unmark_obsolete')
 
     def get_appareils_for_piece_ref(self, ref_piece: str) -> list:
         """

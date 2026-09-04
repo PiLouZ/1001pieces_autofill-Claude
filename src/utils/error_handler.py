@@ -549,8 +549,41 @@ EXEMPLES D'UTILISATION:
         ...
 """
 
-def handle_database_operation_errors(return_value=None, log_prefix="Erreur base de données"):
+def _decorateur_journalisant(log_prefix_defaut, contexte):
+    """Fabrique de décorateurs « journaliser puis renvoyer une valeur de repli ».
+
+    Socle commun de handle_database_operation_errors et handle_ui_operation_errors,
+    qui ne différaient que par le préfixe de log par défaut et un mot dans le
+    message de debug.
+
+    Args:
+        log_prefix_defaut: préfixe utilisé si l'appelant n'en fournit pas.
+        contexte: qualifie la ligne de debug ("" ou " UI").
     """
+    def fabrique(return_value=None, log_prefix=log_prefix_defaut):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    from ..core.logger import app_logger
+                    app_logger.error(f"{log_prefix}: {e}")
+
+                    # Détail supplémentaire : la classe et la méthode concernées
+                    if args and hasattr(args[0], '__class__'):
+                        class_name = args[0].__class__.__name__
+                        app_logger.debug(
+                            f"Erreur{contexte} dans {class_name}.{func.__name__}: {e}")
+
+                    return return_value
+            return wrapper
+        return decorator
+    return fabrique
+
+
+handle_database_operation_errors = _decorateur_journalisant("Erreur base de données", "")
+handle_database_operation_errors.__doc__ = """
     Décorateur spécialisé pour les erreurs d'opérations de base de données
     Adapté aux opérations CRUD et transactions.
 
@@ -558,26 +591,9 @@ def handle_database_operation_errors(return_value=None, log_prefix="Erreur base 
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur sauvegarde")
     @handle_database_operation_errors(return_value={}, log_prefix="Erreur récupération")
     """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                from ..core.logger import app_logger
-                app_logger.error(f"{log_prefix}: {e}")
 
-                # Pour les services de base de données, log des détails supplémentaires
-                if args and hasattr(args[0], '__class__'):
-                    class_name = args[0].__class__.__name__
-                    app_logger.debug(f"Erreur dans {class_name}.{func.__name__}: {e}")
-
-                return return_value
-        return wrapper
-    return decorator
-
-def handle_ui_operation_errors(return_value=None, log_prefix="Erreur opération UI"):
-    """
+handle_ui_operation_errors = _decorateur_journalisant("Erreur opération UI", " UI")
+handle_ui_operation_errors.__doc__ = """
     Décorateur spécialisé pour les erreurs d'opérations d'interface utilisateur
     Adapté aux opérations PyQt5 et interactions UI.
 
@@ -585,20 +601,3 @@ def handle_ui_operation_errors(return_value=None, log_prefix="Erreur opération 
     @handle_ui_operation_errors(return_value=False, log_prefix="Erreur UI")
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur widget")
     """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                from ..core.logger import app_logger
-                app_logger.error(f"{log_prefix}: {e}")
-
-                # Pour les opérations UI, log des détails supplémentaires
-                if args and hasattr(args[0], '__class__'):
-                    class_name = args[0].__class__.__name__
-                    app_logger.debug(f"Erreur UI dans {class_name}.{func.__name__}: {e}")
-
-                return return_value
-        return wrapper
-    return decorator

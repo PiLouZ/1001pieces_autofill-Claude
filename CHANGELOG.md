@@ -4,6 +4,31 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.71.4] - 2026-09-04 (branche `refactor/three-duplicate-pairs`)
+
+### Trois paires de code dupliqué factorisées — quatre écartées après relecture
+
+Le graphe de code signalait sept paires de méthodes quasi identiques (score de Jaccard ≥ 0,95). Chacune a été relue : **trois** méritaient d'être factorisées, **quatre** non.
+
+**`mark_obsolete` / `unmark_obsolete`** (`_db_mixins/supersession.py`) — identiques hormis la valeur écrite. Un socle `_definir_obsolescence(ref, obsolete, operation)` les remplace. C'est la seule des trois qui protège vraiment quelque chose : deux écritures SQL sur la même colonne, où une divergence future de verrou, de commit ou de gestion d'erreur serait silencieuse. Le nom de l'appelant est transmis pour que le message d'erreur reste aussi précis qu'avant.
+
+**`handle_database_operation_errors` / `handle_ui_operation_errors`** (`utils/error_handler.py`) — identiques hormis le préfixe de log et un mot du message de debug. Une fabrique `_decorateur_journalisant(prefixe, contexte)` produit les deux. **Les quatre messages produits sont identiques au caractère près**, vérifié : `Erreur base de données:` / `Erreur dans X.y:` et `Erreur opération UI:` / `Erreur UI dans X.y:`.
+
+**Les quatre handlers de dialogue d'import** (`core/import_manager.py`) — `_on_import_dialog_accepted` et `_on_drag_drop_dialog_accepted` ne différaient que par `source='import'` vs `'drag_drop'` ; les deux variantes `rejected` étaient **strictement identiques**. Remplacés par `_on_dialog_accepted(dialog, callback, source)` et `_on_dialog_rejected(dialog, callback)`, avec les 6 sites d'appel mis à jour. −60 lignes.
+
+### Les quatre paires écartées
+
+| Paire | Raison |
+|---|---|
+| `_setup_config_menu` / `_setup_data_menu` | **une seule ligne commune sur 58** — même squelette Qt, contenu entièrement différent |
+| `dragEnterEvent` / `dragMoveEvent` | handlers Qt parallèles, sémantiques distinctes |
+| `get_all_predecessors` / `get_supersession_chain` | **déjà factorisées** via `_supersession_chain_cte()` ; direction et valeur de repli diffèrent |
+| `_apply_undo_action` / `_apply_redo_action` | 5 lignes, 3 paramètres différents — factoriser n'économise rien |
+
+Le premier cas est instructif : **score de similarité 1,000 pour une ligne commune sur 58**. Le Jaccard mesure la forme, pas le texte. C'est ce qui justifiait de tout relire plutôt que de factoriser sur la foi du score.
+
+**Vérifié** : 16 tests ajoutés (`tests/unit/test_paires_factorisees.py`) — comportement du marqueur d'obsolescence et précision de son message d'erreur, valeurs de repli et messages distincts des deux décorateurs, propagation de `source` sur les deux chemins d'import, ordre callback-puis-nettoyage à l'annulation. Suite complète **642 passed**, `compileall` OK, 89 modules importés, `MainWindow` instanciée.
+
 ## [3.71.3] - 2026-09-04 (branche `test/isolate-logs`)
 
 ### La suite de tests n'écrit plus dans les logs de production
