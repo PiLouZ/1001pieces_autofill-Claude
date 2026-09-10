@@ -1874,6 +1874,13 @@ class ImportPreviewDialog(QDialog):
             ("Associations pièces",        results.get('associations_created', 0),'#9b59b6'),
         ]
 
+        # Fichiers refusés par l'analyse à blanc : ils seront sautés à l'import réel.
+        # Affiché uniquement s'il y en a — c'est l'information qui permet de renoncer
+        # avant écriture plutôt que de la découvrir dans les logs après coup.
+        fichiers_illisibles = len(results.get('errors', []))
+        if fichiers_illisibles:
+            rows_data.append(("Fichiers illisibles (ignorés)", fichiers_illisibles, '#e74c3c'))
+
         for i, (label, count, color) in enumerate(rows_data):
             lbl = QLabel(label)
             lbl.setStyleSheet("font-size: 11px; color: #555; background: transparent; border: none;")
@@ -2492,6 +2499,7 @@ class ImportManager:
                     file, config, seen_device_refs,
                     shared_devices_cache, shared_autocomplete_cache,
                     dry_run=dry_run, pdf_progress_cb=pdf_progress_cb,
+                    errors_out=results['errors'],
                 )
 
                 if file_results:
@@ -2509,7 +2517,17 @@ class ImportManager:
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
 
-            app_logger.info(f"[OK] Import terminé : {results['successful_files']}/{n} fichiers")
+            # Les fichiers en échec sont sautés, pas fatals : le lot se termine et
+            # la liste des refusés part dans results['errors'] jusqu'à l'UI.
+            echecs = len(results['errors'])
+            resume = f"[OK] Import terminé : {results['successful_files']}/{n} fichiers"
+            if echecs:
+                apercu = " | ".join(results['errors'][:5])
+                if echecs > 5:
+                    apercu += f" | … ({echecs - 5} de plus)"
+                app_logger.warning(f"{resume} — {echecs} fichier(s) ignoré(s) : {apercu}")
+            else:
+                app_logger.info(resume)
 
             # Suggestions Type/Marque par similarité (additif, non bloquant) : calcul
             # en un seul lot sur les lignes incomplètes collectées pendant l'import.
@@ -2727,11 +2745,42 @@ class ImportManager:
                                   shared_devices_cache: Optional[Dict] = None,
                                   shared_autocomplete_cache: Optional[Dict] = None,
                                   dry_run: bool = False,
-                                  pdf_progress_cb: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
-        """Wrapper sécurisé pour _import_single_file avec gestion d'erreur intégrée"""
-        return self._import_single_file(file, config, file_seen_device_refs,
-                                        shared_devices_cache, shared_autocomplete_cache,
-                                        dry_run=dry_run, pdf_progress_cb=pdf_progress_cb)
+                                  pdf_progress_cb: Optional[Callable] = None,
+                                  errors_out: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+        """Wrapper sécurisé pour _import_single_file avec gestion d'erreur intégrée.
+
+        Un fichier illisible ne doit jamais interrompre le lot. Le try/except
+        annoncé par le nom de la méthode manquait (v3.72.1) : l'exception remontait
+        la boucle, puis _run_import_files, jusqu'à _ImportWorker qui rapportait
+        l'import entier comme échoué. Sur un lot de 192 PDF, un seul alias macOS
+        renommé en .pdf faisait ainsi perdre tous les fichiers suivants, sans dire
+        lequel avait échoué ni où l'import s'était arrêté.
+
+        L'erreur est journalisée, consignée dans `errors_out`, et None est renvoyé :
+        la boucle appelante saute le fichier via son garde `if file_results:`, qui
+        anticipait déjà ce retour.
+
+        :param errors_out: liste alimentée d'un libellé par fichier en échec.
+                           Des chaînes, pas des dicts : l'UI fait `"\\n".join(...)`
+                           dessus (main_refactored._safe_show_import_results_new).
+        """
+        try:
+            return self._import_single_file(file, config, file_seen_device_refs,
+                                            shared_devices_cache, shared_autocomplete_cache,
+                                            dry_run=dry_run, pdf_progress_cb=pdf_progress_cb)
+        except Exception as e:
+            # Annulation en cours : l'extraction PDF interrompue renvoie [], puis
+            # _import_single_file lève « Aucune donnée trouvée dans le fichier ».
+            # Ce n'est pas un fichier défectueux — ne pas le signaler comme tel.
+            cancel_check = getattr(self, '_import_cancel_check', None)
+            if cancel_check and cancel_check():
+                app_logger.info(f"[Import] {file.filename} : interrompu par l'annulation")
+                return None
+
+            app_logger.error(f"[Import] Fichier ignoré — {file.filename} : {e}", exc_info=True)
+            if errors_out is not None:
+                errors_out.append(f"{file.filename} : {e}")
+            return None
 
     def _import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
                              shared_devices_cache: Optional[Dict] = None,
@@ -3140,7 +3189,18 @@ class ImportManager:
             unique_existing = set(a[2] for a in existing_device_associations)
             all_unique      = unique_new | unique_existing
             app_logger.info(f"Associations: {len(associations_batch)} total ({len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants)")
-            app_logger.info(f"Vérification: {results['total_imported']} lignes traitées vs {len(all_unique)} lignes avec associations")
+            # Diagnostic, pas une vérification : les deux termes portent sur des
+            # populations différentes. `total_imported` ne compte que les lignes
+            # NOUVELLES (_preparer_ligne l'incrémente après avoir écarté ignorées et
+            # doublons), tandis que `all_unique` recense les indices présents dans
+            # associations_batch, doublons compris — rattachés à l'indice de leur 1ʳᵉ
+            # occurrence, ou à `processed_line_index` si elle vient d'un autre fichier.
+            # Or ce compteur n'avance qu'après les `continue` : sur un fichier 100 %
+            # doublons il reste à 0, et la ligne affichait « 0 lignes traitées vs 1 »
+            # alors que tout était normal. Sortait 192 fois en INFO sur l'import du
+            # 2026-09-10, avec l'allure d'un échec — d'où le passage en debug.
+            app_logger.debug(f" BATCH: {results['total_imported']} ligne(s) nouvelle(s), "
+                             f"{len(all_unique)} indice(s) de ligne portant des associations")
 
             if associations_batch:
                 batch_results = self._batch_create_associations(associations_batch, new_device_ids)

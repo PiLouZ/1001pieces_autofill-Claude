@@ -4,6 +4,105 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.72.2] - 2026-09-10 (branche `test/multi-file-relations`)
+
+### Un fichier d'import qui échoue dit enfin lequel il est
+
+Repéré en préparant un import de **192 PDF**. Un fichier illisible (PDF corrompu,
+alias macOS renommé en `.pdf`, tableau vide) était déjà sauté sans interrompre le
+lot — le décorateur `@handle_database_operation_errors` posé sur
+`_safe_import_single_file` interceptait l'exception et renvoyait `None`, que la
+boucle appelante consomme via son garde `if file_results:`.
+
+Le défaut n'était pas la robustesse du lot mais le **silence** :
+
+- le décorateur journalise `Erreur import fichier: Aucune donnée trouvée dans le
+  fichier` — **sans le nom du fichier**. Sur 192 fichiers, on apprend qu'un import
+  a échoué quelque part, jamais lequel ;
+- `results['errors']` était initialisé puis **jamais alimenté**, alors que l'UI le
+  consomme depuis toujours (`_safe_show_import_results_new` fait `"\n".join(...)`
+  dessus). Le producteur manquait sous un consommateur déjà câblé : la boîte
+  d'avertissement « Erreurs d'import » ne s'était donc jamais affichée.
+
+Un fichier écarté disparaissait ainsi sans trace exploitable : compteurs muets,
+aucun dialogue, un `2/3 fichiers` isolé dans les logs.
+
+### Corrections
+
+- `_safe_import_single_file` intercepte désormais dans son corps, journalise
+  `[Import] Fichier ignoré — <nom> : <cause>` avec la trace, et consigne le libellé
+  dans le nouveau paramètre `errors_out`.
+- `_run_import_files` lui passe `results['errors']` ; la ligne de fin d'import
+  bascule en `warning` et cite les 5 premiers fichiers écartés.
+- Piège traité : une extraction PDF **annulée** renvoie `[]`, ce qui fait ensuite
+  lever « Aucune donnée trouvée ». Sans garde, chaque annulation aurait produit un
+  faux « fichier illisible ». L'état d'annulation est vérifié avant de consigner.
+- `ImportPreviewDialog` affiche une ligne « Fichiers illisibles (ignorés) » quand
+  l'analyse à blanc en détecte — l'information arrive **avant** l'écriture.
+- La boîte d'erreurs est bornée à 15 entrées (renvoi vers `data/logs/errors.log`) :
+  sur un lot de plusieurs centaines de fichiers, tout afficher la rendait illisible.
+
+### Bruit de log corrigé — une « vérification » qui ne vérifiait rien
+
+Repérée dans la console pendant ce même import : la ligne
+`Vérification: 0 lignes traitées vs 1 lignes avec associations`, émise en **INFO
+192 fois**, avec l'allure d'un échec.
+
+Aucun défaut de données — vérifié par lecture et confirmé par le résultat
+(+90 432 associations = 192 × 471, exact). La ligne comparait simplement deux
+populations disjointes :
+
+- `total_imported` ne compte que les lignes **nouvelles** (`_preparer_ligne`
+  l'incrémente après avoir écarté ignorées et doublons) — donc 0 sur un fichier
+  entièrement composé de doublons inter-fichiers ;
+- `all_unique` recense les indices de ligne présents dans `associations_batch`,
+  doublons compris. Or `processed_line_index` n'avance qu'après les `continue` :
+  sur un tel fichier il reste à 0, d'où `len({0}) = 1`.
+
+Passée en `debug` et reformulée. `processed_line_index` n'est **pas** touché : son
+incrémentation conditionne les clés de déduplication du correctif v3.66.1, pour un
+gain purement cosmétique.
+
+L'indice figé est sans effet sur les données : `_batch_create_associations` construit
+sa clé comme `f"{data_index}_{existing_id}"` et donne la priorité à `existing_id`,
+qui reste distinct pour chaque appareil.
+
+### Tests
+
+`tests/unit/test_import_batch_resilience.py` — 9 tests. Validés par mutation :
+4 échouent sans le correctif. Suite complète : **664 passed, 1 skipped**
+(655 avant, aucun test préexistant cassé).
+
+---
+
+## [3.72.1] - 2026-09-04 (branche `test/multi-file-relations`)
+
+### Trou de couverture comblé : les relations d'un import multi-fichiers
+
+`_apply_succession_from_config` crée en base les successions, équivalences et marqueurs d'obsolescence déclarés dans la fenêtre d'import. Sa branche **fichier unique** était couverte depuis la v3.69.4 ; sa branche **multi-fichiers** ne l'était par **aucun test**, alors qu'elle écrit dans `piece_supersessions`, `piece_equivalence_groups` et `pieces.is_obsolete`.
+
+Le trou a été repéré en mesurant la couverture des champs de configuration : `succession_current_ref`, `equivalence_refs` et `obsolete_refs` n'apparaissaient dans aucun fichier de test.
+
+**Aucune modification du code de production dans cette version.**
+
+13 tests couvrent désormais les deux modes du panneau de relations : une **référence courante** désignée — toutes les autres pointent vers elle —, ou **aucune** (« Option B ») où seuls les équivalents se lient, au premier d'entre eux. S'y ajoutent l'obsolescence, la coexistence succession/équivalence, et le fait qu'une relation refusée n'interrompt pas les suivantes.
+
+### Deux tests qui ne testaient rien
+
+Les tests ont été validés par **mutation du code source** — trois altérations délibérées, puis vérification qu'elles font bien échouer la suite. L'exercice a révélé un défaut dans **mes propres tests** :
+
+`_apply_succession_from_config` teste `len(config.files) == 1` **avant** la branche multi-fichiers. Deux tests écrits avec un seul fichier partaient donc dans le chemin fichier-unique et ne vérifiaient rien de la branche visée. Corrigés à deux fichiers minimum, et le helper de configuration porte désormais cet avertissement.
+
+Un troisième test observait seulement l'état de la base après coup, ce qui laissait passer une régression : la couche base refuse déjà l'auto-référence, si bien que le test mesurait ce garde-fou-là plutôt que celui de la boucle. Il vérifie maintenant que `add_supersession` n'est **pas appelée** pour la référence courante.
+
+| Mutation | Tests en échec |
+|---|---|
+| Sens de la succession inversé | **5** |
+| Référence courante non ignorée | **2** |
+| Pivot d'équivalence sans repli | **1** |
+
+**Vérifié** : suite complète **655 passed**, `compileall` OK.
+
 ## [3.72.0] - 2026-09-04 (branche `refactor/import-paths-shared-core`)
 
 ### Les deux chemins d'import partagent enfin leur socle commun
