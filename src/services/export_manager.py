@@ -319,7 +319,19 @@ class ExportManagerService:
         # Récupérer les données
         data = self._get_export_data(search_data_term)
         if not data:
-            raise Exception("Aucune donnée trouvée pour la recherche")
+            # Sortie propre, alignée sur _valider_recherche_export plus haut dans ce
+            # fichier : une recherche sans résultat n'est pas une erreur technique.
+            # L'exception levée ici produisait la boîte générique « Erreur lors de
+            # l'export des données », qui masquait la cause réelle — observé le
+            # 2026-09-10 sur une référence dont la succession pointait vers une pièce
+            # renommée entre-temps, donc une chaîne rompue plutôt qu'un vrai échec.
+            app_logger.warning(
+                f"Export annulé : aucune donnée pour '{reference}'. Si la référence "
+                f"est obsolète, vérifier que sa succession pointe vers une pièce "
+                f"existante.")
+            self._add_to_history(
+                f"[!] Export annulé: aucune donnée trouvée pour '{reference}'")
+            return False
 
         # Export selon le format
         if export_format == ExportFormat.CSV:

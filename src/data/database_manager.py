@@ -1179,18 +1179,62 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur renommage pièce catalogue")
     def _safe_rename_piece_catalog(self, old_ref_piece: str, new_ref_piece: str, description: str) -> bool:
-        """Helper sécurisé pour renommer une pièce du catalogue"""
+        """Helper sécurisé pour renommer une pièce du catalogue.
+
+        Le renommage doit propager aux tables qui désignent la pièce par sa
+        RÉFÉRENCE TEXTE — `piece_supersessions` et `piece_equivalence_groups` —
+        sans quoi elles pointent vers une référence qui n'existe plus.
+        `piece_associations` n'est pas concernée : elle pointe par `piece_id`.
+
+        Le schéma déclare pourtant des FOREIGN KEY vers `pieces(ref_piece)`, mais
+        elles ne protègent rien ici : elles ne couvrent que `ON DELETE`, et surtout
+        `PRAGMA foreign_keys` n'est activé nulle part dans l'application (SQLite le
+        désactive par défaut). Ces contraintes sont donc purement déclaratives.
+
+        Cas réel du 2026-09-10 : une succession importée avec une coquille
+        (`2080942408 → 96001828`) puis corrigée par renommage de la pièce en
+        `960018281` laissait la succession pointer vers `96001828`, disparue.
+        L'export de `2080942408` suivait la chaîne dans le vide et échouait.
+        """
         if new_ref_piece != old_ref_piece:
             existing = self.execute_query("SELECT id FROM pieces WHERE ref_piece = ?", [new_ref_piece])
             if existing:
                 return False
 
-        self.cursor.execute(
-            "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?",
-            (new_ref_piece, description, old_ref_piece)
-        )
-        self.conn.commit()
-        return True
+        try:
+            self.cursor.execute(
+                "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?",
+                (new_ref_piece, description, old_ref_piece)
+            )
+
+            if new_ref_piece != old_ref_piece:
+                self.cursor.execute(
+                    "UPDATE piece_supersessions SET ref_old = ? WHERE ref_old = ?",
+                    (new_ref_piece, old_ref_piece))
+                self.cursor.execute(
+                    "UPDATE piece_supersessions SET ref_new = ? WHERE ref_new = ?",
+                    (new_ref_piece, old_ref_piece))
+                self.cursor.execute(
+                    "UPDATE piece_equivalence_groups SET ref_piece = ? WHERE ref_piece = ?",
+                    (new_ref_piece, old_ref_piece))
+                # Une succession devenue réflexive (X → X) n'a aucun sens : elle
+                # apparaît si l'on renomme une pièce vers sa propre remplaçante.
+                self.cursor.execute(
+                    "DELETE FROM piece_supersessions WHERE ref_old = ref_new")
+
+            self.conn.commit()
+            return True
+
+        except sqlite3.IntegrityError:
+            # `ref_old` est clé primaire de piece_supersessions, et
+            # (group_id, ref_piece) celle de piece_equivalence_groups : la
+            # référence cible peut déjà porter une relation orpheline. Tout
+            # annuler plutôt que renommer la pièce en abandonnant ses relations.
+            self.conn.rollback()
+            app_logger.warning(
+                f"Renommage '{old_ref_piece}' → '{new_ref_piece}' annulé : la "
+                f"référence cible porte déjà une succession ou une équivalence")
+            return False
 
     def create_piece_standalone(self, ref_piece: str, description: str = None) -> bool:
         """Créer une pièce orpheline dans le catalogue (sans association d'appareils).
@@ -1219,11 +1263,31 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     @_with_query_lock
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur suppression pièce catalogue")
     def _safe_delete_piece_catalog(self, ref_piece: str, commit: bool = True) -> None:
-        """Helper sécurisé pour supprimer une pièce du catalogue (sans commit si appelée en boucle)"""
+        """Helper sécurisé pour supprimer une pièce du catalogue (sans commit si appelée en boucle).
+
+        Trou jumeau de celui du renommage : le schéma déclare bien
+        `ON DELETE CASCADE` sur `piece_supersessions.ref_old` et
+        `piece_equivalence_groups.ref_piece`, et `ON DELETE SET NULL` sur
+        `piece_supersessions.ref_new` — mais `PRAGMA foreign_keys` n'étant activé
+        nulle part, ces clauses ne se déclenchent jamais. Sans les ordres explicites
+        ci-dessous, supprimer une pièce laissait ses relations pointer dans le vide.
+
+        Ces ordres suppriment la ligne des deux côtés (`ref_old` comme `ref_new`).
+        C'est le seul comportement valable sur les DEUX schémas rencontrés : le code
+        crée `ref_new TEXT NOT NULL` (supersession.py) tandis que les bases anciennes
+        le portent nullable — `CREATE TABLE IF NOT EXISTS` ne les fera jamais
+        converger. Passer `ref_new` à NULL lèverait donc une contrainte sur toute
+        base neuve. L'information « cette pièce est obsolète » n'est pas perdue pour
+        autant : elle vit dans `pieces.is_obsolete`, indépendamment de cette table.
+        """
         self.cursor.execute(
             "DELETE FROM piece_associations WHERE piece_id IN (SELECT id FROM pieces WHERE ref_piece = ?)",
             [ref_piece]
         )
+        self.cursor.execute(
+            "DELETE FROM piece_supersessions WHERE ref_old = ? OR ref_new = ?",
+            [ref_piece, ref_piece])
+        self.cursor.execute("DELETE FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_piece])
         self.cursor.execute("DELETE FROM pieces WHERE ref_piece = ?", [ref_piece])
         if commit:
             self.conn.commit()

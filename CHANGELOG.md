@@ -4,6 +4,81 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.72.3] - 2026-09-10 (branche `fix/log-diagnostic-batch-gate`)
+
+### Renommer ou supprimer une pièce entraîne enfin ses relations
+
+Signalé par l'utilisateur après un cas vécu. Un import déclare la succession
+`2080942408 → 96001828`, avec un chiffre oublié dans la référence de remplacement.
+`add_supersession` crée au passage une pièce **fantôme** `96001828`. L'utilisateur
+corrige en renommant ce fantôme en `960018281` : la pièce est renommée, mais la
+succession continue de pointer vers `96001828`, désormais introuvable. Trois minutes
+plus tard, l'export de `2080942408` suit la chaîne dans le vide et échoue.
+
+### La cause : des contraintes déclarées mais jamais appliquées
+
+Le schéma déclare pourtant ce qu'il faut :
+
+```sql
+FOREIGN KEY (ref_old)   REFERENCES pieces(ref_piece) ON DELETE CASCADE
+FOREIGN KEY (ref_new)   REFERENCES pieces(ref_piece) ON DELETE SET NULL
+FOREIGN KEY (ref_piece) REFERENCES pieces(ref_piece) ON DELETE CASCADE
+```
+
+`PRAGMA foreign_keys` n'est activé **nulle part** dans l'application, et SQLite le
+désactive par défaut : ces contraintes n'ont jamais rien appliqué. Elles ne couvrent
+d'ailleurs que `ON DELETE`, jamais `ON UPDATE` — un renommage n'aurait rien propagé
+même activées.
+
+| Table | Clé vers la pièce | Renommage | Suppression |
+|---|---|---|---|
+| `piece_associations` | `piece_id` INTEGER | survit | nettoyée à la main |
+| `piece_supersessions` | `ref_old`/`ref_new` TEXT | **orphelinée** | **orphelinée** |
+| `piece_equivalence_groups` | `ref_piece` TEXT | **orphelinée** | **orphelinée** |
+
+### Corrections
+
+- `_safe_rename_piece_catalog` propage aux deux tables texte, supprime toute
+  succession devenue réflexive (`X → X`), et **rollback** en cas de collision de clé
+  primaire — plutôt que de renommer la pièce en abandonnant ses relations.
+- `_safe_delete_piece_catalog` supprime les successions des **deux** côtés
+  (`ref_old` comme `ref_new`) et les appartenances aux groupes d'équivalence.
+- `_execute_export_with_reference` sort proprement au lieu de lever : une recherche
+  sans résultat n'est pas une erreur technique. L'exception produisait la boîte
+  générique « Erreur lors de l'export des données », qui masquait la chaîne rompue.
+  Le message oriente désormais vers la succession.
+
+### Divergence de schéma relevée au passage
+
+Le code crée `ref_new TEXT NOT NULL` (`supersession.py`) alors que les bases anciennes
+le portent **nullable**, avec un `ON DELETE SET NULL` là où le code écrit
+`ON DELETE CASCADE`. `CREATE TABLE IF NOT EXISTS` ne les fera jamais converger. La
+suppression a donc été écrite pour être valide **sous les deux schémas** : on supprime
+la ligne au lieu de passer `ref_new` à NULL, ce qui lèverait une contrainte sur toute
+base neuve. L'obsolescence n'est pas perdue — elle vit dans `pieces.is_obsolete`.
+
+### Données
+
+Une succession orpheline résiduelle supprimée (`test → 00708743`, sans pièce ni
+association). Deux autres laissées en l'état, faute de pouvoir deviner la bonne
+remplaçante — elles portent une affirmation métier sur des pièces à 1 022 et 170
+associations, et relèvent d'une décision utilisateur.
+
+### Non traité
+
+`PRAGMA foreign_keys=ON` rendrait ces contraintes réelles, mais rendrait aussi
+soudainement rejetables des opérations qui passent aujourd'hui. Chantier à part,
+avec son propre test de charge.
+
+### Tests
+
+`tests/unit/test_piece_rename_delete_cascade.py` — 10 tests, première couverture de
+`rename_piece_catalog` et `delete_piece_catalog`. Validés par mutation : **8 échouent**
+sans les correctifs (les 2 restants sont les garde-fous anti-faux-positif).
+Suite complète : **677 passed, 1 skipped**.
+
+---
+
 ## [3.72.2] - 2026-09-10 (branche `test/multi-file-relations`)
 
 ### Un fichier d'import qui échoue dit enfin lequel il est
