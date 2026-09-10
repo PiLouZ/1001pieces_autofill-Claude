@@ -1997,8 +1997,15 @@ class MainWindow(QMainWindow):
     def _safe_show_import_results_new(self, results):
         """Helper sécurisé pour afficher les résultats d'import"""
         # Vérifier les erreurs - les afficher si critique
+        # Liste bornée : sur un lot de plusieurs centaines de fichiers, tout afficher
+        # produirait une boîte de dialogue illisible. Le détail complet reste en logs.
         if results.get('errors'):
-            error_msg = "Erreurs lors de l'import:\n" + "\n".join(results['errors'])
+            erreurs = results['errors']
+            apercu = erreurs[:15]
+            error_msg = "Erreurs lors de l'import:\n" + "\n".join(apercu)
+            if len(erreurs) > len(apercu):
+                error_msg += (f"\n\n… et {len(erreurs) - len(apercu)} autre(s). "
+                              f"Détail complet dans data/logs/errors.log")
             QMessageBox.warning(self, "Erreurs d'import", error_msg)
 
         # Créer un résumé détaillé EXACTEMENT comme l'ancien format

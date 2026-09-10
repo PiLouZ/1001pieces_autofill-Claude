@@ -4,6 +4,52 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.72.2] - 2026-09-10 (branche `test/multi-file-relations`)
+
+### Un fichier d'import qui échoue dit enfin lequel il est
+
+Repéré en préparant un import de **192 PDF**. Un fichier illisible (PDF corrompu,
+alias macOS renommé en `.pdf`, tableau vide) était déjà sauté sans interrompre le
+lot — le décorateur `@handle_database_operation_errors` posé sur
+`_safe_import_single_file` interceptait l'exception et renvoyait `None`, que la
+boucle appelante consomme via son garde `if file_results:`.
+
+Le défaut n'était pas la robustesse du lot mais le **silence** :
+
+- le décorateur journalise `Erreur import fichier: Aucune donnée trouvée dans le
+  fichier` — **sans le nom du fichier**. Sur 192 fichiers, on apprend qu'un import
+  a échoué quelque part, jamais lequel ;
+- `results['errors']` était initialisé puis **jamais alimenté**, alors que l'UI le
+  consomme depuis toujours (`_safe_show_import_results_new` fait `"\n".join(...)`
+  dessus). Le producteur manquait sous un consommateur déjà câblé : la boîte
+  d'avertissement « Erreurs d'import » ne s'était donc jamais affichée.
+
+Un fichier écarté disparaissait ainsi sans trace exploitable : compteurs muets,
+aucun dialogue, un `2/3 fichiers` isolé dans les logs.
+
+### Corrections
+
+- `_safe_import_single_file` intercepte désormais dans son corps, journalise
+  `[Import] Fichier ignoré — <nom> : <cause>` avec la trace, et consigne le libellé
+  dans le nouveau paramètre `errors_out`.
+- `_run_import_files` lui passe `results['errors']` ; la ligne de fin d'import
+  bascule en `warning` et cite les 5 premiers fichiers écartés.
+- Piège traité : une extraction PDF **annulée** renvoie `[]`, ce qui fait ensuite
+  lever « Aucune donnée trouvée ». Sans garde, chaque annulation aurait produit un
+  faux « fichier illisible ». L'état d'annulation est vérifié avant de consigner.
+- `ImportPreviewDialog` affiche une ligne « Fichiers illisibles (ignorés) » quand
+  l'analyse à blanc en détecte — l'information arrive **avant** l'écriture.
+- La boîte d'erreurs est bornée à 15 entrées (renvoi vers `data/logs/errors.log`) :
+  sur un lot de plusieurs centaines de fichiers, tout afficher la rendait illisible.
+
+### Tests
+
+`tests/unit/test_import_batch_resilience.py` — 9 tests. Validés par mutation :
+4 échouent sans le correctif. Suite complète : **664 passed, 1 skipped**
+(655 avant, aucun test préexistant cassé).
+
+---
+
 ## [3.72.1] - 2026-09-04 (branche `test/multi-file-relations`)
 
 ### Trou de couverture comblé : les relations d'un import multi-fichiers
