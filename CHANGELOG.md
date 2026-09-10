@@ -42,6 +42,31 @@ aucun dialogue, un `2/3 fichiers` isolé dans les logs.
 - La boîte d'erreurs est bornée à 15 entrées (renvoi vers `data/logs/errors.log`) :
   sur un lot de plusieurs centaines de fichiers, tout afficher la rendait illisible.
 
+### Bruit de log corrigé — une « vérification » qui ne vérifiait rien
+
+Repérée dans la console pendant ce même import : la ligne
+`Vérification: 0 lignes traitées vs 1 lignes avec associations`, émise en **INFO
+192 fois**, avec l'allure d'un échec.
+
+Aucun défaut de données — vérifié par lecture et confirmé par le résultat
+(+90 432 associations = 192 × 471, exact). La ligne comparait simplement deux
+populations disjointes :
+
+- `total_imported` ne compte que les lignes **nouvelles** (`_preparer_ligne`
+  l'incrémente après avoir écarté ignorées et doublons) — donc 0 sur un fichier
+  entièrement composé de doublons inter-fichiers ;
+- `all_unique` recense les indices de ligne présents dans `associations_batch`,
+  doublons compris. Or `processed_line_index` n'avance qu'après les `continue` :
+  sur un tel fichier il reste à 0, d'où `len({0}) = 1`.
+
+Passée en `debug` et reformulée. `processed_line_index` n'est **pas** touché : son
+incrémentation conditionne les clés de déduplication du correctif v3.66.1, pour un
+gain purement cosmétique.
+
+L'indice figé est sans effet sur les données : `_batch_create_associations` construit
+sa clé comme `f"{data_index}_{existing_id}"` et donne la priorité à `existing_id`,
+qui reste distinct pour chaque appareil.
+
 ### Tests
 
 `tests/unit/test_import_batch_resilience.py` — 9 tests. Validés par mutation :

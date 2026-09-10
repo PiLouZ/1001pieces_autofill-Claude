@@ -3189,7 +3189,18 @@ class ImportManager:
             unique_existing = set(a[2] for a in existing_device_associations)
             all_unique      = unique_new | unique_existing
             app_logger.info(f"Associations: {len(associations_batch)} total ({len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants)")
-            app_logger.info(f"Vérification: {results['total_imported']} lignes traitées vs {len(all_unique)} lignes avec associations")
+            # Diagnostic, pas une vérification : les deux termes portent sur des
+            # populations différentes. `total_imported` ne compte que les lignes
+            # NOUVELLES (_preparer_ligne l'incrémente après avoir écarté ignorées et
+            # doublons), tandis que `all_unique` recense les indices présents dans
+            # associations_batch, doublons compris — rattachés à l'indice de leur 1ʳᵉ
+            # occurrence, ou à `processed_line_index` si elle vient d'un autre fichier.
+            # Or ce compteur n'avance qu'après les `continue` : sur un fichier 100 %
+            # doublons il reste à 0, et la ligne affichait « 0 lignes traitées vs 1 »
+            # alors que tout était normal. Sortait 192 fois en INFO sur l'import du
+            # 2026-09-10, avec l'allure d'un échec — d'où le passage en debug.
+            app_logger.debug(f" BATCH: {results['total_imported']} ligne(s) nouvelle(s), "
+                             f"{len(all_unique)} indice(s) de ligne portant des associations")
 
             if associations_batch:
                 batch_results = self._batch_create_associations(associations_batch, new_device_ids)
