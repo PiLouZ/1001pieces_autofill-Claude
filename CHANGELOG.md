@@ -67,10 +67,20 @@ L'indice figé est sans effet sur les données : `_batch_create_associations` co
 sa clé comme `f"{data_index}_{existing_id}"` et donne la priorité à `existing_id`,
 qui reste distinct pour chaque appareil.
 
+**Complément** — le passage en `debug` retirait la ligne de la console (handler `INFO`)
+mais **pas de `detailed.log`**, dont le handler accepte `DEBUG` : le volume y restait
+inchangé, sur le fichier même qui avait atteint 2,3 Go avant la rotation de la v3.66.0.
+La ligne est donc désormais conditionnée à `Config.LOG_VERBOSE_PER_DEVICE`, le levier
+déjà retenu pour les logs par-appareil de `_preparer_ligne` — muette par défaut sur les
+quatre destinations, réactivable pour un diagnostic sans toucher au code.
+
+3 tests dans `test_logger_volume.py`, validés par mutation : neutraliser la garde fait
+échouer `test_muette_par_defaut`, repasser en `info` fait échouer `test_jamais_en_info`.
+
 ### Tests
 
 `tests/unit/test_import_batch_resilience.py` — 9 tests. Validés par mutation :
-4 échouent sans le correctif. Suite complète : **664 passed, 1 skipped**
+4 échouent sans le correctif. Suite complète : **667 passed, 1 skipped**
 (655 avant, aucun test préexistant cassé).
 
 ---

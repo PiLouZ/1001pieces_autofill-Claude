@@ -218,3 +218,64 @@ class TestVolumeParAppareil:
                      'duplicates_in_file', 'associations_created')
         assert {k: agrege[k] for k in compteurs} == {k: verbose[k] for k in compteurs}
         assert agrege['total_imported'] == 60
+
+
+class TestDiagnosticBatchSilencieux:
+    """La ligne de diagnostic du chemin batch ne doit rien émettre par défaut.
+
+    Historique : `_process_data_import_batch` émettait en **INFO**, une fois par
+    fichier, « Vérification: N lignes traitées vs M lignes avec associations ».
+    Sur l'import réel de 192 PDF du 2026-09-10 elle est sortie 192 fois avec
+    l'allure d'un échec, alors que rien n'allait mal : ses deux termes portent sur
+    des populations disjointes (`total_imported` ne compte que les lignes
+    nouvelles ; `all_unique` recense les indices présents dans
+    `associations_batch`, doublons compris). Sur un fichier 100 % doublons elle
+    affichait « 0 vs 1 ».
+
+    Passée en `debug`, elle quittait la console mais restait dans detailed.log,
+    dont le handler accepte DEBUG — volume inchangé sur le fichier qui avait
+    atteint 2,3 Go. D'où le garde `LOG_VERBOSE_PER_DEVICE`, le levier déjà retenu
+    pour les logs par-appareil de `_preparer_ligne`.
+
+    Ces tests verrouillent les deux propriétés : muette par défaut, et **jamais**
+    de retour en INFO.
+    """
+
+    MARQUEUR = "indice(s) de ligne portant des associations"
+
+    @pytest.fixture
+    def import_manager(self, test_db_manager):
+        return ImportManager(db_manager=test_db_manager, parent_widget=None)
+
+    def _importer(self, import_manager, prefixe):
+        """60 lignes : au-delà de BATCH_THRESHOLD (50), donc chemin batch garanti."""
+        import_manager._run_import_files(
+            TestVolumeParAppareil._config(60, prefixe=prefixe))
+
+    def test_muette_par_defaut(self, import_manager, monkeypatch):
+        """Flag à False (valeur par défaut) : rien, pas même en DEBUG."""
+        monkeypatch.setattr(Config, 'LOG_VERBOSE_PER_DEVICE', False)
+        with _capture(logging.DEBUG) as capture:
+            self._importer(import_manager, 'DA')
+        assert not [m for m in capture.messages if self.MARQUEUR in m], \
+            "la ligne de diagnostic ne doit pas être émise quand le flag est à False"
+
+    def test_activable_pour_diagnostic(self, import_manager, monkeypatch):
+        """Flag à True : la ligne redevient disponible, sans modifier le code."""
+        monkeypatch.setattr(Config, 'LOG_VERBOSE_PER_DEVICE', True)
+        with _capture(logging.DEBUG) as capture:
+            self._importer(import_manager, 'DB')
+        assert [m for m in capture.messages if self.MARQUEUR in m], \
+            "le flag à True doit rendre la ligne de diagnostic à nouveau émise"
+
+    def test_jamais_en_info(self, import_manager, monkeypatch):
+        """NON-RÉGRESSION : même activée, elle reste en DEBUG.
+
+        C'est la promotion en INFO qui avait pollué la console de 192 lignes.
+        Un capture au niveau INFO ne doit donc jamais la voir.
+        """
+        monkeypatch.setattr(Config, 'LOG_VERBOSE_PER_DEVICE', True)
+        with _capture(logging.INFO) as capture:
+            self._importer(import_manager, 'DC')
+        assert not [m for m in capture.messages if self.MARQUEUR in m], \
+            "la ligne doit rester en DEBUG — jamais promue en INFO"

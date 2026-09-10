@@ -3199,8 +3199,15 @@ class ImportManager:
             # doublons il reste à 0, et la ligne affichait « 0 lignes traitées vs 1 »
             # alors que tout était normal. Sortait 192 fois en INFO sur l'import du
             # 2026-09-10, avec l'allure d'un échec — d'où le passage en debug.
-            app_logger.debug(f" BATCH: {results['total_imported']} ligne(s) nouvelle(s), "
-                             f"{len(all_unique)} indice(s) de ligne portant des associations")
+            #
+            # Le passage en debug l'a retirée de la console (handler INFO) mais pas de
+            # detailed.log, dont le handler accepte DEBUG : le volume y restait inchangé.
+            # D'où le garde LOG_VERBOSE_PER_DEVICE, déjà utilisé par _preparer_ligne pour
+            # ses logs par-appareil — même intention, même levier : muet par défaut,
+            # réactivable pour un diagnostic sans toucher au code.
+            if Config.LOG_VERBOSE_PER_DEVICE:
+                app_logger.debug(f" BATCH: {results['total_imported']} ligne(s) nouvelle(s), "
+                                 f"{len(all_unique)} indice(s) de ligne portant des associations")
 
             if associations_batch:
                 batch_results = self._batch_create_associations(associations_batch, new_device_ids)
