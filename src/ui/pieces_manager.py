@@ -22,6 +22,33 @@ def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
         return ", ".join(refs)
     return ", ".join(refs[:max_shown]) + f", … et {pluralize(len(refs) - max_shown, 'autre')}"
 
+
+def libelles_candidats(libelles) -> list:
+    """Libellés distincts et non vides d'un groupe, dans l'ordre de rencontre.
+
+    Le vide n'est pas un candidat : harmoniser sert à propager un bon libellé
+    aux membres qui n'en ont pas, pas à vider le groupe. Quand un seul membre
+    est nommé, son libellé devient le seul choix — l'effet recherché.
+    """
+    candidats = []
+    for libelle in libelles:
+        libelle = (libelle or "").strip()
+        if libelle and libelle not in candidats:
+            candidats.append(libelle)
+    return candidats
+
+
+def libelles_incoherents(libelles) -> bool:
+    """Le groupe demande-t-il une harmonisation de ses libellés ?
+
+    Vrai si ses membres portent des libellés différents, **ou** si aucun n'en
+    porte : un groupe entièrement anonyme ne produisait qu'un seul libellé
+    distinct ({""}) et passait donc pour cohérent, ce qui faisait du cas le plus
+    grave le seul à n'être jamais signalé.
+    """
+    descs = {(libelle or "").strip() for libelle in libelles}
+    return len(descs) > 1 or descs == {""}
+
 from ..core.config import Config, pluralize
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
@@ -220,9 +247,13 @@ class PiecesManagerWindow(QDialog):
         # Clusters : (libellé du cluster, [(clé, label, icône, couleur), ...])
         _filter_clusters = [
             ('général', [
-                ('all',     'Toutes',     'fa5s.list',   '#495057'),
-                ('orphan',  'Orphelines', 'fa5s.unlink', '#c0392b'),
-                ('phantom', 'Fantômes',   'fa5s.ghost',  '#7f8c8d'),
+                ('all',       'Toutes',       'fa5s.list',            '#495057'),
+                ('orphan',    'Orphelines',   'fa5s.unlink',          '#c0392b'),
+                ('phantom',   'Fantômes',     'fa5s.ghost',           '#7f8c8d'),
+                # Distinct de « Fantômes » : une réf jamais importée peut très bien
+                # porter un libellé (hérité d'une voisine), et une pièce bien réelle
+                # peut n'en avoir aucun si le fichier source n'en fournissait pas.
+                ('unlabeled', 'Sans libellé', 'fa5s.question-circle', '#d35400'),
             ]),
             ('succession', [
                 ('obsolete',   'Obsolètes',    'fa5s.exclamation-triangle', '#e67e22'),
@@ -769,14 +800,20 @@ class PiecesManagerWindow(QDialog):
         total_pieces = len(results)
         orphan_pieces = len([r for r in results if r[2] == 0])
         phantom_pieces = len([r for r in results if r[4] == 1])
+        unlabeled_pieces = len([r for r in results if not (r[1] or '').strip()])
         total_associations = sum(r[2] for r in results)
 
         from src.core.config import pluralize
         phantom_str = f"  •  {pluralize(phantom_pieces, 'fantôme')}" if phantom_pieces else ""
+        # Compté à part du fantôme : les deux ensembles se recoupent sans se
+        # confondre (relevé du 2026-09-22 : 98 fantômes nommées, 76 pièces
+        # bien réelles sans libellé).
+        unlabeled_str = (f"  •  {pluralize(unlabeled_pieces, 'sans libellé', 'sans libellé')}"
+                         if unlabeled_pieces else "")
         self.stats_label.setText(
             f"{pluralize(total_pieces, 'référence')}  •  "
             f"{pluralize(orphan_pieces, 'orpheline')}"
-            f"{phantom_str}  •  "
+            f"{phantom_str}{unlabeled_str}  •  "
             f"{pluralize(total_associations, 'association')}"
         )
 
@@ -790,8 +827,9 @@ class PiecesManagerWindow(QDialog):
             equiv_str = status.get('equivalents')
             if equiv_str:
                 group_refs = [ref] + [e.strip() for e in equiv_str.split(',') if e.strip()]
-                descs = {self._desc_by_ref.get(r, "") for r in group_refs}
-                status['labels_differ'] = len(descs) > 1
+                status['labels_differ'] = libelles_incoherents(
+                    self._desc_by_ref.get(r, "") for r in group_refs
+                )
             else:
                 status['labels_differ'] = False
 
@@ -894,6 +932,11 @@ class PiecesManagerWindow(QDialog):
             if is_phantom:
                 desc_item.setForeground(_phantom_color)
                 desc_item.setFont(_phantom_font)
+            if not (description or "").strip():
+                # Une cellule vide ne se voit pas : sans fond, la référence anonyme
+                # se confond avec les autres et personne ne la corrige jamais.
+                desc_item.setBackground(QColor(*Config.Colors.MISSING_LABEL))
+                desc_item.setToolTip("Aucun libellé — à compléter")
             self.pieces_table.setItem(row_idx, 1, desc_item)
 
             # ── Colonne 2 : nb appareils (fond coloré) ────────────────────
@@ -1042,6 +1085,8 @@ class PiecesManagerWindow(QDialog):
             filtered = [r for r in filtered if r[2] == 0]
         elif active == 'phantom':
             filtered = [r for r in filtered if (len(r) > 4 and r[4] == 1)]
+        elif active == 'unlabeled':
+            filtered = [r for r in filtered if not (r[1] or '').strip()]
         elif active == 'superseded':
             filtered = [r for r in filtered
                         if statuses.get(r[0] or '', {}).get('status') == 'superseded']
@@ -1644,6 +1689,10 @@ class PiecesManagerWindow(QDialog):
             success, error = self.db_manager.add_supersession(ref_old, ref_new)
             if success:
                 details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
+                # Le picker autorise la saisie d'une réf inexistante, créée en
+                # fantôme donc anonyme : lui faire hériter du libellé, comme à
+                # l'import. Sans écrasement si les deux sont déjà nommées.
+                self.db_manager.propagate_description(ref_old, ref_new)
             else:
                 errors.append(f"{ref_old} : {error}")
 
@@ -1682,6 +1731,7 @@ class PiecesManagerWindow(QDialog):
                 success, error = self.db_manager.add_supersession(ref_old, ref_new)
                 if success:
                     details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
+                    self.db_manager.propagate_description(ref_old, ref_new)
                 else:
                     errors.append(f"{ref_old} → {ref_new} : {error}")
 
@@ -1799,10 +1849,17 @@ class PiecesManagerWindow(QDialog):
         if not ok:
             return
 
+        # Un champ laissé vide n'est pas un renommage mais un effacement de masse :
+        # le dire, plutôt que d'annoncer « va devenir «  » ».
+        if not new_desc.strip():
+            message = (f"Le libellé de {pluralize(len(refs), 'pièce')} va être "
+                       f"effacé :\n{self._format_refs_recap(refs)}")
+        else:
+            message = (f"Le libellé de {len(refs)} pièces va devenir « {new_desc} » :\n"
+                       f"{self._format_refs_recap(refs)}")
+
         confirm = QMessageBox.question(
-            self, "Modifier le libellé",
-            f"Le libellé de {len(refs)} pièces va devenir « {new_desc} » :\n"
-            f"{self._format_refs_recap(refs)}",
+            self, "Modifier le libellé", message,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
@@ -1833,7 +1890,9 @@ class PiecesManagerWindow(QDialog):
         errors = []
         for ref_b in refs[1:]:
             success, error_msg = self.db_manager.add_equivalence(refs[0], ref_b)
-            if not success:
+            if success:
+                self.db_manager.propagate_description(refs[0], ref_b)
+            else:
                 errors.append(f"{ref_b} : {error_msg}")
 
         self._notify_history(
@@ -1855,20 +1914,25 @@ class PiecesManagerWindow(QDialog):
 
         group_refs = [ref_piece] + equivalents
 
-        descs = []
-        for r in group_refs:
-            d = self._desc_by_ref.get(r, "")
-            if d not in descs:
-                descs.append(d)
+        descs = libelles_candidats(self._desc_by_ref.get(r, "") for r in group_refs)
 
-        if len(descs) < 2:
+        if not descs:
+            # Groupe entièrement anonyme : le bouton est visible (c'est bien une
+            # incohérence à traiter) mais il n'y a rien à propager — le dire,
+            # plutôt que de ne rien faire sans explication.
+            QMessageBox.information(
+                self, "Harmoniser les libellés",
+                f"Aucune pièce du groupe ne porte de libellé "
+                f"({self._format_refs_recap(group_refs)}).\n"
+                "Saisissez-en un sur l'une d'elles, il pourra ensuite être propagé."
+            )
             return
 
         choices = []
         for d in descs:
-            count = sum(1 for r in group_refs if self._desc_by_ref.get(r, "") == d)
-            label_display = d if d else "(vide)"
-            choices.append(f"{label_display}  —  {pluralize(count, 'pièce')}")
+            count = sum(1 for r in group_refs
+                        if (self._desc_by_ref.get(r, "") or "").strip() == d)
+            choices.append(f"{d}  —  {pluralize(count, 'pièce')}")
 
         choice, ok = QInputDialog.getItem(
             self, "Harmoniser les libellés",
@@ -1957,11 +2021,15 @@ class PiecesManagerWindow(QDialog):
         errors = []
         details_lines = []
         for ref_b in refs_b:
-            success = self.db_manager.add_equivalence(ref_piece, ref_b)
+            # add_equivalence renvoie (ok, message) : sans déballage, `success`
+            # valait le tuple — toujours vrai — et les échecs passaient pour des
+            # succès. Le déballage est nécessaire pour ne propager qu'après succès.
+            success, error_msg = self.db_manager.add_equivalence(ref_piece, ref_b)
             if success:
                 details_lines.append(f"==> '{ref_piece}' ≡ '{ref_b}'")
+                self.db_manager.propagate_description(ref_piece, ref_b)
             else:
-                errors.append(f"Impossible de créer l'équivalence pour : {ref_b}")
+                errors.append(f"Impossible de créer l'équivalence pour {ref_b} : {error_msg}")
         if details_lines:
             self._notify_history("Équivalence :\n" + "\n".join(details_lines))
             self._refresh_equivalence_panel(ref_piece)
@@ -2206,6 +2274,19 @@ class PiecesManagerWindow(QDialog):
                 QMessageBox.warning(self, "Erreur",
                                     "La référence ne peut pas contenir les caractères '||' ou '&&'.")
                 return
+
+            # La référence était validée non vide, le libellé ne l'était pas :
+            # valider le dialogue avec le champ effacé suffisait à perdre le
+            # libellé, et à le perdre pour tout le groupe si « propager » est coché.
+            if not new_desc.strip() and (current_desc or '').strip():
+                cibles = 1 + (len(equivalents) if (propagate and equivalents) else 0)
+                if QMessageBox.question(
+                    self, "Effacer le libellé",
+                    f"Le libellé « {current_desc} » va être effacé "
+                    f"de {pluralize(cibles, 'pièce')}.\nContinuer ?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                ) != QMessageBox.StandardButton.Yes:
+                    return
 
             if not self.db_manager.rename_piece_catalog(current_ref, new_ref, new_desc):
                 QMessageBox.warning(

@@ -4,6 +4,107 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.73.0] - 2026-09-22 (branche `feature/libelles-pieces-relations`)
+
+### Des références qui se retrouvaient sans nom
+
+Signalé par l'utilisateur : après un import déclarant des équivalences ou des
+remplacements, certaines références n'avaient aucun libellé. Relevé en base au
+moment du diagnostic : **148 références sans nom sur 5 137**, réparties en deux
+populations très différentes.
+
+| Population | Nombre | Une voisine porte déjà le nom |
+|---|---|---|
+| Fantômes, sans association | 72 | **67** |
+| Pièces réelles, avec associations | 74 | 5 |
+| Résiduelles | 2 | 2 |
+
+Les 67 premières sont le vrai défaut : l'information existait en base, à une
+relation de distance, et n'était simplement pas recopiée. Exemple réel —
+`488000582057`, remplacée par `C00731573` « Pompe de cyclage avec joint »,
+restait anonyme. Les 69 autres sont un problème distinct : des fichiers importés
+qui ne fournissaient pas de libellé, qu'aucun correctif automatique ne peut nommer.
+
+### Lot 1 — Le libellé suit la relation
+
+Une référence citée mais absente de la base est créée en « fantôme » par
+`INSERT OR IGNORE INTO pieces(ref_piece, is_phantom)`, donc sans libellé. Trois
+chemins l'y laissaient :
+
+- `apply_relations`, socle commun des deux chemins d'import depuis la v3.72.0,
+  ne propageait **rien** ;
+- `_apply_succession_from_config` ne propageait que sur sa branche fichier
+  unique, jamais sur la branche multi-fichiers ;
+- `inherit_phantom_description` n'allait que dans un sens et exigeait
+  `is_phantom = 1` : une référence promue par une association mais restée
+  anonyme ne pouvait plus jamais hériter.
+
+`propagate_description` la remplace. Elle choisit le sens selon les données et
+non selon l'ordre des arguments, n'écrase **jamais** un libellé existant, et
+journalise les divergences plutôt que de trancher — une nouvelle génération de
+pièce peut légitimement changer de nom.
+
+Dans le socle, la propagation vit hors du comptage d'erreurs : `db` y est du
+duck-typing, et une méthode absente aurait gonflé `errors` alors que la relation
+est bien créée.
+
+### Lot 2 — « Sans libellé » devient un état visible
+
+« Fantôme » et « sans libellé » se recoupent sans se confondre, et les confondre
+était précisément le défaut : 98 fantômes portaient un nom, tandis que 76 pièces
+bien réelles n'en avaient aucun et n'apparaissaient sous aucun filtre.
+
+`is_phantom` garde donc son sens — « citée, jamais vue dans un fichier » — et
+n'est pas modifié. Le manque de libellé est dérivé de `description` : bouton de
+filtre « Sans libellé », compteur dans les statistiques, et fond orangé sur la
+cellule vide. Une cellule vide ne se voit pas, donc personne ne la corrige.
+
+### Lot 3 — Le gestionnaire n'efface plus un libellé sans le demander
+
+La référence était validée non vide, le libellé ne l'était pas. Valider le
+dialogue d'édition avec le champ effacé suffisait à perdre le libellé, et à le
+perdre pour **tout le groupe** si « propager aux équivalents » était coché.
+L'harmonisation, elle, proposait « (vide) » comme libellé cible.
+
+Les deux effacements par inadvertance demandent désormais confirmation en
+nommant ce qui sera perdu et sur combien de pièces. Le vide cesse d'être un
+libellé candidat à l'harmonisation.
+
+`labels_differ` signalait tout sauf le pire : un groupe entièrement anonyme ne
+produisait qu'un seul libellé distinct (`{""}`) et passait pour cohérent. La
+règle vit maintenant dans `libelles_incoherents` / `libelles_candidats`, deux
+fonctions pures que les tests appellent directement.
+
+Au passage, `_on_add_equivalence` ne déballait pas le tuple `(ok, message)` :
+`success` valait le tuple, toujours vrai, et les échecs passaient pour des
+succès sans jamais être affichés.
+
+### Lot 4 — Rattrapage de l'existant
+
+Les trois premiers lots empêchent le problème de se reproduire mais ne réparent
+rien : `propagate_description` ne s'exécute qu'à la création d'une relation.
+`scripts/rattrapage_libelles.py` fait la passe correspondante — simulation par
+défaut, écriture seulement avec `--ecrire`, et sauvegarde préalable de la base.
+
+Il ne tranche pas les ambiguïtés : une référence dont deux voisines portent des
+libellés différents est signalée, pas réparée. Plusieurs passes, car réparer une
+référence peut en rendre une autre réparable le long d'une chaîne.
+
+Essai sur copie de la base de production : **78 réparations** (dont 4 à la
+seconde passe), 0 ambiguïté, 70 références laissées à la saisie manuelle
+(148 = 78 + 70). Contrôle après écriture : 0 libellé existant modifié,
+0 référence ajoutée ou perdue, `is_obsolete` et `is_phantom` intacts, et
+relancer le script ne propose plus rien.
+
+### Vérification
+
+49 tests ajoutés (726 passed, 1 skipped). Le filet a été éprouvé en neutralisant
+les correctifs : 8 tests tombent sans la propagation du lot 1, 4 sans les règles
+du lot 3. Rendus Qt vérifiés par capture offscreen sur les quatre combinaisons
+fantôme × libellé, et sur les trois messages de confirmation.
+
+---
+
 ## [3.72.3] - 2026-09-10 (branche `fix/log-diagnostic-batch-gate`)
 
 ### Renommer ou supprimer une pièce entraîne enfin ses relations
