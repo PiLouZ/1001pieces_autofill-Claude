@@ -315,31 +315,39 @@ class DuplicatesAnalysisService(BaseService):
     @safe_operation(operation_name="_merge_devices", default_return=False)
     def _merge_devices(self, master_id: int, duplicate_ids: List[int]) -> bool:
         """Fusionner des appareils doublons vers un appareil maître"""
-        # Pour chaque appareil dupliqué, transférer ses pièces vers le maître
+        # Les trois étapes passaient par execute_custom_query, qui ne commit pas :
+        # la fusion était visible dans l'interface mais perdue au lancement suivant
+        # si rien d'autre n'écrivait entre-temps. Un lot atomique règle aussi le
+        # second défaut : supprimer l'appareil sans avoir transféré ses pièces
+        # laisserait des associations orphelines (les FOREIGN KEY sont inertes,
+        # PRAGMA foreign_keys n'est activé nulle part).
+        operations = []
         for duplicate_id in duplicate_ids:
             # Stratégie: Supprimer d'abord les doublons de pièces puis transférer les uniques
 
             # 1. Supprimer les associations de pièces qui existent déjà pour le maître
             #    (éviter les violations de contrainte UNIQUE)
-            cleanup_query = """
+            operations.append(("""
             DELETE FROM piece_associations
             WHERE appareil_id = ?
             AND piece_id IN (
                 SELECT piece_id FROM piece_associations
                 WHERE appareil_id = ?
             )
-            """
-            self.db_manager.execute_custom_query(cleanup_query, (duplicate_id, master_id))
+            """, (duplicate_id, master_id)))
 
             # 2. Transférer les pièces restantes du duplicata vers le maître
-            update_query = """
-            UPDATE piece_associations SET appareil_id = ? WHERE appareil_id = ?
-            """
-            self.db_manager.execute_custom_query(update_query, (master_id, duplicate_id))
+            operations.append((
+                "UPDATE piece_associations SET appareil_id = ? WHERE appareil_id = ?",
+                (master_id, duplicate_id)
+            ))
 
             # 3. Supprimer l'appareil dupliqué
-            delete_query = "DELETE FROM appareils WHERE id = ?"
-            self.db_manager.execute_custom_query(delete_query, (duplicate_id,))
+            operations.append(("DELETE FROM appareils WHERE id = ?", (duplicate_id,)))
+
+        if not self.db_manager.execute_write_batch(operations):
+            app_logger.error(f"Fusion de l'appareil {master_id} avec {duplicate_ids} annulée")
+            return False
 
         app_logger.info(f"Appareil {master_id} fusionné avec {duplicate_ids}")
         return True
@@ -356,8 +364,11 @@ class DuplicatesAnalysisService(BaseService):
         )
         """
 
-        result = self.db_manager.execute_custom_query(query, (ref_piece, ref_piece))
-        # execute_custom_query ne retourne pas le nombre de lignes, on simule
-        result = 1 if result is not None else 0
-        app_logger.info(f"Suppression pièces dupliquées {ref_piece}: {result} supprimées")
-        return result
+        # execute_write commit ET renvoie le nombre réel de lignes : la suppression
+        # est durable, et le compte n'est plus simulé à 1 quoi qu'il arrive.
+        supprimees = self.db_manager.execute_write(query, (ref_piece, ref_piece))
+        if supprimees < 0:
+            app_logger.error(f"Suppression pièces dupliquées {ref_piece} : échec")
+            return 0
+        app_logger.info(f"Suppression pièces dupliquées {ref_piece}: {supprimees} supprimées")
+        return supprimees

@@ -1517,7 +1517,14 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     
     @handle_database_errors(title="Erreur requête personnalisée")
     def execute_custom_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
-        """Exécuter une requête SQL personnalisée"""
+        """Exécuter une requête SQL personnalisée — **lecture uniquement**.
+
+        Cette méthode n'appelle pas `commit()` : une écriture passée par ici
+        reste dans la transaction implicite ouverte par sqlite3 et se perd si
+        l'application se ferme avant qu'autre chose ne commit. Le piège est
+        sournois parce que l'écriture est bien visible depuis cette connexion.
+        Pour écrire, utiliser `execute_write` ou `execute_write_batch`.
+        """
         if params is None:
             params = []
 
@@ -1547,6 +1554,71 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 self.conn.rollback()
                 raise
     
+    def execute_write(self, query: str, params: Optional[List] = None) -> int:
+        """Exécuter une écriture SQL (INSERT/UPDATE/DELETE) **et la rendre durable**.
+
+        À utiliser partout où `execute_custom_query` servait à écrire : cette
+        dernière n'appelle jamais `commit()`. La connexion étant ouverte sans
+        `isolation_level`, le module sqlite3 ouvre une transaction implicite dès
+        le premier DML — l'écriture est visible depuis la même connexion, donc
+        depuis l'interface, mais perdue si l'application se ferme avant qu'une
+        autre opération ne commit. Le symptôme est intermittent : n'importe
+        quelle écriture ultérieure valide la transaction au passage, si bien que
+        l'opération paraît fonctionner la plupart du temps.
+
+        Returns: nombre de lignes affectées, ou -1 si l'écriture a échoué.
+        """
+        return self._safe_execute_write(query, params)
+
+    @handle_database_operation_errors(return_value=-1, log_prefix="Erreur exécution écriture")
+    def _safe_execute_write(self, query: str, params: Optional[List] = None) -> int:
+        """Helper sécurisé pour exécuter une écriture SQL durable"""
+        if params is None:
+            params = []
+
+        # Curseur partagé : sérialiser avec les autres threads (P5 thread-safety)
+        with self._query_lock:
+            try:
+                self.cursor.execute(query, params)
+                affectees = self.cursor.rowcount
+                self.conn.commit()
+                return affectees
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def execute_write_batch(self, operations: List[Tuple]) -> bool:
+        """Exécuter plusieurs écritures en **une seule transaction**.
+
+        Pour les opérations dont les étapes n'ont pas de sens isolément — une
+        fusion d'appareils transfère les associations *puis* supprime le
+        doublon : commiter chaque étape séparément laisserait, en cas d'échec au
+        milieu, un appareil supprimé dont les pièces n'ont pas été transférées.
+
+        Args:
+            operations: liste de (requête, paramètres). Les paramètres peuvent
+                        être None pour une requête sans argument.
+
+        Returns: True si toutes les écritures ont été commitées.
+        """
+        return self._safe_execute_write_batch(operations)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur exécution lot d'écritures")
+    def _safe_execute_write_batch(self, operations: List[Tuple]) -> bool:
+        """Helper sécurisé pour exécuter un lot d'écritures atomique"""
+        if not operations:
+            return True
+
+        with self._query_lock:
+            try:
+                for query, params in operations:
+                    self.cursor.execute(query, list(params) if params else [])
+                self.conn.commit()
+                return True
+            except Exception:
+                self.conn.rollback()
+                raise
+
     def execute_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
         """Exécuter une requête SQL de lecture (SELECT)"""
         return self._safe_execute_query(query, params)
