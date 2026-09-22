@@ -2673,8 +2673,9 @@ class ImportManager:
                 if ok:
                     results['succession_created'] = results.get('succession_created', 0) + 1
                     app_logger.info(f"Succession import : {config.succession_replaces} → {file_ref}")
-                    # La réf saisie est créée en fantôme → hériter du libellé importé
-                    self.db_manager.inherit_phantom_description(file_ref, config.succession_replaces)
+                    # La réf saisie peut être créée en fantôme, ou exister déjà en base
+                    # avec son propre libellé : la propagation va dans le sens utile.
+                    self.db_manager.propagate_description(file_ref, config.succession_replaces)
                 else:
                     app_logger.warning(f"Succession import non créée ({config.succession_replaces} → {file_ref}) : {msg}")
 
@@ -2683,8 +2684,8 @@ class ImportManager:
                 if ok:
                     results['succession_created'] = results.get('succession_created', 0) + 1
                     app_logger.info(f"Succession import : {file_ref} → {config.succession_replaced_by}")
-                    # La réf saisie est créée en fantôme → hériter du libellé importé
-                    self.db_manager.inherit_phantom_description(file_ref, config.succession_replaced_by)
+                    # Idem : la réf citée hérite, ou donne son libellé à l'importée.
+                    self.db_manager.propagate_description(file_ref, config.succession_replaced_by)
                 else:
                     app_logger.warning(f"Succession import non créée ({file_ref} → {config.succession_replaced_by}) : {msg}")
 
@@ -2693,11 +2694,10 @@ class ImportManager:
                 if ok:
                     results['equivalences_created'] = results.get('equivalences_created', 0) + 1
                     app_logger.info(f"Équivalence import : {file_ref} ≡ {config.equivalence_ref}")
-                    # La réf saisie est créée en fantôme → hériter du libellé importé.
                     # Manquait ici alors que les deux branches de succession ci-dessus
                     # le faisaient : le libellé n'atteignait le fantôme que selon le
                     # type de relation déclarée, jamais selon les données.
-                    self.db_manager.inherit_phantom_description(file_ref, config.equivalence_ref)
+                    self.db_manager.propagate_description(file_ref, config.equivalence_ref)
                 else:
                     app_logger.warning(f"Équivalence import non créée ({file_ref} ≡ {config.equivalence_ref}) : {msg}")
 
@@ -2719,6 +2719,9 @@ class ImportManager:
                         if ok:
                             results['equivalences_created'] = results.get('equivalences_created', 0) + 1
                             app_logger.info(f"Équivalence import : {other_ref} ≡ {pivot}")
+                            # La branche fichier unique propageait le libellé, pas
+                            # celle-ci : une réf courante hors du lot restait anonyme.
+                            self.db_manager.propagate_description(pivot, other_ref)
                         else:
                             app_logger.warning(f"Équivalence import non créée ({other_ref} ≡ {pivot}) : {msg}")
                 elif current:
@@ -2727,6 +2730,7 @@ class ImportManager:
                     if ok:
                         results['succession_created'] = results.get('succession_created', 0) + 1
                         app_logger.info(f"Succession import (multi) : {other_ref} → {current}")
+                        self.db_manager.propagate_description(other_ref, current)
                     else:
                         app_logger.warning(f"Succession import (multi) non créée ({other_ref} → {current}) : {msg}")
 

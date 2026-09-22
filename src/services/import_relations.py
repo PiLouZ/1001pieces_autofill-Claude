@@ -15,7 +15,8 @@ marque »).
 
 En plus des groupes, chaque réf isolée peut être marquée obsolète et/ou « remplace
 une réf en base » (carte). Pur Python ; `apply_relations` écrit via un db_manager
-(`add_supersession`, `add_equivalence`, `mark_obsolete`).
+(`add_supersession`, `add_equivalence`, `mark_obsolete`, et `propagate_description`
+si le db l'expose — cf. `_propager_libelle`).
 """
 
 from dataclasses import dataclass, field
@@ -137,21 +138,49 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
     def _ok(res):
         return res[0] if isinstance(res, (tuple, list)) else bool(res)
 
+    def _propager_libelle(a, b):
+        """Faire hériter le libellé à celle des deux réfs qui n'en a pas.
+
+        Une réf citée mais absente de la base est créée en fantôme SANS libellé :
+        sans cette propagation, elle reste anonyme pour toujours alors que sa
+        voisine porte le nom (67 des 72 cas observés en base le 2026-09-22).
+
+        Volontairement hors du comptage et de son try/except : `db` est du
+        duck-typing (les tests passent un double qui n'expose que les trois
+        primitives de relation). Une absence de méthode ne doit pas se
+        transformer en erreur de relation — la relation, elle, a bien été créée.
+        """
+        propager = getattr(db, 'propagate_description', None)
+        if propager is None:
+            return
+        try:
+            propager(a, b)
+        except Exception:
+            pass
+
     def _superse(old, new):
         if not old or not new or old == new:
             return
         try:
-            counts['successions' if _ok(db.add_supersession(old, new)) else 'errors'] += 1
+            ok = _ok(db.add_supersession(old, new))
         except Exception:
             counts['errors'] += 1
+            return
+        counts['successions' if ok else 'errors'] += 1
+        if ok:
+            _propager_libelle(old, new)
 
     def _equiv(a, b):
         if not a or not b or a == b:
             return
         try:
-            counts['equivalences' if _ok(db.add_equivalence(a, b)) else 'errors'] += 1
+            ok = _ok(db.add_equivalence(a, b))
         except Exception:
             counts['errors'] += 1
+            return
+        counts['equivalences' if ok else 'errors'] += 1
+        if ok:
+            _propager_libelle(a, b)
 
     def _obsolete(ref):
         try:

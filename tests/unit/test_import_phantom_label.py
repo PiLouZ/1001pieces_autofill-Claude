@@ -6,11 +6,15 @@ partenaire saisie dans le dialogue n'est pas importée : elle est créée en
 « fantôme » par `INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)`,
 donc sans description.
 
-`inherit_phantom_description` recopie alors le libellé de la pièce importée.
+`propagate_description` recopie alors le libellé de la pièce importée.
 Il n'était branché que sur les deux branches de succession — la branche
 équivalence, écrite juste en dessous, l'avait oublié. Le libellé atteignait
 donc le fantôme selon le **type de relation déclarée**, jamais selon les données
 (défaut remonté par l'utilisateur, corrigé en v3.69.4).
+
+Depuis le lot 1 (2026-09-22), l'héritage passe par `propagate_description`,
+bidirectionnelle : voir `test_propagation_libelle_relations.py` pour les
+chemins qui ne propageaient rien du tout (socle commun, branche multi-fichiers).
 """
 
 import pytest
@@ -81,7 +85,7 @@ class TestHeritageDuLibelle:
 
 
 class TestGardes:
-    """Les garanties portées par le SQL de inherit_phantom_description."""
+    """Les garanties portées par le SQL de propagate_description."""
 
     def test_un_libelle_existant_n_est_jamais_ecrase(self, manager):
         manager.db_manager.create_piece_standalone("EQUIVALENTE", "Son propre libellé")

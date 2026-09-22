@@ -617,38 +617,68 @@ class DatabaseSupersessionMixin:
             app_logger.error(f"Erreur add_supersession({ref_old} → {ref_new}): {e}")
             return False, str(e)
 
-    def inherit_phantom_description(self, source_ref: str, target_ref: str) -> bool:
-        """Recopier la description de `source_ref` vers `target_ref` si ce dernier
-        est une pièce fantôme **sans** description.
+    def propagate_description(self, ref_a: str, ref_b: str) -> bool:
+        """Propager le libellé entre deux références que l'on vient de lier,
+        dans le sens où il y a quelque chose à propager.
 
-        Utilisé à l'import avec succession : la réf partenaire créée en fantôme
-        hérite du libellé de la pièce importée. N'écrase jamais un libellé
-        existant et ne fait rien si la source n'a pas de description.
+        Deux réfs reliées par une succession ou une équivalence désignent la même
+        pièce du point de vue du catalogue : si l'une porte un libellé et l'autre
+        non, la seconde hérite. Le sens n'est pas figé — la réf saisie dans le
+        dialogue d'import peut très bien être celle qui est déjà nommée en base,
+        et c'est alors la pièce importée qui doit hériter. L'ancienne
+        `inherit_phantom_description` ne savait aller que dans un sens, et ne
+        s'appliquait qu'aux pièces encore marquées fantômes : une réf promue par
+        une association mais restée sans libellé ne pouvait plus jamais hériter.
+
+        Un libellé existant n'est JAMAIS écrasé. Quand les deux réfs sont nommées
+        différemment, rien n'est écrit : une nouvelle génération de pièce peut
+        légitimement changer de nom. La divergence est seulement journalisée,
+        pour rester repérable après coup.
 
         Returns:
-            True si une description a effectivement été recopiée.
+            True si un libellé a effectivement été recopié.
         """
+        if not ref_a or not ref_b or ref_a == ref_b:
+            return False
         try:
             with self._query_lock:
-                self.cursor.execute(
-                    """
-                    UPDATE pieces
-                    SET description = (SELECT description FROM pieces WHERE ref_piece = ?)
-                    WHERE ref_piece = ?
-                      AND COALESCE(is_phantom, 0) = 1
-                      AND (description IS NULL OR description = '')
-                      AND (SELECT description FROM pieces WHERE ref_piece = ?) IS NOT NULL
-                      AND (SELECT description FROM pieces WHERE ref_piece = ?) != ''
-                    """,
-                    [source_ref, target_ref, source_ref, source_ref]
+                rows = self.cursor.execute(
+                    "SELECT ref_piece, COALESCE(description, '') FROM pieces "
+                    "WHERE ref_piece IN (?, ?)",
+                    [ref_a, ref_b]
+                ).fetchall()
+                libelles = {r[0]: (r[1] or '').strip() for r in rows}
+                desc_a = libelles.get(ref_a, '')
+                desc_b = libelles.get(ref_b, '')
+
+                if desc_a and desc_b:
+                    if desc_a != desc_b:
+                        app_logger.info(
+                            f"Libellés divergents : '{ref_a}' (« {desc_a} ») et "
+                            f"'{ref_b}' (« {desc_b} ») — aucun écrasement."
+                        )
+                    return False
+                if not desc_a and not desc_b:
+                    return False
+
+                source, cible, libelle = (
+                    (ref_a, ref_b, desc_a) if desc_a else (ref_b, ref_a, desc_b)
                 )
-                updated = self.cursor.rowcount > 0
+                # Le filtre sur la cible vide est redondant avec le test ci-dessus,
+                # mais il garde la garantie « jamais d'écrasement » dans le SQL
+                # lui-même, où une lecture du code la vérifie sans remonter.
+                self.cursor.execute(
+                    "UPDATE pieces SET description = ? WHERE ref_piece = ? "
+                    "AND (description IS NULL OR TRIM(description) = '')",
+                    [libelle, cible]
+                )
+                recopie = self.cursor.rowcount > 0
                 self.conn.commit()
-            if updated:
-                app_logger.info(f"Libellé hérité : '{source_ref}' → fantôme '{target_ref}'")
-            return updated
+            if recopie:
+                app_logger.info(f"Libellé propagé : '{source}' → '{cible}' (« {libelle} »)")
+            return recopie
         except Exception as e:
-            app_logger.error(f"Erreur inherit_phantom_description({source_ref} → {target_ref}): {e}")
+            app_logger.error(f"Erreur propagate_description({ref_a} ↔ {ref_b}): {e}")
             return False
 
     def remove_supersession(self, ref_old: str) -> bool:
