@@ -186,6 +186,7 @@ class Config:
         TEXT_SECONDARY = "#555"    # Texte secondaire
         
         # Couleurs spécifiques pour les statuts de données
+        MISSING_LABEL = (255, 235, 200)   # Orangé clair pour libellé manquant
         ORPHAN_ROW = (255, 200, 200)      # Rouge clair pour lignes orphelines
         SINGLE_PIECE = (255, 255, 200)    # Jaune pour pièce unique
         MULTI_PIECES = (200, 255, 200)    # Vert clair pour plusieurs pièces

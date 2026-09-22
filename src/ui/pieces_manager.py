@@ -220,9 +220,13 @@ class PiecesManagerWindow(QDialog):
         # Clusters : (libellé du cluster, [(clé, label, icône, couleur), ...])
         _filter_clusters = [
             ('général', [
-                ('all',     'Toutes',     'fa5s.list',   '#495057'),
-                ('orphan',  'Orphelines', 'fa5s.unlink', '#c0392b'),
-                ('phantom', 'Fantômes',   'fa5s.ghost',  '#7f8c8d'),
+                ('all',       'Toutes',       'fa5s.list',            '#495057'),
+                ('orphan',    'Orphelines',   'fa5s.unlink',          '#c0392b'),
+                ('phantom',   'Fantômes',     'fa5s.ghost',           '#7f8c8d'),
+                # Distinct de « Fantômes » : une réf jamais importée peut très bien
+                # porter un libellé (hérité d'une voisine), et une pièce bien réelle
+                # peut n'en avoir aucun si le fichier source n'en fournissait pas.
+                ('unlabeled', 'Sans libellé', 'fa5s.question-circle', '#d35400'),
             ]),
             ('succession', [
                 ('obsolete',   'Obsolètes',    'fa5s.exclamation-triangle', '#e67e22'),
@@ -769,14 +773,20 @@ class PiecesManagerWindow(QDialog):
         total_pieces = len(results)
         orphan_pieces = len([r for r in results if r[2] == 0])
         phantom_pieces = len([r for r in results if r[4] == 1])
+        unlabeled_pieces = len([r for r in results if not (r[1] or '').strip()])
         total_associations = sum(r[2] for r in results)
 
         from src.core.config import pluralize
         phantom_str = f"  •  {pluralize(phantom_pieces, 'fantôme')}" if phantom_pieces else ""
+        # Compté à part du fantôme : les deux ensembles se recoupent sans se
+        # confondre (relevé du 2026-09-22 : 98 fantômes nommées, 76 pièces
+        # bien réelles sans libellé).
+        unlabeled_str = (f"  •  {pluralize(unlabeled_pieces, 'sans libellé', 'sans libellé')}"
+                         if unlabeled_pieces else "")
         self.stats_label.setText(
             f"{pluralize(total_pieces, 'référence')}  •  "
             f"{pluralize(orphan_pieces, 'orpheline')}"
-            f"{phantom_str}  •  "
+            f"{phantom_str}{unlabeled_str}  •  "
             f"{pluralize(total_associations, 'association')}"
         )
 
@@ -894,6 +904,11 @@ class PiecesManagerWindow(QDialog):
             if is_phantom:
                 desc_item.setForeground(_phantom_color)
                 desc_item.setFont(_phantom_font)
+            if not (description or "").strip():
+                # Une cellule vide ne se voit pas : sans fond, la référence anonyme
+                # se confond avec les autres et personne ne la corrige jamais.
+                desc_item.setBackground(QColor(*Config.Colors.MISSING_LABEL))
+                desc_item.setToolTip("Aucun libellé — à compléter")
             self.pieces_table.setItem(row_idx, 1, desc_item)
 
             # ── Colonne 2 : nb appareils (fond coloré) ────────────────────
@@ -1042,6 +1057,8 @@ class PiecesManagerWindow(QDialog):
             filtered = [r for r in filtered if r[2] == 0]
         elif active == 'phantom':
             filtered = [r for r in filtered if (len(r) > 4 and r[4] == 1)]
+        elif active == 'unlabeled':
+            filtered = [r for r in filtered if not (r[1] or '').strip()]
         elif active == 'superseded':
             filtered = [r for r in filtered
                         if statuses.get(r[0] or '', {}).get('status') == 'superseded']
