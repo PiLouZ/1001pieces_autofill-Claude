@@ -112,7 +112,8 @@ def test_title_invariants(gen, monkeypatch, gabarit, description, type_appareil,
     assert t.startswith(reference + " ")
     assert len(t) <= SEOGenerator.TITLE_MAX_CARACTERES
     assert largeur_px(t, 20) <= SEOGenerator.TITLE_MAX_PX
-    assert t.endswith(marques[0]) or f"{marques[0]}," in t
+    marque = SEOGenerator.NOMS_COURTS_MARQUES.get(marques[0], marques[0])
+    assert t.endswith(marque) or f"{marque}," in t
     assert gen._normalize_type(type_appareil) in t
     for abreviation in ("lave-vais.", "lave-ling.", "sèche-ling.", "frigo", "congélo", "électromén."):
         assert abreviation not in t
@@ -195,3 +196,21 @@ def test_description_compatibilite_chiffree(gen, monkeypatch):
                                               n_modeles=1254)['description']
         assert texte.endswith("compatible avec plus de 1 200 modèles"), texte
         assert "Candy et Hoover" in texte
+
+
+# ── Noms courts de marques ──
+
+def test_arthur_martin_sous_son_nom_court(gen, monkeypatch):
+    """Décision client : « Arthur Martin » dans les métas, la base garde le nom complet."""
+    r = _title(gen, monkeypatch, SANS_POUR, "Carte électronique configurée", "Lave-linge",
+               ["Arthur-Martin-Electrolux", "AEG"], "973914527609015")
+    assert "Arthur-Martin-Electrolux" not in r['title']
+    assert "Arthur Martin" in r['title']
+    d = gen.generate_meta_description(reference="973914527609015", description="Carte électronique",
+                                      type_appareil="Lave-linge", fabricants=["Arthur-Martin-Electrolux", "AEG"])
+    assert "Arthur Martin" in d['description'] and "Electrolux" not in d['description']
+
+
+def test_nom_court_fusionne_avec_la_meme_marque():
+    assert SEOGenerator._marques_uniques(["Arthur-Martin-Electrolux", "Arthur Martin", "AEG"]) == \
+        ["Arthur Martin", "AEG"]

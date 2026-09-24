@@ -146,6 +146,13 @@ class SEOGenerator:
     # mots-clés et repousse les arguments commerciaux hors de l'affichage Google.
     MAX_MARQUES = 3
 
+    # Noms de marque raccourcis dans les métas (décision client) ; la base garde le
+    # nom complet. « Arthur-Martin-Electrolux » (24 car.) réduisait le title de la
+    # carte 973914527609015 à « Carte lave-linge Arthur-Martin-Electrolux ».
+    NOMS_COURTS_MARQUES = {
+        "Arthur-Martin-Electrolux": "Arthur Martin",
+    }
+
     # Limites de l'affichage Google sur ordinateur (décision client : régler sur
     # l'ordinateur ; sur mobile, seule la fin — l'argument commercial — est coupée).
     # Google coupe à la largeur en pixels (≈ 580 px / 920 px) : une marge de 5 et
@@ -285,13 +292,17 @@ class SEOGenerator:
         cles = [rng.random() ** (1.0 / p) for p in poids]
         return [g for _, g in sorted(zip(cles, gabarits), key=lambda x: -x[0])]
 
-    @staticmethod
-    def _marques_uniques(fabricants: List[str]) -> List[str]:
-        """Marques sans doublon ni vide, dans l'ordre reçu (classées par seo_service)."""
+    @classmethod
+    def _marques_uniques(cls, fabricants: List[str]) -> List[str]:
+        """
+        Marques sans doublon ni vide, dans l'ordre reçu (classées par seo_service),
+        sous leur nom court pour les métas (NOMS_COURTS_MARQUES).
+        """
         vues: set = set()
         marques = []
         for f in fabricants:
             f = f.strip() if isinstance(f, str) else f
+            f = cls.NOMS_COURTS_MARQUES.get(f, f)
             if f and f not in vues:
                 vues.add(f)
                 marques.append(f)

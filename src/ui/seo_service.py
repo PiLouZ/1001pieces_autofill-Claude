@@ -57,7 +57,7 @@ class SEOService:
             search_data = self._get_current_search_data()
 
         if not search_data:
-            self.main_window.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
+            self._signaler_absence_de_donnees("le méta titre")
             return
 
         required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
@@ -69,6 +69,8 @@ class SEOService:
         ref_obsolete = self._resolve_supersession(search_data)
         if ref_obsolete:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
+        if self._libelle_manquant(search_data):
+            return
 
         result = self.seo_generator.generate_meta_title(
             reference=search_data['reference'],
@@ -82,7 +84,8 @@ class SEOService:
         QApplication.clipboard().setText(result['title'])
 
         length = result['length']
-        fabricants_info = f"({result['info']['fabricants_count']} fabricants)" if result['info']['fabricants_count'] > 0 else ""
+        nb_fabricants = result['info']['fabricants_count']
+        fabricants_info = f"({nb_fabricants} fabricant{'s' if nb_fabricants > 1 else ''})" if nb_fabricants > 0 else ""
         largeur = f"{length} car., {result['info']['largeur_px']}/{SEOGenerator.TITLE_MAX_PX} px"
         status_msg = f"Méta titre copié ({largeur}) {fabricants_info}"
         if result['info']['truncated']:
@@ -125,7 +128,7 @@ class SEOService:
             search_data = self._get_current_search_data()
 
         if not search_data:
-            self.main_window.statusbar.showMessage("Aucune recherche active pour générer la méta description", 3000)
+            self._signaler_absence_de_donnees("la méta description")
             return
 
         required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
@@ -137,6 +140,8 @@ class SEOService:
         ref_obsolete = self._resolve_supersession(search_data)
         if ref_obsolete:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
+        if self._libelle_manquant(search_data):
+            return
 
         # Compter les modèles compatibles (ref courante + prédécesseurs)
         all_refs_for_count = [search_data['reference']]
@@ -285,10 +290,11 @@ class SEOService:
                 search_data['fabricants'] = self._classer_fabricants(poids_fabricants)
             search_data['refs_agregees'] = refs
 
-            # Mettre à jour la description avec celle de la référence courante si disponible
-            desc_current = self._get_piece_description_from_reference(ref_current)
-            if desc_current:
-                search_data['description'] = desc_current
+            # Le libellé est celui de la référence courante — même vide : la génération
+            # est alors bloquée, comme si l'on avait tapé la référence courante.
+            piece_courante = self._trouver_piece(ref_current)
+            if piece_courante:
+                search_data['description'] = piece_courante[1]
 
         except Exception as e:
             app_logger.warning(f"SEO: enrichissement supersession échoué pour {ref_current}: {e}")
@@ -310,12 +316,11 @@ class SEOService:
             search_terms = [search_term]
 
         # Utiliser la première référence pour la description et le titre
-        primary_reference = search_terms[0]
-
-        # Vérifier si c'est une référence de pièce (recherche dans la table pieces)
-        piece_description = self._get_piece_description_from_reference(primary_reference)
-        if not piece_description:
+        piece = self._trouver_piece(search_terms[0])
+        if not piece:
             return None  # Ne pas activer les boutons SEO si ce n'est pas une référence de pièce
+        primary_reference, piece_description = piece
+        search_terms = self._references_canoniques(search_terms)
 
         # Analyser les données du tableau pour extraire les informations des appareils
         if self.main_window.table.rowCount() == 0:
@@ -335,37 +340,53 @@ class SEOService:
         }
     
     @handle_seo_data_errors()
-    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
+    def _trouver_piece(self, reference: str) -> Optional[Tuple[str, str]]:
         """
-        Récupérer la description d'une pièce à partir de sa référence
-        Utilise la même logique que _is_piece_reference_search()
+        (référence telle qu'enregistrée, libellé — "" s'il est vide), ou None.
+        Correspondance exacte, puis sans tenir compte de la casse (« as0015516 » →
+        « AS0015516 ») : la méta porte toujours la référence écrite comme en base.
+        Plus de recherche partielle (LIKE %réf%) : un fragment activait les boutons
+        avec le libellé d'une autre pièce.
         """
-        # D'abord essayer de récupérer le libellé directement depuis la table pieces
-        query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
-        result = self.main_window.db_manager.execute_custom_query(query, [reference])
+        db = self.main_window.db_manager
+        rows = db.execute_custom_query(
+            "SELECT ref_piece, description FROM pieces WHERE ref_piece = ? LIMIT 1", [reference])
+        if not rows:
+            rows = db.execute_custom_query(
+                "SELECT ref_piece, description FROM pieces WHERE ref_piece = ? COLLATE NOCASE LIMIT 2",
+                [reference])
+            if len(rows) != 1:  # absente, ou ambiguë (deux casses différentes en base)
+                return None
+        ref_piece, description = rows[0]
+        return ref_piece, (description or "").strip()
 
-        if result:
-            description = result[0][0]
-            # Vérifier que la description n'est pas None ou vide
-            if description and description.strip():
-                return description.strip()
-            else:
-                # Si la description est vide, utiliser une description générique
-                return "pièce détachée"
+    def _references_canoniques(self, references: List[str]) -> List[str]:
+        """Références écrites comme en base quand elles y sont, telles quelles sinon."""
+        canoniques = []
+        for ref in references:
+            piece = self._trouver_piece(ref)
+            canoniques.append(piece[0] if piece else ref)
+        return canoniques
 
-        # Essayer une recherche partielle si la recherche exacte échoue
-        query_partial = "SELECT description FROM pieces WHERE ref_piece LIKE ? LIMIT 1"
-        result_partial = self.main_window.db_manager.execute_custom_query(query_partial, [f"%{reference}%"])
+    def _libelle_manquant(self, search_data: Dict[str, Any]) -> bool:
+        """
+        Bloque la génération si la pièce n'a pas de libellé (décision client) :
+        l'ancien repli « pièce détachée » donnait « votre pièce détachée 00614351 ».
+        """
+        if search_data['description'].strip():
+            return False
+        self.main_window.statusbar.showMessage(
+            f"Libellé manquant pour {search_data['reference']} : complétez-le avant de générer la méta", 5000)
+        return True
 
-        if result_partial:
-            description = result_partial[0][0]
-            if description and description.strip():
-                return description.strip()
-            else:
-                return "pièce détachée"
+    def _signaler_absence_de_donnees(self, quoi: str) -> None:
+        terme = self.main_window.search_input.text().strip()
+        if terme and '||' not in terme and '&&' not in terme and not self._trouver_piece(terme):
+            message = f"Référence introuvable telle quelle : {terme}"
+        else:
+            message = f"Aucune recherche active pour générer {quoi}"
+        self.main_window.statusbar.showMessage(message, 3000)
 
-        return None  # Aucune pièce trouvée
-    
     @handle_seo_data_errors()
     def _get_multi_reference_terms(self) -> List[str]:
         """
@@ -382,8 +403,9 @@ class SEOService:
             # Filtrer pour ne garder que les références de pièce valides
             valid_terms = []
             for term in terms:
-                if self._get_piece_description_from_reference(term):
-                    valid_terms.append(term)
+                piece = self._trouver_piece(term)
+                if piece and piece[0] not in valid_terms:
+                    valid_terms.append(piece[0])
             return valid_terms if len(valid_terms) > 1 else []
 
         elif '&&' in search_term:
@@ -429,7 +451,7 @@ class SEOService:
 
         if search_term:
             # Vérifier si c'est une référence de pièce ou contient des références
-            if self._get_piece_description_from_reference(search_term):
+            if self._trouver_piece(search_term):
                 is_piece_search = True
             elif self._get_multi_reference_terms():
                 is_piece_search = True
@@ -466,16 +488,17 @@ class SEOService:
             app_logger.info(f"Génération méta pour multi-références: {references}")
 
             # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
-            all_refs_multi = self._avec_predecesseurs(references)
+            all_refs_multi = self._avec_predecesseurs(self._references_canoniques(references))
 
             # Les références d'une recherche « A || B » désignent une même pièce : leurs
             # appareils sont agrégés (directes + prédécesseurs). Le libellé, lui, est celui
-            # de la référence choisie ; à défaut, le premier trouvé.
-            piece_description = self._get_piece_description_from_reference(specific_reference)
-            for ref in all_refs_multi:
-                if piece_description:
+            # de la référence choisie ; à défaut (vide), le premier renseigné.
+            piece_description = ""
+            for ref in [specific_reference] + all_refs_multi:
+                piece = self._trouver_piece(ref)
+                if piece and piece[1]:
+                    piece_description = piece[1]
                     break
-                piece_description = self._get_piece_description_from_reference(ref)
 
             poids_types, poids_fabricants = self._collecter_appareils(all_refs_multi)
 
@@ -495,17 +518,12 @@ class SEOService:
             else:
                 app_logger.warning("Aucune donnée valide trouvée dans la recherche multi-références")
 
-        # Vérifier si c'est une référence de pièce valide (cas normal)
-        piece_description = self._get_piece_description_from_reference(specific_reference)
-
-        # Si la référence n'existe pas en BDD, créer des données par défaut
-        if not piece_description:
-            return {
-                'reference': specific_reference,
-                'description': f"Pièce détachée {specific_reference}",
-                'type_appareil': "appareil électroménager",
-                'fabricants': ["multi-marques"]
-            }
+        # Vérifier si c'est une référence de pièce valide (cas normal). Une référence
+        # absente de la base ne produit plus de méta de secours (« Pièce détachée X »).
+        piece = self._trouver_piece(specific_reference)
+        if not piece:
+            return None
+        specific_reference, piece_description = piece
 
         # Analyser les données du tableau pour extraire les informations des appareils
         if self.main_window.table.rowCount() == 0:

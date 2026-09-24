@@ -287,3 +287,100 @@ def test_une_seule_ancienne_ref_si_deux_ne_laissent_aucune_marque():
                                     anciennes_refs=["140000210017", "140000210099"])
     assert r['info']['anciennes_refs'] == ["140000210017"]
     assert "Bosch" in r['description']
+
+
+
+# ── Référence introuvable, casse, libellé vide ──
+# Décision client (2026-09-24) : bloquer la génération si le libellé est vide ;
+# plus de correspondance partielle (LIKE %réf%) ; la référence est toujours
+# écrite comme en base.
+
+def test_reference_retrouvee_sans_tenir_compte_de_la_casse(db):
+    db.piece("AS0015516", "Filtres à charbon")
+    db.modeles("AS0015516", "Hotte", "De Dietrich", 3)
+    service = SEOService(_Fenetre(db))
+    assert service._trouver_piece("as0015516") == ("AS0015516", "Filtres à charbon")
+    donnees = _meta(db, "as0015516")
+    assert donnees['reference'] == "AS0015516"
+    assert donnees['fabricants'] == ["De Dietrich"]  # avant : « multi-marques », aucune réf agrégée
+
+
+def test_fragment_de_reference_ne_suffit_plus(db):
+    db.piece("AS0015516", "Filtres à charbon")
+    service = SEOService(_Fenetre(db))
+    assert service._trouver_piece("0015516") is None
+    fenetre = _Fenetre(db)
+    fenetre.search_input.texte = "0015516"
+    assert SEOService(fenetre)._get_current_search_data() is None
+
+
+def test_casse_ambigue_refusee(db):
+    db.piece("ab12", "Joint")
+    db.piece("AB12", "Joint")
+    service = SEOService(_Fenetre(db))
+    assert service._trouver_piece("Ab12") is None
+    assert service._trouver_piece("ab12") == ("ab12", "Joint")
+
+
+def test_libelle_vide_rendu_vide(db):
+    """Plus de repli « pièce détachée » : le libellé vide reste vide."""
+    db.piece("00614351", "   ")
+    db.modeles("00614351", "Lave-linge", "Balay", 2)
+    assert _meta(db, "00614351")['description'] == ""
+
+
+class _Barre:
+    def __init__(self):
+        self.messages = []
+
+    def showMessage(self, message, duree=0):
+        self.messages.append(message)
+
+
+def test_generation_bloquee_si_libelle_vide(db):
+    db.piece("00614351", None)
+    db.modeles("00614351", "Lave-linge", "Balay", 2)
+    fenetre = _Fenetre(db)
+    fenetre.statusbar = _Barre()
+    service = SEOService(fenetre)
+    assert service._libelle_manquant({'reference': "00614351", 'description': ""})
+    assert fenetre.statusbar.messages == [
+        "Libellé manquant pour 00614351 : complétez-le avant de générer la méta"]
+    assert not service._libelle_manquant({'reference': "R1", 'description': "Joint"})
+
+
+def test_ancienne_ref_tapee_bloquee_si_la_courante_n_a_pas_de_libelle(db):
+    """Une fiche, une méta : le libellé est celui de la référence courante."""
+    db.piece("NEW", "")
+    db.piece("OLD", "Joint de porte")
+    db.remplace("OLD", "NEW")
+    db.modeles("NEW", "Four", "Bosch", 1)
+    assert _meta(db, "OLD")['description'] == ""
+
+
+def test_reference_introuvable_signalee(db):
+    fenetre = _Fenetre(db)
+    fenetre.statusbar = _Barre()
+    fenetre.search_input.texte = "ZZ999"
+    SEOService(fenetre)._signaler_absence_de_donnees("le méta titre")
+    assert fenetre.statusbar.messages == ["Référence introuvable telle quelle : ZZ999"]
+
+
+def test_reference_choisie_absente_ne_produit_plus_de_meta_de_secours(db):
+    """Avant : « Pièce détachée ZZ999 », « multi-marques », « appareil électroménager »."""
+    fenetre = _Fenetre(db)
+    fenetre.search_input.texte = "ZZ999"
+    assert SEOService(fenetre)._get_current_search_data_for_reference("ZZ999") is None
+
+
+def test_multi_references_libelle_vide_remplace_par_celui_de_l_autre(db):
+    db.piece("A", "Joint de hublot")
+    db.piece("B", "")
+    db.modeles("A", "Lave-linge", "Candy", 1)
+    fenetre = _Fenetre(db)
+    fenetre.search_input.texte = "a || b"
+    service = SEOService(fenetre)
+    assert service._get_multi_reference_terms() == ["A", "B"]
+    donnees = service._get_current_search_data_for_reference("B")
+    assert donnees['reference'] == "B"
+    assert donnees['description'] == "Joint de hublot"
