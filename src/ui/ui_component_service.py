@@ -166,7 +166,7 @@ class UIComponentService:
         self.main_window.meta_title_btn = QPushButton(qta.icon('fa5s.heading', color='#555555'), "Méta Title")
         self.main_window.meta_title_btn.clicked.connect(self.main_window._generate_meta_title)
         self.main_window.meta_title_btn.setEnabled(False)
-        self.main_window.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (60 caractères max)")
+        self.main_window.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (60 caractères max)\nMaj+clic : autre formulation")
         self.main_window.meta_title_btn.setStyleSheet(self._get_seo_title_button_style())
         seo_layout.addWidget(self.main_window.meta_title_btn, 1)  # stretch factor 1 = 50%
         
@@ -174,7 +174,7 @@ class UIComponentService:
         self.main_window.meta_desc_btn = QPushButton(qta.icon('fa5s.align-left', color='#555555'), "Méta Desc")
         self.main_window.meta_desc_btn.clicked.connect(self.main_window._generate_meta_description)
         self.main_window.meta_desc_btn.setEnabled(False)
-        self.main_window.meta_desc_btn.setToolTip("Générer une méta description SEO aléatoire (150 caractères max)")
+        self.main_window.meta_desc_btn.setToolTip("Générer une méta description SEO (150 caractères max)\nMaj+clic : autre formulation")
         self.main_window.meta_desc_btn.setStyleSheet(self._get_seo_desc_button_style())
         seo_layout.addWidget(self.main_window.meta_desc_btn, 1)  # stretch factor 1 = 50%
         

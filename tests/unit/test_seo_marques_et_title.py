@@ -13,8 +13,6 @@ puis coupé en plein mot (« … cuisinière Bosc ») : sur les fiches réelles,
 21 % d'abréviations, 8 % de titles sans marque et 7 % de fins coupées.
 """
 
-import random
-
 import pytest
 
 from src.utils.seo_generator import SEOGenerator
@@ -29,8 +27,7 @@ def gen():
 
 
 def _title(gen, monkeypatch, gabarit, description, type_appareil, fabricants, reference="R123"):
-    monkeypatch.setattr(random, "choice",
-                        lambda seq: gabarit if seq is SEOGenerator.META_TITLE_TEMPLATES else seq[0])
+    monkeypatch.setattr(gen, "_choose_title_template", lambda *a: gabarit)
     return gen.generate_meta_title(reference=reference, description=description,
                                    type_appareil=type_appareil, fabricants=fabricants)
 

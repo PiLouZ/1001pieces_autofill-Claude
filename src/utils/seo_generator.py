@@ -4,6 +4,7 @@ Inspiré du script.js pour e-commerce pièces détachées électroménager
 """
 
 import random
+import zlib
 from typing import List, Dict, Tuple, Optional
 from .error_handler import handle_seo_generation_errors
 
@@ -187,7 +188,8 @@ class SEOGenerator:
     
     @handle_seo_generation_errors()
     def generate_meta_title(self, reference: str, description: str, type_appareil: str,
-                           fabricants: List[str], max_length: int = 60) -> Dict[str, any]:
+                           fabricants: List[str], max_length: int = 60,
+                           variante: int = 0) -> Dict[str, any]:
         """
         Générer un méta title : référence (courante) en tête, puis libellé,
         type d'appareil et jusqu'à 3 marques, via un gabarit tiré de META_TITLE_TEMPLATES.
@@ -197,13 +199,16 @@ class SEOGenerator:
         entier par mot entier (le type d'appareil est gardé : décision client), puis
         retirer le type. Jamais d'abréviation, jamais de mot ni de marque coupés ;
         au moins une marque tant qu'il y en a une.
+
+        Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
+        `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=True)
         type_clean = self._normalize_type(type_appareil)
         marques = self._marques_uniques(fabricants)[:self.MAX_MARQUES]
 
-        template = random.choice(self.META_TITLE_TEMPLATES)
+        template = self._choose_title_template(reference_clean, variante)
         title_complet = self._rendre_title(template, reference_clean, description_clean,
                                            type_clean, marques)
         title, marques_retenues = self._raccourcir_title(
@@ -221,6 +226,8 @@ class SEOGenerator:
             'fabricants_count': len(marques_retenues),
             'total_fabricants_available': len(fabricants),
             'brand_guaranteed': bool(marques_retenues),
+            'variante': variante % len(self.META_TITLE_TEMPLATES),
+            'nb_variantes': len(self.META_TITLE_TEMPLATES),
         }
 
         self.last_generation_info['title'] = generation_info
@@ -230,6 +237,28 @@ class SEOGenerator:
             'length': len(title),
             'info': generation_info
         }
+
+    def _choose_title_template(self, reference: str, variante: int = 0) -> str:
+        gabarits = self.META_TITLE_TEMPLATES
+        ordre = self._ordre_deterministe(gabarits, [1.0] * len(gabarits), reference)
+        return ordre[variante % len(ordre)]
+
+    @staticmethod
+    def _ordre_deterministe(gabarits: List[str], poids: List[float], reference: str) -> List[str]:
+        """
+        Gabarits dans un ordre propre à la référence : tirage pondéré sans remise
+        (clé = u ** (1/poids), méthode d'Efraimidis-Spirakis), avec un générateur
+        initialisé par crc32(référence). Le premier suit donc la même loi que
+        l'ancien tirage au hasard, mais une référence donne toujours le même : la
+        méta est reproductible, et régénérer une fiche en ligne ne la change pas.
+        Les suivants servent de formulations de rechange, sans répétition avant
+        d'avoir fait le tour.
+        crc32 et non hash() : hash() d'une chaîne change à chaque lancement de Python.
+        Ajouter ou retirer un gabarit redistribue l'ordre de toutes les références.
+        """
+        rng = random.Random(zlib.crc32(reference.encode('utf-8')))
+        cles = [rng.random() ** (1.0 / p) for p in poids]
+        return [g for _, g in sorted(zip(cles, gabarits), key=lambda x: -x[0])]
 
     @staticmethod
     def _marques_uniques(fabricants: List[str]) -> List[str]:
@@ -308,7 +337,8 @@ class SEOGenerator:
     @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
                                  fabricants: List[str], max_length: int = 150,
-                                 n_modeles: int = 0, ref_old: Optional[str] = None) -> Dict[str, any]:
+                                 n_modeles: int = 0, ref_old: Optional[str] = None,
+                                 variante: int = 0) -> Dict[str, any]:
         """
         Générer une méta description via un tirage pondéré contextuel (L2/L3) :
         pool générique (unicité à grande échelle) enrichi de templates de segment
@@ -317,6 +347,8 @@ class SEOGenerator:
         La référence est la référence courante (résolue en amont) ; ref_old, si
         fourni, est la référence obsolète remplacée (mentionnée par les gabarits
         supersession uniquement).
+        Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
+        `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=False)
@@ -326,7 +358,9 @@ class SEOGenerator:
         article = self._get_article(description_clean)
         description_with_article = f"{article} {description_clean}"
 
-        template = self._choose_description_template(type_clean, n_modeles, ref_old_clean)
+        template = self._choose_description_template(type_clean, n_modeles, ref_old_clean,
+                                                     reference_clean, variante)
+        nb_variantes = len(self._pool_description(type_clean, n_modeles, ref_old_clean)[0])
 
         fabricants_str = self._select_fabricants_for_description(
             fabricants, template, reference_clean, description_with_article, type_clean, max_length,
@@ -359,6 +393,8 @@ class SEOGenerator:
             'n_modeles': n_modeles,
             'ref_old': ref_old_clean,
             'is_supersession': bool(ref_old_clean) and '{ref_old}' in template,
+            'variante': variante % nb_variantes,
+            'nb_variantes': nb_variantes,
         }
 
         self.last_generation_info['description'] = generation_info
@@ -384,10 +420,10 @@ class SEOGenerator:
                 best_key = key
         return self.SEGMENT_DESCRIPTION_TEMPLATES[best_key] if best_key else []
 
-    def _choose_description_template(self, type_norm: str, n_modeles: int,
-                                     ref_old: Optional[str]) -> str:
+    def _pool_description(self, type_norm: str, n_modeles: int,
+                          ref_old: Optional[str]) -> Tuple[List[str], List[float]]:
         """
-        Tirage pondéré du gabarit de description (L2/L3).
+        Gabarits de description possibles et leur poids (L2/L3).
         Le pool générique (25 templates) est TOUJOURS présent — garantie d'unicité
         et de diversité à grande échelle. Les templates contextuels (segment,
         forte compatibilité, supersession) ne rejoignent le pool que si leur signal
@@ -410,7 +446,15 @@ class SEOGenerator:
         if ref_old:
             _boost(self.META_DESCRIPTION_TEMPLATES_SUPERSESSION)
 
-        return random.choices(pool, weights=weights, k=1)[0]
+        return pool, weights
+
+    def _choose_description_template(self, type_norm: str, n_modeles: int,
+                                     ref_old: Optional[str], reference: str = "",
+                                     variante: int = 0) -> str:
+        """Gabarit de description, fixe pour une référence (voir _ordre_deterministe)."""
+        pool, weights = self._pool_description(type_norm, n_modeles, ref_old)
+        ordre = self._ordre_deterministe(pool, weights, reference)
+        return ordre[variante % len(ordre)]
 
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description_with_article: str,

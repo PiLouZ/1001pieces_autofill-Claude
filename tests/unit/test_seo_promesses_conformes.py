@@ -15,7 +15,6 @@ L'audit SEO mesurait 13,6 % de descriptions avec « d'origine »/« OEM » non
 nuancé, 12,1 % affirmant un stock, 2,3 % « réparateur agréé »…
 """
 
-import random
 import re
 
 import pytest
@@ -72,7 +71,6 @@ def test_descriptions_generees_conformes():
     """De bout en bout, y compris les gabarits contextuels (segment, forte
     compatibilité, supersession) et la troncature."""
     g = SEOGenerator()
-    random.seed(0)
     cas = [
         ("Joint de hublot", "Lave-linge", ["Candy", "Hoover", "Otsein"], 1200, None),
         ("Verrou de porte", "Lave-vaisselle", ["Bosch", "Siemens"], 5, "00636708"),
@@ -80,10 +78,12 @@ def test_descriptions_generees_conformes():
         ("Filtre à charbon", "Hotte", ["De Dietrich"], 3, None),
     ]
     for description, type_appareil, fabricants, n_modeles, ref_old in cas:
-        for _ in range(200):
+        # Toutes les formulations possibles pour ce cas (la méta est fixe par
+        # référence ; les variantes parcourent tout le pool de gabarits)
+        for variante in range(60):
             texte = g.generate_meta_description(
                 reference="REF123", description=description, type_appareil=type_appareil,
-                fabricants=fabricants, n_modeles=n_modeles, ref_old=ref_old,
+                fabricants=fabricants, n_modeles=n_modeles, ref_old=ref_old, variante=variante,
             )['description']
             assert _violations(texte) == [], texte
 

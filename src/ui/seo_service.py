@@ -12,7 +12,7 @@ Responsabilités:
 
 from typing import Optional, Dict, Any, List, Tuple
 from .qt_imports import QInputDialog, QApplication
-from .qt_imports import QTimer
+from .qt_imports import QTimer, Qt
 
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -34,10 +34,14 @@ class SEOService:
     def __init__(self, main_window):
         self.main_window = main_window
         self.seo_generator = SEOGenerator()
+        # Dernière formulation proposée par (genre, référence) : 0 = la méta fixe de
+        # la référence, Maj+clic passe à la suivante.
+        self._variantes: Dict[Tuple[str, str], int] = {}
     
     @handle_seo_generation_errors()
     def generate_meta_title(self) -> None:
-        """Générer et copier un méta titre SEO optimisé"""
+        """Générer et copier un méta titre SEO optimisé (Maj+clic : autre formulation)"""
+        autre_formulation = self._maj_enfoncee()
         multi_terms = self._get_multi_reference_terms()
         if multi_terms:
             selected_reference = self._show_reference_selection_dialog(
@@ -71,6 +75,7 @@ class SEOService:
             description=search_data['description'],
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
+            variante=self._variante('title', search_data['reference'], autre_formulation),
         )
         # n_modeles non utilisé dans le title (pas assez de place) mais compté pour info
 
@@ -81,6 +86,7 @@ class SEOService:
         status_msg = f"Méta titre copié ({length}/60 caractères) {fabricants_info}"
         if result['info']['truncated']:
             status_msg += " [Tronqué]"
+        status_msg += self._libelle_variante(result['info'])
         if ref_obsolete:
             status_msg += f" [Supersédée → {search_data['reference']}]"
 
@@ -101,7 +107,8 @@ class SEOService:
     
     @handle_seo_generation_errors()
     def generate_meta_description(self) -> None:
-        """Générer et copier une méta description SEO aléatoire"""
+        """Générer et copier une méta description SEO (Maj+clic : autre formulation)"""
+        autre_formulation = self._maj_enfoncee()
         multi_terms = self._get_multi_reference_terms()
         if multi_terms:
             selected_reference = self._show_reference_selection_dialog(
@@ -146,6 +153,7 @@ class SEOService:
             fabricants=search_data['fabricants'],
             n_modeles=n_modeles,
             ref_old=ref_obsolete,  # None si la réf n'est pas supersédée
+            variante=self._variante('description', search_data['reference'], autre_formulation),
         )
 
         QApplication.clipboard().setText(result['description'])
@@ -154,6 +162,7 @@ class SEOService:
         status_msg = f"Méta description copiée ({length}/150 caractères)"
         if result['info']['truncated']:
             status_msg += " [Tronquée]"
+        status_msg += self._libelle_variante(result['info'])
         if ref_obsolete:
             status_msg += f" [Supersédée → {search_data['reference']}]"
 
@@ -168,6 +177,28 @@ class SEOService:
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 5000)
     
+    @staticmethod
+    def _maj_enfoncee() -> bool:
+        """Touche Maj enfoncée au moment du clic (lue avant tout dialogue modal)."""
+        return bool(QApplication.keyboardModifiers() & Qt.ShiftModifier)
+
+    def _variante(self, genre: str, reference: str, autre_formulation: bool) -> int:
+        """
+        Clic simple : 0, la méta fixe de la référence. Maj+clic : la formulation
+        suivante, à partir de la dernière proposée pour cette référence.
+        """
+        cle = (genre, reference)
+        variante = self._variantes.get(cle, 0) + 1 if autre_formulation else 0
+        self._variantes[cle] = variante
+        return variante
+
+    @staticmethod
+    def _libelle_variante(info: Dict[str, Any]) -> str:
+        """« [formulation 3/27] » hors formulation par défaut, sinon rien."""
+        if not info.get('variante'):
+            return ""
+        return f" [formulation {info['variante'] + 1}/{info['nb_variantes']}]"
+
     def _count_compatible_models(self, refs: List[str]) -> int:
         """Compte le nombre de modèles d'appareils uniques compatibles avec les références données."""
         if not refs:
