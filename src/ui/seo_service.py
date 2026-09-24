@@ -10,7 +10,6 @@ Responsabilités:
 - Validation et formatage des données pour l'optimisation SEO
 """
 
-from collections import Counter
 from typing import Optional, Dict, Any, List, Tuple
 from .qt_imports import QInputDialog, QApplication
 from .qt_imports import QTimer
@@ -211,21 +210,23 @@ class SEOService:
     def _enrich_with_supersession_data(self, search_data: Dict[str, any],
                                         ref_obsolete: str) -> Dict[str, any]:
         """
-        Enrichit les fabricants et le type avec les données de la référence courante.
-        La description reste celle de la référence originale recherchée.
+        Recalcule fabricants, type et libellé sur la famille de la référence courante :
+        elle-même et tous ses prédécesseurs, plus les références déjà agrégées (recherche
+        multi-références). Taper une ancienne référence donne ainsi la même méta que
+        taper la référence courante : une fiche produit, une méta.
         """
         ref_current = search_data['reference']
-        types_list = list()
-        # Initialiser avec count=1 pour les fabricants déjà présents
-        fabricants_count = {f: 1 for f in search_data.get('fabricants', [])}
+        refs = self._avec_predecesseurs([ref_current])
+        refs += [r for r in search_data.get('refs_agregees', []) if r not in refs]
 
         try:
-            self._accumuler_appareils([ref_current], types_list, fabricants_count)
+            poids_types, poids_fabricants = self._compter_appareils(refs)
 
-            if types_list:
-                search_data['type_appareil'] = self._type_majoritaire(types_list)
-
-            search_data['fabricants'] = self._classer_fabricants(fabricants_count)
+            if poids_types:
+                search_data['type_appareil'] = self._type_majoritaire(poids_types)
+            if poids_fabricants:
+                search_data['fabricants'] = self._classer_fabricants(poids_fabricants)
+            search_data['refs_agregees'] = refs
 
             # Mettre à jour la description avec celle de la référence courante si disponible
             desc_current = self._get_piece_description_from_reference(ref_current)
@@ -266,13 +267,14 @@ class SEOService:
         # Extraire TOUS les fabricants et types depuis la base de données pour TOUTES les pièces,
         # prédécesseurs compris (ils héritent de leur couverture fabricants/types)
         all_refs = self._avec_predecesseurs(search_terms)
-        types_appareil_list, fabricants_count = self._collecter_appareils(all_refs)
+        poids_types, poids_fabricants = self._collecter_appareils(all_refs)
 
         return {
             'reference': primary_reference,
             'description': piece_description,
-            'type_appareil': self._type_majoritaire(types_appareil_list),
-            'fabricants': self._classer_fabricants(fabricants_count)
+            'type_appareil': self._type_majoritaire(poids_types),
+            'fabricants': self._classer_fabricants(poids_fabricants),
+            'refs_agregees': all_refs,
         }
     
     @handle_seo_data_errors()
@@ -409,25 +411,20 @@ class SEOService:
             # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
             all_refs_multi = self._avec_predecesseurs(references)
 
-            # Récupérer les données agrégées de TOUTES les références (directes + prédécesseurs)
-            all_types = []
-            all_manufacturers_count: Dict[str, int] = {}
-            piece_description = None
-
+            # Les références d'une recherche « A || B » désignent une même pièce : leurs
+            # appareils sont agrégés (directes + prédécesseurs). Le libellé, lui, est celui
+            # de la référence choisie ; à défaut, le premier trouvé.
+            piece_description = self._get_piece_description_from_reference(specific_reference)
             for ref in all_refs_multi:
-                desc = self._get_piece_description_from_reference(ref)
-                if desc and not piece_description:
-                    piece_description = desc
+                if piece_description:
+                    break
+                piece_description = self._get_piece_description_from_reference(ref)
 
-                try:
-                    nb_lignes = self._accumuler_appareils([ref], all_types, all_manufacturers_count)
-                    app_logger.info(f"Référence {ref}: {nb_lignes} appareils trouvés")
-                except Exception as e:
-                    app_logger.error(f"Erreur récupération données pour {ref}: {e}")
+            poids_types, poids_fabricants = self._collecter_appareils(all_refs_multi)
 
-            if piece_description and (all_types or all_manufacturers_count):
-                type_appareil = self._type_majoritaire(all_types)
-                fabricants_list = self._classer_fabricants(all_manufacturers_count)
+            if piece_description and (poids_types or poids_fabricants):
+                type_appareil = self._type_majoritaire(poids_types)
+                fabricants_list = self._classer_fabricants(poids_fabricants)
 
                 app_logger.info(f"Multi-ref agrégé: type={type_appareil}, fabricants={len(fabricants_list)}")
 
@@ -435,7 +432,8 @@ class SEOService:
                     'reference': specific_reference,
                     'description': piece_description,
                     'type_appareil': type_appareil,
-                    'fabricants': fabricants_list
+                    'fabricants': fabricants_list,
+                    'refs_agregees': all_refs_multi,
                 }
             else:
                 app_logger.warning("Aucune donnée valide trouvée dans la recherche multi-références")
@@ -459,13 +457,14 @@ class SEOService:
         # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce,
         # prédécesseurs compris (ils héritent de leur couverture fabricants/types)
         all_refs_single = self._avec_predecesseurs([specific_reference])
-        types_appareil_list, fabricants_count = self._collecter_appareils(all_refs_single)
+        poids_types, poids_fabricants = self._collecter_appareils(all_refs_single)
 
         return {
             'reference': specific_reference,
             'description': piece_description,
-            'type_appareil': self._type_majoritaire(types_appareil_list),
-            'fabricants': self._classer_fabricants(fabricants_count)
+            'type_appareil': self._type_majoritaire(poids_types),
+            'fabricants': self._classer_fabricants(poids_fabricants),
+            'refs_agregees': all_refs_single,
         }
 
     # ── Agrégation des appareils compatibles (socle commun des 4 chemins) ──
@@ -482,57 +481,61 @@ class SEOService:
                 pass
         return all_refs
 
-    def _accumuler_appareils(self, refs: List[str], types: List[str],
-                             fabricants_count: Dict[str, int]) -> int:
+    def _compter_appareils(self, refs: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
         """
-        Ajoute à `types` et `fabricants_count` les appareils associés à chaque référence.
-        Les listes sont modifiées en place : un appelant qui intercepte une erreur SQL
-        conserve ce qui a été accumulé avant elle. Retourne le nombre de lignes lues.
+        Nombre de modèles compatibles par type d'appareil et par fabricant, toutes
+        références confondues (un modèle associé à deux d'entre elles compte une fois).
+        Les erreurs SQL remontent à l'appelant.
         """
-        fabricants_query = Config.get_query('devices_for_piece')
-        nb_lignes = 0
-        for ref in refs:
-            rows = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
-            nb_lignes += len(rows)
-            for type_val, manufacturer in rows:
-                if type_val and type_val.strip():
-                    types.append(type_val.strip())
-                if manufacturer and manufacturer.strip():
-                    m = manufacturer.strip()
-                    fabricants_count[m] = fabricants_count.get(m, 0) + 1
-        return nb_lignes
+        poids_types: Dict[str, int] = {}
+        poids_fabricants: Dict[str, int] = {}
+        if not refs:
+            return poids_types, poids_fabricants
+        query = Config.get_query('device_counts_for_pieces',
+                                 placeholders=','.join('?' * len(refs)))
+        for type_val, manufacturer, nb_modeles in self.main_window.db_manager.execute_custom_query(query, refs):
+            if type_val:
+                poids_types[type_val] = poids_types.get(type_val, 0) + nb_modeles
+            if manufacturer:
+                poids_fabricants[manufacturer] = poids_fabricants.get(manufacturer, 0) + nb_modeles
+        return poids_types, poids_fabricants
 
-    def _collecter_appareils(self, refs: List[str]) -> Tuple[List[str], Dict[str, int]]:
+    def _collecter_appareils(self, refs: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
         """
-        Types et fabricants des appareils associés aux références.
-        Si la base échoue, complète avec les lignes visibles du tableau (20 au plus).
+        Comme _compter_appareils, mais si la base échoue, se rabat sur les lignes visibles
+        du tableau (20 au plus) : chaque ligne est un modèle et pèse 1.
         """
-        types: List[str] = []
-        fabricants_count: Dict[str, int] = {}  # fabricant → poids (pour tri par pertinence)
         try:
-            self._accumuler_appareils(refs, types, fabricants_count)
+            return self._compter_appareils(refs)
         except Exception as e:
             app_logger.error(f"Erreur récupération fabricants pour {refs}: {e}")
 
-            # Fallback: utiliser les données visibles du tableau si la requête échoue
-            for row in range(min(self.main_window.table.rowCount(), 20)):
-                if not self.main_window.table.isRowHidden(row):
-                    type_item = self.main_window.table.item(row, 0)
-                    if type_item and type_item.text().strip():
-                        types.append(type_item.text().strip())
-                    fabricant_item = self.main_window.table.item(row, 1)
-                    if fabricant_item and fabricant_item.text().strip():
-                        m = fabricant_item.text().strip()
-                        fabricants_count[m] = fabricants_count.get(m, 0) + 1
-        return types, fabricants_count
+        poids_types: Dict[str, int] = {}
+        poids_fabricants: Dict[str, int] = {}
+        for row in range(min(self.main_window.table.rowCount(), 20)):
+            if not self.main_window.table.isRowHidden(row):
+                type_item = self.main_window.table.item(row, 0)
+                if type_item and type_item.text().strip():
+                    t = type_item.text().strip()
+                    poids_types[t] = poids_types.get(t, 0) + 1
+                fabricant_item = self.main_window.table.item(row, 1)
+                if fabricant_item and fabricant_item.text().strip():
+                    m = fabricant_item.text().strip()
+                    poids_fabricants[m] = poids_fabricants.get(m, 0) + 1
+        return poids_types, poids_fabricants
 
     @staticmethod
-    def _type_majoritaire(types: List[str], defaut: str = "appareil électroménager") -> str:
-        """Type d'appareil le plus représenté, ou `defaut` si aucun."""
-        return Counter(types).most_common(1)[0][0] if types else defaut
+    def _par_poids(poids: Dict[str, int]) -> List[str]:
+        """Clés par poids décroissant ; à égalité, ordre alphabétique (résultat stable)."""
+        return [k for k, _ in sorted(poids.items(), key=lambda x: (-x[1], x[0].casefold(), x[0]))]
 
-    @staticmethod
-    def _classer_fabricants(fabricants_count: Dict[str, int]) -> List[str]:
-        """Fabricants par poids décroissant (les plus compatibles en premier)."""
-        return [f for f, _ in sorted(fabricants_count.items(), key=lambda x: -x[1])] \
-            if fabricants_count else ["multi-marques"]
+    @classmethod
+    def _type_majoritaire(cls, poids_types: Dict[str, int],
+                          defaut: str = "appareil électroménager") -> str:
+        """Type d'appareil qui couvre le plus de modèles, ou `defaut` si aucun."""
+        return cls._par_poids(poids_types)[0] if poids_types else defaut
+
+    @classmethod
+    def _classer_fabricants(cls, poids_fabricants: Dict[str, int]) -> List[str]:
+        """Fabricants du plus grand au plus petit nombre de modèles compatibles."""
+        return cls._par_poids(poids_fabricants) if poids_fabricants else ["multi-marques"]
