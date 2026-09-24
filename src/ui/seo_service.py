@@ -143,8 +143,9 @@ class SEOService:
             preds = self.main_window.db_manager.get_all_predecessors(search_data['reference'])
             all_refs_for_count.extend(preds)
         except Exception:
-            pass
+            preds = []
         n_modeles = self._count_compatible_models(all_refs_for_count)
+        anciennes_refs = self._anciennes_refs_principales(preds)
 
         result = self.seo_generator.generate_meta_description(
             reference=search_data['reference'],
@@ -152,7 +153,7 @@ class SEOService:
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
             n_modeles=n_modeles,
-            ref_old=ref_obsolete,  # None si la réf n'est pas supersédée
+            anciennes_refs=anciennes_refs,  # toujours citées quand il y en a (décision client)
             variante=self._variante('description', search_data['reference'], autre_formulation),
         )
 
@@ -198,6 +199,29 @@ class SEOService:
         if not info.get('variante'):
             return ""
         return f" [formulation {info['variante'] + 1}/{info['nb_variantes']}]"
+
+    def _anciennes_refs_principales(self, predecesseurs: List[str]) -> List[str]:
+        """
+        Les MAX_ANCIENNES_REFS anciennes références à citer : celles qui ont le plus
+        de modèles compatibles (probablement les plus recherchées), à égalité par
+        ordre alphabétique. Indépendant de la référence tapée : une fiche, une méta.
+        """
+        if not predecesseurs:
+            return []
+        nb_modeles = {ref: 0 for ref in predecesseurs}
+        try:
+            placeholders = ','.join('?' * len(predecesseurs))
+            query = f"""SELECT p.ref_piece, COUNT(DISTINCT pa.appareil_id)
+                        FROM pieces p
+                        JOIN piece_associations pa ON pa.piece_id = p.id
+                        WHERE p.ref_piece IN ({placeholders})
+                        GROUP BY p.ref_piece"""
+            for ref, n in self.main_window.db_manager.execute_custom_query(query, predecesseurs):
+                nb_modeles[ref] = n
+        except Exception as e:
+            app_logger.warning(f"SEO: impossible de classer les anciennes références {predecesseurs}: {e}")
+        classees = sorted(nb_modeles, key=lambda r: (-nb_modeles[r], r))
+        return classees[:SEOGenerator.MAX_ANCIENNES_REFS]
 
     def _count_compatible_models(self, refs: List[str]) -> int:
         """Compte le nombre de modèles d'appareils uniques compatibles avec les références données."""

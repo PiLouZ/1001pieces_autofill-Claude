@@ -221,3 +221,65 @@ def test_aucun_appareil(db):
     donnees = _meta(db, "R1")
     assert donnees['fabricants'] == ["multi-marques"]
     assert donnees['type_appareil'] == "appareil électroménager"
+
+
+# ── Anciennes références citées dans la description ──
+# Décision client (2026-09-24) : toujours citer les anciennes références de la
+# fiche, 2 au plus, celles qui ont le plus de modèles compatibles.
+
+def test_anciennes_refs_les_plus_compatibles_d_abord(db):
+    db.piece("NEW")
+    for ref, nombre in (("OLD_A", 2), ("OLD_B", 9), ("OLD_C", 5), ("OLD_D", 5)):
+        db.piece(ref)
+        db.remplace(ref, "NEW")
+        db.modeles(ref, "Four", "Bosch", nombre)
+    db.piece("OLD_E")  # sans aucun modèle
+    db.remplace("OLD_E", "OLD_A")  # prédécesseur indirect
+
+    service = SEOService(_Fenetre(db))
+    preds = db.get_all_predecessors("NEW")
+    assert set(preds) == {"OLD_A", "OLD_B", "OLD_C", "OLD_D", "OLD_E"}
+    # 9 modèles, puis égalité 5-5 départagée par ordre alphabétique
+    assert service._anciennes_refs_principales(preds) == ["OLD_B", "OLD_C"]
+
+
+def test_ancienne_ref_sans_piece_en_base_comptee_zero(db):
+    db.piece("NEW")
+    db.remplace("FANTOME", "NEW")
+    service = SEOService(_Fenetre(db))
+    assert service._anciennes_refs_principales(["FANTOME"]) == ["FANTOME"]
+    assert service._anciennes_refs_principales([]) == []
+
+
+def test_description_cite_toujours_les_anciennes_refs():
+    from src.utils.seo_generator import SEOGenerator
+    g = SEOGenerator()
+    for variante in range(len(SEOGenerator.META_DESCRIPTION_TEMPLATES_SUPERSESSION)):
+        r = g.generate_meta_description(reference="71X1028", description="Joint de porte",
+                                        type_appareil="Cuisinière", fabricants=["De Dietrich", "Sauter"],
+                                        anciennes_refs=["72X7221", "74X5829", "79X0000"], variante=variante)
+        assert "anciennes réf. 72X7221 et 74X5829" in r['description'], r['description']
+        assert "79X0000" not in r['description']  # 2 au plus
+        assert r['info']['is_supersession']
+
+
+@pytest.mark.parametrize("anciennes,attendu", [
+    ([], ""),
+    (["A1"], "ancienne réf. A1"),
+    (["A1", "B2"], "anciennes réf. A1 et B2"),
+])
+def test_formulation_des_anciennes_refs(anciennes, attendu):
+    from src.utils.seo_generator import SEOGenerator
+    assert SEOGenerator._formuler_anciennes_refs(anciennes) == attendu
+
+
+def test_une_seule_ancienne_ref_si_deux_ne_laissent_aucune_marque():
+    from src.utils.seo_generator import SEOGenerator
+    g = SEOGenerator()
+    gabarit = SEOGenerator.META_DESCRIPTION_TEMPLATES_SUPERSESSION[3]  # le plus long
+    g._choose_description_template = lambda *a: gabarit
+    r = g.generate_meta_description(reference="140000210041", description="Vis de pied réglage central",
+                                    type_appareil="Lave-vaisselle", fabricants=["Bosch"],
+                                    anciennes_refs=["140000210017", "140000210099"])
+    assert r['info']['anciennes_refs'] == ["140000210017"]
+    assert "Bosch" in r['description']

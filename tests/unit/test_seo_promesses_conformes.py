@@ -64,7 +64,7 @@ def test_gabarit_conforme(gabarit):
 def test_gabarit_se_remplit(gabarit):
     """Chaque gabarit n'utilise que des champs connus du générateur."""
     gabarit.format(description="le joint", description_cap="Le joint", reference="R1",
-                   type_appareil="four", fabricants="Bosch", ref_old="R0")
+                   type_appareil="four", fabricants="Bosch", anciennes_refs="ancienne réf. R0")
 
 
 def test_descriptions_generees_conformes():
@@ -73,17 +73,17 @@ def test_descriptions_generees_conformes():
     g = SEOGenerator()
     cas = [
         ("Joint de hublot", "Lave-linge", ["Candy", "Hoover", "Otsein"], 1200, None),
-        ("Verrou de porte", "Lave-vaisselle", ["Bosch", "Siemens"], 5, "00636708"),
+        ("Verrou de porte", "Lave-vaisselle", ["Bosch", "Siemens"], 5, ["00636708", "00652509"]),
         ("Thermostat", "Four", ["Faure"], 30, None),
         ("Filtre à charbon", "Hotte", ["De Dietrich"], 3, None),
     ]
-    for description, type_appareil, fabricants, n_modeles, ref_old in cas:
+    for description, type_appareil, fabricants, n_modeles, anciennes in cas:
         # Toutes les formulations possibles pour ce cas (la méta est fixe par
         # référence ; les variantes parcourent tout le pool de gabarits)
         for variante in range(60):
             texte = g.generate_meta_description(
                 reference="REF123", description=description, type_appareil=type_appareil,
-                fabricants=fabricants, n_modeles=n_modeles, ref_old=ref_old, variante=variante,
+                fabricants=fabricants, n_modeles=n_modeles, anciennes_refs=anciennes, variante=variante,
             )['description']
             assert _violations(texte) == [], texte
 

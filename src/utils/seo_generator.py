@@ -60,12 +60,21 @@ class SEOGenerator:
         "{description_cap} {reference} compatible avec de nombreux {type_appareil} {fabricants} — trouvez la vôtre",
         "Pièce multi-modèles : {description} {reference} pour {type_appareil} {fabricants} — large compatibilité",
     ]
-    # Supersession : la référence courante remplace une ancienne réf (capte les
-    # recherches encore faites sur l'ancienne référence {ref_old}).
+    # Supersession : la référence remplace d'anciennes références, que les clients
+    # cherchent encore (c'est souvent celle imprimée sur la pièce usée). Quand il y
+    # en a, la description les cite TOUJOURS : ces gabarits forment alors le pool.
+    # {anciennes_refs} = « ancienne réf. X » ou « anciennes réf. X et Y » : forme
+    # nominale, qui s'accorde avec tout libellé (« vos filtres … remplace » était faux).
     META_DESCRIPTION_TEMPLATES_SUPERSESSION = [
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — remplace l'ancienne référence {ref_old}",
-        "{description_cap} {reference} remplace {ref_old} — pièce compatible {type_appareil} {fabricants}",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — {anciennes_refs}",
+        "{description_cap} {reference} ({anciennes_refs}) pour {type_appareil} {fabricants}",
+        "{description_cap} {reference} pour {type_appareil} {fabricants}, {anciennes_refs} — Chronopost J+1 avant 13h",
+        "{description_cap} {reference} ({anciennes_refs}) pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
+        "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, {anciennes_refs}",
+        "{description_cap} {reference} ({anciennes_refs}) pour {type_appareil} {fabricants} — retrait en magasin possible",
     ]
+    # Anciennes références citées au plus (les plus compatibles, choisies par seo_service)
+    MAX_ANCIENNES_REFS = 2
     # Seuil « large compatibilité » (nb de modèles) et poids des templates contextuels
     # dans le tirage pondéré. Réglables : un poids > 1 favorise sans forcer (la diversité
     # du pool générique reste possible).
@@ -337,35 +346,46 @@ class SEOGenerator:
     @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
                                  fabricants: List[str], max_length: int = 150,
-                                 n_modeles: int = 0, ref_old: Optional[str] = None,
+                                 n_modeles: int = 0, anciennes_refs: Optional[List[str]] = None,
                                  variante: int = 0) -> Dict[str, any]:
         """
         Générer une méta description via un tirage pondéré contextuel (L2/L3) :
         pool générique (unicité à grande échelle) enrichi de templates de segment
-        (type d'appareil), de forte compatibilité (n_modeles) et de supersession
-        (ref_old), favorisés sans jamais évincer la diversité générique.
-        La référence est la référence courante (résolue en amont) ; ref_old, si
-        fourni, est la référence obsolète remplacée (mentionnée par les gabarits
-        supersession uniquement).
+        (type d'appareil) et de forte compatibilité (n_modeles), favorisés sans jamais
+        évincer la diversité générique.
+        La référence est la référence courante (résolue en amont). anciennes_refs, si
+        fourni, liste les références qu'elle remplace, les plus pertinentes d'abord :
+        les MAX_ANCIENNES_REFS premières sont alors toujours citées (une seule si les
+        deux ne laissent la place à aucune marque).
         Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
         `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=False)
         type_clean = self._normalize_type(type_appareil)
-        ref_old_clean = ref_old.strip() if ref_old else None
+        anciennes = [r.strip() for r in (anciennes_refs or []) if r and r.strip()]
+        anciennes = anciennes[:self.MAX_ANCIENNES_REFS]
 
         article = self._get_article(description_clean)
         description_with_article = f"{article} {description_clean}"
 
-        template = self._choose_description_template(type_clean, n_modeles, ref_old_clean,
+        template = self._choose_description_template(type_clean, n_modeles, bool(anciennes),
                                                      reference_clean, variante)
-        nb_variantes = len(self._pool_description(type_clean, n_modeles, ref_old_clean)[0])
+        nb_variantes = len(self._pool_description(type_clean, n_modeles, bool(anciennes))[0])
 
+        anciennes_str = self._formuler_anciennes_refs(anciennes)
         fabricants_str = self._select_fabricants_for_description(
             fabricants, template, reference_clean, description_with_article, type_clean, max_length,
-            ref_old=ref_old_clean
+            anciennes_refs=anciennes_str
         )
+        if not fabricants_str and fabricants and len(anciennes) > 1:
+            # Deux anciennes réfs ne laissent la place à aucune marque : une seule
+            anciennes = anciennes[:1]
+            anciennes_str = self._formuler_anciennes_refs(anciennes)
+            fabricants_str = self._select_fabricants_for_description(
+                fabricants, template, reference_clean, description_with_article, type_clean,
+                max_length, anciennes_refs=anciennes_str
+            )
 
         # ── Instancier le template ────────────────────────────────────────────
         fmt_kwargs = dict(
@@ -374,7 +394,7 @@ class SEOGenerator:
             reference=reference_clean,
             type_appareil=type_clean,
             fabricants=fabricants_str,
-            ref_old=(ref_old_clean or ""),
+            anciennes_refs=anciennes_str,
         )
 
         # " ".join(split()) : un {fabricants} vide ne laisse pas de double espace
@@ -391,8 +411,8 @@ class SEOGenerator:
             'fabricants_used': fabricants_str,
             'fabricants_count': len(fabricants),
             'n_modeles': n_modeles,
-            'ref_old': ref_old_clean,
-            'is_supersession': bool(ref_old_clean) and '{ref_old}' in template,
+            'anciennes_refs': anciennes,
+            'is_supersession': '{anciennes_refs}' in template,
             'variante': variante % nb_variantes,
             'nb_variantes': nb_variantes,
         }
@@ -421,14 +441,20 @@ class SEOGenerator:
         return self.SEGMENT_DESCRIPTION_TEMPLATES[best_key] if best_key else []
 
     def _pool_description(self, type_norm: str, n_modeles: int,
-                          ref_old: Optional[str]) -> Tuple[List[str], List[float]]:
+                          a_des_anciennes_refs: bool) -> Tuple[List[str], List[float]]:
         """
         Gabarits de description possibles et leur poids (L2/L3).
+        Une référence qui en remplace d'autres n'utilise que les gabarits de
+        supersession : ses anciennes références sont toujours citées.
         Le pool générique (25 templates) est TOUJOURS présent — garantie d'unicité
         et de diversité à grande échelle. Les templates contextuels (segment,
         forte compatibilité, supersession) ne rejoignent le pool que si leur signal
         est actif, avec un poids > 1 : favorisés sans jamais évincer le générique.
         """
+        if a_des_anciennes_refs:
+            pool = list(self.META_DESCRIPTION_TEMPLATES_SUPERSESSION)
+            return pool, [1.0] * len(pool)
+
         pool = list(self.META_DESCRIPTION_TEMPLATES)
         weights = [1.0] * len(pool)
 
@@ -442,24 +468,21 @@ class SEOGenerator:
         # L2 — forte compatibilité (la pièce équipe beaucoup de modèles)
         if n_modeles >= self.COMPAT_MODELS_THRESHOLD:
             _boost(self.META_DESCRIPTION_TEMPLATES_COMPAT)
-        # L2 — supersession (mention explicite de l'ancienne référence)
-        if ref_old:
-            _boost(self.META_DESCRIPTION_TEMPLATES_SUPERSESSION)
 
         return pool, weights
 
     def _choose_description_template(self, type_norm: str, n_modeles: int,
-                                     ref_old: Optional[str], reference: str = "",
+                                     a_des_anciennes_refs: bool = False, reference: str = "",
                                      variante: int = 0) -> str:
         """Gabarit de description, fixe pour une référence (voir _ordre_deterministe)."""
-        pool, weights = self._pool_description(type_norm, n_modeles, ref_old)
+        pool, weights = self._pool_description(type_norm, n_modeles, a_des_anciennes_refs)
         ordre = self._ordre_deterministe(pool, weights, reference)
         return ordre[variante % len(ordre)]
 
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description_with_article: str,
                                          type_appareil: str, max_length: int,
-                                         ref_old: Optional[str] = None) -> str:
+                                         anciennes_refs: str = "") -> str:
         """
         Jusqu'à MAX_MARQUES marques (« A, B et C »), autant qu'en laisse la place.
         Retourne "" si même la première ne tient pas : une marque coupée serait pire.
@@ -476,9 +499,8 @@ class SEOGenerator:
             reference=reference,
             type_appareil=type_appareil,
             fabricants="",
+            anciennes_refs=anciennes_refs,
         )
-        if ref_old:
-            fmt_kwargs['ref_old'] = ref_old
         base_length = len(template.format(**fmt_kwargs))
         available_space = max_length - base_length
 
@@ -487,6 +509,15 @@ class SEOGenerator:
             if len(texte) <= available_space:
                 return texte
         return ""
+
+    @staticmethod
+    def _formuler_anciennes_refs(anciennes: List[str]) -> str:
+        """« ancienne réf. X », « anciennes réf. X et Y » ; "" s'il n'y en a pas."""
+        if not anciennes:
+            return ""
+        if len(anciennes) == 1:
+            return f"ancienne réf. {anciennes[0]}"
+        return "anciennes réf. " + ", ".join(anciennes[:-1]) + " et " + anciennes[-1]
 
     @staticmethod
     def _joindre_marques_description(marques: List[str]) -> str:
