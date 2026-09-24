@@ -10,6 +10,7 @@ Responsabilités:
 - Validation et formatage des données pour l'optimisation SEO
 """
 
+from collections import Counter
 from typing import Optional, Dict, Any, List, Tuple
 from .qt_imports import QInputDialog, QApplication
 from .qt_imports import QTimer
@@ -214,27 +215,17 @@ class SEOService:
         La description reste celle de la référence originale recherchée.
         """
         ref_current = search_data['reference']
-        fabricants_query = Config.get_query('devices_for_piece')
-        from collections import Counter
         types_list = list()
         # Initialiser avec count=1 pour les fabricants déjà présents
         fabricants_count = {f: 1 for f in search_data.get('fabricants', [])}
 
         try:
-            rows = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref_current])
-            for type_val, manufacturer in rows:
-                if type_val and type_val.strip():
-                    types_list.append(type_val.strip())
-                if manufacturer and manufacturer.strip():
-                    m = manufacturer.strip()
-                    fabricants_count[m] = fabricants_count.get(m, 0) + 1
+            self._accumuler_appareils([ref_current], types_list, fabricants_count)
 
             if types_list:
-                type_counter = Counter(types_list)
-                search_data['type_appareil'] = type_counter.most_common(1)[0][0]
+                search_data['type_appareil'] = self._type_majoritaire(types_list)
 
-            search_data['fabricants'] = [f for f, _ in sorted(fabricants_count.items(), key=lambda x: -x[1])] \
-                if fabricants_count else ["multi-marques"]
+            search_data['fabricants'] = self._classer_fabricants(fabricants_count)
 
             # Mettre à jour la description avec celle de la référence courante si disponible
             desc_current = self._get_piece_description_from_reference(ref_current)
@@ -272,66 +263,16 @@ class SEOService:
         if self.main_window.table.rowCount() == 0:
             return None
 
-        # Extraire TOUS les fabricants et types depuis la base de données pour TOUTES les pièces
-        from collections import Counter
-        types_appareil_list = []
-        fabricants_count: Dict[str, int] = {}  # fabricant → nb d'occurrences (pour tri par pertinence)
-
-        fabricants_query = Config.get_query('devices_for_piece')
-
-        # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
-        all_refs = list(search_terms)
-        for ref in search_terms:
-            try:
-                predecessors = self.main_window.db_manager.get_all_predecessors(ref)
-                for pred in predecessors:
-                    if pred not in all_refs:
-                        all_refs.append(pred)
-            except Exception:
-                pass
-
-        try:
-            for ref in all_refs:
-                all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
-                for type_val, manufacturer in all_data:
-                    if type_val and type_val.strip():
-                        types_appareil_list.append(type_val.strip())
-                    if manufacturer and manufacturer.strip():
-                        m = manufacturer.strip()
-                        fabricants_count[m] = fabricants_count.get(m, 0) + 1
-
-        except Exception as e:
-            app_logger.error(f"Erreur récupération fabricants pour {all_refs}: {e}")
-
-            # Fallback: utiliser les données visibles du tableau si la requête échoue
-            for row in range(min(self.main_window.table.rowCount(), 20)):
-                if not self.main_window.table.isRowHidden(row):
-                    type_item = self.main_window.table.item(row, 0)
-                    if type_item and type_item.text().strip():
-                        types_appareil_list.append(type_item.text().strip())
-                    fabricant_item = self.main_window.table.item(row, 1)
-                    if fabricant_item and fabricant_item.text().strip():
-                        m = fabricant_item.text().strip()
-                        fabricants_count[m] = fabricants_count.get(m, 0) + 1
-
-        reference = primary_reference
-        description = piece_description
-
-        if types_appareil_list:
-            type_counter = Counter(types_appareil_list)
-            type_appareil = type_counter.most_common(1)[0][0]
-        else:
-            type_appareil = "appareil électroménager"
-
-        # Tri par fréquence décroissante (les marques les plus compatibles en premier)
-        fabricants_list = [f for f, _ in sorted(fabricants_count.items(), key=lambda x: -x[1])] \
-            if fabricants_count else ["multi-marques"]
+        # Extraire TOUS les fabricants et types depuis la base de données pour TOUTES les pièces,
+        # prédécesseurs compris (ils héritent de leur couverture fabricants/types)
+        all_refs = self._avec_predecesseurs(search_terms)
+        types_appareil_list, fabricants_count = self._collecter_appareils(all_refs)
 
         return {
-            'reference': reference,
-            'description': description,
-            'type_appareil': type_appareil,
-            'fabricants': fabricants_list
+            'reference': primary_reference,
+            'description': piece_description,
+            'type_appareil': self._type_majoritaire(types_appareil_list),
+            'fabricants': self._classer_fabricants(fabricants_count)
         }
     
     @handle_seo_data_errors()
@@ -466,18 +407,9 @@ class SEOService:
             app_logger.info(f"Génération méta pour multi-références: {references}")
 
             # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
-            all_refs_multi = list(references)
-            for ref in references:
-                try:
-                    predecessors = self.main_window.db_manager.get_all_predecessors(ref)
-                    for pred in predecessors:
-                        if pred not in all_refs_multi:
-                            all_refs_multi.append(pred)
-                except Exception:
-                    pass
+            all_refs_multi = self._avec_predecesseurs(references)
 
             # Récupérer les données agrégées de TOUTES les références (directes + prédécesseurs)
-            from collections import Counter
             all_types = []
             all_manufacturers_count: Dict[str, int] = {}
             piece_description = None
@@ -487,28 +419,15 @@ class SEOService:
                 if desc and not piece_description:
                     piece_description = desc
 
-                fabricants_query = Config.get_query('devices_for_piece')
                 try:
-                    ref_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
-                    for type_val, manufacturer in ref_data:
-                        if type_val and type_val.strip():
-                            all_types.append(type_val.strip())
-                        if manufacturer and manufacturer.strip():
-                            m = manufacturer.strip()
-                            all_manufacturers_count[m] = all_manufacturers_count.get(m, 0) + 1
-                    app_logger.info(f"Référence {ref}: {len(ref_data)} appareils trouvés")
+                    nb_lignes = self._accumuler_appareils([ref], all_types, all_manufacturers_count)
+                    app_logger.info(f"Référence {ref}: {nb_lignes} appareils trouvés")
                 except Exception as e:
                     app_logger.error(f"Erreur récupération données pour {ref}: {e}")
 
             if piece_description and (all_types or all_manufacturers_count):
-                if all_types:
-                    type_counter = Counter(all_types)
-                    type_appareil = type_counter.most_common(1)[0][0]
-                else:
-                    type_appareil = "appareil électroménager"
-
-                fabricants_list = [f for f, _ in sorted(all_manufacturers_count.items(), key=lambda x: -x[1])] \
-                    if all_manufacturers_count else ["multi-marques"]
+                type_appareil = self._type_majoritaire(all_types)
+                fabricants_list = self._classer_fabricants(all_manufacturers_count)
 
                 app_logger.info(f"Multi-ref agrégé: type={type_appareil}, fabricants={len(fabricants_list)}")
 
@@ -537,58 +456,83 @@ class SEOService:
         if self.main_window.table.rowCount() == 0:
             return None
 
-        # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
-        from collections import Counter
-        types_appareil_list2 = []
-        fabricants_count2: Dict[str, int] = {}
-
-        fabricants_query = Config.get_query('devices_for_piece')
-
-        # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
-        all_refs_single = [specific_reference]
-        try:
-            predecessors = self.main_window.db_manager.get_all_predecessors(specific_reference)
-            for pred in predecessors:
-                if pred not in all_refs_single:
-                    all_refs_single.append(pred)
-        except Exception:
-            pass
-
-        try:
-            for ref in all_refs_single:
-                all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
-                for type_val, manufacturer in all_data:
-                    if type_val and type_val.strip():
-                        types_appareil_list2.append(type_val.strip())
-                    if manufacturer and manufacturer.strip():
-                        m = manufacturer.strip()
-                        fabricants_count2[m] = fabricants_count2.get(m, 0) + 1
-
-        except Exception as e:
-            app_logger.error(f"Erreur récupération fabricants pour {all_refs_single}: {e}")
-
-            for row in range(min(self.main_window.table.rowCount(), 20)):
-                if not self.main_window.table.isRowHidden(row):
-                    type_item = self.main_window.table.item(row, 0)
-                    if type_item and type_item.text().strip():
-                        types_appareil_list2.append(type_item.text().strip())
-                    fabricant_item = self.main_window.table.item(row, 1)
-                    if fabricant_item and fabricant_item.text().strip():
-                        m = fabricant_item.text().strip()
-                        fabricants_count2[m] = fabricants_count2.get(m, 0) + 1
-
-        if types_appareil_list2:
-            type_counter2 = Counter(types_appareil_list2)
-            type_appareil = type_counter2.most_common(1)[0][0]
-        else:
-            type_appareil = "appareil électroménager"
-
-        fabricants_list = [f for f, _ in sorted(fabricants_count2.items(), key=lambda x: -x[1])] \
-            if fabricants_count2 else ["multi-marques"]
+        # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce,
+        # prédécesseurs compris (ils héritent de leur couverture fabricants/types)
+        all_refs_single = self._avec_predecesseurs([specific_reference])
+        types_appareil_list, fabricants_count = self._collecter_appareils(all_refs_single)
 
         return {
             'reference': specific_reference,
             'description': piece_description,
-            'type_appareil': type_appareil,
-            'fabricants': fabricants_list
+            'type_appareil': self._type_majoritaire(types_appareil_list),
+            'fabricants': self._classer_fabricants(fabricants_count)
         }
+
+    # ── Agrégation des appareils compatibles (socle commun des 4 chemins) ──
+
+    def _avec_predecesseurs(self, refs: List[str]) -> List[str]:
+        """Références données suivies de tous leurs prédécesseurs (sans doublon ajouté)."""
+        all_refs = list(refs)
+        for ref in refs:
+            try:
+                for pred in self.main_window.db_manager.get_all_predecessors(ref):
+                    if pred not in all_refs:
+                        all_refs.append(pred)
+            except Exception:
+                pass
+        return all_refs
+
+    def _accumuler_appareils(self, refs: List[str], types: List[str],
+                             fabricants_count: Dict[str, int]) -> int:
+        """
+        Ajoute à `types` et `fabricants_count` les appareils associés à chaque référence.
+        Les listes sont modifiées en place : un appelant qui intercepte une erreur SQL
+        conserve ce qui a été accumulé avant elle. Retourne le nombre de lignes lues.
+        """
+        fabricants_query = Config.get_query('devices_for_piece')
+        nb_lignes = 0
+        for ref in refs:
+            rows = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
+            nb_lignes += len(rows)
+            for type_val, manufacturer in rows:
+                if type_val and type_val.strip():
+                    types.append(type_val.strip())
+                if manufacturer and manufacturer.strip():
+                    m = manufacturer.strip()
+                    fabricants_count[m] = fabricants_count.get(m, 0) + 1
+        return nb_lignes
+
+    def _collecter_appareils(self, refs: List[str]) -> Tuple[List[str], Dict[str, int]]:
+        """
+        Types et fabricants des appareils associés aux références.
+        Si la base échoue, complète avec les lignes visibles du tableau (20 au plus).
+        """
+        types: List[str] = []
+        fabricants_count: Dict[str, int] = {}  # fabricant → poids (pour tri par pertinence)
+        try:
+            self._accumuler_appareils(refs, types, fabricants_count)
+        except Exception as e:
+            app_logger.error(f"Erreur récupération fabricants pour {refs}: {e}")
+
+            # Fallback: utiliser les données visibles du tableau si la requête échoue
+            for row in range(min(self.main_window.table.rowCount(), 20)):
+                if not self.main_window.table.isRowHidden(row):
+                    type_item = self.main_window.table.item(row, 0)
+                    if type_item and type_item.text().strip():
+                        types.append(type_item.text().strip())
+                    fabricant_item = self.main_window.table.item(row, 1)
+                    if fabricant_item and fabricant_item.text().strip():
+                        m = fabricant_item.text().strip()
+                        fabricants_count[m] = fabricants_count.get(m, 0) + 1
+        return types, fabricants_count
+
+    @staticmethod
+    def _type_majoritaire(types: List[str], defaut: str = "appareil électroménager") -> str:
+        """Type d'appareil le plus représenté, ou `defaut` si aucun."""
+        return Counter(types).most_common(1)[0][0] if types else defaut
+
+    @staticmethod
+    def _classer_fabricants(fabricants_count: Dict[str, int]) -> List[str]:
+        """Fabricants par poids décroissant (les plus compatibles en premier)."""
+        return [f for f, _ in sorted(fabricants_count.items(), key=lambda x: -x[1])] \
+            if fabricants_count else ["multi-marques"]
