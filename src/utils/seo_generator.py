@@ -115,25 +115,29 @@ class SEOGenerator:
         ],
     }
 
-    # Méta title — 3 gabarits, référence (courante) TOUJOURS en position 0.
-    # La troncature coupant par la fin, la référence en position 0 n'est jamais
-    # tronquée. Les 3 variantes diversifient le CTR sans casser les invariants :
-    # chacune commence par {reference} et contient {fabricants} (au moins une
-    # marque garantie par _maximize_brands_in_title). Le gabarit est tiré au
-    # hasard, comme les descriptions ; la réf unique par pièce garantit déjà
-    # l'unicité. Les anciennes références ne sont pas mentionnées (décision produit).
+    # Méta title — 2 gabarits, référence (courante) TOUJOURS en position 0 : elle
+    # n'est jamais raccourcie. Le type d'appareil précède toujours les marques (un
+    # 3ᵉ gabarit « … {fabricants} {type_appareil} » a été retiré : avec des virgules,
+    # « Bosch, Siemens, Neff lave-vaisselle » rattachait l'appareil à la seule
+    # dernière marque, et le type en fin de title était coupé en premier).
+    # Les anciennes références ne sont pas mentionnées (décision produit).
     META_TITLE_TEMPLATES = [
-        "{reference} {description} {type_appareil} {fabricants}",       # baseline
-        "{reference} {description} pour {type_appareil} {fabricants}",  # connecteur naturel
-        "{reference} {description} {fabricants} {type_appareil}",       # marques en avant
+        "{reference} {description} {type_appareil} {fabricants}",
+        "{reference} {description} pour {type_appareil} {fabricants}",
     ]
 
-    # Mots de liaison à supprimer en priorité pour préserver les marques
-    FILLER_WORDS = [
-        "pour", "de", "des", "du", "la", "le", "les", "d'", "l'",
-        "avec", "sans", "sur", "sous", "dans", "par", "et"
-    ]
-    
+    # Au plus 3 marques, séparées par des virgules (title : « A, B, C » ; description :
+    # « A, B et C »). Au-delà, une liste de marques collées se lit comme du bourrage de
+    # mots-clés et repousse les arguments commerciaux hors de l'affichage Google.
+    MAX_MARQUES = 3
+
+    # Mots sur lesquels un libellé raccourci ne doit pas se terminer
+    # (« Façade tiroir congélation intermédiaire ou » → « … intermédiaire »).
+    MOTS_DE_LIAISON = {
+        "à", "au", "aux", "avec", "d'", "de", "des", "du", "en", "et", "l'", "la",
+        "le", "les", "ou", "par", "pour", "sans", "sous", "sur", "dans", "+", "-", "/", "&",
+    }
+
     # Normalisation des types d'appareils (variantes orthographiques → forme canonique)
     TYPE_NORMALIZATION = {
         "lave linge": "lave-linge",
@@ -152,20 +156,6 @@ class SEOGenerator:
         "lave-linge top": "lave-linge top",
     }
 
-    # Remplacements pour raccourcir les titres trop longs (dernier recours avant troncature)
-    # Ordre de priorité : gain de caractères décroissant
-    WORD_REPLACEMENTS = {
-        "lave-vaisselle": "lave-vais.",  # -6 caractères (LV trop cryptique pour le grand public)
-        "sèche-linge": "sèche-ling.",   # -4 caractères
-        "réfrigérateur": "frigo",       # -7 caractères (terme courant)
-        "lave-linge": "lave-ling.",     # -3 caractères
-        "congélateur": "congélo",       # -4 caractères (terme courant)
-        "électroménager": "électromén.", # -3 caractères
-        "électroménagers": "électromén.", # -4 caractères
-        "aspirateur": "aspiro",         # -4 caractères
-        "micro-ondes": "micro-onde",    # -1 caractère
-    }
-    
     def __init__(self):
         self.last_generation_info = {}
 
@@ -200,52 +190,121 @@ class SEOGenerator:
                            fabricants: List[str], max_length: int = 60) -> Dict[str, any]:
         """
         Générer un méta title : référence (courante) en tête, puis libellé,
-        type d'appareil et marques, via un gabarit tiré de META_TITLE_TEMPLATES.
-        Au moins une marque est privilégiée dans la limite de longueur.
+        type d'appareil et jusqu'à 3 marques, via un gabarit tiré de META_TITLE_TEMPLATES.
+
+        S'il dépasse max_length, on essaie dans l'ordre, jusqu'à ce que ça tienne :
+        retirer « pour », retirer des marques (3 → 2 → 1), raccourcir le libellé mot
+        entier par mot entier (le type d'appareil est gardé : décision client), puis
+        retirer le type. Jamais d'abréviation, jamais de mot ni de marque coupés ;
+        au moins une marque tant qu'il y en a une.
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=True)
         type_clean = self._normalize_type(type_appareil)
+        marques = self._marques_uniques(fabricants)[:self.MAX_MARQUES]
 
         template = random.choice(self.META_TITLE_TEMPLATES)
-        template_kwargs = dict(
-            reference=reference_clean,
-            description=description_clean,
-            type_appareil=type_clean,
+        title_complet = self._rendre_title(template, reference_clean, description_clean,
+                                           type_clean, marques)
+        title, marques_retenues = self._raccourcir_title(
+            template, reference_clean, description_clean, type_clean, marques, max_length
         )
-
-        fabricants_optimaux = self._maximize_brands_in_title(
-            fabricants, template, max_length, **template_kwargs
-        )
-
-        # " ".join(split()) : réduit tout espace multiple à un seul et nettoie les bords
-        # (cas d'un {fabricants} vide au milieu du gabarit → double espace). Sortie
-        # identique au chemin normal où les fabricants sont renseignés.
-        raw_title = " ".join(template.format(fabricants=fabricants_optimaux, **template_kwargs).split())
-        base_title = raw_title
-        if len(raw_title) > max_length:
-            base_title = self._optimize_title_with_brands(raw_title, fabricants_optimaux, max_length)
+        fabricants_utilises = ", ".join(marques_retenues)
 
         generation_info = {
             'template_used': template,
-            'original_length': len(raw_title),
-            'final_length': len(base_title),
-            'truncated': len(base_title) < len(raw_title),
-            'within_limit': len(base_title) <= max_length,
-            'fabricants_used': fabricants_optimaux,
-            'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
+            'original_length': len(title_complet),
+            'final_length': len(title),
+            'truncated': len(title) < len(title_complet),
+            'within_limit': len(title) <= max_length,
+            'fabricants_used': fabricants_utilises,
+            'fabricants_count': len(marques_retenues),
             'total_fabricants_available': len(fabricants),
-            'brand_guaranteed': bool(fabricants_optimaux.strip()),
+            'brand_guaranteed': bool(marques_retenues),
         }
 
         self.last_generation_info['title'] = generation_info
 
         return {
-            'title': base_title,
-            'length': len(base_title),
+            'title': title,
+            'length': len(title),
             'info': generation_info
         }
-    
+
+    @staticmethod
+    def _marques_uniques(fabricants: List[str]) -> List[str]:
+        """Marques sans doublon ni vide, dans l'ordre reçu (classées par seo_service)."""
+        vues: set = set()
+        marques = []
+        for f in fabricants:
+            f = f.strip() if isinstance(f, str) else f
+            if f and f not in vues:
+                vues.add(f)
+                marques.append(f)
+        return marques
+
+    @staticmethod
+    def _rendre_title(template: str, reference: str, description: str,
+                      type_appareil: str, marques: List[str]) -> str:
+        # " ".join(split()) : un champ vide ne laisse pas de double espace
+        return " ".join(template.format(reference=reference, description=description,
+                                        type_appareil=type_appareil,
+                                        fabricants=", ".join(marques)).split())
+
+    def _raccourcir_title(self, template: str, reference: str, description: str,
+                          type_appareil: str, marques: List[str],
+                          max_length: int) -> Tuple[str, List[str]]:
+        """Première version du title qui tient dans max_length (voir generate_meta_title)."""
+        sans_pour = template.replace(" pour ", " ")
+        gabarits = [template] if sans_pour == template else [template, sans_pour]
+        paliers = [marques[:n] for n in range(len(marques), 0, -1)] or [[]]
+
+        # 1-2. « pour », puis le nombre de marques
+        for marques_n in paliers:
+            for gabarit in gabarits:
+                title = self._rendre_title(gabarit, reference, description, type_appareil, marques_n)
+                if len(title) <= max_length:
+                    return title, marques_n
+
+        # 3. Libellé raccourci mot entier par mot entier, type et 1 marque gardés
+        marques_1 = paliers[-1]
+        for libelle in self._libelles_raccourcis(description):
+            title = self._rendre_title(sans_pour, reference, libelle, type_appareil, marques_1)
+            if len(title) <= max_length:
+                return title, marques_1
+
+        # 4. Sans le type d'appareil
+        sans_type = sans_pour.replace("{type_appareil}", "")
+        for libelle in [description] + self._libelles_raccourcis(description):
+            title = self._rendre_title(sans_type, reference, libelle, type_appareil, marques_1)
+            if len(title) <= max_length:
+                return title, marques_1
+
+        # 5. Dernier recours : couper au dernier mot entier (marque trop longue)
+        title = self._rendre_title(sans_type, reference, "", type_appareil, marques_1)
+        coupe = title[:max_length + 1].rsplit(" ", 1)[0] if len(title) > max_length else title
+        return coupe, [m for m in marques_1 if m in coupe]
+
+    def _libelles_raccourcis(self, libelle: str) -> List[str]:
+        """
+        Versions du libellé de plus en plus courtes, en retirant un mot entier à la
+        fois. Aucune ne se termine sur un mot de liaison ni ne laisse de parenthèse
+        ouverte ; le premier mot est toujours gardé.
+        """
+        mots = libelle.split()
+        versions = []
+        for n in range(len(mots) - 1, 0, -1):
+            garde = mots[:n]
+            while len(garde) > 1 and (garde[-1].lower() in self.MOTS_DE_LIAISON
+                                      or garde[-1].lower().endswith(("'", "’"))):
+                garde = garde[:-1]
+            texte = " ".join(garde).rstrip(",;:-")
+            if texte.count("(") > texte.count(")"):
+                texte = texte[:texte.rindex("(")].rstrip(" ,;:-")
+            if texte and texte not in versions:
+                versions.append(texte)
+        return versions
+
     @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
                                  fabricants: List[str], max_length: int = 150,
@@ -284,7 +343,8 @@ class SEOGenerator:
             ref_old=(ref_old_clean or ""),
         )
 
-        description_text = template.format(**fmt_kwargs)
+        # " ".join(split()) : un {fabricants} vide ne laisse pas de double espace
+        description_text = " ".join(template.format(**fmt_kwargs).split())
 
         final_description = self._smart_truncate_description(description_text, max_length)
 
@@ -352,145 +412,16 @@ class SEOGenerator:
 
         return random.choices(pool, weights=weights, k=1)[0]
 
-    def _maximize_brands_in_title(self, fabricants: List[str], template: str,
-                                max_length: int, **template_kwargs) -> str:
-        """Maximiser le nombre de marques dans le titre selon le template choisi"""
-        if not fabricants:
-            return ""
-
-        # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
-        seen: set = set()
-        unique_fabricants = []
-        for f in fabricants:
-            f = f.strip()
-            if f and f not in seen:
-                seen.add(f)
-                unique_fabricants.append(f)
-
-        # Calculer l'espace disponible : longueur du template sans les marques
-        base_length = len(template.format(fabricants="", **template_kwargs))
-        available_space = max_length - base_length
-
-        # Construire la liste des marques optimale
-        selected_brands = []
-        current_length = 0
-
-        for brand in unique_fabricants:
-            new_length = current_length + (1 if selected_brands else 0) + len(brand)
-            if new_length <= available_space:
-                selected_brands.append(brand)
-                current_length = new_length
-            elif selected_brands:
-                break
-            else:
-                # Même la première marque déborde — on la prend quand même (garantie de présence)
-                selected_brands.append(brand)
-                break
-
-        if not selected_brands and unique_fabricants:
-            selected_brands = [unique_fabricants[0]]
-
-        return " ".join(selected_brands)
-    
-    def _optimize_title_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
-        """
-        Optimiser un titre en gardant obligatoirement les marques spécifiées
-        1. Appliquer les raccourcis (réfrigérateur → frigo)
-        2. Supprimer les mots de liaison (de, des, pour)
-        3. Réduire le nombre de marques si nécessaire
-        4. Tronquer intelligemment en dernier recours
-        """
-        if len(title) <= max_length:
-            return title
-        
-        # Étape 1: Appliquer les raccourcis de mots
-        optimized_title = self._apply_word_replacements(title)
-        
-        if len(optimized_title) <= max_length:
-            return optimized_title
-        
-        # Étape 2: Supprimer les mots de liaison en préservant les marques
-        optimized_title = self._remove_filler_words_keep_brands(optimized_title, required_brands)
-        
-        if len(optimized_title) <= max_length:
-            return optimized_title
-        
-        # Étape 3: Si toujours trop long, réduire le nombre de marques
-        optimized_title = self._reduce_brands_if_needed(optimized_title, max_length, required_brands)
-
-        # Étape 4: Troncature intelligente en dernier recours
-        return self._smart_truncate_with_brands(optimized_title, required_brands, max_length)
-    
-    def _apply_word_replacements(self, title: str) -> str:
-        """Appliquer les raccourcis de mots pour économiser des caractères"""
-        result = title
-        for original, replacement in self.WORD_REPLACEMENTS.items():
-            result = result.replace(original, replacement)
-            result = result.replace(original.capitalize(), replacement)
-        return result
-    
-    def _remove_filler_words_keep_brands(self, title: str, required_brands: str) -> str:
-        """Supprimer les mots de liaison tout en préservant les marques"""
-        words = title.split()
-        brand_words = required_brands.split() if required_brands else []
-        
-        result_words = []
-        for word in words:
-            word_lower = word.lower().rstrip("',.:;!?")  # Nettoyer la ponctuation
-            
-            # Préserver les mots qui font partie des marques
-            is_brand_word = any(brand_word.lower() == word_lower for brand_word in brand_words)
-            
-            if is_brand_word or word_lower not in self.FILLER_WORDS:
-                result_words.append(word)
-                
-        return " ".join(result_words)
-    
-    def _reduce_brands_if_needed(self, title: str, max_length: int, required_brands: str = "") -> str:
-        """Réduire à une seule marque si le titre contient plusieurs marques et est encore trop long"""
-        if len(title) <= max_length or not required_brands:
-            return title
-
-        brands = [b for b in required_brands.split() if b]
-        if len(brands) <= 1:
-            return title  # Une seule marque déjà — rien à réduire
-
-        # Garder uniquement la première marque : localiser sa position dans le titre
-        first_brand = brands[0]
-        pos = title.find(first_brand)
-        if pos >= 0:
-            candidate = title[:pos + len(first_brand)].strip()
-            if candidate:
-                return candidate
-
-        return title
-    
-    def _smart_truncate_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
-        """Troncature intelligente en essayant de garder au moins une marque"""
-        if len(title) <= max_length:
-            return title
-            
-        # Si même avec toutes les optimisations c'est trop long, tronquer intelligemment
-        # Essayer de garder au moins la première marque
-        brand_words = required_brands.split() if required_brands else []
-        if brand_words:
-            first_brand = brand_words[0]
-            # Trouver la position de la première marque et garder jusqu'à elle
-            if first_brand in title:
-                brand_pos = title.find(first_brand)
-                brand_end = brand_pos + len(first_brand)
-                if brand_end <= max_length:
-                    return title[:brand_end]
-        
-        # Troncature brute
-        return title[:max_length]
-
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description_with_article: str,
                                          type_appareil: str, max_length: int,
                                          ref_old: Optional[str] = None) -> str:
-        """Sélectionner le maximum de fabricants possibles pour la description"""
-        if not fabricants:
+        """
+        Jusqu'à MAX_MARQUES marques (« A, B et C »), autant qu'en laisse la place.
+        Retourne "" si même la première ne tient pas : une marque coupée serait pire.
+        """
+        marques = self._marques_uniques(fabricants)[:self.MAX_MARQUES]
+        if not marques:
             return ""
 
         # Calculer l'espace disponible : rendu du template sans les marques, avec les vraies valeurs
@@ -507,38 +438,19 @@ class SEOGenerator:
         base_length = len(template.format(**fmt_kwargs))
         available_space = max_length - base_length
 
-        if available_space <= 0:
-            return ""
+        for n in range(len(marques), 0, -1):
+            texte = self._joindre_marques_description(marques[:n])
+            if len(texte) <= available_space:
+                return texte
+        return ""
 
-        # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
-        seen: set = set()
-        unique_fabricants = []
-        for f in fabricants:
-            f_clean = f.strip() if isinstance(f, str) else f
-            if f_clean and f_clean not in seen:
-                seen.add(f_clean)
-                unique_fabricants.append(f_clean)
+    @staticmethod
+    def _joindre_marques_description(marques: List[str]) -> str:
+        """« Candy », « Candy et Hoover », « Candy, Hoover et Otsein »."""
+        if len(marques) <= 1:
+            return "".join(marques)
+        return ", ".join(marques[:-1]) + " et " + marques[-1]
 
-        # Construire la liste des fabricants selon l'espace disponible
-        result_fabricants = []
-        current_length = 0
-
-        for i, fabricant in enumerate(unique_fabricants):
-            fabricant_clean = fabricant.strip()
-            needed_length = len(fabricant_clean) if i == 0 else len(" " + fabricant_clean)
-
-            if current_length + needed_length <= available_space:
-                result_fabricants.append(fabricant_clean)
-                current_length += needed_length
-            else:
-                break
-
-        if not result_fabricants:
-            first_fabricant = unique_fabricants[0][:available_space]
-            return first_fabricant if first_fabricant else ""
-
-        return " ".join(result_fabricants)
-    
     def _smart_truncate_description(self, description: str, max_length: int) -> str:
         """Troncature intelligente pour la description (sans ellipse)"""
         if len(description) <= max_length:
