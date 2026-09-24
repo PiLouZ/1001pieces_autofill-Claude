@@ -12,7 +12,7 @@ Responsabilités:
 
 from typing import Optional, Dict, Any, List, Tuple
 from .qt_imports import QInputDialog, QApplication
-from .qt_imports import QTimer
+from .qt_imports import QTimer, Qt
 
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -34,10 +34,14 @@ class SEOService:
     def __init__(self, main_window):
         self.main_window = main_window
         self.seo_generator = SEOGenerator()
+        # Dernière formulation proposée par (genre, référence) : 0 = la méta fixe de
+        # la référence, Maj+clic passe à la suivante.
+        self._variantes: Dict[Tuple[str, str], int] = {}
     
     @handle_seo_generation_errors()
     def generate_meta_title(self) -> None:
-        """Générer et copier un méta titre SEO optimisé"""
+        """Générer et copier un méta titre SEO optimisé (Maj+clic : autre formulation)"""
+        autre_formulation = self._maj_enfoncee()
         multi_terms = self._get_multi_reference_terms()
         if multi_terms:
             selected_reference = self._show_reference_selection_dialog(
@@ -53,7 +57,7 @@ class SEOService:
             search_data = self._get_current_search_data()
 
         if not search_data:
-            self.main_window.statusbar.showMessage("Aucune recherche active pour générer le méta titre", 3000)
+            self._signaler_absence_de_donnees("le méta titre")
             return
 
         required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
@@ -65,22 +69,28 @@ class SEOService:
         ref_obsolete = self._resolve_supersession(search_data)
         if ref_obsolete:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
+        if self._libelle_manquant(search_data):
+            return
 
         result = self.seo_generator.generate_meta_title(
             reference=search_data['reference'],
             description=search_data['description'],
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
+            variante=self._variante('title', search_data['reference'], autre_formulation),
         )
         # n_modeles non utilisé dans le title (pas assez de place) mais compté pour info
 
         QApplication.clipboard().setText(result['title'])
 
         length = result['length']
-        fabricants_info = f"({result['info']['fabricants_count']} fabricants)" if result['info']['fabricants_count'] > 0 else ""
-        status_msg = f"Méta titre copié ({length}/60 caractères) {fabricants_info}"
+        nb_fabricants = result['info']['fabricants_count']
+        fabricants_info = f"({nb_fabricants} fabricant{'s' if nb_fabricants > 1 else ''})" if nb_fabricants > 0 else ""
+        largeur = f"{length} car., {result['info']['largeur_px']}/{SEOGenerator.TITLE_MAX_PX} px"
+        status_msg = f"Méta titre copié ({largeur}) {fabricants_info}"
         if result['info']['truncated']:
-            status_msg += " [Tronqué]"
+            status_msg += " [Raccourci]"
+        status_msg += self._libelle_variante(result['info'])
         if ref_obsolete:
             status_msg += f" [Supersédée → {search_data['reference']}]"
 
@@ -88,11 +98,11 @@ class SEOService:
         if ref_obsolete:
             detailed_message += f" (remplace {ref_obsolete})"
         detailed_message += f"\n==> Titre: {result['title']}"
-        detailed_message += f"\n==> Longueur: {length}/60 caractères"
+        detailed_message += f"\n==> Longueur: {largeur}"
         if result['info']['fabricants_count'] > 0:
             detailed_message += f"\n==> Fabricants inclus: {result['info']['fabricants_count']}"
         if result['info']['truncated']:
-            detailed_message += "\n==> Titre tronqué"
+            detailed_message += "\n==> Titre raccourci (mots entiers retirés pour tenir dans la largeur)"
 
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 3000)
@@ -101,7 +111,8 @@ class SEOService:
     
     @handle_seo_generation_errors()
     def generate_meta_description(self) -> None:
-        """Générer et copier une méta description SEO aléatoire"""
+        """Générer et copier une méta description SEO (Maj+clic : autre formulation)"""
+        autre_formulation = self._maj_enfoncee()
         multi_terms = self._get_multi_reference_terms()
         if multi_terms:
             selected_reference = self._show_reference_selection_dialog(
@@ -117,7 +128,7 @@ class SEOService:
             search_data = self._get_current_search_data()
 
         if not search_data:
-            self.main_window.statusbar.showMessage("Aucune recherche active pour générer la méta description", 3000)
+            self._signaler_absence_de_donnees("la méta description")
             return
 
         required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
@@ -129,6 +140,8 @@ class SEOService:
         ref_obsolete = self._resolve_supersession(search_data)
         if ref_obsolete:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
+        if self._libelle_manquant(search_data):
+            return
 
         # Compter les modèles compatibles (ref courante + prédécesseurs)
         all_refs_for_count = [search_data['reference']]
@@ -136,8 +149,9 @@ class SEOService:
             preds = self.main_window.db_manager.get_all_predecessors(search_data['reference'])
             all_refs_for_count.extend(preds)
         except Exception:
-            pass
+            preds = []
         n_modeles = self._count_compatible_models(all_refs_for_count)
+        anciennes_refs = self._anciennes_refs_principales(preds)
 
         result = self.seo_generator.generate_meta_description(
             reference=search_data['reference'],
@@ -145,15 +159,18 @@ class SEOService:
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
             n_modeles=n_modeles,
-            ref_old=ref_obsolete,  # None si la réf n'est pas supersédée
+            anciennes_refs=anciennes_refs,  # toujours citées quand il y en a (décision client)
+            variante=self._variante('description', search_data['reference'], autre_formulation),
         )
 
         QApplication.clipboard().setText(result['description'])
 
         length = result['length']
-        status_msg = f"Méta description copiée ({length}/150 caractères)"
+        largeur = f"{length} car., {result['info']['largeur_px']}/{SEOGenerator.DESCRIPTION_MAX_PX} px"
+        status_msg = f"Méta description copiée ({largeur})"
         if result['info']['truncated']:
-            status_msg += " [Tronquée]"
+            status_msg += " [Raccourcie]"
+        status_msg += self._libelle_variante(result['info'])
         if ref_obsolete:
             status_msg += f" [Supersédée → {search_data['reference']}]"
 
@@ -161,13 +178,58 @@ class SEOService:
         if ref_obsolete:
             detailed_message += f" (remplace {ref_obsolete})"
         detailed_message += f"\n==> Description: {result['description']}"
-        detailed_message += f"\n==> Longueur: {length}/150 caractères"
+        detailed_message += f"\n==> Longueur: {largeur}"
         if result['info']['truncated']:
-            detailed_message += "\n==> Description tronquée"
+            detailed_message += "\n==> Description raccourcie (mots entiers retirés pour tenir dans la largeur)"
 
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 5000)
     
+    @staticmethod
+    def _maj_enfoncee() -> bool:
+        """Touche Maj enfoncée au moment du clic (lue avant tout dialogue modal)."""
+        return bool(QApplication.keyboardModifiers() & Qt.ShiftModifier)
+
+    def _variante(self, genre: str, reference: str, autre_formulation: bool) -> int:
+        """
+        Clic simple : 0, la méta fixe de la référence. Maj+clic : la formulation
+        suivante, à partir de la dernière proposée pour cette référence.
+        """
+        cle = (genre, reference)
+        variante = self._variantes.get(cle, 0) + 1 if autre_formulation else 0
+        self._variantes[cle] = variante
+        return variante
+
+    @staticmethod
+    def _libelle_variante(info: Dict[str, Any]) -> str:
+        """« [formulation 3/27] » hors formulation par défaut, sinon rien."""
+        if not info.get('variante'):
+            return ""
+        return f" [formulation {info['variante'] + 1}/{info['nb_variantes']}]"
+
+    def _anciennes_refs_principales(self, predecesseurs: List[str]) -> List[str]:
+        """
+        Les MAX_ANCIENNES_REFS anciennes références à citer : celles qui ont le plus
+        de modèles compatibles (probablement les plus recherchées), à égalité par
+        ordre alphabétique. Indépendant de la référence tapée : une fiche, une méta.
+        """
+        if not predecesseurs:
+            return []
+        nb_modeles = {ref: 0 for ref in predecesseurs}
+        try:
+            placeholders = ','.join('?' * len(predecesseurs))
+            query = f"""SELECT p.ref_piece, COUNT(DISTINCT pa.appareil_id)
+                        FROM pieces p
+                        JOIN piece_associations pa ON pa.piece_id = p.id
+                        WHERE p.ref_piece IN ({placeholders})
+                        GROUP BY p.ref_piece"""
+            for ref, n in self.main_window.db_manager.execute_custom_query(query, predecesseurs):
+                nb_modeles[ref] = n
+        except Exception as e:
+            app_logger.warning(f"SEO: impossible de classer les anciennes références {predecesseurs}: {e}")
+        classees = sorted(nb_modeles, key=lambda r: (-nb_modeles[r], r))
+        return classees[:SEOGenerator.MAX_ANCIENNES_REFS]
+
     def _count_compatible_models(self, refs: List[str]) -> int:
         """Compte le nombre de modèles d'appareils uniques compatibles avec les références données."""
         if not refs:
@@ -210,36 +272,29 @@ class SEOService:
     def _enrich_with_supersession_data(self, search_data: Dict[str, any],
                                         ref_obsolete: str) -> Dict[str, any]:
         """
-        Enrichit les fabricants et le type avec les données de la référence courante.
-        La description reste celle de la référence originale recherchée.
+        Recalcule fabricants, type et libellé sur la famille de la référence courante :
+        elle-même et tous ses prédécesseurs, plus les références déjà agrégées (recherche
+        multi-références). Taper une ancienne référence donne ainsi la même méta que
+        taper la référence courante : une fiche produit, une méta.
         """
         ref_current = search_data['reference']
-        fabricants_query = Config.get_query('devices_for_piece')
-        from collections import Counter
-        types_list = list()
-        # Initialiser avec count=1 pour les fabricants déjà présents
-        fabricants_count = {f: 1 for f in search_data.get('fabricants', [])}
+        refs = self._avec_predecesseurs([ref_current])
+        refs += [r for r in search_data.get('refs_agregees', []) if r not in refs]
 
         try:
-            rows = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref_current])
-            for type_val, manufacturer in rows:
-                if type_val and type_val.strip():
-                    types_list.append(type_val.strip())
-                if manufacturer and manufacturer.strip():
-                    m = manufacturer.strip()
-                    fabricants_count[m] = fabricants_count.get(m, 0) + 1
+            poids_types, poids_fabricants = self._compter_appareils(refs)
 
-            if types_list:
-                type_counter = Counter(types_list)
-                search_data['type_appareil'] = type_counter.most_common(1)[0][0]
+            if poids_types:
+                search_data['type_appareil'] = self._type_majoritaire(poids_types)
+            if poids_fabricants:
+                search_data['fabricants'] = self._classer_fabricants(poids_fabricants)
+            search_data['refs_agregees'] = refs
 
-            search_data['fabricants'] = [f for f, _ in sorted(fabricants_count.items(), key=lambda x: -x[1])] \
-                if fabricants_count else ["multi-marques"]
-
-            # Mettre à jour la description avec celle de la référence courante si disponible
-            desc_current = self._get_piece_description_from_reference(ref_current)
-            if desc_current:
-                search_data['description'] = desc_current
+            # Le libellé est celui de la référence courante — même vide : la génération
+            # est alors bloquée, comme si l'on avait tapé la référence courante.
+            piece_courante = self._trouver_piece(ref_current)
+            if piece_courante:
+                search_data['description'] = piece_courante[1]
 
         except Exception as e:
             app_logger.warning(f"SEO: enrichissement supersession échoué pour {ref_current}: {e}")
@@ -261,111 +316,77 @@ class SEOService:
             search_terms = [search_term]
 
         # Utiliser la première référence pour la description et le titre
-        primary_reference = search_terms[0]
-
-        # Vérifier si c'est une référence de pièce (recherche dans la table pieces)
-        piece_description = self._get_piece_description_from_reference(primary_reference)
-        if not piece_description:
+        piece = self._trouver_piece(search_terms[0])
+        if not piece:
             return None  # Ne pas activer les boutons SEO si ce n'est pas une référence de pièce
+        primary_reference, piece_description = piece
+        search_terms = self._references_canoniques(search_terms)
 
         # Analyser les données du tableau pour extraire les informations des appareils
         if self.main_window.table.rowCount() == 0:
             return None
 
-        # Extraire TOUS les fabricants et types depuis la base de données pour TOUTES les pièces
-        from collections import Counter
-        types_appareil_list = []
-        fabricants_count: Dict[str, int] = {}  # fabricant → nb d'occurrences (pour tri par pertinence)
-
-        fabricants_query = Config.get_query('devices_for_piece')
-
-        # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
-        all_refs = list(search_terms)
-        for ref in search_terms:
-            try:
-                predecessors = self.main_window.db_manager.get_all_predecessors(ref)
-                for pred in predecessors:
-                    if pred not in all_refs:
-                        all_refs.append(pred)
-            except Exception:
-                pass
-
-        try:
-            for ref in all_refs:
-                all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
-                for type_val, manufacturer in all_data:
-                    if type_val and type_val.strip():
-                        types_appareil_list.append(type_val.strip())
-                    if manufacturer and manufacturer.strip():
-                        m = manufacturer.strip()
-                        fabricants_count[m] = fabricants_count.get(m, 0) + 1
-
-        except Exception as e:
-            app_logger.error(f"Erreur récupération fabricants pour {all_refs}: {e}")
-
-            # Fallback: utiliser les données visibles du tableau si la requête échoue
-            for row in range(min(self.main_window.table.rowCount(), 20)):
-                if not self.main_window.table.isRowHidden(row):
-                    type_item = self.main_window.table.item(row, 0)
-                    if type_item and type_item.text().strip():
-                        types_appareil_list.append(type_item.text().strip())
-                    fabricant_item = self.main_window.table.item(row, 1)
-                    if fabricant_item and fabricant_item.text().strip():
-                        m = fabricant_item.text().strip()
-                        fabricants_count[m] = fabricants_count.get(m, 0) + 1
-
-        reference = primary_reference
-        description = piece_description
-
-        if types_appareil_list:
-            type_counter = Counter(types_appareil_list)
-            type_appareil = type_counter.most_common(1)[0][0]
-        else:
-            type_appareil = "appareil électroménager"
-
-        # Tri par fréquence décroissante (les marques les plus compatibles en premier)
-        fabricants_list = [f for f, _ in sorted(fabricants_count.items(), key=lambda x: -x[1])] \
-            if fabricants_count else ["multi-marques"]
+        # Extraire TOUS les fabricants et types depuis la base de données pour TOUTES les pièces,
+        # prédécesseurs compris (ils héritent de leur couverture fabricants/types)
+        all_refs = self._avec_predecesseurs(search_terms)
+        poids_types, poids_fabricants = self._collecter_appareils(all_refs)
 
         return {
-            'reference': reference,
-            'description': description,
-            'type_appareil': type_appareil,
-            'fabricants': fabricants_list
+            'reference': primary_reference,
+            'description': piece_description,
+            'type_appareil': self._type_majoritaire(poids_types),
+            'fabricants': self._classer_fabricants(poids_fabricants),
+            'refs_agregees': all_refs,
         }
     
     @handle_seo_data_errors()
-    def _get_piece_description_from_reference(self, reference: str) -> Optional[str]:
+    def _trouver_piece(self, reference: str) -> Optional[Tuple[str, str]]:
         """
-        Récupérer la description d'une pièce à partir de sa référence
-        Utilise la même logique que _is_piece_reference_search()
+        (référence telle qu'enregistrée, libellé — "" s'il est vide), ou None.
+        Correspondance exacte, puis sans tenir compte de la casse (« as0015516 » →
+        « AS0015516 ») : la méta porte toujours la référence écrite comme en base.
+        Plus de recherche partielle (LIKE %réf%) : un fragment activait les boutons
+        avec le libellé d'une autre pièce.
         """
-        # D'abord essayer de récupérer le libellé directement depuis la table pieces
-        query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
-        result = self.main_window.db_manager.execute_custom_query(query, [reference])
+        db = self.main_window.db_manager
+        rows = db.execute_custom_query(
+            "SELECT ref_piece, description FROM pieces WHERE ref_piece = ? LIMIT 1", [reference])
+        if not rows:
+            rows = db.execute_custom_query(
+                "SELECT ref_piece, description FROM pieces WHERE ref_piece = ? COLLATE NOCASE LIMIT 2",
+                [reference])
+            if len(rows) != 1:  # absente, ou ambiguë (deux casses différentes en base)
+                return None
+        ref_piece, description = rows[0]
+        return ref_piece, (description or "").strip()
 
-        if result:
-            description = result[0][0]
-            # Vérifier que la description n'est pas None ou vide
-            if description and description.strip():
-                return description.strip()
-            else:
-                # Si la description est vide, utiliser une description générique
-                return "pièce détachée"
+    def _references_canoniques(self, references: List[str]) -> List[str]:
+        """Références écrites comme en base quand elles y sont, telles quelles sinon."""
+        canoniques = []
+        for ref in references:
+            piece = self._trouver_piece(ref)
+            canoniques.append(piece[0] if piece else ref)
+        return canoniques
 
-        # Essayer une recherche partielle si la recherche exacte échoue
-        query_partial = "SELECT description FROM pieces WHERE ref_piece LIKE ? LIMIT 1"
-        result_partial = self.main_window.db_manager.execute_custom_query(query_partial, [f"%{reference}%"])
+    def _libelle_manquant(self, search_data: Dict[str, Any]) -> bool:
+        """
+        Bloque la génération si la pièce n'a pas de libellé (décision client) :
+        l'ancien repli « pièce détachée » donnait « votre pièce détachée 00614351 ».
+        """
+        if search_data['description'].strip():
+            return False
+        self.main_window.statusbar.showMessage(
+            f"Libellé manquant pour {search_data['reference']} : complétez-le avant de générer la méta", 5000)
+        return True
 
-        if result_partial:
-            description = result_partial[0][0]
-            if description and description.strip():
-                return description.strip()
-            else:
-                return "pièce détachée"
+    def _signaler_absence_de_donnees(self, quoi: str) -> None:
+        terme = self.main_window.search_input.text().strip()
+        if terme and '||' not in terme and '&&' not in terme and not self._trouver_piece(terme):
+            message = f"Référence introuvable telle quelle : {terme}"
+        else:
+            message = f"Aucune recherche active pour générer {quoi}"
+        self.main_window.statusbar.showMessage(message, 3000)
 
-        return None  # Aucune pièce trouvée
-    
     @handle_seo_data_errors()
     def _get_multi_reference_terms(self) -> List[str]:
         """
@@ -382,8 +403,9 @@ class SEOService:
             # Filtrer pour ne garder que les références de pièce valides
             valid_terms = []
             for term in terms:
-                if self._get_piece_description_from_reference(term):
-                    valid_terms.append(term)
+                piece = self._trouver_piece(term)
+                if piece and piece[0] not in valid_terms:
+                    valid_terms.append(piece[0])
             return valid_terms if len(valid_terms) > 1 else []
 
         elif '&&' in search_term:
@@ -429,7 +451,7 @@ class SEOService:
 
         if search_term:
             # Vérifier si c'est une référence de pièce ou contient des références
-            if self._get_piece_description_from_reference(search_term):
+            if self._trouver_piece(search_term):
                 is_piece_search = True
             elif self._get_multi_reference_terms():
                 is_piece_search = True
@@ -466,49 +488,23 @@ class SEOService:
             app_logger.info(f"Génération méta pour multi-références: {references}")
 
             # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
-            all_refs_multi = list(references)
-            for ref in references:
-                try:
-                    predecessors = self.main_window.db_manager.get_all_predecessors(ref)
-                    for pred in predecessors:
-                        if pred not in all_refs_multi:
-                            all_refs_multi.append(pred)
-                except Exception:
-                    pass
+            all_refs_multi = self._avec_predecesseurs(self._references_canoniques(references))
 
-            # Récupérer les données agrégées de TOUTES les références (directes + prédécesseurs)
-            from collections import Counter
-            all_types = []
-            all_manufacturers_count: Dict[str, int] = {}
-            piece_description = None
+            # Les références d'une recherche « A || B » désignent une même pièce : leurs
+            # appareils sont agrégés (directes + prédécesseurs). Le libellé, lui, est celui
+            # de la référence choisie ; à défaut (vide), le premier renseigné.
+            piece_description = ""
+            for ref in [specific_reference] + all_refs_multi:
+                piece = self._trouver_piece(ref)
+                if piece and piece[1]:
+                    piece_description = piece[1]
+                    break
 
-            for ref in all_refs_multi:
-                desc = self._get_piece_description_from_reference(ref)
-                if desc and not piece_description:
-                    piece_description = desc
+            poids_types, poids_fabricants = self._collecter_appareils(all_refs_multi)
 
-                fabricants_query = Config.get_query('devices_for_piece')
-                try:
-                    ref_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
-                    for type_val, manufacturer in ref_data:
-                        if type_val and type_val.strip():
-                            all_types.append(type_val.strip())
-                        if manufacturer and manufacturer.strip():
-                            m = manufacturer.strip()
-                            all_manufacturers_count[m] = all_manufacturers_count.get(m, 0) + 1
-                    app_logger.info(f"Référence {ref}: {len(ref_data)} appareils trouvés")
-                except Exception as e:
-                    app_logger.error(f"Erreur récupération données pour {ref}: {e}")
-
-            if piece_description and (all_types or all_manufacturers_count):
-                if all_types:
-                    type_counter = Counter(all_types)
-                    type_appareil = type_counter.most_common(1)[0][0]
-                else:
-                    type_appareil = "appareil électroménager"
-
-                fabricants_list = [f for f, _ in sorted(all_manufacturers_count.items(), key=lambda x: -x[1])] \
-                    if all_manufacturers_count else ["multi-marques"]
+            if piece_description and (poids_types or poids_fabricants):
+                type_appareil = self._type_majoritaire(poids_types)
+                fabricants_list = self._classer_fabricants(poids_fabricants)
 
                 app_logger.info(f"Multi-ref agrégé: type={type_appareil}, fabricants={len(fabricants_list)}")
 
@@ -516,79 +512,105 @@ class SEOService:
                     'reference': specific_reference,
                     'description': piece_description,
                     'type_appareil': type_appareil,
-                    'fabricants': fabricants_list
+                    'fabricants': fabricants_list,
+                    'refs_agregees': all_refs_multi,
                 }
             else:
                 app_logger.warning("Aucune donnée valide trouvée dans la recherche multi-références")
 
-        # Vérifier si c'est une référence de pièce valide (cas normal)
-        piece_description = self._get_piece_description_from_reference(specific_reference)
-
-        # Si la référence n'existe pas en BDD, créer des données par défaut
-        if not piece_description:
-            return {
-                'reference': specific_reference,
-                'description': f"Pièce détachée {specific_reference}",
-                'type_appareil': "appareil électroménager",
-                'fabricants': ["multi-marques"]
-            }
+        # Vérifier si c'est une référence de pièce valide (cas normal). Une référence
+        # absente de la base ne produit plus de méta de secours (« Pièce détachée X »).
+        piece = self._trouver_piece(specific_reference)
+        if not piece:
+            return None
+        specific_reference, piece_description = piece
 
         # Analyser les données du tableau pour extraire les informations des appareils
         if self.main_window.table.rowCount() == 0:
             return None
 
-        # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce
-        from collections import Counter
-        types_appareil_list2 = []
-        fabricants_count2: Dict[str, int] = {}
-
-        fabricants_query = Config.get_query('devices_for_piece')
-
-        # Étendre avec les prédécesseurs pour hériter leur couverture fabricants/types
-        all_refs_single = [specific_reference]
-        try:
-            predecessors = self.main_window.db_manager.get_all_predecessors(specific_reference)
-            for pred in predecessors:
-                if pred not in all_refs_single:
-                    all_refs_single.append(pred)
-        except Exception:
-            pass
-
-        try:
-            for ref in all_refs_single:
-                all_data = self.main_window.db_manager.execute_custom_query(fabricants_query, [ref])
-                for type_val, manufacturer in all_data:
-                    if type_val and type_val.strip():
-                        types_appareil_list2.append(type_val.strip())
-                    if manufacturer and manufacturer.strip():
-                        m = manufacturer.strip()
-                        fabricants_count2[m] = fabricants_count2.get(m, 0) + 1
-
-        except Exception as e:
-            app_logger.error(f"Erreur récupération fabricants pour {all_refs_single}: {e}")
-
-            for row in range(min(self.main_window.table.rowCount(), 20)):
-                if not self.main_window.table.isRowHidden(row):
-                    type_item = self.main_window.table.item(row, 0)
-                    if type_item and type_item.text().strip():
-                        types_appareil_list2.append(type_item.text().strip())
-                    fabricant_item = self.main_window.table.item(row, 1)
-                    if fabricant_item and fabricant_item.text().strip():
-                        m = fabricant_item.text().strip()
-                        fabricants_count2[m] = fabricants_count2.get(m, 0) + 1
-
-        if types_appareil_list2:
-            type_counter2 = Counter(types_appareil_list2)
-            type_appareil = type_counter2.most_common(1)[0][0]
-        else:
-            type_appareil = "appareil électroménager"
-
-        fabricants_list = [f for f, _ in sorted(fabricants_count2.items(), key=lambda x: -x[1])] \
-            if fabricants_count2 else ["multi-marques"]
+        # Extraire TOUS les fabricants et types depuis la base de données pour cette pièce,
+        # prédécesseurs compris (ils héritent de leur couverture fabricants/types)
+        all_refs_single = self._avec_predecesseurs([specific_reference])
+        poids_types, poids_fabricants = self._collecter_appareils(all_refs_single)
 
         return {
             'reference': specific_reference,
             'description': piece_description,
-            'type_appareil': type_appareil,
-            'fabricants': fabricants_list
+            'type_appareil': self._type_majoritaire(poids_types),
+            'fabricants': self._classer_fabricants(poids_fabricants),
+            'refs_agregees': all_refs_single,
         }
+
+    # ── Agrégation des appareils compatibles (socle commun des 4 chemins) ──
+
+    def _avec_predecesseurs(self, refs: List[str]) -> List[str]:
+        """Références données suivies de tous leurs prédécesseurs (sans doublon ajouté)."""
+        all_refs = list(refs)
+        for ref in refs:
+            try:
+                for pred in self.main_window.db_manager.get_all_predecessors(ref):
+                    if pred not in all_refs:
+                        all_refs.append(pred)
+            except Exception:
+                pass
+        return all_refs
+
+    def _compter_appareils(self, refs: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
+        """
+        Nombre de modèles compatibles par type d'appareil et par fabricant, toutes
+        références confondues (un modèle associé à deux d'entre elles compte une fois).
+        Les erreurs SQL remontent à l'appelant.
+        """
+        poids_types: Dict[str, int] = {}
+        poids_fabricants: Dict[str, int] = {}
+        if not refs:
+            return poids_types, poids_fabricants
+        query = Config.get_query('device_counts_for_pieces',
+                                 placeholders=','.join('?' * len(refs)))
+        for type_val, manufacturer, nb_modeles in self.main_window.db_manager.execute_custom_query(query, refs):
+            if type_val:
+                poids_types[type_val] = poids_types.get(type_val, 0) + nb_modeles
+            if manufacturer:
+                poids_fabricants[manufacturer] = poids_fabricants.get(manufacturer, 0) + nb_modeles
+        return poids_types, poids_fabricants
+
+    def _collecter_appareils(self, refs: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
+        """
+        Comme _compter_appareils, mais si la base échoue, se rabat sur les lignes visibles
+        du tableau (20 au plus) : chaque ligne est un modèle et pèse 1.
+        """
+        try:
+            return self._compter_appareils(refs)
+        except Exception as e:
+            app_logger.error(f"Erreur récupération fabricants pour {refs}: {e}")
+
+        poids_types: Dict[str, int] = {}
+        poids_fabricants: Dict[str, int] = {}
+        for row in range(min(self.main_window.table.rowCount(), 20)):
+            if not self.main_window.table.isRowHidden(row):
+                type_item = self.main_window.table.item(row, 0)
+                if type_item and type_item.text().strip():
+                    t = type_item.text().strip()
+                    poids_types[t] = poids_types.get(t, 0) + 1
+                fabricant_item = self.main_window.table.item(row, 1)
+                if fabricant_item and fabricant_item.text().strip():
+                    m = fabricant_item.text().strip()
+                    poids_fabricants[m] = poids_fabricants.get(m, 0) + 1
+        return poids_types, poids_fabricants
+
+    @staticmethod
+    def _par_poids(poids: Dict[str, int]) -> List[str]:
+        """Clés par poids décroissant ; à égalité, ordre alphabétique (résultat stable)."""
+        return [k for k, _ in sorted(poids.items(), key=lambda x: (-x[1], x[0].casefold(), x[0]))]
+
+    @classmethod
+    def _type_majoritaire(cls, poids_types: Dict[str, int],
+                          defaut: str = "appareil électroménager") -> str:
+        """Type d'appareil qui couvre le plus de modèles, ou `defaut` si aucun."""
+        return cls._par_poids(poids_types)[0] if poids_types else defaut
+
+    @classmethod
+    def _classer_fabricants(cls, poids_fabricants: Dict[str, int]) -> List[str]:
+        """Fabricants du plus grand au plus petit nombre de modèles compatibles."""
+        return cls._par_poids(poids_fabricants) if poids_fabricants else ["multi-marques"]

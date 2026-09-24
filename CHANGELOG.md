@@ -4,6 +4,98 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.74.0] - 2026-09-24 (branche `feature/seo-classement-marques`)
+
+### Refonte des métas SEO après un second audit
+
+Un agent spécialisé SEO a audité les boutons **Méta Title** / **Méta Desc** sur
+la base réelle. Chaque correctif ci-dessous répond à une décision du client et a
+été mesuré sur les **3 177 fiches** (références courantes associées à au moins un
+modèle), avant et après.
+
+| Indicateur | Avant | Après |
+|---|---|---|
+| Marque n° 1 = celle qui a le plus de modèles | 60 % | **100 %** |
+| Title : abréviations (« lave-ling. », « congélo ») | 7 à 21 % | **0** |
+| Title sans marque | 2 à 8 % | **0** |
+| Title coupé en plein mot (« … cuisinière Bosc ») | 1 à 7 % | **0** |
+| Description plus large que l'affichage Google ordinateur | 37,7 % | **0** |
+| Ancienne réf. citée sur la fiche de la réf. courante | 0 % | **100 %** des 533 concernées |
+| Promesses contraires aux CGV (stock, « OEM », « retour facile »…) | ~30 % des tirages | **0** |
+
+### Les marques étaient mal classées
+
+Le « tri par fréquence » ne mesurait pas la fréquence : la requête renvoyait les
+couples (type, marque) distincts, donc une marque pesait son **nombre de types**
+d'appareils. Ampoule 00057874 : Neff (4 622 modèles) passait devant Bosch
+(10 252). Marques et type sont désormais pesés en **modèles distincts**, en une
+requête sur toute la famille de la référence (elle + ses prédécesseurs).
+
+- Une fiche, une méta : taper une ancienne réf. donne la même méta que la réf.
+  courante (1 643 / 1 643 ; 743 avant).
+- `A || B` (réfs d'une même pièce) : marques mises en commun, libellé de la réf.
+  choisie (c'était toujours celui de A).
+- Les 4 copies de la collecte dans `seo_service.py` n'en font plus qu'une
+  (factorisation vérifiée à l'identique sur 5 363 cas avant tout changement).
+
+### Contenu des gabarits
+
+- **Conformité CGV** : plus de « en stock » ni « disponible » (aucune donnée de
+  stock), « d'origine ou de qualité équivalente » au lieu de « OEM » / « pièce
+  d'origine » seuls, plus de « réparateur agréé », « retour facile », « sans faire
+  appel à un technicien » ; formule exacte « commande avant 15h, expédition le
+  jour même ».
+- **Accroches symptôme supprimées** (« Ne vidange plus ? » sur un verrou de porte) :
+  les gabarits par appareil mettent l'appareil et ses marques en tête
+  (« Lave-linge Candy, Hoover et Otsein : … »).
+- **3 marques au plus, avec virgules** : « Candy, Hoover, Otsein » (title),
+  « Candy, Hoover et Otsein » (description) ; jusqu'à 10 marques collées avant.
+  « Arthur-Martin-Electrolux » devient « Arthur Martin » dans les métas.
+- **Anciennes références** : toujours citées, 2 au plus, les plus compatibles
+  d'abord (« anciennes réf. 72X7221 et 74X5829 »).
+- **Compatibilité chiffrée** : « compatible avec plus de 1 200 modèles », arrondi
+  strictement en dessous du vrai nombre ; remplace « de nombreux {type} », non
+  accordé dans 98 % des cas.
+
+### Longueur et raccourcissement
+
+- Réglage sur la **largeur affichée par Google sur ordinateur** : title ≤ 575 px,
+  description ≤ 910 px (`src/utils/largeur_texte.py`, table Arial sans
+  dépendance ; retient le plus large des rendus fractionnaire et hinté).
+- Title raccourci dans l'ordre : « pour », puis marques 3 → 2 → 1, puis mots
+  entiers du libellé (le type d'appareil est gardé). Gabarit « … {marques}
+  {type} » retiré.
+- Description : si le gabarit prévu ne laisse de place à aucune marque ou
+  obligerait à couper la phrase, le suivant est pris.
+
+### Méta fixe par référence
+
+Le gabarit n'est plus tiré au hasard à chaque clic : il dépend de la référence
+(crc32). Deux clics donnent le même texte, régénérer une fiche en ligne ne la
+change pas. **Maj+clic** propose la formulation suivante (« [formulation 3/27] »).
+
+### Robustesse
+
+- Libellé vide : génération bloquée (« Libellé manquant pour X : complétez-le
+  avant de générer la méta ») au lieu de « votre pièce détachée X ».
+- Plus de correspondance partielle (`LIKE %réf%`) ni de méta de secours pour une
+  réf. absente ; une réf. tapée en minuscules est écrite comme en base.
+
+### Vérification
+
+915 tests (dont 7 nouveaux fichiers ou sections SEO), chaque nouveau test
+contrôlé en échec sur l'ancien code ; boutons exécutés hors écran sur la base
+réelle ; Maj+clic validé en réel par l'utilisateur.
+
+### Signalé au passage, non traité
+
+- `1751309700` (panier RAL7037) a **191 prédécesseurs** ; `10006917` annonce
+  « plus de 104 000 modèles » : associations à vérifier.
+- 893 pièces ont `is_obsolete = 0` alors qu'elles sont `ref_old` dans
+  `piece_supersessions`.
+
+---
+
 ## [3.73.1] - 2026-09-22 (branche `fix/nettoyage-doublons-durabilite`)
 
 ### Le nettoyage des doublons ne survivait pas à la fermeture

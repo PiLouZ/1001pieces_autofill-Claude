@@ -4,8 +4,10 @@ Inspiré du script.js pour e-commerce pièces détachées électroménager
 """
 
 import random
+import zlib
 from typing import List, Dict, Tuple, Optional
 from .error_handler import handle_seo_generation_errors
+from .largeur_texte import largeur_px, TAILLE_TITLE_PX, TAILLE_DESCRIPTION_PX
 
 class SEOGenerator:
     """Générateur de métadonnées SEO pour pièces détachées électroménager"""
@@ -14,19 +16,19 @@ class SEOGenerator:
     META_DESCRIPTION_TEMPLATES = [
         # Achat direct
         "Commandez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste pièces détachées",
-        "Achetez {description} {reference} pour {type_appareil} {fabricants} — livraison rapide, retour facile",
+        "Achetez {description} {reference} pour {type_appareil} {fabricants} — livraison à domicile ou retrait en magasin",
         "Trouvez {description} {reference} pour {type_appareil} {fabricants} chez un expert de la réparation électroménager",
         "Découvrez {description} {reference} pour {type_appareil} {fabricants} chez le spécialiste de la pièce détachée",
         # Réparation
         "Réparez votre {type_appareil} {fabricants} avec {description} {reference} — commandez en ligne, livraison rapide",
         "Retrouvez {description} {reference} pour {type_appareil} {fabricants} et réparez votre appareil vous-même",
-        "Redonnez vie à un {type_appareil} {fabricants} avec {description} {reference} — pièce disponible immédiatement",
-        # Stock / disponibilité
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce d'origine, expédition rapide",
-        "{description_cap} {reference} en stock pour {type_appareil} {fabricants} — commandez chez votre spécialiste électroménager",
-        "{description_cap} {reference} — pièce détachée disponible pour {type_appareil} {fabricants}, expédition rapide",
+        "Redonnez vie à un {type_appareil} {fabricants} avec {description} {reference} — commande en ligne, expédition rapide",
+        # Expédition / qualité (aucune donnée de stock : jamais « en stock » ni « disponible »)
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — d'origine ou de qualité équivalente, expédition rapide",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — commandez chez votre spécialiste électroménager",
+        "{description_cap} {reference} — pièce détachée pour {type_appareil} {fabricants}, expédition rapide",
         # Question / besoin
-        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} est disponible chez votre réparateur agréé",
+        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} — livraison ou retrait en magasin",
         "Besoin de {description} {reference} pour {type_appareil} {fabricants} ? Trouvez cette pièce chez votre spécialiste",
         "Votre {type_appareil} {fabricants} en panne ? Commandez {description} {reference} — la bonne pièce, livrée rapidement",
         "Panne sur votre {type_appareil} {fabricants} ? Commandez {description} {reference} — expédition rapide",
@@ -34,14 +36,15 @@ class SEOGenerator:
         "Évitez le remplacement — commandez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste",
         "Réparer plutôt que jeter : {description} {reference} pour {type_appareil} {fabricants} chez votre expert pièces détachées",
         # DIY
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — réparez facilement votre appareil sans faire appel à un technicien",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — commandez la pièce, réparez votre appareil",
         "Faites-le vous-même : {description} {reference} pour {type_appareil} {fabricants}, la réparation à portée de main",
-        # Qualité pièce (OEM / compatible certifiée) — USP réel, pas de mention de garantie
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM ou alternative de qualité OEM",
+        # Qualité pièce : d'origine OU équivalente, jamais « d'origine » seul (pas de donnée par pièce),
+        # jamais « OEM » (jargon), pas de mention de garantie
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce d'origine ou de qualité équivalente",
         # Retour (21 jours après réception, frais à la charge du client → wording factuel)
         "Commandez {description} {reference} pour {type_appareil} {fabricants} — retour possible sous 21 jours après réception",
         # Expédition le jour même (commande validée avant 15h en jour ouvré)
-        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} — validez avant 15h, expédié le jour même",
+        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
         # Livraison express Chronopost (le lendemain avant 13h)
         "{description_cap} {reference} pour {type_appareil} {fabricants} — livraison Chronopost dès le lendemain avant 13h",
         # Retrait en magasin (immédiat après validation de la commande)
@@ -54,80 +57,118 @@ class SEOGenerator:
 
     # ── L2 : templates contextuels (rejoignent le pool SEULEMENT si leur signal est actif) ──
     # Forte compatibilité : la pièce équipe beaucoup de modèles d'appareils différents.
+    # {nb_modeles} = nombre de modèles compatibles arrondi vers le bas (« 1 200 ») :
+    # propre à la fiche, et toujours vrai (décision client : données assez complètes
+    # pour publier un chiffre). Remplace « compatible avec de nombreux {type} », qui
+    # ne s'accordait pas (« de nombreux plaque ») dans 98 % des cas.
     META_DESCRIPTION_TEMPLATES_COMPAT = [
-        "{description_cap} {reference} compatible avec de nombreux {type_appareil} {fabricants} — trouvez la vôtre",
-        "Pièce multi-modèles : {description} {reference} pour {type_appareil} {fabricants} — large compatibilité",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — compatible avec plus de {nb_modeles} modèles",
+        "Pièce multi-modèles : {description} {reference} pour {type_appareil} {fabricants}, compatible avec plus de {nb_modeles} modèles",
     ]
-    # Supersession : la référence courante remplace une ancienne réf (capte les
-    # recherches encore faites sur l'ancienne référence {ref_old}).
+    # Supersession : la référence remplace d'anciennes références, que les clients
+    # cherchent encore (c'est souvent celle imprimée sur la pièce usée). Quand il y
+    # en a, la description les cite TOUJOURS : ces gabarits forment alors le pool.
+    # {anciennes_refs} = « ancienne réf. X » ou « anciennes réf. X et Y » : forme
+    # nominale, qui s'accorde avec tout libellé (« vos filtres … remplace » était faux).
     META_DESCRIPTION_TEMPLATES_SUPERSESSION = [
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — remplace l'ancienne référence {ref_old}",
-        "{description_cap} {reference} remplace {ref_old} — pièce compatible {type_appareil} {fabricants}",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — {anciennes_refs}",
+        "{description_cap} {reference} ({anciennes_refs}) pour {type_appareil} {fabricants}",
+        "{description_cap} {reference} pour {type_appareil} {fabricants}, {anciennes_refs} — Chronopost J+1 avant 13h",
+        "{description_cap} {reference} ({anciennes_refs}) pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
+        "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, {anciennes_refs}",
+        "{description_cap} {reference} ({anciennes_refs}) pour {type_appareil} {fabricants} — retrait en magasin possible",
     ]
+    # Anciennes références citées au plus (les plus compatibles, choisies par seo_service)
+    MAX_ANCIENNES_REFS = 2
     # Seuil « large compatibilité » (nb de modèles) et poids des templates contextuels
     # dans le tirage pondéré. Réglables : un poids > 1 favorise sans forcer (la diversité
     # du pool générique reste possible).
     COMPAT_MODELS_THRESHOLD = 20
     CONTEXT_TEMPLATE_WEIGHT = 6.0
 
-    # ── L3 : templates par segment d'appareil (micro-moments à fort intent) ──
+    # ── L3 : templates par segment d'appareil ──
+    # L'appareil et ses marques en tête (« Lave-linge Candy : … »), comme dans les
+    # recherches « pièce lave-linge candy ». Pas d'accroche symptôme (« Ne vidange
+    # plus ? ») : choisie selon l'appareil et non la pièce, elle tombait le plus souvent
+    # à côté (sur un verrou, un joint…) et ressemblait à un conseil de diagnostic,
+    # que le SAV ne fournit pas (décision client 2026-09-24).
     # Clés = sortie de _normalize_type(). Matching par clé la plus longue contenue
     # (via _segment_templates_for) pour gérer "lave-linge top", "four micro-ondes".
     # Fallback systématique sur le pool générique si le type n'a pas d'entrée.
     SEGMENT_DESCRIPTION_TEMPLATES = {
         "lave-linge": [
-            "Plus d'essorage ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
-            "Fuite sur votre {type_appareil} {fabricants} ? {description_cap} {reference} en stock — Chronopost J+1 avant 13h",
+            "Lave-linge {fabricants} : {description} {reference} — Chronopost J+1 avant 13h",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, commande avant 15h, expédition le jour même",
         ],
         "lave-vaisselle": [
-            "Débordement ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
-            "Ne vidange plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, retrait en magasin possible",
+            "Lave-vaisselle {fabricants} : {description} {reference} — commande avant 15h, expédition le jour même",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, retrait en magasin possible",
         ],
         "réfrigérateur": [
-            "Plus de froid ? {description_cap} {reference} pour {type_appareil} {fabricants} — OEM, Chronopost J+1 avant 13h",
-            "Trop de givre ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
+            "Réfrigérateur {fabricants} : {description} {reference} — Chronopost J+1 avant 13h",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, La Poste 48-72h en métropole",
         ],
         "sèche-linge": [
-            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
-            "Linge encore humide ? {description_cap} {reference} pour {type_appareil} {fabricants} — retour possible sous 21 jours",
+            "Sèche-linge {fabricants} : {description} {reference} — commande avant 15h, expédition le jour même",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, retour possible sous 21 jours",
         ],
         "four": [
-            "Plus de chaleur ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
-            "Réparez votre {type_appareil} {fabricants} : {description_cap} {reference} en stock, Chronopost J+1 avant 13h",
+            "Four {fabricants} : {description} {reference} — Chronopost J+1 avant 13h",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, retrait en magasin possible",
         ],
         "hotte": [
-            "N'aspire plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
-            "Hotte {fabricants} bruyante ? {description_cap} {reference} en stock — retrait en magasin possible",
+            "Hotte {fabricants} : {description} {reference} — retrait en magasin possible",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, commande avant 15h, expédition le jour même",
         ],
         "congélateur": [
-            "Ne congèle plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
-            "Givre excessif ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
+            "Congélateur {fabricants} : {description} {reference} — La Poste 48-72h en métropole",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, Chronopost J+1 avant 13h",
         ],
         "micro-ondes": [
-            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — OEM, expédition avant 15h",
-            "Plateau bloqué ? {description_cap} {reference} pour {type_appareil} {fabricants}, Chronopost J+1 avant 13h",
+            "Micro-ondes {fabricants} : {description} {reference} — commande avant 15h, expédition le jour même",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, Chronopost J+1 avant 13h",
         ],
     }
 
-    # Méta title — 3 gabarits, référence (courante) TOUJOURS en position 0.
-    # La troncature coupant par la fin, la référence en position 0 n'est jamais
-    # tronquée. Les 3 variantes diversifient le CTR sans casser les invariants :
-    # chacune commence par {reference} et contient {fabricants} (au moins une
-    # marque garantie par _maximize_brands_in_title). Le gabarit est tiré au
-    # hasard, comme les descriptions ; la réf unique par pièce garantit déjà
-    # l'unicité. Les anciennes références ne sont pas mentionnées (décision produit).
+    # Méta title — 2 gabarits, référence (courante) TOUJOURS en position 0 : elle
+    # n'est jamais raccourcie. Le type d'appareil précède toujours les marques (un
+    # 3ᵉ gabarit « … {fabricants} {type_appareil} » a été retiré : avec des virgules,
+    # « Bosch, Siemens, Neff lave-vaisselle » rattachait l'appareil à la seule
+    # dernière marque, et le type en fin de title était coupé en premier).
+    # Les anciennes références ne sont pas mentionnées (décision produit).
     META_TITLE_TEMPLATES = [
-        "{reference} {description} {type_appareil} {fabricants}",       # baseline
-        "{reference} {description} pour {type_appareil} {fabricants}",  # connecteur naturel
-        "{reference} {description} {fabricants} {type_appareil}",       # marques en avant
+        "{reference} {description} {type_appareil} {fabricants}",
+        "{reference} {description} pour {type_appareil} {fabricants}",
     ]
 
-    # Mots de liaison à supprimer en priorité pour préserver les marques
-    FILLER_WORDS = [
-        "pour", "de", "des", "du", "la", "le", "les", "d'", "l'",
-        "avec", "sans", "sur", "sous", "dans", "par", "et"
-    ]
-    
+    # Au plus 3 marques, séparées par des virgules (title : « A, B, C » ; description :
+    # « A, B et C »). Au-delà, une liste de marques collées se lit comme du bourrage de
+    # mots-clés et repousse les arguments commerciaux hors de l'affichage Google.
+    MAX_MARQUES = 3
+
+    # Noms de marque raccourcis dans les métas (décision client) ; la base garde le
+    # nom complet. « Arthur-Martin-Electrolux » (24 car.) réduisait le title de la
+    # carte 973914527609015 à « Carte lave-linge Arthur-Martin-Electrolux ».
+    NOMS_COURTS_MARQUES = {
+        "Arthur-Martin-Electrolux": "Arthur Martin",
+    }
+
+    # Limites de l'affichage Google sur ordinateur (décision client : régler sur
+    # l'ordinateur ; sur mobile, seule la fin — l'argument commercial — est coupée).
+    # Google coupe à la largeur en pixels (≈ 580 px / 920 px) : une marge de 5 et
+    # 10 px absorbe les écarts de rendu. Le plafond en caractères reste un garde-fou.
+    TITLE_MAX_PX = 575
+    TITLE_MAX_CARACTERES = 65
+    DESCRIPTION_MAX_PX = 910
+    DESCRIPTION_MAX_CARACTERES = 155
+
+    # Mots sur lesquels un libellé raccourci ne doit pas se terminer
+    # (« Façade tiroir congélation intermédiaire ou » → « … intermédiaire »).
+    MOTS_DE_LIAISON = {
+        "à", "au", "aux", "avec", "d'", "de", "des", "du", "en", "et", "l'", "la",
+        "le", "les", "ou", "par", "pour", "sans", "sous", "sur", "dans", "+", "-", "/", "&",
+    }
+
     # Normalisation des types d'appareils (variantes orthographiques → forme canonique)
     TYPE_NORMALIZATION = {
         "lave linge": "lave-linge",
@@ -146,20 +187,6 @@ class SEOGenerator:
         "lave-linge top": "lave-linge top",
     }
 
-    # Remplacements pour raccourcir les titres trop longs (dernier recours avant troncature)
-    # Ordre de priorité : gain de caractères décroissant
-    WORD_REPLACEMENTS = {
-        "lave-vaisselle": "lave-vais.",  # -6 caractères (LV trop cryptique pour le grand public)
-        "sèche-linge": "sèche-ling.",   # -4 caractères
-        "réfrigérateur": "frigo",       # -7 caractères (terme courant)
-        "lave-linge": "lave-ling.",     # -3 caractères
-        "congélateur": "congélo",       # -4 caractères (terme courant)
-        "électroménager": "électromén.", # -3 caractères
-        "électroménagers": "électromén.", # -4 caractères
-        "aspirateur": "aspiro",         # -4 caractères
-        "micro-ondes": "micro-onde",    # -1 caractère
-    }
-    
     def __init__(self):
         self.last_generation_info = {}
 
@@ -191,94 +218,218 @@ class SEOGenerator:
     
     @handle_seo_generation_errors()
     def generate_meta_title(self, reference: str, description: str, type_appareil: str,
-                           fabricants: List[str], max_length: int = 60) -> Dict[str, any]:
+                           fabricants: List[str], max_length: int = TITLE_MAX_CARACTERES,
+                           variante: int = 0) -> Dict[str, any]:
         """
         Générer un méta title : référence (courante) en tête, puis libellé,
-        type d'appareil et marques, via un gabarit tiré de META_TITLE_TEMPLATES.
-        Au moins une marque est privilégiée dans la limite de longueur.
+        type d'appareil et jusqu'à 3 marques, via un gabarit tiré de META_TITLE_TEMPLATES.
+
+        S'il dépasse TITLE_MAX_PX ou max_length caractères, on essaie dans l'ordre,
+        jusqu'à ce que ça tienne :
+        retirer « pour », retirer des marques (3 → 2 → 1), raccourcir le libellé mot
+        entier par mot entier (le type d'appareil est gardé : décision client), puis
+        retirer le type. Jamais d'abréviation, jamais de mot ni de marque coupés ;
+        au moins une marque tant qu'il y en a une.
+
+        Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
+        `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=True)
         type_clean = self._normalize_type(type_appareil)
+        marques = self._marques_uniques(fabricants)[:self.MAX_MARQUES]
 
-        template = random.choice(self.META_TITLE_TEMPLATES)
-        template_kwargs = dict(
-            reference=reference_clean,
-            description=description_clean,
-            type_appareil=type_clean,
+        template = self._choose_title_template(reference_clean, variante)
+        title_complet = self._rendre_title(template, reference_clean, description_clean,
+                                           type_clean, marques)
+        title, marques_retenues = self._raccourcir_title(
+            template, reference_clean, description_clean, type_clean, marques, max_length
         )
-
-        fabricants_optimaux = self._maximize_brands_in_title(
-            fabricants, template, max_length, **template_kwargs
-        )
-
-        # " ".join(split()) : réduit tout espace multiple à un seul et nettoie les bords
-        # (cas d'un {fabricants} vide au milieu du gabarit → double espace). Sortie
-        # identique au chemin normal où les fabricants sont renseignés.
-        raw_title = " ".join(template.format(fabricants=fabricants_optimaux, **template_kwargs).split())
-        base_title = raw_title
-        if len(raw_title) > max_length:
-            base_title = self._optimize_title_with_brands(raw_title, fabricants_optimaux, max_length)
+        fabricants_utilises = ", ".join(marques_retenues)
 
         generation_info = {
             'template_used': template,
-            'original_length': len(raw_title),
-            'final_length': len(base_title),
-            'truncated': len(base_title) < len(raw_title),
-            'within_limit': len(base_title) <= max_length,
-            'fabricants_used': fabricants_optimaux,
-            'fabricants_count': len(fabricants_optimaux.split()) if fabricants_optimaux else 0,
+            'original_length': len(title_complet),
+            'final_length': len(title),
+            'truncated': len(title) < len(title_complet),
+            'within_limit': self._tient_title(title, max_length),
+            'largeur_px': round(largeur_px(title, TAILLE_TITLE_PX)),
+            'fabricants_used': fabricants_utilises,
+            'fabricants_count': len(marques_retenues),
             'total_fabricants_available': len(fabricants),
-            'brand_guaranteed': bool(fabricants_optimaux.strip()),
+            'brand_guaranteed': bool(marques_retenues),
+            'variante': variante % len(self.META_TITLE_TEMPLATES),
+            'nb_variantes': len(self.META_TITLE_TEMPLATES),
         }
 
         self.last_generation_info['title'] = generation_info
 
         return {
-            'title': base_title,
-            'length': len(base_title),
+            'title': title,
+            'length': len(title),
             'info': generation_info
         }
-    
+
+    def _choose_title_template(self, reference: str, variante: int = 0) -> str:
+        gabarits = self.META_TITLE_TEMPLATES
+        ordre = self._ordre_deterministe(gabarits, [1.0] * len(gabarits), reference)
+        return ordre[variante % len(ordre)]
+
+    @staticmethod
+    def _ordre_deterministe(gabarits: List[str], poids: List[float], reference: str) -> List[str]:
+        """
+        Gabarits dans un ordre propre à la référence : tirage pondéré sans remise
+        (clé = u ** (1/poids), méthode d'Efraimidis-Spirakis), avec un générateur
+        initialisé par crc32(référence). Le premier suit donc la même loi que
+        l'ancien tirage au hasard, mais une référence donne toujours le même : la
+        méta est reproductible, et régénérer une fiche en ligne ne la change pas.
+        Les suivants servent de formulations de rechange, sans répétition avant
+        d'avoir fait le tour.
+        crc32 et non hash() : hash() d'une chaîne change à chaque lancement de Python.
+        Ajouter ou retirer un gabarit redistribue l'ordre de toutes les références.
+        """
+        rng = random.Random(zlib.crc32(reference.encode('utf-8')))
+        cles = [rng.random() ** (1.0 / p) for p in poids]
+        return [g for _, g in sorted(zip(cles, gabarits), key=lambda x: -x[0])]
+
+    @classmethod
+    def _marques_uniques(cls, fabricants: List[str]) -> List[str]:
+        """
+        Marques sans doublon ni vide, dans l'ordre reçu (classées par seo_service),
+        sous leur nom court pour les métas (NOMS_COURTS_MARQUES).
+        """
+        vues: set = set()
+        marques = []
+        for f in fabricants:
+            f = f.strip() if isinstance(f, str) else f
+            f = cls.NOMS_COURTS_MARQUES.get(f, f)
+            if f and f not in vues:
+                vues.add(f)
+                marques.append(f)
+        return marques
+
+    @staticmethod
+    def _rendre_title(template: str, reference: str, description: str,
+                      type_appareil: str, marques: List[str]) -> str:
+        # " ".join(split()) : un champ vide ne laisse pas de double espace
+        return " ".join(template.format(reference=reference, description=description,
+                                        type_appareil=type_appareil,
+                                        fabricants=", ".join(marques)).split())
+
+    def _raccourcir_title(self, template: str, reference: str, description: str,
+                          type_appareil: str, marques: List[str],
+                          max_length: int) -> Tuple[str, List[str]]:
+        """Première version du title qui tient (voir generate_meta_title)."""
+        sans_pour = template.replace(" pour ", " ")
+        gabarits = [template] if sans_pour == template else [template, sans_pour]
+        paliers = [marques[:n] for n in range(len(marques), 0, -1)] or [[]]
+
+        # 1-2. « pour », puis le nombre de marques
+        for marques_n in paliers:
+            for gabarit in gabarits:
+                title = self._rendre_title(gabarit, reference, description, type_appareil, marques_n)
+                if self._tient_title(title, max_length):
+                    return title, marques_n
+
+        # 3. Libellé raccourci mot entier par mot entier, type et 1 marque gardés
+        marques_1 = paliers[-1]
+        for libelle in self._libelles_raccourcis(description):
+            title = self._rendre_title(sans_pour, reference, libelle, type_appareil, marques_1)
+            if self._tient_title(title, max_length):
+                return title, marques_1
+
+        # 4. Sans le type d'appareil
+        sans_type = sans_pour.replace("{type_appareil}", "")
+        for libelle in [description] + self._libelles_raccourcis(description):
+            title = self._rendre_title(sans_type, reference, libelle, type_appareil, marques_1)
+            if self._tient_title(title, max_length):
+                return title, marques_1
+
+        # 5. Dernier recours : retirer des mots entiers à la fin (marque trop longue)
+        coupe = self._rendre_title(sans_type, reference, "", type_appareil, marques_1)
+        while not self._tient_title(coupe, max_length) and " " in coupe:
+            coupe = coupe.rsplit(" ", 1)[0].rstrip(",")
+        return coupe, [m for m in marques_1 if m in coupe]
+
+    def _tient_title(self, title: str, max_length: int) -> bool:
+        return (len(title) <= max_length
+                and largeur_px(title, TAILLE_TITLE_PX) <= self.TITLE_MAX_PX)
+
+    def _tient_description(self, texte: str, max_length: int) -> bool:
+        return (len(texte) <= max_length
+                and largeur_px(texte, TAILLE_DESCRIPTION_PX) <= self.DESCRIPTION_MAX_PX)
+
+    def _libelles_raccourcis(self, libelle: str) -> List[str]:
+        """
+        Versions du libellé de plus en plus courtes, en retirant un mot entier à la
+        fois. Aucune ne se termine sur un mot de liaison ni ne laisse de parenthèse
+        ouverte ; le premier mot est toujours gardé.
+        """
+        mots = libelle.split()
+        versions = []
+        for n in range(len(mots) - 1, 0, -1):
+            garde = mots[:n]
+            while len(garde) > 1 and (garde[-1].lower() in self.MOTS_DE_LIAISON
+                                      or garde[-1].lower().endswith(("'", "’"))):
+                garde = garde[:-1]
+            texte = " ".join(garde).rstrip(",;:-")
+            if texte.count("(") > texte.count(")"):
+                texte = texte[:texte.rindex("(")].rstrip(" ,;:-")
+            if texte and texte not in versions:
+                versions.append(texte)
+        return versions
+
     @handle_seo_generation_errors()
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
-                                 fabricants: List[str], max_length: int = 150,
-                                 n_modeles: int = 0, ref_old: Optional[str] = None) -> Dict[str, any]:
+                                 fabricants: List[str], max_length: int = DESCRIPTION_MAX_CARACTERES,
+                                 n_modeles: int = 0, anciennes_refs: Optional[List[str]] = None,
+                                 variante: int = 0) -> Dict[str, any]:
         """
         Générer une méta description via un tirage pondéré contextuel (L2/L3) :
         pool générique (unicité à grande échelle) enrichi de templates de segment
-        (type d'appareil), de forte compatibilité (n_modeles) et de supersession
-        (ref_old), favorisés sans jamais évincer la diversité générique.
-        La référence est la référence courante (résolue en amont) ; ref_old, si
-        fourni, est la référence obsolète remplacée (mentionnée par les gabarits
-        supersession uniquement).
+        (type d'appareil) et de forte compatibilité (n_modeles), favorisés sans jamais
+        évincer la diversité générique.
+        La référence est la référence courante (résolue en amont). anciennes_refs, si
+        fourni, liste les références qu'elle remplace, les plus pertinentes d'abord :
+        les MAX_ANCIENNES_REFS premières sont alors toujours citées (une seule si les
+        deux ne laissent la place à aucune marque).
+        Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
+        `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=False)
         type_clean = self._normalize_type(type_appareil)
-        ref_old_clean = ref_old.strip() if ref_old else None
+        anciennes = [r.strip() for r in (anciennes_refs or []) if r and r.strip()]
+        anciennes = anciennes[:self.MAX_ANCIENNES_REFS]
 
         article = self._get_article(description_clean)
         description_with_article = f"{article} {description_clean}"
 
-        template = self._choose_description_template(type_clean, n_modeles, ref_old_clean)
+        template = self._choose_description_template(type_clean, n_modeles, bool(anciennes),
+                                                     reference_clean, variante)
+        pool, poids = self._pool_description(type_clean, n_modeles, bool(anciennes))
+        nb_variantes = len(pool)
+        a_des_marques = bool(self._marques_uniques(fabricants))
 
-        fabricants_str = self._select_fabricants_for_description(
-            fabricants, template, reference_clean, description_with_article, type_clean, max_length,
-            ref_old=ref_old_clean
-        )
-
-        # ── Instancier le template ────────────────────────────────────────────
-        fmt_kwargs = dict(
-            description=description_with_article,
-            description_cap=self._adjust_first_char(description_with_article, upper=True),
-            reference=reference_clean,
-            type_appareil=type_clean,
-            fabricants=fabricants_str,
-            ref_old=(ref_old_clean or ""),
-        )
-
-        description_text = template.format(**fmt_kwargs)
+        # Le gabarit prévu, puis, s'il ne laisse la place à aucune marque ou oblige à
+        # couper la phrase (« … compatible avec plus de 200 »), les suivants dans
+        # l'ordre propre à la référence : le résultat reste fixe pour une référence.
+        ordre = self._ordre_deterministe(pool, poids, reference_clean)
+        depart = ordre.index(template) if template in ordre else 0
+        candidats = [template] + [ordre[(depart + k) % len(ordre)] for k in range(1, len(ordre))
+                                  if ordre[(depart + k) % len(ordre)] != template]
+        premier = choisi = None
+        for candidat in candidats:
+            rendu = self._remplir_description(candidat, fabricants, anciennes, reference_clean,
+                                              description_with_article, type_clean, n_modeles,
+                                              max_length)
+            premier = premier or (candidat, rendu)
+            texte, fabricants_rendus, _ = rendu
+            if (fabricants_rendus or not a_des_marques) and self._tient_description(texte, max_length):
+                choisi = (candidat, rendu)
+                break
+        # Aucun ne tient en entier : le gabarit prévu, raccourci
+        template, (description_text, fabricants_str, anciennes) = choisi or premier
 
         final_description = self._smart_truncate_description(description_text, max_length)
 
@@ -287,12 +438,15 @@ class SEOGenerator:
             'original_length': len(description_text),
             'final_length': len(final_description),
             'truncated': len(final_description) < len(description_text),
-            'within_limit': len(final_description) <= max_length,
+            'within_limit': self._tient_description(final_description, max_length),
+            'largeur_px': round(largeur_px(final_description, TAILLE_DESCRIPTION_PX)),
             'fabricants_used': fabricants_str,
             'fabricants_count': len(fabricants),
             'n_modeles': n_modeles,
-            'ref_old': ref_old_clean,
-            'is_supersession': bool(ref_old_clean) and '{ref_old}' in template,
+            'anciennes_refs': anciennes,
+            'is_supersession': '{anciennes_refs}' in template,
+            'variante': variante % nb_variantes,
+            'nb_variantes': nb_variantes,
         }
 
         self.last_generation_info['description'] = generation_info
@@ -303,6 +457,38 @@ class SEOGenerator:
             'info': generation_info
         }
     
+    def _remplir_description(self, template: str, fabricants: List[str], anciennes: List[str],
+                             reference: str, description_with_article: str, type_appareil: str,
+                             n_modeles: int, max_length: int) -> Tuple[str, str, List[str]]:
+        """
+        Rend un gabarit : (texte, marques retenues, anciennes réfs citées).
+        Une seule ancienne réf si les deux ne laissent la place à aucune marque.
+        """
+        anciennes_str = self._formuler_anciennes_refs(anciennes)
+        fabricants_str = self._select_fabricants_for_description(
+            fabricants, template, reference, description_with_article, type_appareil, max_length,
+            anciennes_refs=anciennes_str, n_modeles=n_modeles
+        )
+        if not fabricants_str and fabricants and len(anciennes) > 1:
+            anciennes = anciennes[:1]
+            anciennes_str = self._formuler_anciennes_refs(anciennes)
+            fabricants_str = self._select_fabricants_for_description(
+                fabricants, template, reference, description_with_article, type_appareil,
+                max_length, anciennes_refs=anciennes_str, n_modeles=n_modeles
+            )
+        texte = template.format(
+            description=description_with_article,
+            description_cap=self._adjust_first_char(description_with_article, upper=True),
+            reference=reference,
+            type_appareil=type_appareil,
+            fabricants=fabricants_str,
+            anciennes_refs=anciennes_str,
+            nb_modeles=self._formuler_nb_modeles(n_modeles),
+        )
+        # " ".join(split()) : un {fabricants} vide ne laisse pas de double espace ;
+        # ni d'espace avant une virgule (« pour congélateur , compatible »)
+        return " ".join(texte.split()).replace(" ,", ","), fabricants_str, anciennes
+
     def _segment_templates_for(self, type_norm: str) -> List[str]:
         """
         Retourne les templates de segment pour un type d'appareil normalisé.
@@ -318,15 +504,21 @@ class SEOGenerator:
                 best_key = key
         return self.SEGMENT_DESCRIPTION_TEMPLATES[best_key] if best_key else []
 
-    def _choose_description_template(self, type_norm: str, n_modeles: int,
-                                     ref_old: Optional[str]) -> str:
+    def _pool_description(self, type_norm: str, n_modeles: int,
+                          a_des_anciennes_refs: bool) -> Tuple[List[str], List[float]]:
         """
-        Tirage pondéré du gabarit de description (L2/L3).
+        Gabarits de description possibles et leur poids (L2/L3).
+        Une référence qui en remplace d'autres n'utilise que les gabarits de
+        supersession : ses anciennes références sont toujours citées.
         Le pool générique (25 templates) est TOUJOURS présent — garantie d'unicité
         et de diversité à grande échelle. Les templates contextuels (segment,
         forte compatibilité, supersession) ne rejoignent le pool que si leur signal
         est actif, avec un poids > 1 : favorisés sans jamais évincer le générique.
         """
+        if a_des_anciennes_refs:
+            pool = list(self.META_DESCRIPTION_TEMPLATES_SUPERSESSION)
+            return pool, [1.0] * len(pool)
+
         pool = list(self.META_DESCRIPTION_TEMPLATES)
         weights = [1.0] * len(pool)
 
@@ -335,159 +527,35 @@ class SEOGenerator:
                 pool.append(tpl)
                 weights.append(self.CONTEXT_TEMPLATE_WEIGHT)
 
-        # L3 — segment d'appareil (micro-moments à fort intent)
+        # L3 — segment d'appareil (appareil et marques en tête)
         _boost(self._segment_templates_for(type_norm))
         # L2 — forte compatibilité (la pièce équipe beaucoup de modèles)
         if n_modeles >= self.COMPAT_MODELS_THRESHOLD:
             _boost(self.META_DESCRIPTION_TEMPLATES_COMPAT)
-        # L2 — supersession (mention explicite de l'ancienne référence)
-        if ref_old:
-            _boost(self.META_DESCRIPTION_TEMPLATES_SUPERSESSION)
 
-        return random.choices(pool, weights=weights, k=1)[0]
+        return pool, weights
 
-    def _maximize_brands_in_title(self, fabricants: List[str], template: str,
-                                max_length: int, **template_kwargs) -> str:
-        """Maximiser le nombre de marques dans le titre selon le template choisi"""
-        if not fabricants:
-            return ""
-
-        # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
-        seen: set = set()
-        unique_fabricants = []
-        for f in fabricants:
-            f = f.strip()
-            if f and f not in seen:
-                seen.add(f)
-                unique_fabricants.append(f)
-
-        # Calculer l'espace disponible : longueur du template sans les marques
-        base_length = len(template.format(fabricants="", **template_kwargs))
-        available_space = max_length - base_length
-
-        # Construire la liste des marques optimale
-        selected_brands = []
-        current_length = 0
-
-        for brand in unique_fabricants:
-            new_length = current_length + (1 if selected_brands else 0) + len(brand)
-            if new_length <= available_space:
-                selected_brands.append(brand)
-                current_length = new_length
-            elif selected_brands:
-                break
-            else:
-                # Même la première marque déborde — on la prend quand même (garantie de présence)
-                selected_brands.append(brand)
-                break
-
-        if not selected_brands and unique_fabricants:
-            selected_brands = [unique_fabricants[0]]
-
-        return " ".join(selected_brands)
-    
-    def _optimize_title_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
-        """
-        Optimiser un titre en gardant obligatoirement les marques spécifiées
-        1. Appliquer les raccourcis (réfrigérateur → frigo)
-        2. Supprimer les mots de liaison (de, des, pour)
-        3. Réduire le nombre de marques si nécessaire
-        4. Tronquer intelligemment en dernier recours
-        """
-        if len(title) <= max_length:
-            return title
-        
-        # Étape 1: Appliquer les raccourcis de mots
-        optimized_title = self._apply_word_replacements(title)
-        
-        if len(optimized_title) <= max_length:
-            return optimized_title
-        
-        # Étape 2: Supprimer les mots de liaison en préservant les marques
-        optimized_title = self._remove_filler_words_keep_brands(optimized_title, required_brands)
-        
-        if len(optimized_title) <= max_length:
-            return optimized_title
-        
-        # Étape 3: Si toujours trop long, réduire le nombre de marques
-        optimized_title = self._reduce_brands_if_needed(optimized_title, max_length, required_brands)
-
-        # Étape 4: Troncature intelligente en dernier recours
-        return self._smart_truncate_with_brands(optimized_title, required_brands, max_length)
-    
-    def _apply_word_replacements(self, title: str) -> str:
-        """Appliquer les raccourcis de mots pour économiser des caractères"""
-        result = title
-        for original, replacement in self.WORD_REPLACEMENTS.items():
-            result = result.replace(original, replacement)
-            result = result.replace(original.capitalize(), replacement)
-        return result
-    
-    def _remove_filler_words_keep_brands(self, title: str, required_brands: str) -> str:
-        """Supprimer les mots de liaison tout en préservant les marques"""
-        words = title.split()
-        brand_words = required_brands.split() if required_brands else []
-        
-        result_words = []
-        for word in words:
-            word_lower = word.lower().rstrip("',.:;!?")  # Nettoyer la ponctuation
-            
-            # Préserver les mots qui font partie des marques
-            is_brand_word = any(brand_word.lower() == word_lower for brand_word in brand_words)
-            
-            if is_brand_word or word_lower not in self.FILLER_WORDS:
-                result_words.append(word)
-                
-        return " ".join(result_words)
-    
-    def _reduce_brands_if_needed(self, title: str, max_length: int, required_brands: str = "") -> str:
-        """Réduire à une seule marque si le titre contient plusieurs marques et est encore trop long"""
-        if len(title) <= max_length or not required_brands:
-            return title
-
-        brands = [b for b in required_brands.split() if b]
-        if len(brands) <= 1:
-            return title  # Une seule marque déjà — rien à réduire
-
-        # Garder uniquement la première marque : localiser sa position dans le titre
-        first_brand = brands[0]
-        pos = title.find(first_brand)
-        if pos >= 0:
-            candidate = title[:pos + len(first_brand)].strip()
-            if candidate:
-                return candidate
-
-        return title
-    
-    def _smart_truncate_with_brands(self, title: str, required_brands: str, max_length: int) -> str:
-        """Troncature intelligente en essayant de garder au moins une marque"""
-        if len(title) <= max_length:
-            return title
-            
-        # Si même avec toutes les optimisations c'est trop long, tronquer intelligemment
-        # Essayer de garder au moins la première marque
-        brand_words = required_brands.split() if required_brands else []
-        if brand_words:
-            first_brand = brand_words[0]
-            # Trouver la position de la première marque et garder jusqu'à elle
-            if first_brand in title:
-                brand_pos = title.find(first_brand)
-                brand_end = brand_pos + len(first_brand)
-                if brand_end <= max_length:
-                    return title[:brand_end]
-        
-        # Troncature brute
-        return title[:max_length]
+    def _choose_description_template(self, type_norm: str, n_modeles: int,
+                                     a_des_anciennes_refs: bool = False, reference: str = "",
+                                     variante: int = 0) -> str:
+        """Gabarit de description, fixe pour une référence (voir _ordre_deterministe)."""
+        pool, weights = self._pool_description(type_norm, n_modeles, a_des_anciennes_refs)
+        ordre = self._ordre_deterministe(pool, weights, reference)
+        return ordre[variante % len(ordre)]
 
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description_with_article: str,
                                          type_appareil: str, max_length: int,
-                                         ref_old: Optional[str] = None) -> str:
-        """Sélectionner le maximum de fabricants possibles pour la description"""
-        if not fabricants:
+                                         anciennes_refs: str = "", n_modeles: int = 0) -> str:
+        """
+        Jusqu'à MAX_MARQUES marques (« A, B et C »), autant qu'en laisse la place
+        (DESCRIPTION_MAX_PX et max_length caractères, description rendue en entier).
+        Retourne "" si même la première ne tient pas : une marque coupée serait pire.
+        """
+        marques = self._marques_uniques(fabricants)[:self.MAX_MARQUES]
+        if not marques:
             return ""
 
-        # Calculer l'espace disponible : rendu du template sans les marques, avec les vraies valeurs
         description_cap = self._adjust_first_char(description_with_article, upper=True)
         fmt_kwargs = dict(
             description=description_with_article,
@@ -495,58 +563,56 @@ class SEOGenerator:
             reference=reference,
             type_appareil=type_appareil,
             fabricants="",
+            anciennes_refs=anciennes_refs,
+            nb_modeles=self._formuler_nb_modeles(n_modeles),
         )
-        if ref_old:
-            fmt_kwargs['ref_old'] = ref_old
-        base_length = len(template.format(**fmt_kwargs))
-        available_space = max_length - base_length
+        for n in range(len(marques), 0, -1):
+            texte = self._joindre_marques_description(marques[:n])
+            fmt_kwargs['fabricants'] = texte
+            rendu = " ".join(template.format(**fmt_kwargs).split())
+            if self._tient_description(rendu, max_length):
+                return texte
+        return ""
 
-        if available_space <= 0:
+    @staticmethod
+    def _formuler_nb_modeles(n_modeles: int) -> str:
+        """
+        Nombre de modèles arrondi vers le bas, STRICTEMENT inférieur au vrai nombre
+        pour que « plus de X modèles » reste vrai (20 → « 10 », 1 236 → « 1 200 »).
+        Pas de 10 sous 100, de 50 sous 1 000, de 100 sous 10 000, de 1 000 au-delà.
+        Milliers séparés par une espace (« 12 000 »).
+        """
+        if n_modeles <= 10:
+            return str(max(n_modeles - 1, 0))
+        pas = 10 if n_modeles < 100 else 50 if n_modeles < 1000 else 100 if n_modeles < 10000 else 1000
+        arrondi = (n_modeles - 1) // pas * pas
+        return f"{arrondi:,}".replace(",", " ")
+
+    @staticmethod
+    def _formuler_anciennes_refs(anciennes: List[str]) -> str:
+        """« ancienne réf. X », « anciennes réf. X et Y » ; "" s'il n'y en a pas."""
+        if not anciennes:
             return ""
+        if len(anciennes) == 1:
+            return f"ancienne réf. {anciennes[0]}"
+        return "anciennes réf. " + ", ".join(anciennes[:-1]) + " et " + anciennes[-1]
 
-        # Dédupliquer en préservant l'ordre de fréquence (trié par seo_service, plus présents d'abord)
-        seen: set = set()
-        unique_fabricants = []
-        for f in fabricants:
-            f_clean = f.strip() if isinstance(f, str) else f
-            if f_clean and f_clean not in seen:
-                seen.add(f_clean)
-                unique_fabricants.append(f_clean)
+    @staticmethod
+    def _joindre_marques_description(marques: List[str]) -> str:
+        """« Candy », « Candy et Hoover », « Candy, Hoover et Otsein »."""
+        if len(marques) <= 1:
+            return "".join(marques)
+        return ", ".join(marques[:-1]) + " et " + marques[-1]
 
-        # Construire la liste des fabricants selon l'espace disponible
-        result_fabricants = []
-        current_length = 0
-
-        for i, fabricant in enumerate(unique_fabricants):
-            fabricant_clean = fabricant.strip()
-            needed_length = len(fabricant_clean) if i == 0 else len(" " + fabricant_clean)
-
-            if current_length + needed_length <= available_space:
-                result_fabricants.append(fabricant_clean)
-                current_length += needed_length
-            else:
-                break
-
-        if not result_fabricants:
-            first_fabricant = unique_fabricants[0][:available_space]
-            return first_fabricant if first_fabricant else ""
-
-        return " ".join(result_fabricants)
-    
     def _smart_truncate_description(self, description: str, max_length: int) -> str:
-        """Troncature intelligente pour la description (sans ellipse)"""
-        if len(description) <= max_length:
-            return description
-        
-        # Tronquer au dernier mot complet avant la limite
-        truncated = description[:max_length]
-        last_space = truncated.rfind(' ')
-        
-        if last_space > 0:
-            truncated = truncated[:last_space]
-        
-        return truncated  # Sans "..." pour gagner 3 caractères
-    
+        """
+        Retire des mots entiers à la fin jusqu'à tenir (pixels et caractères), sans
+        ellipse ni ponctuation pendante (« … pour lave-linge — »).
+        """
+        while not self._tient_description(description, max_length) and " " in description:
+            description = description.rsplit(" ", 1)[0].rstrip(" —–-,:;")
+        return description
+
     def _get_article(self, description: str) -> str:
         """
         Détermine l'article possessif (votre/vos) selon la description.

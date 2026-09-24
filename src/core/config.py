@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.73.1"
+    VERSION = "3.74.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -321,13 +321,16 @@ class Config:
                                             ORDER BY manufacturer LIMIT 20""",
         
         # Requêtes pour SEO/analytics avec jointures fréquentes
-        'devices_for_piece': """SELECT DISTINCT a.type, a.manufacturer 
+        # Nombre de modèles distincts par (type, fabricant) pour un ensemble de références :
+        # un modèle associé à plusieurs références de la liste n'est compté qu'une fois.
+        'device_counts_for_pieces': """SELECT TRIM(a.type), TRIM(a.manufacturer), COUNT(DISTINCT a.id)
                               FROM appareils a 
                               JOIN piece_associations pa ON a.id = pa.appareil_id 
                               JOIN pieces p ON pa.piece_id = p.id 
-                              WHERE p.ref_piece = ? 
+                              WHERE p.ref_piece IN ({placeholders}) 
                                 AND a.type IS NOT NULL AND a.type != '' 
-                                AND a.manufacturer IS NOT NULL AND a.manufacturer != ''""",
+                                AND a.manufacturer IS NOT NULL AND a.manufacturer != ''
+                              GROUP BY TRIM(a.type), TRIM(a.manufacturer)""",
         
         # Requêtes de comptage communes
         'count_pieces_for_device': """SELECT COUNT(*) FROM piece_associations pa 
