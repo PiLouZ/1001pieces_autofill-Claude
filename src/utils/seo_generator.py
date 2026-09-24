@@ -56,9 +56,13 @@ class SEOGenerator:
 
     # ── L2 : templates contextuels (rejoignent le pool SEULEMENT si leur signal est actif) ──
     # Forte compatibilité : la pièce équipe beaucoup de modèles d'appareils différents.
+    # {nb_modeles} = nombre de modèles compatibles arrondi vers le bas (« 1 200 ») :
+    # propre à la fiche, et toujours vrai (décision client : données assez complètes
+    # pour publier un chiffre). Remplace « compatible avec de nombreux {type} », qui
+    # ne s'accordait pas (« de nombreux plaque ») dans 98 % des cas.
     META_DESCRIPTION_TEMPLATES_COMPAT = [
-        "{description_cap} {reference} compatible avec de nombreux {type_appareil} {fabricants} — trouvez la vôtre",
-        "Pièce multi-modèles : {description} {reference} pour {type_appareil} {fabricants} — large compatibilité",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — compatible avec plus de {nb_modeles} modèles",
+        "Pièce multi-modèles : {description} {reference} pour {type_appareil} {fabricants}, compatible avec plus de {nb_modeles} modèles",
     ]
     # Supersession : la référence remplace d'anciennes références, que les clients
     # cherchent encore (c'est souvent celle imprimée sur la pièce usée). Quand il y
@@ -376,7 +380,7 @@ class SEOGenerator:
         anciennes_str = self._formuler_anciennes_refs(anciennes)
         fabricants_str = self._select_fabricants_for_description(
             fabricants, template, reference_clean, description_with_article, type_clean, max_length,
-            anciennes_refs=anciennes_str
+            anciennes_refs=anciennes_str, n_modeles=n_modeles
         )
         if not fabricants_str and fabricants and len(anciennes) > 1:
             # Deux anciennes réfs ne laissent la place à aucune marque : une seule
@@ -384,7 +388,7 @@ class SEOGenerator:
             anciennes_str = self._formuler_anciennes_refs(anciennes)
             fabricants_str = self._select_fabricants_for_description(
                 fabricants, template, reference_clean, description_with_article, type_clean,
-                max_length, anciennes_refs=anciennes_str
+                max_length, anciennes_refs=anciennes_str, n_modeles=n_modeles
             )
 
         # ── Instancier le template ────────────────────────────────────────────
@@ -395,6 +399,7 @@ class SEOGenerator:
             type_appareil=type_clean,
             fabricants=fabricants_str,
             anciennes_refs=anciennes_str,
+            nb_modeles=self._formuler_nb_modeles(n_modeles),
         )
 
         # " ".join(split()) : un {fabricants} vide ne laisse pas de double espace
@@ -482,7 +487,7 @@ class SEOGenerator:
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description_with_article: str,
                                          type_appareil: str, max_length: int,
-                                         anciennes_refs: str = "") -> str:
+                                         anciennes_refs: str = "", n_modeles: int = 0) -> str:
         """
         Jusqu'à MAX_MARQUES marques (« A, B et C »), autant qu'en laisse la place.
         Retourne "" si même la première ne tient pas : une marque coupée serait pire.
@@ -500,6 +505,7 @@ class SEOGenerator:
             type_appareil=type_appareil,
             fabricants="",
             anciennes_refs=anciennes_refs,
+            nb_modeles=self._formuler_nb_modeles(n_modeles),
         )
         base_length = len(template.format(**fmt_kwargs))
         available_space = max_length - base_length
@@ -509,6 +515,20 @@ class SEOGenerator:
             if len(texte) <= available_space:
                 return texte
         return ""
+
+    @staticmethod
+    def _formuler_nb_modeles(n_modeles: int) -> str:
+        """
+        Nombre de modèles arrondi vers le bas, STRICTEMENT inférieur au vrai nombre
+        pour que « plus de X modèles » reste vrai (20 → « 10 », 1 236 → « 1 200 »).
+        Pas de 10 sous 100, de 50 sous 1 000, de 100 sous 10 000, de 1 000 au-delà.
+        Milliers séparés par une espace (« 12 000 »).
+        """
+        if n_modeles <= 10:
+            return str(max(n_modeles - 1, 0))
+        pas = 10 if n_modeles < 100 else 50 if n_modeles < 1000 else 100 if n_modeles < 10000 else 1000
+        arrondi = (n_modeles - 1) // pas * pas
+        return f"{arrondi:,}".replace(",", " ")
 
     @staticmethod
     def _formuler_anciennes_refs(anciennes: List[str]) -> str:

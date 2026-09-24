@@ -152,3 +152,28 @@ def test_description_sans_marque_sans_double_espace(gen, monkeypatch):
     texte = gen.generate_meta_description(reference="R1", description="Joint", type_appareil="Lave-linge",
                                           fabricants=[])['description']
     assert texte == "Lave-linge : votre joint R1 — Chronopost"
+
+
+# ── Compatibilité chiffrée ──
+# Décision client : publier le nombre de modèles, arrondi vers le bas. Remplace
+# « compatible avec de nombreux {type} » (« de nombreux plaque » : 98 % fautif).
+
+@pytest.mark.parametrize("n,attendu", [
+    (20, "10"), (21, "20"), (99, "90"), (100, "50"), (137, "100"), (1000, "900"),
+    (1254, "1 200"), (1365, "1 300"), (10000, "9 000"), (24658, "24 000"), (104366, "104 000"),
+])
+def test_nombre_de_modeles_arrondi_strictement_en_dessous(n, attendu):
+    texte = SEOGenerator._formuler_nb_modeles(n)
+    assert texte == attendu
+    assert int(texte.replace(" ", "")) < n  # « plus de X » toujours vrai
+
+
+def test_description_compatibilite_chiffree(gen, monkeypatch):
+    for gabarit in SEOGenerator.META_DESCRIPTION_TEMPLATES_COMPAT:
+        assert "nombreux" not in gabarit
+        monkeypatch.setattr(gen, "_choose_description_template", lambda *a, _g=gabarit: _g)
+        texte = gen.generate_meta_description(reference="46001221", description="Joint de hublot",
+                                              type_appareil="Lave-linge", fabricants=["Candy", "Hoover"],
+                                              n_modeles=1254)['description']
+        assert texte.endswith("compatible avec plus de 1 200 modèles"), texte
+        assert "Candy et Hoover" in texte
