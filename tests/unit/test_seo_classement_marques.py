@@ -254,13 +254,17 @@ def test_ancienne_ref_sans_piece_en_base_comptee_zero(db):
 def test_description_cite_toujours_les_anciennes_refs():
     from src.utils.seo_generator import SEOGenerator
     g = SEOGenerator()
+    avec_les_deux = 0
     for variante in range(len(SEOGenerator.META_DESCRIPTION_TEMPLATES_SUPERSESSION)):
         r = g.generate_meta_description(reference="71X1028", description="Joint de porte",
                                         type_appareil="Cuisinière", fabricants=["De Dietrich", "Sauter"],
                                         anciennes_refs=["72X7221", "74X5829", "79X0000"], variante=variante)
-        assert "anciennes réf. 72X7221 et 74X5829" in r['description'], r['description']
-        assert "79X0000" not in r['description']  # 2 au plus
+        # la plus compatible toujours ; la 2ᵉ si la place le permet ; jamais une 3ᵉ
+        assert "72X7221" in r['description'], r['description']
+        assert "79X0000" not in r['description']
         assert r['info']['is_supersession']
+        avec_les_deux += "anciennes réf. 72X7221 et 74X5829" in r['description']
+    assert avec_les_deux >= 4
 
 
 @pytest.mark.parametrize("anciennes,attendu", [

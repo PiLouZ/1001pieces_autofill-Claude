@@ -83,9 +83,10 @@ class SEOService:
 
         length = result['length']
         fabricants_info = f"({result['info']['fabricants_count']} fabricants)" if result['info']['fabricants_count'] > 0 else ""
-        status_msg = f"Méta titre copié ({length}/60 caractères) {fabricants_info}"
+        largeur = f"{length} car., {result['info']['largeur_px']}/{SEOGenerator.TITLE_MAX_PX} px"
+        status_msg = f"Méta titre copié ({largeur}) {fabricants_info}"
         if result['info']['truncated']:
-            status_msg += " [Tronqué]"
+            status_msg += " [Raccourci]"
         status_msg += self._libelle_variante(result['info'])
         if ref_obsolete:
             status_msg += f" [Supersédée → {search_data['reference']}]"
@@ -94,11 +95,11 @@ class SEOService:
         if ref_obsolete:
             detailed_message += f" (remplace {ref_obsolete})"
         detailed_message += f"\n==> Titre: {result['title']}"
-        detailed_message += f"\n==> Longueur: {length}/60 caractères"
+        detailed_message += f"\n==> Longueur: {largeur}"
         if result['info']['fabricants_count'] > 0:
             detailed_message += f"\n==> Fabricants inclus: {result['info']['fabricants_count']}"
         if result['info']['truncated']:
-            detailed_message += "\n==> Titre tronqué"
+            detailed_message += "\n==> Titre raccourci (mots entiers retirés pour tenir dans la largeur)"
 
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 3000)
@@ -160,9 +161,10 @@ class SEOService:
         QApplication.clipboard().setText(result['description'])
 
         length = result['length']
-        status_msg = f"Méta description copiée ({length}/150 caractères)"
+        largeur = f"{length} car., {result['info']['largeur_px']}/{SEOGenerator.DESCRIPTION_MAX_PX} px"
+        status_msg = f"Méta description copiée ({largeur})"
         if result['info']['truncated']:
-            status_msg += " [Tronquée]"
+            status_msg += " [Raccourcie]"
         status_msg += self._libelle_variante(result['info'])
         if ref_obsolete:
             status_msg += f" [Supersédée → {search_data['reference']}]"
@@ -171,9 +173,9 @@ class SEOService:
         if ref_obsolete:
             detailed_message += f" (remplace {ref_obsolete})"
         detailed_message += f"\n==> Description: {result['description']}"
-        detailed_message += f"\n==> Longueur: {length}/150 caractères"
+        detailed_message += f"\n==> Longueur: {largeur}"
         if result['info']['truncated']:
-            detailed_message += "\n==> Description tronquée"
+            detailed_message += "\n==> Description raccourcie (mots entiers retirés pour tenir dans la largeur)"
 
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 5000)

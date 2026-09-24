@@ -15,6 +15,7 @@ puis coupé en plein mot (« … cuisinière Bosc ») : sur les fiches réelles,
 
 import pytest
 
+from src.utils.largeur_texte import largeur_px
 from src.utils.seo_generator import SEOGenerator
 
 AVEC_POUR = "{reference} {description} pour {type_appareil} {fabricants}"
@@ -46,13 +47,24 @@ def test_title_marque_en_plusieurs_mots_compte_pour_une(gen, monkeypatch):
     assert r['info']['fabricants_count'] == 2
 
 
+def test_title_garde_pour_quand_il_tient(gen, monkeypatch):
+    """La limite est la largeur affichée (575 px), plus 60 caractères : ce title
+    de 62 caractères tient en 569 px et garde « pour »."""
+    complet = "46001221 Joint de hublot pour lave-linge Candy, Hoover, Otsein"
+    assert len(complet) == 62 and largeur_px(complet, 20) <= SEOGenerator.TITLE_MAX_PX
+    r = _title(gen, monkeypatch, AVEC_POUR, "Joint de hublot", "Lave-linge",
+               ["Candy", "Hoover", "Otsein"], "46001221")
+    assert r['title'] == complet
+
+
 def test_title_retire_pour_avant_une_marque(gen, monkeypatch):
     """« pour » est le premier sacrifié, avant toute marque."""
-    marques = ["Candy", "Hoover", "Otsein"]
-    complet = "46001221 Joint de hublot pour lave-linge Candy, Hoover, Otsein"  # 62 car.
-    assert len(complet) == 62
-    r = _title(gen, monkeypatch, AVEC_POUR, "Joint de hublot", "Lave-linge", marques, "46001221")
-    assert r['title'] == "46001221 Joint de hublot lave-linge Candy, Hoover, Otsein"
+    complet = "46001221 Joint de hublot pour lave-linge Whirlpool, Hoover, Otsein"
+    sans_pour = "46001221 Joint de hublot lave-linge Whirlpool, Hoover, Otsein"
+    assert largeur_px(complet, 20) > SEOGenerator.TITLE_MAX_PX >= largeur_px(sans_pour, 20)
+    r = _title(gen, monkeypatch, AVEC_POUR, "Joint de hublot", "Lave-linge",
+               ["Whirlpool", "Hoover", "Otsein"], "46001221")
+    assert r['title'] == sans_pour
 
 
 def test_title_retire_les_marques_en_partant_de_la_fin(gen, monkeypatch):
@@ -94,11 +106,12 @@ def test_title_ne_laisse_pas_de_parenthese_ouverte(gen, monkeypatch):
     ("Faisceau 3 sondes ambiant évaporateur", "Chauffe-eau", ["Atlantic", "Thermor"], "026350"),
 ])
 def test_title_invariants(gen, monkeypatch, gabarit, description, type_appareil, marques, reference):
-    """Référence en tête, ≤ 60 caractères, au moins une marque entière, type présent,
-    aucune abréviation."""
+    """Référence en tête, dans la largeur affichée, au moins une marque entière, type
+    présent, aucune abréviation."""
     t = _title(gen, monkeypatch, gabarit, description, type_appareil, marques, reference)['title']
     assert t.startswith(reference + " ")
-    assert len(t) <= 60
+    assert len(t) <= SEOGenerator.TITLE_MAX_CARACTERES
+    assert largeur_px(t, 20) <= SEOGenerator.TITLE_MAX_PX
     assert t.endswith(marques[0]) or f"{marques[0]}," in t
     assert gen._normalize_type(type_appareil) in t
     for abreviation in ("lave-vais.", "lave-ling.", "sèche-ling.", "frigo", "congélo", "électromén."):
@@ -132,10 +145,15 @@ def test_description_trois_marques_au_plus(gen, marques, attendu):
 
 def test_description_moins_de_marques_si_la_place_manque(gen):
     gabarit = "{description_cap} {reference} pour {type_appareil} {fabricants}"
-    libelle = "votre " + "x" * 100
-    # place restante : 150 - len(rendu sans marques) = 21 → « Candy et Hoover » (15) tient, pas 3
+    rendu = lambda libelle, marques: gabarit.format(
+        description_cap=libelle, reference="R12345678", type_appareil="lave-linge", fabricants=marques)
+    # Libellé allongé jusqu'à ce que 3 marques débordent (910 px) mais pas 2
+    libelle = "Votre joint"
+    while gen._tient_description(rendu(libelle, "Candy, Hoover et Otsein"), 155):
+        libelle += " x"
+    assert gen._tient_description(rendu(libelle, "Candy et Hoover"), 155)
     assert gen._select_fabricants_for_description(
-        ["Candy", "Hoover", "Otsein"], gabarit, "R12345678", libelle, "lave-linge", 150) == "Candy et Hoover"
+        ["Candy", "Hoover", "Otsein"], gabarit, "R12345678", libelle.lower(), "lave-linge", 155) == "Candy et Hoover"
 
 
 def test_description_ne_coupe_jamais_une_marque(gen):
