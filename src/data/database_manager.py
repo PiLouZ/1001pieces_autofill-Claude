@@ -867,92 +867,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.cache_invalidation.invalidate_after_device_modification("suppression", 1)
 
         return success
-    
 
-
-    @_with_query_lock
-    @handle_database_operation_errors(return_value={}, log_prefix="Erreur nettoyage données")
-    def _safe_clean_data(self) -> Dict[str, int]:
-        """Helper sécurisé pour nettoyer les données"""
-        try:
-            # Supprimer les lignes vides (vérifier les 4 champs principaux)
-            condition_vide = " AND ".join(f"([{h}] IS NULL OR [{h}] = '')" for h in Config.DB_HEADERS[:4])
-            self.cursor.execute(f"DELETE FROM appareils WHERE {condition_vide}")
-            deleted_empty = self.cursor.rowcount
-
-            # Identifier les doublons - colonnes A, B, C, D, E identiques
-            # Considérer comme doublons: même type, manufacturer, ref_modele, commercial_ref, other_ref
-            duplicates_query = """
-                SELECT GROUP_CONCAT(id) as ids, MIN(id) as keep_id
-                FROM appareils
-                GROUP BY COALESCE([type],''), COALESCE([manufacturer],''),
-                         COALESCE([ref_modele],''), COALESCE([commercial_ref],''),
-                         COALESCE([other_ref],'')
-                HAVING COUNT(*) > 1
-            """
-
-            self.cursor.execute(duplicates_query)
-            duplicate_groups = self.cursor.fetchall()
-
-            deleted_duplicates = 0
-            merged_data = 0
-
-            # Traiter chaque groupe de doublons
-            for ids_str, keep_id in duplicate_groups:
-                all_ids = [int(x) for x in ids_str.split(',')]
-                ids_to_delete = [x for x in all_ids if x != keep_id]
-
-                if ids_to_delete:
-                    # ÉTAPE 1: Fusionner les notes des doublons
-                    notes_query = "SELECT [notes] FROM appareils WHERE id IN ({})".format(
-                        ','.join('?' for _ in all_ids)
-                    )
-                    self.cursor.execute(notes_query, all_ids)
-                    all_notes = [row[0] for row in self.cursor.fetchall() if row[0] and row[0].strip()]
-
-                    if all_notes:
-                        # Combiner les notes uniques
-                        unique_notes = []
-                        for note in all_notes:
-                            if note.strip() and note.strip() not in unique_notes:
-                                unique_notes.append(note.strip())
-
-                        if unique_notes:
-                            combined_notes = " | ".join(unique_notes)
-                            self.cursor.execute(
-                                "UPDATE appareils SET [notes] = ? WHERE id = ?",
-                                (combined_notes, keep_id)
-                            )
-                            merged_data += 1
-
-                    # ÉTAPE 2: Réassigner toutes les pièces vers l'appareil conservé
-                    placeholders = ','.join('?' for _ in ids_to_delete)
-                    self.cursor.execute(f"""
-                        UPDATE pieces
-                        SET appareil_id = ?
-                        WHERE appareil_id IN ({placeholders})
-                    """, [keep_id] + ids_to_delete)
-
-                    # ÉTAPE 3: Supprimer les doublons
-                    self.cursor.execute(f"""
-                        DELETE FROM appareils
-                        WHERE id IN ({placeholders})
-                    """, ids_to_delete)
-
-                    deleted_duplicates += len(ids_to_delete)
-
-            self.conn.commit()
-
-            return {
-                'deleted_empty': deleted_empty,
-                'deleted_duplicates': deleted_duplicates,
-                'merged_notes': merged_data
-            }
-
-        except Exception as e:
-            self.conn.rollback()
-            raise
-    
     def get_pieces_for_appareil(self, appareil_id: int) -> List[Tuple]:
         """Récupérer les pièces associées à un appareil (nouvelle structure)"""
         return self._safe_get_pieces_for_appareil(appareil_id)
@@ -1517,7 +1432,14 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     
     @handle_database_errors(title="Erreur requête personnalisée")
     def execute_custom_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
-        """Exécuter une requête SQL personnalisée"""
+        """Exécuter une requête SQL personnalisée — **lecture uniquement**.
+
+        Cette méthode n'appelle pas `commit()` : une écriture passée par ici
+        reste dans la transaction implicite ouverte par sqlite3 et se perd si
+        l'application se ferme avant qu'autre chose ne commit. Le piège est
+        sournois parce que l'écriture est bien visible depuis cette connexion.
+        Pour écrire, utiliser `execute_write` ou `execute_write_batch`.
+        """
         if params is None:
             params = []
 
@@ -1547,6 +1469,71 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 self.conn.rollback()
                 raise
     
+    def execute_write(self, query: str, params: Optional[List] = None) -> int:
+        """Exécuter une écriture SQL (INSERT/UPDATE/DELETE) **et la rendre durable**.
+
+        À utiliser partout où `execute_custom_query` servait à écrire : cette
+        dernière n'appelle jamais `commit()`. La connexion étant ouverte sans
+        `isolation_level`, le module sqlite3 ouvre une transaction implicite dès
+        le premier DML — l'écriture est visible depuis la même connexion, donc
+        depuis l'interface, mais perdue si l'application se ferme avant qu'une
+        autre opération ne commit. Le symptôme est intermittent : n'importe
+        quelle écriture ultérieure valide la transaction au passage, si bien que
+        l'opération paraît fonctionner la plupart du temps.
+
+        Returns: nombre de lignes affectées, ou -1 si l'écriture a échoué.
+        """
+        return self._safe_execute_write(query, params)
+
+    @handle_database_operation_errors(return_value=-1, log_prefix="Erreur exécution écriture")
+    def _safe_execute_write(self, query: str, params: Optional[List] = None) -> int:
+        """Helper sécurisé pour exécuter une écriture SQL durable"""
+        if params is None:
+            params = []
+
+        # Curseur partagé : sérialiser avec les autres threads (P5 thread-safety)
+        with self._query_lock:
+            try:
+                self.cursor.execute(query, params)
+                affectees = self.cursor.rowcount
+                self.conn.commit()
+                return affectees
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def execute_write_batch(self, operations: List[Tuple]) -> bool:
+        """Exécuter plusieurs écritures en **une seule transaction**.
+
+        Pour les opérations dont les étapes n'ont pas de sens isolément — une
+        fusion d'appareils transfère les associations *puis* supprime le
+        doublon : commiter chaque étape séparément laisserait, en cas d'échec au
+        milieu, un appareil supprimé dont les pièces n'ont pas été transférées.
+
+        Args:
+            operations: liste de (requête, paramètres). Les paramètres peuvent
+                        être None pour une requête sans argument.
+
+        Returns: True si toutes les écritures ont été commitées.
+        """
+        return self._safe_execute_write_batch(operations)
+
+    @handle_database_operation_errors(return_value=False, log_prefix="Erreur exécution lot d'écritures")
+    def _safe_execute_write_batch(self, operations: List[Tuple]) -> bool:
+        """Helper sécurisé pour exécuter un lot d'écritures atomique"""
+        if not operations:
+            return True
+
+        with self._query_lock:
+            try:
+                for query, params in operations:
+                    self.cursor.execute(query, list(params) if params else [])
+                self.conn.commit()
+                return True
+            except Exception:
+                self.conn.rollback()
+                raise
+
     def execute_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
         """Exécuter une requête SQL de lecture (SELECT)"""
         return self._safe_execute_query(query, params)

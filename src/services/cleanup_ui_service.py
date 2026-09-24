@@ -900,8 +900,9 @@ class DistinctReferencesWidget(QWidget):
         placeholders = ','.join(['?'] * len(selected_refs))
         delete_query = f"DELETE FROM reference_decisions WHERE ref_modele IN ({placeholders})"
 
-        result = self.db_manager.execute_custom_query(delete_query, selected_refs)
-        success = True  # execute_custom_query n'a pas d'erreur si ça marche
+        # execute_write commit : sans cela la suppression disparaissait au
+        # lancement suivant si rien d'autre n'écrivait entre-temps.
+        success = self.db_manager.execute_write(delete_query, selected_refs) >= 0
 
         if success:
             self.load_distinct_references()
@@ -1110,8 +1111,7 @@ class ActionHistoryWidget(QWidget):
 
         # Supprimer de la base de données
         delete_query = "DELETE FROM cleanup_history"
-        result = self.db_manager.execute_custom_query(delete_query)
-        success = True  # execute_custom_query n'a pas d'erreur si ça marche
+        success = self.db_manager.execute_write(delete_query) >= 0
 
         if success:
             self.load_history()

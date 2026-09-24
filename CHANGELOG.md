@@ -4,6 +4,74 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.73.1] - 2026-09-22 (branche `fix/nettoyage-doublons-durabilite`)
+
+### Le nettoyage des doublons ne survivait pas à la fermeture
+
+Trouvé en vérifiant un SQL suspect repéré pendant la v3.73.0. Les trois écritures
+de la fusion d'appareils passaient par `execute_custom_query`, qui n'appelle
+jamais `commit()`. La connexion étant ouverte sans `isolation_level`, sqlite3
+ouvre une transaction implicite dès le premier DML : l'écriture est visible
+depuis la même connexion — donc depuis l'interface, qui affiche « Nettoyage
+terminé avec succès » — mais perdue si l'application se ferme avant qu'autre
+chose ne commit.
+
+Mesuré sur une fusion de deux appareils doublons :
+
+```
+Vu par l'application      : 1 appareil, 2 associations sur le maître
+Relu au lancement suivant : 2 appareils, 1 association sur le maître
+```
+
+Le symptôme est **intermittent** : n'importe quelle écriture ultérieure (un
+import, une édition) valide la transaction au passage, si bien que l'opération
+paraît fonctionner la plupart du temps. Elle ne perd les données que si
+l'application est fermée juste après le nettoyage. C'est ce qui l'a rendu
+invisible — `device_manager.py:157` porte même un commentaire qui contourne le
+piège localement, sans traiter la cause.
+
+### Deux primitives d'écriture durables
+
+`execute_write` et `execute_write_batch` rejoignent `execute_insert`, qui
+committait déjà. Plutôt que de faire commiter `execute_custom_query` elle-même :
+elle sert aussi à lire, et validerait prématurément une transaction ouverte
+ailleurs. Son docstring indique désormais qu'elle est en lecture seule.
+
+Quatre sites migrés : fusion d'appareils, suppression de pièces dupliquées,
+décisions de référence, purge de l'historique de nettoyage. Le `CREATE TABLE`
+restant n'est pas concerné — sqlite3 n'ouvre de transaction implicite que pour
+les DML.
+
+La fusion passe par le lot atomique, ce qui corrige un second défaut : ses trois
+écritures commitées séparément auraient pu laisser un appareil supprimé dont les
+pièces n'ont pas été transférées. Les FOREIGN KEY étant inertes, rien en base
+n'aurait rattrapé ces associations orphelines.
+
+Au passage, deux comptes de lignes cessent d'être simulés à 1 quoi qu'il arrive,
+et deux `success = True` inconditionnels reflètent maintenant le résultat réel.
+
+### Code mort retiré — 83 lignes
+
+`DatabaseManager._safe_clean_data` n'avait aucun appelant, pas même une méthode
+publique pour l'exposer. Écrite en octobre 2025 pour l'ancienne structure, elle
+contenait un `UPDATE pieces SET appareil_id` — colonne supprimée depuis la
+migration vers `piece_associations`. Ce SQL ne pouvait plus s'exécuter
+(`no such column: appareil_id`), mais il n'était jamais atteint.
+
+Le bouton « Nettoyer les doublons » passe par une méthode homonyme de
+`main_refactored.py`, qui mène à `CleanupPreviewDialog` puis `_merge_devices` :
+83 lignes qui ressemblaient à du nettoyage fonctionnel sans l'être.
+
+### Vérification
+
+13 tests ajoutés (**739 passed, 1 skipped**). Ils relisent systématiquement sur
+une connexion neuve, seule façon de distinguer « écrit » de « commité ».
+Neutraliser les commits en fait tomber 7. Chemin du bouton vérifié de bout en
+bout après la suppression : primitives présentes, fusion opérationnelle, fenêtre
+de nettoyage importable.
+
+---
+
 ## [3.73.0] - 2026-09-22 (branche `feature/libelles-pieces-relations`)
 
 ### Des références qui se retrouvaient sans nom
