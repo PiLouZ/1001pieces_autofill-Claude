@@ -14,19 +14,19 @@ class SEOGenerator:
     META_DESCRIPTION_TEMPLATES = [
         # Achat direct
         "Commandez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste pièces détachées",
-        "Achetez {description} {reference} pour {type_appareil} {fabricants} — livraison rapide, retour facile",
+        "Achetez {description} {reference} pour {type_appareil} {fabricants} — livraison à domicile ou retrait en magasin",
         "Trouvez {description} {reference} pour {type_appareil} {fabricants} chez un expert de la réparation électroménager",
         "Découvrez {description} {reference} pour {type_appareil} {fabricants} chez le spécialiste de la pièce détachée",
         # Réparation
         "Réparez votre {type_appareil} {fabricants} avec {description} {reference} — commandez en ligne, livraison rapide",
         "Retrouvez {description} {reference} pour {type_appareil} {fabricants} et réparez votre appareil vous-même",
-        "Redonnez vie à un {type_appareil} {fabricants} avec {description} {reference} — pièce disponible immédiatement",
-        # Stock / disponibilité
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce d'origine, expédition rapide",
-        "{description_cap} {reference} en stock pour {type_appareil} {fabricants} — commandez chez votre spécialiste électroménager",
-        "{description_cap} {reference} — pièce détachée disponible pour {type_appareil} {fabricants}, expédition rapide",
+        "Redonnez vie à un {type_appareil} {fabricants} avec {description} {reference} — commande en ligne, expédition rapide",
+        # Expédition / qualité (aucune donnée de stock : jamais « en stock » ni « disponible »)
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — d'origine ou de qualité équivalente, expédition rapide",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — commandez chez votre spécialiste électroménager",
+        "{description_cap} {reference} — pièce détachée pour {type_appareil} {fabricants}, expédition rapide",
         # Question / besoin
-        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} est disponible chez votre réparateur agréé",
+        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} — livraison ou retrait en magasin",
         "Besoin de {description} {reference} pour {type_appareil} {fabricants} ? Trouvez cette pièce chez votre spécialiste",
         "Votre {type_appareil} {fabricants} en panne ? Commandez {description} {reference} — la bonne pièce, livrée rapidement",
         "Panne sur votre {type_appareil} {fabricants} ? Commandez {description} {reference} — expédition rapide",
@@ -34,14 +34,15 @@ class SEOGenerator:
         "Évitez le remplacement — commandez {description} {reference} pour {type_appareil} {fabricants} chez votre spécialiste",
         "Réparer plutôt que jeter : {description} {reference} pour {type_appareil} {fabricants} chez votre expert pièces détachées",
         # DIY
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — réparez facilement votre appareil sans faire appel à un technicien",
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — commandez la pièce, réparez votre appareil",
         "Faites-le vous-même : {description} {reference} pour {type_appareil} {fabricants}, la réparation à portée de main",
-        # Qualité pièce (OEM / compatible certifiée) — USP réel, pas de mention de garantie
-        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM ou alternative de qualité OEM",
+        # Qualité pièce : d'origine OU équivalente, jamais « d'origine » seul (pas de donnée par pièce),
+        # jamais « OEM » (jargon), pas de mention de garantie
+        "{description_cap} {reference} pour {type_appareil} {fabricants} — pièce d'origine ou de qualité équivalente",
         # Retour (21 jours après réception, frais à la charge du client → wording factuel)
         "Commandez {description} {reference} pour {type_appareil} {fabricants} — retour possible sous 21 jours après réception",
         # Expédition le jour même (commande validée avant 15h en jour ouvré)
-        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} — validez avant 15h, expédié le jour même",
+        "En panne ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
         # Livraison express Chronopost (le lendemain avant 13h)
         "{description_cap} {reference} pour {type_appareil} {fabricants} — livraison Chronopost dès le lendemain avant 13h",
         # Retrait en magasin (immédiat après validation de la commande)
@@ -76,35 +77,35 @@ class SEOGenerator:
     # Fallback systématique sur le pool générique si le type n'a pas d'entrée.
     SEGMENT_DESCRIPTION_TEMPLATES = {
         "lave-linge": [
-            "Plus d'essorage ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
-            "Fuite sur votre {type_appareil} {fabricants} ? {description_cap} {reference} en stock — Chronopost J+1 avant 13h",
+            "Plus d'essorage ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
+            "Fuite sur votre {type_appareil} {fabricants} ? {description_cap} {reference} — Chronopost J+1 avant 13h",
         ],
         "lave-vaisselle": [
-            "Débordement ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
+            "Débordement ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
             "Ne vidange plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, retrait en magasin possible",
         ],
         "réfrigérateur": [
-            "Plus de froid ? {description_cap} {reference} pour {type_appareil} {fabricants} — OEM, Chronopost J+1 avant 13h",
+            "Plus de froid ? {description_cap} {reference} pour {type_appareil} {fabricants} — Chronopost J+1 avant 13h",
             "Trop de givre ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
         ],
         "sèche-linge": [
-            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
+            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
             "Linge encore humide ? {description_cap} {reference} pour {type_appareil} {fabricants} — retour possible sous 21 jours",
         ],
         "four": [
-            "Plus de chaleur ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
-            "Réparez votre {type_appareil} {fabricants} : {description_cap} {reference} en stock, Chronopost J+1 avant 13h",
+            "Plus de chaleur ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
+            "Réparez votre {type_appareil} {fabricants} : {description} {reference}, Chronopost J+1 avant 13h",
         ],
         "hotte": [
-            "N'aspire plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — pièce OEM, expédition avant 15h",
-            "Hotte {fabricants} bruyante ? {description_cap} {reference} en stock — retrait en magasin possible",
+            "N'aspire plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
+            "Hotte {fabricants} bruyante ? {description_cap} {reference} — retrait en magasin possible",
         ],
         "congélateur": [
-            "Ne congèle plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, pièce OEM expédiée avant 15h",
+            "Ne congèle plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
             "Givre excessif ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
         ],
         "micro-ondes": [
-            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — OEM, expédition avant 15h",
+            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
             "Plateau bloqué ? {description_cap} {reference} pour {type_appareil} {fabricants}, Chronopost J+1 avant 13h",
         ],
     }
