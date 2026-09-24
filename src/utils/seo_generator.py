@@ -71,42 +71,47 @@ class SEOGenerator:
     COMPAT_MODELS_THRESHOLD = 20
     CONTEXT_TEMPLATE_WEIGHT = 6.0
 
-    # ── L3 : templates par segment d'appareil (micro-moments à fort intent) ──
+    # ── L3 : templates par segment d'appareil ──
+    # L'appareil et ses marques en tête (« Lave-linge Candy : … »), comme dans les
+    # recherches « pièce lave-linge candy ». Pas d'accroche symptôme (« Ne vidange
+    # plus ? ») : choisie selon l'appareil et non la pièce, elle tombait le plus souvent
+    # à côté (sur un verrou, un joint…) et ressemblait à un conseil de diagnostic,
+    # que le SAV ne fournit pas (décision client 2026-09-24).
     # Clés = sortie de _normalize_type(). Matching par clé la plus longue contenue
     # (via _segment_templates_for) pour gérer "lave-linge top", "four micro-ondes".
     # Fallback systématique sur le pool générique si le type n'a pas d'entrée.
     SEGMENT_DESCRIPTION_TEMPLATES = {
         "lave-linge": [
-            "Plus d'essorage ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
-            "Fuite sur votre {type_appareil} {fabricants} ? {description_cap} {reference} — Chronopost J+1 avant 13h",
+            "Lave-linge {fabricants} : {description} {reference} — Chronopost J+1 avant 13h",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, commande avant 15h, expédition le jour même",
         ],
         "lave-vaisselle": [
-            "Débordement ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
-            "Ne vidange plus ? {description_cap} {reference} pour {type_appareil} {fabricants}, retrait en magasin possible",
+            "Lave-vaisselle {fabricants} : {description} {reference} — commande avant 15h, expédition le jour même",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, retrait en magasin possible",
         ],
         "réfrigérateur": [
-            "Plus de froid ? {description_cap} {reference} pour {type_appareil} {fabricants} — Chronopost J+1 avant 13h",
-            "Trop de givre ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
+            "Réfrigérateur {fabricants} : {description} {reference} — Chronopost J+1 avant 13h",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, La Poste 48-72h en métropole",
         ],
         "sèche-linge": [
-            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
-            "Linge encore humide ? {description_cap} {reference} pour {type_appareil} {fabricants} — retour possible sous 21 jours",
+            "Sèche-linge {fabricants} : {description} {reference} — commande avant 15h, expédition le jour même",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, retour possible sous 21 jours",
         ],
         "four": [
-            "Plus de chaleur ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
-            "Réparez votre {type_appareil} {fabricants} : {description} {reference}, Chronopost J+1 avant 13h",
+            "Four {fabricants} : {description} {reference} — Chronopost J+1 avant 13h",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, retrait en magasin possible",
         ],
         "hotte": [
-            "N'aspire plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
-            "Hotte {fabricants} bruyante ? {description_cap} {reference} — retrait en magasin possible",
+            "Hotte {fabricants} : {description} {reference} — retrait en magasin possible",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, commande avant 15h, expédition le jour même",
         ],
         "congélateur": [
-            "Ne congèle plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
-            "Givre excessif ? {description_cap} {reference} pour {type_appareil} {fabricants} — La Poste 48-72h en métropole",
+            "Congélateur {fabricants} : {description} {reference} — La Poste 48-72h en métropole",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, Chronopost J+1 avant 13h",
         ],
         "micro-ondes": [
-            "Ne chauffe plus ? {description_cap} {reference} pour {type_appareil} {fabricants} — commande avant 15h, expédition le jour même",
-            "Plateau bloqué ? {description_cap} {reference} pour {type_appareil} {fabricants}, Chronopost J+1 avant 13h",
+            "Micro-ondes {fabricants} : {description} {reference} — commande avant 15h, expédition le jour même",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, Chronopost J+1 avant 13h",
         ],
     }
 
@@ -336,7 +341,7 @@ class SEOGenerator:
                 pool.append(tpl)
                 weights.append(self.CONTEXT_TEMPLATE_WEIGHT)
 
-        # L3 — segment d'appareil (micro-moments à fort intent)
+        # L3 — segment d'appareil (appareil et marques en tête)
         _boost(self._segment_templates_for(type_norm))
         # L2 — forte compatibilité (la pièce équipe beaucoup de modèles)
         if n_modeles >= self.COMPAT_MODELS_THRESHOLD:

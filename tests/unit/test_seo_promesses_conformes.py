@@ -86,3 +86,15 @@ def test_descriptions_generees_conformes():
                 fabricants=fabricants, n_modeles=n_modeles, ref_old=ref_old,
             )['description']
             assert _violations(texte) == [], texte
+
+
+@pytest.mark.parametrize("cle,gabarits", SEOGenerator.SEGMENT_DESCRIPTION_TEMPLATES.items())
+def test_segments_sans_accroche_symptome(cle, gabarits):
+    """Décision client : plus d'accroche symptôme (« Ne vidange plus ? »). Elle
+    dépendait de l'appareil et non de la pièce — « Ne vidange plus ? » sur un
+    verrou de porte — et ressemblait à un conseil de diagnostic. Chaque gabarit
+    de segment nomme l'appareil en tête, sans question."""
+    for gabarit in gabarits:
+        assert "?" not in gabarit, gabarit
+        tete = gabarit.split(":")[0].lower()
+        assert cle in tete or "{type_appareil}" in tete, gabarit
