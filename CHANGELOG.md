@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.74.2] - 2026-09-25 (branche `fix/seo-refus-visibles`)
+
+### Les boutons Méta semblaient ne rien faire sur une pièce sans libellé
+
+Signalé par l'utilisateur sur `AS6018811` (libellé vide, 939 modèles) : « pas de
+message, pas d'erreur ». Reproduit dans la vraie fenêtre, hors écran, sur une copie
+de la base : le blocage fonctionnait, et son message s'affichait bien — mais
+**seulement dans la barre d'état, en bas à gauche**, à ~900 px des boutons, pendant
+5 s. Une méta réussie, elle, s'inscrit dans l'« Historique des opérations », juste
+au-dessus des boutons : c'est là que l'œil attend la réponse.
+
+- Les quatre refus des boutons Méta (libellé manquant, référence introuvable,
+  aucune recherche active, données incomplètes) s'inscrivent désormais **aussi dans
+  l'historique** : « SEO: Méta titre non généré pour 'AS6018811' ==> Libellé
+  manquant… ». Un seul point de sortie, `SEOService._signaler_refus`.
+- Barre d'état conservée, affichée 8 s au lieu de 3-5 s.
+- Vérifié par capture de la fenêtre rendue. 929 tests.
+
+---
+
 ## [3.74.1] - 2026-09-25 (branche `feature/ui-ordre-export-recherche`)
 
 ### Fenêtre principale : ordre des boutons d'export et de la zone de recherche

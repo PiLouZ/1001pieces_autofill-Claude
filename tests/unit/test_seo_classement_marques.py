@@ -337,16 +337,36 @@ class _Barre:
         self.messages.append(message)
 
 
-def test_generation_bloquee_si_libelle_vide(db):
-    db.piece("00614351", None)
-    db.modeles("00614351", "Lave-linge", "Balay", 2)
+class _Historique:
+    def __init__(self):
+        self.messages = []
+
+    def add_to_history(self, message, duration_ms=None):
+        self.messages.append(message)
+
+
+def _fenetre_avec_retours(db):
     fenetre = _Fenetre(db)
     fenetre.statusbar = _Barre()
+    fenetre.user_interaction_service = _Historique()
+    return fenetre
+
+
+def test_generation_bloquee_si_libelle_vide(db):
+    """Le refus s'écrit AUSSI dans l'historique des opérations : seul dans la barre
+    d'état, en bas à gauche, loin des boutons, il passait inaperçu (signalé par
+    l'utilisateur sur AS6018811 : « les boutons ne font rien »)."""
+    db.piece("00614351", None)
+    db.modeles("00614351", "Lave-linge", "Balay", 2)
+    fenetre = _fenetre_avec_retours(db)
     service = SEOService(fenetre)
-    assert service._libelle_manquant({'reference': "00614351", 'description': ""})
-    assert fenetre.statusbar.messages == [
-        "Libellé manquant pour 00614351 : complétez-le avant de générer la méta"]
-    assert not service._libelle_manquant({'reference': "R1", 'description': "Joint"})
+    assert service._libelle_manquant({'reference': "00614351", 'description': ""}, "title")
+    raison = "Libellé manquant pour 00614351 : complétez-le avant de générer la méta"
+    assert fenetre.statusbar.messages == [raison]
+    assert fenetre.user_interaction_service.messages == [
+        f"SEO: Méta titre non généré pour '00614351'\n==> {raison}"]
+    assert not service._libelle_manquant({'reference': "R1", 'description': "Joint"}, "description")
+    assert len(fenetre.user_interaction_service.messages) == 1
 
 
 def test_ancienne_ref_tapee_bloquee_si_la_courante_n_a_pas_de_libelle(db):
@@ -359,11 +379,20 @@ def test_ancienne_ref_tapee_bloquee_si_la_courante_n_a_pas_de_libelle(db):
 
 
 def test_reference_introuvable_signalee(db):
-    fenetre = _Fenetre(db)
-    fenetre.statusbar = _Barre()
+    fenetre = _fenetre_avec_retours(db)
     fenetre.search_input.texte = "ZZ999"
-    SEOService(fenetre)._signaler_absence_de_donnees("le méta titre")
+    SEOService(fenetre)._signaler_absence_de_donnees("description")
     assert fenetre.statusbar.messages == ["Référence introuvable telle quelle : ZZ999"]
+    assert fenetre.user_interaction_service.messages == [
+        "SEO: Méta description non générée pour 'ZZ999'\n==> Référence introuvable telle quelle : ZZ999"]
+
+
+def test_aucune_recherche_signalee_sans_reference(db):
+    fenetre = _fenetre_avec_retours(db)
+    SEOService(fenetre)._signaler_absence_de_donnees("title")
+    assert fenetre.statusbar.messages == ["Aucune recherche active pour générer le méta titre"]
+    assert fenetre.user_interaction_service.messages == [
+        "SEO: Méta titre non généré\n==> Aucune recherche active pour générer le méta titre"]
 
 
 def test_reference_choisie_absente_ne_produit_plus_de_meta_de_secours(db):

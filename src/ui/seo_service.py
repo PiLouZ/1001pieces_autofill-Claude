@@ -57,19 +57,20 @@ class SEOService:
             search_data = self._get_current_search_data()
 
         if not search_data:
-            self._signaler_absence_de_donnees("le méta titre")
+            self._signaler_absence_de_donnees("title")
             return
 
         required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
         if not all(key in search_data for key in required_keys):
-            self.main_window.statusbar.showMessage("Données incomplètes pour générer le méta titre", 3000)
+            self._signaler_refus("title", self.main_window.search_input.text().strip(),
+                                 "Données incomplètes pour générer le méta titre")
             return
 
         # Résoudre la chaîne de supersession si nécessaire
         ref_obsolete = self._resolve_supersession(search_data)
         if ref_obsolete:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
-        if self._libelle_manquant(search_data):
+        if self._libelle_manquant(search_data, "title"):
             return
 
         result = self.seo_generator.generate_meta_title(
@@ -128,19 +129,20 @@ class SEOService:
             search_data = self._get_current_search_data()
 
         if not search_data:
-            self._signaler_absence_de_donnees("la méta description")
+            self._signaler_absence_de_donnees("description")
             return
 
         required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
         if not all(key in search_data for key in required_keys):
-            self.main_window.statusbar.showMessage("Données incomplètes pour générer la méta description", 3000)
+            self._signaler_refus("description", self.main_window.search_input.text().strip(),
+                                 "Données incomplètes pour générer la méta description")
             return
 
         # Résoudre la chaîne de supersession si nécessaire
         ref_obsolete = self._resolve_supersession(search_data)
         if ref_obsolete:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
-        if self._libelle_manquant(search_data):
+        if self._libelle_manquant(search_data, "description"):
             return
 
         # Compter les modèles compatibles (ref courante + prédécesseurs)
@@ -368,24 +370,40 @@ class SEOService:
             canoniques.append(piece[0] if piece else ref)
         return canoniques
 
-    def _libelle_manquant(self, search_data: Dict[str, Any]) -> bool:
+    def _libelle_manquant(self, search_data: Dict[str, Any], genre: str) -> bool:
         """
         Bloque la génération si la pièce n'a pas de libellé (décision client) :
         l'ancien repli « pièce détachée » donnait « votre pièce détachée 00614351 ».
         """
         if search_data['description'].strip():
             return False
-        self.main_window.statusbar.showMessage(
-            f"Libellé manquant pour {search_data['reference']} : complétez-le avant de générer la méta", 5000)
+        self._signaler_refus(
+            genre, search_data['reference'],
+            f"Libellé manquant pour {search_data['reference']} : complétez-le avant de générer la méta")
         return True
 
-    def _signaler_absence_de_donnees(self, quoi: str) -> None:
+    def _signaler_absence_de_donnees(self, genre: str) -> None:
         terme = self.main_window.search_input.text().strip()
         if terme and '||' not in terme and '&&' not in terme and not self._trouver_piece(terme):
             message = f"Référence introuvable telle quelle : {terme}"
         else:
-            message = f"Aucune recherche active pour générer {quoi}"
-        self.main_window.statusbar.showMessage(message, 3000)
+            message = f"Aucune recherche active pour générer {self._QUOI[genre]}"
+        self._signaler_refus(genre, terme, message)
+
+    _QUOI = {'title': "le méta titre", 'description': "la méta description"}
+    _NON_GENERE = {'title': "Méta titre non généré", 'description': "Méta description non générée"}
+
+    def _signaler_refus(self, genre: str, reference: str, raison: str) -> None:
+        """
+        Explique pourquoi aucune méta n'a été générée, dans la barre d'état ET dans
+        l'historique des opérations : c'est là, juste au-dessus des boutons, qu'arrive
+        la méta quand elle réussit. Seul en bas à gauche de la fenêtre, loin des
+        boutons, le message passait inaperçu (« les boutons ne font rien »).
+        """
+        self.main_window.statusbar.showMessage(raison, 8000)
+        pour = f" pour '{reference}'" if reference else ""
+        self.main_window.user_interaction_service.add_to_history(
+            f"SEO: {self._NON_GENERE[genre]}{pour}\n==> {raison}")
 
     @handle_seo_data_errors()
     def _get_multi_reference_terms(self) -> List[str]:
