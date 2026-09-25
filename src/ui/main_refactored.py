@@ -656,6 +656,9 @@ class MainWindow(QMainWindow):
         
         self.history_list = QTextBrowser()
         self.history_list.setOpenExternalLinks(False)  # Gérer les liens nous-mêmes
+        # Sans ceci, QTextBrowser tente aussi d'OUVRIR le lien cliqué comme une page
+        # (setSource) : un lien d'action « libelle:… » viderait l'historique affiché.
+        self.history_list.setOpenLinks(False)
         
         # Style pour ressembler à une liste
         self.history_list.setStyleSheet("""
@@ -1528,12 +1531,20 @@ class MainWindow(QMainWindow):
     @handle_navigation_errors(return_value=None, title="Erreur traitement lien historique")
     def _safe_handle_history_link(self, url_str: str):
         """Gérer les clics sur les liens dans l'historique - Version sécurisée"""
+        from src.core.constants import UIConfig
+        if url_str.startswith(UIConfig.LIEN_HISTORIQUE_LIBELLE):
+            from urllib.parse import unquote
+            ref = unquote(url_str[len(UIConfig.LIEN_HISTORIQUE_LIBELLE):])
+            self.piece_management_service.completer_libelle(ref)
+            return
         self.user_interaction_service.show_error(f"Lien non reconnu: {url_str}")
 
     def _handle_history_link(self, url):
         """Gérer les clics sur les liens dans l'historique"""
         from .qt_imports import QUrl
-        url_str = url.toString() if isinstance(url, QUrl) else str(url)
+        # FullyEncoded : la référence reste encodée telle qu'écrite dans le lien
+        # (« / », « # », espaces…) et n'est décodée qu'une fois, par le gestionnaire.
+        url_str = url.toString(QUrl.FullyEncoded) if isinstance(url, QUrl) else str(url)
         self._safe_handle_history_link(url_str)
 
     def _show_history_context_menu(self, pos):

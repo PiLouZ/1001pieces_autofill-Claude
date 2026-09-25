@@ -1140,6 +1140,18 @@ class PiecesManagerWindow(QDialog):
             self._load_pieces_data()
         self._search_in_manager(ref)
 
+    def editer_libelle(self, ref: str):
+        """Ouvrir le gestionnaire sur la pièce, puis « Modifier la pièce » avec le
+        curseur dans le champ Libellé. Point d'entrée public (lien de l'historique
+        et raccourci ⌘⇧L) : l'enregistrement passe par le chemin habituel
+        (_do_edit_piece — historique, propagation aux équivalents, garde
+        contre l'effacement)."""
+        self.open_on_piece(ref)
+        rows = self.db_manager.execute_query(
+            "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1", [ref])
+        libelle_actuel = (rows[0][0] or "") if rows else ""
+        self._do_edit_piece(ref, libelle_actuel, focus_field='desc')
+
     def _search_in_manager(self, ref: str):
         """Injecter une référence dans le champ de recherche du gestionnaire.
         Réinitialise les filtres rapides pour s'assurer que la pièce est visible,

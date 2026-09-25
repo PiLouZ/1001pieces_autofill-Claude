@@ -11,7 +11,7 @@ Changements v2 :
 """
 
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from .qt_imports import QMessageBox, QTimer
 
@@ -309,7 +309,8 @@ class UserInteractionService:
 
     # ── Historique ─────────────────────────────────────────────────────────────
 
-    def add_to_history(self, message: str, duration_ms: Optional[int] = None) -> None:
+    def add_to_history(self, message: str, duration_ms: Optional[int] = None,
+                       lien: Optional[Tuple[str, str]] = None) -> None:
         """
         Ajouter un message à l'historique.
         API identique à v1 — les appelants n'ont pas à changer.
@@ -317,6 +318,9 @@ class UserInteractionService:
         Args:
             message: Texte brut de l'action (timestamp ajouté automatiquement)
             duration_ms: Durée optionnelle en millisecondes (affichée en gris pour les imports)
+            lien: (href, texte) — ligne d'action cliquable sous l'entrée, traitée par
+                  MainWindow._handle_history_link. Non persistée : après un
+                  redémarrage, l'entrée reste mais sans le lien.
 
         Logique d'agrégation :
         - Si le nouveau message est un edit mono-champ avec le même (field, new_value)
@@ -327,6 +331,8 @@ class UserInteractionService:
         entry = _parse_entry(message, now)
         if duration_ms is not None:
             entry['duration_ms'] = duration_ms
+        if lien is not None:
+            entry['lien'] = lien
 
         # Tentative d'agrégation avec la dernière entrée
         if (entry['agg_key'] is not None and
@@ -451,6 +457,18 @@ class UserInteractionService:
                     f'<tr><td bgcolor="{color}" width="3"></td>'
                     f'<td width="6"></td>'
                     f'<td><span class="detail">{indent}{safe}</span></td></tr>\n'
+                )
+
+            # Ligne d'action cliquable (ex. « Compléter le libellé »)
+            if entry.get('lien'):
+                href, texte = entry['lien']
+                safe_href = href.replace('&', '&amp;').replace('"', '&quot;')
+                safe_texte = texte.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                details_html += (
+                    f'<tr><td bgcolor="{color}" width="3"></td>'
+                    f'<td width="6"></td>'
+                    f'<td><span class="detail">&nbsp;&nbsp;==&gt; </span>'
+                    f'<a href="{safe_href}">{safe_texte}</a></td></tr>\n'
                 )
 
             # Assemblage : table avec barre colorée en TD gauche

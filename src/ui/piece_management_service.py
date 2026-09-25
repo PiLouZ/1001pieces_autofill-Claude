@@ -248,11 +248,37 @@ class PieceManagementService:
                 self.main_window.user_interaction_service.show_error("Aucune suppression effectuée")
 
     @handle_ui_errors(log_prefix="Erreur ouverture gestionnaire pièces", show_message=True)
-    def open_pieces_manager(self) -> None:
-        """Ouvrir la fenêtre de gestion des pièces"""
+    def _gestionnaire(self):
+        """Fenêtre du gestionnaire de pièces, créée au premier besoin."""
         from .pieces_manager import PiecesManagerWindow
         if not hasattr(self.main_window, 'pieces_manager') or not self.main_window.pieces_manager:
             self.main_window.pieces_manager = PiecesManagerWindow(self.main_window, self.main_window.db_manager)
+        return self.main_window.pieces_manager
+
+    @handle_ui_errors(log_prefix="Erreur ouverture édition du libellé", show_message=True)
+    def completer_libelle(self, ref: str) -> None:
+        """Ouvrir « Modifier la pièce » sur le libellé de `ref` (lien de l'historique)."""
+        self._gestionnaire().editer_libelle(ref)
+
+    @handle_ui_errors(log_prefix="Erreur raccourci libellé", show_message=True)
+    def completer_libelle_recherche(self) -> None:
+        """
+        Raccourci ⌘⇧L : modifier le libellé de la pièce tapée dans la recherche.
+        Même résolution que les boutons Méta (référence exacte, puis sans tenir
+        compte de la casse ; jamais de fragment).
+        """
+        terme = self.main_window.search_input.text().strip()
+        piece = self.main_window.seo_service.trouver_piece(terme) if terme else None
+        if not piece:
+            message = (f"Libellé : aucune pièce ne correspond exactement à « {terme} »" if terme
+                       else "Libellé : tapez d'abord une référence de pièce dans la recherche")
+            self.main_window.statusbar.showMessage(message, 5000)
+            return
+        self.completer_libelle(piece[0])
+
+    def open_pieces_manager(self) -> None:
+        """Ouvrir la fenêtre de gestion des pièces"""
+        self._gestionnaire()
 
         self.main_window.pieces_manager.show()
         self.main_window.pieces_manager.raise_()
