@@ -61,6 +61,11 @@ class KeyboardShortcutService(BaseService):
             Qt.Key.Key_Down: ("smart_navigate_down", "Cellule vide suivante ou tout en bas")
         }
 
+        # Raccourcis Cmd/Ctrl + Maj (Maj exigée : Cmd+L seul ne déclenche rien)
+        self.shift_shortcut_actions = {
+            Qt.Key.Key_L: ("edit_piece_label", "Modifier le libellé de la pièce recherchée"),
+        }
+
         # Raccourcis standard Qt (utiliser strings au lieu d'enums)
         self.standard_shortcuts = {
             "Save": ("save", "Sauvegarder"),
@@ -127,6 +132,9 @@ class KeyboardShortcutService(BaseService):
 
         # Vérifier les raccourcis personnalisés
         key = event.key()
+        if event.modifiers() & Qt.ShiftModifier and key in self.shift_shortcut_actions:
+            action_name, description = self.shift_shortcut_actions[key]
+            return self._execute_shortcut_action(action_name, event, description)
         if key in self.shortcut_actions:
             action_name, description = self.shortcut_actions[key]
 
@@ -185,7 +193,8 @@ class KeyboardShortcutService(BaseService):
             "navigate_bottom": lambda: self._handle_extreme_navigation('bottom'),
             "refresh": self._handle_refresh_shortcut,
             "log_viewer": "_open_log_viewer",
-            "clear_search": self._handle_clear_search_shortcut
+            "clear_search": self._handle_clear_search_shortcut,
+            "edit_piece_label": lambda: self.parent_window.piece_management_service.completer_libelle_recherche(),
         }
 
         action_method = action_methods.get(action_name)

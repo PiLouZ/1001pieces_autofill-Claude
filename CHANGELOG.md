@@ -20,7 +20,27 @@ au-dessus des boutons : c'est là que l'œil attend la réponse.
   l'historique** : « SEO: Méta titre non généré pour 'AS6018811' ==> Libellé
   manquant… ». Un seul point de sortie, `SEOService._signaler_refus`.
 - Barre d'état conservée, affichée 8 s au lieu de 3-5 s.
-- Vérifié par capture de la fenêtre rendue. 929 tests.
+
+### Compléter le libellé en un clic
+
+Demandé par l'utilisateur dans la foulée : deux accès, un seul chemin d'écriture.
+
+- **Lien dans l'historique** : le refus « libellé manquant » porte une ligne
+  cliquable « Compléter le libellé de X (⌘⇧L) ». Elle ouvre le gestionnaire de
+  pièces sur la référence, puis « Modifier la pièce » curseur dans le champ
+  Libellé — avec la case « appliquer aux pièces équivalentes » (6 pour AS6018811).
+- **⌘⇧L** (Cmd+Maj+L) : la même édition pour la référence tapée dans la
+  recherche, depuis la recherche comme depuis le tableau. Même résolution que les
+  boutons Méta (exacte, puis sans casse ; jamais de fragment). ⌘L seul ne fait
+  rien. Ajouté au Guide (Raccourcis → Recherche et affichage).
+- L'enregistrement reste celui du gestionnaire (`_do_edit_piece`) : historique,
+  propagation, garde contre l'effacement d'un libellé.
+- Correctif latent : l'historique suivait lui-même les liens cliqués
+  (`QTextBrowser.openLinks`) et se serait vidé au premier lien.
+
+Vérifié par un vrai clic dans la fenêtre rendue, sur une copie de la base :
+lien → dialogue sur AS6018811 → libellé saisi et enregistré → la méta sort ;
+⌘⇧L depuis la recherche et depuis le tableau ; ⌘L seul inerte. 943 tests.
 
 ---
 

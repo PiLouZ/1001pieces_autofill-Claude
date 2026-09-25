@@ -109,6 +109,10 @@ class UIConfig:
     STYLE_ERROR_BUTTON = f"background-color: {COLOR_ERROR}; color: white; padding: 5px 10px; border-radius: 3px;"
     STYLE_WARNING_BUTTON = f"background-color: {COLOR_WARNING}; color: black; padding: 5px 10px; border-radius: 3px;"
 
+    # Liens d'action de l'historique des opérations (MainWindow._handle_history_link)
+    LIEN_HISTORIQUE_LIBELLE = "libelle:"   # + référence encodée → « Modifier la pièce » sur le libellé
+
+
 class Messages:
     """Messages utilisateur standardisés"""
     

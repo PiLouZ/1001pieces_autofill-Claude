@@ -341,6 +341,11 @@ class SEOService:
             'refs_agregees': all_refs,
         }
     
+    def trouver_piece(self, reference: str) -> Optional[Tuple[str, str]]:
+        """(référence telle qu'en base, libellé) — voir _trouver_piece. Public : sert
+        aussi au raccourci ⌘⇧L (PieceManagementService.completer_libelle_recherche)."""
+        return self._trouver_piece(reference)
+
     @handle_seo_data_errors()
     def _trouver_piece(self, reference: str) -> Optional[Tuple[str, str]]:
         """
@@ -377,9 +382,13 @@ class SEOService:
         """
         if search_data['description'].strip():
             return False
+        from urllib.parse import quote
+        from src.core.constants import UIConfig
+        ref = search_data['reference']
         self._signaler_refus(
-            genre, search_data['reference'],
-            f"Libellé manquant pour {search_data['reference']} : complétez-le avant de générer la méta")
+            genre, ref, f"Libellé manquant pour {ref} : complétez-le avant de générer la méta",
+            lien=(UIConfig.LIEN_HISTORIQUE_LIBELLE + quote(ref, safe=""),
+                  f"Compléter le libellé de {ref}  (⌘⇧L)"))
         return True
 
     def _signaler_absence_de_donnees(self, genre: str) -> None:
@@ -393,17 +402,19 @@ class SEOService:
     _QUOI = {'title': "le méta titre", 'description': "la méta description"}
     _NON_GENERE = {'title': "Méta titre non généré", 'description': "Méta description non générée"}
 
-    def _signaler_refus(self, genre: str, reference: str, raison: str) -> None:
+    def _signaler_refus(self, genre: str, reference: str, raison: str,
+                        lien: Optional[Tuple[str, str]] = None) -> None:
         """
         Explique pourquoi aucune méta n'a été générée, dans la barre d'état ET dans
         l'historique des opérations : c'est là, juste au-dessus des boutons, qu'arrive
         la méta quand elle réussit. Seul en bas à gauche de la fenêtre, loin des
         boutons, le message passait inaperçu (« les boutons ne font rien »).
+        `lien` : action cliquable ajoutée sous l'entrée (ex. compléter le libellé).
         """
         self.main_window.statusbar.showMessage(raison, 8000)
         pour = f" pour '{reference}'" if reference else ""
         self.main_window.user_interaction_service.add_to_history(
-            f"SEO: {self._NON_GENERE[genre]}{pour}\n==> {raison}")
+            f"SEO: {self._NON_GENERE[genre]}{pour}\n==> {raison}", lien=lien)
 
     @handle_seo_data_errors()
     def _get_multi_reference_terms(self) -> List[str]:

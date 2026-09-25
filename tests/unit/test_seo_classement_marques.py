@@ -340,9 +340,11 @@ class _Barre:
 class _Historique:
     def __init__(self):
         self.messages = []
+        self.liens = []
 
-    def add_to_history(self, message, duration_ms=None):
+    def add_to_history(self, message, duration_ms=None, lien=None):
         self.messages.append(message)
+        self.liens.append(lien)
 
 
 def _fenetre_avec_retours(db):
@@ -365,8 +367,19 @@ def test_generation_bloquee_si_libelle_vide(db):
     assert fenetre.statusbar.messages == [raison]
     assert fenetre.user_interaction_service.messages == [
         f"SEO: Méta titre non généré pour '00614351'\n==> {raison}"]
+    # Lien d'action pour compléter le libellé (historique cliquable, ⌘⇧L)
+    assert fenetre.user_interaction_service.liens == [
+        ("libelle:00614351", "Compléter le libellé de 00614351  (⌘⇧L)")]
     assert not service._libelle_manquant({'reference': "R1", 'description': "Joint"}, "description")
     assert len(fenetre.user_interaction_service.messages) == 1
+
+
+def test_seul_le_refus_libelle_porte_un_lien(db):
+    """Une référence introuvable n'a rien à compléter : pas de lien."""
+    fenetre = _fenetre_avec_retours(db)
+    fenetre.search_input.texte = "ZZ999"
+    SEOService(fenetre)._signaler_absence_de_donnees("title")
+    assert fenetre.user_interaction_service.liens == [None]
 
 
 def test_ancienne_ref_tapee_bloquee_si_la_courante_n_a_pas_de_libelle(db):
