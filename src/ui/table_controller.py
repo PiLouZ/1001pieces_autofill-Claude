@@ -381,13 +381,18 @@ class TableController:
         # Conteneur [recherche + bannières] repositionnable (haut/bas du tableau).
         # Les bannières supersession/équivalence restent SOLIDAIRES de la recherche
         # (elles lisent le terme courant) : on les groupe pour éviter toute régression.
+        # Les bannières sont toujours ENTRE la recherche et le tableau : l'ordre
+        # interne du conteneur s'inverse avec la position (cf. set_search_position).
         self.search_container = QWidget()
         _sc_layout = QVBoxLayout(self.search_container)
         _sc_layout.setContentsMargins(0, 0, 0, 0)
         _sc_layout.setSpacing(6)
 
-        # Barre de recherche (dans le conteneur)
-        search_layout2 = QHBoxLayout()
+        # Barre de recherche (dans le conteneur) — portée par un widget sans marges
+        # pour pouvoir la déplacer avant/après les bannières
+        self.search_bar_widget = QWidget()
+        search_layout2 = QHBoxLayout(self.search_bar_widget)
+        search_layout2.setContentsMargins(0, 0, 0, 0)
         import qtawesome as qta
         search_icon_label = QLabel()
         search_icon_label.setPixmap(qta.icon('fa5s.search', color='#555555').pixmap(14, 14))
@@ -449,7 +454,6 @@ class TableController:
         self.history_btn.clicked.connect(self._show_search_history)
         search_layout2.addWidget(self.history_btn, 0, Qt.AlignVCenter)
 
-        _sc_layout.addLayout(search_layout2)
 
         # Bandeau de notification supersession (caché par défaut)
         self.supersession_banner = QWidget()
@@ -586,6 +590,10 @@ class TableController:
         sim_banner_layout.addWidget(self.similarity_validate_all_btn)
         _sc_layout.addWidget(self.similarity_banner)
 
+        # Position par défaut (sous le tableau) : bannières puis recherche,
+        # la recherche restant juste au-dessus de la navigation
+        _sc_layout.addWidget(self.search_bar_widget)
+
         # Ajouter le conteneur recherche au layout (position par défaut : sous le tableau)
         layout.addWidget(self.search_container)
 
@@ -690,11 +698,17 @@ class TableController:
         if layout is None:
             return
         layout.removeWidget(self.search_container)
+        # Bannières toujours entre la recherche et le tableau : la barre de
+        # recherche passe en tête (haut) ou en fin (bas) du conteneur
+        sc_layout = self.search_container.layout()
+        sc_layout.removeWidget(self.search_bar_widget)
         if position == "top":
             # Tout en haut, AU-DESSUS des filtres colonnes (qui restent juste au-dessus du tableau)
+            sc_layout.insertWidget(0, self.search_bar_widget)
             layout.insertWidget(0, self.search_container)
         else:
-            # Sous le tableau (position par défaut)
+            # Sous le tableau (position par défaut), recherche juste au-dessus de la navigation
+            sc_layout.addWidget(self.search_bar_widget)
             table_idx = layout.indexOf(self.table)
             layout.insertWidget(table_idx + 1, self.search_container)
         self.search_container.setVisible(True)
