@@ -39,7 +39,7 @@ class UIComponentService:
         Args:
             layout: Layout parent où ajouter les boutons
         """
-        # Ligne 1: Boutons d'export traditionnels
+        # Ligne 1: Boutons d'export — ordre affiché : HTML Marques, HTML Détails, Exporter CSV
         export_layout = QHBoxLayout()
         
         # Bouton Export CSV
@@ -49,7 +49,6 @@ class UIComponentService:
         )
         self.main_window.export_csv_btn.setEnabled(False)
         self.main_window.export_csv_btn.setStyleSheet(self._get_csv_button_style())
-        export_layout.addWidget(self.main_window.export_csv_btn)
         
         # Bouton HTML Marques
         self.main_window.export_html_brands_btn = QPushButton("HTML Marques")
@@ -77,6 +76,9 @@ class UIComponentService:
         )
         export_layout.addWidget(self.main_window.export_html_details_btn)
         self._refresh_html_details_menu()
+
+        # Exporter CSV en dernier (créé en premier, placé après les HTML)
+        export_layout.addWidget(self.main_window.export_csv_btn)
 
         layout.addLayout(export_layout)
 

@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.74.1] - 2026-09-25 (branche `feature/ui-ordre-export-recherche`)
+
+### Fenêtre principale : ordre des boutons d'export et de la zone de recherche
+
+- **Boutons d'export** : nouvel ordre **HTML Marques – HTML Détails – Exporter CSV**
+  (auparavant Exporter CSV en premier). Seul l'ordre d'affichage change :
+  tailles, styles, connexions et état actif/inactif identiques.
+- **Recherche en position basse** : la barre de recherche est désormais **juste
+  au-dessus de la navigation**. Les bandeaux supersession, équivalence et
+  similarité se placent **entre la recherche et le tableau**, quelle que soit la
+  position (haut : Recherche → bandeaux → filtres → tableau ; bas : tableau →
+  bandeaux → Recherche → navigation).
+- Technique : la ligne de recherche est portée par un widget sans marges
+  (`search_bar_widget`) que `set_search_position` place en tête ou en fin du
+  conteneur. Les bandeaux restent dans le même conteneur que la recherche, donc
+  toujours sans espace fantôme quand ils sont masqués.
+
+### Vérifications
+- Rendu hors écran de la vraie fenêtre, dans les 2 positions, bandeaux visibles
+  et masqués, bascules répétées : ordre correct, hauteurs identiques à `main`
+  (35 px sans bandeau, 125 px avec).
+- Suite de tests : 928 passed, 1 skipped.
+
 ## [3.74.0] - 2026-09-24 (branche `feature/seo-classement-marques`)
 
 ### Refonte des métas SEO après un second audit
