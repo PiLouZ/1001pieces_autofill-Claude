@@ -777,6 +777,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'incomplete_button_service'):
             self.incomplete_button_service.set_button(self.incomplete_filter_btn)
             self.incomplete_button_service.set_companions(nav_buttons)
+            if hasattr(self, 'table_controller'):
+                # Flèches réévaluées à chaque changement du compteur (elles
+                # apparaissent actives, pas seulement au chargement suivant)
+                self.incomplete_button_service.count_changed.connect(
+                    self.table_controller.on_incomplete_count_changed)
             self.incomplete_button_service.set_filter_active(self.show_incomplete_only)
         self._update_incomplete_button_visibility()
 

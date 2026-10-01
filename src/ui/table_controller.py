@@ -1783,6 +1783,16 @@ class TableController:
         # État initial : posé au premier load_data (via _update_pagination_controls) —
         # la toolbar est construite avant le tableau, ses filtres n'existent pas encore.
 
+    def on_incomplete_count_changed(self, _count: int = 0):
+        """Le nombre de lignes incomplètes a changé (cellule vidée ou complétée,
+        import…) : réévaluer les flèches tout de suite, sans attendre le prochain
+        chargement de page. Sans cela, des flèches qui apparaissent (0 → 1)
+        restaient grisées jusqu'au chargement suivant. L'épuisement mémorisé
+        est oublié : une ligne apparue peut se trouver dans n'importe quelle
+        direction."""
+        self._empty_cells_search_exhausted = {'up': False, 'down': False}
+        self._update_empty_cell_buttons_state()
+
     def _update_empty_cell_buttons_state(self):
         """Grise/dégrise les flèches selon l'existence d'au moins une ligne
         incomplète dans le périmètre courant (recherche/filtres actifs) et

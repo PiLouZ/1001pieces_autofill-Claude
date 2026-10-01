@@ -198,3 +198,27 @@ class TestSautParPositionSQL(_ControleurPagine):
         tc._on_skip_empty_cell('down')
         assert tc.visited == [2, 3]  # parcours page par page
         assert (tc.table.currentIndex().row(), tc.table.currentIndex().column()) == (1, 0)
+
+
+class TestFlechesReevalueesAuChangementDuCompteur:
+    """Régression PR #44 : les flèches n'étaient réévaluées qu'au chargement
+    d'une page. Vider un Type faisait apparaître le groupe (compteur 0 → 1)
+    avec des flèches grisées jusqu'au chargement suivant."""
+
+    def test_reevaluation_et_oubli_de_l_epuisement(self):
+        tc = TableController.__new__(TableController)
+        tc._empty_cells_search_exhausted = {'up': True, 'down': True}
+        tc._update_empty_cell_buttons_state = Mock()
+        tc.on_incomplete_count_changed(1)
+        assert tc._empty_cells_search_exhausted == {'up': False, 'down': False}
+        tc._update_empty_cell_buttons_state.assert_called_once()
+
+    def test_branche_sur_le_signal_du_compteur(self, service):
+        """Le signal count_changed du service atteint bien le contrôleur."""
+        tc = TableController.__new__(TableController)
+        tc._empty_cells_search_exhausted = {'up': False, 'down': True}
+        tc._update_empty_cell_buttons_state = Mock()
+        service.count_changed.connect(tc.on_incomplete_count_changed)
+        service.count_changed.emit(1)
+        tc._update_empty_cell_buttons_state.assert_called_once()
+        assert tc._empty_cells_search_exhausted['down'] is False
