@@ -4,6 +4,67 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.75.0] - 2026-10-01 (branche `feature/pagination-stable`)
+
+### Une barre de pagination qui ne bouge plus
+
+Signalé par l'utilisateur : selon l'affichage, des boutons se déplaçaient. Trois
+causes dans l'ancienne rangée unique, remplie de gauche à droite :
+
+1. **Une seule page → 7 widgets masqués** : les flèches de saut glissaient tout à
+   gauche, et leur séparateur restait seul.
+2. **« / N » à largeur variable** (« / 1 » contre « / 1 410 ») : « Suivant », « ▶▶ »
+   et les flèches se décalaient à chaque recherche.
+3. **« Total: N lignes »** calé à droite : son bord gauche suivait le nombre de chiffres.
+
+Nouvelle organisation — une grille de trois zones dont les deux colonnes
+extérieures ont le même poids, donc la navigation est réellement centrée :
+
+- **Gauche** : compteur « 704 960 lignes » (milliers séparés).
+- **Centre** : `« ‹ Page [n] / N › »` — icônes qtawesome avec infobulle à la place
+  de « ◀ Précédent » / « Suivant ▶ » ; largeur réservée pour « / 99999 ».
+- **Droite** : « Lignes par page [500 ▾] ».
+- **Une seule page : tout est grisé, plus rien n'est masqué.** Vérifié hors écran
+  sur une copie de la base : abscisse de chaque widget identique à 1 410 pages et
+  à 1 page.
+- `UserInteractionService.update_counter` réécrivait le compteur au format
+  « Lignes : N » (nombre de lignes de la page) : il reprend désormais le même rendu.
+
+### Flèches « ligne incomplète » : dans la toolbar et indépendantes de la colonne
+
+- Sorties de la pagination, elles **encadrent « Lignes à traiter »** dans la
+  toolbar (▲ 20 incomplètes ▼) : elles parcourent les lignes que ce bouton compte,
+  et sont masquées avec lui quand il n'y en a plus (`IncompleteButtonService.set_companions`).
+- **Plus de dépendance à la colonne** : auparavant actives seulement dans Type ou
+  Fabricant, et limitées aux vides de cette colonne. Elles visent maintenant la
+  prochaine ligne dont le Type **ou** le Fabricant est vide — même définition que
+  le compteur (`_get_incomplete_condition`) — et placent le curseur sur la cellule
+  à remplir (Type s'il est vide, sinon Fabricant). `find_empty_cell_row(col, …)`
+  devient `find_incomplete_row(…) -> (ligne, colonne)`.
+- **Sans sélection** : ▼ part du haut de la page, ▲ du bas (auparavant grisées).
+- Inchangé : contexte tri/recherche/filtres conservé, poursuite sur les pages
+  voisines, flèche grisée en silence quand sa direction est épuisée.
+- **Raccourcis ⌥⌘↑ / ⌥⌘↓** (Ctrl+Alt+flèche hors macOS), portés par une QAction de
+  fenêtre : ils fonctionnent même focus dans le tableau, et ne font rien quand la
+  flèche est grisée ou masquée.
+- **Retour au point de départ quand rien n'est trouvé** (défaut préexistant,
+  corrigé à la demande de l'utilisateur) : ▼ sans ligne incomplète plus bas
+  balayait toutes les pages (~10 s sur 1 410 pages) puis laissait l'utilisateur
+  sur la dernière, sans sélection. Il revient désormais sur sa page et sa cellule
+  de départ ; seule la flèche épuisée se grise. Vérifié hors écran sur une copie
+  de la base (3 lignes vidées pour l'occasion) : page 3 cellule (40, 2) → retour
+  page 3 cellule (40, 2).
+- Perf : l'état des flèches ne dépend plus de la cellule courante, donc plus de
+  `COUNT` SQL à chaque déplacement du curseur — seulement à l'affichage d'une page.
+
+### Tests
+
+- `TestFindIncompleteRow` (10 tests, remplace `TestFindEmptyCellRow`) et
+  `test_incomplete_nav.py` (9 tests, dont 3 sur le retour au départ — contre-épreuve
+  faite : correctif retiré, le test échoue). Suite : 955 passed, 1 skipped.
+
+---
+
 ## [3.74.2] - 2026-09-25 (branche `fix/seo-refus-visibles`)
 
 ### Les boutons Méta semblaient ne rien faire sur une pièce sans libellé

@@ -10,7 +10,7 @@ Usage :
     view.setModel(model)
 """
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import qtawesome as qta
 from PyQt5.QtCore import Qt, QAbstractTableModel, QEvent, QModelIndex, QRect, QRectF, QSize, pyqtSignal
@@ -234,23 +234,24 @@ class AppareillsTableModel(QAbstractTableModel):
         atteindre une ligne pas encore affichée)."""
         return len(self._records)
 
-    def find_empty_cell_row(self, col: int, start_row: int, direction: str) -> Optional[int]:
+    def find_incomplete_row(self, start_row: int, direction: str) -> Optional[Tuple[int, int]]:
         """Cherche, dans les lignes déjà chargées de la page courante (pas
-        seulement celles révélées par le virtual scroll), la prochaine ligne où
-        la colonne col (0=Type, 1=Fabricant) est vide, depuis start_row.
+        seulement celles révélées par le virtual scroll), la prochaine ligne
+        incomplète depuis start_row : Type OU Fabricant vide — même définition
+        que le compteur « Lignes à traiter » (_get_incomplete_condition).
 
-        Retourne None si rien trouvé sur cette page : l'appelant doit alors
-        passer à la page précédente/suivante pour poursuivre la recherche —
-        c'est ce qui permet à la navigation de respecter le tri/filtres/
-        recherche courants au lieu d'imposer une vue indépendante."""
-        if col not in (0, 1):
-            return None
+        Retourne (ligne, colonne à remplir) — Type (0) s'il est vide, sinon
+        Fabricant (1) — ou None si rien trouvé sur cette page : l'appelant doit
+        alors passer à la page précédente/suivante pour poursuivre la recherche,
+        ce qui permet à la navigation de respecter le tri/filtres/recherche
+        courants au lieu d'imposer une vue indépendante."""
         step = 1 if direction == 'down' else -1
         r = start_row + step
         while 0 <= r < len(self._records):
-            val = self._records[r][col + 1]
-            if not val or not str(val).strip():
-                return r
+            for col in (0, 1):
+                val = self._records[r][col + 1]
+                if not val or not str(val).strip():
+                    return r, col
             r += step
         return None
 

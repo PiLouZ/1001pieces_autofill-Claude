@@ -731,10 +731,15 @@ class MainWindow(QMainWindow):
         # de visibilité/compteur ici, une fois la toolbar et les services prêts.
         if hasattr(self.toolbar_service, 'incomplete_filter_btn'):
             self.incomplete_filter_btn = self.toolbar_service.incomplete_filter_btn
+            nav_buttons = (self.toolbar_service.incomplete_prev_btn,
+                           self.toolbar_service.incomplete_next_btn)
             if hasattr(self, 'table_controller'):
                 self.table_controller.incomplete_filter_btn = self.incomplete_filter_btn
+                # Flèches ▲/▼ « ligne incomplète » autour du bouton
+                self.table_controller.set_incomplete_nav_buttons(*nav_buttons)
             if hasattr(self, 'incomplete_button_service'):
                 self.incomplete_button_service.set_button(self.incomplete_filter_btn)
+                self.incomplete_button_service.set_companions(nav_buttons)
                 self.incomplete_button_service.set_filter_active(self.show_incomplete_only)
             self._update_incomplete_button_visibility()
 

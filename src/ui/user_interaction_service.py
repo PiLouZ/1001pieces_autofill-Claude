@@ -291,13 +291,10 @@ class UserInteractionService:
         if (hasattr(self.main_window, 'table_controller') and
                 hasattr(self.main_window.table_controller, 'size_label') and
                 self.main_window.table_controller.size_label):
-            if (hasattr(self.main_window, 'total_rows') and
-                    self.main_window.use_pagination and
-                    self.main_window.total_rows > Config.MAX_DISPLAY_ROWS):
-                self.main_window.table_controller.size_label.setText(
-                    f"Affichées : {displayed_count} / Total : {self.main_window.total_rows:,}")
-            else:
-                self.main_window.table_controller.size_label.setText(f"Lignes : {displayed_count:,}")
+            # Compteur de la barre de pagination : même rendu que
+            # TableController._update_pagination_controls (total du périmètre)
+            tc = self.main_window.table_controller
+            tc.size_label.setText(tc._format_row_count(tc.total_rows))
         elif hasattr(self.main_window, 'counter_label'):
             if (hasattr(self.main_window, 'total_rows') and
                     self.main_window.use_pagination and
