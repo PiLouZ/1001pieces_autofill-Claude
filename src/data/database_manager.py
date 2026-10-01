@@ -511,55 +511,10 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                         WHERE pa.appareil_id = a.id) as pieces_count
                 FROM appareils a
             """
-            params = []
-            conditions = []
-            
-            # Recherche globale pour load_data (avec support recherche avancée)
-            if search_term:
-                search_condition = self._build_search_condition_optimized(search_term)
-                if search_condition:
-                    # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
-                    if search_condition.get('query_type') in ['exact', 'prefix']:
-                        # Pour les requêtes optimisées, extraire juste la condition WHERE
-                        if search_condition['query_type'] == 'exact':
-                            condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
-                        else:  # prefix
-                            condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
-                        
-                        conditions.append(condition)
-                        params.extend(search_condition['params'])
-                    else:
-                        # Condition WHERE classique
-                        conditions.append(search_condition['condition'])
-                        params.extend(search_condition['params'])
-            
-            # Filtres par colonne pour load_data
-            if column_filters:
-                for col_idx, filter_text in column_filters.items():
-                    if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
-                        conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
-                        params.append(f"%{filter_text}%")
-            
-            # Filtre pour les lignes incomplètes (champs type OU manufacturer vides) pour load_data
-            if incomplete_filter:
-                incomplete_condition = self._get_incomplete_condition()
-                conditions.append(incomplete_condition)
-            
-            # Ajouter les conditions
+            conditions, params = self._build_load_conditions(search_term, column_filters, incomplete_filter)
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
-            
-            # Gérer le tri
-            if sort_column is not None and 0 <= sort_column < len(Config.DB_HEADERS):
-                sort_field = Config.DB_HEADERS[sort_column]
-                order = "ASC" if sort_order == "ASC" else "DESC"
-                query += f" ORDER BY a.[{sort_field}] {order}"
-            elif sort_column is not None and sort_column == len(Config.DB_HEADERS):
-                # Tri par nombre de pièces (dernière colonne)
-                order = "ASC" if sort_order == "ASC" else "DESC"
-                query += f" ORDER BY pieces_count {order}"
-            else:
-                query += " ORDER BY a.id DESC"  # Tri par défaut
+            query += self._build_load_order_by(sort_column, sort_order)
             
             # Ajouter LIMIT et OFFSET pour la pagination
             if limit:
@@ -573,6 +528,115 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         except sqlite3.Error as e:
             raise DatabaseError(f"Erreur lors du chargement des données: {e}")
     
+    def _build_load_conditions(self, search_term: Optional[str],
+                               column_filters: Optional[Dict[int, str]],
+                               incomplete_filter: bool) -> Tuple[List[str], List]:
+        """Conditions WHERE (et leurs paramètres) du périmètre affiché à l'écran :
+        recherche, filtres de colonne, filtre « lignes incomplètes ».
+
+        Partagées par _load_data_original (les pages) et find_incomplete_position
+        (le saut ▲/▼) : une seule source, donc la position calculée en SQL
+        désigne forcément une ligne de la page qui sera affichée.
+        """
+        params = []
+        conditions = []
+
+        # Recherche globale pour load_data (avec support recherche avancée)
+        if search_term:
+            search_condition = self._build_search_condition_optimized(search_term)
+            if search_condition:
+                # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
+                if search_condition.get('query_type') in ['exact', 'prefix']:
+                    # Pour les requêtes optimisées, extraire juste la condition WHERE
+                    if search_condition['query_type'] == 'exact':
+                        condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
+                    else:  # prefix
+                        condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
+
+                    conditions.append(condition)
+                    params.extend(search_condition['params'])
+                else:
+                    # Condition WHERE classique
+                    conditions.append(search_condition['condition'])
+                    params.extend(search_condition['params'])
+
+        # Filtres par colonne pour load_data
+        if column_filters:
+            for col_idx, filter_text in column_filters.items():
+                if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
+                    conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
+                    params.append(f"%{filter_text}%")
+
+        # Filtre pour les lignes incomplètes (champs type OU manufacturer vides) pour load_data
+        if incomplete_filter:
+            conditions.append(self._get_incomplete_condition())
+
+        return conditions, params
+
+    @staticmethod
+    def _build_load_order_by(sort_column: Optional[int], sort_order: Optional[str]) -> str:
+        """Clause ORDER BY des pages affichées.
+
+        Tri par colonne : départagé par a.id dans le même sens. Les ex-æquo
+        (des milliers d'appareils partagent un même Type) ont ainsi un ordre
+        stable, identique entre les pages (LIMIT/OFFSET) et le calcul de
+        position de find_incomplete_position. Sur les colonnes indexées c'est
+        déjà l'ordre de lecture de l'index (valeur puis rowid) : même résultat,
+        même plan. Seul le tri sans index (Notes) y gagne un ordre déterministe.
+        """
+        order = "ASC" if sort_order == "ASC" else "DESC"
+        if sort_column is not None and 0 <= sort_column < len(Config.DB_HEADERS):
+            return f" ORDER BY a.[{Config.DB_HEADERS[sort_column]}] {order}, a.id {order}"
+        if sort_column is not None and sort_column == len(Config.DB_HEADERS):
+            # Tri par nombre de pièces (dernière colonne)
+            return f" ORDER BY pieces_count {order}"
+        return " ORDER BY a.id DESC"  # Tri par défaut
+
+    def find_incomplete_position(self, search_term: Optional[str],
+                                 column_filters: Optional[Dict[int, str]],
+                                 sort_column: Optional[int], sort_order: Optional[str],
+                                 incomplete_filter: bool,
+                                 from_position: int, direction: str) -> Optional[int]:
+        """Position (0-based, dans l'ordre exact de l'écran) de la prochaine ligne
+        incomplète — Type ou Fabricant vide — strictement après (direction
+        'down') ou avant ('up') from_position. None si aucune.
+
+        ROW_NUMBER() numérote le périmètre affiché avec le même WHERE et le même
+        ORDER BY que les pages : la ligne cible est à la page
+        position // taille_page, rang position % taille_page. Une requête au lieu
+        d'un chargement de chaque page traversée (~0,8 s contre ~10 s sur
+        700 000 appareils sans filtre).
+
+        Le tri « Nb pièces » est refusé (ValueError) : son ORDER BY porte sur une
+        sous-requête corrélée, la calculer pour toute la base coûterait plus cher
+        que le parcours de pages que l'appelant garde en repli.
+
+        Pas de décorateur « retourner None si erreur » : None signifie « aucune
+        ligne », ce qui grisera la flèche. Une erreur doit au contraire remonter
+        pour que l'appelant retombe sur le parcours de pages.
+        """
+        if sort_column is not None and sort_column == len(Config.DB_HEADERS):
+            raise ValueError("tri « Nb pièces » non pris en charge")
+        conditions, params = self._build_load_conditions(search_term, column_filters, incomplete_filter)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        order_by = self._build_load_order_by(sort_column, sort_order)[len(" ORDER BY "):]
+        if direction == 'down':
+            comparison, pick = "pos > ?", "ORDER BY pos ASC"
+        else:
+            comparison, pick = "pos < ?", "ORDER BY pos DESC"
+        query = f"""
+            SELECT pos FROM (
+                SELECT ROW_NUMBER() OVER (ORDER BY {order_by}) - 1 AS pos,
+                       {self._get_incomplete_condition()} AS incomplete
+                FROM appareils a{where}
+            )
+            WHERE incomplete AND {comparison}
+            {pick} LIMIT 1
+        """
+        with self._query_lock:
+            row = self.cursor.execute(query, params + [from_position]).fetchone()
+        return row[0] if row else None
+
     @handle_database_errors(title="Erreur comptage données")
     def count_data(self, search_term: Optional[str] = None,
                    column_filters: Optional[Dict[int, str]] = None,

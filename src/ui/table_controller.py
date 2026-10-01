@@ -837,12 +837,7 @@ class TableController:
                     column_filters[col_idx] = filter_text
 
         # Ajouter le filtre des lignes incomplètes si activé
-        # CORRECTION: Utiliser le service de tri/filtrage si disponible
-        if (hasattr(self.parent_window, 'sorting_filtering_service') and
-            self.parent_window.sorting_filtering_service):
-            incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
-        else:
-            incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+        incomplete_filter = self._current_incomplete_filter()
 
         effective_search_term = self.build_effective_search_term(search_term)
 
@@ -1756,6 +1751,15 @@ class TableController:
 
     # ── Navigation cellule vide (Type/Fabricant) ────────────────────────────
 
+    def _current_incomplete_filter(self) -> bool:
+        """Filtre « Lignes à traiter » actif ? Source : le service de tri/filtrage
+        s'il existe, sinon l'attribut historique de la fenêtre."""
+        # CORRECTION: Utiliser le service de tri/filtrage si disponible
+        if (hasattr(self.parent_window, 'sorting_filtering_service') and
+            self.parent_window.sorting_filtering_service):
+            return self.parent_window.sorting_filtering_service.incomplete_filter_active
+        return getattr(self.parent_window, 'show_incomplete_only', False)
+
     def _live_column_filters(self) -> dict:
         """Filtres de colonne actuellement saisis (même logique que load_data),
         utilisés pour que la vérification d'existence de cellule vide respecte
@@ -1823,47 +1827,101 @@ class TableController:
         """Sauter vers la prochaine/précédente ligne incomplète (Type ou
         Fabricant vide), quelle que soit la colonne sous le focus, et placer le
         curseur sur la cellule à remplir. Le contexte courant (tri, recherche,
-        filtres) est conservé : on parcourt les pages du tableau telles que
-        triées/filtrées à l'écran, jamais une vue indépendante — la ligne cible
-        apparaît avec son environnement."""
+        filtres) est conservé : la ligne cible apparaît avec son environnement.
+
+        1. Page affichée d'abord : cas le plus fréquent, aucune requête.
+        2. Sinon une requête SQL donne la position de la cible dans l'ordre de
+           l'écran → un seul chargement de page (find_incomplete_position).
+        3. Repli sur le parcours page par page si la requête n'est pas possible
+           (tri « Nb pièces ») ou échoue.
+        """
         if not self.model:
             return
 
         start_index = self.table.currentIndex()
-        start_page = self.current_page
-        start_cell = (start_index.row(), start_index.column()) if start_index.isValid() else None
-
         row = start_index.row()
         if row < 0:
             # Aucune sélection : ▼ part du haut de la page, ▲ part du bas
             row = -1 if direction == 'down' else self.model.loaded_record_count()
+
+        # 1. Page affichée
+        found = self.model.find_incomplete_row(row, direction)
+        if found is not None:
+            self._focus_cell(*found)
+            return
+
+        if self.page_size != -1 and self.total_pages > 1:
+            # 2. Position SQL au-delà de la page affichée
+            try:
+                position = self._find_incomplete_position_beyond_page(direction)
+            except Exception as e:
+                app_logger.warning(f"Saut ligne incomplète : requête de position impossible "
+                                   f"({e}), repli sur le parcours des pages")
+                self._scan_pages_for_incomplete(direction, start_index)
+                return
+            if position is not None:
+                self._goto_page_preserving_context(position // self.page_size + 1)
+                target_row = position % self.page_size
+                # Recherche locale autour du rang visé (et non sélection aveugle) :
+                # si une écriture a eu lieu entre-temps, on retombe sur la ligne
+                # incomplète la plus proche dans la bonne direction.
+                found = (self.model.find_incomplete_row(target_row - 1, 'down') if direction == 'down'
+                         else self.model.find_incomplete_row(target_row + 1, 'up'))
+                if found is not None:
+                    self._focus_cell(*found)
+                # Changement de page : load_data a remis à zéro l'épuisement
+                # des deux directions → refléter ce nouvel état une seule fois.
+                self._update_empty_cell_buttons_state()
+                return
+
+        # Rien dans cette direction, sans avoir quitté la page : la flèche se grise
+        # silencieusement, sans interrompre l'utilisateur au milieu d'une série
+        # de complétions.
+        self._empty_cells_search_exhausted[direction] = True
+        self._update_empty_cell_buttons_state()
+
+    def _focus_cell(self, row: int, col: int):
+        """Sélectionner une cellule de la page (révélée au
+        besoin par le virtual scroll) et donner le focus au tableau."""
+        self.model.reveal_row(row)
+        target_index = self.model.index(row, col)
+        self.table.setCurrentIndex(target_index)
+        self.table.scrollTo(target_index)
+        self.table.setFocus()
+
+    def _find_incomplete_position_beyond_page(self, direction: str) -> Optional[int]:
+        """Position globale de la prochaine ligne incomplète après la fin (▼) ou
+        avant le début (▲) de la page affichée, avec exactement les paramètres
+        de load_data (terme effectif, filtres, tri, filtre « Lignes à traiter »)."""
+        page_start = (self.current_page - 1) * self.page_size
+        from_position = (page_start + self.model.loaded_record_count() - 1
+                         if direction == 'down' else page_start)
+        sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
+        return self.db_manager.find_incomplete_position(
+            self.build_effective_search_term(self.current_search_term),
+            self._live_column_filters(),
+            self.current_sort_column, sort_order_str,
+            self._current_incomplete_filter(),
+            from_position, direction,
+        )
+
+    def _scan_pages_for_incomplete(self, direction: str, start_index):
+        """Repli : parcourir les pages une à une (tri « Nb pièces », ou requête
+        de position en échec). La page affichée a déjà été examinée."""
+        start_page = self.current_page
+        start_cell = (start_index.row(), start_index.column()) if start_index.isValid() else None
         max_pages_to_scan = max(self.total_pages, 1)
         scanned_pages = 0
 
         self._incomplete_scan_in_progress = True
         try:
-            while scanned_pages <= max_pages_to_scan:
-                found = self.model.find_incomplete_row(row, direction)
-                if found is not None:
-                    found_row, col = found
-                    self.model.reveal_row(found_row)
-                    target_index = self.model.index(found_row, col)
-                    self.table.setCurrentIndex(target_index)
-                    self.table.scrollTo(target_index)
-                    self.table.setFocus()
-                    if scanned_pages:
-                        # Changement de page : load_data a remis à zéro l'épuisement
-                        # des deux directions → refléter ce nouvel état une seule fois.
-                        self._update_empty_cell_buttons_state()
-                    return
-
-                # Rien sur cette page : poursuivre sur la page suivante/précédente,
-                # avec exactement les mêmes tri/recherche/filtres.
+            while scanned_pages < max_pages_to_scan:
+                # Page suivante/précédente, avec exactement les mêmes tri/recherche/filtres.
                 if direction == 'down':
                     if self.page_size == -1 or self.current_page >= self.total_pages:
                         break
                     self._goto_page_preserving_context(self.current_page + 1)
-                    row = -1  # prochaine recherche démarre juste avant la 1ère ligne
+                    row = -1  # recherche à partir de juste avant la 1ère ligne
                 else:
                     if self.page_size == -1 or self.current_page <= 1:
                         break
@@ -1871,23 +1929,25 @@ class TableController:
                     row = self.model.loaded_record_count()  # juste après la dernière ligne
                 scanned_pages += 1
 
+                found = self.model.find_incomplete_row(row, direction)
+                if found is not None:
+                    self._focus_cell(*found)
+                    self._incomplete_scan_in_progress = False
+                    # load_data a remis à zéro l'épuisement des deux directions
+                    self._update_empty_cell_buttons_state()
+                    return
+
             # Rien trouvé : revenir là où l'utilisateur était, au lieu de le
             # laisser sur la dernière (ou première) page traversée, sans sélection.
             if self.current_page != start_page:
                 self._goto_page_preserving_context(start_page)
                 if start_cell is not None:
-                    self.model.reveal_row(start_cell[0])
-                    restore_index = self.model.index(*start_cell)
-                    self.table.setCurrentIndex(restore_index)
-                    self.table.scrollTo(restore_index)
-                    self.table.setFocus()
+                    self._focus_cell(*start_cell)
         finally:
             self._incomplete_scan_in_progress = False
 
-        # Balayage complet (toutes les pages du périmètre courant) sans résultat :
-        # mémoriser l'épuisement de cette direction plutôt qu'afficher un message
-        # bloquant — le bouton se grise silencieusement, sans interrompre l'utilisateur
-        # au milieu d'une série de complétions.
+        # Balayage complet sans résultat : mémoriser l'épuisement de cette
+        # direction (après le retour, que load_data aurait sinon effacé).
         self._empty_cells_search_exhausted[direction] = True
         self._update_empty_cell_buttons_state()
 

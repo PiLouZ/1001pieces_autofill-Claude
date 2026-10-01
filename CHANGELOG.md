@@ -4,7 +4,7 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
-## [3.75.0] - 2026-10-01 (branche `feature/pagination-stable`)
+## [3.75.0] - 2026-10-01 (branches `feature/pagination-stable` et `feature/saut-incomplete-sql`)
 
 ### Une barre de pagination qui ne bouge plus
 
@@ -57,8 +57,40 @@ extérieures ont le même poids, donc la navigation est réellement centrée :
 - Perf : l'état des flèches ne dépend plus de la cellule courante, donc plus de
   `COUNT` SQL à chaque déplacement du curseur — seulement à l'affichage d'une page.
 
+### Saut vers une ligne incomplète en une requête au lieu de ~10 s de parcours
+
+Quand la page affichée ne contient plus de ligne incomplète dans la direction
+voulue, les flèches chargeaient les pages une à une (1 410 sur toute la base).
+
+- **Page affichée d'abord** (inchangé, aucune requête), puis
+  `DatabaseManager.find_incomplete_position` : `ROW_NUMBER()` numérote le
+  périmètre affiché avec **le même WHERE et le même ORDER BY que les pages**, et
+  renvoie la position de la cible → un seul chargement de page.
+  Mesuré dans la vraie fenêtre, copie de la base, cibles en pages 1, 701 et 1 409 :
+  **0,4 à 0,6 s par saut, et 0,4 s au lieu de ~10 s quand il n'y a rien**
+  (l'utilisateur ne bouge plus du tout).
+- **Départage par `a.id` des tris par colonne** (`ORDER BY type ASC, a.id ASC`),
+  indispensable pour que pages et position rangent les ex-æquo à l'identique —
+  contre-épreuve : sans lui, le test échoue sur le tri par Type. Sur les 6
+  colonnes indexées c'est l'ordre de lecture de l'index (valeur puis rowid) :
+  ordre et plan inchangés, vérifié sur la base réelle. **Seul changement visible :
+  l'ordre des ex-æquo du tri Notes décroissant devient stable** (validé par
+  l'utilisateur).
+- Refacto : WHERE et ORDER BY sortis de `_load_data_original`
+  (`_build_load_conditions`, `_build_load_order_by`) pour être partagés. SQL
+  capturé avant/après sur 540 combinaisons (recherches, filtres, tris, pagination) :
+  216 identiques, 324 ne diffèrent que par le départage, 0 autre écart.
+- **Repli** sur le parcours de pages (avec retour au point de départ) pour le tri
+  « Nb pièces » (sous-requête corrélée trop coûteuse à numéroter) et en cas
+  d'erreur SQL — jamais « rien trouvé » par erreur, qui griserait la flèche.
+
 ### Tests
 
+- `test_find_incomplete_position.py` (48 tests) : pour chaque tri × sens × filtre,
+  position SQL = parcours réel des pages (LIMIT/OFFSET), sur une base avec
+  ex-æquo, NULL et chaînes vides. `test_incomplete_nav.py` : 5 tests du chemin
+  SQL (aucune requête si la cible est sur la page, un seul chargement, rien
+  trouvé = aucun chargement, repli sur erreur). Suite : 1008 passed, 1 skipped.
 - `TestFindIncompleteRow` (10 tests, remplace `TestFindEmptyCellRow`) et
   `test_incomplete_nav.py` (9 tests, dont 3 sur le retour au départ — contre-épreuve
   faite : correctif retiré, le test échoue). Suite : 955 passed, 1 skipped.
