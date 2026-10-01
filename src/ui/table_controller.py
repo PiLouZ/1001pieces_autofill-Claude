@@ -1829,7 +1829,11 @@ class TableController:
         if not self.model:
             return
 
-        row = self.table.currentIndex().row()
+        start_index = self.table.currentIndex()
+        start_page = self.current_page
+        start_cell = (start_index.row(), start_index.column()) if start_index.isValid() else None
+
+        row = start_index.row()
         if row < 0:
             # Aucune sélection : ▼ part du haut de la page, ▲ part du bas
             row = -1 if direction == 'down' else self.model.loaded_record_count()
@@ -1866,6 +1870,17 @@ class TableController:
                     self._goto_page_preserving_context(self.current_page - 1)
                     row = self.model.loaded_record_count()  # juste après la dernière ligne
                 scanned_pages += 1
+
+            # Rien trouvé : revenir là où l'utilisateur était, au lieu de le
+            # laisser sur la dernière (ou première) page traversée, sans sélection.
+            if self.current_page != start_page:
+                self._goto_page_preserving_context(start_page)
+                if start_cell is not None:
+                    self.model.reveal_row(start_cell[0])
+                    restore_index = self.model.index(*start_cell)
+                    self.table.setCurrentIndex(restore_index)
+                    self.table.scrollTo(restore_index)
+                    self.table.setFocus()
         finally:
             self._incomplete_scan_in_progress = False
 

@@ -68,3 +68,62 @@ class TestRaccourciSuitLEtatDuBouton:
         tc._on_skip_empty_cell = Mock()
         tc.skip_to_incomplete_row('down')
         tc._on_skip_empty_cell.assert_not_called()
+
+
+class TestRetourAuDepartApresBalayageInfructueux:
+    """Rien trouvé dans la direction demandée : l'utilisateur revient sur sa
+    page et sa cellule de départ, au lieu de rester sur la dernière page
+    traversée sans sélection."""
+
+    def _controller(self, qapp, pages):
+        from src.data.appareils_table_model import AppareillsTableModel
+        from PyQt5.QtWidgets import QTableView
+        from tests.unit.test_table_model import make_record
+
+        tc = TableController.__new__(TableController)
+        tc.model = AppareillsTableModel()
+        tc.table = QTableView()
+        tc.table.setModel(tc.model)
+        tc.page_size = 2
+        tc.total_pages = len(pages)
+        tc._empty_cells_search_exhausted = {'up': False, 'down': False}
+        tc._update_empty_cell_buttons_state = Mock()
+        tc.visited = []
+
+        def goto(page):
+            tc.visited.append(page)
+            tc.current_page = page
+            tc.model.load_records([make_record(db_id=i, type_=t) for i, t in pages[page]])
+            tc._empty_cells_search_exhausted = {'up': False, 'down': False}  # comme load_data
+        tc._goto_page_preserving_context = goto
+        goto(1)
+        tc.visited.clear()
+        return tc
+
+    def test_retour_page_et_cellule_de_depart(self, qapp):
+        tc = self._controller(qapp, {1: [(1, "Four"), (2, "Four")],
+                                     2: [(3, "Four"), (4, "Four")],
+                                     3: [(5, "Four"), (6, "Four")]})
+        tc.table.setCurrentIndex(tc.model.index(1, 4))
+        tc._on_skip_empty_cell('down')
+        assert tc.visited == [2, 3, 1]  # balayage complet, puis retour
+        assert tc.current_page == 1
+        idx = tc.table.currentIndex()
+        assert (idx.row(), idx.column()) == (1, 4)
+        assert tc._empty_cells_search_exhausted['down'] is True  # posé APRÈS le retour
+
+    def test_trouve_sur_une_autre_page_pas_de_retour(self, qapp):
+        tc = self._controller(qapp, {1: [(1, "Four"), (2, "Four")],
+                                     2: [(3, "Four"), (4, "")]})
+        tc.table.setCurrentIndex(tc.model.index(0, 3))
+        tc._on_skip_empty_cell('down')
+        assert tc.visited == [2] and tc.current_page == 2
+        idx = tc.table.currentIndex()
+        assert (idx.row(), idx.column()) == (1, 0)
+
+    def test_rien_a_traverser_reste_en_place_sans_recharger(self, qapp):
+        tc = self._controller(qapp, {1: [(1, "Four"), (2, "Four")]})
+        tc.table.setCurrentIndex(tc.model.index(0, 2))
+        tc._on_skip_empty_cell('up')
+        assert tc.visited == []
+        assert tc._empty_cells_search_exhausted['up'] is True

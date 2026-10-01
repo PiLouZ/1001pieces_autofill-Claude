@@ -47,13 +47,21 @@ extérieures ont le même poids, donc la navigation est réellement centrée :
 - **Raccourcis ⌥⌘↑ / ⌥⌘↓** (Ctrl+Alt+flèche hors macOS), portés par une QAction de
   fenêtre : ils fonctionnent même focus dans le tableau, et ne font rien quand la
   flèche est grisée ou masquée.
+- **Retour au point de départ quand rien n'est trouvé** (défaut préexistant,
+  corrigé à la demande de l'utilisateur) : ▼ sans ligne incomplète plus bas
+  balayait toutes les pages (~10 s sur 1 410 pages) puis laissait l'utilisateur
+  sur la dernière, sans sélection. Il revient désormais sur sa page et sa cellule
+  de départ ; seule la flèche épuisée se grise. Vérifié hors écran sur une copie
+  de la base (3 lignes vidées pour l'occasion) : page 3 cellule (40, 2) → retour
+  page 3 cellule (40, 2).
 - Perf : l'état des flèches ne dépend plus de la cellule courante, donc plus de
   `COUNT` SQL à chaque déplacement du curseur — seulement à l'affichage d'une page.
 
 ### Tests
 
 - `TestFindIncompleteRow` (10 tests, remplace `TestFindEmptyCellRow`) et
-  `test_incomplete_nav.py` (6 tests). Suite : 952 passed, 1 skipped.
+  `test_incomplete_nav.py` (9 tests, dont 3 sur le retour au départ — contre-épreuve
+  faite : correctif retiré, le test échoue). Suite : 955 passed, 1 skipped.
 
 ---
 
