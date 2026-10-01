@@ -9,7 +9,7 @@ Responsabilités:
 """
 
 import qtawesome as qta
-from .qt_imports import QToolBar, QToolButton, QAction, QPushButton, QMenu, QWidget, QSizePolicy, QHBoxLayout
+from .qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy, QHBoxLayout
 from .qt_imports import QSize, Qt
 from .qt_imports import QKeySequence
 
@@ -113,35 +113,8 @@ class ToolbarService:
         # toolbar aux fenêtres étroites ; au-delà, repli natif dans le menu » de QToolBar)
         _compact_btn = "QPushButton { padding: 2px 8px; font-size: 11px; }"
 
-        # Bouton "Lignes à traiter" (filtre lignes incomplètes), à gauche de
-        # "Nettoyer les doublons" (cluster "santé des données" : tous deux pilotés par
-        # un compteur). Enrobé dans un conteneur toujours présent dans la toolbar : le
-        # service masque/affiche le bouton À L'INTÉRIEUR (widget normal), ce qui évite
-        # le quirk de visibilité des QWidgetAction dans un QToolBar. Câblage du service
-        # finalisé dans main_refactored._setup_toolbar.
-        #
-        # Le bouton est encadré par les flèches « ligne incomplète précédente /
-        # suivante » (▲ Lignes à traiter ▼) : elles parcourent les lignes que ce
-        # bouton compte, et sont masquées avec lui quand il n'y en a plus. Leur
-        # logique vit dans TableController (set_incomplete_nav_buttons).
-        _inc_container = QWidget()
-        _inc_layout = QHBoxLayout(_inc_container)
-        _inc_layout.setContentsMargins(0, 0, 0, 0)
-        _inc_layout.setSpacing(2)
-        self.incomplete_prev_btn = self._create_incomplete_nav_button('up')
-        _inc_layout.addWidget(self.incomplete_prev_btn)
-        self.incomplete_filter_btn = QPushButton("Lignes à traiter")
-        self.incomplete_filter_btn.setObjectName("incompleteBtn")
-        self.incomplete_filter_btn.setCheckable(True)
-        self.incomplete_filter_btn.setToolTip("Afficher uniquement les lignes avec des champs vides")
-        # Icône (comme "Nettoyer les doublons") → même hauteur naturelle entre les deux
-        self.incomplete_filter_btn.setIcon(qta.icon('fa5s.tasks', color='#555555'))
-        self.incomplete_filter_btn.setStyleSheet(_compact_btn)
-        self.incomplete_filter_btn.clicked.connect(self.main_window._toggle_incomplete_filter)
-        _inc_layout.addWidget(self.incomplete_filter_btn)
-        self.incomplete_next_btn = self._create_incomplete_nav_button('down')
-        _inc_layout.addWidget(self.incomplete_next_btn)
-        toolbar.addWidget(_inc_container)
+        # Le groupe « ▲ Lignes à traiter ▼ » est dans la barre d'état, sous le
+        # tableau (IncompleteNavWidget, cf. main_refactored._setup_statusbar).
 
         # Bouton dédié "Nettoyer les doublons" (sorti du menu). Sa couleur passe au
         # rouge via DuplicateIndicatorService quand des doublons sont en attente.
@@ -159,39 +132,6 @@ class ToolbarService:
 
         return toolbar
     
-    def _create_incomplete_nav_button(self, direction: str) -> QToolButton:
-        """Flèche ▲/▼ « ligne incomplète précédente/suivante » + son raccourci
-        ⌥⌘↑ / ⌥⌘↓ (Ctrl+Alt+flèche hors macOS).
-
-        Le raccourci est porté par une QAction ajoutée à la fenêtre principale
-        (contexte fenêtre) : il fonctionne quel que soit le widget qui a le focus,
-        y compris le tableau, qui consomme lui-même les flèches. Il passe par
-        TableController.skip_to_incomplete_row, qui ne fait rien si la flèche est
-        grisée ou masquée — clavier et souris se comportent à l'identique.
-        """
-        from .style_manager import StyleManager
-        up = direction == 'up'
-        btn = QToolButton()
-        btn.setIcon(qta.icon('fa5s.chevron-up' if up else 'fa5s.chevron-down',
-                             color='#555555', color_disabled='#c4c8cc'))
-        btn.setStyleSheet(StyleManager.HEALTH_NAV_BTN)
-        btn.setEnabled(False)  # activée par TableController selon le périmètre affiché
-
-        sequence = QKeySequence("Ctrl+Alt+Up" if up else "Ctrl+Alt+Down")
-        label = "Ligne incomplète précédente" if up else "Ligne incomplète suivante"
-        btn.setToolTip(f"{label} ({sequence.toString(QKeySequence.NativeText)})\n"
-                       "Type ou Fabricant vide, quelle que soit la colonne sélectionnée")
-
-        shortcut_action = QAction(label, self.main_window)
-        shortcut_action.setShortcut(sequence)
-        shortcut_action.setShortcutContext(Qt.WindowShortcut)
-        shortcut_action.triggered.connect(
-            lambda: self.main_window.table_controller.skip_to_incomplete_row(direction)
-            if getattr(self.main_window, 'table_controller', None) else None
-        )
-        self.main_window.addAction(shortcut_action)
-        return btn
-
     def _setup_display_menu(self, toolbar):
         """Menu Affichage — tout ce qui concerne la présentation des données"""
         display_btn = QPushButton("Affichage")

@@ -465,7 +465,7 @@ class MainWindow(QMainWindow):
         # Garder des références pour la compatibilité
         self.table = self.table_controller.table
         self.search_input = self.table_controller.advanced_search_input  # Le vrai search input
-        # self.incomplete_filter_btn est défini dans _setup_toolbar (bouton créé dans la toolbar)
+        # self.incomplete_filter_btn est défini dans _setup_statusbar (groupe sous le tableau)
 
         # PHASE 5: Configuration des services centralisés
         self.cell_editing_service.table = self.table
@@ -726,29 +726,22 @@ class MainWindow(QMainWindow):
             from ..core.logger import app_logger
             app_logger.info("✅ Service d'indication des doublons connecté aux boutons")
 
-        # "Lignes à traiter" est créé dans la toolbar (cluster "santé des données",
-        # à gauche de "Nettoyer les doublons"). On l'expose et on le câble au service
-        # de visibilité/compteur ici, une fois la toolbar et les services prêts.
-        if hasattr(self.toolbar_service, 'incomplete_filter_btn'):
-            self.incomplete_filter_btn = self.toolbar_service.incomplete_filter_btn
-            nav_buttons = (self.toolbar_service.incomplete_prev_btn,
-                           self.toolbar_service.incomplete_next_btn)
-            if hasattr(self, 'table_controller'):
-                self.table_controller.incomplete_filter_btn = self.incomplete_filter_btn
-                # Flèches ▲/▼ « ligne incomplète » autour du bouton
-                self.table_controller.set_incomplete_nav_buttons(*nav_buttons)
-            if hasattr(self, 'incomplete_button_service'):
-                self.incomplete_button_service.set_button(self.incomplete_filter_btn)
-                self.incomplete_button_service.set_companions(nav_buttons)
-                self.incomplete_button_service.set_filter_active(self.show_incomplete_only)
-            self._update_incomplete_button_visibility()
-
         self._update_toolbar_states()
 
     def _setup_statusbar(self):
         """Configurer la barre de statut"""
-        self.statusbar = QStatusBar()
+        from .message_status_bar import MessageStatusBar
+        from .incomplete_nav_widget import IncompleteNavWidget
+        self.statusbar = MessageStatusBar()
         self.setStatusBar(self.statusbar)
+
+        # « ▲ Lignes à traiter ▼ » en tête de barre, sous le tableau. Hauteur de
+        # barre figée sur celle des boutons : elle ne change pas quand le groupe
+        # se masque (aucune ligne incomplète) → le contenu de la fenêtre ne bouge pas.
+        self.incomplete_nav_widget = IncompleteNavWidget(self)
+        self.statusbar.add_leading_widget(self.incomplete_nav_widget)
+        self.statusbar.setFixedHeight(self.incomplete_nav_widget.content_height() + 6)
+        self._wire_incomplete_nav()
         
         self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
         self.statusbar.addPermanentWidget(self.save_indicator)
@@ -769,6 +762,23 @@ class MainWindow(QMainWindow):
 
         self.connection_indicator = StatusLabel('fa5s.circle', Config.get_message('connected'), color='green')
         self.statusbar.addPermanentWidget(self.connection_indicator)
+
+    def _wire_incomplete_nav(self):
+        """Exposer « Lignes à traiter » et le câbler au service de visibilité/
+        compteur et aux flèches du TableController (barre d'état créée après
+        la toolbar et le tableau : tous les services sont prêts ici)."""
+        nav = self.incomplete_nav_widget
+        self.incomplete_filter_btn = nav.filter_btn
+        nav_buttons = (nav.prev_btn, nav.next_btn)
+        if hasattr(self, 'table_controller'):
+            self.table_controller.incomplete_filter_btn = self.incomplete_filter_btn
+            # Flèches ▲/▼ « ligne incomplète » autour du bouton
+            self.table_controller.set_incomplete_nav_buttons(*nav_buttons)
+        if hasattr(self, 'incomplete_button_service'):
+            self.incomplete_button_service.set_button(self.incomplete_filter_btn)
+            self.incomplete_button_service.set_companions(nav_buttons)
+            self.incomplete_button_service.set_filter_active(self.show_incomplete_only)
+        self._update_incomplete_button_visibility()
 
     def _init_connections(self):
         """Initialiser les connexions de signaux"""

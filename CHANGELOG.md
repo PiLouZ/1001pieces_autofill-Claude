@@ -4,7 +4,7 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
-## [3.75.0] - 2026-10-01 (branches `feature/pagination-stable` et `feature/saut-incomplete-sql`)
+## [3.75.0] - 2026-10-01 (branches `feature/pagination-stable`, `feature/saut-incomplete-sql` et `feature/fleches-barre-etat`)
 
 ### Une barre de pagination qui ne bouge plus
 
@@ -57,6 +57,25 @@ extérieures ont le même poids, donc la navigation est réellement centrée :
 - Perf : l'état des flèches ne dépend plus de la cellule courante, donc plus de
   `COUNT` SQL à chaque déplacement du curseur — seulement à l'affichage d'une page.
 
+### « ▲ n incomplètes ▼ » descend dans la barre d'état, sous le tableau
+
+Demandé par l'utilisateur : le groupe quitte la toolbar pour la barre d'état, à
+gauche, sous le tableau où l'on travaille. « Nettoyer les doublons » reste seul
+dans la toolbar.
+
+- **`MessageStatusBar`** : `QStatusBar.showMessage()` masque tous les widgets de
+  gauche pendant un message — le groupe aurait disparu 2 s après chaque saut
+  (« N lignes chargées »). La sous-classe écrit les messages dans un libellé placé
+  après le groupe ; les ~36 appels à `showMessage()` sont inchangés.
+- **Hauteur de barre figée** sur celle des boutons (35 px) : quand le groupe se
+  masque (plus aucune ligne incomplète), barre, zone centrale et tableau gardent
+  exactement leur hauteur (vérifié hors écran).
+- **`IncompleteNavWidget`** : bouton, flèches et raccourcis ⌥⌘↑/⌥⌘↓ regroupés
+  dans un module (sortis de `ToolbarService`) ; câblage déplacé dans
+  `MainWindow._wire_incomplete_nav`.
+- Tests : `test_message_status_bar.py` (5 tests, dont la contre-épreuve sur un
+  `QStatusBar` standard qui masque bien la tête).
+
 ### Saut vers une ligne incomplète en une requête au lieu de ~10 s de parcours
 
 Quand la page affichée ne contient plus de ligne incomplète dans la direction
@@ -90,7 +109,7 @@ voulue, les flèches chargeaient les pages une à une (1 410 sur toute la base).
   position SQL = parcours réel des pages (LIMIT/OFFSET), sur une base avec
   ex-æquo, NULL et chaînes vides. `test_incomplete_nav.py` : 5 tests du chemin
   SQL (aucune requête si la cible est sur la page, un seul chargement, rien
-  trouvé = aucun chargement, repli sur erreur). Suite : 1008 passed, 1 skipped.
+  trouvé = aucun chargement, repli sur erreur). Suite : 1013 passed, 1 skipped.
 - `TestFindIncompleteRow` (10 tests, remplace `TestFindEmptyCellRow`) et
   `test_incomplete_nav.py` (9 tests, dont 3 sur le retour au départ — contre-épreuve
   faite : correctif retiré, le test échoue). Suite : 955 passed, 1 skipped.
