@@ -70,12 +70,10 @@ class TestRaccourciSuitLEtatDuBouton:
         tc._on_skip_empty_cell.assert_not_called()
 
 
-class TestRetourAuDepartApresBalayageInfructueux:
-    """Rien trouvé dans la direction demandée : l'utilisateur revient sur sa
-    page et sa cellule de départ, au lieu de rester sur la dernière page
-    traversée sans sélection."""
+class _ControleurPagine:
+    """Faux TableController : vraies vue + modèle, pages simulées."""
 
-    def _controller(self, qapp, pages):
+    def _controller(self, qapp, pages, position=ValueError("tri « Nb pièces »")):
         from src.data.appareils_table_model import AppareillsTableModel
         from PyQt5.QtWidgets import QTableView
         from tests.unit.test_table_model import make_record
@@ -89,6 +87,18 @@ class TestRetourAuDepartApresBalayageInfructueux:
         tc._empty_cells_search_exhausted = {'up': False, 'down': False}
         tc._update_empty_cell_buttons_state = Mock()
         tc.visited = []
+        tc.current_search_term = None
+        tc.current_sort_column = 0
+        from src.ui.qt_imports import Qt
+        tc.current_sort_order = Qt.AscendingOrder
+        tc.parent_window = Mock(sorting_filtering_service=None, show_incomplete_only=False)
+        tc.filter_widgets = {}
+        tc.build_effective_search_term = lambda term: term
+        tc.db_manager = Mock()
+        if isinstance(position, Exception):
+            tc.db_manager.find_incomplete_position.side_effect = position
+        else:
+            tc.db_manager.find_incomplete_position.return_value = position
 
         def goto(page):
             tc.visited.append(page)
@@ -99,6 +109,13 @@ class TestRetourAuDepartApresBalayageInfructueux:
         goto(1)
         tc.visited.clear()
         return tc
+
+
+
+class TestRetourAuDepartApresBalayageInfructueux(_ControleurPagine):
+    """Repli « parcours des pages » (tri Nb pièces → ValueError) : rien trouvé
+    dans la direction demandée, l'utilisateur revient sur sa page et sa cellule
+    de départ, au lieu de rester sur la dernière page traversée sans sélection."""
 
     def test_retour_page_et_cellule_de_depart(self, qapp):
         tc = self._controller(qapp, {1: [(1, "Four"), (2, "Four")],
@@ -127,3 +144,57 @@ class TestRetourAuDepartApresBalayageInfructueux:
         tc._on_skip_empty_cell('up')
         assert tc.visited == []
         assert tc._empty_cells_search_exhausted['up'] is True
+
+
+class TestSautParPositionSQL(_ControleurPagine):
+    """Chemin principal : la page affichée d'abord, puis une requête de position
+    → un seul chargement de page, ou aucun si rien n'est trouvé."""
+
+    PAGES = {1: [(1, "Four"), (2, "Four")],
+             2: [(3, "Four"), (4, "Four")],
+             3: [(5, "Four"), (6, "")]}
+
+    def test_cible_sur_la_page_affichee_aucune_requete(self, qapp):
+        tc = self._controller(qapp, {1: [(1, "Four"), (2, "")], 2: [(3, "Four"), (4, "Four")]}, position=3)
+        tc.table.setCurrentIndex(tc.model.index(0, 4))
+        tc._on_skip_empty_cell('down')
+        tc.db_manager.find_incomplete_position.assert_not_called()
+        assert tc.visited == []
+        assert (tc.table.currentIndex().row(), tc.table.currentIndex().column()) == (1, 0)
+
+    def test_un_seul_chargement_de_page(self, qapp):
+        tc = self._controller(qapp, self.PAGES, position=5)  # page 3, rang 1
+        tc.table.setCurrentIndex(tc.model.index(0, 4))
+        tc._on_skip_empty_cell('down')
+        assert tc.visited == [3]  # saut direct, pas de passage par la page 2
+        assert (tc.table.currentIndex().row(), tc.table.currentIndex().column()) == (1, 0)
+        # Position demandée à partir de la dernière ligne de la page 1
+        args = tc.db_manager.find_incomplete_position.call_args[0]
+        assert args[-2:] == (1, 'down')
+
+    def test_vers_le_haut_part_du_debut_de_page(self, qapp):
+        tc = self._controller(qapp, {1: [(1, ""), (2, "Four")], 2: [(3, "Four"), (4, "Four")]}, position=0)
+        tc._goto_page_preserving_context(2)
+        tc.visited.clear()
+        tc.table.setCurrentIndex(tc.model.index(1, 2))
+        tc._on_skip_empty_cell('up')
+        assert tc.db_manager.find_incomplete_position.call_args[0][-2:] == (2, 'up')
+        assert tc.visited == [1]
+        assert (tc.table.currentIndex().row(), tc.table.currentIndex().column()) == (0, 0)
+
+    def test_rien_trouve_aucun_chargement_fleche_grisee(self, qapp):
+        tc = self._controller(qapp, self.PAGES, position=None)
+        tc.table.setCurrentIndex(tc.model.index(1, 4))
+        tc._on_skip_empty_cell('down')
+        assert tc.visited == []  # on ne bouge pas du tout
+        assert tc.current_page == 1
+        assert (tc.table.currentIndex().row(), tc.table.currentIndex().column()) == (1, 4)
+        assert tc._empty_cells_search_exhausted['down'] is True
+
+    def test_erreur_sql_repli_sur_parcours(self, qapp):
+        import sqlite3
+        tc = self._controller(qapp, self.PAGES, position=sqlite3.OperationalError("verrou"))
+        tc.table.setCurrentIndex(tc.model.index(0, 4))
+        tc._on_skip_empty_cell('down')
+        assert tc.visited == [2, 3]  # parcours page par page
+        assert (tc.table.currentIndex().row(), tc.table.currentIndex().column()) == (1, 0)
