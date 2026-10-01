@@ -76,6 +76,21 @@ dans la toolbar.
 - Tests : `test_message_status_bar.py` (5 tests, dont la contre-épreuve sur un
   `QStatusBar` standard qui masque bien la tête).
 
+### Flèches grisées à leur apparition (régression de la PR #44)
+
+Signalé par l'utilisateur. Reproduit hors écran, sur la version actuelle et sur
+celle d'avant le déplacement en barre d'état (même comportement) : la cause est
+la PR #44, qui avait remplacé la réévaluation des flèches à chaque clic de
+cellule par une réévaluation au seul chargement de page. Vider un Type faisait
+apparaître le groupe (compteur 0 → 1) avec des flèches grisées jusqu'au
+chargement suivant.
+
+- `TableController.on_incomplete_count_changed`, branché sur
+  `IncompleteButtonService.count_changed` : flèches réévaluées dès que le compteur
+  change, épuisement oublié (une ligne apparue peut être dans n'importe quelle
+  direction). Contre-épreuve dans la vraie fenêtre : branchement retiré →
+  flèches grisées ; rétabli → actives.
+
 ### Saut vers une ligne incomplète en une requête au lieu de ~10 s de parcours
 
 Quand la page affichée ne contient plus de ligne incomplète dans la direction
@@ -109,7 +124,7 @@ voulue, les flèches chargeaient les pages une à une (1 410 sur toute la base).
   position SQL = parcours réel des pages (LIMIT/OFFSET), sur une base avec
   ex-æquo, NULL et chaînes vides. `test_incomplete_nav.py` : 5 tests du chemin
   SQL (aucune requête si la cible est sur la page, un seul chargement, rien
-  trouvé = aucun chargement, repli sur erreur). Suite : 1013 passed, 1 skipped.
+  trouvé = aucun chargement, repli sur erreur). Suite : 1015 passed, 1 skipped.
 - `TestFindIncompleteRow` (10 tests, remplace `TestFindEmptyCellRow`) et
   `test_incomplete_nav.py` (9 tests, dont 3 sur le retour au départ — contre-épreuve
   faite : correctif retiré, le test échoue). Suite : 955 passed, 1 skipped.
