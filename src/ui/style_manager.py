@@ -69,6 +69,15 @@ class StyleManager:
         "QPushButton:hover { background-color: #e55a2b; }"
     )
 
+    # Flèches ▲/▼ qui encadrent « Lignes à traiter » : même bordure 2px et même
+    # rayon que les boutons du cluster → même hauteur, alignées sans retouche.
+    HEALTH_NAV_BTN = (
+        "QToolButton { background-color: #f8f9fa; border: 2px solid #ced4da;"
+        " border-radius: 4px; padding: 3px 4px; }"
+        "QToolButton:hover { background-color: #e9ecef; }"
+        "QToolButton:disabled { background-color: #f8f9fa; border-color: #e9ecef; }"
+    )
+
     @staticmethod
     def get_modern_style() -> str:
         """Retourner le style CSS moderne complet de l'application"""

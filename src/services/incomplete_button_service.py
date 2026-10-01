@@ -23,6 +23,8 @@ class IncompleteButtonService(QObject):
         self._base_service = BaseService(parent_window=parent)
         self.db_manager = db_manager
         self.button = None
+        # Widgets affichés/masqués avec le bouton (flèches ▲/▼ de la toolbar)
+        self.companions = []
         self.show_incomplete_only = False
 
         # Cache intelligent
@@ -56,6 +58,14 @@ class IncompleteButtonService(QObject):
         if button:
             self.count_changed.connect(self._update_button_display)
             app_logger.info("[OK] Signal count_changed connecté à _update_button_display")
+
+    def set_companions(self, widgets):
+        """Widgets qui suivent la visibilité du bouton (flèches ▲/▼ de navigation
+        entre lignes incomplètes) : sans ligne incomplète, ils n'ont plus d'objet."""
+        self.companions = [w for w in widgets if w is not None]
+        if self.button is not None:
+            for w in self.companions:
+                w.setVisible(not self.button.isHidden())
 
     def invalidate_cache(self, reason: str = "modification"):
         """Invalider le cache (à appeler lors des modifications de données)"""
@@ -117,6 +127,9 @@ class IncompleteButtonService(QObject):
         """Mettre à jour l'affichage du bouton"""
         if not self.button:
             return
+
+        for w in self.companions:
+            w.setVisible(count > 0)
 
         if count > 0:
             self.button.show()

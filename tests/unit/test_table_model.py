@@ -384,10 +384,11 @@ class TestSuggestionsSimilarite:
         assert by_id[1]['candidates'] == [cand]
 
 
-class TestFindEmptyCellRow:
-    """Navigation cellule vide (Type/Fabricant) — respecte l'ordre des records
-    tel que chargé (donc le tri/filtres/recherche déjà appliqués par load_data),
-    contrairement à une recherche SQL indépendante par id."""
+class TestFindIncompleteRow:
+    """Navigation ligne incomplète (Type OU Fabricant vide), indépendante de la
+    colonne sous le focus — respecte l'ordre des records tel que chargé (donc
+    le tri/filtres/recherche déjà appliqués par load_data), contrairement à une
+    recherche SQL indépendante par id."""
 
     def test_trouve_vers_le_bas(self, model):
         model.load_records([
@@ -395,7 +396,7 @@ class TestFindEmptyCellRow:
             make_record(db_id=2, type_=""),
             make_record(db_id=3, type_="Four"),
         ])
-        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') == 1
+        assert model.find_incomplete_row(start_row=0, direction='down') == (1, 0)
 
     def test_trouve_vers_le_haut(self, model):
         model.load_records([
@@ -403,7 +404,7 @@ class TestFindEmptyCellRow:
             make_record(db_id=2, type_="Four"),
             make_record(db_id=3, type_=""),
         ])
-        assert model.find_empty_cell_row(col=0, start_row=1, direction='up') == 0
+        assert model.find_incomplete_row(start_row=1, direction='up') == (0, 0)
 
     def test_respecte_ordre_des_records_pas_id(self, model):
         """Les records sont fournis dans un ordre de tri arbitraire (pas par id
@@ -413,29 +414,53 @@ class TestFindEmptyCellRow:
             make_record(db_id=2, type_=""),         # row 1 — vide, id pourtant petit
             make_record(db_id=50, type_="Four"),    # row 2
         ])
-        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') == 1
+        assert model.find_incomplete_row(start_row=0, direction='down') == (1, 0)
 
     def test_rien_trouve_sur_la_page_retourne_none(self, model):
         model.load_records([
             make_record(db_id=1, type_="Four"),
             make_record(db_id=2, type_="Lave-linge"),
         ])
-        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') is None
+        assert model.find_incomplete_row(start_row=0, direction='down') is None
 
-    def test_manufacturer_independant_de_type(self, model):
+    def test_fabricant_seul_vide_cible_la_colonne_fabricant(self, model):
         model.load_records([
             make_record(db_id=1, type_="Four", manufacturer="Bosch"),
             make_record(db_id=2, type_="Four", manufacturer=""),
         ])
-        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') is None
-        assert model.find_empty_cell_row(col=1, start_row=0, direction='down') == 1
+        assert model.find_incomplete_row(start_row=0, direction='down') == (1, 1)
 
-    def test_colonne_invalide_retourne_none(self, model):
+    def test_type_et_fabricant_vides_cible_le_type(self, model):
+        model.load_records([
+            make_record(db_id=1),
+            make_record(db_id=2, type_="", manufacturer=""),
+        ])
+        assert model.find_incomplete_row(start_row=0, direction='down') == (1, 0)
+
+    def test_espaces_seuls_comptent_comme_vide(self, model):
+        model.load_records([
+            make_record(db_id=1),
+            make_record(db_id=2, manufacturer="   "),
+        ])
+        assert model.find_incomplete_row(start_row=0, direction='down') == (1, 1)
+
+    def test_ligne_de_depart_exclue(self, model):
+        """La ligne courante, même incomplète, n'est pas une cible : sinon la
+        flèche resterait bloquée sur place."""
+        model.load_records([
+            make_record(db_id=1, type_=""),
+            make_record(db_id=2),
+        ])
+        assert model.find_incomplete_row(start_row=0, direction='down') is None
+
+    def test_depart_avant_la_premiere_ligne(self, model):
+        """start_row=-1 (aucune sélection / changement de page) : la ligne 0
+        est candidate."""
         model.load_records([make_record(db_id=1, type_="")])
-        assert model.find_empty_cell_row(col=2, start_row=0, direction='down') is None
+        assert model.find_incomplete_row(start_row=-1, direction='down') == (0, 0)
 
     def test_ignore_lignes_pas_encore_revelees_par_virtual_scroll(self, model, monkeypatch):
-        """find_empty_cell_row doit chercher dans TOUS les records chargés,
+        """find_incomplete_row doit chercher dans TOUS les records chargés,
         y compris au-delà de _display_count (pas encore affichés à l'écran)."""
         from src.core.config import Config
         monkeypatch.setattr(Config, 'USE_VIRTUAL_SCROLL', True)
@@ -445,7 +470,7 @@ class TestFindEmptyCellRow:
             make_record(db_id=2, type_=""),  # au-delà de _display_count=1
         ])
         assert model.rowCount() == 1  # virtual scroll : 1 seule ligne révélée
-        assert model.find_empty_cell_row(col=0, start_row=0, direction='down') == 1
+        assert model.find_incomplete_row(start_row=0, direction='down') == (1, 0)
         model.reveal_row(1)
         assert model.rowCount() == 2  # révélation forcée réussie
 

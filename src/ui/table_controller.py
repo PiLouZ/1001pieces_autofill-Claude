@@ -93,6 +93,12 @@ class TableController:
         # à chaque changement de contexte (recherche/tri/filtres), voir load_data()
         # et _on_header_click().
         self._empty_cells_search_exhausted = {'up': False, 'down': False}
+        # Balayage de pages en cours par _on_skip_empty_cell : suspend la
+        # réévaluation des flèches à chaque page traversée.
+        self._incomplete_scan_in_progress = False
+        # Flèches « ligne incomplète » (toolbar), branchées par set_incomplete_nav_buttons()
+        self.skip_empty_up_btn = None
+        self.skip_empty_down_btn = None
         
         # Variables de tri
         self.current_sort_column = -1
@@ -329,11 +335,6 @@ class TableController:
         self.table = CustomTableView()
         self.table.setModel(self.model)
         self.table.main_window = self.parent_window
-        # Boutons de saut vers cellule vide (Type/Fabricant) : leur état dépend
-        # de la colonne sous le focus, réévalué à chaque changement de cellule.
-        self.table.selectionModel().currentChanged.connect(
-            lambda current, previous: self._update_empty_cell_buttons_state()
-        )
         # Delegate des colonnes Type/Marque : suggestion en case + icône cliquable.
         self._suggestion_delegate = SuggestionCellDelegate(self.table)
         self._suggestion_delegate.accept_handler = self._on_suggestion_icon_clicked
@@ -1184,35 +1185,55 @@ class TableController:
         return self.pieces_count_service.get_pieces_count_summary(self.table)
     
     def _add_pagination_controls(self, layout: QVBoxLayout):
-        """Ajouter les contrôles de pagination"""
+        """Ajouter les contrôles de pagination.
+
+        Trois zones dans une grille (compteur | navigation | lignes par page) :
+        les deux colonnes extérieures ont le même poids, donc la navigation reste
+        réellement centrée quelle que soit la longueur du compteur. Aucun widget
+        n'est jamais masqué : sur une seule page, la navigation est grisée par
+        NavigationService — la géométrie de la barre ne bouge pas.
+        """
+        from PyQt5.QtWidgets import QGridLayout
+        import qtawesome as _qta_nav
         pagination_widget = QWidget()
         self.pagination_widget = pagination_widget
-        pagination_layout = QHBoxLayout(pagination_widget)
+        pagination_layout = QGridLayout(pagination_widget)
         pagination_layout.setContentsMargins(4, 2, 4, 0)
-        
-        # Style unique pour les 4 boutons de navigation (référence : "Suivant ▶"),
-        # avec règle :disabled pour une désactivation cohérente.
+        pagination_layout.setColumnStretch(0, 1)
+        pagination_layout.setColumnStretch(2, 1)
+
+        # Zone gauche : compteur de lignes
+        self.size_label = QLabel(self._format_row_count(self.total_rows))
+        pagination_layout.addWidget(self.size_label, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+
+        # Zone centrale : navigation  ⏮ ◀ Page [n] / N ▶ ⏭
+        nav_widget = QWidget()
+        nav_layout = QHBoxLayout(nav_widget)
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(4)
+
+        # Style unique pour les 4 boutons de navigation, avec règle :disabled
+        # pour une désactivation cohérente (une seule page → tout grisé).
         _btn_style = (
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
+            "QPushButton { padding: 3px 8px; font-size: 11px; border-radius: 4px; }"
             "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-            "QPushButton:disabled { color: #adb5bd; }"
         )
 
-        # Première page
-        self.first_button = QPushButton("◀◀")
-        self.first_button.setToolTip("Première page")
-        self.first_button.setStyleSheet(_btn_style)
-        pagination_layout.addWidget(self.first_button)
+        def _nav_button(icon_name: str, tooltip: str) -> QPushButton:
+            btn = QPushButton()
+            btn.setIcon(_qta_nav.icon(icon_name, color='#555555', color_disabled='#c4c8cc'))
+            btn.setToolTip(tooltip)
+            btn.setStyleSheet(_btn_style)
+            nav_layout.addWidget(btn)
+            return btn
 
-        # Bouton page précédente
-        self.prev_button = QPushButton("◀ Précédent")
-        self.prev_button.setStyleSheet(_btn_style)
-        # Navigation gérée par NavigationService
-        pagination_layout.addWidget(self.prev_button)
+        # Navigation gérée par NavigationService (clics + état activé/grisé)
+        self.first_button = _nav_button('fa5s.angle-double-left', "Première page")
+        self.prev_button = _nav_button('fa5s.angle-left', "Page précédente")
 
         # Saut de page direct : "Page [champ éditable] / N"
         self.page_text_label = QLabel("Page")
-        pagination_layout.addWidget(self.page_text_label)
+        nav_layout.addWidget(self.page_text_label)
         self.page_input = QLineEdit("1")
         self.page_input.setFixedWidth(48)
         self.page_input.setAlignment(Qt.AlignCenter)
@@ -1220,87 +1241,34 @@ class TableController:
         self.page_input.setStyleSheet(
             "QLineEdit { padding: 2px; font-size: 11px; border: 1px solid #bdbdbd;"
             " border-radius: 3px; } QLineEdit:focus { border: 1px solid #0078d4; }"
+            " QLineEdit:disabled { color: #adb5bd; border-color: #dee2e6; }"
         )
-        pagination_layout.addWidget(self.page_input)
+        nav_layout.addWidget(self.page_input)
         self.page_total_label = QLabel("/ 1")
-        pagination_layout.addWidget(self.page_total_label)
+        # Largeur réservée pour « / 99999 » : le total ne pousse plus les boutons
+        self.page_total_label.setMinimumWidth(
+            self.page_total_label.fontMetrics().horizontalAdvance("/ 99999") + 4
+        )
+        nav_layout.addWidget(self.page_total_label)
         # page_label conservé à None (remplacé par page_input + page_total_label)
         self.page_label = None
 
-        # Bouton page suivante
-        self.next_button = QPushButton("Suivant ▶")
-        self.next_button.setStyleSheet(_btn_style)
-        # Navigation gérée par NavigationService
-        pagination_layout.addWidget(self.next_button)
+        self.next_button = _nav_button('fa5s.angle-right', "Page suivante")
+        self.last_button = _nav_button('fa5s.angle-double-right', "Dernière page")
 
-        # Dernière page
-        self.last_button = QPushButton("▶▶")
-        self.last_button.setToolTip("Dernière page")
-        self.last_button.setStyleSheet(_btn_style)
-        pagination_layout.addWidget(self.last_button)
+        pagination_layout.addWidget(nav_widget, 0, 1, Qt.AlignCenter)
 
-        # Séparateur avant les boutons de saut vers cellule vide
-        from PyQt5.QtWidgets import QFrame as _QFrame
-        _nav_separator = _QFrame()
-        _nav_separator.setFrameShape(_QFrame.VLine)
-        _nav_separator.setFrameShadow(_QFrame.Plain)
-        _nav_separator.setStyleSheet("color: #ced4da;")
-        _nav_separator.setFixedHeight(14)
-        pagination_layout.addSpacing(6)
-        pagination_layout.addWidget(_nav_separator)
-        pagination_layout.addSpacing(6)
+        # Les boutons de saut vers la ligne incomplète précédente/suivante sont
+        # dans la toolbar, autour de « Lignes à traiter » (cf. toolbar_service) ;
+        # ils sont branchés ici par set_incomplete_nav_buttons().
 
-        # Boutons de saut vers la cellule vide précédente/suivante (Type/Fabricant
-        # uniquement) : grisés tant qu'aucune cellule de ces colonnes n'a le focus,
-        # ou qu'aucune cellule vide n'existe dans la direction demandée.
-        import qtawesome as _qta_nav
-        self.skip_empty_up_btn = QToolButton()
-        self.skip_empty_up_btn.setIcon(_qta_nav.icon('fa5s.chevron-up', color='#555555'))
-        self.skip_empty_up_btn.setToolTip(
-            "Cellule vide précédente (Type/Fabricant)\n"
-            "Sélectionnez d'abord une cellule Type ou Fabricant"
-        )
-        self.skip_empty_up_btn.setEnabled(False)
-        self.skip_empty_up_btn.setStyleSheet(
-            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
-            "QToolButton:disabled { color: #ccc; background: #f8f9fa; }"
-        )
-        self.skip_empty_up_btn.clicked.connect(lambda: self._on_skip_empty_cell('up'))
-        pagination_layout.addWidget(self.skip_empty_up_btn)
-
-        self.skip_empty_down_btn = QToolButton()
-        self.skip_empty_down_btn.setIcon(_qta_nav.icon('fa5s.chevron-down', color='#555555'))
-        self.skip_empty_down_btn.setToolTip(
-            "Cellule vide suivante (Type/Fabricant)\n"
-            "Sélectionnez d'abord une cellule Type ou Fabricant"
-        )
-        self.skip_empty_down_btn.setEnabled(False)
-        self.skip_empty_down_btn.setStyleSheet(
-            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
-            "QToolButton:disabled { color: #ccc; background: #f8f9fa; }"
-        )
-        self.skip_empty_down_btn.clicked.connect(lambda: self._on_skip_empty_cell('down'))
-        pagination_layout.addWidget(self.skip_empty_down_btn)
-
-        pagination_layout.addStretch()
-
-        self.size_label = QLabel(f"Total: {self.total_rows} lignes")
-        pagination_layout.addWidget(self.size_label)
-
-        # Séparateur visuel
-        from PyQt5.QtWidgets import QFrame
-        separator = QFrame()
-        separator.setFrameShape(QFrame.VLine)
-        separator.setFrameShadow(QFrame.Plain)
-        separator.setStyleSheet("color: #ced4da;")
-        separator.setFixedHeight(14)
-        pagination_layout.addSpacing(6)
-        pagination_layout.addWidget(separator)
-        pagination_layout.addSpacing(6)
-
-        # Sélecteur taille de page
-        size_label = QLabel("Lignes par page:")
-        pagination_layout.addWidget(size_label)
+        # Zone droite : sélecteur taille de page
+        size_widget = QWidget()
+        size_layout = QHBoxLayout(size_widget)
+        size_layout.setContentsMargins(0, 0, 0, 0)
+        size_layout.setSpacing(6)
+        size_label = QLabel("Lignes par page")
+        size_layout.addWidget(size_label)
         
         self.page_size_combo = QComboBox()
         self.page_size_combo.addItems(["100", "250", "500", "1000", "2000", "Tout"])
@@ -1353,10 +1321,16 @@ class TableController:
             }
         """)
         # Changement de taille géré par NavigationService
-        pagination_layout.addWidget(self.page_size_combo)
+        size_layout.addWidget(self.page_size_combo)
+        pagination_layout.addWidget(size_widget, 0, 2, Qt.AlignRight | Qt.AlignVCenter)
 
         layout.addWidget(pagination_widget)
     
+    @staticmethod
+    def _format_row_count(count: int) -> str:
+        """« 690 418 lignes » : milliers séparés par une espace fine insécable."""
+        return f"{count:,} {'ligne' if count <= 1 else 'lignes'}".replace(",", "\u202f")
+
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour pagination")
     def _update_pagination_controls(self):
         """Mettre à jour les contrôles de pagination"""
@@ -1368,17 +1342,20 @@ class TableController:
         if getattr(self, 'page_total_label', None) is not None:
             self.page_total_label.setText(f"/ {self.total_pages}")
         if self.size_label:
-            self.size_label.setText(f"Total: {self.total_rows} lignes")
+            self.size_label.setText(self._format_row_count(self.total_rows))
 
-        # Masquer la zone de navigation page si une seule page
-        if hasattr(self, 'pagination_widget') and self.pagination_widget:
-            single_page = self.total_pages <= 1 and self.page_size != -1
-            for w in (getattr(self, 'first_button', None), self.prev_button,
-                      getattr(self, 'page_text_label', None), getattr(self, 'page_input', None),
-                      getattr(self, 'page_total_label', None),
-                      self.next_button, getattr(self, 'last_button', None)):
-                if w is not None:
-                    w.setVisible(not single_page)
+        # Une seule page : on grise au lieu de masquer (géométrie stable). Les
+        # 4 boutons sont gérés par NavigationService ; le champ de page ici.
+        single_page = self.total_pages <= 1
+        for w in (getattr(self, 'page_input', None), getattr(self, 'page_text_label', None),
+                  getattr(self, 'page_total_label', None)):
+            if w is not None:
+                w.setEnabled(not single_page)
+
+        # Nouveau contexte affiché : réévaluer les flèches « ligne incomplète »
+        # (sauf pendant leur propre balayage de pages, qui conclut lui-même).
+        if not getattr(self, '_incomplete_scan_in_progress', False):
+            self._update_empty_cell_buttons_state()
 
         # Synchroniser avec NavigationService si disponible
         if self.navigation_service:
@@ -1779,18 +1756,6 @@ class TableController:
 
     # ── Navigation cellule vide (Type/Fabricant) ────────────────────────────
 
-    def _current_empty_nav_column(self) -> Optional[str]:
-        """Nom de colonne DB ('type'/'manufacturer') si la cellule sous le focus
-        appartient à l'une des deux colonnes navigables, sinon None."""
-        index = self.table.currentIndex()
-        if not index.isValid():
-            return None
-        if index.column() == 0:
-            return 'type'
-        if index.column() == 1:
-            return 'manufacturer'
-        return None
-
     def _live_column_filters(self) -> dict:
         """Filtres de colonne actuellement saisis (même logique que load_data),
         utilisés pour que la vérification d'existence de cellule vide respecte
@@ -1804,19 +1769,24 @@ class TableController:
                     column_filters[col_idx] = filter_text
         return column_filters
 
-    def _update_empty_cell_buttons_state(self):
-        """Grise/dégrise les boutons de saut selon la colonne focus, l'existence
-        d'au moins une ligne incomplète dans le périmètre courant (recherche/
-        filtres actifs), et l'épuisement éventuel de chaque direction (mémorisé
-        par le dernier balayage complet de _on_skip_empty_cell, remis à zéro à
-        chaque nouveau contexte affiché — voir load_data())."""
-        if not hasattr(self, 'skip_empty_up_btn'):
-            return
+    def set_incomplete_nav_buttons(self, up_btn, down_btn):
+        """Brancher les flèches « ligne incomplète précédente/suivante », créées
+        dans la toolbar autour de « Lignes à traiter » (cf. toolbar_service)."""
+        self.skip_empty_up_btn = up_btn
+        self.skip_empty_down_btn = down_btn
+        up_btn.clicked.connect(lambda: self._on_skip_empty_cell('up'))
+        down_btn.clicked.connect(lambda: self._on_skip_empty_cell('down'))
+        # État initial : posé au premier load_data (via _update_pagination_controls) —
+        # la toolbar est construite avant le tableau, ses filtres n'existent pas encore.
 
-        column_name = self._current_empty_nav_column()
-        if column_name is None:
-            self.skip_empty_up_btn.setEnabled(False)
-            self.skip_empty_down_btn.setEnabled(False)
+    def _update_empty_cell_buttons_state(self):
+        """Grise/dégrise les flèches selon l'existence d'au moins une ligne
+        incomplète dans le périmètre courant (recherche/filtres actifs) et
+        l'épuisement éventuel de chaque direction (mémorisé par le dernier
+        balayage complet de _on_skip_empty_cell, remis à zéro à chaque nouveau
+        contexte affiché — voir load_data()). Indépendant de la colonne sous le
+        focus : réévalué à chaque affichage de page, pas à chaque clic de cellule."""
+        if getattr(self, 'skip_empty_up_btn', None) is None:
             return
 
         effective_search_term = self.build_effective_search_term(self.current_search_term)
@@ -1840,44 +1810,64 @@ class TableController:
             self.current_page = page
             self.load_data(self.current_search_term)
 
+    def skip_to_incomplete_row(self, direction: str):
+        """Point d'entrée des raccourcis ⌥⌘↑ / ⌥⌘↓ : même effet qu'un clic sur
+        la flèche correspondante, et rien si elle est grisée (direction épuisée
+        ou aucune ligne incomplète dans le périmètre)."""
+        btn = getattr(self, 'skip_empty_up_btn' if direction == 'up' else 'skip_empty_down_btn', None)
+        if btn is not None and btn.isEnabled() and btn.isVisible():
+            self._on_skip_empty_cell(direction)
+
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur saut cellule vide")
     def _on_skip_empty_cell(self, direction: str):
-        """Sauter vers la prochaine/précédente cellule vide de la colonne focus,
-        en conservant le contexte courant (tri, recherche, filtres) : on parcourt
-        les pages du tableau telles que triées/filtrées à l'écran, jamais une
-        vue indépendante — la ligne cible apparaît avec son environnement."""
-        column_name = self._current_empty_nav_column()
-        if column_name is None or not self.model:
+        """Sauter vers la prochaine/précédente ligne incomplète (Type ou
+        Fabricant vide), quelle que soit la colonne sous le focus, et placer le
+        curseur sur la cellule à remplir. Le contexte courant (tri, recherche,
+        filtres) est conservé : on parcourt les pages du tableau telles que
+        triées/filtrées à l'écran, jamais une vue indépendante — la ligne cible
+        apparaît avec son environnement."""
+        if not self.model:
             return
-        col = 0 if column_name == 'type' else 1
 
         row = self.table.currentIndex().row()
+        if row < 0:
+            # Aucune sélection : ▼ part du haut de la page, ▲ part du bas
+            row = -1 if direction == 'down' else self.model.loaded_record_count()
         max_pages_to_scan = max(self.total_pages, 1)
         scanned_pages = 0
 
-        while scanned_pages <= max_pages_to_scan:
-            found_row = self.model.find_empty_cell_row(col, row, direction)
-            if found_row is not None:
-                self.model.reveal_row(found_row)
-                target_index = self.model.index(found_row, col)
-                self.table.setCurrentIndex(target_index)
-                self.table.scrollTo(target_index)
-                self.table.setFocus()
-                return
+        self._incomplete_scan_in_progress = True
+        try:
+            while scanned_pages <= max_pages_to_scan:
+                found = self.model.find_incomplete_row(row, direction)
+                if found is not None:
+                    found_row, col = found
+                    self.model.reveal_row(found_row)
+                    target_index = self.model.index(found_row, col)
+                    self.table.setCurrentIndex(target_index)
+                    self.table.scrollTo(target_index)
+                    self.table.setFocus()
+                    if scanned_pages:
+                        # Changement de page : load_data a remis à zéro l'épuisement
+                        # des deux directions → refléter ce nouvel état une seule fois.
+                        self._update_empty_cell_buttons_state()
+                    return
 
-            # Rien sur cette page : poursuivre sur la page suivante/précédente,
-            # avec exactement les mêmes tri/recherche/filtres.
-            if direction == 'down':
-                if self.page_size == -1 or self.current_page >= self.total_pages:
-                    break
-                self._goto_page_preserving_context(self.current_page + 1)
-                row = -1  # prochaine recherche démarre juste avant la 1ère ligne
-            else:
-                if self.page_size == -1 or self.current_page <= 1:
-                    break
-                self._goto_page_preserving_context(self.current_page - 1)
-                row = self.model.loaded_record_count()  # juste après la dernière ligne
-            scanned_pages += 1
+                # Rien sur cette page : poursuivre sur la page suivante/précédente,
+                # avec exactement les mêmes tri/recherche/filtres.
+                if direction == 'down':
+                    if self.page_size == -1 or self.current_page >= self.total_pages:
+                        break
+                    self._goto_page_preserving_context(self.current_page + 1)
+                    row = -1  # prochaine recherche démarre juste avant la 1ère ligne
+                else:
+                    if self.page_size == -1 or self.current_page <= 1:
+                        break
+                    self._goto_page_preserving_context(self.current_page - 1)
+                    row = self.model.loaded_record_count()  # juste après la dernière ligne
+                scanned_pages += 1
+        finally:
+            self._incomplete_scan_in_progress = False
 
         # Balayage complet (toutes les pages du périmètre courant) sans résultat :
         # mémoriser l'épuisement de cette direction plutôt qu'afficher un message
