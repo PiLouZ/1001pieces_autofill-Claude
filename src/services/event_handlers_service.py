@@ -22,20 +22,6 @@ class EventHandlersService:
     
     # === GESTIONNAIRES DE RECHERCHE ===
     
-    def on_search_started(self, data: Dict[str, Any]):
-        """Gestionnaire événement début de recherche"""
-        if hasattr(self.main_window, 'statusbar'):
-            self.main_window.statusbar.showMessage(f" Recherche en cours: '{data['term']}'...")
-    
-    def on_search_completed(self, data: Dict[str, Any]):
-        """Gestionnaire événement fin de recherche"""
-        if hasattr(self.main_window, 'statusbar'):
-            cache_info = " (cache)" if data.get('has_cache_hit') else ""
-            self.main_window.statusbar.showMessage(
-                f"[OK] Recherche terminée: {data['results_count']} résultats{cache_info}", 
-                3000
-            )
-    
     def on_search_error(self, data: Dict[str, Any]):
         """Gestionnaire événement erreur de recherche"""
         if hasattr(self.main_window, 'statusbar'):

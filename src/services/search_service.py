@@ -3,9 +3,8 @@ Search Service - Phase 4 Architecture Refactoring
 Sépare la logique de recherche de l'interface utilisateur
 """
 
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 from ..data.database_manager import DatabaseManager
-from .event_bus import event_bus
 from .base_service import BaseService
 
 class SearchService(BaseService):
@@ -14,63 +13,6 @@ class SearchService(BaseService):
     def __init__(self, db_manager: DatabaseManager):
         super().__init__()
         self.db_manager = db_manager
-        self._current_search = None
-        self._last_results = []
-    
-    def search(self, term: str, 
-               column_filters: Optional[Dict[int, str]] = None,
-               sort_column: Optional[int] = None,
-               sort_order: Optional[str] = None,
-               limit: Optional[int] = None,
-               offset: Optional[int] = None,
-               incomplete_filter: bool = False) -> List[Tuple]:
-        """Effectuer une recherche optimisée"""
-        
-        # Normaliser le terme pour éviter les objets complexes dans le cache
-        normalized_term = self._normalize_search_term(term)
-        
-        # Convertir terme complexe en string pour l'affichage
-        display_term = normalized_term if isinstance(normalized_term, str) else str(normalized_term)
-        if isinstance(term, dict):
-            display_term = term.get('original', str(term)[:50] + '...')
-        
-        # Émettre événement de début de recherche
-        event_bus.emit('search.started', {
-            'term': display_term,
-            'has_filters': bool(column_filters),
-            'has_sort': sort_column is not None
-        })
-        
-        try:
-            # Utiliser le terme original pour la DB, qui sait traiter les objets complexes
-            results = self.db_manager.load_data(
-                search_term=term,
-                column_filters=column_filters,
-                limit=limit,
-                offset=offset,
-                sort_column=sort_column,
-                sort_order=sort_order,
-                incomplete_filter=incomplete_filter
-            )
-            
-            self._current_search = term
-            self._last_results = results
-            
-            # Émettre événement de fin de recherche
-            event_bus.emit('search.completed', {
-                'term': term,
-                'results_count': len(results),
-                'has_cache_hit': '🎯 CACHE HIT' in str(results) if results else False
-            })
-            
-            return results
-            
-        except Exception as e:
-            event_bus.emit('search.error', {
-                'term': term,
-                'error': str(e)
-            })
-            raise
     
     def parse_advanced_search(self, text: str) -> Optional[Dict[str, Any]]:
         """

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from src.core.config import Config
 from src.services.advanced_search_service import AdvancedSearchService
+from src.services.search_service import SearchService
 from src.ui.table_controller import TableController
 
 
@@ -62,8 +63,20 @@ def test_duree_affichage_allongee():
 
 def test_plus_de_recherche_prealable_sur_le_terme_seul():
     """Sa requête n'était lue par personne et son total (terme seul) restait affiché."""
-    search_service = MagicMock()
+    search_service = MagicMock(spec=SearchService)
     svc = AdvancedSearchService.__new__(AdvancedSearchService)
     svc.search_service = search_service
     assert svc._safe_execute_search('711115200') == []
-    search_service.search.assert_not_called()
+    assert search_service.method_calls == []
+    assert not hasattr(SearchService, 'search')
+
+
+def test_erreur_de_chargement_signalee_dans_la_barre_d_etat():
+    """Seul message d'erreur depuis le retrait de la recherche préalable."""
+    from src.services.event_handlers_service import EventHandlersService
+    bar = MagicMock()
+    tc = MagicMock()
+    tc.load_data.side_effect = RuntimeError("base verrouillée")
+    svc = EventHandlersService(SimpleNamespace(statusbar=bar, table_controller=tc))
+    svc.on_advanced_search_completed([], '711115200')  # décorateur : journalise, n'interrompt pas
+    assert "base verrouillée" in bar.showMessage.call_args[0][0]
