@@ -400,11 +400,6 @@ class MainWindow(QMainWindow):
     
     def _setup_service_events(self):
         """Phase 4+5: Configuration des événements des services"""
-        # Événements de recherche
-        event_bus.on('search.started', self.event_handlers_service.on_search_started)
-        event_bus.on('search.completed', self.event_handlers_service.on_search_completed) 
-        event_bus.on('search.error', self.event_handlers_service.on_search_error)
-        
         # Événements d'export
         event_bus.on('export.started', self.event_handlers_service.on_export_started)
         event_bus.on('export.completed', self.event_handlers_service.on_export_completed)

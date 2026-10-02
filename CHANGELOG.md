@@ -32,6 +32,14 @@ Correctif :
 Vérifié dans la fenêtre réelle (offscreen, copie de la base) ; même script sur `main` :
 « 0 résultats » reproduit. 7 tests ajoutés.
 
+### Retrait de la recherche devenue sans appelant (branche `chore/retrait-search-service-search`)
+
+`SearchService.search()` (et ses attributs `_current_search` / `_last_results`) n'avait
+plus d'appelant. Avec elle disparaissent les événements `search.started` / `search.completed`
+qu'elle seule émettait, leurs abonnements et `on_search_started` / `on_search_completed`.
+`on_search_error` reste : il signale une erreur de chargement. −79 lignes, comportement
+identique (même rejeu dans la fenêtre réelle), test ajouté sur le chemin d'erreur.
+
 ---
 
 ## [3.75.0] - 2026-10-01 (branches `feature/pagination-stable`, `feature/saut-incomplete-sql` et `feature/fleches-barre-etat`)
