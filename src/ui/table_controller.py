@@ -878,6 +878,9 @@ class TableController:
         # Mettre à jour les contrôles de pagination
         self._update_pagination_controls()
 
+        if is_search:
+            self._show_search_result_message(search_term)
+
         # Mettre à jour les indicateurs de tri pour s'assurer qu'ils sont corrects
         self._update_sort_indicators()
 
@@ -906,6 +909,35 @@ class TableController:
         # Performance logging
         elapsed = time.time() - start_time
         app_logger.debug(f"Table loaded: {len(records) if 'records' in locals() else 0} records in {elapsed:.3f}s")
+
+    def _show_search_result_message(self, search_term):
+        """Barre d'état : total RÉEL de la recherche, une fois le tableau rempli.
+
+        Appelé après _check_supersession_banner, qui relance le chargement avec
+        les références ajoutées (anciennes réf., chaîne, équivalents) : total_rows
+        est alors celui affiché sous le tableau, pas celui du terme seul.
+        """
+        if not hasattr(self.parent_window, 'statusbar'):
+            return
+        if not (search_term and str(search_term).strip()):
+            # Recherche effacée : retirer « Recherche avancée : '…' »
+            self.parent_window.statusbar.clearMessage()
+            return
+        precisions = []
+        if self._supersession_mode == 'superseded' and not self._supersession_bypass:
+            precisions.append("chaîne complète")
+        elif (self._supersession_mode == 'replacing' and self._supersession_expand
+              and self._supersession_predecessors):
+            precisions.append("anciennes réf. incluses")
+        if self._equivalence_expand and self._equivalence_group:
+            precisions.append("équivalents inclus")
+        suffixe = f" ({', '.join(precisions)})" if precisions else ""
+        total = f"{self.total_rows:,}".replace(",", "\u202f")  # espace fine, comme le compteur
+        resultats = "résultat" if self.total_rows <= 1 else "résultats"
+        self.parent_window.statusbar.showMessage(
+            f"Recherche terminée : {total} {resultats}{suffixe}",
+            Config.SEARCH_STATUS_MESSAGE_TIMEOUT
+        )
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur démarrage load_data_async")
     def load_data_async(self, search_term: str = None, is_search: bool = False):
@@ -1549,12 +1581,6 @@ class TableController:
                     # Rafraîchir la bannière après le fill_table (le layout connaît maintenant la vraie largeur)
                     self._update_supersession_banner()
                     self.supersession_banner.updateGeometry()
-                    # Mettre à jour la statusbar avec le total réel (sœurs incluses)
-                    if hasattr(self.parent_window, 'statusbar'):
-                        self.parent_window.statusbar.showMessage(
-                            f"Recherche terminée : {self.total_rows} résultats (chaîne complète)",
-                            Config.STATUS_MESSAGE_TIMEOUT
-                        )
                 return
 
             # Cas B : term est une réf. courante qui remplace d'autres

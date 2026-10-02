@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.75.0"
+    VERSION = "3.75.1"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -44,6 +44,7 @@ class Config:
     AUTO_SAVE_INTERVAL = 5000  # ms - Sauvegarde automatique toutes les 5 secondes
     STATUS_MESSAGE_TIMEOUT = 2000  # ms
     LONG_STATUS_MESSAGE_TIMEOUT = 3000  # ms
+    SEARCH_STATUS_MESSAGE_TIMEOUT = 6000  # ms — total d'une recherche (barre d'état)
     
     # Performance et pagination
     DEFAULT_PAGE_SIZE = 500   # Lignes par page

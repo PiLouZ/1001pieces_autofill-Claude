@@ -4,6 +4,36 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.75.1] - 2026-10-02 (branche `fix/barre-etat-total-recherche`)
+
+### Barre d'état : le vrai total de la recherche
+
+Signalé par l'utilisateur : recherche de `711115200`, réf. fraîchement importée qui
+remplace `710901200` → tableau de 217 lignes, barre d'état « Recherche terminée: 0 résultats ».
+
+Cause : chaque recherche en lançait deux.
+1. **Une recherche préalable sur le terme seul** (`AdvancedSearchService._safe_execute_search`),
+   sans anciennes réf. ni équivalents, sans LIMIT. Son résultat n'était lu par personne,
+   mais c'est elle qui écrivait « Recherche terminée : N résultats ».
+2. **Le chargement réel** (`TableController.load_data`), qui étend la recherche et
+   remplit le tableau — sans rien écrire dans la barre d'état (sauf le cas « ancienne
+   réf. », qui écrivait « chaîne complète »).
+
+Correctif :
+- Recherche préalable supprimée : une requête de moins par recherche.
+- Le message est écrit **après** le chargement réel, avec le total affiché sous le
+  tableau et ce qu'il inclut : « (anciennes réf. incluses) », « (chaîne complète) »,
+  « (équivalents inclus) ». Aussi après une bascule de bannière.
+- Durée d'affichage : 6 s au lieu de 2 s (`Config.SEARCH_STATUS_MESSAGE_TIMEOUT`).
+- Recherche effacée : le « Recherche avancée : '…' » est retiré au lieu de rester.
+- Erreur au chargement : message d'erreur dans la barre d'état (avant : seule une
+  erreur de la recherche préalable y apparaissait).
+
+Vérifié dans la fenêtre réelle (offscreen, copie de la base) ; même script sur `main` :
+« 0 résultats » reproduit. 7 tests ajoutés.
+
+---
+
 ## [3.75.0] - 2026-10-01 (branches `feature/pagination-stable`, `feature/saut-incomplete-sql` et `feature/fleches-barre-etat`)
 
 ### Une barre de pagination qui ne bouge plus
