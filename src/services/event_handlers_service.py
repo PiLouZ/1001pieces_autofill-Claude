@@ -53,7 +53,12 @@ class EventHandlersService:
         """Gestionnaire fin recherche avancée - déléguer à table_controller pour pagination"""
         # Déléguer entièrement au table_controller qui sait gérer la pagination
         # Le parsing a déjà été fait par AdvancedSearchService, on passe le terme
-        self.main_window.table_controller.load_data(search_term, is_search=True)
+        try:
+            self.main_window.table_controller.load_data(search_term, is_search=True)
+        except Exception as e:
+            # Remplace « Recherche avancée : '…' » (sinon affiché indéfiniment)
+            self.on_search_error({'term': search_term, 'error': str(e)})
+            raise
     
     def on_advanced_search_error(self, error_msg: str):
         """Gestionnaire erreur recherche avancée"""

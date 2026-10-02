@@ -43,14 +43,15 @@ class AdvancedSearchService(QObject):
 
     @handle_search_errors(return_value=None)
     def _safe_execute_search(self, search_term):
-        """Exécuter la recherche de manière sécurisée"""
-        if search_term:
-            return self.search_service.search(term=search_term)
-        else:
-            # Pas de terme : ne pas charger les 598k lignes sans LIMIT.
-            # on_advanced_search_completed ignore les résultats et appelle
-            # table_controller.load_data() qui gère correctement la pagination.
-            return []
+        """Ne charge rien : on_advanced_search_completed ignore les résultats et
+        appelle table_controller.load_data(), seul chargement réel (pagination,
+        anciennes réf., équivalents), qui affiche le total dans la barre d'état.
+
+        Une recherche préalable sur le terme seul existait ici : son résultat
+        n'était lu par personne, mais son « Recherche terminée : N résultats »
+        restait affiché — 0 pour une réf. neuve qui en remplace d'autres.
+        """
+        return []
     
     def search_with_debounce(self, text: str, debounce_ms: int = 500):
         """Lancer une recherche avec débounce (attendre avant d'exécuter)"""
