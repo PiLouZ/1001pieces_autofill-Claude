@@ -4,6 +4,32 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.75.3] - 2026-10-06 (branche `fix/pdf-lignes-bordure-pages-vides`)
+
+### Import PDF : lignes coupées au bord d'une page vide réparées
+
+Retour utilisateur après la 3.75.2 : les deux versions de 805101 (tri croissant puis
+décroissant) importées ensemble donnaient **373 appareils au lieu de 370**. Les 3 en
+trop étaient des lignes coupées par l'impression à la frontière d'une page perdue :
+- `DFI746U 04` et `DBI344IB.SCHR 05` : tiret perdu → doublon de `DFI746U-04` et
+  `DBI344IB.SCHR-05`, présents en entier dans l'autre version ;
+- une ligne sans réf. technique (`DFI645MBXXL/1 … VERS02`), sa réf. étant tombée sur
+  la page perdue → doublon de `DFI645MBXXL-1-02`.
+
+Correctif, limité aux **deux lignes qui bordent chaque page vide** :
+- Tiret rétabli si une voisine (même page ou de l'autre côté du trou) a la même
+  forme (`DFI746U-03`) ; sans voisine, la réf. reste telle quelle.
+- Ligne sans réf. technique : non importée.
+- Chaque réparation est affichée sous la fourchette du trou dans l'historique :
+  `p.8 : tiret rétabli, DFI746U 04 → DFI746U-04`,
+  `p.12 : ligne coupée non importée, DFI645MBXXL/1 …`.
+- La fourchette utilise la réf. réparée.
+
+Aucun effet sans page vide : les 8 PDF de test ressortent identiques à l'origine.
+805101 : une seule ligne change par rapport à la 3.75.2 (`DFI746U-04`). 7 tests ajoutés
+(cas de la version triée à l'envers reproduits, le fichier n'existant plus).
+Suite : 1065 passés, 1 ignoré.
+
 ## [3.75.2] - 2026-10-06 (branche `fix/pdf-fragments-cellules-hautes`)
 
 ### Import PDF : lignes éclatées recollées, pages vides signalées

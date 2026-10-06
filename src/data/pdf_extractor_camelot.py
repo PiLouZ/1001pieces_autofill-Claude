@@ -152,14 +152,15 @@ class CamelotPDFExtractor:
                 print(f" Camelot: {len(tables)} tableaux détectés")
 
             # Traiter chaque tableau (page)
-            bornes_par_page = {}
+            plages_par_page = {}
             for i, table in enumerate(tables):
                 page_num = i + 1
                 debut = len(all_data)
                 self._safe_process_table_page(table, page_num, all_data, extraction_stats)
-                self._noter_bornes_page(table, all_data[debut:], bornes_par_page)
+                self._noter_plage_page(table, debut, len(all_data), plages_par_page)
 
-            extraction_stats['pages_vides'] = self._detecter_pages_vides(bornes_par_page)
+            extraction_stats['pages_vides'] = self._traiter_pages_vides(all_data, plages_par_page)
+            extraction_stats['total_rows'] = len(all_data)
             self.last_extraction_info = extraction_stats
             return all_data
 
@@ -171,22 +172,97 @@ class CamelotPDFExtractor:
         """Référence technique de la ligne, ou commerciale à défaut"""
         return ligne[0] or ligne[1]
 
-    def _noter_bornes_page(self, table, lignes: List[List[str]], bornes_par_page: Dict) -> None:
+    @staticmethod
+    def _noter_plage_page(table, debut: int, fin: int, plages_par_page: Dict) -> None:
         """
-        Retenir la première et la dernière référence lues sur la page du tableau.
-        Une page peut porter plusieurs tableaux : on étend les bornes déjà notées.
+        Retenir la plage [debut, fin) des lignes extraites d'une page.
+        Une page peut porter plusieurs tableaux (consécutifs) : on étend la plage.
         """
-        refs = [r for r in (self._reference_de_ligne(l) for l in lignes) if r]
-        if not refs:
+        if fin <= debut:
             return
         try:
             page = int(table.page)
         except (AttributeError, TypeError, ValueError):
             return
-        if page in bornes_par_page:
-            bornes_par_page[page] = (bornes_par_page[page][0], refs[-1])
+        if page in plages_par_page:
+            plages_par_page[page][1] = fin
         else:
-            bornes_par_page[page] = (refs[0], refs[-1])
+            plages_par_page[page] = [debut, fin]
+
+    @staticmethod
+    def _retablir_tiret(reference: str, voisines: List[str]) -> Optional[str]:
+        """
+        `DFI746U 04` → `DFI746U-04` si une voisine commence par `DFI746U-`.
+
+        La dernière ligne d'une page tronquée à l'impression peut perdre son tiret
+        (le caractère est coupé, les deux morceaux restent). Sans voisine de même
+        forme on ne devine pas : une espace peut être légitime ailleurs.
+        """
+        m = re.fullmatch(r'(\S+) (\S+)', reference)
+        if not m:
+            return None
+        prefixe = m.group(1) + '-'
+        if any(v.startswith(prefixe) for v in voisines if v):
+            return prefixe + m.group(2)
+        return None
+
+    def _traiter_pages_vides(self, all_data: List[List[str]],
+                             plages_par_page: Dict) -> List[Dict[str, Any]]:
+        """
+        Repérer les pages vides et réparer les lignes qui les bordent.
+
+        Seules les deux lignes collées à un trou (dernière avant, première après)
+        sont examinées : c'est là que l'impression a coupé une ligne en deux.
+          - réf. technique vide (sa réf. est tombée sur la page perdue) : ligne
+            retirée — importée, elle créait un appareil sans réf. technique,
+            doublon de l'appareil complet présent dans l'autre version du PDF ;
+          - tiret perdu (`DFI746U 04`) : rétabli si une voisine le confirme.
+        Chaque réparation est jointe au trou concerné, pour être affichée.
+        """
+        pages = sorted(plages_par_page)
+        trous = [(p, s) for p, s in zip(pages, pages[1:]) if s - p > 1]
+        if not trous:
+            return []
+
+        a_retirer = set()
+        reparations = {}
+        for precedente, suivante in trous:
+            corrections, ignorees = [], []
+            bord_avant = plages_par_page[precedente][1] - 1
+            bord_apres = plages_par_page[suivante][0]
+            for i, vis_a_vis in ((bord_avant, bord_apres), (bord_apres, bord_avant)):
+                ligne = all_data[i]
+                if not ligne[0]:
+                    if i not in a_retirer:
+                        a_retirer.add(i)
+                        ignorees.append(' '.join(c for c in ligne if c))
+                    continue
+                voisines = [all_data[j][0] for j in (i - 1, i + 1, vis_a_vis)
+                            if 0 <= j < len(all_data) and j != i]
+                corrigee = self._retablir_tiret(ligne[0], voisines)
+                if corrigee:
+                    corrections.append((ligne[0], corrigee))
+                    ligne[0] = corrigee
+            reparations[precedente] = {'corrections': corrections, 'ignorees': ignorees}
+
+        # Bornes calculées après réparation : une ligne retirée n'en est pas une
+        bornes_par_page = {}
+        for page, (debut, fin) in plages_par_page.items():
+            refs = [self._reference_de_ligne(all_data[i]) for i in range(debut, fin)
+                    if i not in a_retirer]
+            refs = [r for r in refs if r]
+            if refs:
+                bornes_par_page[page] = (refs[0], refs[-1])
+
+        resultat = self._detecter_pages_vides(bornes_par_page)
+        for trou in resultat:
+            for cle, valeurs in reparations.get(trou['pages'][0] - 1, {}).items():
+                if valeurs:
+                    trou[cle] = valeurs
+
+        for i in sorted(a_retirer, reverse=True):
+            del all_data[i]
+        return resultat
 
     @staticmethod
     def _detecter_pages_vides(bornes_par_page: Dict) -> List[Dict[str, Any]]:
