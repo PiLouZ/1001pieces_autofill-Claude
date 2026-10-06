@@ -152,15 +152,67 @@ class CamelotPDFExtractor:
                 print(f" Camelot: {len(tables)} tableaux détectés")
 
             # Traiter chaque tableau (page)
+            bornes_par_page = {}
             for i, table in enumerate(tables):
                 page_num = i + 1
+                debut = len(all_data)
                 self._safe_process_table_page(table, page_num, all_data, extraction_stats)
+                self._noter_bornes_page(table, all_data[debut:], bornes_par_page)
 
+            extraction_stats['pages_vides'] = self._detecter_pages_vides(bornes_par_page)
             self.last_extraction_info = extraction_stats
             return all_data
 
         except Exception as e:
             raise PDFExtractionError(f"Erreur Camelot: {e}")
+
+    @staticmethod
+    def _reference_de_ligne(ligne: List[str]) -> str:
+        """Référence technique de la ligne, ou commerciale à défaut"""
+        return ligne[0] or ligne[1]
+
+    def _noter_bornes_page(self, table, lignes: List[List[str]], bornes_par_page: Dict) -> None:
+        """
+        Retenir la première et la dernière référence lues sur la page du tableau.
+        Une page peut porter plusieurs tableaux : on étend les bornes déjà notées.
+        """
+        refs = [r for r in (self._reference_de_ligne(l) for l in lignes) if r]
+        if not refs:
+            return
+        try:
+            page = int(table.page)
+        except (AttributeError, TypeError, ValueError):
+            return
+        if page in bornes_par_page:
+            bornes_par_page[page] = (bornes_par_page[page][0], refs[-1])
+        else:
+            bornes_par_page[page] = (refs[0], refs[-1])
+
+    @staticmethod
+    def _detecter_pages_vides(bornes_par_page: Dict) -> List[Dict[str, Any]]:
+        """
+        Repérer les pages sans aucune donnée situées ENTRE deux pages qui en ont.
+
+        Cas réel (805101, « Microsoft: Print To PDF ») : le contenu débordant d'une
+        page est perdu et la page suivante sort blanche — 13 appareils absents du
+        fichier. On ne peut pas les récupérer, mais la dernière référence lue avant
+        le trou et la première lue après donnent la fourchette où les chercher.
+        Les pages vides en début ou en fin de fichier (garde, saut final) sont
+        ignorées : elles n'interrompent aucune suite de données.
+
+        Returns:
+            [{'pages': [3], 'avant': 'DFI544BXXL-04', 'apres': 'DFI544D-02'}, ...]
+        """
+        pages = sorted(bornes_par_page)
+        trous = []
+        for precedente, suivante in zip(pages, pages[1:]):
+            if suivante - precedente > 1:
+                trous.append({
+                    'pages': list(range(precedente + 1, suivante)),
+                    'avant': bornes_par_page[precedente][1],
+                    'apres': bornes_par_page[suivante][0],
+                })
+        return trous
 
     @handle_pdf_extraction_errors()
     def _safe_process_table_page(self, table, page_num: int, all_data: List, extraction_stats: Dict) -> None:
@@ -173,7 +225,10 @@ class CamelotPDFExtractor:
             return
 
         # Nettoyer les données de cette page
+        self._fragments_recolles_page = 0
         page_data = self._clean_page_data(df, page_num)
+        extraction_stats['fragments_recolles'] = (extraction_stats.get('fragments_recolles', 0)
+                                                  + self._fragments_recolles_page)
 
         if page_data:
             all_data.extend(page_data)
@@ -243,8 +298,60 @@ class CamelotPDFExtractor:
             # Plus permissif comme l'import manuel
             if any(cell.strip() if cell else False for cell in cleaned_row):
                 cleaned_data.append(cleaned_row)
-        
-        return cleaned_data
+
+        return self._recoller_fragments(cleaned_data)
+
+    # Mots qui composent un en-tête de colonne coupé sur plusieurs lignes
+    # (ex. "Réf." / "commerciale"), jamais une donnée à eux seuls
+    MOTS_EN_TETE_FRAGMENTE = {'réf.', 'réf', 'ref.', 'ref', 'technique',
+                              'commerciale', 'description'}
+
+    def _recoller_fragments(self, rows: List[List[str]]) -> List[List[str]]:
+        """
+        Recoller les lignes éclatées par une cellule haute (texte sur 2 lignes,
+        contenu centré verticalement) et retirer les en-têtes fragmentés.
+
+        Motifs reconnus, uniquement s'ils sont complets (3 lignes consécutives) :
+          - description scindée : [∅,∅,D1] [R,C,∅] [∅,∅,D2]  → [R, C, "D1 D2"]
+          - réf. technique coupée : [R1-,∅,∅] [∅,C,D] [R2,∅,∅] → [R1R2, C, D]
+        Une ligne complète ou sans description n'entre dans aucun motif :
+        les PDF bien formés ressortent inchangés.
+        """
+        forme = lambda r: (bool(r[0]), bool(r[1]), bool(r[2]))
+        resultat = []
+        recollages = 0
+        i = 0
+        while i < len(rows):
+            row = rows[i]
+            cellules = [c for c in row if c]
+            if cellules and all(c.lower() in self.MOTS_EN_TETE_FRAGMENTE for c in cellules):
+                i += 1
+                continue
+
+            if i + 2 < len(rows):
+                haut, milieu, bas = row, rows[i + 1], rows[i + 2]
+                f_haut, f_milieu, f_bas = forme(haut), forme(milieu), forme(bas)
+
+                if f_haut == f_bas == (False, False, True) and f_milieu == (True, True, False):
+                    resultat.append([milieu[0], milieu[1], f"{haut[2]} {bas[2]}"])
+                    recollages += 1
+                    i += 3
+                    continue
+
+                if (f_haut == f_bas == (True, False, False) and haut[0].endswith('-')
+                        and f_milieu == (False, True, True)):
+                    resultat.append([haut[0] + bas[0], milieu[1], milieu[2]])
+                    recollages += 1
+                    i += 3
+                    continue
+
+            resultat.append(row)
+            i += 1
+
+        self._fragments_recolles_page = recollages
+        if self.debug_mode and recollages:
+            print(f"  {recollages} ligne(s) éclatée(s) recollée(s)")
+        return resultat
     
     def _is_header_row(self, row: List[str]) -> bool:
         """

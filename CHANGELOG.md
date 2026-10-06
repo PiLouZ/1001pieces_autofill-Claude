@@ -4,6 +4,52 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.75.2] - 2026-10-06 (branche `fix/pdf-fragments-cellules-hautes`)
+
+### Import PDF : lignes éclatées recollées, pages vides signalées
+
+Cas réel : `805101.pdf`, imprimé via « Microsoft: Print To PDF ». 370 appareils attendus.
+
+**Lignes éclatées par une cellule haute.** Quand une cellule est trop étroite, le texte
+passe sur 2 lignes et le reste de la ligne est centré verticalement : Camelot rend
+3 lignes pour un seul appareil. Résultat avant correctif : 417 lignes dont 85 fausses
+(`DBI545IKXXLS-` et `01` importés comme deux appareils, en-têtes `Réf.` / `commerciale`
+importés comme données).
+- Description scindée `[∅,∅,D1] [R,C,∅] [∅,∅,D2]` → `[R, C, "D1 D2"]`
+- Réf. technique coupée `[R1-,∅,∅] [∅,C,D] [R2,∅,∅]` → `[R1R2, C, D]`
+- En-tête coupé : ligne retirée
+- Recollage uniquement sur motif **complet** : un fragment isolé reste tel quel.
+  Les 258 lignes légitimes sans description de `52X5020` et ses réfs finissant par
+  `-` (`FET-3106D-X/02-`) ne sont pas touchées.
+- 805101 : 417 → **357 appareils**, 25 recollés, 0 ligne incomplète.
+- Les libellés tronqués vers 35 caractères (`…42D`, `…STY`) le sont dans le PDF :
+  irrécupérables.
+
+**Pages vides : 13 appareils absents du fichier.** Le contenu débordant des pages 2, 5,
+7 et 13 est perdu à l'impression ; les pages 3, 6, 8 et 14 sortent blanches. Le récap
+d'import (historique des opérations) l'indique désormais, avec la fourchette de
+références qui encadre chaque trou, et conseille d'importer en complément le même PDF
+trié à l'envers : ses coupures tombent ailleurs (805101 : 357 + 354 → 370 appareils
+réunis).
+
+```
+[!] 805101.pdf : 4 pages vides — appareils peut-être manquants entre :
+==> p.3 : DFI544BXXL-04 → DFI544D-02
+...
+==> Conseil : régénérez le PDF avec le tri inversé et importez-le en complément
+```
+- Seules les pages vides **entre** deux pages de données sont signalées (garde et
+  saut final ignorés). Aussi écrit dans le log.
+- `load_pdf_data` reçoit un paramètre de sortie optionnel `pages_vides_out` ; les
+  appels existants sont inchangés.
+- Artefact connu : la dernière ligne d'une page coupée peut perdre son tiret
+  (`DFI746U 04`) — non corrigé automatiquement, mais c'est la borne affichée.
+
+**Zéro régression vérifiée** : sur les 8 PDF de test, lignes extraites (complètes et
+aperçu) identiques ligne à ligne à la sortie d'avant ; aucune alerte. Rendu de
+l'historique vérifié par capture. 35 tests ajoutés (`test_pdf_fragments_recolles.py`),
+`805101.pdf` ajouté aux fixtures. Suite : 1058 passés, 1 ignoré.
+
 ## [3.75.1] - 2026-10-02 (branche `fix/barre-etat-total-recherche`)
 
 ### Barre d'état : le vrai total de la recherche
