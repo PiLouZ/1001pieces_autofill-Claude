@@ -2015,7 +2015,8 @@ class ImportManager:
         raise ValueError(f"Impossible de lire le fichier CSV: {file_path} (fichier introuvable ou format invalide)")
     
     def load_pdf_data(self, file_path: str, max_rows: Optional[int] = None, preview_mode: bool = False,
-                      progress_cb: Optional[Callable] = None, cancel_check: Optional[Callable] = None) -> List[List[str]]:
+                      progress_cb: Optional[Callable] = None, cancel_check: Optional[Callable] = None,
+                      pages_vides_out: Optional[List[Dict]] = None) -> List[List[str]]:
         """
         Méthode unifiée pour le chargement PDF avec limite optionnelle
 
@@ -2023,6 +2024,11 @@ class ImportManager:
             file_path: Chemin vers le fichier PDF
             max_rows: Nombre maximum de lignes à charger (None = toutes)
             preview_mode: Si True, charge seulement la 1ère page (10x plus rapide)
+            pages_vides_out: liste à remplir avec les pages vides détectées
+                             (fourchettes de références où des appareils manquent).
+                             Paramètre de sortie et non attribut : l'aperçu tourne
+                             dans un autre thread et ne doit pas écraser l'information
+                             d'un import en cours.
 
         Returns:
             Liste des lignes extraites du PDF
@@ -2039,6 +2045,8 @@ class ImportManager:
             extractor = CamelotPDFExtractor()
             data = extractor.extract_data(file_path, preview_mode=preview_mode,
                                             progress_cb=progress_cb, cancel_check=cancel_check)
+            if pages_vides_out is not None:
+                pages_vides_out.extend((extractor.last_extraction_info or {}).get('pages_vides', []))
 
             if not data:
                 return []
@@ -2513,6 +2521,10 @@ class ImportManager:
                                 'associations_created', 'associations_existing',
                                 'manual_completion', 'duplicates_in_file']:
                         results[key] += file_results.get(key, 0)
+                    if file_results.get('pages_vides'):
+                        alerte = self._alerte_pages_vides(file.filename, file_results['pages_vides'])
+                        results.setdefault('alerte_pages_vides', []).append(alerte)
+                        app_logger.warning(f"[Import] {' | '.join(alerte)}")
 
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
@@ -2565,6 +2577,26 @@ class ImportManager:
             self._import_cancel_check = None
             if cache_service:
                 cache_service.resume_invalidation(force_invalidate=True)
+
+    @staticmethod
+    def _alerte_pages_vides(nom_fichier: str, trous: List[Dict]) -> List[str]:
+        """
+        Message d'alerte « pages vides » d'un fichier : un titre puis une fourchette
+        par trou. Calculé ici et transporté dans results, comme alerte_mapping,
+        pour que le récap n'ait qu'à l'afficher.
+
+        Ex. ['805101.pdf : 4 pages vides — appareils peut-être manquants entre :',
+             'p.3 : DFI544BXXL-04 → DFI544D-02', ...]
+        """
+        nb_pages = sum(len(t['pages']) for t in trous)
+        pluriel = 's' if nb_pages > 1 else ''
+        lignes = [f"{nom_fichier} : {nb_pages} page{pluriel} vide{pluriel} — "
+                  f"appareils peut-être manquants entre :"]
+        for trou in trous:
+            pages = trou['pages']
+            libelle = f"p.{pages[0]}" if len(pages) == 1 else f"p.{pages[0]}-{pages[-1]}"
+            lignes.append(f"{libelle} : {trou['avant']} → {trou['apres']}")
+        return lignes
 
     def _log_resume_import(self, results: Dict[str, Any], seen_device_refs: set) -> None:
         """Une ligne de synthèse en fin d'import, en remplacement des messages
@@ -2793,6 +2825,7 @@ class ImportManager:
                              pdf_progress_cb: Optional[Callable] = None) -> Dict[str, Any]:
         """Importer un fichier unique"""
         # Charger les données — clipboard utilise les données pré-chargées, fichiers relus depuis disque
+        pages_vides = []
         if file.type == FileType.CLIPBOARD and file.data is not None:
             data = file.data
         elif file.type == FileType.CSV:
@@ -2800,7 +2833,8 @@ class ImportManager:
         elif file.type == FileType.PDF:
             # Import complet : extraction de TOUTES les pages (preview_mode=False par défaut)
             cancel_check = getattr(self, '_import_cancel_check', None)
-            data = self.load_pdf_data(file.path, progress_cb=pdf_progress_cb, cancel_check=cancel_check)
+            data = self.load_pdf_data(file.path, progress_cb=pdf_progress_cb, cancel_check=cancel_check,
+                                      pages_vides_out=pages_vides)
         else:
             raise ValueError(f"Type de fichier non supporté: {file.type}")
         
@@ -2840,7 +2874,7 @@ class ImportManager:
 
         # En dry_run, toujours utiliser le batch (chemin propre : classification séparée des écritures)
         if dry_run or len(data) >= BATCH_THRESHOLD:
-            return self._process_data_import_batch(
+            file_results = self._process_data_import_batch(
                 data,
                 references_and_labels,
                 config,
@@ -2852,13 +2886,17 @@ class ImportManager:
             )
         else:
             app_logger.debug(f" Mode standard pour {len(data)} lignes (< {BATCH_THRESHOLD})")
-            return self._process_data_import(
-                data, 
+            file_results = self._process_data_import(
+                data,
                 references_and_labels,  # Maintenant liste de tuples (ref, label)
                 config,
                 file,  # Passer le fichier pour les associations par fichier
                 file_seen_device_refs  # CORRECTION: Suivi local par fichier
             )
+
+        if pages_vides and isinstance(file_results, dict):
+            file_results['pages_vides'] = pages_vides
+        return file_results
     
     
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur association")

@@ -2081,6 +2081,19 @@ class MainWindow(QMainWindow):
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"     [!] {alerte}\n"
+        # Pages vides d'un PDF (contenu perdu à l'impression) : la fourchette de
+        # références permet de retrouver à la main les appareils manquants.
+        # Préfixe « ==> » : seul retrait que conserve le rendu HTML de l'historique.
+        alertes_pages_vides = results.get('alerte_pages_vides', [])
+        for titre, *fourchettes in alertes_pages_vides:
+            summary += f"     [!] {titre}\n"
+            for fourchette in fourchettes:
+                summary += f"     ==> {fourchette}\n"
+        if alertes_pages_vides:
+            # Cas réel 805101 : la version triée à l'envers coupe ailleurs, et les
+            # deux fichiers réunis redonnent les 370 appareils (357 et 354 seuls)
+            summary += ("     ==> Conseil : régénérez le PDF avec le tri inversé et "
+                        "importez-le en complément — ses coupures tombent ailleurs\n")
         summary += "\n"
 
         # Section Appareils (format exact)
