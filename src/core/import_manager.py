@@ -2596,6 +2596,11 @@ class ImportManager:
             pages = trou['pages']
             libelle = f"p.{pages[0]}" if len(pages) == 1 else f"p.{pages[0]}-{pages[-1]}"
             lignes.append(f"{libelle} : {trou['avant']} → {trou['apres']}")
+            # Réparations des lignes coupées au bord du trou : jamais silencieuses
+            for brute, corrigee in trou.get('corrections', []):
+                lignes.append(f"{libelle} : tiret rétabli, {brute} → {corrigee}")
+            for ligne in trou.get('ignorees', []):
+                lignes.append(f"{libelle} : ligne coupée non importée, {ligne}")
         return lignes
 
     def _log_resume_import(self, results: Dict[str, Any], seen_device_refs: set) -> None:

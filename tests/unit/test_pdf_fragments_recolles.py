@@ -167,7 +167,9 @@ def test_pdf_bien_forme_inchange(extracteur, nom, attendu):
 FOURCHETTES_805101 = [
     {'pages': [3], 'avant': 'DFI544BXXL-04', 'apres': 'DFI544D-02'},
     {'pages': [6], 'avant': 'DFI646G-01', 'apres': 'DFI655G-03'},
-    {'pages': [8], 'avant': 'DFI746U 04', 'apres': 'DFI746U-08'},
+    # dernière ligne de la page 7, tiret coupé à l'impression : rétabli
+    {'pages': [8], 'avant': 'DFI746U-04', 'apres': 'DFI746U-08',
+     'corrections': [('DFI746U 04', 'DFI746U-04')]},
     {'pages': [14], 'avant': 'DWCBI331.W-04', 'apres': 'DWCBI331S-03'},
 ]
 
@@ -200,6 +202,85 @@ def test_apercu_ne_signale_rien(extracteur):
 def test_pdf_bien_forme_sans_page_vide(extracteur, nom):
     extracteur.extract_data(str(DOSSIER_PDF / nom))
     assert extracteur.last_extraction_info['pages_vides'] == []
+
+
+def test_pdf_805101_plus_aucune_reference_a_espace(extracteur):
+    lignes = extracteur.extract_data(str(DOSSIER_PDF / '805101.pdf'))
+    assert len(lignes) == 357
+    assert ['DFI746U-04', 'DFI746U',
+            '739523 08/12/2023 VERS 04 LV intg 82 cm Styl push dose turbo'] in lignes
+    assert not [l for l in lignes if ' ' in l[0]]
+
+
+# ── Lignes coupées au bord d'une page vide ───────────────────────────────────
+# Reproduit la version de 805101 triée à l'envers (régénérée puis écrasée par
+# l'utilisateur) : importée avec la v1, elle donnait 373 appareils au lieu de 370.
+
+def _traiter(lignes_par_page):
+    """lignes_par_page : {page: [lignes]} → (lignes restantes, pages_vides)"""
+    toutes, plages = [], {}
+    for page, lignes in sorted(lignes_par_page.items()):
+        plages[page] = [len(toutes), len(toutes) + len(lignes)]
+        toutes.extend([list(l) for l in lignes])
+    trous = CamelotPDFExtractor()._traiter_pages_vides(toutes, plages)
+    return toutes, trous
+
+
+def test_ligne_sans_reference_technique_au_bord_retiree():
+    lignes, trous = _traiter({
+        11: [['DFI645MBXXL-1-04', 'DFI645MBXXL/1', 'VERS04 a'],
+             ['', 'DFI645MBXXL/1', '10/02/2021 737422 VERS02 LV']],
+        13: [['DFI644GXXL-08', 'DFI644GXXL', 'VERS08 b']],
+    })
+    assert [l[0] for l in lignes] == ['DFI645MBXXL-1-04', 'DFI644GXXL-08']
+    assert trous == [{'pages': [12], 'avant': 'DFI645MBXXL-1-04', 'apres': 'DFI644GXXL-08',
+                      'ignorees': ['DFI645MBXXL/1 10/02/2021 737422 VERS02 LV']}]
+
+
+def test_tiret_retabli_grace_a_la_ligne_apres_le_trou():
+    """v2 : la voisine de même forme est la première ligne de la page suivante."""
+    lignes, trous = _traiter({
+        16: [['DBI344IB.W-01', 'DBI344IB.W', 'a'], ['DBI344IB.SCHR 05', 'DBI344IB.SCHR', 'b']],
+        18: [['DBI344IB.SCHR-01', 'DBI344IB.S', 'c']],
+    })
+    assert lignes[1][0] == 'DBI344IB.SCHR-05'
+    assert trous[0]['corrections'] == [('DBI344IB.SCHR 05', 'DBI344IB.SCHR-05')]
+
+
+def test_espace_sans_voisine_de_meme_forme_conservee():
+    lignes, trous = _traiter({
+        1: [['AAA-01', 'A', 'a'], ['XYZ 04', 'X', 'b']],
+        3: [['BBB-01', 'B', 'c']],
+    })
+    assert lignes[1][0] == 'XYZ 04'
+    assert 'corrections' not in trous[0]
+
+
+def test_lignes_hors_bordure_jamais_touchees():
+    """Réf. vide ou à espace au milieu d'une page : rien ne change."""
+    lignes, trous = _traiter({
+        1: [['AAA-01', 'A', 'a'], ['', 'A', 'milieu'], ['AAA 03', 'A', 'b'], ['AAA-04', 'A', 'c']],
+        3: [['BBB-01', 'B', 'd']],
+    })
+    assert [l[0] for l in lignes] == ['AAA-01', '', 'AAA 03', 'AAA-04', 'BBB-01']
+    assert trous == [{'pages': [2], 'avant': 'AAA-04', 'apres': 'BBB-01'}]
+
+
+def test_sans_page_vide_aucune_ligne_touchee():
+    lignes, trous = _traiter({1: [['', 'A', 'a'], ['AAA 03', 'A', 'b']], 2: [['', 'B', 'c']]})
+    assert trous == []
+    assert [l[0] for l in lignes] == ['', 'AAA 03', '']
+
+
+def test_message_reparations():
+    from src.core.import_manager import ImportManager
+    assert ImportManager._alerte_pages_vides('v2.pdf', [
+        {'pages': [12], 'avant': 'A-04', 'apres': 'B-08',
+         'corrections': [('C 05', 'C-05')], 'ignorees': ['D/1 VERS02 LV']}])[1:] == [
+        'p.12 : A-04 → B-08',
+        'p.12 : tiret rétabli, C 05 → C-05',
+        'p.12 : ligne coupée non importée, D/1 VERS02 LV',
+    ]
 
 
 def test_message_alerte():
@@ -256,7 +337,8 @@ def test_recap_historique_signale_les_fourchettes(qapp):
     assert ("     [!] 805101.pdf : 4 pages vides — appareils peut-être manquants entre :\n"
             "     ==> p.3 : DFI544BXXL-04 → DFI544D-02\n"
             "     ==> p.6 : DFI646G-01 → DFI655G-03\n"
-            "     ==> p.8 : DFI746U 04 → DFI746U-08\n"
+            "     ==> p.8 : DFI746U-04 → DFI746U-08\n"
+            "     ==> p.8 : tiret rétabli, DFI746U 04 → DFI746U-04\n"
             "     ==> p.14 : DWCBI331.W-04 → DWCBI331S-03\n"
             "     ==> Conseil : régénérez le PDF avec le tri inversé et importez-le "
             "en complément — ses coupures tombent ailleurs\n") in recap
