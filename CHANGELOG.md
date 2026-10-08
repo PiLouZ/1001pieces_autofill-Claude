@@ -4,6 +4,63 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.77.0] - 2026-10-08 (branche `feature/equivalentes-hors-chaine`)
+
+### Bandeau d'équivalence sans doublons, et équivalentes citées dans la méta description
+
+**Socle commun** : `get_equivalents_hors_chaine(ref)` renvoie les équivalentes
+« vraies » d'une réf. En base, les anciennes versions entrent dans le groupe de leur
+courante (`_propagate_predecessors_to_group`). On retire donc la famille de la réf
+(sa tête de chaîne et ses anciennes versions), ainsi que les anciennes versions d'une
+équivalente déjà listée. Une ancienne version dont la courante est hors du groupe
+reste affichée.
+
+**1. Bandeau d'équivalence.** Il répétait la chaîne de succession affichée juste
+au-dessus. Exemple : `C00273284` listait 5 réfs, dont ses 3 anciennes versions. Il
+n'affiche plus que `278449, 758973779`, quelle que soit la réf de la chaîne tapée.
+- Filtre d'**affichage** seulement : l'extension des appareils garde le groupe
+  complet, donc les résultats ne changent pas.
+- Popups de relations alignées sur le bandeau.
+- Groupe réduit à une seule famille (groupes 22 et 40 en production, 26 réfs) :
+  bandeau masqué, puisque la succession montre déjà tout.
+
+**2. Méta description** (décisions client du 2026-10-08) :
+- « réf. équivalente X » / « réf. équivalentes X et Y », dans le même emplacement que
+  les anciennes réfs (« ancienne réf. A, réf. équivalente X »). Toujours citées, comme
+  les anciennes.
+- 2 au plus, celles qui ont le plus de modèles compatibles ; **1 ancienne +
+  1 équivalente** quand la fiche a les deux.
+- Le compteur « compatible avec plus de N modèles » inclut les modèles des équivalentes.
+- Avec des équivalentes, un gabarit qui garde toutes les réfs prévues est préféré au
+  repli « une seule réf liée ». Sinon, 34 fiches sur 329 perdaient leur équivalente.
+- Le title ne change pas (aucune réf liée, décision produit).
+
+**3. Marques et type complétés par les équivalentes.** Ils sont pris **en
+complément** de ceux de la fiche, dans le title comme dans la description :
+- marques : celles de la fiche restent en tête, dans leur ordre, et celles des
+  équivalentes suivent (3 au plus au total, inchangé) ;
+- type : repris des équivalentes uniquement si la fiche n'en a pas.
+- Effet : **40 fiches** qui sortaient « pour appareil électroménager multi-marques »
+  ont un vrai type et de vraies marques (`02859394` → « pour hotte Cooke & Lewis,
+  Cata et GoodHome »). Les fiches qui avaient moins de 3 marques en gagnent.
+- Essai écarté : fusionner les modèles faisait passer les marques des équivalentes
+  devant celles de la fiche. `00154686` (réf. Bosch) ne citait plus que De Dietrich,
+  et `00416672` passait de « four » à « four vapeur ».
+- Vérifié sur les 350 fiches en groupe : 0 marque propre perdue ou déplacée, 0 type
+  propre modifié.
+
+Mesures sur la base réelle :
+- 329 fiches avec équivalentes : toutes dans la largeur, aucune raccourcie, toutes
+  avec au moins une marque, réfs citées entières ; 190 citent 1 équivalente, 139 en
+  citent 2.
+- 859 fiches sans équivalente (toutes celles qui ont des anciennes réfs, plus 300 au
+  hasard) : title et description **identiques au caractère près** à `main`.
+
+26 tests ajoutés. Le test du repli a été vérifié par mutation : il échoue sans le
+correctif.
+
+---
+
 ## [3.76.0] - 2026-10-08 (branche `fix/equivalence-lignee-succession`)
 
 ### Import : un groupe d'équivalence peut être rattaché à une lignée
