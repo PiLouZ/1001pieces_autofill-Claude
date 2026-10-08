@@ -231,7 +231,8 @@ class Paths:
 class AppInfo:
     """Informations sur l'application"""
     NAME = "1001pieces - Gestionnaire d'appareils"
-    VERSION = "3.52.0"
+    # Pas de VERSION ici : la seule source est Config.VERSION (src/core/config.py).
+    # Celle-ci était figée à 3.52.0 depuis juin 2026 et lue nulle part (retirée en 3.77.2).
     DESCRIPTION = "Gestionnaire de pièces & d'appareils électroménagers"
     AUTHOR = "1001pieces.com"
     URL = "https://1001pieces.com"

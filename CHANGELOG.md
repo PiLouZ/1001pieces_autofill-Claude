@@ -4,6 +4,43 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.77.2] - 2026-10-08 (branche `chore/faux-echec-et-code-mort`)
+
+### Faux « Échec de l'ajout de nouvelle ligne » corrigé, drapeaux de migration retirés
+
+**Faux échec à chaque Cmd+N.** Dans `DatabaseOperationsService.add_new_device`, le
+`return device_id` et l'émission de `device_added` étaient indentés sous
+`if self.user_interaction_service:`. Or ce service n'est jamais branché. L'appareil
+était bien créé, mais l'appelant recevait `None` et journalisait « Échec de l'ajout
+de nouvelle ligne » : 35 fausses erreurs entre le 2026-09-08 et le 2026-10-07, qui
+noyaient les vraies dans `errors.log`. Les données n'ont pas été touchées : les
+appareils créés en rafale le 2026-09-23 ont tous été remplis. Le test existant ne
+voyait rien, car il branchait toujours ce service ; un test du cas réel est ajouté.
+Aucun autre exemplaire de ce défaut dans `src/` (recherche par analyse syntaxique).
+
+**5 drapeaux de migration « PHASE 3.x » retirés**, tous à `True` depuis des mois
+(`USE_NEW_SORTING_FILTERING_SERVICE`, `_IMPORT_EXPORT_`, `_DATABASE_OPERATIONS_`,
+`_UI_STATE_MANAGEMENT_`, `_KEYBOARD_SHORTCUT_`). Transformation strictement
+équivalente :
+- `if DRAPEAU:` → corps seul ;
+- `else: service = None` supprimé ;
+- `DRAPEAU and X` → `X`, gardes `hasattr` conservés.
+
+Les « anciens systèmes (rollback) » placés après ces gardes sont **conservés** : ils
+ne dépendent pas seulement du drapeau, mais aussi de la présence du service.
+`USE_NEW_AUTO_SAVE_MANAGER` (`False`) et `ENABLE_EVENT_DRIVEN_SAVE` ne sont pas
+touchés.
+
+**`AppInfo.VERSION`** retirée : figée à 3.52.0 depuis juin 2026 et lue nulle part. La
+seule source de version reste `Config.VERSION`.
+
+Vérifié en démarrant la vraie `MainWindow` (offscreen, base temporaire) : les 5
+services sont créés, Cmd+N crée l'appareil, filtre, sauvegardes et tri passent. Même
+scénario sur `main` : 2 appareils et des faux « Échec » ; sur la branche : 2 appareils,
+0 erreur.
+
+---
+
 ## [3.77.1] - 2026-10-08 (branche `fix/edition-double-clic`)
 
 ### Tableau : édition par double-clic uniquement
