@@ -1310,7 +1310,7 @@ class ImportDialog(QDialog):
             (cb is not None and cb.isChecked())
             or zone.all_equiv_check.isChecked()
             or any(b.cross_check is not None and b.cross_check.isChecked()
-                   for b in zone._succ_boxes)
+                   for b in zone.all_boxes())
             or any(g.kind == KIND_EQUIVALENCE for g in config.relations_groups)
         )
         if not intent:

@@ -4,6 +4,45 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.76.0] - 2026-10-08 (branche `fix/equivalence-lignee-succession`)
+
+### Import : un groupe d'équivalence peut être rattaché à une lignée
+
+Retour utilisateur : 6 fichiers importés, 4 réfs en succession (→ `C00273284`) et
+2 réfs équivalentes (`758973779`, `278449`). En cherchant `C00273284`, la chaîne
+s'affichait mais pas les 2 équivalentes.
+
+Cause : l'équivalence n'avait jamais été écrite. La fenêtre d'import ne permettait
+pas de relier un groupe d'équivalence à une lignée : la case « ≡ Équivalente
+(inter-lignées) » n'existait que sur les lignées. Le groupe 127 ne contenait donc
+que `758973779 ≡ 278449`, sans lien avec la chaîne.
+
+Correctif :
+- Case **« ≡ Équivalent aux lignées cochées »** sur chaque groupe d'équivalence.
+  Cochée avec « Équivalente (inter-lignées) » sur une lignée : le groupe devient
+  équivalent à la courante.
+- Nouvelle fonction `cross_anchor` : la réf qui porte le lien (courante d'une
+  lignée ; repère ou 1er membre d'un groupe). Elle est partagée par `derive`,
+  `count_planned_relations` et `apply_relations`, qui restent des miroirs exacts.
+- Avertissement et garde-fou à la validation : ils tiennent compte des groupes cochés.
+- « Toutes les lignées équivalentes » reste limitée aux lignées.
+
+Les anciennes réfs de la chaîne n'ont rien à déclarer : `add_equivalence` les fait
+déjà entrer dans le groupe (`_propagate_predecessors_to_group`). Chacune des 6 réfs
+voit donc les 5 autres, qu'on cherche la courante ou une ancienne. Aucun changement
+côté recherche.
+
+Données de production réparées à la main (sauvegarde préalable) :
+`add_equivalence('C00273284', '758973779')` → groupe 127 = les 6 réfs.
+Même contrôle sur toute la base : un seul autre groupe incohérent (groupe 1, où
+manquait `92X6043` → `C110027A4`, sans doute antérieur à la propagation automatique).
+Réparé par `_propagate_predecessors_to_group(1)`. 0 groupe incohérent restant.
+
+8 tests ajoutés (dont le cas réel de bout en bout sur une base réelle). Un test
+existant affirmait l'absence de la case sur les groupes : il a été inversé.
+
+---
+
 ## [3.75.3] - 2026-10-06 (branche `fix/pdf-lignes-bordure-pages-vides`)
 
 ### Import PDF : lignes coupées au bord d'une page vide réparées
