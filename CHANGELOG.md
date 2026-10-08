@@ -42,7 +42,7 @@ Mesures sur la base réelle :
 - 859 fiches sans équivalente (toutes celles qui ont des anciennes réfs, plus 300 au
   hasard) : title et description **identiques au caractère près** à `main`.
 
-23 tests ajoutés. Le test du repli a été vérifié par mutation : il échoue sans le
+21 tests ajoutés. Le test du repli a été vérifié par mutation : il échoue sans le
 correctif.
 
 ---
