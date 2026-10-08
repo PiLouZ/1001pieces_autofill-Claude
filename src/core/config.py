@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.77.1"
+    VERSION = "3.77.2"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -91,13 +91,6 @@ class Config:
 
     # Feature Flags - Refactoring Phase 1
     USE_NEW_AUTO_SAVE_MANAGER = False  # Migration AutoSaveManager - REPORTÉE (cycle init complexe)
-
-    # Feature Flags - Refactoring Phase 3
-    USE_NEW_SORTING_FILTERING_SERVICE = True  # Migration SortingFilteringService - PHASE 3.1 ACTIVÉE
-    USE_NEW_IMPORT_EXPORT_SERVICE = True  # Migration ImportExportService - PHASE 3.2 ACTIVÉE
-    USE_NEW_DATABASE_OPERATIONS_SERVICE = True  # Migration DatabaseOperationsService - PHASE 3.3 ACTIVÉE
-    USE_NEW_UI_STATE_MANAGEMENT_SERVICE = True  # Migration UIStateManagementService - PHASE 3.4 ACTIVÉE
-    USE_NEW_KEYBOARD_SHORTCUT_SERVICE = True  # Migration KeyboardShortcutService - PHASE 3.5 ACTIVÉE
 
     # Feature Flags - Phase 2 Async Operations
     USE_ASYNC_LOAD_DATA = True  # Phase 2d: Migration pilote load_data_async() - TEST A/B ACTIVÉ

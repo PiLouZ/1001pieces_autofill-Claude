@@ -268,10 +268,6 @@ class EventDrivenSaveService(BaseService):
             app_logger.error("EventDrivenSaveService: database_operations_service non disponible")
             return False
 
-        if not Config.USE_NEW_DATABASE_OPERATIONS_SERVICE:
-            app_logger.debug("EventDrivenSaveService: USE_NEW_DATABASE_OPERATIONS_SERVICE désactivé")
-            return False
-
         return True
 
     # ================================

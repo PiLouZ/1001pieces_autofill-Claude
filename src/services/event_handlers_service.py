@@ -107,8 +107,7 @@ class EventHandlersService:
     def _trigger_event_driven_save(self, event_type: str):
         """Déclencher sauvegarde événementielle"""
         if (hasattr(self.main_window, 'database_operations_service') and
-            self.main_window.database_operations_service and
-            Config.USE_NEW_DATABASE_OPERATIONS_SERVICE):
+            self.main_window.database_operations_service):
 
             app_logger.debug(f"Sauvegarde événementielle déclenchée: {event_type}")
             # Pour les imports, pas de modified_cells à sauvegarder car déjà commitées

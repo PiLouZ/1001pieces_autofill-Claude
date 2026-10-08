@@ -96,6 +96,19 @@ class TestDatabaseOperationsService:
         database_service.cache_service.invalidate_all.assert_called_once()
         database_service.user_interaction_service.add_to_history.assert_called_once()
 
+    def test_add_new_device_sans_service_interaction(self, database_service):
+        """Cas réel (3.77.2) : user_interaction_service absent, comme en production.
+        L'appareil est créé : l'ID doit revenir et le signal partir. Avant, les deux
+        étaient indentés sous le `if` du service → None et faux « Échec de l'ajout »
+        (35 fois entre le 2026-09-08 et le 2026-10-07)."""
+        database_service.user_interaction_service = None
+        database_service.db_manager.add_device.return_value = 785257
+        recus = []
+        database_service.device_added.connect(recus.append)
+
+        assert database_service.add_new_device() == 785257   # ligne vide (Cmd+N)
+        assert recus == [785257]
+
     def test_add_new_device_with_defaults(self, database_service):
         """Test ajout nouvel appareil avec données par défaut"""
         # Données par défaut avec référence valide

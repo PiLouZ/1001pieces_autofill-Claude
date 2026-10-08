@@ -119,10 +119,13 @@ class DatabaseOperationsService(BaseService):
                     f"Nouvel appareil ajouté: {device_data.get('marque', '')} {device_data.get('modele', '')}"
                 )
 
-                # Émettre le signal
-                self.device_added.emit(device_id)
-
-                return device_id
+            # Hors du `if` ci-dessus (3.77.2) : indentés dessous, le signal et le
+            # retour n'avaient lieu que si user_interaction_service était branché —
+            # jamais en pratique. L'appareil était créé, mais l'appelant recevait
+            # None et journalisait « Échec de l'ajout de nouvelle ligne » (35 fois
+            # entre le 2026-09-08 et le 2026-10-07).
+            self.device_added.emit(device_id)
+            return device_id
         else:
             error_msg = "Erreur lors de l'ajout en base de données"
             self.handle_error(Exception(error_msg), "add_new_device")

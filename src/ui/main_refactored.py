@@ -187,38 +187,26 @@ class MainWindow(QMainWindow):
         from .file_processing_service import FileProcessingService
         self.file_processing_service = FileProcessingService(self)
 
-        # PHASE 3.2 : Service unifié d'import/export (avec feature flag)
-        if Config.USE_NEW_IMPORT_EXPORT_SERVICE:
-            from ..services.import_export_service import ImportExportService
-            self.import_export_service = ImportExportService(self)
-            self.import_export_service.initialize_services()
-            app_logger.debug("ImportExportService activé via feature flag")
-        else:
-            self.import_export_service = None
+        # PHASE 3.2 : Service unifié d'import/export
+        from ..services.import_export_service import ImportExportService
+        self.import_export_service = ImportExportService(self)
+        self.import_export_service.initialize_services()
+        app_logger.debug("ImportExportService initialisé")
 
-        # PHASE 3.3 : Service unifié des opérations de base de données (avec feature flag)
-        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE:
-            from ..services.database_operations_service import DatabaseOperationsService
-            self.database_operations_service = DatabaseOperationsService(self)
-            self.database_operations_service.initialize_services()
-        else:
-            self.database_operations_service = None
+        # PHASE 3.3 : Service unifié des opérations de base de données
+        from ..services.database_operations_service import DatabaseOperationsService
+        self.database_operations_service = DatabaseOperationsService(self)
+        self.database_operations_service.initialize_services()
 
-        # PHASE 3.4 : Service unifié de gestion de l'état UI (avec feature flag)
-        if Config.USE_NEW_UI_STATE_MANAGEMENT_SERVICE:
-            from ..services.ui_state_management_service import UIStateManagementService
-            self.ui_state_management_service = UIStateManagementService(self)
-            self.ui_state_management_service.initialize_services()
-        else:
-            self.ui_state_management_service = None
+        # PHASE 3.4 : Service unifié de gestion de l'état UI
+        from ..services.ui_state_management_service import UIStateManagementService
+        self.ui_state_management_service = UIStateManagementService(self)
+        self.ui_state_management_service.initialize_services()
 
-        # PHASE 3.5 : Service unifié des raccourcis clavier (avec feature flag)
-        if Config.USE_NEW_KEYBOARD_SHORTCUT_SERVICE:
-            from ..services.keyboard_shortcut_service import KeyboardShortcutService
-            self.keyboard_shortcut_service = KeyboardShortcutService(self)
-            self.keyboard_shortcut_service.initialize_services()
-        else:
-            self.keyboard_shortcut_service = None
+        # PHASE 3.5 : Service unifié des raccourcis clavier
+        from ..services.keyboard_shortcut_service import KeyboardShortcutService
+        self.keyboard_shortcut_service = KeyboardShortcutService(self)
+        self.keyboard_shortcut_service.initialize_services()
     
     def _init_business_services(self):
         """Initialiser les services métier"""
@@ -269,10 +257,8 @@ class MainWindow(QMainWindow):
 
         # Note: AutoSaveManager est initialisé dans _setup_statusbar() pour ordre correct
 
-        # PHASE 3.1: Service de tri et filtrage avec feature flag
-        if Config.USE_NEW_SORTING_FILTERING_SERVICE:
-            from ..services.sorting_filtering_service import SortingFilteringService
-            self.sorting_filtering_service = None  # Sera initialisé après création de la table
+        # PHASE 3.1: Service de tri et filtrage
+        self.sorting_filtering_service = None  # Sera initialisé après création de la table
         
         from .pieces_panel_service import PiecesPanelService
         self.pieces_panel_service = PiecesPanelService(self)
@@ -465,8 +451,8 @@ class MainWindow(QMainWindow):
         # PHASE 5: Configuration des services centralisés
         self.cell_editing_service.table = self.table
 
-        # PHASE 3.1: Initialiser le service de tri et filtrage si activé
-        if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
+        # PHASE 3.1: Initialiser le service de tri et filtrage
+        if hasattr(self, 'sorting_filtering_service'):
             from ..services.sorting_filtering_service import SortingFilteringService
             self.sorting_filtering_service = SortingFilteringService(
                 table_widget=self.table,
@@ -1432,8 +1418,8 @@ class MainWindow(QMainWindow):
 
     def _auto_save(self):
         """Sauvegarde automatique optimisée par lots"""
-        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
-        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+        # PHASE 3.3: Déléguer au DatabaseOperationsService
+        if hasattr(self, 'database_operations_service') and self.database_operations_service:
             self.database_operations_service.auto_save()
             return
 
@@ -1443,8 +1429,8 @@ class MainWindow(QMainWindow):
 
     def _manual_save(self):
         """Sauvegarde manuelle"""
-        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
-        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+        # PHASE 3.3: Déléguer au DatabaseOperationsService
+        if hasattr(self, 'database_operations_service') and self.database_operations_service:
             success = self.database_operations_service.manual_save()
             if success:
                 self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
@@ -1794,8 +1780,8 @@ class MainWindow(QMainWindow):
     
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""
-        # PHASE 3.2: Déléguer au ImportExportService si activé
-        if Config.USE_NEW_IMPORT_EXPORT_SERVICE and hasattr(self, 'import_export_service') and self.import_export_service:
+        # PHASE 3.2: Déléguer au ImportExportService
+        if hasattr(self, 'import_export_service') and self.import_export_service:
             self.import_export_service.import_file()
             return
 
@@ -2158,8 +2144,8 @@ class MainWindow(QMainWindow):
 
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
-        # PHASE 3.1: Déléguer au service de tri/filtrage si activé
-        if Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
+        # PHASE 3.1: Déléguer au service de tri/filtrage
+        if hasattr(self, 'sorting_filtering_service') and self.sorting_filtering_service:
             # Synchroniser l'état du filtre avec IncompleteButtonService
             if hasattr(self, 'incomplete_button_service'):
                 self.incomplete_button_service.set_filter_active(checked)
@@ -2198,8 +2184,7 @@ class MainWindow(QMainWindow):
             app_logger.warning("⚠️ Bouton incomplete_filter_btn non trouvé")
 
         # Désactiver dans le service de tri/filtrage si disponible
-        if (Config.USE_NEW_SORTING_FILTERING_SERVICE and
-            hasattr(self, 'sorting_filtering_service') and
+        if (hasattr(self, 'sorting_filtering_service') and
             self.sorting_filtering_service):
             self.sorting_filtering_service.incomplete_filter_active = False
             app_logger.info("✅ Filtre désactivé dans sorting_filtering_service")
@@ -2240,7 +2225,7 @@ class MainWindow(QMainWindow):
                 self.table_controller.current_page = 0
 
         # Nettoyer les filtres de colonnes si demandé
-        if clear_filters and Config.USE_NEW_SORTING_FILTERING_SERVICE and hasattr(self, 'sorting_filtering_service'):
+        if clear_filters and hasattr(self, 'sorting_filtering_service'):
             self.sorting_filtering_service.clear_column_filters()
 
         # Débloquer les signaux du modèle si nécessaire pour éviter les blocages
@@ -3038,16 +3023,16 @@ class MainWindow(QMainWindow):
     
     def _delete_selected_rows(self, selected_rows):
         """Supprimer les lignes sélectionnées"""
-        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
-        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+        # PHASE 3.3: Déléguer au DatabaseOperationsService
+        if hasattr(self, 'database_operations_service') and self.database_operations_service:
             # Ne pas passer selected_rows car ce sont des numéros de ligne, pas des IDs d'appareils
             # Le service va récupérer les vrais IDs via _get_selected_device_ids()
             self.database_operations_service.delete_selected_devices()
 
     def keyPressEvent(self, event):
         """Gestion des raccourcis clavier - avec délégation conditionnelle au service"""
-        # PHASE 3.5: Déléguer au KeyboardShortcutService si activé
-        if Config.USE_NEW_KEYBOARD_SHORTCUT_SERVICE and self.keyboard_shortcut_service:
+        # PHASE 3.5: Déléguer au KeyboardShortcutService
+        if self.keyboard_shortcut_service:
             handled = self.keyboard_shortcut_service.handle_key_press_event(event)
             if handled:
                 return
@@ -3062,8 +3047,8 @@ class MainWindow(QMainWindow):
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur ajout nouvelle ligne")
     def _safe_add_new_row(self):
         """Helper sécurisé pour ajouter une nouvelle ligne"""
-        # PHASE 3.3: Déléguer au DatabaseOperationsService si activé
-        if Config.USE_NEW_DATABASE_OPERATIONS_SERVICE and hasattr(self, 'database_operations_service') and self.database_operations_service:
+        # PHASE 3.3: Déléguer au DatabaseOperationsService
+        if hasattr(self, 'database_operations_service') and self.database_operations_service:
             device_id = self.database_operations_service.add_new_device()
             if not device_id:
                 app_logger.error("Échec de l'ajout de nouvelle ligne")
