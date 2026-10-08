@@ -347,7 +347,11 @@ class TableController:
         self.table.setAcceptDrops(True)
         self.table.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
 
-        # Comportement tableur : 2e clic sur cellule sélectionnée → édition
+        # Édition par double-clic ou F2 uniquement : un clic simple ne fait que
+        # sélectionner (le « 2e clic sur la cellule courante → édition » de mars
+        # 2026 a été retiré en 3.77.1, il ouvrait l'éditeur sans le vouloir).
+        # Pas de SelectedClicked ni AnyKeyPressed : la frappe sur une cellule
+        # remplie ne l'édite volontairement pas (évite les modifications non désirées).
         self.table.setEditTriggers(
             QAbstractItemView.DoubleClicked |
             QAbstractItemView.EditKeyPressed

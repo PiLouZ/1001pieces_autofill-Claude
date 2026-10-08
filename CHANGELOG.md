@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.77.1] - 2026-10-08 (branche `fix/edition-double-clic`)
+
+### Tableau : édition par double-clic uniquement
+
+Retour utilisateur : un clic sur la cellule **déjà sélectionnée** ouvrait l'éditeur
+(surcharge de `CustomTableView.mousePressEvent`, ajoutée en mars 2026). Ce « deuxième
+clic » dérangeait. Il faut désormais un vrai double-clic.
+
+- Surcharge retirée : un clic simple ne fait plus que sélectionner.
+- Inchangé : double-clic, F2 (contenu préservé), frappe sur une cellule **vide**,
+  Entrée (ligne suivante).
+- Volontairement inchangé : la frappe sur une cellule **remplie** ne l'édite pas,
+  pour éviter les modifications non désirées. Un test le fixe désormais.
+
+4 tests en vrais clics Qt (`QTest`). Le test du clic échoue sur l'ancien code.
+
+---
+
 ## [3.77.0] - 2026-10-08 (branche `feature/equivalentes-hors-chaine`)
 
 ### Bandeau d'équivalence sans doublons, et équivalentes citées dans la méta description

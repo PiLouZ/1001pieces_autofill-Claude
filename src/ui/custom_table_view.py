@@ -422,18 +422,6 @@ class CustomTableView(QTableView):
             fw.setText(char)
             fw.setCursorPosition(len(char))
 
-    def mousePressEvent(self, event):
-        """Clic simple sur la cellule courante → ouvre l'éditeur (Option B)."""
-        from PyQt5.QtCore import Qt as _Qt
-        if event.button() == _Qt.LeftButton:
-            idx = self.indexAt(event.pos())
-            if (idx.isValid()
-                    and idx == self.currentIndex()
-                    and self.model()
-                    and self.model().flags(idx) & _Qt.ItemIsEditable):
-                self.edit(idx)
-        super().mousePressEvent(event)
-
     # ── Helpers de rétro-compatibilité ──────────────────────────────────────
     # Permettent aux services existants de continuer à fonctionner en Phase 3
     # avant que chaque service soit migré un par un (Phase 4).
