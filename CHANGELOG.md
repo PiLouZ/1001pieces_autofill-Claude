@@ -34,6 +34,9 @@ côté recherche.
 
 Données de production réparées à la main (sauvegarde préalable) :
 `add_equivalence('C00273284', '758973779')` → groupe 127 = les 6 réfs.
+Même contrôle sur toute la base : un seul autre groupe incohérent (groupe 1, où
+manquait `92X6043` → `C110027A4`, sans doute antérieur à la propagation automatique).
+Réparé par `_propagate_predecessors_to_group(1)`. 0 groupe incohérent restant.
 
 8 tests ajoutés (dont le cas réel de bout en bout sur une base réelle). Un test
 existant affirmait l'absence de la case sur les groupes : il a été inversé.
