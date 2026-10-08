@@ -145,15 +145,25 @@ class SEOService:
         if self._libelle_manquant(search_data, "description"):
             return
 
-        # Compter les modèles compatibles (ref courante + prédécesseurs)
+        # Compter les modèles compatibles (ref courante + prédécesseurs + groupe
+        # d'équivalence : une équivalente équipe les mêmes besoins, décision client
+        # 2026-10-08)
+        db = self.main_window.db_manager
         all_refs_for_count = [search_data['reference']]
         try:
-            preds = self.main_window.db_manager.get_all_predecessors(search_data['reference'])
+            preds = db.get_all_predecessors(search_data['reference'])
             all_refs_for_count.extend(preds)
         except Exception:
             preds = []
+        try:
+            groupe = db.get_equivalents(search_data['reference'])
+            equivalentes = db.get_equivalents_hors_chaine(search_data['reference'])
+        except Exception:
+            groupe, equivalentes = [], []
+        all_refs_for_count.extend(r for r in groupe if r not in all_refs_for_count)
         n_modeles = self._count_compatible_models(all_refs_for_count)
         anciennes_refs = self._anciennes_refs_principales(preds)
+        equivalentes = self._refs_principales(equivalentes, SEOGenerator.MAX_EQUIVALENTES)
 
         result = self.seo_generator.generate_meta_description(
             reference=search_data['reference'],
@@ -162,6 +172,7 @@ class SEOService:
             fabricants=search_data['fabricants'],
             n_modeles=n_modeles,
             anciennes_refs=anciennes_refs,  # toujours citées quand il y en a (décision client)
+            equivalentes=equivalentes,      # idem ; 1 + 1 si la fiche a les deux
             variante=self._variante('description', search_data['reference'], autre_formulation),
         )
 
@@ -215,6 +226,14 @@ class SEOService:
         de modèles compatibles (probablement les plus recherchées), à égalité par
         ordre alphabétique. Indépendant de la référence tapée : une fiche, une méta.
         """
+        return self._refs_principales(predecesseurs, SEOGenerator.MAX_ANCIENNES_REFS)
+
+    def _refs_principales(self, refs: List[str], maximum: int) -> List[str]:
+        """
+        Les `maximum` références de la liste qui ont le plus de modèles compatibles,
+        à égalité par ordre alphabétique. Sert aux anciennes réfs et aux équivalentes.
+        """
+        predecesseurs = list(refs or [])
         if not predecesseurs:
             return []
         nb_modeles = {ref: 0 for ref in predecesseurs}
@@ -228,9 +247,9 @@ class SEOService:
             for ref, n in self.main_window.db_manager.execute_custom_query(query, predecesseurs):
                 nb_modeles[ref] = n
         except Exception as e:
-            app_logger.warning(f"SEO: impossible de classer les anciennes références {predecesseurs}: {e}")
+            app_logger.warning(f"SEO: impossible de classer les références {predecesseurs}: {e}")
         classees = sorted(nb_modeles, key=lambda r: (-nb_modeles[r], r))
-        return classees[:SEOGenerator.MAX_ANCIENNES_REFS]
+        return classees[:maximum]
 
     def _count_compatible_models(self, refs: List[str]) -> int:
         """Compte le nombre de modèles d'appareils uniques compatibles avec les références données."""

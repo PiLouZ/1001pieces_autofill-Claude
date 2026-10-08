@@ -31,6 +31,7 @@ class _BaseMemoire(DatabaseSupersessionMixin):
             CREATE TABLE appareils (id INTEGER PRIMARY KEY, type TEXT, manufacturer TEXT);
             CREATE TABLE piece_associations (piece_id INTEGER, appareil_id INTEGER);
             CREATE TABLE piece_supersessions (ref_old TEXT PRIMARY KEY, ref_new TEXT);
+            CREATE TABLE piece_equivalence_groups (group_id INTEGER, ref_piece TEXT);
         """)
         self.panne = False
 
@@ -65,6 +66,11 @@ class _BaseMemoire(DatabaseSupersessionMixin):
 
     def remplace(self, ref_old, ref_new):
         self.conn.execute("INSERT INTO piece_supersessions VALUES (?, ?)", [ref_old, ref_new])
+
+    def groupe(self, group_id, *refs):
+        """Groupe d'équivalence tel que stocké (anciennes versions comprises)."""
+        for ref in refs:
+            self.conn.execute("INSERT INTO piece_equivalence_groups VALUES (?, ?)", [group_id, ref])
 
 
 class _Texte:
@@ -426,3 +432,105 @@ def test_multi_references_libelle_vide_remplace_par_celui_de_l_autre(db):
     donnees = service._get_current_search_data_for_reference("B")
     assert donnees['reference'] == "B"
     assert donnees['description'] == "Joint de hublot"
+
+
+# ── Réfs équivalentes citées dans la description (3.77.0) ──
+# Décisions client (2026-10-08) : « réf. équivalente X » ; 2 au plus, les plus
+# compatibles ; 1 ancienne + 1 équivalente quand la fiche a les deux ; le compteur
+# de modèles inclut les équivalentes.
+
+@pytest.mark.parametrize("anciennes,equivalentes,attendu", [
+    ([], ["E1"], "réf. équivalente E1"),
+    ([], ["E1", "E2"], "réf. équivalentes E1 et E2"),
+    (["A1"], ["E1"], "ancienne réf. A1, réf. équivalente E1"),
+    (["A1", "A2"], [], "anciennes réf. A1 et A2"),
+    ([], [], ""),
+])
+def test_formulation_des_refs_liees(anciennes, equivalentes, attendu):
+    from src.utils.seo_generator import SEOGenerator
+    assert SEOGenerator._formuler_refs_liees(anciennes, equivalentes) == attendu
+
+
+def test_une_ancienne_et_une_equivalente_quand_la_fiche_a_les_deux():
+    from src.utils.seo_generator import SEOGenerator
+    g = SEOGenerator()
+    for variante in range(len(SEOGenerator.META_DESCRIPTION_TEMPLATES_SUPERSESSION)):
+        r = g.generate_meta_description(reference="C00273284", description="Tuyau de vidange",
+                                        type_appareil="Lave-vaisselle", fabricants=["Whirlpool"],
+                                        anciennes_refs=["C00256559", "C00256552"],
+                                        equivalentes=["758973779", "278449"], variante=variante)
+        assert r['info']['anciennes_refs'] == ["C00256559"]
+        assert r['info']['equivalentes'] == ["758973779"]
+        assert "ancienne réf. C00256559, réf. équivalente 758973779" in r['description']
+        assert "C00256552" not in r['description'] and "278449" not in r['description']
+
+
+def test_equivalentes_seules_toujours_citees_deux_au_plus():
+    from src.utils.seo_generator import SEOGenerator
+    g = SEOGenerator()
+    r = g.generate_meta_description(reference="758973779", description="Tuyau de vidange",
+                                    type_appareil="Lave-vaisselle", fabricants=["Smeg"],
+                                    equivalentes=["C00273284", "278449", "E3"])
+    assert r['info']['is_supersession']
+    assert "réf. équivalentes C00273284 et 278449" in r['description']
+    assert "E3" not in r['description']
+
+
+def test_autre_gabarit_plutot_que_sacrifier_l_equivalente():
+    """Cas réel (34 fiches sur 329) : le gabarit prévu, trop long avec 1 + 1, ne
+    laissait la place à aucune marque ; le repli gardait l'ancienne et lâchait
+    l'équivalente. Désormais un gabarit suivant qui garde les deux est préféré."""
+    from src.utils.seo_generator import SEOGenerator
+    g = SEOGenerator()
+    gabarit = SEOGenerator.META_DESCRIPTION_TEMPLATES_SUPERSESSION[3]  # le plus long
+    g._choose_description_template = lambda *a: gabarit
+    r = g.generate_meta_description(reference="00165314", description="Roulette",
+                                    type_appareil="Lave-vaisselle", fabricants=["Bosch", "Siemens", "Neff"],
+                                    anciennes_refs=["00183955"], equivalentes=["C00666233"])
+    assert r['info']['equivalentes'] == ["C00666233"]
+    assert r['info']['anciennes_refs'] == ["00183955"]
+    assert r['info']['fabricants_used']
+    assert r['info']['within_limit']
+
+
+def test_sans_equivalente_rien_ne_change():
+    """Non-régression : equivalentes=None ou [] → même méta qu'avant la 3.77.0."""
+    from src.utils.seo_generator import SEOGenerator
+    g = SEOGenerator()
+    args = dict(reference="140000210041", description="Vis de pied réglage central",
+                type_appareil="Lave-vaisselle", fabricants=["Bosch"],
+                anciennes_refs=["140000210017", "140000210099"])
+    for variante in range(6):
+        sans = g.generate_meta_description(variante=variante, **args)['description']
+        assert g.generate_meta_description(variante=variante, equivalentes=[], **args)['description'] == sans
+
+
+class _FenetreComplete(_Fenetre):
+    def __init__(self, db):
+        super().__init__(db)
+        from unittest.mock import MagicMock
+        self.statusbar = MagicMock()
+        self.user_interaction_service = MagicMock()
+
+
+def test_service_choisit_les_equivalentes_hors_chaine_et_compte_leurs_modeles(db, qapp):
+    """Bout en bout par le bouton : équivalentes hors chaîne, classées par modèles ;
+    le compteur inclut les modèles des équivalentes."""
+    from PyQt5.QtWidgets import QApplication
+    db.piece("COUR", "Tuyau de vidange"); db.modeles("COUR", "Lave-vaisselle", "Whirlpool", 3)
+    db.piece("OLD"); db.remplace("OLD", "COUR"); db.modeles("OLD", "Lave-vaisselle", "Whirlpool", 1)
+    db.piece("EQ_PETITE"); db.modeles("EQ_PETITE", "Lave-vaisselle", "Smeg", 2)
+    db.piece("EQ_GRANDE"); db.modeles("EQ_GRANDE", "Lave-vaisselle", "Smeg", 40)
+    db.piece("EQ_MOYENNE"); db.modeles("EQ_MOYENNE", "Lave-vaisselle", "Smeg", 5)
+    db.groupe(1, "COUR", "OLD", "EQ_PETITE", "EQ_GRANDE", "EQ_MOYENNE")
+
+    fenetre = _FenetreComplete(db)
+    fenetre.search_input.texte = "COUR"
+    service = SEOService(fenetre)
+    service._get_multi_reference_terms = lambda: []
+    service.generate_meta_description()
+    info = service.seo_generator.last_generation_info['description']
+    assert info['anciennes_refs'] == ["OLD"]
+    assert info['equivalentes'] == ["EQ_GRANDE"]          # 1 + 1, la plus compatible
+    assert info['n_modeles'] == 3 + 1 + 2 + 40 + 5         # équivalentes comprises
+    assert "réf. équivalente EQ_GRANDE" in QApplication.clipboard().text()

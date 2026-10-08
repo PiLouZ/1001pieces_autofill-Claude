@@ -70,6 +70,8 @@ class SEOGenerator:
     # en a, la description les cite TOUJOURS : ces gabarits forment alors le pool.
     # {anciennes_refs} = « ancienne réf. X » ou « anciennes réf. X et Y » : forme
     # nominale, qui s'accorde avec tout libellé (« vos filtres … remplace » était faux).
+    # Depuis la 3.77.0, il porte aussi les réfs équivalentes (« réf. équivalente Z »,
+    # cf. _formuler_refs_liees) : mêmes gabarits, toujours cités eux aussi.
     META_DESCRIPTION_TEMPLATES_SUPERSESSION = [
         "{description_cap} {reference} pour {type_appareil} {fabricants} — {anciennes_refs}",
         "{description_cap} {reference} ({anciennes_refs}) pour {type_appareil} {fabricants}",
@@ -80,6 +82,9 @@ class SEOGenerator:
     ]
     # Anciennes références citées au plus (les plus compatibles, choisies par seo_service)
     MAX_ANCIENNES_REFS = 2
+    # Réfs équivalentes (autres marques, hors chaîne) citées au plus — décision client
+    # 2026-10-08 : 2 au plus, et 1 ancienne + 1 équivalente quand la fiche a les deux.
+    MAX_EQUIVALENTES = 2
     # Seuil « large compatibilité » (nb de modèles) et poids des templates contextuels
     # dans le tirage pondéré. Réglables : un poids > 1 favorise sans forcer (la diversité
     # du pool générique reste possible).
@@ -383,7 +388,8 @@ class SEOGenerator:
     def generate_meta_description(self, reference: str, description: str, type_appareil: str,
                                  fabricants: List[str], max_length: int = DESCRIPTION_MAX_CARACTERES,
                                  n_modeles: int = 0, anciennes_refs: Optional[List[str]] = None,
-                                 variante: int = 0) -> Dict[str, any]:
+                                 variante: int = 0,
+                                 equivalentes: Optional[List[str]] = None) -> Dict[str, any]:
         """
         Générer une méta description via un tirage pondéré contextuel (L2/L3) :
         pool générique (unicité à grande échelle) enrichi de templates de segment
@@ -393,6 +399,9 @@ class SEOGenerator:
         fourni, liste les références qu'elle remplace, les plus pertinentes d'abord :
         les MAX_ANCIENNES_REFS premières sont alors toujours citées (une seule si les
         deux ne laissent la place à aucune marque).
+        equivalentes, si fourni, liste ses réfs équivalentes hors chaîne (autres
+        marques), les plus pertinentes d'abord : MAX_EQUIVALENTES citées au plus.
+        Avec les deux à la fois : 1 ancienne + 1 équivalente (décision client).
         Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
         `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
         """
@@ -401,13 +410,18 @@ class SEOGenerator:
         type_clean = self._normalize_type(type_appareil)
         anciennes = [r.strip() for r in (anciennes_refs or []) if r and r.strip()]
         anciennes = anciennes[:self.MAX_ANCIENNES_REFS]
+        equivs = [r.strip() for r in (equivalentes or []) if r and r.strip()]
+        equivs = equivs[:self.MAX_EQUIVALENTES]
+        if anciennes and equivs:
+            anciennes, equivs = anciennes[:1], equivs[:1]
+        a_des_refs_liees = bool(anciennes or equivs)
 
         article = self._get_article(description_clean)
         description_with_article = f"{article} {description_clean}"
 
-        template = self._choose_description_template(type_clean, n_modeles, bool(anciennes),
+        template = self._choose_description_template(type_clean, n_modeles, a_des_refs_liees,
                                                      reference_clean, variante)
-        pool, poids = self._pool_description(type_clean, n_modeles, bool(anciennes))
+        pool, poids = self._pool_description(type_clean, n_modeles, a_des_refs_liees)
         nb_variantes = len(pool)
         a_des_marques = bool(self._marques_uniques(fabricants))
 
@@ -418,18 +432,33 @@ class SEOGenerator:
         depart = ordre.index(template) if template in ordre else 0
         candidats = [template] + [ordre[(depart + k) % len(ordre)] for k in range(1, len(ordre))
                                   if ordre[(depart + k) % len(ordre)] != template]
+        # Avec des équivalentes, un 1er passage n'accepte qu'un gabarit qui garde TOUTES
+        # les réfs prévues : sinon le repli (une seule réf liée) sacrifierait
+        # l'équivalente dès le gabarit prévu, alors qu'un suivant tient en entier
+        # (34 fiches sur 329 au 2026-10-08). Sans équivalente : un seul passage, comme
+        # avant — les métas existantes restent identiques au caractère près.
+        nb_prevu = len(anciennes) + len(equivs)
+        exigences = (True, False) if equivs else (False,)
         premier = choisi = None
-        for candidat in candidats:
-            rendu = self._remplir_description(candidat, fabricants, anciennes, reference_clean,
-                                              description_with_article, type_clean, n_modeles,
-                                              max_length)
-            premier = premier or (candidat, rendu)
-            texte, fabricants_rendus, _ = rendu
-            if (fabricants_rendus or not a_des_marques) and self._tient_description(texte, max_length):
-                choisi = (candidat, rendu)
+        rendus = {}
+        for toutes_les_refs in exigences:
+            for candidat in candidats:
+                if candidat not in rendus:
+                    rendus[candidat] = self._remplir_description(
+                        candidat, fabricants, anciennes, reference_clean, description_with_article,
+                        type_clean, n_modeles, max_length, equivs)
+                rendu = rendus[candidat]
+                premier = premier or (candidat, rendu)
+                texte, fabricants_rendus, a_citees, e_citees = rendu
+                if toutes_les_refs and len(a_citees) + len(e_citees) < nb_prevu:
+                    continue
+                if (fabricants_rendus or not a_des_marques) and self._tient_description(texte, max_length):
+                    choisi = (candidat, rendu)
+                    break
+            if choisi:
                 break
         # Aucun ne tient en entier : le gabarit prévu, raccourci
-        template, (description_text, fabricants_str, anciennes) = choisi or premier
+        template, (description_text, fabricants_str, anciennes, equivs) = choisi or premier
 
         final_description = self._smart_truncate_description(description_text, max_length)
 
@@ -444,6 +473,7 @@ class SEOGenerator:
             'fabricants_count': len(fabricants),
             'n_modeles': n_modeles,
             'anciennes_refs': anciennes,
+            'equivalentes': equivs,
             'is_supersession': '{anciennes_refs}' in template,
             'variante': variante % nb_variantes,
             'nb_variantes': nb_variantes,
@@ -459,19 +489,27 @@ class SEOGenerator:
     
     def _remplir_description(self, template: str, fabricants: List[str], anciennes: List[str],
                              reference: str, description_with_article: str, type_appareil: str,
-                             n_modeles: int, max_length: int) -> Tuple[str, str, List[str]]:
+                             n_modeles: int, max_length: int,
+                             equivalentes: Optional[List[str]] = None
+                             ) -> Tuple[str, str, List[str], List[str]]:
         """
-        Rend un gabarit : (texte, marques retenues, anciennes réfs citées).
-        Une seule ancienne réf si les deux ne laissent la place à aucune marque.
+        Rend un gabarit : (texte, marques retenues, anciennes réfs citées,
+        équivalentes citées).
+        Une seule réf liée si deux ne laissent la place à aucune marque : l'ancienne
+        est gardée de préférence (décision client initiale : toujours la citer).
         """
-        anciennes_str = self._formuler_anciennes_refs(anciennes)
+        equivalentes = list(equivalentes or [])
+        anciennes_str = self._formuler_refs_liees(anciennes, equivalentes)
         fabricants_str = self._select_fabricants_for_description(
             fabricants, template, reference, description_with_article, type_appareil, max_length,
             anciennes_refs=anciennes_str, n_modeles=n_modeles
         )
-        if not fabricants_str and fabricants and len(anciennes) > 1:
-            anciennes = anciennes[:1]
-            anciennes_str = self._formuler_anciennes_refs(anciennes)
+        if not fabricants_str and fabricants and len(anciennes) + len(equivalentes) > 1:
+            if anciennes:
+                anciennes, equivalentes = anciennes[:1], []
+            else:
+                equivalentes = equivalentes[:1]
+            anciennes_str = self._formuler_refs_liees(anciennes, equivalentes)
             fabricants_str = self._select_fabricants_for_description(
                 fabricants, template, reference, description_with_article, type_appareil,
                 max_length, anciennes_refs=anciennes_str, n_modeles=n_modeles
@@ -487,7 +525,7 @@ class SEOGenerator:
         )
         # " ".join(split()) : un {fabricants} vide ne laisse pas de double espace ;
         # ni d'espace avant une virgule (« pour congélateur , compatible »)
-        return " ".join(texte.split()).replace(" ,", ","), fabricants_str, anciennes
+        return " ".join(texte.split()).replace(" ,", ","), fabricants_str, anciennes, equivalentes
 
     def _segment_templates_for(self, type_norm: str) -> List[str]:
         """
@@ -587,6 +625,22 @@ class SEOGenerator:
         pas = 10 if n_modeles < 100 else 50 if n_modeles < 1000 else 100 if n_modeles < 10000 else 1000
         arrondi = (n_modeles - 1) // pas * pas
         return f"{arrondi:,}".replace(",", " ")
+
+    @classmethod
+    def _formuler_refs_liees(cls, anciennes: List[str], equivalentes: List[str]) -> str:
+        """Texte du champ {anciennes_refs} : anciennes puis équivalentes, séparées
+        par une virgule (« ancienne réf. X, réf. équivalente Z »)."""
+        return ", ".join(p for p in (cls._formuler_anciennes_refs(anciennes),
+                                     cls._formuler_equivalentes(equivalentes)) if p)
+
+    @staticmethod
+    def _formuler_equivalentes(equivalentes: List[str]) -> str:
+        """« réf. équivalente X », « réf. équivalentes X et Y » ; "" s'il n'y en a pas."""
+        if not equivalentes:
+            return ""
+        if len(equivalentes) == 1:
+            return f"réf. équivalente {equivalentes[0]}"
+        return "réf. équivalentes " + ", ".join(equivalentes[:-1]) + " et " + equivalentes[-1]
 
     @staticmethod
     def _formuler_anciennes_refs(anciennes: List[str]) -> str:
