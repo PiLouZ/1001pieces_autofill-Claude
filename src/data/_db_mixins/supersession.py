@@ -224,6 +224,44 @@ class DatabaseSupersessionMixin:
             app_logger.error(f"Erreur get_equivalents({ref_piece}): {e}")
             return []
 
+    def get_equivalents_hors_chaine(self, ref_piece: str) -> list:
+        """
+        Équivalentes « vraies » de ref_piece : le groupe d'équivalence SANS les
+        réfs déjà joignables par une chaîne de succession.
+
+        En base, `_propagate_predecessors_to_group` fait entrer les anciennes
+        versions dans le groupe de leur courante. Utile pour l'extension des
+        appareils, mais redondant à l'affichage. On retire donc :
+        - la famille de ref_piece (sa tête de chaîne et les anciennes versions
+          de cette tête), déjà montrée par le bandeau de succession ;
+        - les anciennes versions d'une autre équivalente présente dans le groupe
+          (elles restent joignables via leur courante).
+
+        Ex : C00256552 → C00273284, et C00273284 ≡ 758973779 ≡ 278449
+             get_equivalents_hors_chaine('C00256552') == ['278449', '758973779']
+
+        Une ancienne version dont la courante est HORS du groupe est conservée
+        (sinon l'équivalence deviendrait invisible).
+        """
+        equivalents = self.get_equivalents(ref_piece)
+        if not equivalents:
+            return []
+
+        def _tete(ref):
+            return self.get_supersession_chain(ref)[-1]
+
+        tete_terme = _tete(ref_piece)
+        groupe = set(equivalents) | {ref_piece}
+        resultat = []
+        for ref in equivalents:
+            tete = _tete(ref)
+            if tete == tete_terme:
+                continue                      # même famille que le terme
+            if tete != ref and tete in groupe:
+                continue                      # ancienne version d'une équivalente listée
+            resultat.append(ref)
+        return resultat
+
     def set_description_for_refs(self, refs: list, description: str) -> int:
         """
         Appliquer le même libellé à plusieurs pièces en une seule transaction.

@@ -157,7 +157,8 @@ class TableController:
         # Équivalence : term fait partie d'un groupe d'équivalence
         self._equivalence_expand = False      # True = inclure les appareils des équivalents
         self._equivalence_term = None
-        self._equivalence_group = []          # autres membres du groupe (sans le term)
+        self._equivalence_group = []          # autres membres du groupe (sans le term) — sert à l'extension
+        self._equivalence_display = []        # sous-ensemble affiché : hors chaîne de succession
 
         # Recherche étendue : False (défaut) = ref_piece exacte, True = LIKE '%term%'
         # (inclut les refs contenant le terme, ex: "086565" matche aussi "C00865650")
@@ -2011,10 +2012,15 @@ class TableController:
             return False
         try:
             equivalents = self.db_manager.get_equivalents(term)
-            if equivalents:
+            # Affichage : sans les réfs déjà montrées par la chaîne de succession.
+            # Groupe réduit à la seule famille du terme → rien à montrer : bandeau caché.
+            display = (self.db_manager.get_equivalents_hors_chaine(term)
+                       if equivalents else [])
+            if display:
                 group_is_new = set(equivalents) != set(self._equivalence_group)
                 self._equivalence_term = term
                 self._equivalence_group = equivalents
+                self._equivalence_display = display
                 if group_is_new:
                     # Par défaut, une nouvelle recherche inclut les appareils des équivalents
                     self._equivalence_expand = True
@@ -2033,6 +2039,7 @@ class TableController:
         self._equivalence_expand = False
         self._equivalence_term = None
         self._equivalence_group = []
+        self._equivalence_display = []
         if hasattr(self, 'equivalence_banner'):
             self.equivalence_banner.setVisible(False)
 
@@ -2041,7 +2048,7 @@ class TableController:
         if not hasattr(self, 'equivalence_banner_label'):
             return
         term = self._equivalence_term or ''
-        equivs_disp, equivs_tip = self._make_linked_refs(self._equivalence_group, link_color='#6A1B9A')
+        equivs_disp, equivs_tip = self._make_linked_refs(self._equivalence_display, link_color='#6A1B9A')
         if self._equivalence_expand:
             prefix = f"≡ Résultats étendus — '{_html.escape(term)}' · équivalents inclus : "
             self.equivalence_expand_btn.setText(f"Voir uniquement '{term}'")
@@ -2072,7 +2079,7 @@ class TableController:
             return
         chain = self._supersession_chain or []
         preds = self._supersession_predecessors or []
-        equivs = self._equivalence_group if self._equivalence_term == term else []
+        equivs = self._equivalence_display if self._equivalence_term == term else []
         status_info = {
             'status':      'superseded' if self._supersession_mode == 'superseded' else 'replacing',
             'ref_new':     chain[-1] if chain and self._supersession_mode == 'superseded' else None,
@@ -2089,7 +2096,7 @@ class TableController:
         term = self._equivalence_term or ''
         if not term:
             return
-        equivs = self._equivalence_group or []
+        equivs = self._equivalence_display or []
         preds  = self._supersession_predecessors if self._supersession_term == term else []
         status_info = {
             'status':      'replacing' if preds else 'current',
