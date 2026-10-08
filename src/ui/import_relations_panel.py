@@ -6,9 +6,9 @@ zone groupes à droite, récap sticky en bas.
 Zone groupes (drag-drop) : un réservoir « Non groupées » + deux sections de boîtes :
 - **Lignées de succession** : Courante éditable (lot/base/à créer) + membres (anciennes
   versions) + checkbox « Équivalente ».
-- **Groupes d'équivalence** : Courante repère optionnelle + membres (tous valides) +
-  checkbox « Équivalente ».
-La checkbox relie les courantes des groupes cochés. États dérivés via `derive`.
+- **Groupes d'équivalence** : membres (tous valides) + checkbox « Équivalent aux
+  lignées cochées ».
+La checkbox relie les ancres des groupes cochés (cf. `cross_anchor`). États dérivés via `derive`.
 
 Widget autonome (testable offscreen).
 """
@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (
 import qtawesome as qta
 
 from ..services.import_relations import (
-    Group, CardData, derive, count_planned_relations,
+    Group, CardData, derive, count_planned_relations, cross_anchors,
     KIND_SUCCESSION, KIND_EQUIVALENCE,
 )
 from ..core.config import pluralize
@@ -274,7 +274,7 @@ class GroupBox(QFrame):
 
         is_succ = self.kind == KIND_SUCCESSION
         self.courante_input = None      # uniquement pour les lignées de succession
-        self.cross_check = None         # idem (équivalence inter-lignées)
+        self.cross_check = None         # « équivalente entre groupes » (lignées ET groupes)
 
         head = QHBoxLayout()
         name = "Lignée" if is_succ else "Groupe"
@@ -312,14 +312,22 @@ class GroupBox(QFrame):
             self.cross_check = QCheckBox("≡ Équivalente (inter-lignées)")
             self.cross_check.setToolTip(
                 "Cochez cette case sur plusieurs lignées pour déclarer leurs courantes\n"
-                "équivalentes entre elles (même appareil, marques différentes).")
-            self.cross_check.setStyleSheet(f"font-size: 10px; border: none; color: {_EQUIV_COLORS[0]};")
-            self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
-            lay.addWidget(self.cross_check)
-
+                "équivalentes entre elles (même appareil, marques différentes).\n"
+                "Cochez-la aussi sur un groupe d'équivalence pour l'y rattacher.")
             hint = "Anciennes versions (glissez ici ; double-clic = courante) :"
         else:
+            # Rattacher un groupe de réfs interchangeables à une lignée : sans
+            # cette case, le groupe reste isolé de la chaîne de succession
+            # (cas réel du 2026-10-08 : 758973779 ≡ 278449 sans lien vers C00273284).
+            self.cross_check = QCheckBox("≡ Équivalent aux lignées cochées")
+            self.cross_check.setToolTip(
+                "Cochez cette case ET « Équivalente (inter-lignées) » sur une lignée :\n"
+                "les réfs de ce groupe deviennent équivalentes à sa courante\n"
+                "(et, par la chaîne, à ses anciennes versions).")
             hint = "Réfs interchangeables (glissez ici) :"
+        self.cross_check.setStyleSheet(f"font-size: 10px; border: none; color: {_EQUIV_COLORS[0]};")
+        self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
+        lay.addWidget(self.cross_check)
         lay.addWidget(_lbl(hint, size=10, color="#607d8b"))
 
         self.members = _RefList(expanding=True)
@@ -372,8 +380,7 @@ class GroupBox(QFrame):
                      courante=((self.courante_input.text().strip() or None)
                                if self.courante_input is not None else None),
                      members=self.members.refs(),
-                     cross_equivalent=(self.cross_check.isChecked()
-                                       if self.cross_check is not None else False))
+                     cross_equivalent=self.cross_check.isChecked())
 
 
 # ── Zone des groupes ──────────────────────────────────────────────────────────
@@ -600,12 +607,12 @@ class GroupsZone(QWidget):
                 if len(effective) == 1:
                     msgs.append("Un groupe d'équivalence ne contient qu'une seule réf : "
                                 "aucune équivalence ne sera créée.")
-        cross = {g.courante for g in groups if g.cross_equivalent and g.courante}
-        cross_checked = sum(1 for g in groups
-                            if g.kind == KIND_SUCCESSION and g.cross_equivalent)
+        cross = set(cross_anchors(groups))
+        cross_checked = sum(1 for g in groups if g.cross_equivalent)
         if cross_checked and len(cross) < 2:
-            msgs.append("« Équivalente (inter-lignées) » est cochée mais moins de deux "
-                        "lignées ont une courante : aucune équivalence croisée ne sera créée.")
+            msgs.append("« Équivalente » est cochée mais moins de deux lignées (avec "
+                        "courante) ou groupes sont cochés : aucune équivalence croisée "
+                        "ne sera créée.")
         elif self.all_equiv_check.isChecked() and n_courantes < 2:
             msgs.append("« Toutes les lignées équivalentes entre elles » est cochée mais "
                         "moins de deux lignées ont une courante : aucune équivalence "

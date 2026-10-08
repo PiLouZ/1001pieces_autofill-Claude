@@ -9,9 +9,11 @@ il connaît la courante). Deux types de groupes :
 - **groupe d'équivalence** : des `members` (+ `courante` repère optionnelle), tous
   valides et mutuellement équivalents (add_equivalence). Aucune obsolescence.
 
-Une **checkbox `cross_equivalent`** par groupe : les courantes de tous les groupes
+Une **checkbox `cross_equivalent`** par groupe : les ancres de tous les groupes
 cochés sont déclarées équivalentes entre elles (cas « plusieurs courantes selon la
-marque »).
+marque », ou « ces réfs interchangeables équivalent à cette lignée »). L'ancre est
+la courante d'une lignée, ou la repère / le 1er membre d'un groupe d'équivalence
+(cf. `cross_anchor`).
 
 En plus des groupes, chaque réf isolée peut être marquée obsolète et/ou « remplace
 une réf en base » (carte). Pur Python ; `apply_relations` écrit via un db_manager
@@ -48,9 +50,30 @@ class DerivedModel:
     succ_group_of: Dict[str, int] = field(default_factory=dict)   # ref → index de lignée (liseré)
     equiv_group_of: Dict[str, int] = field(default_factory=dict)  # ref → index de groupe d'équivalence (pastille)
     obsoletes: Set[str] = field(default_factory=set)         # réfs qui seront marquées obsolètes
-    cross_courantes: List[str] = field(default_factory=list) # courantes liées par la checkbox
+    cross_courantes: List[str] = field(default_factory=list) # ancres liées par la checkbox (cf. cross_anchor)
     phantoms: Set[str] = field(default_factory=set)          # réfs citées absentes du lot ET de la base
     warnings: List[Tuple[str, str]] = field(default_factory=list)
+
+
+def cross_anchor(g: Group) -> Optional[str]:
+    """Réf qui porte le lien « équivalente entre groupes » pour le groupe `g`.
+
+    - Lignée : la courante (sans courante, la lignée ne peut rien relier).
+    - Groupe d'équivalence : la courante repère si saisie, sinon le 1er membre.
+      N'importe quel membre convient : tous seront dans le même groupe en base.
+
+    Source unique pour `derive`, `count_planned_relations` et `apply_relations`
+    (qui doivent rester des miroirs exacts).
+    """
+    if g.kind == KIND_SUCCESSION:
+        return g.courante or None
+    return g.courante or next((m for m in g.members if m), None)
+
+
+def cross_anchors(groups: List[Group]) -> List[str]:
+    """Ancres des groupes cochés « équivalente », sans doublon, dans l'ordre."""
+    anchors = [a for a in (cross_anchor(g) for g in groups if g.cross_equivalent) if a]
+    return [a for i, a in enumerate(anchors) if a not in anchors[:i]]
 
 
 def derive(groups: List[Group], cards: List[CardData],
@@ -88,7 +111,7 @@ def derive(groups: List[Group], cards: List[CardData],
             cited_external.add(c.base_replaces)
 
     # Checkbox « équivalente entre groupes » : courantes des groupes cochés
-    out.cross_courantes = [g.courante for g in groups if g.cross_equivalent and g.courante]
+    out.cross_courantes = [a for a in (cross_anchor(g) for g in groups if g.cross_equivalent) if a]
     if len(out.cross_courantes) == 1:
         out.warnings.append((out.cross_courantes[0],
                              "Groupe coché « équivalent » seul — au moins deux requis."))
@@ -122,8 +145,7 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
         if c.base_replaces and c.base_replaces != c.ref:
             counts['successions'] += 1
 
-    cross = [g.courante for g in groups if g.cross_equivalent and g.courante]
-    cross = [c for i, c in enumerate(cross) if c not in cross[:i]]
+    cross = cross_anchors(groups)
     counts['equivalences'] += max(0, len(cross) - 1)
 
     counts['obsoletes'] = len(obsoletes)
@@ -213,9 +235,8 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
     for ref in obsoletes:
         _obsolete(ref)
 
-    # Checkbox « équivalente entre groupes » : relier les courantes cochées
-    cross = [g.courante for g in groups if g.cross_equivalent and g.courante]
-    cross = [c for i, c in enumerate(cross) if c not in cross[:i]]
+    # Checkbox « équivalente entre groupes » : relier les ancres cochées
+    cross = cross_anchors(groups)
     for c in cross[1:]:
         _equiv(cross[0], c)
 

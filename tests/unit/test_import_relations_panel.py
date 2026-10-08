@@ -95,12 +95,13 @@ class TestEquivalence:
         assert "obsolète" not in panel.recap.text()
         assert not _cards(panel)["S1"].equiv_badge.text() == ""   # pastille présente
 
-    def test_groupe_equivalence_sans_courante_ni_cross(self, qapp):
-        """Un groupe d'équivalence n'a ni « courante » ni case « Équivalente »."""
+    def test_groupe_equivalence_sans_courante_avec_cross(self, qapp):
+        """Un groupe d'équivalence n'a pas de « courante », mais porte la case
+        « Équivalent aux lignées cochées » (décochée par défaut)."""
         panel = _panel(qapp)
         box = panel.groups_zone.add_group(KIND_EQUIVALENCE)
         assert box.courante_input is None
-        assert box.cross_check is None
+        assert box.cross_check is not None and not box.cross_check.isChecked()
         assert box.to_group().courante is None and box.to_group().cross_equivalent is False
 
 
@@ -115,6 +116,38 @@ class TestCross:
         b2.cross_check.setChecked(True)
         panel.recompute()
         assert "équiv. croisée : B3, S2" in panel.recap.text()
+
+    def test_cross_groupe_equivalence_vers_lignee(self, qapp):
+        """Cas réel 2026-10-08 : un groupe d'équivalence coché rejoint la lignée cochée."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        lig = z.add_group(KIND_SUCCESSION)
+        lig.courante_input.setText("B3"); _move(panel, "B1", lig)
+        lig.cross_check.setChecked(True)
+        grp = z.add_group(KIND_EQUIVALENCE)
+        _move(panel, "S1", grp); _move(panel, "S2", grp)
+        grp.cross_check.setChecked(True)
+        panel.recompute()
+        assert "équiv. croisée : B3, S1" in panel.recap.text()
+        assert z.planned_counts()['equivalences'] == 2          # S1≡S2 + B3≡S1
+        assert z.warnings() == []
+
+    def test_toutes_lignees_ne_coche_pas_les_groupes(self, qapp):
+        """« Toutes les lignées équivalentes » reste limitée aux lignées."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        grp = z.add_group(KIND_EQUIVALENCE)
+        z.all_equiv_check.setChecked(True)
+        assert not grp.cross_check.isChecked()
+
+    def test_warning_groupe_coche_seul(self, qapp):
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        grp = z.add_group(KIND_EQUIVALENCE)
+        _move(panel, "S1", grp); _move(panel, "S2", grp)
+        grp.cross_check.setChecked(True)
+        z._update_recap()
+        assert "aucune équivalence croisée" in z.warnings_label.text()
 
     def test_checkbox_toutes_lignees_equivalentes(self, qapp):
         """La checkbox coche les lignées existantes ET pré-coche les futures."""

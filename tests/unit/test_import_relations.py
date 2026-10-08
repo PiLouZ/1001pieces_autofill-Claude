@@ -172,3 +172,51 @@ class TestCountPlanned:
         planned = count_planned_relations(groups, [])
         assert planned['successions'] == 1        # B1 → B2 (B2 == courante ignorée)
         assert planned['equivalences'] == 1       # E1 ≡ E2 (doublon E2 dédupliqué)
+
+
+class TestGroupeEquivalenceRattacheALignee:
+    """Cas réel du 2026-10-08 : lignée C00273284 (3 anciennes) + groupe de 2 réfs
+    interchangeables. Avant : le groupe restait isolé (aucune case pour le relier).
+    Désormais : case cochée sur la lignée ET sur le groupe → ancre du groupe ≡ courante."""
+
+    LIGNEE = Group(KIND_SUCCESSION, courante="C00273284",
+                   members=["482000022012", "C00256552", "C00256559"], cross_equivalent=True)
+    GROUPE = Group(KIND_EQUIVALENCE, members=["758973779", "278449"], cross_equivalent=True)
+
+    def test_ancre(self):
+        from src.services.import_relations import cross_anchor
+        assert cross_anchor(self.LIGNEE) == "C00273284"
+        assert cross_anchor(self.GROUPE) == "758973779"                       # 1er membre
+        assert cross_anchor(Group(KIND_EQUIVALENCE, courante="R", members=["A"])) == "R"
+        assert cross_anchor(Group(KIND_SUCCESSION, members=["A"])) is None    # lignée sans courante
+        assert cross_anchor(Group(KIND_EQUIVALENCE)) is None
+
+    def test_derive(self):
+        d = derive([self.LIGNEE, self.GROUPE], [], set(), set())
+        assert d.cross_courantes == ["C00273284", "758973779"]
+        assert not any("au moins deux" in m for _, m in d.warnings)
+
+    def test_apply_et_miroir(self):
+        from src.services.import_relations import count_planned_relations
+        groups = [self.LIGNEE, self.GROUPE]
+        planned = count_planned_relations(groups, [])
+        applied = apply_relations(groups, [], db := FakeDB())
+        assert ("758973779", "278449") in db.equivalences
+        assert ("C00273284", "758973779") in db.equivalences
+        assert planned['equivalences'] == applied['equivalences'] == 2
+        assert planned['successions'] == applied['successions'] == 3
+
+    def test_groupe_non_coche_reste_isole(self):
+        """Non-régression : sans la case sur le groupe, comportement d'avant."""
+        groupe = Group(KIND_EQUIVALENCE, members=["758973779", "278449"])
+        apply_relations([self.LIGNEE, groupe], [], db := FakeDB())
+        assert db.equivalences == [("758973779", "278449")]
+
+    def test_base_reelle_propage_aux_anciennes(self, test_db_manager):
+        """Bout en bout : les 6 réfs finissent dans UN groupe (les anciennes y entrent
+        par _propagate_predecessors_to_group), donc chacune voit les 5 autres."""
+        counts = apply_relations([self.LIGNEE, self.GROUPE], [], test_db_manager)
+        assert counts['errors'] == 0
+        six = {"C00273284", "482000022012", "C00256552", "C00256559", "758973779", "278449"}
+        for ref in six:
+            assert set(test_db_manager.get_equivalents(ref)) == six - {ref}
