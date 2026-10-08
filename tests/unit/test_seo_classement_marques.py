@@ -534,3 +534,57 @@ def test_service_choisit_les_equivalentes_hors_chaine_et_compte_leurs_modeles(db
     assert info['equivalentes'] == ["EQ_GRANDE"]          # 1 + 1, la plus compatible
     assert info['n_modeles'] == 3 + 1 + 2 + 40 + 5         # équivalentes comprises
     assert "réf. équivalente EQ_GRANDE" in QApplication.clipboard().text()
+
+
+# ── Marques et type complétés par les équivalentes (3.77.0) ──
+# Décision client (2026-10-08) : citer les marques des réfs équivalentes, EN
+# COMPLÉMENT. Essai écarté : fusionner les modèles évinçait les marques de la
+# fiche (réf. Bosch ne citant plus que De Dietrich) et changeait le type.
+
+def _donnees_completees(db, ref):
+    service = SEOService(_Fenetre(db))
+    donnees = service._get_current_search_data_for_reference(ref)
+    service._completer_avec_equivalentes(donnees)
+    return donnees
+
+
+def test_marques_des_equivalentes_en_complement(db):
+    db.piece("BOSCH_REF"); db.modeles("BOSCH_REF", "Plaque", "Bosch", 5)
+    db.piece("EQ"); db.modeles("EQ", "Plaque", "De Dietrich", 500)   # bien plus de modèles
+    db.groupe(1, "BOSCH_REF", "EQ")
+    d = _donnees_completees(db, "BOSCH_REF")
+    assert d['fabricants'] == ["Bosch", "De Dietrich"]   # la marque propre reste en tête
+    assert d['type_appareil'] == "Plaque"
+
+
+def test_type_propre_jamais_remplace(db):
+    db.piece("R"); db.modeles("R", "Four", "Bosch", 3)
+    db.piece("EQ"); db.modeles("EQ", "Four vapeur", "Brandt", 300)
+    db.groupe(1, "R", "EQ")
+    assert _donnees_completees(db, "R")['type_appareil'] == "Four"
+
+
+def test_fiche_sans_appareil_prend_type_et_marques_des_equivalentes(db):
+    """Cas réel : 40 fiches « appareil électroménager multi-marques » (filtres à
+    charbon 02859394 → « hotte Cooke & Lewis, Cata et GoodHome »)."""
+    db.piece("NUE", "Filtres à charbon")
+    db.piece("EQ"); db.modeles("EQ", "Hotte", "Cata", 4); db.modeles("EQ", "Hotte", "GoodHome", 2)
+    db.groupe(1, "NUE", "EQ")
+    d = _donnees_completees(db, "NUE")
+    assert d['fabricants'] == ["Cata", "GoodHome"]
+    assert d['type_appareil'] == "Hotte"
+
+
+def test_sans_groupe_rien_ne_change(db):
+    db.piece("SEULE"); db.modeles("SEULE", "Four", "Bosch", 3)
+    assert _donnees_completees(db, "SEULE")['fabricants'] == ["Bosch"]
+
+
+def test_anciennes_versions_d_une_equivalente_comptees(db):
+    """Le groupe est pris en entier : une ancienne version de l'équivalente apporte
+    aussi ses marques (elle équipe les mêmes appareils)."""
+    db.piece("R"); db.modeles("R", "Four", "Bosch", 3)
+    db.piece("EQ"); db.piece("EQ_OLD"); db.remplace("EQ_OLD", "EQ")
+    db.modeles("EQ_OLD", "Four", "Sauter", 2)
+    db.groupe(1, "R", "EQ", "EQ_OLD")
+    assert _donnees_completees(db, "R")['fabricants'] == ["Bosch", "Sauter"]

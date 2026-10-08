@@ -30,7 +30,10 @@ class SEOService:
     - Interface utilisateur pour fonctionnalités SEO
     - Validation et optimisation du contenu généré
     """
-    
+
+    # Type d'appareil d'une fiche sans aucun appareil associé (cf. _type_majoritaire)
+    TYPE_PAR_DEFAUT = "appareil électroménager"
+
     def __init__(self, main_window):
         self.main_window = main_window
         self.seo_generator = SEOGenerator()
@@ -72,6 +75,7 @@ class SEOService:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
         if self._libelle_manquant(search_data, "title"):
             return
+        self._completer_avec_equivalentes(search_data)
 
         result = self.seo_generator.generate_meta_title(
             reference=search_data['reference'],
@@ -144,6 +148,7 @@ class SEOService:
             search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
         if self._libelle_manquant(search_data, "description"):
             return
+        self._completer_avec_equivalentes(search_data)
 
         # Compter les modèles compatibles (ref courante + prédécesseurs + groupe
         # d'équivalence : une équivalente équipe les mêmes besoins, décision client
@@ -604,6 +609,45 @@ class SEOService:
                 pass
         return all_refs
 
+    def _completer_avec_equivalentes(self, search_data: Dict[str, Any]) -> None:
+        """
+        Compléter (en place) les marques et le type de la fiche avec ceux de ses réfs
+        équivalentes (décision client 2026-10-08).
+
+        EN COMPLÉMENT seulement :
+        - marques : celles de la fiche restent en tête, dans leur ordre ; celles des
+          équivalentes suivent. Le générateur garde les MAX_MARQUES premières, donc
+          une fiche qui a déjà 3 marques propres ne change pas ;
+        - type : repris des équivalentes uniquement si la fiche n'en a pas (défaut
+          « appareil électroménager », faute d'appareil associé en propre).
+        Fusionner les modèles évinçait les marques de la fiche (00154686, réf. Bosch,
+        ne citait plus que De Dietrich) et changeait le type (« four » → « four
+        vapeur ») : essai écarté.
+        """
+        fabricants = list(search_data.get('fabricants') or [])
+        famille = list(search_data.get('refs_agregees') or [search_data['reference']])
+        db = self.main_window.db_manager
+        equivalentes = []
+        for ref in famille:
+            try:
+                for autre in db.get_equivalents(ref):
+                    if autre not in famille and autre not in equivalentes:
+                        equivalentes.append(autre)
+            except Exception:
+                pass
+        if not equivalentes:
+            return
+        try:
+            poids_types, poids = self._compter_appareils(equivalentes)
+        except Exception as e:
+            app_logger.warning(f"SEO: marques des équivalentes indisponibles pour {equivalentes}: {e}")
+            return
+        propres = [] if fabricants == ["multi-marques"] else fabricants
+        ajout = [m for m in self._par_poids(poids) if m not in propres]
+        search_data['fabricants'] = (propres + ajout) or fabricants
+        if search_data.get('type_appareil') == self.TYPE_PAR_DEFAUT and poids_types:
+            search_data['type_appareil'] = self._type_majoritaire(poids_types)
+
     def _compter_appareils(self, refs: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
         """
         Nombre de modèles compatibles par type d'appareil et par fabricant, toutes
@@ -654,9 +698,9 @@ class SEOService:
 
     @classmethod
     def _type_majoritaire(cls, poids_types: Dict[str, int],
-                          defaut: str = "appareil électroménager") -> str:
+                          defaut: str = None) -> str:
         """Type d'appareil qui couvre le plus de modèles, ou `defaut` si aucun."""
-        return cls._par_poids(poids_types)[0] if poids_types else defaut
+        return cls._par_poids(poids_types)[0] if poids_types else (defaut or cls.TYPE_PAR_DEFAUT)
 
     @classmethod
     def _classer_fabricants(cls, poids_fabricants: Dict[str, int]) -> List[str]:

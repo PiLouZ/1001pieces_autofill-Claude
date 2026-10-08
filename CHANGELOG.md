@@ -35,6 +35,20 @@ n'affiche plus que `278449, 758973779`, quelle que soit la réf de la chaîne ta
   repli « une seule réf liée ». Sinon, 34 fiches sur 329 perdaient leur équivalente.
 - Le title ne change pas (aucune réf liée, décision produit).
 
+**3. Marques et type complétés par les équivalentes.** Ils sont pris **en
+complément** de ceux de la fiche, dans le title comme dans la description :
+- marques : celles de la fiche restent en tête, dans leur ordre, et celles des
+  équivalentes suivent (3 au plus au total, inchangé) ;
+- type : repris des équivalentes uniquement si la fiche n'en a pas.
+- Effet : **40 fiches** qui sortaient « pour appareil électroménager multi-marques »
+  ont un vrai type et de vraies marques (`02859394` → « pour hotte Cooke & Lewis,
+  Cata et GoodHome »). Les fiches qui avaient moins de 3 marques en gagnent.
+- Essai écarté : fusionner les modèles faisait passer les marques des équivalentes
+  devant celles de la fiche. `00154686` (réf. Bosch) ne citait plus que De Dietrich,
+  et `00416672` passait de « four » à « four vapeur ».
+- Vérifié sur les 350 fiches en groupe : 0 marque propre perdue ou déplacée, 0 type
+  propre modifié.
+
 Mesures sur la base réelle :
 - 329 fiches avec équivalentes : toutes dans la largeur, aucune raccourcie, toutes
   avec au moins une marque, réfs citées entières ; 190 citent 1 équivalente, 139 en
@@ -42,7 +56,7 @@ Mesures sur la base réelle :
 - 859 fiches sans équivalente (toutes celles qui ont des anciennes réfs, plus 300 au
   hasard) : title et description **identiques au caractère près** à `main`.
 
-21 tests ajoutés. Le test du repli a été vérifié par mutation : il échoue sans le
+26 tests ajoutés. Le test du repli a été vérifié par mutation : il échoue sans le
 correctif.
 
 ---
