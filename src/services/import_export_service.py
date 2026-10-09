@@ -224,7 +224,7 @@ class ImportExportService(BaseService):
         text, ok = QInputDialog.getText(
             self.parent_window,
             "Export avec référence",
-            "Entrez la référence ou terme de recherche:",
+            "Entrez la référence ou terme de recherche :",
             QLineEdit.Normal,
             ""
         )
@@ -259,7 +259,7 @@ class ImportExportService(BaseService):
         format_choice, ok = QInputDialog.getItem(
             self.parent_window,
             "Format d'export",
-            "Choisissez le format d'export:",
+            "Choisissez le format d'export :",
             formats,
             0,
             False

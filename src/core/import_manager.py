@@ -20,6 +20,7 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QSizePolicy, QSize, QSplitter, pyqtSignal)
 
 from PyQt5.QtWidgets import QLayout
+from ..ui.style_manager import StyleManager
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
 
@@ -495,7 +496,7 @@ class ImportDialog(QDialog):
         third_col_layout.setContentsMargins(10, 5, 10, 5)
         third_col_layout.setSpacing(3)
 
-        self.third_col_label = QLabel("Destination 3ème colonne:")
+        self.third_col_label = QLabel("Destination de la 3ᵉ colonne :")
         self.third_col_label.setStyleSheet("font-weight: bold;")
         third_col_layout.addWidget(self.third_col_label)
         
@@ -545,7 +546,7 @@ class ImportDialog(QDialog):
             # Ligne 1 : Référence (largeur fixe) + icône info
             row_ref = QHBoxLayout()
             row_ref.setSpacing(6)
-            ref_lbl = QLabel("Référence:")
+            ref_lbl = QLabel("Référence :")
             ref_lbl.setStyleSheet("font-weight: bold;")
             ref_lbl.setFixedWidth(90)
             row_ref.addWidget(ref_lbl)
@@ -584,7 +585,7 @@ class ImportDialog(QDialog):
             # Ligne 2 : Description + case « Appliquer libellé »
             row_desc = QHBoxLayout()
             row_desc.setSpacing(8)
-            desc_lbl2 = QLabel("Description:")
+            desc_lbl2 = QLabel("Description :")
             desc_lbl2.setStyleSheet("font-weight: bold;")
             desc_lbl2.setFixedWidth(90)
             row_desc.addWidget(desc_lbl2)
@@ -618,7 +619,7 @@ class ImportDialog(QDialog):
 
             # Ligne : Réf.
             ref_row = QHBoxLayout()
-            ref_row_lbl = QLabel("Réf.:")
+            ref_row_lbl = QLabel("Réf. :")
             ref_row_lbl.setStyleSheet("font-weight: bold;")
             ref_row_lbl.setFixedWidth(70)
             ref_row.addWidget(ref_row_lbl)
@@ -629,7 +630,7 @@ class ImportDialog(QDialog):
                 ref_input_edit.setStyleSheet("padding: 5px; border: 2px solid #0066cc; border-radius: 4px;")
                 ref_row.addWidget(ref_input_edit)
             else:
-                ref_display = QLabel(f"→ Réf: {file.suggested_reference or '—'}")
+                ref_display = QLabel(f"→ Réf. : {file.suggested_reference or '—'}")
                 ref_display.setStyleSheet(
                     "color: #0066cc; background-color: #f0f8ff; padding: 4px 8px;"
                     " border: 1px solid #ddd; border-radius: 4px; font-weight: bold;"
@@ -640,7 +641,7 @@ class ImportDialog(QDialog):
 
             # Ligne : Libellé
             desc_row = QHBoxLayout()
-            desc_row_lbl = QLabel("Libellé:")
+            desc_row_lbl = QLabel("Libellé :")
             desc_row_lbl.setStyleSheet("font-weight: bold;")
             desc_row_lbl.setFixedWidth(70)
             desc_row.addWidget(desc_row_lbl)
@@ -893,10 +894,7 @@ class ImportDialog(QDialog):
         if cancel_icon:
             cancel_btn.setIcon(cancel_icon)
             cancel_btn.setIconSize(QSize(11, 11))
-        cancel_btn.setStyleSheet(
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
+        cancel_btn.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
@@ -904,13 +902,8 @@ class ImportDialog(QDialog):
         self.ok_btn = QPushButton("Importer")
         if import_icon:
             self.ok_btn.setIcon(import_icon)
-            self.ok_btn.setIconSize(QSize(11, 11))
-        self.ok_btn.setStyleSheet(
-            "QPushButton { background-color: #198754; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #157347; }"
-            "QPushButton:disabled { background-color: #94d3a2; color: #e9f7ec; }"
-        )
+            self.ok_btn.setIconSize(QSize(12, 12))
+        self.ok_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         self.ok_btn.setDefault(True)
         self.ok_btn.clicked.connect(self._validate_and_accept)
         buttons_layout.addWidget(self.ok_btn)
@@ -952,7 +945,7 @@ class ImportDialog(QDialog):
                 )
                 row1.addWidget(ref_input_edit)
             else:
-                ref_display = QLabel(f"→ Réf: {file.suggested_reference}")
+                ref_display = QLabel(f"→ Réf. : {file.suggested_reference}")
                 ref_display.setStyleSheet(
                     "color: #0066cc; background-color: #f0f8ff; padding: 3px 8px;"
                     " border: 1px solid #ddd; border-radius: 4px; font-weight: bold; font-size: 11px;"
@@ -973,7 +966,7 @@ class ImportDialog(QDialog):
             row2 = QHBoxLayout()
             row2.setSpacing(8)
 
-            desc_lbl = QLabel("Libellé:")
+            desc_lbl = QLabel("Libellé :")
             desc_lbl.setStyleSheet(
                 "font-size: 11px; color: #495057; background: transparent; border: none;"
             )
@@ -1210,11 +1203,11 @@ class ImportDialog(QDialog):
             if ref_display:
                 if auto_references_enabled:
                     # Affichage normal avec référence
-                    ref_display.setText(f"→ Réf: {file.suggested_reference}")
+                    ref_display.setText(f"→ Réf. : {file.suggested_reference}")
                     ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
                 else:
                     # Affichage grisé indiquant que la référence ne sera pas créée
-                    ref_display.setText("→ Réf: (aucune référence de pièce)")
+                    ref_display.setText("→ Réf. : (aucune référence de pièce)")
                     ref_display.setStyleSheet("color: #999; background-color: #f5f5f5; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-style: italic;")
     
     def _validate_and_accept(self):
@@ -1643,7 +1636,7 @@ class ImportDialog(QDialog):
                 for f in self._file_groups.get(3, [])
             )
             self.third_col_label.setText(
-                "Destination Description:" if has_pdf_3col else "Destination 3ème colonne:"
+                "Destination de la description :" if has_pdf_3col else "Destination de la 3ᵉ colonne :"
             )
             self.third_col_widget.setVisible(True)
         else:
@@ -1747,7 +1740,7 @@ class ImportDialog(QDialog):
             if hasattr(self, 'ok_btn'):
                 self.ok_btn.setEnabled(False)
         else:
-            self.format_info_label.setText("Format reconnu:")
+            self.format_info_label.setText("Format reconnu :")
             self.format_desc_label.setText(format_desc)
             self.format_warning_widget.setVisible(False)
             if hasattr(self, 'ok_btn'):
@@ -1781,9 +1774,9 @@ class ImportDialog(QDialog):
         if detected_columns == 3:
             self.third_col_widget.show()
             if FileType.PDF in [f.type for f in self.import_config.files]:
-                self.third_col_label.setText("Destination Description:")
+                self.third_col_label.setText("Destination de la description :")
             else:
-                self.third_col_label.setText("Destination 3ème colonne:")
+                self.third_col_label.setText("Destination de la 3ᵉ colonne :")
         else:
             self.third_col_widget.hide()
         
@@ -1944,16 +1937,13 @@ class ImportPreviewDialog(QDialog):
         btn_bar.addStretch()
 
         cancel_btn = QPushButton("Annuler")
+        cancel_btn.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         cancel_btn.clicked.connect(self._on_cancel)
         btn_bar.addWidget(cancel_btn)
 
         confirm_btn = QPushButton("Confirmer l'import")
         confirm_btn.setDefault(True)
-        confirm_btn.setStyleSheet(
-            "QPushButton { background: #198754; color: white; font-weight: bold;"
-            " border-radius: 4px; padding: 4px 14px; }"
-            "QPushButton:hover { background: #157347; }"
-        )
+        confirm_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         confirm_btn.clicked.connect(self._on_confirm)
         btn_bar.addWidget(confirm_btn)
 

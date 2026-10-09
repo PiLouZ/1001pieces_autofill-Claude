@@ -12,7 +12,8 @@ from ..ui.qt_imports import (
     QSize
 )
 from ..ui.qt_imports import Qt, QObject, pyqtSignal
-from ..ui.qt_imports import QFont, QKeyEvent
+from ..ui.qt_imports import QFont, QKeyEvent, QPainter, QColor
+from ..ui.style_manager import StyleManager
 
 from ..core.logger import app_logger
 from .duplicates_analysis_service import clean_display_text
@@ -20,6 +21,18 @@ from .base_service import BaseService, safe_operation, service_operation
 
 class KeyboardTreeWidget(QTreeWidget):
     """QTreeWidget personnalisé avec gestion clavier pour sélection par barre espace"""
+
+    # Message centré quand l'arbre est vide, posé APRÈS l'analyse (populate/load) :
+    # vide pendant l'analyse, pour ne pas annoncer « aucun doublon » trop tôt.
+    placeholder_text = ""
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.topLevelItemCount() == 0 and self.placeholder_text:
+            painter = QPainter(self.viewport())
+            painter.setPen(QColor(150, 150, 150))
+            painter.drawText(self.viewport().rect(), Qt.AlignCenter, self.placeholder_text)
+            painter.end()
 
     def keyPressEvent(self, event: QKeyEvent):
         """Gérer les événements clavier"""
@@ -186,12 +199,11 @@ class DuplicateDevicesWidget(QWidget):
             "Marquer le(s) groupe(s) sélectionné(s) comme faux doublons "
             "(Ctrl/Maj-clic pour en sélectionner plusieurs)"
         )
-        self.mark_distinct_btn.setIcon(qta.icon('fa5s.check-double', color='white'))
+        self.mark_distinct_btn.setIcon(qta.icon('fa5s.check-double', color='#495057'))
         self.mark_distinct_btn.setIconSize(QSize(11, 11))
-        self.mark_distinct_btn.setStyleSheet(
-            "QPushButton { background-color: #198754; color: white; font-weight: bold;"
-            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
-        )
+        # Action secondaire : style neutre (un seul bouton plein par fenêtre,
+        # « Appliquer le nettoyage »)
+        self.mark_distinct_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.mark_distinct_btn.setEnabled(False)
 
         header_layout.addWidget(self.select_all_btn)
@@ -206,8 +218,8 @@ class DuplicateDevicesWidget(QWidget):
         # Arbre des appareils avec gestion clavier
         self.devices_tree = KeyboardTreeWidget()
         self.devices_tree.setHeaderLabels([
-            "Maître (à conserver)", "ID", "Référence Modèle", "Type", "Fabricant",
-            "Référence Commerciale", "Autre Référence", "Nb Pièces"
+            "Maître (à conserver)", "ID", "Référence modèle", "Type", "Fabricant",
+            "Référence commerciale", "Autre référence", "Nb pièces"
         ])
         self.devices_tree.setRootIsDecorated(True)
         # Multi-sélection de lignes : permet de marquer plusieurs groupes "distincts"
@@ -232,6 +244,7 @@ class DuplicateDevicesWidget(QWidget):
         """Remplir la liste des appareils en doublon"""
         self.duplicate_groups = duplicate_devices
         self.devices_tree.clear()
+        self.devices_tree.placeholder_text = "Aucun doublon détecté"
         
         for group in duplicate_devices:
             ref_modele = group['ref_modele']
@@ -787,7 +800,7 @@ class DistinctReferencesWidget(QWidget):
         # Table des références distinctes
         self.references_tree = KeyboardTreeWidget()
         self.references_tree.setHeaderLabels([
-            "Sélection", "Référence Modèle", "Nb Appareils", "Date Marquage", "Action"
+            "Sélection", "Référence modèle", "Nb appareils", "Date de marquage", "Action"
         ])
         self.references_tree.setRootIsDecorated(False)
 
@@ -826,6 +839,7 @@ class DistinctReferencesWidget(QWidget):
 
         # Peupler l'arbre
         self.references_tree.clear()
+        self.references_tree.placeholder_text = "Aucune référence marquée comme distincte"
 
         for row in self.distinct_references:
             ref_modele = row[0]
@@ -1064,6 +1078,7 @@ class ActionHistoryWidget(QWidget):
 
         # Peupler l'arbre
         self.history_tree.clear()
+        self.history_tree.placeholder_text = "Aucune opération de nettoyage enregistrée"
 
         for row in self.history_actions:
             timestamp = row[0]

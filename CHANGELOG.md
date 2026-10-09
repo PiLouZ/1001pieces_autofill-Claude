@@ -108,6 +108,20 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   chevauchait l'aperçu). Hauteur de l'aperçu calculée sur la police effective
   (la dernière ligne était coupée).
 
+**Fenêtres secondaires — harmonisation**
+- Nettoyage des doublons : « Aucun doublon détecté » centré quand l'analyse ne
+  trouve rien (idem références distinctes et historique), posé après l'analyse
+  seulement ; en-têtes à la française ; un seul bouton plein (« Appliquer le
+  nettoyage ») au lieu de quatre couleurs (Annuler, Réanalyser, Prévisualiser et
+  « Marquer comme distinct(s) » en style neutre).
+- Boutons d'action finale centralisés : `StyleManager.PRIMARY_ACTION_BUTTON` /
+  `SECONDARY_ACTION_BUTTON` (Importer, Confirmer l'import, Appliquer le
+  nettoyage + leur Annuler), 12 px au lieu de 11 px.
+- Cases à cocher : indicateur 15 px (au lieu de 18 px, bordure 2 px),
+  proportionné aux libellés.
+- Deux-points à la française dans une vingtaine de libellés et invites
+  (« Réf. : », « Recherche par pièce : », « Destination de la description : »…).
+
 **Guide d'utilisation réécrit** (`docs/guide_utilisation.html`)
 - Menus actuels (Affichage / Données / Configuration au lieu de « Gestion »,
   « Action ») ; nouvelles sections : fenêtre principale, édition, relations entre

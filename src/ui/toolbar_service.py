@@ -301,7 +301,7 @@ class ToolbarService:
                 
                 # Remplacement par défaut
                 default_layout = QHBoxLayout()
-                default_layout.addWidget(QLabel("Remplacement par défaut:"))
+                default_layout.addWidget(QLabel("Remplacement par défaut :"))
                 
                 self.replacement_combo = QComboBox()
                 self.replacement_combo.addItems([

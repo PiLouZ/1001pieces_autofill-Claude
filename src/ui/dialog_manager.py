@@ -48,7 +48,7 @@ class SimpleDialogManager:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Gestion des Catégories", 
-            "Entrez les catégories (une par ligne):",
+            "Entrez les catégories (une par ligne) :",
             '\n'.join(current_categories)
         )
         
@@ -62,7 +62,7 @@ class SimpleDialogManager:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Notes et Commentaires",
-            "Entrez vos notes:",
+            "Entrez vos notes :",
             current_notes
         )
         
@@ -188,7 +188,7 @@ class ImportOptionsDialog(QDialog):
         """Créer les options d'import"""
         # Référence par défaut pour les pièces
         ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence par défaut:"))
+        ref_layout.addWidget(QLabel("Référence par défaut :"))
         self.ref_input = QLineEdit(self.default_ref_piece or "")
         self.ref_input.setPlaceholderText("Laisser vide pour détecter automatiquement")
         ref_layout.addWidget(self.ref_input)
@@ -204,7 +204,7 @@ class ImportOptionsDialog(QDialog):
     
     def _create_data_preview(self, layout):
         """Créer l'aperçu des données"""
-        preview_label = QLabel("Aperçu des données:")
+        preview_label = QLabel("Aperçu des données :")
         preview_label.setFont(QFont("", 9, QFont.Bold))
         layout.addWidget(preview_label)
         
@@ -311,7 +311,7 @@ class ReferenceSelectionDialog(QDialog):
         
         # Champ de recherche
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Recherche:"))
+        search_layout.addWidget(QLabel("Recherche :"))
         self.search_input = QLineEdit()
         self.search_input.textChanged.connect(self._filter_references)
         self.search_input.setPlaceholderText("Tapez pour filtrer les références...")

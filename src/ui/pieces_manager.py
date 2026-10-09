@@ -2431,7 +2431,7 @@ class PieceEditDialog(QDialog):
 
         # Champ référence
         ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence:"))
+        ref_layout.addWidget(QLabel("Référence :"))
         self.ref_input = QLineEdit(current_ref)
         self.ref_input.setPlaceholderText("Référence de la pièce")
         ref_layout.addWidget(self.ref_input)
@@ -2439,7 +2439,7 @@ class PieceEditDialog(QDialog):
 
         # Champ libellé
         desc_layout = QHBoxLayout()
-        desc_layout.addWidget(QLabel("Libellé:"))
+        desc_layout.addWidget(QLabel("Libellé :"))
         self.desc_input = QLineEdit(current_desc)
         self.desc_input.setPlaceholderText("Libellé de la pièce (optionnel)")
         desc_layout.addWidget(self.desc_input)

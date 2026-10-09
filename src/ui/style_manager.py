@@ -153,6 +153,31 @@ class StyleManager:
         "QPushButton:pressed { background-color: #f1aeb5; border-color: #ea868f; }"
     )
 
+    # Boutons de l'action FINALE d'une fenêtre (Importer, Confirmer l'import,
+    # Appliquer le nettoyage) et de son « Annuler » : même hauteur, texte 12 px.
+    # Avant : 11 px et padding 3 px — l'action principale de la fenêtre d'import
+    # était le plus petit bouton de l'écran.
+    PRIMARY_ACTION_BUTTON = (
+        "QPushButton { background-color: #198754; color: white; border: 1px solid #198754;"
+        " padding: 5px 16px; border-radius: 4px; font-size: 12px; font-weight: bold; }"
+        "QPushButton:hover { background-color: #157347; border-color: #157347; }"
+        "QPushButton:disabled { background-color: #f1f3f5; color: #adb5bd; border-color: #e9ecef; }"
+    )
+    SECONDARY_ACTION_BUTTON = (
+        "QPushButton { background: white; color: #343a40; border: 1px solid #ced4da;"
+        " padding: 5px 14px; border-radius: 4px; font-size: 12px; font-weight: normal; }"
+        "QPushButton:hover { background: #f1f3f5; border-color: #adb5bd; }"
+    )
+
+    # Bouton secondaire compact : contour discret, sans fond de couleur. À côté
+    # d'UN seul bouton principal plein par fenêtre.
+    SECONDARY_COMPACT_BUTTON = (
+        "QPushButton { background: white; color: #343a40; border: 1px solid #ced4da;"
+        " padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: normal; }"
+        "QPushButton:hover { background: #f1f3f5; border-color: #adb5bd; }"
+        "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; }"
+    )
+
     # Petits boutons-icônes plats (en-tête du panneau des pièces) : sans cadre,
     # fond discret au survol — même famille que le bouton d'ouverture de l'historique.
     PANEL_ICON_BUTTON = (
@@ -611,10 +636,12 @@ class StyleManager:
             color: #495057;
         }
         
+        /* 15 px (au lieu de 18 px, bordure 2 px) : proportionné aux libellés de
+           11 à 13 px, à côté desquels les cases paraissaient énormes. */
         QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border: 2px solid #ced4da;
+            width: 15px;
+            height: 15px;
+            border: 1px solid #adb5bd;
             border-radius: 3px;
             background-color: white;
         }

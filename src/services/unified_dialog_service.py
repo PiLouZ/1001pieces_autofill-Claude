@@ -77,7 +77,7 @@ class SimpleDialogs:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Gestion des Catégories",
-            "Entrez les catégories (une par ligne):",
+            "Entrez les catégories (une par ligne) :",
             '\n'.join(current_categories) if current_categories else ""
         )
 
@@ -103,7 +103,7 @@ class SimpleDialogs:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Notes et Commentaires",
-            "Entrez vos notes:",
+            "Entrez vos notes :",
             current_notes
         )
 
@@ -194,7 +194,7 @@ class ComplexDialogs:
         layout.addLayout(mode_layout)
 
         # Options avancées
-        options_label = QLabel("Options:")
+        options_label = QLabel("Options :")
         options_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         layout.addWidget(options_label)
 
