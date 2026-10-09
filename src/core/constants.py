@@ -236,18 +236,3 @@ class Paths:
     def get_database_path() -> Path:
         """Obtenir le chemin de la base de données"""
         return Paths.get_data_dir() / DatabaseConfig.DB_NAME
-
-class AppInfo:
-    """Informations sur l'application"""
-    NAME = "1001pieces - Gestionnaire d'appareils"
-    # Pas de VERSION ici : la seule source est Config.VERSION (src/core/config.py).
-    # Celle-ci était figée à 3.52.0 depuis juin 2026 et lue nulle part (retirée en 3.77.2).
-    DESCRIPTION = "Gestionnaire de pièces & d'appareils électroménagers"
-    AUTHOR = "1001pieces.com"
-    URL = "https://1001pieces.com"
-    
-    # Configuration de logging
-    LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-# Fonction utilitaire pour obtenir toutes les constantes d'une classe

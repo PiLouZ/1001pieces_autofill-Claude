@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.78.3] - 2026-10-09 (branche `chore/eradication-theauditor`)
+
+### Ménage : TheAuditor, AutoSaveManager, AppInfo
+
+- **TheAuditor retiré complètement** (outil d'audit plus lancé depuis juin, résultats
+  surtout faux positifs). Sa copie `src/theauditor/` et son dossier `.pf/` (84 Mo)
+  survivaient sur le disque, masqués par `.gitignore`, et partaient dans chaque
+  export de l'application. Entrées `.gitignore` et exclusion de test retirées.
+- **Ancien `AutoSaveManager` supprimé** (`src/services/auto_save_manager.py`) avec
+  son drapeau `USE_NEW_AUTO_SAVE_MANAGER`, désactivé pour de bon : 5 branches mortes
+  dans `main_refactored.py` et une délégation morte dans
+  `DatabaseOperationsService._safe_manual_save`. Effet de bord : l'avertissement
+  « Service 'auto_save_manager' non trouvé » n'est plus journalisé au démarrage.
+  L'ancien système par minuterie (`ENABLE_EVENT_DRIVEN_SAVE`) est conservé.
+- **Classe `AppInfo` supprimée** (`constants.py`) : lue nulle part.
+- Le test de la délégation morte est remplacé par un test du vrai chemin
+  (cellules modifiées → `save_cells_batch`).
+- Synthèse PDF en double retirée de la racine (version de `docs/` conservée).
+
+---
+
 ## [3.78.2] - 2026-10-09 (branche `fix/alignement-bouton-raz-filtres`)
 
 ### Bouton « effacer les filtres » centré au-dessus de la colonne Pièces
