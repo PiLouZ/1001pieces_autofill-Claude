@@ -22,6 +22,7 @@ from ..utils.error_handler import (
 from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from .pieces_list_service import PieceRelationsPopup
+from .style_manager import StyleManager
 
 def _truncate_refs(refs: list, max_inline: int = 3) -> tuple:
     """
@@ -291,23 +292,7 @@ class TableController:
         raz_btn = QPushButton("×")
         raz_btn.setFixedSize(28, _filter_btn_h)
         raz_btn.setToolTip("Réinitialiser tous les filtres")
-        raz_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e53935;
-                color: white;
-                border: 1px solid #c62828;
-                border-radius: 3px;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: #c62828;
-            }
-            QPushButton:pressed {
-                background-color: #b71c1c;
-            }
-        """)
+        raz_btn.setStyleSheet(StyleManager.CLEAR_FILTERS_BUTTON)
         raz_btn.clicked.connect(self._clear_all_column_filters)
         self.raz_btn = raz_btn
         filter_layout.addWidget(raz_btn, 0, Qt.AlignVCenter)
@@ -375,6 +360,11 @@ class TableController:
 
         # Colonne Nb Pièces figée à droite (badge pill, hors scroll horizontal)
         self.table.freeze_right_column(len(Config.DB_HEADERS), PiecesCountDelegate(self.table))
+
+        # Une ligne sur deux légèrement teintée (alternate-background-color du
+        # style global) : aide l'œil à suivre une ligne sur toute la largeur.
+        self.table.setAlternatingRowColors(True)
+        self.set_row_height(UIConfig.ROW_HEIGHTS[UIConfig.DEFAULT_ROW_HEIGHT][1])
         # Réf. Modèle et Réf. Commerciale s'ajustent automatiquement à la largeur du tableau
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(2, QHeaderView.Interactive)
@@ -692,6 +682,23 @@ class TableController:
         if getattr(self, 'filter_trailing_spacer', None) is not None:
             frozen_w = getattr(self.table, '_frozen_col_width', 52) or 52
             self.filter_trailing_spacer.setFixedWidth(frozen_w)
+
+    def set_row_height(self, height: int):
+        """Appliquer une hauteur de ligne au tableau ET à sa colonne figée.
+
+        Les deux vues ont chacune leur en-tête vertical : sans synchronisation,
+        les pastilles « Pièces » se décaleraient des lignes qu'elles décrivent.
+        La hauteur minimale est abaissée d'abord, sinon Qt refuse les valeurs
+        sous le minimum déduit du style (padding de l'en-tête).
+        """
+        views = [self.table]
+        frozen = getattr(self.table, '_frozen_view', None)
+        if frozen is not None:
+            views.append(frozen)
+        for view in views:
+            vh = view.verticalHeader()
+            vh.setMinimumSectionSize(min(height, vh.minimumSectionSize()))
+            vh.setDefaultSectionSize(height)
 
     def set_search_position(self, position: str):
         """Repositionner le conteneur recherche (+ bannières) au-dessus ou sous le tableau.
@@ -1132,13 +1139,13 @@ class TableController:
         # Basé sur les ajustements manuels : 2025-09-01 09:01:21
         default_widths = {
             0: 120,  # Type
-            1: 124,  # Fabricant
+            1: 155,  # Fabricant (124 coupait « Arthur-Martin-Electrolux »)
             2: 150,  # Référence Modèle
-            3: 214,  # Référence Commerciale
+            3: 175,  # Référence Commerciale
             4: 120,  # Autre Référence
             5: 100,  # Catégorie (peut être cachée)
             6: 200,  # Notes (peut être cachée)
-            7: 52,   # Nb Pièces
+            7: 60,   # Nb Pièces (en-tête « Pièces », cf. AppareilsTableModel.headerData)
         }
 
         # Appliquer les largeurs

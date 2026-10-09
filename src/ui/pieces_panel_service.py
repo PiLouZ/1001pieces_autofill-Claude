@@ -40,8 +40,13 @@ class PiecesPanelService:
             return
 
         if len(selected_rows) == 1:
+            # Message visible seulement si l'appareil n'a aucune pièce (liste vide) ;
+            # auparavant le panneau restait blanc, sans explication.
+            self._set_placeholder("Aucune pièce associée à cet appareil")
             self._handle_single_selection(selected_rows)
         else:
+            self._set_placeholder(
+                f"Aucune pièce commune aux {len(selected_rows)} appareils sélectionnés")
             self._handle_multiple_selection(selected_rows)
 
     # ── Sélection simple ───────────────────────────────────────────────────
@@ -112,10 +117,13 @@ class PiecesPanelService:
 
     def _show_placeholder(self) -> None:
         """Afficher un message quand aucun appareil n'est sélectionné."""
-        item = QListWidgetItem("Sélectionnez un appareil pour voir ses pièces")
-        item.setForeground(QColor(150, 150, 150))
-        item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
-        self.main_window.pieces_list.addItem(item)
+        self._set_placeholder("Sélectionnez un appareil pour voir ses pièces")
+
+    def _set_placeholder(self, text: str) -> None:
+        """Message centré de la liste vide (peint par PiecesListWidget, pas un item)."""
+        pieces_list = self.main_window.pieces_list
+        if hasattr(pieces_list, 'set_placeholder_text'):
+            pieces_list.set_placeholder_text(text)
 
     # ── En-tête et titre d'onglet ──────────────────────────────────────────
 

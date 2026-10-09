@@ -99,6 +99,15 @@ class UIConfig:
     COLOR_ERROR = "#dc3545"
     COLOR_INFO = "#17a2b8"
     
+    # Hauteur des lignes du tableau principal (px) — réglable dans Affichage.
+    # Clé QSettings : ui/row_height. « aeree » = ancienne hauteur fixe (30 px).
+    ROW_HEIGHTS = {
+        "compacte": ("Compacte", 22),
+        "normale": ("Normale", 26),
+        "aeree": ("Aérée", 30),
+    }
+    DEFAULT_ROW_HEIGHT = "normale"
+
     # Pagination
     DEFAULT_PAGE_SIZE = 500
     COLOR_PRIMARY = "#007bff"

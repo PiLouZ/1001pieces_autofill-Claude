@@ -217,11 +217,22 @@ def test_setdata_updates_record_in_memory(model_with_records):
 # ── Phase 0 · Test 12 : headerData colonnes ──────────────────────────────────
 
 def test_headerdata_returns_column_names(model):
-    """headerData() doit retourner les noms de colonnes de Config.UI_HEADERS."""
+    """headerData() doit retourner les noms de colonnes de Config.UI_HEADERS,
+    sauf la colonne figée des pièces, affichée « Pièces » (60 px de large)."""
+    pieces_col = len(Config.DB_HEADERS)
     for col, expected_header in enumerate(Config.UI_HEADERS):
+        if col == pieces_col:
+            expected_header = "Pièces"
         result = model.headerData(col, Qt.Horizontal, Qt.DisplayRole)
         assert result == expected_header, \
             f"Col {col} : header attendu '{expected_header}', obtenu '{result}'"
+
+
+def test_headerdata_colonne_pieces_infobulle(model):
+    """Le nom complet de la colonne des pièces reste accessible en infobulle."""
+    pieces_col = len(Config.DB_HEADERS)
+    assert model.headerData(pieces_col, Qt.Horizontal, Qt.ToolTipRole) == "Nombre de pièces associées"
+    assert model.headerData(0, Qt.Horizontal, Qt.ToolTipRole) is None
 
 
 # ── Phase 0 · Test 13 : headerData lignes (1-indexé) ─────────────────────────

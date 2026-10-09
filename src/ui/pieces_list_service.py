@@ -12,7 +12,7 @@ import qtawesome as qta
 from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
                           QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
-                          QTimer, QApplication)
+                          QTimer, QApplication, QPainter, QColor)
 from .popup_positioning import PopupAuCurseurMixin
 from src.core.logger import app_logger
 
@@ -465,6 +465,24 @@ class PiecesListWidget(QListWidget):
         self.setMouseTracking(True)
         # Hauteur de ligne uniforme pour les items avec widget
         self.setUniformItemSizes(False)
+        # Message centré affiché quand la liste est vide (cf. paintEvent)
+        self._placeholder_text = ""
+
+    def set_placeholder_text(self, text: str):
+        """Définir le message affiché, centré et estompé, quand la liste est vide."""
+        self._placeholder_text = text
+        self.viewport().update()
+
+    def paintEvent(self, event):
+        """Peindre le message d'état vide au centre (même principe que le tableau)."""
+        super().paintEvent(event)
+        if self.count() == 0 and self._placeholder_text:
+            painter = QPainter(self.viewport())
+            painter.save()
+            painter.setPen(QColor(150, 150, 150))
+            rect = self.viewport().rect().adjusted(12, 0, -12, 0)
+            painter.drawText(rect, Qt.AlignCenter | Qt.TextWordWrap, self._placeholder_text)
+            painter.restore()
 
     def clear(self):
         """Override : nettoyer les item widgets avant de vider la liste."""

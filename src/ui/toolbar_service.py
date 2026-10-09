@@ -162,6 +162,25 @@ class ToolbarService:
         )
         display_menu.addAction(search_top_action)
 
+        # Hauteur des lignes du tableau — choix exclusif, mémorisé
+        from .qt_imports import QActionGroup
+        from ..core.constants import UIConfig
+        row_height_menu = display_menu.addMenu("Hauteur des lignes")
+        _key = UIConfig.DEFAULT_ROW_HEIGHT
+        if hasattr(self.main_window, 'settings'):
+            _key = self.main_window.settings.value("ui/row_height", UIConfig.DEFAULT_ROW_HEIGHT)
+        row_height_group = QActionGroup(self.main_window)
+        row_height_group.setExclusive(True)
+        for key, (label, height) in UIConfig.ROW_HEIGHTS.items():
+            action = QAction(f"{label} ({height} px)", self.main_window)
+            action.setCheckable(True)
+            action.setChecked(key == _key)
+            action.triggered.connect(
+                lambda checked, k=key: getattr(self.main_window, '_on_row_height_chosen', lambda k: None)(k)
+            )
+            row_height_group.addAction(action)
+            row_height_menu.addAction(action)
+
         display_btn.setMenu(display_menu)
         toolbar.addWidget(display_btn)
 

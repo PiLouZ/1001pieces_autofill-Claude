@@ -366,7 +366,10 @@ class UserInteractionService:
     def _refresh_display(self) -> None:
         """Reconstruire et afficher le HTML de l'historique."""
         if hasattr(self.main_window, 'history_list'):
-            html = self._build_history_html()
+            if self._history_entries:
+                html = self._build_history_html()
+            else:
+                html = self._build_empty_history_html()
             self.main_window.history_list.setHtml(html)
             cursor = self.main_window.history_list.textCursor()
             cursor.movePosition(cursor.Start)
@@ -535,10 +538,14 @@ class UserInteractionService:
         """Vider l'historique des messages"""
         self._history_entries.clear()
         if hasattr(self.main_window, 'history_list'):
-            empty_html = (
-                f'<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
-                f'<p style="color:{Config.Colors.TEXT_MUTED}; font-family: monospace; '
-                f'font-size:12px; margin:4px;">Historique vide</p>'
-                f'</body></html>'
-            )
-            self.main_window.history_list.setHtml(empty_html)
+            self.main_window.history_list.setHtml(self._build_empty_history_html())
+
+    @staticmethod
+    def _build_empty_history_html() -> str:
+        """État vide : message estompé et centré (au démarrage ou après effacement)."""
+        return (
+            f'<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+            f'<p align="center" style="color:{Config.Colors.TEXT_MUTED}; '
+            f'font-size:12px; margin-top:24px;">Aucune opération pour l\'instant</p>'
+            f'</body></html>'
+        )

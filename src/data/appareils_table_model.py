@@ -196,11 +196,19 @@ class AppareillsTableModel(QAbstractTableModel):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
+        # Colonne figée « Nb pièces » : libellé court à l'écran (« Nb pièces » était
+        # tronqué en « pièc » dans ses 60 px), nom complet en infobulle.
+        # Config.UI_HEADERS n'est pas modifié : il sert aussi ailleurs.
+        is_pieces_col = orientation == Qt.Horizontal and section == len(Config.DB_HEADERS)
         if role == Qt.DisplayRole:
             if orientation == Qt.Horizontal:
+                if is_pieces_col:
+                    return "Pièces"
                 return self._headers[section] if section < len(self._headers) else None
             else:
                 return str(section + 1)   # 1-indexé comme l'ancien setVerticalHeaderItem
+        if role == Qt.ToolTipRole and is_pieces_col:
+            return "Nombre de pièces associées"
         return None
 
     # ── API custom ───────────────────────────────────────────────────────────

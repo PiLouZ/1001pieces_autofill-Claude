@@ -22,6 +22,43 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   d'espace entre deux entrées.
 - La fenêtre d'historique persistant reconnaît le type Erreur (filtre, popup de
   détails) et reprend les mêmes teintes.
+- État vide : « Aucune opération pour l'instant », centré, au lieu d'un cadre blanc.
+
+**Barre d'outils**
+- Un seul style plat pour les actions et les menus Affichage / Données /
+  Configuration (texte sans cadre, fond discret au survol, chevron pour les menus).
+  « Nettoyer les doublons » garde son cadre : c'est un indicateur qui passe à
+  l'orange quand des doublons attendent.
+
+**Boutons d'export**
+- Couleurs actives inchangées (HTML blancs, CSV sarcelle, Méta Title orange, Méta
+  Desc jaune). L'état inactif est désormais commun et nettement estompé : les HTML
+  inactifs ressemblaient à leur état actif, CSV et Méta inactifs étaient gris foncé.
+  Règle partagée : `StyleManager.EXPORT_BTN_DISABLED_RULES` (sans bordure, pour que
+  les boutons ne changent pas de taille en s'activant).
+
+**Tableau**
+- Hauteur des lignes réglable : Affichage → Hauteur des lignes (Compacte 22 px,
+  **Normale 26 px** par défaut, Aérée 30 px = ancienne hauteur), mémorisée
+  (`ui/row_height`). La colonne figée « Pièces » suit la même hauteur.
+- Une ligne sur deux teintée (`#f1f4f8`) ; le gris par défaut de Qt était invisible.
+- Colonnes rééquilibrées : Fabricant 124 → 155 px (« Arthur-Martin-Electrolux »
+  n'est plus coupé), Réf. commerciale 214 → 175 px.
+- Colonne des pièces : en-tête « Pièces » (« Nb pièces » était tronqué en « pièc »),
+  nom complet en infobulle ; 52 → 60 px.
+- Bouton « effacer les filtres » gris au repos, rouge seulement au survol : vider des
+  champs n'est pas une action destructrice.
+
+**Panneau des pièces**
+- Messages d'état vide centrés, peints par la liste au lieu d'un item en tête :
+  « Sélectionnez un appareil… », et nouveau « Aucune pièce associée à cet appareil »
+  (le panneau restait blanc, sans explication).
+- Boutons ↺ et ＋ remplacés par des icônes qtawesome plates.
+
+Vérifié par rendu de la vraie `MainWindow` (offscreen, copie de la base) : hauteurs
+22/26/30 px identiques entre tableau et colonne figée, numéros de ligne et pastilles
+non rognés à 22 px, en-têtes non tronqués. Test `headerData` mis à jour pour le
+libellé « Pièces » + test de l'infobulle.
 
 ---
 

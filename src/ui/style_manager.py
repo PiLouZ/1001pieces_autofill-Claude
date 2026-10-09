@@ -78,6 +78,34 @@ class StyleManager:
         "QToolButton:disabled { background-color: #f8f9fa; border-color: #e9ecef; }"
     )
 
+    # === Boutons d'export (fenêtre principale) — état inactif commun ===
+    # Chaque bouton garde sa couleur active propre (CSV sarcelle, Méta Title orange,
+    # Méta Desc jaune, HTML blancs) ; seul l'état inactif est partagé, pour qu'on
+    # distingue d'un coup d'œil ce qui est cliquable. Avant : les HTML inactifs
+    # ressemblaient à leur état actif, et CSV/Méta inactifs étaient gris foncé.
+    # Pas de propriété `border` ici : chaque bouton garde l'épaisseur de bordure de
+    # son état actif (aucune pour CSV/Méta, 1 px pour HTML), sinon le bouton
+    # changerait de taille en s'activant.
+    EXPORT_BTN_DISABLED_RULES = "background: #f1f3f5; color: #adb5bd;"
+
+    # Bouton « effacer les filtres » : gris neutre au repos (vider des champs n'est
+    # pas une action destructrice), rouge seulement au survol.
+    CLEAR_FILTERS_BUTTON = (
+        "QPushButton { background-color: #f8f9fa; color: #868e96;"
+        " border: 1px solid #ced4da; border-radius: 3px;"
+        " font-weight: bold; font-size: 14px; padding: 0px; }"
+        "QPushButton:hover { background-color: #e53935; color: white; border-color: #c62828; }"
+        "QPushButton:pressed { background-color: #c62828; color: white; border-color: #b71c1c; }"
+    )
+
+    # Petits boutons-icônes plats (en-tête du panneau des pièces) : sans cadre,
+    # fond discret au survol — même famille que le bouton d'ouverture de l'historique.
+    PANEL_ICON_BUTTON = (
+        "QPushButton { background: transparent; border: none; border-radius: 3px;"
+        " min-width: 22px; max-width: 22px; min-height: 20px; max-height: 20px; padding: 0px; }"
+        "QPushButton:hover { background-color: #e9ecef; }"
+    )
+
     @staticmethod
     def get_modern_style() -> str:
         """Retourner le style CSS moderne complet de l'application"""
@@ -244,6 +272,13 @@ class StyleManager:
             selection-color: white;
         }
         
+        /* Tableau principal (QTableView, non couvert par la règle QTableWidget) :
+           une ligne sur deux teintée — le gris par défaut de Qt (#f7f7f7) était
+           à peine visible sur fond blanc. */
+        CustomTableView {
+            alternate-background-color: #f1f4f8;
+        }
+
         QHeaderView::section {
             background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                                       stop: 0 #f8f9fa, stop: 1 #e9ecef);
@@ -256,6 +291,12 @@ class StyleManager:
         
         QHeaderView::section:first {
             border-left: 1px solid #dee2e6;
+        }
+
+        /* Numéros de ligne : pas de marge verticale, sinon ils seraient rognés
+           avec les hauteurs de ligne réduites (réglage Affichage → Hauteur). */
+        QHeaderView::section:vertical {
+            padding: 0px 8px;
         }
         
         QHeaderView::section:hover {
@@ -381,6 +422,54 @@ class StyleManager:
             background-color: #dee2e6;
             width: 1px;
             margin: 4px 8px;
+        }
+
+        /* Actions et menus déroulants de la barre d'outils : un seul style plat
+           (texte sans cadre, fond discret au survol). Les menus Affichage /
+           Données / Configuration ne se distinguent plus que par leur chevron. */
+        QToolBar QToolButton {
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 6px;
+            color: #212529;
+        }
+
+        QToolBar QToolButton:hover {
+            background-color: #e9ecef;
+        }
+
+        QToolBar QToolButton:pressed {
+            background-color: #dee2e6;
+        }
+
+        QToolBar QToolButton:disabled {
+            color: #adb5bd;
+        }
+
+        QPushButton#menuButton {
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 22px 4px 6px;
+            font-weight: normal;
+            color: #212529;
+            min-height: 0px;
+        }
+
+        QPushButton#menuButton:hover {
+            background-color: #e9ecef;
+        }
+
+        QPushButton#menuButton:pressed {
+            background-color: #dee2e6;
+        }
+
+        QPushButton#menuButton::menu-indicator {
+            %%MENU_ARROW_RULE%%
+            subcontrol-origin: padding;
+            subcontrol-position: right center;
+            right: 6px;
         }
 
         /* === PROGRESS BAR === */
@@ -547,4 +636,10 @@ class StyleManager:
 
         /* Transitions not supported in PyQt5 - removed */
         """
-        return style.replace('%%ARROW_RULE%%', arrow_rule)
+        menu_arrow_rule = (
+            f"image: url({arrow_path}); width: 10px; height: 10px;"
+            if arrow_path else
+            "width: 8px; height: 8px;"
+        )
+        return (style.replace('%%ARROW_RULE%%', arrow_rule)
+                     .replace('%%MENU_ARROW_RULE%%', menu_arrow_rule))

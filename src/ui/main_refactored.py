@@ -479,6 +479,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'settings') and hasattr(self.table_controller, 'set_search_position'):
             if self.settings.value("ui/search_position", "bottom") == "top":
                 self.table_controller.set_search_position("top")
+        if hasattr(self, 'settings'):
+            self._apply_row_height(self.settings.value("ui/row_height", UIConfig.DEFAULT_ROW_HEIGHT))
         
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
@@ -537,32 +539,19 @@ class MainWindow(QMainWindow):
         )
         header_layout.addWidget(self.pieces_count_label)
 
-        _btn_style = """
-            QPushButton {
-                background-color: transparent;
-                color: #6c757d;
-                border: 1px solid #ced4da;
-                border-radius: 3px;
-                font-size: 13px;
-                font-weight: bold;
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 20px;
-                max-height: 20px;
-                padding: 0px;
-            }
-            QPushButton:hover { background-color: #e9ecef; color: #343a40; }
-        """
-
-        refresh_btn = QPushButton("↺")
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#6c757d'))
+        refresh_btn.setIconSize(QSize(11, 11))
         refresh_btn.setToolTip("Rafraîchir la liste des pièces")
-        refresh_btn.setStyleSheet(_btn_style)
+        refresh_btn.setStyleSheet(StyleManager.PANEL_ICON_BUTTON)
         refresh_btn.clicked.connect(lambda: self.pieces_panel_service.update_pieces_panel())
         header_layout.addWidget(refresh_btn)
 
-        add_toggle_btn = QPushButton("＋")
+        add_toggle_btn = QPushButton()
+        add_toggle_btn.setIcon(qta.icon('fa5s.plus', color='#6c757d'))
+        add_toggle_btn.setIconSize(QSize(11, 11))
         add_toggle_btn.setToolTip("Ajouter une pièce")
-        add_toggle_btn.setStyleSheet(_btn_style)
+        add_toggle_btn.setStyleSheet(StyleManager.PANEL_ICON_BUTTON)
         header_layout.addWidget(add_toggle_btn)
 
         top_layout.addWidget(header_widget)
@@ -664,6 +653,9 @@ class MainWindow(QMainWindow):
         )
 
         history_layout.addWidget(self.history_list)
+        # État vide initial (« Aucune opération pour l'instant ») jusqu'à la 1re entrée
+        if hasattr(self, 'user_interaction_service'):
+            self.user_interaction_service._refresh_display()
         
         pieces_splitter.addWidget(history_widget)
         
@@ -1760,6 +1752,19 @@ class MainWindow(QMainWindow):
             self.settings.setValue("ui/search_position", position)
         if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'set_search_position'):
             self.table_controller.set_search_position(position)
+
+    def _on_row_height_chosen(self, key: str):
+        """Changer la hauteur des lignes du tableau (menu Affichage) et la mémoriser."""
+        if hasattr(self, 'settings'):
+            self.settings.setValue("ui/row_height", key)
+        self._apply_row_height(key)
+
+    def _apply_row_height(self, key: str):
+        """Appliquer une hauteur de ligne par sa clé ; clé inconnue → hauteur par défaut."""
+        _label, height = UIConfig.ROW_HEIGHTS.get(
+            key, UIConfig.ROW_HEIGHTS[UIConfig.DEFAULT_ROW_HEIGHT])
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'set_row_height'):
+            self.table_controller.set_row_height(height)
 
     def _manage_categories(self):
         """Gérer les catégories"""
