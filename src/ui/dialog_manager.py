@@ -12,6 +12,7 @@ from .qt_imports import (
 )
 from .message_helper import MessageHelper
 from ..core.constants import Messages, UIConfig
+from .style_manager import StyleManager
 
 class SimpleDialogManager:
     """
@@ -48,7 +49,7 @@ class SimpleDialogManager:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Gestion des Catégories", 
-            "Entrez les catégories (une par ligne):",
+            "Entrez les catégories (une par ligne) :",
             '\n'.join(current_categories)
         )
         
@@ -62,7 +63,7 @@ class SimpleDialogManager:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Notes et Commentaires",
-            "Entrez vos notes:",
+            "Entrez vos notes :",
             current_notes
         )
         
@@ -188,7 +189,7 @@ class ImportOptionsDialog(QDialog):
         """Créer les options d'import"""
         # Référence par défaut pour les pièces
         ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence par défaut:"))
+        ref_layout.addWidget(QLabel("Référence par défaut :"))
         self.ref_input = QLineEdit(self.default_ref_piece or "")
         self.ref_input.setPlaceholderText("Laisser vide pour détecter automatiquement")
         ref_layout.addWidget(self.ref_input)
@@ -204,7 +205,7 @@ class ImportOptionsDialog(QDialog):
     
     def _create_data_preview(self, layout):
         """Créer l'aperçu des données"""
-        preview_label = QLabel("Aperçu des données:")
+        preview_label = QLabel("Aperçu des données :")
         preview_label.setFont(QFont("", 9, QFont.Bold))
         layout.addWidget(preview_label)
         
@@ -223,7 +224,6 @@ class ImportOptionsDialog(QDialog):
         self.ok_button.clicked.connect(self.accept)
         
         cancel_button = QPushButton("Annuler")
-        cancel_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_button.clicked.connect(self.reject)
 
         button_layout.addStretch()
@@ -311,7 +311,7 @@ class ReferenceSelectionDialog(QDialog):
         
         # Champ de recherche
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Recherche:"))
+        search_layout.addWidget(QLabel("Recherche :"))
         self.search_input = QLineEdit()
         self.search_input.textChanged.connect(self._filter_references)
         self.search_input.setPlaceholderText("Tapez pour filtrer les références...")
@@ -330,11 +330,10 @@ class ReferenceSelectionDialog(QDialog):
         select_button = QPushButton("Sélectionner")
         select_button.setIcon(qta.icon('fa5s.check', color='white'))
         select_button.setIconSize(QSize(11, 11))
-        select_button.setStyleSheet("QPushButton { background-color: #28a745; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:hover { background-color: #218838; }")
+        select_button.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         select_button.clicked.connect(self._on_select_clicked)
 
         cancel_button = QPushButton("Annuler")
-        cancel_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_button.clicked.connect(self.reject)
         
         button_layout.addStretch()

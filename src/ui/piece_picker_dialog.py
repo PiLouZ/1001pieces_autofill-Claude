@@ -11,6 +11,7 @@ from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
                           QSize, pyqtSignal, QColor, QFont)
 from src.core.config import Config
 from src.core.logger import app_logger
+from .style_manager import StyleManager
 
 
 # ── RefTagList ───────────────────────────────────────────────────────────────
@@ -65,6 +66,8 @@ class RefTagList(QWidget):
 
         self._refs = []
         self._full_height_mode = False
+        # Message affiché quand la liste est vide (mode pleine hauteur seulement)
+        self._empty_text = ""
         self.setVisible(False)
 
     # ── API publique ─────────────────────────────────────────────────────────
@@ -108,6 +111,13 @@ class RefTagList(QWidget):
                 row_widget = self._make_row(ref, desc, color)
                 self._layout.addWidget(row_widget)
 
+            if n == 0 and self._full_height_mode and self._empty_text:
+                empty = QLabel(self._empty_text)
+                empty.setAlignment(Qt.AlignCenter)
+                empty.setWordWrap(True)
+                empty.setStyleSheet("color: #adb5bd; font-size: 11px; padding-top: 12px;")
+                self._layout.addWidget(empty)
+
             self._layout.addStretch()
 
             if not self._full_height_mode:
@@ -128,6 +138,15 @@ class RefTagList(QWidget):
         self.setVisible(True)
         self._scroll.setMaximumHeight(16777215)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        # Fond du cadre parent plutôt que le gris par défaut de la zone défilante
+        # (grands blocs gris vides dans le panneau du gestionnaire de pièces)
+        self._scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self._scroll.viewport().setAutoFillBackground(False)
+
+    def set_empty_text(self, text: str):
+        """Message centré et estompé affiché quand la liste est vide (mode pleine
+        hauteur). Pris en compte au prochain set_refs()."""
+        self._empty_text = text
 
     # ── Interne ──────────────────────────────────────────────────────────────
 
@@ -173,7 +192,7 @@ class RefTagList(QWidget):
         if desc:
             desc_lbl = QLabel(desc)
             desc_lbl.setStyleSheet(
-                "color: #6c757d; font-size: 10px; background: transparent; border: none;"
+                "color: #6c757d; font-size: 11px; background: transparent; border: none;"
             )
             desc_lbl.setMaximumWidth(200)
             h.addWidget(desc_lbl, 1)
@@ -258,6 +277,9 @@ class PiecePickerDialog(QDialog):
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        # Tri croissant par défaut : sans cela, Qt part de son indicateur par
+        # défaut (décroissant) et la liste s'ouvrait de Z à A.
+        hdr.setSortIndicator(0, Qt.AscendingOrder)
         self._table.setColumnWidth(0, 130)   # Référence
         self._table.setColumnWidth(1, 270)   # Libellé
         self._table.setColumnWidth(2, 90)    # Statut
@@ -278,12 +300,11 @@ class PiecePickerDialog(QDialog):
         self._ok_btn = QPushButton("Sélectionner (plusieurs avec Ctrl/⇧)" if self._multi_select else "Sélectionner")
         self._ok_btn.setIcon(qta.icon('fa5s.check', color='white'))
         self._ok_btn.setIconSize(QSize(11, 11))
-        self._ok_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:disabled { background-color: #adb5bd; }")
+        self._ok_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         self._ok_btn.setEnabled(False)
         self._ok_btn.setDefault(True)
         self._ok_btn.clicked.connect(self.accept)
         cancel_btn = QPushButton("Annuler")
-        cancel_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(self._ok_btn)
         btn_row.addWidget(cancel_btn)
@@ -332,20 +353,19 @@ class PiecePickerDialog(QDialog):
                 desc_item.setFont(_italic)
             self._table.setItem(i, 1, desc_item)
 
-            # Col 2 : statut
+            # Col 2 : statut — mêmes icônes et libellés que la colonne Statut du
+            # gestionnaire de pièces (et non plus des glyphes ✓ / ⚠)
             if is_phantom:
-                status_text = "Fantôme"
-                status_color = QColor(150, 150, 150)
+                status_text, icone, couleur = "Fantôme", 'fa5s.ghost', '#999999'
             elif is_obsolete:
-                status_text = "⚠ Obsolète"
-                status_color = QColor(192, 57, 43)
+                status_text, icone, couleur = "Obsolète", 'fa5s.ban', '#c62828'
             else:
-                status_text = "✓"
-                status_color = QColor(52, 168, 83)
+                status_text, icone, couleur = "OK", 'fa5s.check-circle', '#2e7d32'
 
             st_item = QTableWidgetItem(status_text)
-            st_item.setForeground(status_color)
-            st_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            st_item.setIcon(qta.icon(icone, color=couleur))
+            if is_phantom:
+                st_item.setForeground(_phantom_color)
             self._table.setItem(i, 2, st_item)
 
         self._table.setSortingEnabled(True)

@@ -16,6 +16,7 @@ from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QToolButton, QWi
                              Qt, QTimer, QFont, QMenu, QPoint)
 
 from ..core.constants import ExportFormat
+from .style_manager import StyleManager
 from src.core.logger import app_logger
 
 class UIComponentService:
@@ -56,6 +57,12 @@ class UIComponentService:
             lambda: self.main_window._export_data(ExportFormat.HTML_BRANDS)
         )
         self.main_window.export_html_brands_btn.setEnabled(False)
+        # Gabarit explicite, aligné sur CSV / Méta (8 × 12 px) : le style global
+        # des boutons est plus compact.
+        self.main_window.export_html_brands_btn.setStyleSheet(
+            "QPushButton { padding: 8px 12px; font-weight: 500; }"
+            f"QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}"
+        )
         export_layout.addWidget(self.main_window.export_html_brands_btn)
         
         # Bouton HTML Détails — split button compact (clic = export profil par
@@ -125,39 +132,34 @@ class UIComponentService:
 
     def _get_split_button_style(self) -> str:
         """Style du bouton split "HTML Détails" — aligné sur le QPushButton global."""
-        return """
-            QToolButton {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #ffffff, stop: 1 #f8f9fa);
-                border: 1px solid #dee2e6;
-                border-radius: 6px;
-                padding: 6px 16px;
+        return f"""
+            QToolButton {{
+                background: white;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                padding: 6px 12px;
                 font-weight: 500;
-                color: #495057;
-            }
-            QToolButton:hover {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #e9ecef, stop: 1 #dee2e6);
+                color: #343a40;
+            }}
+            QToolButton:hover {{
+                background: #f1f3f5;
                 border-color: #adb5bd;
                 color: #212529;
-            }
-            QToolButton:pressed {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #dee2e6, stop: 1 #ced4da);
+            }}
+            QToolButton:pressed {{
+                background: #e9ecef;
                 border-color: #6c757d;
-            }
-            QToolButton:disabled {
-                background-color: #f8f9fa;
-                color: #6c757d;
-                border-color: #e9ecef;
-            }
-            QToolButton::menu-button {
+            }}
+            QToolButton:disabled {{
+                {StyleManager.EXPORT_BTN_DISABLED_RULES}
+            }}
+            QToolButton::menu-button {{
                 /* Mode MenuButtonPopup : la flèche est centrée dans cette zone
                    (::menu-indicator est ignoré dans ce mode). Élargir la zone
                    éloigne la flèche du bord droit → aération. */
                 border: none;
                 width: 30px;
-            }
+            }}
         """
 
     def _add_seo_buttons(self, layout: QVBoxLayout) -> None:
@@ -204,60 +206,51 @@ class UIComponentService:
     # Méthodes de styles pour les boutons
     def _get_csv_button_style(self) -> str:
         """Style pour le bouton CSV"""
-        return """
-            QPushButton { 
+        return f"""
+            QPushButton {{ 
                 background-color: #134c4d; 
                 color: white; 
                 font-weight: bold; 
                 border: none; 
                 padding: 8px 12px; 
                 border-radius: 4px; 
-            }
-            QPushButton:hover { 
+            }}
+            QPushButton:hover {{ 
                 background-color: #11403f; 
-            }
-            QPushButton:disabled { 
-                background-color: #cccccc; 
-                color: #666666; 
-            }
+            }}
+            QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}
         """
     
     def _get_seo_title_button_style(self) -> str:
         """Style pour le bouton méta title"""
-        return """
-            QPushButton { 
+        return f"""
+            QPushButton {{ 
                 background-color: #fd7e14; 
                 color: white; 
                 font-weight: bold; 
                 border: none; 
                 padding: 8px 12px; 
                 border-radius: 4px; 
-            }
-            QPushButton:hover { 
+            }}
+            QPushButton:hover {{ 
                 background-color: #e5711f; 
-            }
-            QPushButton:disabled { 
-                background-color: #cccccc; 
-                color: #666666; 
-            }
+            }}
+            QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}
         """
     
     def _get_seo_desc_button_style(self) -> str:
         """Style pour le bouton méta description"""
-        return """
-            QPushButton { 
+        return f"""
+            QPushButton {{ 
                 background-color: #ffc107; 
                 color: white; 
                 font-weight: bold; 
                 border: none; 
                 padding: 8px 12px; 
                 border-radius: 4px; 
-            }
-            QPushButton:hover { 
+            }}
+            QPushButton:hover {{ 
                 background-color: #e5a801; 
-            }
-            QPushButton:disabled { 
-                background-color: #cccccc; 
-                color: #666666; 
-            }
+            }}
+            QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}
         """

@@ -190,10 +190,7 @@ class CleanupPreviewDialog(QDialog):
             btn.setIconSize(QSize(12, 12))
             btn.setCheckable(True)
             btn.setChecked(is_first)
-            btn.setStyleSheet("""
-                QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }
-                QPushButton:checked { background-color: #495057; color: white; }
-            """)
+            btn.setStyleSheet(StyleManager.SEGMENTED_BUTTON)
             btn.toggled.connect(_make_nav_toggle(btn, icon_name, icon_color))
             btn.toggled.connect(
                 lambda checked, idx=i: self._nav_stack.setCurrentIndex(idx) if checked else None
@@ -218,40 +215,29 @@ class CleanupPreviewDialog(QDialog):
         
         # Boutons d'action
         self.preview_btn = QPushButton("Prévisualiser")
-        self.preview_btn.setIcon(qta.icon('fa5s.eye', color='white'))
+        self.preview_btn.setIcon(qta.icon('fa5s.eye', color='#495057'))
         self.preview_btn.setIconSize(QSize(12, 12))
-        self.preview_btn.setStyleSheet(
-            "QPushButton { background-color: #007bff; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-        )
+        # Un seul bouton plein (« Appliquer le nettoyage ») ; les autres neutres —
+        # avant : 4 couleurs pleines (gris, sarcelle, bleu, vert) côte à côte.
+        self.preview_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         self.apply_btn = QPushButton("Appliquer le nettoyage")
         self.apply_btn.setIcon(qta.icon('fa5s.check', color='white'))
         self.apply_btn.setIconSize(QSize(12, 12))
-        self.apply_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-        )
+        self.apply_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
 
         self.cancel_btn = QPushButton("Annuler")
-        self.cancel_btn.setIcon(qta.icon('fa5s.times', color='white'))
+        self.cancel_btn.setIcon(qta.icon('fa5s.times', color='#495057'))
         self.cancel_btn.setIconSize(QSize(12, 12))
-        self.cancel_btn.setStyleSheet(
-            "QPushButton { background-color: #6c757d; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-        )
+        self.cancel_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         # Bouton de relance de l'analyse (vérification manuelle à la demande) —
         # utilitaire distinct du flux Prévisualiser → Appliquer, donc placé à gauche.
-        self.reanalyze_btn = QPushButton("Re-analyser")
-        self.reanalyze_btn.setIcon(qta.icon('fa5s.sync-alt', color='white'))
+        self.reanalyze_btn = QPushButton("Réanalyser")
+        self.reanalyze_btn.setIcon(qta.icon('fa5s.sync-alt', color='#495057'))
         self.reanalyze_btn.setIconSize(QSize(12, 12))
         self.reanalyze_btn.setToolTip("Relancer la détection des doublons")
-        self.reanalyze_btn.setStyleSheet(
-            "QPushButton { background-color: #17a2b8; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:disabled { background-color: #b8dce3; color: #f0f0f0; }"
-        )
+        self.reanalyze_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         # Initialement désactivés (jusqu'à la fin de la première analyse)
         self.preview_btn.setEnabled(False)

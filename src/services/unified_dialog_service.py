@@ -28,6 +28,7 @@ from ..ui.qt_imports import QFont
 
 from ..core.logger import app_logger
 from functools import wraps
+from ..ui.style_manager import StyleManager
 
 def _handle_dialog_errors(default_return=None, context="Dialogue"):
     """
@@ -77,7 +78,7 @@ class SimpleDialogs:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Gestion des Catégories",
-            "Entrez les catégories (une par ligne):",
+            "Entrez les catégories (une par ligne) :",
             '\n'.join(current_categories) if current_categories else ""
         )
 
@@ -103,7 +104,7 @@ class SimpleDialogs:
         text, ok = QInputDialog.getMultiLineText(
             parent,
             "Notes et Commentaires",
-            "Entrez vos notes:",
+            "Entrez vos notes :",
             current_notes
         )
 
@@ -170,7 +171,7 @@ class ComplexDialogs:
         # Information sur les colonnes détectées
         if detected_columns:
             info_label = QLabel(f"Données {import_method} détectées : {detected_columns} colonnes")
-            info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
+            info_label.setStyleSheet("color: #198754; font-weight: bold; margin: 5px;")
             layout.addWidget(info_label)
 
         # Référence par défaut
@@ -194,7 +195,7 @@ class ComplexDialogs:
         layout.addLayout(mode_layout)
 
         # Options avancées
-        options_label = QLabel("Options:")
+        options_label = QLabel("Options :")
         options_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         layout.addWidget(options_label)
 
@@ -320,15 +321,10 @@ class ComplexDialogs:
         pied = QHBoxLayout()
         pied.addStretch()
         annuler = QPushButton("Annuler")
-        annuler.setStyleSheet("QPushButton { padding: 4px 12px; }")
         annuler.clicked.connect(dialog.reject)
         valider = QPushButton(bouton_valider)
         valider.setDefault(True)
-        valider.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white; padding: 5px 14px;"
-            " border-radius: 4px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #218838; }"
-        )
+        valider.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         valider.clicked.connect(dialog.accept)
         pied.addWidget(annuler)
         pied.addWidget(valider)

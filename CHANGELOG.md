@@ -4,6 +4,262 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.78.0] - 2026-10-09 (branche `feature/refonte-visuelle-fenetre-principale`)
+
+### Refonte visuelle de la fenêtre principale
+
+**Historique des opérations**
+- Fond blanc au lieu de gris (`#f8f9fa` → `#ffffff`).
+- Nouveau type **Erreur** (rouge vif), distinct de **Suppression** (bordeaux) : un
+  message contenant « erreur », « échec », « error » ou « [err] » était jusqu'ici
+  classé et coloré comme une suppression voulue. Les entrées déjà enregistrées en
+  base gardent leur ancien type.
+- Badges en clair (`Modif.`, `Import`, `Export`, `Suppr.`, `Erreur`, `Annul.`,
+  `Pièce`, `Système`) au lieu de `MOD`/`IMP`/`PIC`…, à largeur commune.
+- Teintes assombries : 6 badges sur 7 étaient sous le contraste 4,5:1 avec le texte
+  blanc (l'import à 2,0:1) ; tous le dépassent désormais.
+- Entrées sur deux lignes : `[heure] badge`, puis le titre en dessous ; plus
+  d'espace entre deux entrées.
+- La fenêtre d'historique persistant reconnaît le type Erreur (filtre, popup de
+  détails) et reprend les mêmes teintes.
+- État vide : « Aucune opération pour l'instant », centré, au lieu d'un cadre blanc.
+
+**Barre d'outils**
+- Un seul style plat pour les actions et les menus Affichage / Données /
+  Configuration (texte sans cadre, fond discret au survol, chevron pour les menus).
+  « Nettoyer les doublons » garde son cadre : c'est un indicateur qui passe à
+  l'orange quand des doublons attendent.
+
+**Boutons d'export**
+- Couleurs actives inchangées (HTML blancs, CSV sarcelle, Méta Title orange, Méta
+  Desc jaune). L'état inactif est désormais commun et nettement estompé : les HTML
+  inactifs ressemblaient à leur état actif, CSV et Méta inactifs étaient gris foncé.
+  Règle partagée : `StyleManager.EXPORT_BTN_DISABLED_RULES` (sans bordure, pour que
+  les boutons ne changent pas de taille en s'activant).
+
+**Tableau**
+- Hauteur des lignes réglable : Affichage → Hauteur des lignes (Compacte 22 px,
+  **Normale 26 px** par défaut, Aérée 30 px = ancienne hauteur), mémorisée
+  (`ui/row_height`). La colonne figée « Pièces » suit la même hauteur.
+- Une ligne sur deux teintée (`#f1f4f8`) ; le gris par défaut de Qt était invisible.
+- Colonnes rééquilibrées : Fabricant 124 → 155 px (« Arthur-Martin-Electrolux »
+  n'est plus coupé), Réf. commerciale 214 → 175 px.
+- Colonne des pièces : en-tête « Pièces » (« Nb pièces » était tronqué en « pièc »),
+  nom complet en infobulle ; 52 → 60 px.
+- Bouton « effacer les filtres » gris au repos, rouge seulement au survol : vider des
+  champs n'est pas une action destructrice.
+
+**Panneau des pièces**
+- Messages d'état vide centrés, peints par la liste au lieu d'un item en tête :
+  « Sélectionnez un appareil… », et nouveau « Aucune pièce associée à cet appareil »
+  (le panneau restait blanc, sans explication).
+- Boutons ↺ et ＋ remplacés par des icônes qtawesome plates.
+- Ajout de pièce refondu : carte « nouvelle pièce » en tête de liste
+  (`src/ui/piece_add_card.py`), même forme qu'une pièce, avec le nombre d'appareils
+  visés (« → 2 appareils », suit la sélection). Entrée ajoute, Échap annule, bouton
+  Annuler. Après un ajout réussi, la carte se referme et la pièce est surlignée en
+  vert 2 s ; en cas d'erreur, elle reste ouverte avec la saisie.
+  `PieceManagementService.add_piece` renvoie désormais un booléen de succès.
+- La liste ne colle plus à la poignée du séparateur (marge basse de 8 px).
+
+**Infobulles**
+- Compactes (texte 11 px) : 41 px de haut pour deux lignes, contre ~59 px. Piège
+  mesuré : sur une infobulle, Qt convertit `padding` en une marge unique sur les
+  4 côtés (2 px + la plus grande valeur), d'où `padding: 2px`.
+- Fond clair conservé : un fond sombre a été essayé puis écarté. Une feuille de
+  style sans sélecteur posée sur un widget (`setStyleSheet("color: …")`, des
+  dizaines de cas) colore aussi le texte de son infobulle, illisible sur fond
+  sombre (ex. liste des pièces sélectionnées du gestionnaire).
+
+**Cases à cocher (toute l'application)**
+- Les cases cochées s'affichaient en carré bleu plein, sans coche : la coche
+  était une image `data:image/svg+xml` que Qt ne charge pas. Remplacée par un PNG
+  qtawesome généré au démarrage (même principe que le chevron des listes).
+
+**Fenêtre de progression : journal d'étapes**
+- Une ligne par étape au lieu d'un libellé unique écrasé : étapes terminées
+  cochées avec leur durée (« Extraction de 00611388.pdf · 1 667 pages — 48 s »),
+  étape courante en gras avec son détail (« page 560 / 1 667 », « 12 / 17 ») ou
+  son temps écoulé. Défilement au-delà de 8 lignes (imports multi-fichiers).
+- Construit seul à partir des `setLabelText()` existants (`analyser_etape` :
+  étape = libellé hors compteurs) : aucun appelant modifié, toutes les fenêtres
+  de progression en profitent. « Import de X » puis « Extraction de X » forment
+  une seule ligne.
+- Pied : « Étape 5 · 70 % · 22 s au total », rafraîchi chaque seconde (les étapes
+  longues et muettes, comme l'index de suggestions, ne semblent plus figées).
+  L'ancien « 335 / 1000 » exposait l'échelle interne de la barre.
+
+**Fenêtres secondaires — défauts corrigés**
+- Index FTS5 : les balises `<code>` / `<b>` s'affichaient en clair (texte non
+  déclaré riche). Texte réécrit et exact : l'index ne sert pas tant que la
+  recherche porte sur les pièces (réglage actuel) — l'ancien « ~10× plus rapide »
+  était trompeur. Le statut dit si l'index sert réellement (`fts5_utilisable`).
+  Note obsolète « définir USE_FTS5 = True » retirée (déjà actif).
+- Configuration des exports : les puces de variables, compressées dans une
+  rangée unique, étaient tronquées (« xport_ref », « anufactur »). Nouvelle
+  disposition qui passe à la ligne (`src/ui/flow_layout.py`).
+- Journal des logs : police à chasse fixe effective (`setFont` était écrasé par la
+  police du style global → colonnes « | » désalignées) ; libellés en français
+  (« Détaillé », « Erreurs », « Actualisation auto : activée »…) ; contrôles de
+  même hauteur.
+- Import d'un seul fichier : fenêtre ajustée à son contenu (≈ 570 px au lieu
+  d'un minimum de 1000 px, ~500 px vides) ; elle ne descend jamais sous le
+  minimum de son contenu (blocs comprimés, lien « Adapter le mapping » qui
+  chevauchait l'aperçu). Hauteur de l'aperçu calculée sur la police effective
+  (la dernière ligne était coupée).
+
+**Uniformisation des champs et des boutons (toute l'application)**
+
+Relevé préalable : 64 styles de boutons locaux (une vingtaine de formes) et 11
+styles de champs, plus tous les éléments non stylés (style global : boutons
+13 px à marge 8 × 16 px, champs de 36 px). Standard retenu :
+- Champs : une seule hauteur (~30 px) pour `QLineEdit`, `QComboBox`,
+  `QDateEdit`, `QSpinBox` ; `QTextEdit` à part.
+- Boutons, quatre rôles centralisés dans `StyleManager` :
+  - **Principal** `PRIMARY_ACTION_BUTTON` — valider une fenêtre (vert, 12 px gras) ;
+  - **Secondaire** = style global par défaut — Annuler, Fermer, tout bouton non
+    stylé (blanc, contour gris, 12 px, même hauteur que Principal) ;
+  - **Compact** `SECONDARY_COMPACT_BUTTON` — outils internes (11 px) ;
+  - **Danger** `DANGER_COMPACT_BUTTON` / `DANGER_ACTION_BUTTON` — destructif,
+    texte rouge plutôt que rouge plein (Restaurer une sauvegarde : rouge, pas vert).
+  - Onglets segmentés : `SEGMENTED_BUTTON`.
+- 33 sites raccordés aux rôles, 9 styles locaux supprimés au profit du global,
+  + les styles passés par variables locales (`_compact`, `_btn_style`).
+- Cases intégrées aux arbres et tableaux (`QTreeView::indicator`…) : même
+  apparence que les `QCheckBox` (elles n'avaient pas de cadre).
+- Nouvelle pièce / Modifier la pièce : même formulaire (`_formulaire_piece`),
+  libellés alignés, « Créer » en bouton principal comme « Sauvegarder ».
+- Choix de pièce : tri croissant par défaut (s'ouvrait de Z à A), statuts avec
+  les icônes du gestionnaire (au lieu de « ✓ » / « ⚠ »).
+- Validation des suggestions : « Annuler » n'est plus rouge plein (convention de
+  l'appli : Annuler neutre à gauche, action verte à droite).
+- Configuration du collage : ordre Annuler / Enregistrer rétabli, « OK » →
+  « Enregistrer ».
+- Progression : convention « Étape — détail » (le détail ne crée pas de ligne) ;
+  l'export de l'application l'utilise, sinon une ligne par fichier copié.
+- Garde-fou `test_style_manager_references` : tout `StyleManager.X` utilisé doit
+  exister. Il aurait attrapé une régression survenue pendant ce chantier
+  (`side_card` supprimée par erreur → gestionnaire de pièces impossible à ouvrir,
+  invisible pour la suite de tests existante).
+
+**Fenêtres secondaires — harmonisation**
+- Nettoyage des doublons : « Aucun doublon détecté » centré quand l'analyse ne
+  trouve rien (idem références distinctes et historique), posé après l'analyse
+  seulement ; en-têtes à la française ; un seul bouton plein (« Appliquer le
+  nettoyage ») au lieu de quatre couleurs (Annuler, Réanalyser, Prévisualiser et
+  « Marquer comme distinct(s) » en style neutre).
+- Boutons d'action finale centralisés : `StyleManager.PRIMARY_ACTION_BUTTON` /
+  `SECONDARY_ACTION_BUTTON` (Importer, Confirmer l'import, Appliquer le
+  nettoyage + leur Annuler), 12 px au lieu de 11 px.
+- Cases à cocher : indicateur 15 px (au lieu de 18 px, bordure 2 px),
+  proportionné aux libellés.
+- Deux-points à la française dans une vingtaine de libellés et invites
+  (« Réf. : », « Recherche par pièce : », « Destination de la description : »…).
+
+**Guide d'utilisation réécrit** (`docs/guide_utilisation.html`)
+- Menus actuels (Affichage / Données / Configuration au lieu de « Gestion »,
+  « Action ») ; nouvelles sections : fenêtre principale, édition, relations entre
+  références ; nouveautés 3.78 à la place des « Nouveautés v3.58.0 ».
+- Raccourcis vérifiés un à un dans le code : retrait des raccourcis de pagination
+  annoncés (Ctrl+Droite / Gauche / Début / Fin) qui n'existent pas ; ajout de F2,
+  Cmd+Espace, Maj+Espace, Cmd+Maj+flèche, qui existaient sans être documentés.
+- Plus d'emoji ; typographie française.
+
+**Import — panneau des relations**
+- Alerte erronée corrigée : « Un groupe d'équivalence ne contient qu'une seule
+  réf : aucune équivalence ne sera créée » s'affichait alors que le groupe, coché
+  « Équivalent aux lignées cochées », rejoint l'équivalence croisée (le récap
+  annonçait bien « 1 équivalence »). Test du cas réel + test de non-régression de
+  l'alerte légitime ; le nouveau test échoue sur l'ancien code.
+- Alerte « équivalence croisée sans effet » réécrite : elle nomme la cause réelle
+  (« « Groupe 1 » est coché mais vide ; seule « Lignée 2 » (167260368) participe »)
+  et propose quoi faire. L'ancien texte (« moins de deux lignées ou groupes sont
+  cochés ») était faux à la lettre quand deux cadres étaient cochés dont un vide :
+  il raisonnait sur la liste des groupes, qui écarte les cadres vides.
+- Cadres « Lignée » et « Groupe » de même hauteur : la case « Toutes les lignées
+  équivalentes entre elles » passe sous les deux colonnes (elle raccourcissait
+  la colonne des lignées).
+- « vider » / « suppr » → icônes gomme / corbeille avec infobulle ; champ
+  « Courante » compacté.
+- Zone Relations décollée de la poignée du séparateur (marge gauche de 10 px).
+
+**Gestionnaire de pièces — cartes du panneau latéral**
+- Équivalences / Remplace / Remplacée par : fond gris clair arrondi, sans bordure
+  (`StyleManager.side_card`), au lieu de cadres gris bordés ; plus de cadre
+  englobant autour de la succession.
+- Boutons « + » transparents.
+
+**Poignées de redimensionnement (toute l'application)**
+- Une seule règle dans le style global : poignée de 8 px transparente, teintée au
+  survol ; les blocs voisins n'ont plus de marge côté poignée. Avant : 1, 2 ou
+  8 px selon la fenêtre, avec 0 à 22 px de marge (poignée collée à l'ascenseur du
+  tableau dans le gestionnaire de pièces). Six poignées concernées : fenêtre
+  principale (tableau | panneau, pièces | historique), gestionnaire de pièces
+  (tableau | panneau, cartes), import (colonnes, relations).
+- Écarts visibles mesurés : 8 px partout (y compris entre « Remplace » et
+  « Remplacée par », 6 → 8 px).
+
+**Historique persistant**
+- Colonnes lisibles : « Appareil » ne se cale plus sur son contenu (il réduisait
+  Description / Ancienne / Nouvelle à « crip », « ne », « lle ») ; texte complet en
+  infobulle au-delà de 20 caractères ; fenêtre ouverte en 1200 × 650.
+- Dates au format des filtres (`09/10/2026 10:09`).
+- Liste « Type », champs de date et recherche à la même hauteur ; chevron des
+  champs de date aligné sur celui des listes déroulantes (règle globale `QDateEdit`).
+
+**Gestionnaire de pièces**
+- Colonne Statut 78 → 130 px, redimensionnable : « → … », « Remp… », « Équiv… »
+  sont désormais entiers ; plus de « → » redondant avec l'icône flèche.
+- Compteurs avec séparateur de milliers (« 4 771 467 associations »).
+- Panneau de droite : cadres blancs au lieu de gris ; « Aucune équivalence »,
+  « Ne remplace aucune référence », « Non remplacée » en sélection unique
+  (`RefTagList.set_empty_text`, mode pleine hauteur seulement).
+- Titres « SUCCESSION » / « ÉQUIVALENCES » masqués à l'ouverture : ils restaient
+  orphelins jusqu'au premier changement de sélection (`isVisible()` remplacé par
+  `isHidden()`, faux tant que la fenêtre n'est pas affichée).
+- Fond de la colonne « Nb » adouci (`Config.Colors`).
+
+**Palette**
+- La palette de référence existait déjà (`Config.Colors`) mais n'était presque pas
+  utilisée. Les alias d'un même rôle y sont ramenés : bleus `#007bff` / `#0078d4`
+  → `#0d6efd` (PRIMARY), vert de validation `#28a745` → `#198754` (SUCCESS, texte
+  blanc lisible à 4,5:1 contre 3,1:1), survols correspondants, bouton
+  « Confirmer » de l'import (`#2ecc71`, contraste 2,0:1) → SUCCESS.
+- Les couleurs de catégorie (Remplace / Remplacée par / Équivalence, lignes du
+  récapitulatif d'import, types de l'historique) restent volontairement distinctes.
+  Règle documentée en tête de `StyleManager`.
+
+**Tailles de police**
+- 9 et 10 px → 11 px (27 emplacements) : 11 px devient le plancher. Échelle :
+  11 légende, 12 secondaire, 13 texte, 14 titre de dialogue, 18 titre de fenêtre.
+- Hauteur des pièces du panneau : `max(calcul existant, hauteur demandée)` pour
+  qu'aucune ligne ne soit rognée (vérifié : marge de 6 px sur le cas le plus
+  chargé — obsolète + remplacée + équivalences).
+
+**Icônes au lieu de glyphes**
+- « ⚠ Obsolète » (3 endroits) et « ✓ Référence courante » : icônes qtawesome
+  insérées dans le texte (`inline_icon_html`, rendu PNG mis en cache comme le
+  chevron des listes déroulantes).
+- Boutons « × » (effacer les filtres, retirer de la sélection) : icône `fa5s.times`
+  grise, fond rouge pâle au survol.
+
+**Typographie des libellés**
+- Capitales à la française : « Gestionnaire des pièces », « Référence pièce »,
+  « Types d'appareils », « Configuration du collage ». L'en-tête du CSV exporté
+  (« Référence Pièce ») n'est pas modifié : c'est une donnée, pas un libellé.
+
+**Édition dans le tableau**
+- Le champ d'édition d'une cellule (double-clic / F2) héritait de la marge
+  intérieure de 8 px des champs de formulaire : le texte était rogné, illisible à
+  26 px. Règle `QTableView QLineEdit` dédiée (marge 0 × 4 px, bordure bleue).
+
+Vérifié par rendu de la vraie `MainWindow` (offscreen, copie de la base) : hauteurs
+22/26/30 px identiques entre tableau et colonne figée, numéros de ligne et pastilles
+non rognés à 22 px, en-têtes non tronqués. Test `headerData` mis à jour pour le
+libellé « Pièces » + test de l'infobulle.
+
+---
+
 ## [3.77.2] - 2026-10-08 (branche `chore/faux-echec-et-code-mort`)
 
 ### Faux « Échec de l'ajout de nouvelle ligne » corrigé, drapeaux de migration retirés

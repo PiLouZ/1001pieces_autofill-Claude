@@ -94,14 +94,23 @@ class UIConfig:
     COLUMN_WIDTH_STOCK = 60
     
     # Couleurs de l'interface
-    COLOR_SUCCESS = "#28a745"
+    COLOR_SUCCESS = "#198754"
     COLOR_WARNING = "#ffc107" 
     COLOR_ERROR = "#dc3545"
     COLOR_INFO = "#17a2b8"
     
+    # Hauteur des lignes du tableau principal (px) — réglable dans Affichage.
+    # Clé QSettings : ui/row_height. « aeree » = ancienne hauteur fixe (30 px).
+    ROW_HEIGHTS = {
+        "compacte": ("Compacte", 22),
+        "normale": ("Normale", 26),
+        "aeree": ("Aérée", 30),
+    }
+    DEFAULT_ROW_HEIGHT = "normale"
+
     # Pagination
     DEFAULT_PAGE_SIZE = 500
-    COLOR_PRIMARY = "#007bff"
+    COLOR_PRIMARY = "#0d6efd"
     COLOR_SECONDARY = "#6c757d"
     
     # Styles CSS fréquents

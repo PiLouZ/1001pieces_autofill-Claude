@@ -12,6 +12,7 @@ import qtawesome as qta
 from .qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy, QHBoxLayout
 from .qt_imports import QSize, Qt
 from .qt_imports import QKeySequence
+from .style_manager import StyleManager
 
 class ToolbarService:
     """
@@ -162,6 +163,25 @@ class ToolbarService:
         )
         display_menu.addAction(search_top_action)
 
+        # Hauteur des lignes du tableau — choix exclusif, mémorisé
+        from .qt_imports import QActionGroup
+        from ..core.constants import UIConfig
+        row_height_menu = display_menu.addMenu("Hauteur des lignes")
+        _key = UIConfig.DEFAULT_ROW_HEIGHT
+        if hasattr(self.main_window, 'settings'):
+            _key = self.main_window.settings.value("ui/row_height", UIConfig.DEFAULT_ROW_HEIGHT)
+        row_height_group = QActionGroup(self.main_window)
+        row_height_group.setExclusive(True)
+        for key, (label, height) in UIConfig.ROW_HEIGHTS.items():
+            action = QAction(f"{label} ({height} px)", self.main_window)
+            action.setCheckable(True)
+            action.setChecked(key == _key)
+            action.triggered.connect(
+                lambda checked, k=key: getattr(self.main_window, '_on_row_height_chosen', lambda k: None)(k)
+            )
+            row_height_group.addAction(action)
+            row_height_menu.addAction(action)
+
         display_btn.setMenu(display_menu)
         toolbar.addWidget(display_btn)
 
@@ -197,7 +217,7 @@ class ToolbarService:
         config_btn.setObjectName("menuButton")
         config_menu = QMenu()
 
-        paste_config_action = QAction("Configuration Collage", self.main_window)
+        paste_config_action = QAction("Configuration du collage", self.main_window)
         paste_config_action.setToolTip("Configurer le nettoyage automatique des extensions collées")
         paste_config_action.triggered.connect(self._configure_paste_cleanup)
         config_menu.addAction(paste_config_action)
@@ -251,7 +271,7 @@ class ToolbarService:
         class PasteConfigDialog(QDialog):
             def __init__(self, parent=None):
                 super().__init__(parent)
-                self.setWindowTitle("Configuration du Collage Automatique")
+                self.setWindowTitle("Configuration du collage automatique")
                 self.setModal(True)
                 self.setup_ui()
                 
@@ -282,7 +302,7 @@ class ToolbarService:
                 
                 # Remplacement par défaut
                 default_layout = QHBoxLayout()
-                default_layout.addWidget(QLabel("Remplacement par défaut:"))
+                default_layout.addWidget(QLabel("Remplacement par défaut :"))
                 
                 self.replacement_combo = QComboBox()
                 self.replacement_combo.addItems([
@@ -308,7 +328,7 @@ class ToolbarService:
                 
                 # Exemple
                 example_label = QLabel(
-                    "\nExemple: \"46X0008.pdf 45X2378.csv\" → \"46X0008 || 45X2378\""
+                    "\nExemple : \"46X0008.pdf 45X2378.csv\" → \"46X0008 || 45X2378\""
                 )
                 example_label.setStyleSheet("color: #666; font-style: italic; margin-top: 10px;")
                 layout.addWidget(example_label)
@@ -320,22 +340,24 @@ class ToolbarService:
                 clear_memory_btn = QPushButton("Effacer mémoire")
                 clear_memory_btn.setIcon(qta.icon('fa5s.trash-alt', color='#dc3545'))
                 clear_memory_btn.setIconSize(QSize(11, 11))
-                clear_memory_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+                clear_memory_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
                 clear_memory_btn.setToolTip("Effacer tous les choix mémorisés")
                 clear_memory_btn.clicked.connect(self.clear_memory)
                 buttons_layout.addWidget(clear_memory_btn)
 
                 buttons_layout.addStretch()
 
-                ok_btn = QPushButton("OK")
-                ok_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
-                ok_btn.clicked.connect(self.accept)
-                buttons_layout.addWidget(ok_btn)
-
+                # Ordre de l'appli : Annuler à gauche, action principale à droite
                 cancel_btn = QPushButton("Annuler")
-                cancel_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+                cancel_btn.setAutoDefault(False)
                 cancel_btn.clicked.connect(self.reject)
                 buttons_layout.addWidget(cancel_btn)
+
+                ok_btn = QPushButton("Enregistrer")
+                ok_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
+                ok_btn.setDefault(True)
+                ok_btn.clicked.connect(self.accept)
+                buttons_layout.addWidget(ok_btn)
                 
                 layout.addLayout(buttons_layout)
                 self.setLayout(layout)

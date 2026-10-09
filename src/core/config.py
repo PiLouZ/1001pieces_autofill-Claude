@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.77.2"
+    VERSION = "3.78.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -148,7 +148,7 @@ class Config:
         
         SUCCESS = "#198754"        # Vert succès
         SUCCESS_HOVER = "#157347"  # Vert succès au survol
-        SUCCESS_LIGHT = "#28a745"  # Vert succès clair
+        SUCCESS_LIGHT = "#198754"  # Ancien alias (#28a745), aligné sur SUCCESS en v3.78.0
         SUCCESS_BG = "#d1e7dd"     # Fond vert succès
         SUCCESS_TEXT = "#0a3622"   # Texte vert succès
         
@@ -181,9 +181,12 @@ class Config:
         
         # Couleurs spécifiques pour les statuts de données
         MISSING_LABEL = (255, 235, 200)   # Orangé clair pour libellé manquant
-        ORPHAN_ROW = (255, 200, 200)      # Rouge clair pour lignes orphelines
-        SINGLE_PIECE = (255, 255, 200)    # Jaune pour pièce unique
-        MULTI_PIECES = (200, 255, 200)    # Vert clair pour plusieurs pièces
+        # Fond de la colonne « Nb » du gestionnaire de pièces. Teintes adoucies
+        # (v3.78.0) : l'ancien vert (200, 255, 200) saturait toute la colonne,
+        # la quasi-totalité des pièces étant multi-appareils.
+        ORPHAN_ROW = (248, 215, 218)      # Rouge pâle : pièce orpheline
+        SINGLE_PIECE = (255, 243, 205)    # Jaune pâle : un seul appareil
+        MULTI_PIECES = (225, 241, 230)    # Vert pâle : plusieurs appareils
         ERROR_LOG = (255, 200, 200)       # Rouge clair pour erreurs dans logs
         
         # Couleurs d'interface

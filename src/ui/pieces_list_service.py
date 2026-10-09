@@ -12,8 +12,9 @@ import qtawesome as qta
 from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
                           QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
-                          QTimer, QApplication)
+                          QTimer, QApplication, QPainter, QColor)
 from .popup_positioning import PopupAuCurseurMixin
+from .style_manager import inline_icon_html
 from src.core.logger import app_logger
 
 
@@ -114,7 +115,7 @@ class PieceRelationsPopup(PopupAuCurseurMixin, QDialog):
 
         # Obsolète
         if is_obsolete:
-            lbl = QLabel("⚠  Obsolète")
+            lbl = QLabel(f"{inline_icon_html('fa5s.exclamation-triangle', '#c0392b', 11)}&nbsp;Obsolète")
             lbl.setStyleSheet(
                 "color: #c0392b; font-weight: bold; font-size: 11px;"
                 "background: #fdf2f2; border: 1px solid #f5c6cb;"
@@ -197,20 +198,20 @@ def _make_relation_label(prefix: str, refs_str: str, color: str,
     if not parts:
         return None
 
-    style = (f"color: {color}; font-style: italic; font-size: 10px;"
+    style = (f"color: {color}; font-style: italic; font-size: 11px;"
              " background: transparent; border: none;")
 
     def _ref_link(ref: str, hovered: str = '') -> str:
         deco = 'underline' if ref == hovered else 'none'
         return (f"<a href='ref://{ref}' style='color:{color};font-style:italic;"
-                f"font-size:10px;text-decoration:{deco};'>{ref}</a>")
+                f"font-size:11px;text-decoration:{deco};'>{ref}</a>")
 
     def _build_html(shown: list, n_more: int, hovered_href: str = '') -> str:
         hovered_ref = hovered_href[6:] if hovered_href.startswith('ref://') else ''
         parts_html  = ', '.join(_ref_link(r, hovered_ref) for r in shown)
         text = f"{prefix}  {parts_html}"
         if n_more:
-            text += (f"  <a href='#popup' style='color:{color}; font-style:italic; font-size:9px;"
+            text += (f"  <a href='#popup' style='color:{color}; font-style:italic; font-size:11px;"
                      f"text-decoration:none; border-bottom:1px dashed {color};'>"
                      f"… +{n_more}</a>")
         return text
@@ -305,7 +306,7 @@ class PieceItemWidget(QWidget):
         equivalents = status_info.get('equivalents')  # str séparée par virgules
 
         # Ligne 1 : référence (bold) + désignation inline (gris)
-        desc_html = (f' <span style="color:#9e9e9e;font-size:10px;">{description}</span>'
+        desc_html = (f' <span style="color:#9e9e9e;font-size:11px;">{description}</span>'
                      if description else '')
         line1 = QLabel(f'<b>{ref_piece}</b>{desc_html}')
         line1.setTextFormat(Qt.RichText)
@@ -315,8 +316,8 @@ class PieceItemWidget(QWidget):
 
         # Ligne 2 : obsolète (indépendant des autres statuts)
         if is_obsolete:
-            lbl = QLabel("⚠ Obsolète")
-            lbl.setStyleSheet("color: #c0392b; font-style: italic; font-size: 10px;")
+            lbl = QLabel(f"{inline_icon_html('fa5s.exclamation-triangle', '#c0392b', 10)}&nbsp;Obsolète")
+            lbl.setStyleSheet("color: #c0392b; font-style: italic; font-size: 11px;")
             text_layout.addWidget(lbl)
             extra_lines += 1
 
@@ -325,11 +326,11 @@ class PieceItemWidget(QWidget):
             _color_sup = '#e67e22'
             _base_html = (lambda deco='none': (
                 f"↳ Remplacée par  <a href='ref://{ref_new}' style='color:{_color_sup};"
-                f"font-style:italic;font-size:10px;text-decoration:{deco};'>{ref_new}</a>"))
+                f"font-style:italic;font-size:11px;text-decoration:{deco};'>{ref_new}</a>"))
             lbl = QLabel(_base_html())
             lbl.setTextFormat(Qt.RichText)
             lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
-            lbl.setStyleSheet(f"color: {_color_sup}; font-style: italic; font-size: 10px;"
+            lbl.setStyleSheet(f"color: {_color_sup}; font-style: italic; font-size: 11px;"
                               " background: transparent; border: none;")
             lbl.linkHovered.connect(
                 lambda href, l=lbl, b=_base_html:
@@ -369,10 +370,10 @@ class PieceItemWidget(QWidget):
         outer.addWidget(text_widget, 1)
 
         # ── Boutons hover ─────────────────────────────────────────────────
-        self._search_btn = self._make_btn("", "#28a745", "#1e7e34", "Rechercher les appareils compatibles")
+        self._search_btn = self._make_btn("", "#198754", "#157347", "Rechercher les appareils compatibles")
         self._search_btn.setIcon(qta.icon('fa5s.search', color='white'))
         self._search_btn.setIconSize(QSize(10, 10))
-        self._edit_btn   = self._make_btn("✎",  "#007bff", "#0056b3", "Modifier cette pièce")
+        self._edit_btn   = self._make_btn("✎",  "#0d6efd", "#0b5ed7", "Modifier cette pièce")
         self._delete_btn = self._make_btn("×",  "#dc3545", "#c82333", "Supprimer cette pièce")
 
         for btn in (self._search_btn, self._edit_btn, self._delete_btn):
@@ -465,6 +466,52 @@ class PiecesListWidget(QListWidget):
         self.setMouseTracking(True)
         # Hauteur de ligne uniforme pour les items avec widget
         self.setUniformItemSizes(False)
+        # Message centré affiché quand la liste est vide (cf. paintEvent)
+        self._placeholder_text = ""
+
+    def set_placeholder_text(self, text: str):
+        """Définir le message affiché, centré et estompé, quand la liste est vide."""
+        self._placeholder_text = text
+        self.viewport().update()
+
+    def highlight_piece(self, ref_piece: str, color: str, duration_ms: int = 2000):
+        """Surligner brièvement la pièce `ref_piece` (ex. tout juste ajoutée).
+
+        Le fond est posé sur le widget de la pièce, pas sur l'item : la feuille de
+        style globale (règle QListWidget::item) fait ignorer le fond des items.
+        Si la liste a été reconstruite entre-temps (changement de sélection), le
+        widget a été détruit : la restauration est simplement ignorée.
+        """
+        for i in range(self.count()):
+            item = self.item(i)
+            if item.data(Qt.UserRole) != ref_piece:
+                continue
+            widget = self.itemWidget(item)
+            if widget is None:
+                return
+            # Nécessaire pour qu'un QWidget dérivé peigne le fond de sa feuille de style
+            widget.setAttribute(Qt.WA_StyledBackground, True)
+            widget.setStyleSheet(f"PieceItemWidget {{ background-color: {color}; }}")
+            self.scrollToItem(item)
+
+            def _restore(w=widget):
+                try:
+                    w.setStyleSheet("")
+                except RuntimeError:
+                    pass  # widget détruit par un clear() de la liste entre-temps
+            QTimer.singleShot(duration_ms, _restore)
+            return
+
+    def paintEvent(self, event):
+        """Peindre le message d'état vide au centre (même principe que le tableau)."""
+        super().paintEvent(event)
+        if self.count() == 0 and self._placeholder_text:
+            painter = QPainter(self.viewport())
+            painter.save()
+            painter.setPen(QColor(150, 150, 150))
+            rect = self.viewport().rect().adjusted(12, 0, -12, 0)
+            painter.drawText(rect, Qt.AlignCenter | Qt.TextWordWrap, self._placeholder_text)
+            painter.restore()
 
     def clear(self):
         """Override : nettoyer les item widgets avant de vider la liste."""
@@ -481,7 +528,9 @@ class PiecesListWidget(QListWidget):
         item.setData(Qt.UserRole, ref_piece)
         self.addItem(item)
         widget = PieceItemWidget(ref_piece, description, status_info, item, self)
-        height = 40 + widget._extra_lines * 12
+        # Jamais plus petit que ce que le widget demande : protège contre un texte
+        # rogné si la police des lignes supplémentaires grandit (10 → 11 px en v3.78.0)
+        height = max(40 + widget._extra_lines * 12, widget.sizeHint().height())
         item.setSizeHint(QSize(0, height))
         self.setItemWidget(item, widget)
         return item

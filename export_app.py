@@ -61,7 +61,9 @@ def _copy_source(dest: Path, progress_callback=None) -> int:
         shutil.copy2(src_file, dst_file)
         count += 1
         if progress_callback:
-            progress_callback(f"Copie : {rel}")
+            # « Étape — détail » : le journal de progression met à jour la ligne
+            # « Copie du code source » au lieu d'ajouter une ligne par fichier
+            progress_callback(f"Copie du code source — {rel}")
     return count
 
 

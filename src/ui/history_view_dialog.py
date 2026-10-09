@@ -3,6 +3,7 @@ Dialogue de consultation de l'historique persistant des modifications.
 """
 
 import json
+from datetime import datetime
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
@@ -13,6 +14,7 @@ from PyQt5.QtWidgets import QDateEdit
 from PyQt5.QtCore import QDate
 import qtawesome as qta
 from .popup_positioning import PopupAuCurseurMixin
+from .style_manager import StyleManager
 
 _PAGE_SIZE = 100
 
@@ -22,21 +24,43 @@ _ACTION_LABELS = {
     'import': 'Import',
     'export': 'Export',
     'delete': 'Suppression',
+    'error':  'Erreur',
     'piece':  'Pièce',
     'undo':   'Annulation',
 }
 
+# Mêmes teintes que l'historique de la fenêtre principale
+# (_ACTION_STYLES dans user_interaction_service.py).
 _ACTION_COLORS = {
-    'edit':   '#4A9EFF',
-    'import': '#34D058',
-    'export': '#9B59B6',
-    'delete': '#E05252',
-    'piece':  '#1ABC9C',
-    'undo':   '#F39C12',
+    'edit':   '#2F6CD0',
+    'import': '#1E7F36',
+    'export': '#8E44AD',
+    'delete': '#A33A3A',
+    'error':  '#D61F1F',
+    'piece':  '#0E7A64',
+    'undo':   '#B05E00',
 }
 
+# Au-delà de cette longueur, une cellule risque d'être coupée : texte complet en infobulle
+_TOOLTIP_MIN_LEN = 20
+
+
+def _format_timestamp(timestamp) -> str:
+    """'2026-10-09 10:09:31' → '09/10/2026 10:09' (format des filtres de date).
+
+    Valeur inattendue : renvoyée tronquée telle quelle, comme avant.
+    """
+    if not timestamp:
+        return ''
+    text = str(timestamp)
+    try:
+        return datetime.strptime(text[:16], "%Y-%m-%d %H:%M").strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return text[:16]
+
+
 # Types d'action pour lesquels un popup de détails est pertinent
-_DETAIL_ACTION_TYPES = {'import', 'export', 'delete', 'piece', 'undo'}
+_DETAIL_ACTION_TYPES = {'import', 'export', 'delete', 'error', 'piece', 'undo'}
 
 
 # ── Popup de détails ──────────────────────────────────────────────────────────
@@ -198,6 +222,8 @@ class HistoryViewDialog(QDialog):
 
         self.setWindowTitle("Historique des modifications")
         self.setMinimumSize(900, 600)
+        # Ouverture plus large que le minimum : la description est la colonne lue
+        self.resize(1200, 650)
         self.setModal(False)
 
         self._build_ui()
@@ -246,7 +272,11 @@ class HistoryViewDialog(QDialog):
         self._search_input.textChanged.connect(self._on_filter_changed)
         filter_bar.addWidget(self._search_input, 1)
 
-        layout.addLayout(filter_bar)
+        # Filtres de même hauteur (liste, dates, recherche)
+        filter_widget = QWidget()
+        filter_widget.setLayout(filter_bar)
+        filter_widget.setStyleSheet(StyleManager.COMPACT_FILTER_BAR)
+        layout.addWidget(filter_widget)
 
         # ── Tableau ───────────────────────────────────────────────────────────
         self._table = QTableWidget()
@@ -261,14 +291,21 @@ class HistoryViewDialog(QDialog):
         self._table.setSortingEnabled(False)
         self._table.setWordWrap(False)
 
+        # Largeurs : « Appareil » ne se cale plus sur son contenu (des libellés
+        # d'appareil longs écrasaient Description / Ancienne / Nouvelle jusqu'à
+        # « crip », « ne », « lle »). Largeurs fixes mais ajustables ; Description
+        # prend la place restante ; texte complet en infobulle (cf. _set_item).
         hh = self._table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Date
         hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Type
         hh.setSectionResizeMode(2, QHeaderView.Stretch)            # Description
-        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Appareil
+        hh.setSectionResizeMode(3, QHeaderView.Interactive)        # Appareil
         hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Champ
-        hh.setSectionResizeMode(5, QHeaderView.Stretch)            # Ancienne
-        hh.setSectionResizeMode(6, QHeaderView.Stretch)            # Nouvelle
+        hh.setSectionResizeMode(5, QHeaderView.Interactive)        # Ancienne
+        hh.setSectionResizeMode(6, QHeaderView.Interactive)        # Nouvelle
+        self._table.setColumnWidth(3, 220)
+        self._table.setColumnWidth(5, 150)
+        self._table.setColumnWidth(6, 150)
 
         self._table.cellClicked.connect(self._on_cell_clicked)
 
@@ -305,7 +342,7 @@ class HistoryViewDialog(QDialog):
 
         clear_btn = QPushButton("Effacer l'historique")
         clear_btn.setIcon(qta.icon('fa5s.trash-alt', color='#c0392b'))
-        clear_btn.setStyleSheet("color: #c0392b;")
+        clear_btn.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
         clear_btn.clicked.connect(self._confirm_clear)
         bottom_bar.addWidget(clear_btn)
 
@@ -352,8 +389,8 @@ class HistoryViewDialog(QDialog):
         for r, row in enumerate(rows):
             _id, timestamp, action_type, title, details_json, device_ref, field_name, old_val, new_val = row
 
-            # Date — affichage court
-            ts_display = str(timestamp)[:16] if timestamp else ''
+            # Date — affichage court, au format des filtres (jj/mm/aaaa hh:mm)
+            ts_display = _format_timestamp(timestamp)
             self._set_item(r, 0, ts_display)
 
             # Badge type
@@ -383,7 +420,9 @@ class HistoryViewDialog(QDialog):
             )
             if has_details:
                 desc_item.setData(Qt.UserRole, (action_type, title, details_json))
-                desc_item.setToolTip("Cliquez pour voir les détails")
+                desc_item.setToolTip(f"{description}\nCliquez pour voir les détails")
+            elif len(description) > _TOOLTIP_MIN_LEN:
+                desc_item.setToolTip(description)
 
             self._table.setItem(r, 2, desc_item)
 
@@ -395,6 +434,9 @@ class HistoryViewDialog(QDialog):
     def _set_item(self, row: int, col: int, text: str):
         item = QTableWidgetItem(str(text))
         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+        # Texte potentiellement coupé par la largeur de colonne → complet en infobulle
+        if len(str(text)) > _TOOLTIP_MIN_LEN:
+            item.setToolTip(str(text))
         self._table.setItem(row, col, item)
 
     # ── Interactions ──────────────────────────────────────────────────────────

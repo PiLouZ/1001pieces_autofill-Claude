@@ -26,8 +26,63 @@ def _generate_combo_arrow() -> str:
     return _combo_arrow_path
 
 
+_check_mark_path: str = ""
+
+
+def _generate_check_mark() -> str:
+    """Coche blanche (qtawesome) pour les cases cochées ; chemin du PNG, ou ""."""
+    global _check_mark_path
+    if _check_mark_path:
+        return _check_mark_path
+    try:
+        import qtawesome as qta
+        pixmap = qta.icon('fa5s.check', color='#ffffff').pixmap(12, 12)
+        path = os.path.join(tempfile.gettempdir(), '1001pieces_check_mark.png')
+        pixmap.save(path)
+        _check_mark_path = path
+    except Exception:
+        _check_mark_path = ""
+    return _check_mark_path
+
+
+_inline_icon_paths: dict = {}
+
+
+def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
+    """Icône qtawesome insérable dans le texte riche d'un QLabel (`<img>`).
+
+    Remplace les glyphes (⚠, ✓…) dans les libellés : l'icône est rendue en PNG
+    une seule fois par (nom, couleur, taille), comme le chevron des listes
+    déroulantes. Chaîne vide si qtawesome échoue (le texte reste lisible).
+    """
+    key = (icon_name, color, size)
+    path = _inline_icon_paths.get(key)
+    if path is None:
+        try:
+            import qtawesome as qta
+            pixmap = qta.icon(icon_name, color=color).pixmap(size * 2, size * 2)
+            safe = f"{icon_name}_{color}_{size}".replace('.', '_').replace('#', '')
+            path = os.path.join(tempfile.gettempdir(), f'1001pieces_icone_{safe}.png')
+            pixmap.save(path)
+        except Exception:
+            path = ""
+        _inline_icon_paths[key] = path
+    if not path:
+        return ""
+    # Image 2× affichée à `size` : nette sur écran Retina
+    return f'<img src="{path}" width="{size}" height="{size}" style="vertical-align: middle;">'
+
+
 class StyleManager:
-    """Gestionnaire centralisé des styles CSS modernes"""
+    """Gestionnaire centralisé des styles CSS modernes
+
+    Palette de référence : `Config.Colors` (src/core/config.py) — PRIMARY #0d6efd,
+    SUCCESS #198754, DANGER #dc3545, WARNING #fd7e14 et leurs variantes survol /
+    fond / texte. Toute nouvelle couleur de rôle (bouton principal, validation,
+    erreur, focus) doit en reprendre la valeur. Les couleurs de CATÉGORIE (types
+    d'action de l'historique, relations Remplace / Remplacée par / Équivalence)
+    sont volontairement distinctes et ne s'y rattachent pas.
+    """
 
     # === Styles QSS réutilisables (boutons plats / transparents) ===
     # Centralisés ici pour éviter la duplication de ces littéraux dans les
@@ -78,6 +133,122 @@ class StyleManager:
         "QToolButton:disabled { background-color: #f8f9fa; border-color: #e9ecef; }"
     )
 
+    # === Boutons d'export (fenêtre principale) — état inactif commun ===
+    # Chaque bouton garde sa couleur active propre (CSV sarcelle, Méta Title orange,
+    # Méta Desc jaune, HTML blancs) ; seul l'état inactif est partagé, pour qu'on
+    # distingue d'un coup d'œil ce qui est cliquable. Avant : les HTML inactifs
+    # ressemblaient à leur état actif, et CSV/Méta inactifs étaient gris foncé.
+    # Pas de propriété `border` ici : chaque bouton garde l'épaisseur de bordure de
+    # son état actif (aucune pour CSV/Méta, 1 px pour HTML), sinon le bouton
+    # changerait de taille en s'activant.
+    EXPORT_BTN_DISABLED_RULES = "background: #f1f3f5; color: #adb5bd;"
+
+    # Bouton « effacer les filtres » (icône ✕ qtawesome) : gris neutre au repos
+    # (vider des champs n'est pas une action destructrice), rouge pâle au survol.
+    CLEAR_FILTERS_BUTTON = (
+        "QPushButton { background-color: #f8f9fa; color: #868e96;"
+        " border: 1px solid #ced4da; border-radius: 3px;"
+        " padding: 0px; }"
+        "QPushButton:hover { background-color: #f8d7da; border-color: #f1aeb5; }"
+        "QPushButton:pressed { background-color: #f1aeb5; border-color: #ea868f; }"
+    )
+
+    # Boutons de l'action FINALE d'une fenêtre (Importer, Confirmer l'import,
+    # Appliquer le nettoyage) et de son « Annuler » : même hauteur, texte 12 px.
+    # Avant : 11 px et padding 3 px — l'action principale de la fenêtre d'import
+    # était le plus petit bouton de l'écran.
+    PRIMARY_ACTION_BUTTON = (
+        "QPushButton { background-color: #198754; color: white; border: 1px solid #198754;"
+        " padding: 5px 16px; border-radius: 4px; font-size: 12px; font-weight: bold; }"
+        "QPushButton:hover { background-color: #157347; border-color: #157347; }"
+        "QPushButton:disabled { background-color: #f1f3f5; color: #adb5bd; border-color: #e9ecef; }"
+    )
+    SECONDARY_ACTION_BUTTON = (
+        "QPushButton { background: white; color: #343a40; border: 1px solid #ced4da;"
+        " padding: 5px 14px; border-radius: 4px; font-size: 12px; font-weight: normal; }"
+        "QPushButton:hover { background: #f1f3f5; border-color: #adb5bd; }"
+    )
+
+    # Rôle « Compact » : outils à l'intérieur d'une fenêtre (Parcourir, Ajouter une
+    # colonne, Désélectionner tout, actions groupées) — contour discret, 11 px.
+    SECONDARY_COMPACT_BUTTON = (
+        "QPushButton { background: white; color: #343a40; border: 1px solid #ced4da;"
+        " padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: normal; }"
+        "QPushButton:hover { background: #f1f3f5; border-color: #adb5bd; }"
+        "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; }"
+    )
+
+    # Action finale destructive (Restaurer une sauvegarde : remplace la base) :
+    # mêmes mesures que PRIMARY / SECONDARY_ACTION_BUTTON, en rouge contour —
+    # un vert « valider » serait trompeur.
+    DANGER_ACTION_BUTTON = (
+        "QPushButton { background: white; color: #c0392b; border: 1px solid #ea868f;"
+        " padding: 5px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; }"
+        "QPushButton:hover { background: #f8d7da; border-color: #dc3545; }"
+        "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; font-weight: normal; }"
+    )
+
+    # Rôle « Danger » : action destructive (vider, retirer). Texte rouge sur fond
+    # blanc plutôt que rouge plein : signale sans crier ; mêmes mesures que Compact.
+    DANGER_COMPACT_BUTTON = (
+        "QPushButton { background: white; color: #c0392b; border: 1px solid #f1aeb5;"
+        " padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: normal; }"
+        "QPushButton:hover { background: #f8d7da; border-color: #ea868f; }"
+        "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; }"
+    )
+
+    # Onglets segmentés (CSV / HTML, Logs bruts / Auto-complétion…, onglets du
+    # nettoyage) : bouton coché = fond gris foncé.
+    SEGMENTED_BUTTON = (
+        "QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }"
+        "QPushButton:checked { background-color: #495057; color: white; border-color: #495057; }"
+    )
+
+    # Petits boutons-icônes plats (en-tête du panneau des pièces) : sans cadre,
+    # fond discret au survol — même famille que le bouton d'ouverture de l'historique.
+    PANEL_ICON_BUTTON = (
+        "QPushButton { background: transparent; border: none; border-radius: 3px;"
+        " min-width: 22px; max-width: 22px; min-height: 20px; max-height: 20px; padding: 0px; }"
+        "QPushButton:hover { background-color: #e9ecef; }"
+    )
+
+    # Carte « nouvelle pièce » du panneau des pièces (PieceAddCard) : contour
+    # pointillé bleu = élément en cours de création ; champs et boutons compacts
+    # (le style global des champs, 8 px de marge, est trop haut pour ce panneau).
+    PIECE_ADD_CARD = (
+        "QFrame#pieceAddCard { background: white; border: 1px dashed #80bdff; border-radius: 6px; }"
+        "QFrame#pieceAddCard QLineEdit { padding: 3px 8px; border: 1px solid #ced4da;"
+        " border-radius: 4px; font-size: 12px; background: white; }"
+        "QFrame#pieceAddCard QLineEdit:focus { border-color: #80bdff; }"
+        "QLineEdit#pieceAddRef { font-weight: bold; }"
+        "QLabel#pieceAddTarget { background: #e7f1ff; color: #0b5ed7; border-radius: 3px;"
+        " padding: 1px 6px; font-size: 11px; }"
+        "QLabel#pieceAddHint { color: #adb5bd; font-size: 11px; }"
+        "QPushButton#pieceAddCancel { background: transparent; border: none; color: #6c757d;"
+        " padding: 3px 8px; font-size: 12px; font-weight: normal; min-height: 0px; }"
+        "QPushButton#pieceAddCancel:hover { color: #212529; background: #e9ecef; border-radius: 4px; }"
+        "QPushButton#pieceAddSubmit { background: #0d6efd; color: white; border: none;"
+        " border-radius: 4px; padding: 3px 12px; font-size: 12px; font-weight: 600; min-height: 0px; }"
+        "QPushButton#pieceAddSubmit:hover { background: #0b5ed7; }"
+        "QPushButton#pieceAddSubmit:pressed { background: #0a58ca; }"
+    )
+
+    # Barre de filtres des fenêtres secondaires : désormais identique au standard
+    # global des champs (conservée pour ses appelants ; rien à surcharger).
+    COMPACT_FILTER_BAR = ""
+
+    # Cartes du panneau latéral du gestionnaire de pièces (Équivalences, Remplace,
+    # Remplacée par) : fond gris clair arrondi, sans bordure — remplace les cadres
+    # gris bordés (QFrame.StyledPanel). Appliqué par objectName pour ne pas
+    # descendre sur les widgets enfants.
+    @staticmethod
+    def side_card(object_name: str) -> str:
+        return (f"QFrame#{object_name} {{ background: #f1f3f5; border: none;"
+                f" border-radius: 6px; }}")
+
+    # Surlignage temporaire d'une pièce tout juste ajoutée (vert pâle, 2 s)
+    PIECE_ADDED_HIGHLIGHT = "#d1e7dd"
+
     @staticmethod
     def get_modern_style() -> str:
         """Retourner le style CSS moderne complet de l'application"""
@@ -100,34 +271,36 @@ class StyleManager:
             color: #212529;
         }
 
-        /* === BOUTONS MODERNES === */
+        /* === BOUTONS ===
+           Style par défaut = rôle « Secondaire » (Annuler, Fermer, tout bouton
+           sans style particulier) : blanc, contour gris, 12 px. Mêmes mesures
+           que StyleManager.SECONDARY_ACTION_BUTTON et PRIMARY_ACTION_BUTTON →
+           un bouton non stylé est aligné sur les boutons d'action. Avant :
+           dégradé, 13 px, marge 8 × 16 px (plus gros que les boutons stylés). */
         QPushButton {
-            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #ffffff, stop: 1 #f8f9fa);
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-weight: 500;
-            color: #495057;
-            min-height: 16px;
+            background: white;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 5px 14px;
+            font-size: 12px;
+            font-weight: normal;
+            color: #343a40;
         }
-        
+
         QPushButton:hover {
-            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #e9ecef, stop: 1 #dee2e6);
+            background: #f1f3f5;
             border-color: #adb5bd;
             color: #212529;
         }
-        
+
         QPushButton:pressed {
-            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #dee2e6, stop: 1 #ced4da);
+            background: #e9ecef;
             border-color: #6c757d;
         }
-        
+
         QPushButton:disabled {
             background-color: #f8f9fa;
-            color: #6c757d;
+            color: #adb5bd;
             border-color: #e9ecef;
         }
 
@@ -197,10 +370,23 @@ class StyleManager:
         }
 
         /* === CHAMPS DE SAISIE === */
-        QLineEdit, QTextEdit, QComboBox {
+        /* Champs : UNE hauteur pour toute l'application (~30 px). Avant : 36 px
+           pour les champs non stylés, 22 à 30 px pour les autres. Les zones de
+           texte multilignes gardent une marge plus large (règle suivante). */
+        QLineEdit, QComboBox, QDateEdit, QSpinBox {
             border: 1px solid #ced4da;
             border-radius: 4px;
-            padding: 8px 12px;
+            padding: 4px 8px;
+            min-height: 20px;
+            background-color: white;
+            color: #495057;
+            selection-background-color: #0d6efd;
+        }
+
+        QTextEdit {
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 6px 8px;
             background-color: white;
             color: #495057;
             selection-background-color: #0d6efd;
@@ -215,6 +401,15 @@ class StyleManager:
             border-color: #adb5bd;
         }
 
+        /* Éditeur de cellule des tableaux (double-clic / F2) : sans la marge
+           intérieure de 8 px des champs de formulaire, qui ne laissait que 7 px au
+           texte dans une ligne de 26 px. Bordure bleue = cellule en édition. */
+        QTableView QLineEdit {
+            padding: 0px 4px;
+            border: 1px solid #80bdff;
+            border-radius: 0px;
+        }
+
         /* === COMBOBOX SPECIFIQUE === */
         QComboBox::drop-down {
             border: none;
@@ -222,6 +417,17 @@ class StyleManager:
         }
         
         QComboBox::down-arrow {
+            %%ARROW_RULE%%
+        }
+
+        /* Champs de date à calendrier : même chevron que les listes déroulantes
+           (sinon bloc sombre natif) */
+        QDateEdit::drop-down {
+            border: none;
+            width: 20px;
+        }
+
+        QDateEdit::down-arrow {
             %%ARROW_RULE%%
         }
         
@@ -244,6 +450,13 @@ class StyleManager:
             selection-color: white;
         }
         
+        /* Tableau principal (QTableView, non couvert par la règle QTableWidget) :
+           une ligne sur deux teintée — le gris par défaut de Qt (#f7f7f7) était
+           à peine visible sur fond blanc. */
+        CustomTableView {
+            alternate-background-color: #f1f4f8;
+        }
+
         QHeaderView::section {
             background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                                       stop: 0 #f8f9fa, stop: 1 #e9ecef);
@@ -256,6 +469,12 @@ class StyleManager:
         
         QHeaderView::section:first {
             border-left: 1px solid #dee2e6;
+        }
+
+        /* Numéros de ligne : pas de marge verticale, sinon ils seraient rognés
+           avec les hauteurs de ligne réduites (réglage Affichage → Hauteur). */
+        QHeaderView::section:vertical {
+            padding: 0px 8px;
         }
         
         QHeaderView::section:hover {
@@ -383,6 +602,54 @@ class StyleManager:
             margin: 4px 8px;
         }
 
+        /* Actions et menus déroulants de la barre d'outils : un seul style plat
+           (texte sans cadre, fond discret au survol). Les menus Affichage /
+           Données / Configuration ne se distinguent plus que par leur chevron. */
+        QToolBar QToolButton {
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 6px;
+            color: #212529;
+        }
+
+        QToolBar QToolButton:hover {
+            background-color: #e9ecef;
+        }
+
+        QToolBar QToolButton:pressed {
+            background-color: #dee2e6;
+        }
+
+        QToolBar QToolButton:disabled {
+            color: #adb5bd;
+        }
+
+        QPushButton#menuButton {
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 22px 4px 6px;
+            font-weight: normal;
+            color: #212529;
+            min-height: 0px;
+        }
+
+        QPushButton#menuButton:hover {
+            background-color: #e9ecef;
+        }
+
+        QPushButton#menuButton:pressed {
+            background-color: #dee2e6;
+        }
+
+        QPushButton#menuButton::menu-indicator {
+            %%MENU_ARROW_RULE%%
+            subcontrol-origin: padding;
+            subcontrol-position: right center;
+            right: 6px;
+        }
+
         /* === PROGRESS BAR === */
         QProgressBar {
             border: 1px solid #dee2e6;
@@ -405,14 +672,33 @@ class StyleManager:
             color: #495057;
         }
         
+        /* 15 px (au lieu de 18 px, bordure 2 px) : proportionné aux libellés de
+           11 à 13 px, à côté desquels les cases paraissaient énormes. */
         QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border: 2px solid #ced4da;
+            width: 15px;
+            height: 15px;
+            border: 1px solid #adb5bd;
             border-radius: 3px;
             background-color: white;
         }
         
+        /* Cases intégrées aux arbres, tableaux et listes (validation des
+           suggestions, nettoyage des doublons…) : même apparence que les
+           QCheckBox — sinon cases sans cadre, seule la coche était visible. */
+        QTreeView::indicator, QTableView::indicator, QListView::indicator {
+            width: 15px;
+            height: 15px;
+            border: 1px solid #adb5bd;
+            border-radius: 3px;
+            background-color: white;
+        }
+
+        QTreeView::indicator:checked, QTableView::indicator:checked, QListView::indicator:checked {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+            %%CHECK_RULE%%
+        }
+
         QCheckBox::indicator:hover {
             border-color: #adb5bd;
         }
@@ -420,7 +706,7 @@ class StyleManager:
         QCheckBox::indicator:checked {
             background-color: #0d6efd;
             border-color: #0d6efd;
-            image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xMC42IDEuNEw0LjIgNy44TDEuNCAwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
+            %%CHECK_RULE%%
         }
 
         /* === DIALOG BOXES === */
@@ -431,20 +717,25 @@ class StyleManager:
         }
 
         /* === SPLITTER === */
+        /* Poignées de redimensionnement : UNE règle pour toute l'application.
+           8 px transparents = l'espace entre deux blocs (les blocs n'ont pas de
+           marge côté poignée) ; teinte au survol pour rester repérable. Avant :
+           1, 2 ou 8 px selon la fenêtre, avec des marges de 0 à 22 px — les
+           poignées collaient au contenu par endroits. */
         QSplitter::handle {
-            background-color: #dee2e6;
+            background-color: transparent;
         }
-        
+
         QSplitter::handle:vertical {
-            height: 2px;
+            height: 8px;
         }
-        
+
         QSplitter::handle:horizontal {
-            width: 2px;
+            width: 8px;
         }
-        
+
         QSplitter::handle:hover {
-            background-color: #0d6efd;
+            background-color: #dee2e6;
         }
 
         /* === GROUPBOX === */
@@ -532,13 +823,23 @@ class StyleManager:
         }
 
         /* === TOOLTIPS === */
+        /* Infobulles claires et compactes.
+           Fond CLAIR obligatoire : une feuille de style sans sélecteur posée sur
+           un widget (ex. setStyleSheet("color: #495057; …") sur un QLabel) colore
+           aussi le texte de SON infobulle — des dizaines de cas dans l'appli. Sur
+           fond sombre ce texte devenait illisible ; toutes ces couleurs sont
+           pensées pour du blanc.
+           Piège mesuré : sur une infobulle, Qt convertit `padding` en UNE marge
+           identique sur les 4 côtés (2 px + la plus grande valeur) — « 3px 7px »
+           donnait 9 px partout. D'où une valeur unique et petite : 41 px de haut
+           pour 2 lignes, contre ~59 px avant. */
         QToolTip {
             background-color: #ffffff;
-            color: #2c3e50;
+            color: #212529;
             border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 12px;
+            border-radius: 4px;
+            padding: 2px;
+            font-size: 11px;
             font-family: -apple-system, 'SF Pro Display', system-ui, 'Helvetica Neue', sans-serif;
         }
 
@@ -547,4 +848,15 @@ class StyleManager:
 
         /* Transitions not supported in PyQt5 - removed */
         """
-        return style.replace('%%ARROW_RULE%%', arrow_rule)
+        menu_arrow_rule = (
+            f"image: url({arrow_path}); width: 10px; height: 10px;"
+            if arrow_path else
+            "width: 8px; height: 8px;"
+        )
+        # Coche des cases : l'ancienne image `data:image/svg+xml` n'était pas chargée
+        # par Qt → case cochée = carré bleu plein, sans coche. PNG qtawesome à la place.
+        check_path = _generate_check_mark()
+        check_rule = f"image: url({check_path});" if check_path else ""
+        return (style.replace('%%ARROW_RULE%%', arrow_rule)
+                     .replace('%%MENU_ARROW_RULE%%', menu_arrow_rule)
+                     .replace('%%CHECK_RULE%%', check_rule))

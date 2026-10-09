@@ -19,6 +19,8 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QCompleter, QStringListModel, QRadioButton, QButtonGroup,
                              QSizePolicy, QSize, QSplitter, pyqtSignal)
 
+from PyQt5.QtWidgets import QLayout
+from ..ui.style_manager import StyleManager
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
 
@@ -211,7 +213,7 @@ class MappingGroupWidget(QWidget):
             else:
                 hint_lbl = QLabel("Format non standard — assignez au moins la colonne Réf. Modèle")
             hint_lbl.setStyleSheet(
-                "color: #856404; font-size: 10px; background: transparent; border: none;"
+                "color: #856404; font-size: 11px; background: transparent; border: none;"
             )
             title_col.addWidget(hint_lbl)
 
@@ -221,7 +223,7 @@ class MappingGroupWidget(QWidget):
             # Label de statut dynamique (rouge/orange selon état du mapping)
             self._status_label = QLabel()
             self._status_label.setStyleSheet(
-                "color: #dc3545; font-size: 10px; padding: 1px 0;"
+                "color: #dc3545; font-size: 11px; padding: 1px 0;"
             )
             outer.addWidget(self._status_label)
 
@@ -250,7 +252,7 @@ class MappingGroupWidget(QWidget):
                         examples.append(f'"{val}"')
             ex_lbl = QLabel("  /  ".join(examples) if examples else "—")
             ex_lbl.setStyleSheet(
-                "color: #6c757d; font-family: monospace; font-size: 10px;"
+                "color: #6c757d; font-family: monospace; font-size: 11px;"
                 " background: transparent; border: none;"
             )
             ex_lbl.setMinimumWidth(0)
@@ -296,12 +298,12 @@ class MappingGroupWidget(QWidget):
             if self.has_ref_modele():
                 self._status_label.setText("Réf. Modèle assignée — mapping prêt")
                 self._status_label.setStyleSheet(
-                    "color: #28a745; font-size: 10px; padding: 1px 0;"
+                    "color: #198754; font-size: 11px; padding: 1px 0;"
                 )
             else:
                 self._status_label.setText("Réf. Modèle non assignée — import bloqué")
                 self._status_label.setStyleSheet(
-                    "color: #dc3545; font-size: 10px; padding: 1px 0;"
+                    "color: #dc3545; font-size: 11px; padding: 1px 0;"
                 )
 
     # ── API publique ─────────────────────────────────────────────────────────
@@ -348,7 +350,10 @@ class ImportDialog(QDialog):
             self.setMinimumHeight(720)
             self.resize(1280, 900)
         else:
-            self.setMinimumHeight(1000)
+            # Fichier unique : hauteur ajustée au contenu après chargement
+            # (cf _ajuster_hauteur_fichier_unique). L'ancien minimum de 1000 px
+            # laissait ~500 px vides sous le formulaire.
+            self.setMinimumHeight(480)
 
         # PHASE 2.1: Flag pour indiquer si les données sont chargées
         self._data_loaded = False
@@ -396,10 +401,39 @@ class ImportDialog(QDialog):
 
         # Maintenant, peupler l'interface avec les vraies données
         self._populate_data()
+        self._ajuster_hauteur_fichier_unique()
+
+    def _ajuster_hauteur_fichier_unique(self):
+        """Fichier unique : la fenêtre prend la hauteur de son contenu (bornée par
+        l'écran). Multi-fichiers : taille fixée à la construction, inchangée."""
+        if self.import_config.import_type == ImportType.MULTI_FILE:
+            return
+        # Recalcul forcé de la mise en page AVANT de mesurer : sinon sizeHint()
+        # ignore la nouvelle hauteur de l'aperçu et la fenêtre est réduite sous
+        # le minimum de son contenu (blocs comprimés, lien chevauchant l'aperçu).
+        if self.layout() is not None:
+            self.layout().activate()
+        hauteur = max(self.minimumHeight(), self.sizeHint().height(),
+                      self.minimumSizeHint().height())
+        ecran = self.screen()
+        if ecran is not None:   # bornée par l'écran, seulement s'il est connu
+            hauteur = min(hauteur, ecran.availableGeometry().height() - 60)
+        self.resize(self.width(), hauteur)
 
     def _setup_ui(self):
         """Créer l'interface utilisateur"""
         layout = QVBoxLayout()
+        if self.import_config.import_type != ImportType.MULTI_FILE:
+            # Fichier unique : la fenêtre ne descend jamais sous le minimum de son
+            # contenu et s'agrandit seule quand il grandit (aperçu, panneau de
+            # mapping, section Succession remplis ou ouverts après coup). Sans
+            # cela, les blocs se comprimaient : le lien « Adapter le mapping »
+            # chevauchait l'aperçu.
+            layout.setSizeConstraint(QLayout.SetMinimumSize)
+            # Cette contrainte remplace aussi la largeur minimale : un « étai »
+            # inscrit les 1000 px dans le contenu lui-même.
+            marges = layout.contentsMargins()
+            layout.addStrut(self.minimumWidth() - marges.left() - marges.right())
         
         # Section format reconnu et aperçu des données
         format_group = QGroupBox("Format reconnu et aperçu")
@@ -462,7 +496,7 @@ class ImportDialog(QDialog):
         third_col_layout.setContentsMargins(10, 5, 10, 5)
         third_col_layout.setSpacing(3)
 
-        self.third_col_label = QLabel("Destination 3ème colonne:")
+        self.third_col_label = QLabel("Destination de la 3ᵉ colonne :")
         self.third_col_label.setStyleSheet("font-weight: bold;")
         third_col_layout.addWidget(self.third_col_label)
         
@@ -512,7 +546,7 @@ class ImportDialog(QDialog):
             # Ligne 1 : Référence (largeur fixe) + icône info
             row_ref = QHBoxLayout()
             row_ref.setSpacing(6)
-            ref_lbl = QLabel("Référence:")
+            ref_lbl = QLabel("Référence :")
             ref_lbl.setStyleSheet("font-weight: bold;")
             ref_lbl.setFixedWidth(90)
             row_ref.addWidget(ref_lbl)
@@ -551,7 +585,7 @@ class ImportDialog(QDialog):
             # Ligne 2 : Description + case « Appliquer libellé »
             row_desc = QHBoxLayout()
             row_desc.setSpacing(8)
-            desc_lbl2 = QLabel("Description:")
+            desc_lbl2 = QLabel("Description :")
             desc_lbl2.setStyleSheet("font-weight: bold;")
             desc_lbl2.setFixedWidth(90)
             row_desc.addWidget(desc_lbl2)
@@ -585,7 +619,7 @@ class ImportDialog(QDialog):
 
             # Ligne : Réf.
             ref_row = QHBoxLayout()
-            ref_row_lbl = QLabel("Réf.:")
+            ref_row_lbl = QLabel("Réf. :")
             ref_row_lbl.setStyleSheet("font-weight: bold;")
             ref_row_lbl.setFixedWidth(70)
             ref_row.addWidget(ref_row_lbl)
@@ -596,7 +630,7 @@ class ImportDialog(QDialog):
                 ref_input_edit.setStyleSheet("padding: 5px; border: 2px solid #0066cc; border-radius: 4px;")
                 ref_row.addWidget(ref_input_edit)
             else:
-                ref_display = QLabel(f"→ Réf: {file.suggested_reference or '—'}")
+                ref_display = QLabel(f"→ Réf. : {file.suggested_reference or '—'}")
                 ref_display.setStyleSheet(
                     "color: #0066cc; background-color: #f0f8ff; padding: 4px 8px;"
                     " border: 1px solid #ddd; border-radius: 4px; font-weight: bold;"
@@ -607,7 +641,7 @@ class ImportDialog(QDialog):
 
             # Ligne : Libellé
             desc_row = QHBoxLayout()
-            desc_row_lbl = QLabel("Libellé:")
+            desc_row_lbl = QLabel("Libellé :")
             desc_row_lbl.setStyleSheet("font-weight: bold;")
             desc_row_lbl.setFixedWidth(70)
             desc_row.addWidget(desc_row_lbl)
@@ -819,7 +853,7 @@ class ImportDialog(QDialog):
             # (sinon le champ Description pousse la poignée et étrique les 2 sous-colonnes).
             left_col.setMaximumWidth(580)
             left_layout = QVBoxLayout(left_col)
-            left_layout.setContentsMargins(0, 0, 10, 0)  # respiration vers la poignée
+            left_layout.setContentsMargins(0, 0, 0, 0)  # l'espace vers la zone Relations est la poignée (8 px)
             left_layout.setSpacing(6)
             if getattr(self, '_common_ref_group', None) is not None:
                 left_layout.addWidget(self._common_ref_group)
@@ -832,7 +866,6 @@ class ImportDialog(QDialog):
                 splitter.setStretchFactor(0, 2)
                 splitter.setStretchFactor(1, 3)
                 splitter.setChildrenCollapsible(False)
-                splitter.setHandleWidth(1)    # poignée fine ; l'aération vient des marges
                 # Relations plus large par défaut (deux sous-colonnes succ.|équiv.)
                 splitter.setSizes([500, 760])
                 layout.addWidget(splitter, 1)
@@ -861,10 +894,7 @@ class ImportDialog(QDialog):
         if cancel_icon:
             cancel_btn.setIcon(cancel_icon)
             cancel_btn.setIconSize(QSize(11, 11))
-        cancel_btn.setStyleSheet(
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
+        cancel_btn.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
@@ -872,13 +902,8 @@ class ImportDialog(QDialog):
         self.ok_btn = QPushButton("Importer")
         if import_icon:
             self.ok_btn.setIcon(import_icon)
-            self.ok_btn.setIconSize(QSize(11, 11))
-        self.ok_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #218838; }"
-            "QPushButton:disabled { background-color: #94d3a2; color: #e9f7ec; }"
-        )
+            self.ok_btn.setIconSize(QSize(12, 12))
+        self.ok_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         self.ok_btn.setDefault(True)
         self.ok_btn.clicked.connect(self._validate_and_accept)
         buttons_layout.addWidget(self.ok_btn)
@@ -920,7 +945,7 @@ class ImportDialog(QDialog):
                 )
                 row1.addWidget(ref_input_edit)
             else:
-                ref_display = QLabel(f"→ Réf: {file.suggested_reference}")
+                ref_display = QLabel(f"→ Réf. : {file.suggested_reference}")
                 ref_display.setStyleSheet(
                     "color: #0066cc; background-color: #f0f8ff; padding: 3px 8px;"
                     " border: 1px solid #ddd; border-radius: 4px; font-weight: bold; font-size: 11px;"
@@ -941,7 +966,7 @@ class ImportDialog(QDialog):
             row2 = QHBoxLayout()
             row2.setSpacing(8)
 
-            desc_lbl = QLabel("Libellé:")
+            desc_lbl = QLabel("Libellé :")
             desc_lbl.setStyleSheet(
                 "font-size: 11px; color: #495057; background: transparent; border: none;"
             )
@@ -1028,12 +1053,20 @@ class ImportDialog(QDialog):
         """Définit le texte de l'aperçu et ajuste la hauteur pour éviter l'ascenseur."""
         self.preview_text.setPlainText(text)
         n_lines = text.count('\n') + 1 if text else 0
-        self.preview_text.setFixedHeight(max(n_lines * 16 + 6, 30))
+        # Hauteur d'une ligne mesurée sur la police EFFECTIVE (feuille de style
+        # appliquée) : l'ancienne estimation fixe de 16 px coupait la dernière
+        # ligne de l'aperçu à mi-hauteur.
+        self.preview_text.ensurePolished()
+        interligne = self.preview_text.fontMetrics().lineSpacing()
+        marges = int(self.preview_text.document().documentMargin() * 2) + self.preview_text.frameWidth() * 2
+        self.preview_text.setFixedHeight(max(n_lines * interligne + marges + 2, 30))
+
 
     def _toggle_succ(self):
         """Ouvre/ferme la section Succession."""
         visible = not self._succ_content.isVisible()
         self._succ_content.setVisible(visible)
+        self._ajuster_hauteur_fichier_unique()   # la section ouverte ne doit pas être écrasée
         arrow = "▼" if visible else "▶"
         text = self._succ_toggle_btn.text()
         self._succ_toggle_btn.setText(arrow + text[1:])
@@ -1170,11 +1203,11 @@ class ImportDialog(QDialog):
             if ref_display:
                 if auto_references_enabled:
                     # Affichage normal avec référence
-                    ref_display.setText(f"→ Réf: {file.suggested_reference}")
+                    ref_display.setText(f"→ Réf. : {file.suggested_reference}")
                     ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
                 else:
                     # Affichage grisé indiquant que la référence ne sera pas créée
-                    ref_display.setText("→ Réf: (aucune référence de pièce)")
+                    ref_display.setText("→ Réf. : (aucune référence de pièce)")
                     ref_display.setStyleSheet("color: #999; background-color: #f5f5f5; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-style: italic;")
     
     def _validate_and_accept(self):
@@ -1603,7 +1636,7 @@ class ImportDialog(QDialog):
                 for f in self._file_groups.get(3, [])
             )
             self.third_col_label.setText(
-                "Destination Description:" if has_pdf_3col else "Destination 3ème colonne:"
+                "Destination de la description :" if has_pdf_3col else "Destination de la 3ᵉ colonne :"
             )
             self.third_col_widget.setVisible(True)
         else:
@@ -1707,7 +1740,7 @@ class ImportDialog(QDialog):
             if hasattr(self, 'ok_btn'):
                 self.ok_btn.setEnabled(False)
         else:
-            self.format_info_label.setText("Format reconnu:")
+            self.format_info_label.setText("Format reconnu :")
             self.format_desc_label.setText(format_desc)
             self.format_warning_widget.setVisible(False)
             if hasattr(self, 'ok_btn'):
@@ -1741,9 +1774,9 @@ class ImportDialog(QDialog):
         if detected_columns == 3:
             self.third_col_widget.show()
             if FileType.PDF in [f.type for f in self.import_config.files]:
-                self.third_col_label.setText("Destination Description:")
+                self.third_col_label.setText("Destination de la description :")
             else:
-                self.third_col_label.setText("Destination 3ème colonne:")
+                self.third_col_label.setText("Destination de la 3ᵉ colonne :")
         else:
             self.third_col_widget.hide()
         
@@ -1896,7 +1929,7 @@ class ImportPreviewDialog(QDialog):
 
         # Comptage exact depuis v3.40.1 (réplique en lecture seule du chemin réel)
         note = QLabel("* Associations qui seront créées (les doublons déjà en base sont exclus)")
-        note.setStyleSheet("font-size: 10px; color: #999;")
+        note.setStyleSheet("font-size: 11px; color: #999;")
         layout.addWidget(note)
 
         # ── Boutons ───────────────────────────────────────────────────────
@@ -1904,16 +1937,13 @@ class ImportPreviewDialog(QDialog):
         btn_bar.addStretch()
 
         cancel_btn = QPushButton("Annuler")
+        cancel_btn.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         cancel_btn.clicked.connect(self._on_cancel)
         btn_bar.addWidget(cancel_btn)
 
         confirm_btn = QPushButton("Confirmer l'import")
         confirm_btn.setDefault(True)
-        confirm_btn.setStyleSheet(
-            "QPushButton { background: #2ecc71; color: white; font-weight: bold;"
-            " border-radius: 4px; padding: 4px 14px; }"
-            "QPushButton:hover { background: #27ae60; }"
-        )
+        confirm_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         confirm_btn.clicked.connect(self._on_confirm)
         btn_bar.addWidget(confirm_btn)
 

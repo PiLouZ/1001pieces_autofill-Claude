@@ -12,7 +12,8 @@ from ..ui.qt_imports import (
     QSize
 )
 from ..ui.qt_imports import Qt, QObject, pyqtSignal
-from ..ui.qt_imports import QFont, QKeyEvent
+from ..ui.qt_imports import QFont, QKeyEvent, QPainter, QColor
+from ..ui.style_manager import StyleManager
 
 from ..core.logger import app_logger
 from .duplicates_analysis_service import clean_display_text
@@ -20,6 +21,18 @@ from .base_service import BaseService, safe_operation, service_operation
 
 class KeyboardTreeWidget(QTreeWidget):
     """QTreeWidget personnalisé avec gestion clavier pour sélection par barre espace"""
+
+    # Message centré quand l'arbre est vide, posé APRÈS l'analyse (populate/load) :
+    # vide pendant l'analyse, pour ne pas annoncer « aucun doublon » trop tôt.
+    placeholder_text = ""
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.topLevelItemCount() == 0 and self.placeholder_text:
+            painter = QPainter(self.viewport())
+            painter.setPen(QColor(150, 150, 150))
+            painter.drawText(self.viewport().rect(), Qt.AlignCenter, self.placeholder_text)
+            painter.end()
 
     def keyPressEvent(self, event: QKeyEvent):
         """Gérer les événements clavier"""
@@ -164,21 +177,17 @@ class DuplicateDevicesWidget(QWidget):
         # En-tête avec actions
         header_layout = QHBoxLayout()
         
-        _compact_style = (
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
 
         self.select_all_btn = QPushButton("Tout sélectionner")
-        self.select_all_btn.setStyleSheet(_compact_style)
+        self.select_all_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.select_none_btn = QPushButton("Tout désélectionner")
-        self.select_none_btn.setStyleSheet(_compact_style)
+        self.select_none_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.auto_select_most_pieces_btn = QPushButton("Auto (+ de pièces)")
         self.auto_select_most_pieces_btn.setToolTip("Sélectionner automatiquement l'appareil avec le plus de pièces")
-        self.auto_select_most_pieces_btn.setStyleSheet(_compact_style)
+        self.auto_select_most_pieces_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.auto_select_newest_btn = QPushButton("Auto (+ récents)")
         self.auto_select_newest_btn.setToolTip("Sélectionner automatiquement les appareils les plus récents")
-        self.auto_select_newest_btn.setStyleSheet(_compact_style)
+        self.auto_select_newest_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         # Boutons pour décisions sur doublons
         self.mark_distinct_btn = QPushButton("Marquer comme distinct(s)")
@@ -186,12 +195,11 @@ class DuplicateDevicesWidget(QWidget):
             "Marquer le(s) groupe(s) sélectionné(s) comme faux doublons "
             "(Ctrl/Maj-clic pour en sélectionner plusieurs)"
         )
-        self.mark_distinct_btn.setIcon(qta.icon('fa5s.check-double', color='white'))
+        self.mark_distinct_btn.setIcon(qta.icon('fa5s.check-double', color='#495057'))
         self.mark_distinct_btn.setIconSize(QSize(11, 11))
-        self.mark_distinct_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white; font-weight: bold;"
-            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
-        )
+        # Action secondaire : style neutre (un seul bouton plein par fenêtre,
+        # « Appliquer le nettoyage »)
+        self.mark_distinct_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.mark_distinct_btn.setEnabled(False)
 
         header_layout.addWidget(self.select_all_btn)
@@ -206,8 +214,8 @@ class DuplicateDevicesWidget(QWidget):
         # Arbre des appareils avec gestion clavier
         self.devices_tree = KeyboardTreeWidget()
         self.devices_tree.setHeaderLabels([
-            "Maître (à conserver)", "ID", "Référence Modèle", "Type", "Fabricant",
-            "Référence Commerciale", "Autre Référence", "Nb Pièces"
+            "Maître (à conserver)", "ID", "Référence modèle", "Type", "Fabricant",
+            "Référence commerciale", "Autre référence", "Nb pièces"
         ])
         self.devices_tree.setRootIsDecorated(True)
         # Multi-sélection de lignes : permet de marquer plusieurs groupes "distincts"
@@ -232,6 +240,7 @@ class DuplicateDevicesWidget(QWidget):
         """Remplir la liste des appareils en doublon"""
         self.duplicate_groups = duplicate_devices
         self.devices_tree.clear()
+        self.devices_tree.placeholder_text = "Aucun doublon détecté"
         
         for group in duplicate_devices:
             ref_modele = group['ref_modele']
@@ -302,7 +311,7 @@ class DuplicateDevicesWidget(QWidget):
                     if group_item.child(j).checkState(0) == Qt.Checked
                 )
                 if checked == 1:
-                    group_item.setIcon(0, qta.icon('fa5s.check-circle', color='#28a745'))
+                    group_item.setIcon(0, qta.icon('fa5s.check-circle', color='#198754'))
                     group_item.setToolTip(0, "Prêt à fusionner : 1 maître désigné")
                 elif checked == 0:
                     group_item.setIcon(0, qta.icon('fa5s.minus-circle', color='#adb5bd'))
@@ -598,15 +607,11 @@ class DuplicatePiecesWidget(QWidget):
         layout = QVBoxLayout(self)
         
         # Actions
-        _compact = (
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
         actions_layout = QHBoxLayout()
         self.select_all_pieces_btn = QPushButton("Tout sélectionner")
-        self.select_all_pieces_btn.setStyleSheet(_compact)
+        self.select_all_pieces_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.select_none_pieces_btn = QPushButton("Tout désélectionner")
-        self.select_none_pieces_btn.setStyleSheet(_compact)
+        self.select_none_pieces_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         actions_layout.addWidget(self.select_all_pieces_btn)
         actions_layout.addWidget(self.select_none_pieces_btn)
@@ -617,7 +622,7 @@ class DuplicatePiecesWidget(QWidget):
         # Table des pièces
         self.pieces_table = QTableWidget()
         self.pieces_table.setColumnCount(3)
-        self.pieces_table.setHorizontalHeaderLabels(["Supprimer", "Référence Pièce", "Nombre de doublons"])
+        self.pieces_table.setHorizontalHeaderLabels(["Supprimer", "Référence pièce", "Nombre de doublons"])
         self.pieces_table.horizontalHeader().setStretchLastSection(True)
         # Tri par clic sur en-tête (ex. trier par nombre de doublons). Les cases sont
         # des items checkables (et non des QCheckBox en cellWidget) : la coche voyage
@@ -772,10 +777,7 @@ class DistinctReferencesWidget(QWidget):
         self.remove_btn = QPushButton("Retirer la sélection")
         self.remove_btn.setIcon(qta.icon('fa5s.trash-alt', color='white'))
         self.remove_btn.setIconSize(QSize(11, 11))
-        self.remove_btn.setStyleSheet(
-            "QPushButton { background-color: #dc3545; color: white; font-weight: bold;"
-            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
-        )
+        self.remove_btn.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
         self.remove_btn.setEnabled(False)
 
         buttons_layout.addWidget(self.refresh_btn)
@@ -787,7 +789,7 @@ class DistinctReferencesWidget(QWidget):
         # Table des références distinctes
         self.references_tree = KeyboardTreeWidget()
         self.references_tree.setHeaderLabels([
-            "Sélection", "Référence Modèle", "Nb Appareils", "Date Marquage", "Action"
+            "Sélection", "Référence modèle", "Nb appareils", "Date de marquage", "Action"
         ])
         self.references_tree.setRootIsDecorated(False)
 
@@ -826,6 +828,7 @@ class DistinctReferencesWidget(QWidget):
 
         # Peupler l'arbre
         self.references_tree.clear()
+        self.references_tree.placeholder_text = "Aucune référence marquée comme distincte"
 
         for row in self.distinct_references:
             ref_modele = row[0]
@@ -961,18 +964,12 @@ class ActionHistoryWidget(QWidget):
         self.clear_btn = QPushButton("Vider l'historique")
         self.clear_btn.setIcon(qta.icon('fa5s.trash-alt', color='white'))
         self.clear_btn.setIconSize(QSize(11, 11))
-        self.clear_btn.setStyleSheet(
-            "QPushButton { background-color: #dc3545; color: white; font-weight: bold;"
-            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
-        )
+        self.clear_btn.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
 
         self.export_btn = QPushButton("Exporter")
         self.export_btn.setIcon(qta.icon('fa5s.file-export', color='#555555'))
         self.export_btn.setIconSize(QSize(11, 11))
-        self.export_btn.setStyleSheet(
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
+        self.export_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         buttons_layout.addWidget(self.refresh_btn)
         buttons_layout.addWidget(self.clear_btn)
@@ -1064,6 +1061,7 @@ class ActionHistoryWidget(QWidget):
 
         # Peupler l'arbre
         self.history_tree.clear()
+        self.history_tree.placeholder_text = "Aucune opération de nettoyage enregistrée"
 
         for row in self.history_actions:
             timestamp = row[0]

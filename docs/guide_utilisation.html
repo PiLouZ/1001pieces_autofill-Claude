@@ -24,8 +24,6 @@
   hr    { border: none; border-top: 1px solid #dee2e6; margin: 12px 0; }
   .note { background: #f8f9fa; border-left: 3px solid #adb5bd;
           padding: 6px 10px; margin: 8px 0; font-size: 12px; color: #495057; }
-  .new  { background: #e8f5e9; border-left: 3px solid #4caf50;
-          padding: 6px 10px; margin: 8px 0; font-size: 12px; color: #2e7d32; }
 </style>
 </head>
 <body>
@@ -34,62 +32,82 @@
 
 <h2>Démarrage rapide</h2>
 
-<h3>Import de données</h3>
+<h3>Importer des données</h3>
 <ol>
-  <li><b>Import de fichiers</b> : bouton Import dans la barre d'outils, ou glisser/déposer un CSV ou PDF sur le tableau</li>
-  <li><b>Fenêtre de relations</b> (import multi-fichiers) : déclarez les lignées de succession et les groupes d'équivalence en glissant/déposant les références (bleu = succession, violet = équivalence)</li>
-  <li><b>Collage</b> : copiez des données depuis Excel/Calc et collez avec Cmd+V</li>
-  <li><b>Référence de pièce</b> : lors de l'import, la référence de pièce est automatiquement remplie avec le nom du fichier</li>
+  <li><b>Fichiers PDF ou CSV</b> : bouton <b>Importer</b> de la barre d'outils, ou glisser-déposer les fichiers sur le tableau.</li>
+  <li><b>Collage</b> : copiez des lignes depuis Excel ou Calc, puis <b>Cmd+V</b> dans le tableau.</li>
+  <li><b>Référence de pièce</b> : elle est remplie d'après le nom du fichier ; vous pouvez la modifier et lui donner un libellé avant d'importer.</li>
+  <li><b>Progression</b> : la fenêtre d'import affiche une ligne par étape (extraction, finalisation, suggestions…) avec sa durée.</li>
 </ol>
 
-<h3>Navigation et édition</h3>
+<h3>Retrouver les appareils d'une pièce</h3>
 <ul>
-  <li><b>Double-clic</b> sur une cellule pour l'éditer</li>
-  <li><b>Entrée</b> : valider et descendre à la cellule suivante</li>
-  <li><b>Suppr / Retour arrière</b> : effacer les cellules sélectionnées</li>
-</ul>
-
-<h3>Gestion des pièces</h3>
-<ul>
-  <li><b>Gestionnaire de pièces</b> : accessible via Gestion → Pièces</li>
-  <li><b>Sélection multiple</b> : Cmd+Clic pour sélectionner plusieurs pièces</li>
-</ul>
-
-<h3>Fonctionnalités avancées</h3>
-<ul>
-  <li><b>Glisser/Déposer</b> : déposez des fichiers CSV directement sur le tableau</li>
-  <li><b>Auto-complétion</b> : champs vides complétés automatiquement via Action → Autocomplétion</li>
-  <li><b>Recherche avancée</b> : utilisez <code>&amp;&amp;</code> (ET) et <code>||</code> (OU) dans la barre de recherche</li>
-  <li><b>Supersession</b> : gérez les références obsolètes et leurs successeurs via la bannière d'information</li>
+  <li>Tapez la référence dans <b>Recherche par pièce</b> (sous le tableau, ou au-dessus selon Affichage → Recherche pièce en haut du tableau).</li>
+  <li>Plusieurs références : <code>ref1 || ref2</code> (OU). Combinaison : <code>ref1 &amp;&amp; ref2</code> (ET).</li>
+  <li>La recherche est <b>exacte</b> par défaut ; le bouton loupe à droite du champ la rend <b>partielle</b>.</li>
+  <li>Si la pièce a été remplacée ou a des équivalences, un <b>bandeau</b> le signale au-dessus du tableau.</li>
 </ul>
 
 <hr/>
 
-<h2>✨ Nouveautés v3.58.0</h2>
+<h2>La fenêtre principale</h2>
 
-<h3>Relations par groupes à l'import multi-fichiers</h3>
-<div class="new">
-<b>Déclarez les lignées de succession et les groupes d'équivalence</b> directement pendant l'import. Une fenêtre dédiée vous permet de :
-<ul>
-  <li><b>Glisser-déposer les références</b> entre colonnes (Succession à gauche, Équivalence à droite)</li>
-  <li><b>Promouvoir une référence en « Courante »</b> : soit en la glissant vers le haut, soit en double-clic</li>
-  <li><b>Visualiser les groupes complets</b> : la colonne « Toutes équivalentes » affiche automatiquement toutes les références du groupe</li>
-  <li><b>Dérivation automatique</b> : les obsolescences se déduisent du graphe (si A → B → C courant, alors A et B sont marquées obsolètes)</li>
-</ul>
-Ces relations sont enregistrées dans la table de <b>supersession</b> et visibles dans le tableau principal via la bannière (bleu pour succession, violet pour équivalence).
-</div>
+<h3>Barre d'outils</h3>
+<table>
+  <tr><th>Élément</th><th>Contenu</th></tr>
+  <tr><td><b>Annuler / Rétablir</b></td><td>Dernière modification du tableau</td></tr>
+  <tr><td><b>Sauvegarder</b></td><td>Enregistre les modifications en attente (Cmd+S)</td></tr>
+  <tr><td><b>Importer</b></td><td>Import de fichiers PDF ou CSV</td></tr>
+  <tr><td><b>Pièces</b></td><td>Gestionnaire des pièces détachées</td></tr>
+  <tr><td><b>Affichage</b></td><td>Colonnes, catégories, position de la recherche pièce, <b>hauteur des lignes</b> (compacte, normale, aérée)</td></tr>
+  <tr><td><b>Données</b></td><td>Autocomplétion, suggestions Type / Marque par similarité, historique des modifications</td></tr>
+  <tr><td><b>Configuration</b></td><td>Collage, exports, index de recherche FTS5, chaînes de supersession, restauration d'une sauvegarde, export de l'application</td></tr>
+  <tr><td><b>Journal / Guide</b></td><td>Visualiseur de logs, ce guide</td></tr>
+  <tr><td><b>Nettoyer les doublons</b></td><td>Passe à l'orange quand des doublons attendent d'être traités</td></tr>
+</table>
 
-<h3>Suggestions Type/Marque par similarité</h3>
-<div class="new">
-<b>Lors de l'import, les appareils dont le Type ou la Marque est absent</b> reçoivent automatiquement une <b>suggestion</b> basée sur la similarité de référence (variantes de suffixes, fuzzy matching, consensus de préfixe) :
+<h3>Panneau de droite</h3>
 <ul>
-  <li><b>Indicateur visuel</b> : les cellules Type/Marque proposées affichent une icône magique (✨) et un fond clair</li>
-  <li><b>Validation utilisateur</b> : cliquez sur la cellule proposée pour voir tous les candidats, score de similarité, et choisir l'un d'eux</li>
-  <li><b>Bannière informative</b> : un compteur indique le nombre d'appareils en attente de validation</li>
-  <li><b>Protection contre le « rebadging »</b> : les suggestions sur préfixe numérique (codes génériques, beaucoup de marques différentes) sont désactivées par défaut</li>
-  <li><b>Annulation manuelle</b> : si vous éditez Type ou Marque manuellement, l'indicateur disparaît automatiquement</li>
+  <li><b>Pièces</b> de l'appareil sélectionné (ou pièces communes à plusieurs appareils sélectionnés).</li>
+  <li><b>Ajouter une pièce</b> : bouton <b>+</b>, puis saisie de la référence et du libellé. <b>Entrée</b> ajoute, <b>Échap</b> annule ; la pastille indique à combien d'appareils la pièce sera ajoutée. La pièce ajoutée est surlignée en vert un instant.</li>
+  <li><b>Historique des opérations</b> : chaque action, avec un badge par type (Modif., Import, Export, Suppr., Erreur, Annul., Pièce, Système). L'icône à côté du titre ouvre l'historique complet.</li>
+  <li><b>Exports</b> : HTML Marques, HTML Détails, CSV et métas SEO (Méta Title, Méta Desc ; Maj+clic pour une autre formulation). Ils s'activent après une recherche par pièce.</li>
 </ul>
-</div>
+
+<h3>Barre d'état</h3>
+<ul>
+  <li><b>Lignes à traiter ▲ ▼</b> : passe d'une ligne incomplète (Type ou Fabricant manquant) à la suivante.</li>
+</ul>
+
+<hr/>
+
+<h2>Éditer le tableau</h2>
+<ul>
+  <li><b>Double-clic</b> ou <b>F2</b> sur une cellule pour la modifier. Taper sur une cellule déjà remplie ne la modifie pas : c'est voulu, pour éviter les écrasements accidentels.</li>
+  <li><b>Entrée</b> : passe à la ligne suivante, même colonne.</li>
+  <li><b>Suppr / Retour arrière</b> : vide les cellules sélectionnées.</li>
+  <li><b>Cmd+D</b> : liste des valeurs déjà utilisées dans la colonne (sauf colonnes de référence).</li>
+  <li><b>Suggestions</b> : quand le Type ou le Fabricant manque, l'import peut proposer une valeur d'après des références proches. Les cellules concernées sont teintées ; un clic montre les candidats.</li>
+</ul>
+
+<hr/>
+
+<h2>Relations entre références</h2>
+
+<h3>À l'import de plusieurs fichiers</h3>
+<ul>
+  <li><b>Lignées de succession</b> (bleu) : glissez les anciennes références dans une lignée et indiquez sa <b>courante</b> (double-clic sur une réf pour la promouvoir). Les anciennes deviennent obsolètes.</li>
+  <li><b>Groupes d'équivalence</b> (violet) : glissez les références interchangeables dans un même groupe.</li>
+  <li><b>Équivalence entre zones</b> : cochez « Équivalente » sur plusieurs lignées ou groupes ; une référence de chaque zone cochée (la courante d'une lignée, la première réf d'un groupe) est déclarée équivalente aux autres. Il faut au moins deux zones cochées <b>portant une référence</b>.</li>
+  <li>Le récapitulatif en bas indique ce qui sera réellement créé ; une alerte orange signale une déclaration sans effet et sa cause.</li>
+</ul>
+
+<h3>Dans le gestionnaire de pièces</h3>
+<ul>
+  <li>Sélectionnez une pièce : le panneau de droite affiche ses <b>équivalences</b>, ce qu'elle <b>remplace</b> et ce qui la <b>remplace</b>. Les boutons <b>+</b> ajoutent une relation.</li>
+  <li>Filtres en haut : orphelines, fantômes, sans libellé, obsolètes, remplacées, remplaçantes, équivalentes, libellés incohérents.</li>
+  <li><b>Cmd+Clic</b> pour sélectionner plusieurs pièces et appliquer une action groupée.</li>
+</ul>
 
 <hr/>
 
@@ -98,30 +116,31 @@ Ces relations sont enregistrées dans la table de <b>supersession</b> et visible
 <h3>Édition</h3>
 <table>
   <tr><th>Raccourci</th><th>Action</th></tr>
+  <tr><td class="key">Double-clic / F2</td><td>Modifier la cellule</td></tr>
   <tr><td class="key">Cmd+N</td><td>Ajouter une nouvelle ligne</td></tr>
   <tr><td class="key">Cmd+Z</td><td>Annuler la dernière action</td></tr>
   <tr><td class="key">Cmd+Y</td><td>Rétablir l'action annulée</td></tr>
-  <tr><td class="key">Cmd+C</td><td>Copier la sélection</td></tr>
+  <tr><td class="key">Cmd+C</td><td>Copier la sélection (collable dans Excel)</td></tr>
   <tr><td class="key">Cmd+V</td><td>Coller depuis le presse-papiers</td></tr>
-  <tr><td class="key">Cmd+S</td><td>Sauvegarder toutes les modifications</td></tr>
-  <tr><td class="key">Cmd+D</td><td>Afficher les valeurs existantes de la colonne (autocomplétion)</td></tr>
+  <tr><td class="key">Cmd+S</td><td>Sauvegarder les modifications</td></tr>
+  <tr><td class="key">Cmd+D</td><td>Valeurs existantes de la colonne</td></tr>
+  <tr><td class="key">Suppr</td><td>Vider les cellules sélectionnées</td></tr>
 </table>
 
-<h3>Navigation</h3>
+<h3>Sélection et navigation</h3>
 <table>
   <tr><th>Raccourci</th><th>Action</th></tr>
-  <tr><td class="key">Cmd+Haut</td><td>Aller à la cellule vide précédente (ou tout en haut)</td></tr>
-  <tr><td class="key">Cmd+Bas</td><td>Aller à la cellule vide suivante (ou tout en bas)</td></tr>
-  <tr><td class="key">Ctrl+Droite</td><td>Page suivante</td></tr>
-  <tr><td class="key">Ctrl+Gauche</td><td>Page précédente</td></tr>
-  <tr><td class="key">Ctrl+Début</td><td>Première page</td></tr>
-  <tr><td class="key">Ctrl+Fin</td><td>Dernière page</td></tr>
+  <tr><td class="key">Entrée</td><td>Ligne suivante, même colonne</td></tr>
+  <tr><td class="key">Cmd+Haut / Cmd+Bas</td><td>Cellule vide précédente / suivante (ou tout en haut / en bas)</td></tr>
+  <tr><td class="key">Cmd+Espace</td><td>Sélectionner la colonne</td></tr>
+  <tr><td class="key">Maj+Espace</td><td>Sélectionner la ligne</td></tr>
+  <tr><td class="key">Cmd+Maj+flèche</td><td>Étendre la sélection jusqu'au bord</td></tr>
 </table>
 
 <h3>Recherche et affichage</h3>
 <table>
   <tr><th>Raccourci</th><th>Action</th></tr>
-  <tr><td class="key">Cmd+F</td><td>Ouvrir la barre de recherche</td></tr>
+  <tr><td class="key">Cmd+F</td><td>Aller à la recherche</td></tr>
   <tr><td class="key">Échap</td><td>Effacer la recherche</td></tr>
   <tr><td class="key">F5</td><td>Actualiser l'affichage</td></tr>
   <tr><td class="key">F12</td><td>Ouvrir le visualiseur de logs</td></tr>
@@ -130,19 +149,30 @@ Ces relations sont enregistrées dans la table de <b>supersession</b> et visible
 
 <hr/>
 
+<h2>Nouveautés de la version 3.78</h2>
+<ul>
+  <li><b>Historique</b> plus lisible : badges en clair, type Erreur distinct de Suppression, une entrée sur deux lignes.</li>
+  <li><b>Hauteur des lignes</b> réglable (Affichage → Hauteur des lignes) et une ligne sur deux teintée.</li>
+  <li><b>Ajout de pièce</b> repensé : carte en tête de liste, Entrée / Échap, pièce ajoutée surlignée.</li>
+  <li><b>Progression d'import</b> : une ligne par étape avec sa durée.</li>
+  <li><b>Gestionnaire de pièces</b> : colonne Statut complète, messages quand une relation est vide.</li>
+  <li><b>Alertes de relations</b> à l'import : elles nomment la cause (zone cochée mais vide, lignée sans courante).</li>
+</ul>
+
+<hr/>
+
 <h2>Dépannage</h2>
 
 <h3>Problèmes d'import</h3>
 <ul>
-  <li>Vérifiez l'encodage du fichier (UTF-8 recommandé)</li>
-  <li>Assurez-vous que le fichier CSV a au moins 2 colonnes</li>
-  <li>Première ligne = en-têtes (ignorée lors de l'import)</li>
+  <li>Vérifiez l'encodage du fichier CSV (UTF-8 recommandé) et qu'il compte au moins 2 colonnes.</li>
+  <li>Si la première ligne contient des noms de colonnes, cochez « 1ʳᵉ ligne = en-têtes ».</li>
+  <li>Si les colonnes sont mal reconnues, ouvrez « Adapter le mapping » sous l'aperçu.</li>
 </ul>
 
-<h3>Performance</h3>
+<h3>Revenir en arrière</h3>
 <ul>
-  <li>L'application pagine automatiquement les gros datasets</li>
-  <li>Utilisez les filtres de colonnes pour affiner l'affichage</li>
+  <li>Une copie de la base est faite avant chaque nettoyage de doublons, et avant un import (au plus une par 24 h). <b>Configuration → Restaurer une sauvegarde…</b> remet une copie en place.</li>
 </ul>
 
 <hr/>
@@ -151,24 +181,24 @@ Ces relations sont enregistrées dans la table de <b>supersession</b> et visible
 
 <h3>Générer le dossier d'export</h3>
 <ol>
-  <li>Menu <b>Gestion → Exporter l'application…</b></li>
-  <li>Choisissez un dossier de destination (Bureau recommandé)</li>
-  <li>Patientez 1-2 minutes (téléchargement des dépendances)</li>
-  <li>Un dossier <code>1001pieces_export_YYYYMMDD_HHMM/</code> est créé</li>
+  <li><b>Configuration → Exporter l'application…</b></li>
+  <li>Choisissez un dossier de destination (Bureau recommandé).</li>
+  <li>Patientez 1 à 2 minutes (téléchargement des dépendances).</li>
+  <li>Un dossier <code>1001pieces_export_AAAAMMJJ_HHMM/</code> est créé.</li>
 </ol>
 
 <h3>Sur le poste cible (macOS)</h3>
-<p><b>Prérequis</b> : Python 3.10+ (<code>python3 --version</code> pour vérifier)</p>
+<p><b>Prérequis</b> : Python 3.10 ou plus récent (<code>python3 --version</code> pour vérifier).</p>
 <ol>
-  <li><b>Double-cliquez sur <code>install.command</code></b> — installe les dépendances (une seule fois)</li>
-  <li><b>Double-cliquez sur <code>1001pieces_autofill.app</code></b> — lance l'application</li>
+  <li><b>Double-cliquez sur <code>install.command</code></b> : installe les dépendances (une seule fois).</li>
+  <li><b>Double-cliquez sur <code>1001pieces_autofill.app</code></b> : lance l'application.</li>
 </ol>
-<div class="note">Aucune connexion internet nécessaire sur le poste cible (les wheels sont inclus).</div>
+<div class="note">Aucune connexion internet n'est nécessaire sur le poste cible : les dépendances sont incluses.</div>
 
 <hr/>
 
-<h2>Support</h2>
-<p>En cas de problème, consultez les logs via <b>Journal</b> dans la barre d'outils.</p>
+<h2>Assistance</h2>
+<p>En cas de problème, consultez les logs via <b>Journal</b> dans la barre d'outils (ou F12).</p>
 
 </body>
 </html>

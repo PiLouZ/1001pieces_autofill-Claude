@@ -53,7 +53,7 @@ from ..core.config import Config, pluralize
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
-from .style_manager import StyleManager
+from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 class ActionButtonWidget(QWidget):
@@ -185,7 +185,7 @@ class PiecesManagerWindow(QDialog):
 
         # Titre et statistiques
         header_layout = QHBoxLayout()
-        title_label = QLabel("Gestionnaire des Pièces")
+        title_label = QLabel("Gestionnaire des pièces")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
         header_layout.addWidget(title_label)
 
@@ -285,7 +285,7 @@ class PiecesManagerWindow(QDialog):
             cluster_col.setSpacing(1)
 
             cluster_title = QLabel(cluster_label)
-            cluster_title.setStyleSheet("color: #adb5bd; font-size: 9px;")
+            cluster_title.setStyleSheet("color: #adb5bd; font-size: 11px;")
             cluster_col.addWidget(cluster_title)
 
             cluster_row = QHBoxLayout()
@@ -319,7 +319,7 @@ class PiecesManagerWindow(QDialog):
         self.pieces_table = PiecesTableWidget()
         self.pieces_table.setColumnCount(6)
         self.pieces_table.setHorizontalHeaderLabels([
-            "Référence Pièce", "Libellé", "Nb", "Statut", "Types d'Appareils", ""
+            "Référence pièce", "Libellé", "Nb", "Statut", "Types d'appareils", ""
         ])
 
         # Configuration du tableau — Libellé en Interactive (redimensionnable par l'utilisateur),
@@ -328,13 +328,13 @@ class PiecesManagerWindow(QDialog):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Référence
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Libellé (redimensionnable)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)        # Nb
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)        # Statut
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Statut
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)      # Types d'Appareils
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)        # Actions
         self.pieces_table.setColumnWidth(0, 130)   # Référence Pièce
         self.pieces_table.setColumnWidth(1, 220)   # Libellé
         self.pieces_table.setColumnWidth(2, 55)    # Nb
-        self.pieces_table.setColumnWidth(3, 78)    # Statut
+        self.pieces_table.setColumnWidth(3, 130)   # Statut (78 tronquait « → … », « Remp… »)
         self.pieces_table.setColumnWidth(5, 72)    # Actions (3 boutons × 22px)
 
         self.pieces_table.setAlternatingRowColors(True)
@@ -412,7 +412,7 @@ class PiecesManagerWindow(QDialog):
         side_panel = QWidget()
         side_panel.setMinimumWidth(200)
         side_layout = QVBoxLayout(side_panel)
-        side_layout.setContentsMargins(6, 4, 4, 4)
+        side_layout.setContentsMargins(0, 4, 4, 4)  # gauche : l'espace est la poignée (8 px)
         side_layout.setSpacing(6)
 
         # En-tête : référence sélectionnée
@@ -437,7 +437,8 @@ class PiecesManagerWindow(QDialog):
 
         # Section "≡ Équivalences" — zone prioritaire en haut
         equiv_section = QFrame()
-        equiv_section.setFrameShape(QFrame.StyledPanel)
+        equiv_section.setObjectName("equivSection")
+        equiv_section.setStyleSheet(StyleManager.side_card("equivSection"))
         self.equiv_section = equiv_section
         eq_sec_layout = QVBoxLayout(equiv_section)
         eq_sec_layout.setContentsMargins(6, 4, 6, 4)
@@ -454,7 +455,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_link_equiv.setFixedSize(20, 20)
         self.btn_link_equiv.setToolTip("Ajouter une équivalence")
         self.btn_link_equiv.setStyleSheet(
-            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton { border: none; border-radius: 3px; background: transparent; }"
             "QPushButton:hover { background: rgba(142,68,173,0.12); }"
         )
         self.btn_link_equiv.setFlat(True)
@@ -477,17 +478,20 @@ class PiecesManagerWindow(QDialog):
 
         # ── Zone "Succession" (Remplace / Remplacée par en 2 colonnes + actions) ──
         succession_combined = QFrame()
-        succession_combined.setFrameShape(QFrame.StyledPanel)
+        # Simple conteneur : ce sont ses deux cartes (Remplace / Remplacée par) qui
+        # portent le fond ; plus de cadre englobant.
+        succession_combined.setFrameShape(QFrame.NoFrame)
         succ_combined_layout = QVBoxLayout(succession_combined)
-        succ_combined_layout.setContentsMargins(6, 4, 6, 4)
+        succ_combined_layout.setContentsMargins(0, 0, 0, 0)  # cartes alignées sur celle des équivalences
         succ_combined_layout.setSpacing(4)
 
         succession_row = QHBoxLayout()
-        succession_row.setSpacing(6)
+        succession_row.setSpacing(8)  # même écart que les poignées entre cartes
 
         # Colonne "↑ Remplace"
         replaces_section = QFrame()
-        replaces_section.setFrameShape(QFrame.StyledPanel)
+        replaces_section.setObjectName("replacesSection")
+        replaces_section.setStyleSheet(StyleManager.side_card("replacesSection"))
         self.replaces_section = replaces_section
         rep_sec_layout = QVBoxLayout(replaces_section)
         rep_sec_layout.setContentsMargins(6, 4, 6, 4)
@@ -504,7 +508,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_replaces.setFixedSize(20, 20)
         self.btn_mark_replaces.setToolTip("Ajouter une référence remplacée")
         self.btn_mark_replaces.setStyleSheet(
-            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton { border: none; border-radius: 3px; background: transparent; }"
             "QPushButton:hover { background: rgba(41,128,185,0.12); }"
         )
         self.btn_mark_replaces.setFlat(True)
@@ -520,8 +524,8 @@ class PiecesManagerWindow(QDialog):
 
         # Colonne "↳ Remplacée par"
         superseded_section = QFrame()
-        superseded_section.setFrameShape(QFrame.StyledPanel)
         superseded_section.setObjectName("superseded_section")
+        superseded_section.setStyleSheet(StyleManager.side_card("superseded_section"))
         self.superseded_section = superseded_section
         sup_sec_layout = QVBoxLayout(superseded_section)
         sup_sec_layout.setContentsMargins(6, 4, 6, 4)
@@ -538,7 +542,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_superseded.setFixedSize(20, 20)
         self.btn_mark_superseded.setToolTip("Déclarer remplacée par une autre référence")
         self.btn_mark_superseded.setStyleSheet(
-            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton { border: none; border-radius: 3px; background: transparent; }"
             "QPushButton:hover { background: rgba(230,126,34,0.12); }"
         )
         self.btn_mark_superseded.setFlat(True)
@@ -564,7 +568,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_cancel_succession.setIconSize(QSize(11, 11))
         self.btn_cancel_succession.setToolTip("Supprimer tous les liens de succession pour les pièces sélectionnées")
         self.btn_cancel_succession.setEnabled(False)
-        self.btn_cancel_succession.setStyleSheet("font-size: 11px;")
+        self.btn_cancel_succession.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.btn_cancel_succession.clicked.connect(self._on_cancel_succession)
         self.btn_cancel_succession.setVisible(False)
 
@@ -573,7 +577,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_unlink_equiv.setIconSize(QSize(11, 11))
         self.btn_unlink_equiv.setToolTip("Retirer la pièce sélectionnée de son groupe d'équivalence")
         self.btn_unlink_equiv.setEnabled(False)
-        self.btn_unlink_equiv.setStyleSheet("QPushButton { color: #E05252; font-size: 11px; }")
+        self.btn_unlink_equiv.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
         self.btn_unlink_equiv.setVisible(False)
         self.btn_unlink_equiv.clicked.connect(self._on_unlink_equiv)
 
@@ -582,7 +586,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_equivalent_group.setIconSize(QSize(11, 11))
         self.btn_mark_equivalent_group.setToolTip(
             "Fusionner toutes les pièces sélectionnées dans un seul groupe d'équivalence")
-        self.btn_mark_equivalent_group.setStyleSheet("color: #8e44ad; font-size: 11px;")
+        self.btn_mark_equivalent_group.setStyleSheet(f"{StyleManager.SECONDARY_COMPACT_BUTTON} QPushButton {{ color: #8e44ad; }}")
         self.btn_mark_equivalent_group.setVisible(False)
         self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
 
@@ -591,7 +595,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_harmonize_labels.setIconSize(QSize(11, 11))
         self.btn_harmonize_labels.setToolTip(
             "Les pièces équivalentes n'ont pas le même libellé — choisir celui à appliquer à tout le groupe")
-        self.btn_harmonize_labels.setStyleSheet("color: #d35400; font-size: 11px;")
+        self.btn_harmonize_labels.setStyleSheet(f"{StyleManager.SECONDARY_COMPACT_BUTTON} QPushButton {{ color: #d35400; }}")
         self.btn_harmonize_labels.setVisible(False)
         self.btn_harmonize_labels.clicked.connect(self._on_harmonize_labels)
 
@@ -601,7 +605,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_batch_edit_libelle.setIconSize(QSize(11, 11))
         self.btn_batch_edit_libelle.setToolTip(
             "Appliquer le même libellé à toutes les pièces sélectionnées")
-        self.btn_batch_edit_libelle.setStyleSheet("font-size: 11px;")
+        self.btn_batch_edit_libelle.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.btn_batch_edit_libelle.setVisible(False)
         self.btn_batch_edit_libelle.clicked.connect(self._on_batch_edit_libelle)
 
@@ -610,7 +614,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_export_selection.setIconSize(QSize(11, 11))
         self.btn_export_selection.setToolTip(
             "Exporter uniquement les pièces sélectionnées au format CSV")
-        self.btn_export_selection.setStyleSheet("font-size: 11px;")
+        self.btn_export_selection.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.btn_export_selection.setVisible(False)
         self.btn_export_selection.clicked.connect(self._export_selected_pieces)
 
@@ -622,7 +626,7 @@ class PiecesManagerWindow(QDialog):
             ("ÉQUIVALENCES", [self.btn_unlink_equiv, self.btn_harmonize_labels]),
         ]:
             title_lbl = QLabel(section_title)
-            title_lbl.setStyleSheet("color: #adb5bd; font-size: 9px; font-weight: bold;")
+            title_lbl.setStyleSheet("color: #adb5bd; font-size: 11px; font-weight: bold;")
             succ_combined_layout.addWidget(title_lbl)
             btn_row = QHBoxLayout()
             btn_row.setSpacing(6)
@@ -631,6 +635,9 @@ class PiecesManagerWindow(QDialog):
             btn_row.addStretch()
             succ_combined_layout.addLayout(btn_row)
             self._action_sections.append((title_lbl, buttons))
+        # État initial : aucune sélection → titres masqués (ils restaient affichés,
+        # orphelins, jusqu'au premier changement de sélection)
+        self._sync_action_sections()
 
         sections_splitter.addWidget(succession_combined)
         sections_splitter.setStretchFactor(0, 3)
@@ -702,17 +709,14 @@ class PiecesManagerWindow(QDialog):
         _ab_layout.addStretch()
 
         _btn_deselect_bar = QPushButton("Désélectionner tout")
-        _btn_deselect_bar.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        _btn_deselect_bar.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         _btn_deselect_bar.clicked.connect(self._clear_sticky_selection)
         _ab_layout.addWidget(_btn_deselect_bar)
 
         layout.addWidget(self._action_bar)
 
         # Boutons d'action (footer)
-        _btn_style = (
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
+        # Style par défaut (rôle Secondaire) : plus de style local
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
 
@@ -721,14 +725,12 @@ class PiecesManagerWindow(QDialog):
         export_btn = QPushButton("Exporter la liste")
         export_btn.setIcon(qta.icon('fa5s.file-export', color='#555555'))
         export_btn.setIconSize(QSize(12, 12))
-        export_btn.setStyleSheet(_btn_style)
         export_btn.clicked.connect(self._export_pieces)
         buttons_layout.addWidget(export_btn)
 
         close_btn = QPushButton("Fermer")
         close_btn.setIcon(qta.icon('fa5s.times', color='#495057'))
         close_btn.setIconSize(QSize(12, 12))
-        close_btn.setStyleSheet(_btn_style)
         close_btn.clicked.connect(self.close)
         buttons_layout.addWidget(close_btn)
         
@@ -810,11 +812,15 @@ class PiecesManagerWindow(QDialog):
         # bien réelles sans libellé).
         unlabeled_str = (f"  •  {pluralize(unlabeled_pieces, 'sans libellé', 'sans libellé')}"
                          if unlabeled_pieces else "")
+        def _milliers(nombre: int) -> str:
+            # 4771467 → « 4 771 467 » (espace fine insécable, usage français)
+            return f"{nombre:,}".replace(",", "\u202f")
+
         self.stats_label.setText(
-            f"{pluralize(total_pieces, 'référence')}  •  "
+            f"{_milliers(total_pieces)} référence{'s' if total_pieces > 1 else ''}  •  "
             f"{pluralize(orphan_pieces, 'orpheline')}"
             f"{phantom_str}{unlabeled_str}  •  "
-            f"{pluralize(total_associations, 'association')}"
+            f"{_milliers(total_associations)} association{'s' if total_associations > 1 else ''}"
         )
 
         self.all_pieces_data = results
@@ -966,7 +972,8 @@ class PiecesManagerWindow(QDialog):
             elif status == 'superseded':
                 ref_new = status_info.get('ref_new', '')
                 _icon = qta.icon('fa5s.long-arrow-alt-right', color='#e67e22')
-                _status_text = f"→ {ref_new}" if ref_new else "Remplacée"
+                # L'icône est déjà une flèche : pas de « → » en plus dans le texte
+                _status_text = ref_new if ref_new else "Remplacée"
                 _status_tip = f"Remplacée par {ref_new}" if ref_new else "Remplacée"
             elif status == 'replacing':
                 _raw = status_info.get('refs_old') or []
@@ -1218,35 +1225,22 @@ class PiecesManagerWindow(QDialog):
         dlg = QDialog(self)
         dlg.setWindowTitle("Nouvelle pièce")
         dlg.setModal(True)
-        dlg.resize(360, 130)
+        dlg.resize(420, 140)
 
         form_layout = QVBoxLayout(dlg)
-        form_layout.setSpacing(8)
-        form_layout.setContentsMargins(12, 12, 12, 10)
+        form_layout.setSpacing(12)
+        form_layout.setContentsMargins(16, 14, 16, 12)
 
-        ref_row = QHBoxLayout()
-        lbl_ref = QLabel("Référence *")
-        lbl_ref.setFixedWidth(70)
-        ref_row.addWidget(lbl_ref)
-        ref_input = QLineEdit()
-        ref_input.setPlaceholderText("Ex. : 12345678")
-        ref_row.addWidget(ref_input)
-        form_layout.addLayout(ref_row)
-
-        lib_row = QHBoxLayout()
-        lbl_lib = QLabel("Libellé")
-        lbl_lib.setFixedWidth(70)
-        lib_row.addWidget(lbl_lib)
-        lib_input = QLineEdit()
-        lib_input.setPlaceholderText("Description (optionnelle)")
-        lib_row.addWidget(lib_input)
-        form_layout.addLayout(lib_row)
+        champs, ref_input, lib_input = _formulaire_piece()
+        form_layout.addLayout(champs)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_cancel = QPushButton("Annuler")
+        btn_cancel.setAutoDefault(False)
         btn_ok = QPushButton("Créer")
         btn_ok.setDefault(True)
+        btn_ok.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         btn_row.addWidget(btn_cancel)
         btn_row.addWidget(btn_ok)
         form_layout.addLayout(btn_row)
@@ -1487,17 +1481,18 @@ class PiecesManagerWindow(QDialog):
                 MAX_DESC = 38
                 desc_display = desc[:MAX_DESC] + "…" if len(desc) > MAX_DESC else desc
                 lbl_desc = QLabel(desc_display)
-                lbl_desc.setStyleSheet("font-size: 10px; color: #868e96; font-style: italic;")
+                lbl_desc.setStyleSheet("font-size: 11px; color: #868e96; font-style: italic;")
                 lbl_desc.setToolTip("<html>" + _html.escape(desc) + "</html>")
                 rl.addWidget(lbl_desc, 1)
             else:
                 rl.addStretch()
-            btn_x = QPushButton("×")
+            btn_x = QPushButton()
+            btn_x.setIcon(qta.icon('fa5s.times', color='#868e96'))
+            btn_x.setIconSize(QSize(9, 9))
             btn_x.setFixedSize(18, 18)
             btn_x.setStyleSheet(
-                "QPushButton { color: #868e96; border: none; font-size: 14px; padding: 0;"
-                " background: transparent; }"
-                "QPushButton:hover { color: #dc3545; background: #f8d7da; border-radius: 3px; }"
+                "QPushButton { border: none; padding: 0; background: transparent; }"
+                "QPushButton:hover { background: #f8d7da; border-radius: 3px; }"
             )
             btn_x.setToolTip(f"Retirer {ref} de la sélection")
             btn_x.clicked.connect(lambda checked, r=ref, p=popup: self._remove_ref_from_sticky(r, p))
@@ -1580,8 +1575,10 @@ class PiecesManagerWindow(QDialog):
     def _sync_action_sections(self):
         """Masquer le mini-titre d'une sous-section d'actions si aucun de ses
         boutons n'est visible (Approche A)."""
+        # isHidden() et non isVisible() : isVisible() vaut False tant que la
+        # fenêtre n'est pas affichée, même pour un bouton destiné à apparaître.
         for title_lbl, buttons in getattr(self, '_action_sections', []):
-            title_lbl.setVisible(any(b.isVisible() for b in buttons))
+            title_lbl.setVisible(any(not b.isHidden() for b in buttons))
 
     def _refresh_succession_panel_impl(self, ref_piece):
         """Mettre à jour le panneau Succession pour la pièce courante (dernière sélectionnée)."""
@@ -1593,6 +1590,11 @@ class PiecesManagerWindow(QDialog):
         # Option B : les sections restent TOUJOURS visibles (vidées) pour un
         # layout stable — comme le fait déjà ≡ Équivalences. Plus aucun bloc
         # ne « disparaît » quand rien n'est sélectionné.
+        # Messages d'état vide : seulement en sélection unique (sinon trompeurs)
+        _single = has_selection and ref_piece is not None and n == 1
+        self.superseded_by_tag_list.set_empty_text("Non remplacée" if _single else "")
+        self.replaces_tag_list.set_empty_text("Ne remplace aucune référence" if _single else "")
+
         if not has_selection or ref_piece is None:
             self.succession_status_label.setText("Sélectionnez une pièce pour voir son statut.")
             self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
@@ -1648,11 +1650,13 @@ class PiecesManagerWindow(QDialog):
 
         # Message d'état (obsolète ou rien)
         if is_obsolete:
-            self.succession_status_label.setText("⚠ Obsolète")
+            self.succession_status_label.setText(
+                f"{inline_icon_html('fa5s.exclamation-triangle', '#c0392b', 12)}&nbsp;Obsolète")
             self.succession_status_label.setStyleSheet(
                 "color: #c0392b; font-size: 12px; font-weight: bold;")
         elif not ref_new and not predecessors:
-            self.succession_status_label.setText("✓ Référence courante")
+            self.succession_status_label.setText(
+                f"{inline_icon_html('fa5s.check-circle', '#2e7d32', 12)}&nbsp;Référence courante")
             self.succession_status_label.setStyleSheet(
                 "color: #34A853; font-size: 12px; font-weight: bold;")
         else:
@@ -1980,6 +1984,8 @@ class PiecesManagerWindow(QDialog):
         has_selection = n > 0
 
         self.btn_link_equiv.setEnabled(has_selection)
+        self.equiv_tag_list.set_empty_text(
+            "Aucune équivalence" if has_selection and ref_piece is not None and n == 1 else "")
 
         # ── Aucune sélection ──────────────────────────────────────────────
         if not has_selection or ref_piece is None:
@@ -2394,6 +2400,28 @@ class PiecesManagerWindow(QDialog):
             self._load_pieces_data()
             self._add_to_main_history(ref_piece, nb_appareils)
 
+def _formulaire_piece(ref: str = "", libelle: str = ""):
+    """Champs Référence / Libellé communs aux fenêtres « Nouvelle pièce » et
+    « Modifier la pièce » : même grille, libellés alignés à droite.
+
+    Avant, les deux fenêtres jumelles différaient (« Référence * » sans
+    deux-points d'un côté, champs non alignés de l'autre).
+    Retourne (layout, champ_ref, champ_libelle).
+    """
+    from PyQt5.QtWidgets import QFormLayout
+    form = QFormLayout()
+    form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    form.setHorizontalSpacing(10)
+    form.setVerticalSpacing(8)
+    champ_ref = QLineEdit(ref)
+    champ_ref.setPlaceholderText("Obligatoire — ex. : 12345678")
+    champ_libelle = QLineEdit(libelle)
+    champ_libelle.setPlaceholderText("Optionnel")
+    form.addRow("Référence :", champ_ref)
+    form.addRow("Libellé :", champ_libelle)
+    return form, champ_ref, champ_libelle
+
+
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""
     
@@ -2401,25 +2429,15 @@ class PieceEditDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Modifier la pièce")
         self.setModal(True)
-        self.resize(400, 150)
+        self.resize(420, 140)
 
         layout = QVBoxLayout()
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 14, 16, 12)
 
-        # Champ référence
-        ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence:"))
-        self.ref_input = QLineEdit(current_ref)
-        self.ref_input.setPlaceholderText("Référence de la pièce")
-        ref_layout.addWidget(self.ref_input)
-        layout.addLayout(ref_layout)
-
-        # Champ libellé
-        desc_layout = QHBoxLayout()
-        desc_layout.addWidget(QLabel("Libellé:"))
-        self.desc_input = QLineEdit(current_desc)
-        self.desc_input.setPlaceholderText("Libellé de la pièce (optionnel)")
-        desc_layout.addWidget(self.desc_input)
-        layout.addLayout(desc_layout)
+        # Champs communs avec « Nouvelle pièce » (_formulaire_piece)
+        champs, self.ref_input, self.desc_input = _formulaire_piece(current_ref, current_desc)
+        layout.addLayout(champs)
 
         # Propagation au groupe d'équivalence (B)
         self.equivalents = equivalents or []
@@ -2445,7 +2463,7 @@ class PieceEditDialog(QDialog):
         save_btn = QPushButton("Sauvegarder")
         save_btn.setDefault(True)
         save_btn.clicked.connect(self.accept)
-        save_btn.setStyleSheet(f"QPushButton {{ background-color: {Config.Colors.SUCCESS_LIGHT}; color: white; }}")
+        save_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         buttons_layout.addWidget(save_btn)
         
         layout.addLayout(buttons_layout)

@@ -9,6 +9,7 @@ Onglet HTML : templates marques et détails avec preview en temps réel
 import os
 
 import qtawesome as qta
+from .flow_layout import FlowLayout
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
@@ -17,6 +18,7 @@ from .qt_imports import (
     QEvent, QFileDialog
 )
 from src.core.logger import app_logger
+from .style_manager import StyleManager
 
 
 def _make_icon_toggle(btn, icon_name, icon_color):
@@ -51,9 +53,10 @@ class VariableChipsBar(QWidget):
         self._targets = list(targets)
         self._active_target = self._targets[-1] if self._targets else None
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        # Disposition qui passe à la ligne : une rangée unique compressait les
+        # puces sous leur taille utile et coupait leur texte quand la fenêtre
+        # était étroite.
+        layout = FlowLayout(self, spacing=4)
 
         for name, description in variables:
             btn = QPushButton("{" + name + "}")
@@ -61,7 +64,7 @@ class VariableChipsBar(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet(
                 "QPushButton {"
-                "  padding: 1px 6px; font-size: 10px; font-family: monospace;"
+                "  padding: 1px 6px; font-size: 11px; font-family: monospace;"
                 "  background: #eef1f4; color: #495057;"
                 "  border: 1px solid #dee2e6; border-radius: 8px;"
                 "}"
@@ -69,7 +72,6 @@ class VariableChipsBar(QWidget):
             )
             btn.clicked.connect(lambda _checked, n=name: self._insert_variable(n))
             layout.addWidget(btn)
-        layout.addStretch()
 
         for target in self._targets:
             self._target_widget(target).installEventFilter(self)
@@ -177,10 +179,7 @@ class ExportConfigDialog(QDialog):
             is_first = (i == 0)
             btn.setIcon(qta.icon(icon_name, color='white' if is_first else icon_color))
             btn.setIconSize(QSize(12, 12))
-            btn.setStyleSheet(
-                "QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }"
-                "QPushButton:checked { background-color: #495057; color: white; }"
-            )
+            btn.setStyleSheet(StyleManager.SEGMENTED_BUTTON)
             btn.toggled.connect(
                 lambda checked, idx=i: self._nav_stack.setCurrentIndex(idx) if checked else None
             )
@@ -229,10 +228,7 @@ class ExportConfigDialog(QDialog):
         browse_btn = QPushButton("Parcourir…")
         browse_btn.setIcon(qta.icon('fa5s.folder-open', color='#495057'))
         browse_btn.setIconSize(QSize(11, 11))
-        browse_btn.setStyleSheet(
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
+        browse_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         browse_btn.clicked.connect(self._browse_output_dir)
         bar.addWidget(browse_btn)
 
@@ -241,10 +237,7 @@ class ExportConfigDialog(QDialog):
         self.output_dir_reset_btn.setIconSize(QSize(11, 11))
         self.output_dir_reset_btn.setFixedSize(28, 26)
         self.output_dir_reset_btn.setToolTip("Revenir au Bureau (valeur par défaut)")
-        self.output_dir_reset_btn.setStyleSheet(
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
+        self.output_dir_reset_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.output_dir_reset_btn.clicked.connect(lambda: self._set_output_dir(''))
         bar.addWidget(self.output_dir_reset_btn)
 
@@ -326,25 +319,25 @@ class ExportConfigDialog(QDialog):
         add_btn = QPushButton("Ajouter une colonne")
         add_btn.setIcon(qta.icon('fa5s.plus', color='#495057'))
         add_btn.setIconSize(QSize(10, 10))
-        add_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+        add_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         add_btn.clicked.connect(self._add_csv_row)
         remove_btn = QPushButton("Supprimer")
         remove_btn.setIcon(qta.icon('fa5s.minus', color='#dc3545'))
         remove_btn.setIconSize(QSize(10, 10))
-        remove_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+        remove_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         remove_btn.clicked.connect(self._remove_csv_row)
         up_btn = QPushButton()
         up_btn.setIcon(qta.icon('fa5s.arrow-up', color='#495057'))
         up_btn.setIconSize(QSize(11, 11))
         up_btn.setFixedSize(28, 26)
-        up_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+        up_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         up_btn.setToolTip("Monter la colonne sélectionnée")
         up_btn.clicked.connect(self._move_csv_row_up)
         down_btn = QPushButton()
         down_btn.setIcon(qta.icon('fa5s.arrow-down', color='#495057'))
         down_btn.setIconSize(QSize(11, 11))
         down_btn.setFixedSize(28, 26)
-        down_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+        down_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         down_btn.setToolTip("Descendre la colonne sélectionnée")
         down_btn.clicked.connect(self._move_csv_row_down)
         row_btn_layout.addWidget(add_btn)
@@ -505,7 +498,7 @@ class ExportConfigDialog(QDialog):
         preview_btn = QPushButton("Prévisualiser")
         preview_btn.setIcon(qta.icon('fa5s.eye', color='#495057'))
         preview_btn.setIconSize(QSize(11, 11))
-        preview_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+        preview_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         preview_btn.clicked.connect(self._update_html_preview)
         left_layout.addWidget(preview_btn)
 
@@ -528,14 +521,12 @@ class ExportConfigDialog(QDialog):
     def _build_footer(self) -> QHBoxLayout:
         footer = QHBoxLayout()
         reset_btn = QPushButton("Réinitialiser les défauts")
-        reset_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         reset_btn.setToolTip("Restaurer les valeurs d'origine (comportement actuel)")
         reset_btn.clicked.connect(self._reset_to_defaults)
         footer.addWidget(reset_btn)
         footer.addStretch()
 
         cancel_btn = QPushButton("Annuler")
-        cancel_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_btn.clicked.connect(self._on_cancel)
         footer.addWidget(cancel_btn)
 
@@ -543,11 +534,7 @@ class ExportConfigDialog(QDialog):
         save_btn.setDefault(True)
         save_btn.setIcon(qta.icon('fa5s.save', color='white'))
         save_btn.setIconSize(QSize(12, 12))
-        save_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #218838; }"
-        )
+        save_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         save_btn.clicked.connect(self._on_save)
         footer.addWidget(save_btn)
         return footer

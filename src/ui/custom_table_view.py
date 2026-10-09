@@ -89,6 +89,9 @@ class CustomTableView(QTableView):
         frozen.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         frozen.verticalHeader().hide()
         frozen.horizontalHeader().setSectionResizeMode(col, QHeaderView.Fixed)
+        # Colonne étroite : marges latérales réduites pour que l'en-tête tienne
+        # (le style global met 12 px de chaque côté).
+        frozen.horizontalHeader().setStyleSheet("QHeaderView::section { padding: 8px 2px; }")
 
         if delegate:
             frozen.setItemDelegateForColumn(col, delegate)

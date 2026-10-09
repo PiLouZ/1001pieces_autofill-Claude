@@ -479,6 +479,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'settings') and hasattr(self.table_controller, 'set_search_position'):
             if self.settings.value("ui/search_position", "bottom") == "top":
                 self.table_controller.set_search_position("top")
+        if hasattr(self, 'settings'):
+            self._apply_row_height(self.settings.value("ui/row_height", UIConfig.DEFAULT_ROW_HEIGHT))
         
         # Connecter les signaux de sélection pour le panneau des pièces
         self.table_controller.connect_selection_signals(self._on_selection_changed)
@@ -504,7 +506,7 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         m = layout.contentsMargins()
-        layout.setContentsMargins(m.left(), 0, m.right(), 0)
+        layout.setContentsMargins(0, 0, m.right(), 0)  # gauche : l'espace est la poignée (8 px)
 
         # Splitter vertical pour diviser en deux parties
         pieces_splitter = QSplitter(Qt.Vertical)
@@ -512,7 +514,7 @@ class MainWindow(QMainWindow):
         # Partie haute - Onglets pour les pièces
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(0, 0, 0, 0)  # retire le double niveau de marges internes
+        top_layout.setContentsMargins(0, 0, 0, 0)  # bas : l'espace est la poignée (8 px)
         top_layout.setSpacing(2)
         
         # ── En-tête : nom appareil + bouton rafraîchir ──────────────────────
@@ -533,67 +535,42 @@ class MainWindow(QMainWindow):
 
         self.pieces_count_label = QLabel("")
         self.pieces_count_label.setStyleSheet(
-            "color: #6c757d; font-size: 10px;"
+            "color: #6c757d; font-size: 11px;"
         )
         header_layout.addWidget(self.pieces_count_label)
 
-        _btn_style = """
-            QPushButton {
-                background-color: transparent;
-                color: #6c757d;
-                border: 1px solid #ced4da;
-                border-radius: 3px;
-                font-size: 13px;
-                font-weight: bold;
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 20px;
-                max-height: 20px;
-                padding: 0px;
-            }
-            QPushButton:hover { background-color: #e9ecef; color: #343a40; }
-        """
-
-        refresh_btn = QPushButton("↺")
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(qta.icon('fa5s.sync-alt', color='#6c757d'))
+        refresh_btn.setIconSize(QSize(11, 11))
         refresh_btn.setToolTip("Rafraîchir la liste des pièces")
-        refresh_btn.setStyleSheet(_btn_style)
+        refresh_btn.setStyleSheet(StyleManager.PANEL_ICON_BUTTON)
         refresh_btn.clicked.connect(lambda: self.pieces_panel_service.update_pieces_panel())
         header_layout.addWidget(refresh_btn)
 
-        add_toggle_btn = QPushButton("＋")
+        add_toggle_btn = QPushButton()
+        add_toggle_btn.setIcon(qta.icon('fa5s.plus', color='#6c757d'))
+        add_toggle_btn.setIconSize(QSize(11, 11))
         add_toggle_btn.setToolTip("Ajouter une pièce")
-        add_toggle_btn.setStyleSheet(_btn_style)
+        add_toggle_btn.setStyleSheet(StyleManager.PANEL_ICON_BUTTON)
         header_layout.addWidget(add_toggle_btn)
 
         top_layout.addWidget(header_widget)
 
+        # Carte « nouvelle pièce » en tête de liste (masquée, ouverte par ＋).
+        # piece_input / piece_libelle_input restent les points d'accès lus par
+        # PieceManagementService.add_piece.
+        from .piece_add_card import PieceAddCard
+        self.piece_add_card = PieceAddCard(on_submit=self._add_piece)
+        self.piece_input = self.piece_add_card.ref_input
+        self.piece_libelle_input = self.piece_add_card.libelle_input
+        add_toggle_btn.clicked.connect(
+            lambda: self.piece_add_card.toggle(len(self.pieces_panel_service._get_selected_rows()))
+        )
+        top_layout.addWidget(self.piece_add_card)
+
         # Liste des pièces directement (plus de QTabWidget)
         self.pieces_list = self.pieces_list_service.create_pieces_list_widget()
         top_layout.addWidget(self.pieces_list, 1)
-
-        # Formulaire d'ajout de pièce (masqué par défaut, toggle via ＋)
-        pieces_add_widget = QWidget()
-        pieces_add_widget.setVisible(False)
-        pieces_add_layout = QVBoxLayout(pieces_add_widget)
-        pieces_add_layout.setContentsMargins(4, 4, 4, 4)
-        pieces_add_layout.setSpacing(4)
-
-        self.piece_input = QLineEdit()
-        self.piece_input.setPlaceholderText("Référence de la pièce...")
-        pieces_add_layout.addWidget(self.piece_input)
-
-        self.piece_libelle_input = QLineEdit()
-        self.piece_libelle_input.setPlaceholderText("Libellé de la pièce (optionnel)...")
-        pieces_add_layout.addWidget(self.piece_libelle_input)
-
-        add_piece_btn = QPushButton("Ajouter")
-        add_piece_btn.clicked.connect(self._add_piece)
-        pieces_add_layout.addWidget(add_piece_btn)
-
-        add_toggle_btn.clicked.connect(
-            lambda: pieces_add_widget.setVisible(not pieces_add_widget.isVisible())
-        )
-        top_layout.addWidget(pieces_add_widget)
         pieces_splitter.addWidget(top_widget)
 
         # Partie basse - Historique des modifications
@@ -633,7 +610,7 @@ class MainWindow(QMainWindow):
         history_header_layout.addWidget(_make_separator(), 1)
 
         history_layout.addLayout(history_header_layout)
-        history_layout.setContentsMargins(8, 12, 8, 0)  # Padding moderne, sans marge basse
+        history_layout.setContentsMargins(8, 0, 8, 0)  # haut : l'espace est la poignée (8 px)
         
         self.history_list = QTextBrowser()
         self.history_list.setOpenExternalLinks(False)  # Gérer les liens nous-mêmes
@@ -644,7 +621,7 @@ class MainWindow(QMainWindow):
         # Style pour ressembler à une liste
         self.history_list.setStyleSheet("""
             QTextBrowser {
-                background-color: #f8f9fa;
+                background-color: #ffffff;
                 border: 1px solid #dee2e6;
                 border-radius: 4px;
                 padding: 4px;
@@ -664,6 +641,9 @@ class MainWindow(QMainWindow):
         )
 
         history_layout.addWidget(self.history_list)
+        # État vide initial (« Aucune opération pour l'instant ») jusqu'à la 1re entrée
+        if hasattr(self, 'user_interaction_service'):
+            self.user_interaction_service._refresh_display()
         
         pieces_splitter.addWidget(history_widget)
         
@@ -1582,8 +1562,15 @@ class MainWindow(QMainWindow):
         self.search_input.setFocus()
 
     def _add_piece(self):
-        """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService"""
-        self.piece_management_service.add_piece()
+        """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService.
+
+        Ajout réussi : la carte se referme et la pièce est surlignée en vert 2 s.
+        Échec : la carte reste ouverte, saisie conservée.
+        """
+        ref_piece = self.piece_input.text().strip()
+        if self.piece_management_service.add_piece():
+            self.piece_add_card.close_card()
+            self.pieces_list.highlight_piece(ref_piece, StyleManager.PIECE_ADDED_HIGHLIGHT)
 
     def _edit_piece(self, item: QListWidgetItem):
         """Éditer une pièce - Phase 2.14: Délégation vers PieceManagementService"""
@@ -1760,6 +1747,19 @@ class MainWindow(QMainWindow):
             self.settings.setValue("ui/search_position", position)
         if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'set_search_position'):
             self.table_controller.set_search_position(position)
+
+    def _on_row_height_chosen(self, key: str):
+        """Changer la hauteur des lignes du tableau (menu Affichage) et la mémoriser."""
+        if hasattr(self, 'settings'):
+            self.settings.setValue("ui/row_height", key)
+        self._apply_row_height(key)
+
+    def _apply_row_height(self, key: str):
+        """Appliquer une hauteur de ligne par sa clé ; clé inconnue → hauteur par défaut."""
+        _label, height = UIConfig.ROW_HEIGHTS.get(
+            key, UIConfig.ROW_HEIGHTS[UIConfig.DEFAULT_ROW_HEIGHT])
+        if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'set_row_height'):
+            self.table_controller.set_row_height(height)
 
     def _manage_categories(self):
         """Gérer les catégories"""
@@ -2294,10 +2294,6 @@ class MainWindow(QMainWindow):
 
         # Bouton de fermeture
         close_button = QPushButton("Fermer")
-        close_button.setStyleSheet(
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
         close_button.clicked.connect(dialog.close)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -2383,22 +2379,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(list_widget)
 
         buttons_layout = QHBoxLayout()
-        _compact = (
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
 
         restore_btn = QPushButton("Restaurer")
         restore_btn.setIcon(qta.icon('fa5s.history', color='#dc3545'))
         restore_btn.setIconSize(QSize(12, 12))
-        restore_btn.setStyleSheet(_compact)
+        restore_btn.setStyleSheet(StyleManager.DANGER_ACTION_BUTTON)
         restore_btn.setEnabled(False)
         buttons_layout.addWidget(restore_btn)
 
         buttons_layout.addStretch()
 
         cancel_btn = QPushButton("Annuler")
-        cancel_btn.setStyleSheet(_compact)
         cancel_btn.clicked.connect(dialog.reject)
         buttons_layout.addWidget(cancel_btn)
 
@@ -2453,37 +2444,42 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         # Titre
-        title_label = QLabel("<b>Gestion de l'index de recherche plein texte (FTS5)</b>")
+        title_label = QLabel("<b>Index de recherche plein texte (FTS5)</b>")
         title_label.setStyleSheet("font-size: 14px; margin-bottom: 4px;")
         layout.addWidget(title_label)
 
-        # Explication
+        # Explication — texte riche EXPLICITE : sans setTextFormat, Qt prenait ce
+        # texte (qui ne commence pas par une balise) pour du texte brut et
+        # affichait les balises <code> / <b> telles quelles.
         info_text = (
-            "L'index FTS5 accélère drastiquement les recherches en remplaçant les\n"
-            "requêtes <code>LIKE '%terme%'</code> (full table scan) par une recherche\n"
-            "indexée par trigrammes. Résultat : ~10× plus rapide sur 600k enregistrements.\n\n"
-            "<b>La construction prend ~2 secondes. L'application reste responsive.</b>"
+            "<p>L'index accélère la recherche par fragment (ex. « 802A ») dans les "
+            "colonnes des <b>appareils</b> : type, fabricant et références.</p>"
+            "<p>Il ne sert pas quand la recherche principale porte sur les "
+            "<b>références de pièces</b>, ce qui est le réglage actuel de l'application. "
+            "La construction prend quelques secondes.</p>"
         )
         info_label = QLabel(info_text)
+        info_label.setTextFormat(Qt.RichText)
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
-        # Statut de l'index
+        # Statut de l'index : dit si l'index sert RÉELLEMENT (fts5_utilisable), et
+        # non seulement s'il est construit
         def get_status_text():
             try:
                 populated = self.db_manager.is_fts5_populated()
-                active = Config.USE_FTS5
-                if populated:
-                    count = self.db_manager.get_fts5_row_count()
-                    active_str = "Actif" if active else "Construit mais non activé"
-                    return f"Statut : {active_str} — {count:,} enregistrements indexés".replace(",", " ")
-                else:
-                    return "Statut : Index non construit"
+                count = self.db_manager.get_fts5_row_count() if populated else 0
+                construit = (f"construit ({count:,} appareils indexés)".replace(",", "\u202f")
+                             if populated else "non construit")
+                if not self.db_manager.fts5_utilisable():
+                    return f"Statut : non utilisé par la recherche actuelle — index {construit}"
+                return f"Statut : actif — index {construit}" if populated else "Statut : index non construit"
             except Exception as e:
-                return f"Statut : Erreur — {e}"
+                return f"Statut : erreur — {e}"
 
         status_label = QLabel(get_status_text())
-        status_label.setStyleSheet("font-weight: bold; padding: 6px; background: #f0f0f0; border-radius: 4px;")
+        status_label.setWordWrap(True)
+        status_label.setStyleSheet("font-weight: bold; padding: 6px 8px; background: #f1f3f5; border-radius: 4px;")
         layout.addWidget(status_label)
 
         layout.addStretch()
@@ -2491,14 +2487,10 @@ class MainWindow(QMainWindow):
         # Boutons
         buttons_layout = QHBoxLayout()
 
-        _compact = (
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
         rebuild_btn = QPushButton("Construire / Reconstruire l'index")
-        rebuild_btn.setIcon(qta.icon('fa5s.cog', color='#495057'))
+        rebuild_btn.setIcon(qta.icon('fa5s.cog', color='white'))
         rebuild_btn.setIconSize(QSize(12, 12))
-        rebuild_btn.setStyleSheet(_compact)
+        rebuild_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         rebuild_btn.setToolTip("Lance la construction complète de l'index FTS5 (~2 secondes)")
 
         def do_rebuild():
@@ -2511,9 +2503,7 @@ class MainWindow(QMainWindow):
             try:
                 count = self.db_manager.rebuild_fts5()
                 Config.USE_FTS5 = True
-                status_label.setText(
-                    f"Statut : Actif — {count:,} enregistrements indexés".replace(",", " ")
-                )
+                status_label.setText(get_status_text())
                 rebuild_btn.setText("Index construit")
                 rebuild_btn.setIcon(qta.icon('fa5s.check', color='#27ae60'))
                 if hasattr(self, 'statusBar'):
@@ -2524,7 +2514,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 rebuild_btn.setEnabled(True)
                 rebuild_btn.setText("Construire / Reconstruire l'index")
-                rebuild_btn.setIcon(qta.icon('fa5s.cog', color='#495057'))
+                rebuild_btn.setIcon(qta.icon('fa5s.cog', color='white'))
                 QMessageBox.critical(dialog, "Erreur FTS5", f"Échec de la construction de l'index :\n{e}")
 
         rebuild_btn.clicked.connect(do_rebuild)
@@ -2535,20 +2525,13 @@ class MainWindow(QMainWindow):
         close_btn = QPushButton("Fermer")
         close_btn.setIcon(qta.icon('fa5s.times', color='#495057'))
         close_btn.setIconSize(QSize(12, 12))
-        close_btn.setStyleSheet(_compact)
         close_btn.clicked.connect(dialog.accept)
         buttons_layout.addWidget(close_btn)
 
         layout.addLayout(buttons_layout)
 
-        # Note persistance
-        persist_note = QLabel(
-            "<i>Note : l'activation est en mémoire pour cette session. "
-            "Pour la rendre permanente, définir <code>USE_FTS5 = True</code> dans <code>src/core/config.py</code>.</i>"
-        )
-        persist_note.setWordWrap(True)
-        persist_note.setStyleSheet("color: #666; font-size: 11px; margin-top: 8px;")
-        layout.addWidget(persist_note)
+        # (Ancienne note « définir USE_FTS5 = True dans config.py » retirée : le
+        # réglage est déjà actif ; seule SEARCH_PIECES_ONLY décide de l'usage.)
 
         dialog.exec_()
 
@@ -2598,29 +2581,22 @@ class MainWindow(QMainWindow):
             layout.addWidget(checkbox)
 
         # Boutons
-        _compact = "QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
         button_layout = QHBoxLayout()
 
         reset_btn = QPushButton("Réinitialiser")
-        reset_btn.setStyleSheet(_compact)
         reset_btn.clicked.connect(lambda: self._reset_column_defaults(checkboxes))
         button_layout.addWidget(reset_btn)
 
         button_layout.addStretch()
 
         cancel_btn = QPushButton("Annuler")
-        cancel_btn.setStyleSheet(_compact)
         cancel_btn.clicked.connect(dialog.reject)
         button_layout.addWidget(cancel_btn)
 
         apply_btn = QPushButton("Appliquer")
         apply_btn.setIcon(qta.icon('fa5s.check', color='white'))
         apply_btn.setIconSize(QSize(12, 12))
-        apply_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #218838; }"
-        )
+        apply_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         apply_btn.clicked.connect(lambda: self._apply_column_config(checkboxes, dialog))
         button_layout.addWidget(apply_btn)
 
@@ -2745,7 +2721,7 @@ class MainWindow(QMainWindow):
             self.table.setStyleSheet(self.table.styleSheet() + """
                 QTableWidget {
                     background-color: rgba(0, 123, 255, 0.1);
-                    border: 2px dashed #007bff;
+                    border: 2px dashed #0d6efd;
                 }
                 QTableWidget::item {
                     background-color: rgba(0, 123, 255, 0.05);
@@ -2764,7 +2740,7 @@ class MainWindow(QMainWindow):
                         font-weight: bold;
                         padding: 20px;
                         border-radius: 10px;
-                        border: 2px solid #007bff;
+                        border: 2px solid #0d6efd;
                     }
                 """)
             
@@ -2783,7 +2759,7 @@ class MainWindow(QMainWindow):
             self.table.setStyleSheet(self.table.styleSheet().replace("""
                 QTableWidget {
                     background-color: rgba(0, 123, 255, 0.1);
-                    border: 2px dashed #007bff;
+                    border: 2px dashed #0d6efd;
                 }
                 QTableWidget::item {
                     background-color: rgba(0, 123, 255, 0.05);

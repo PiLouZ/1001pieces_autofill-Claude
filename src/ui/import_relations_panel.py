@@ -13,7 +13,7 @@ La checkbox relie les ancres des groupes cochés (cf. `cross_anchor`). États d�
 Widget autonome (testable offscreen).
 """
 
-from PyQt5.QtCore import Qt, pyqtSignal, QStringListModel
+from PyQt5.QtCore import Qt, pyqtSignal, QStringListModel, QSize
 from PyQt5.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QScrollArea, QCompleter, QSplitter, QSizePolicy,
@@ -22,10 +22,11 @@ from PyQt5.QtWidgets import (
 import qtawesome as qta
 
 from ..services.import_relations import (
-    Group, CardData, derive, count_planned_relations, cross_anchors,
+    Group, CardData, derive, count_planned_relations, cross_anchors, cross_anchor,
     KIND_SUCCESSION, KIND_EQUIVALENCE,
 )
 from ..core.config import pluralize
+from .style_manager import StyleManager
 
 # Couleurs alignées sur les bannières du tableau principal (table_controller.py) :
 # succession = famille BLEUE (#E3F2FD/#64B5F6/#0D47A1), équivalence = famille VIOLETTE
@@ -123,7 +124,7 @@ class RefCard(QFrame):
         lay.addWidget(self.base_zone)
 
         self.obs_hint = QLabel("")
-        self.obs_hint.setStyleSheet("color: #9e9e9e; font-size: 10px; border: none;")
+        self.obs_hint.setStyleSheet("color: #9e9e9e; font-size: 11px; border: none;")
         self.obs_hint.setVisible(False)
         lay.addWidget(self.obs_hint)
 
@@ -280,14 +281,19 @@ class GroupBox(QFrame):
         name = "Lignée" if is_succ else "Groupe"
         head.addWidget(_lbl(f"{name} {self.index + 1}", color=col, bold=True))
         head.addStretch(1)
-        empty = QPushButton("vider")
-        empty.setFlat(True)
-        empty.setStyleSheet("color: #0066cc; font-size: 10px; border: none;")
+        # Actions en icônes discrètes (anciens liens texte « vider » / « suppr »)
+        empty = QPushButton()
+        empty.setIcon(qta.icon('fa5s.eraser', color='#6c757d'))
+        empty.setIconSize(QSize(11, 11))
+        empty.setToolTip("Vider : renvoyer les réfs vers « Non groupées »")
+        empty.setStyleSheet(StyleManager.PANEL_ICON_BUTTON)
         empty.clicked.connect(lambda: self.empty_requested.emit(self))
         head.addWidget(empty)
-        rem = QPushButton("suppr")
-        rem.setFlat(True)
-        rem.setStyleSheet("color: #c0392b; font-size: 10px; border: none;")
+        rem = QPushButton()
+        rem.setIcon(qta.icon('fa5s.trash-alt', color='#c0392b'))
+        rem.setIconSize(QSize(11, 11))
+        rem.setToolTip("Supprimer ce cadre (ses réfs retournent dans « Non groupées »)")
+        rem.setStyleSheet(StyleManager.PANEL_ICON_BUTTON)
         rem.clicked.connect(lambda: self.remove_requested.emit(self))
         head.addWidget(rem)
         lay.addLayout(head)
@@ -302,7 +308,8 @@ class GroupBox(QFrame):
             self.courante_input = _CouranteLineEdit()
             self.courante_input.setPlaceholderText("réf récente (lot, base ou à créer)")
             self.courante_input.setToolTip("Saisir, choisir, ou glisser une réf ici.")
-            self.courante_input.setStyleSheet("background: #ffffff; color: #212121;")
+            self.courante_input.setStyleSheet(
+                "background: #ffffff; color: #212121; padding: 3px 8px;")
             self.courante_input.textChanged.connect(lambda *_: self.changed.emit())
             self.courante_input.ref_dropped.connect(self._on_courante_dropped)
             crow.addWidget(self.courante_input, 1)
@@ -325,7 +332,7 @@ class GroupBox(QFrame):
                 "les réfs de ce groupe deviennent équivalentes à sa courante\n"
                 "(et, par la chaîne, à ses anciennes versions).")
             hint = "Réfs interchangeables (glissez ici) :"
-        self.cross_check.setStyleSheet(f"font-size: 10px; border: none; color: {_EQUIV_COLORS[0]};")
+        self.cross_check.setStyleSheet(f"font-size: 11px; border: none; color: {_EQUIV_COLORS[0]};")
         self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
         lay.addWidget(self.cross_check)
         lay.addWidget(_lbl(hint, size=10, color="#607d8b"))
@@ -428,10 +435,12 @@ class GroupsZone(QWidget):
             "Coche « Équivalente (inter-lignées) » sur toutes les lignées,\n"
             "présentes et à venir (courantes de marques ≠ déclarées équivalentes).")
         self.all_equiv_check.stateChanged.connect(self._on_all_equiv_toggled)
+        # La case est placée SOUS les deux colonnes et non dans celle des lignées :
+        # sinon la colonne des lignées perdait sa hauteur et les cadres colorés
+        # (lignée / groupe) n'étaient pas alignés.
         self._succ_lay, succ_col = self._build_group_column(
             "Lignées de succession", _SUCC_COLORS[1],
-            "+ Nouvelle lignée", lambda: self.add_group(KIND_SUCCESSION),
-            extra_widget=self.all_equiv_check)
+            "+ Nouvelle lignée", lambda: self.add_group(KIND_SUCCESSION))
         cols.addWidget(succ_col, 1)
 
         self._equiv_lay, equiv_col = self._build_group_column(
@@ -440,6 +449,7 @@ class GroupsZone(QWidget):
         cols.addWidget(equiv_col, 1)
 
         lay.addLayout(cols, 1)
+        lay.addWidget(self.all_equiv_check)
 
         # Récap en direct : ce qui SERA réellement appliqué à l'import (successions /
         # équivalences / non groupées) + avertissements sur les déclarations sans effet
@@ -598,26 +608,85 @@ class GroupsZone(QWidget):
         msgs = []
         groups = self.groups()
         n_courantes = sum(1 for g in groups if g.kind == KIND_SUCCESSION and g.courante)
+        cross = set(cross_anchors(groups))
         for g in groups:
             if g.kind == KIND_SUCCESSION and g.members and not g.courante:
                 msgs.append(f"Une lignée contient {pluralize(len(g.members), 'réf')} mais "
                             "n'a pas de courante : aucune succession ne sera créée.")
             elif g.kind == KIND_EQUIVALENCE:
                 effective = set(g.members) | ({g.courante} if g.courante else set())
-                if len(effective) == 1:
+                # Une seule réf mais cochée « Équivalent aux lignées cochées » avec au
+                # moins une autre ancre : elle rejoint l'équivalence croisée, qui SERA
+                # créée (le récap le compte) — l'alerte contredisait le récap.
+                rejoint_croisee = (g.cross_equivalent and cross_anchor(g) in cross
+                                   and len(cross) >= 2)
+                if len(effective) == 1 and not rejoint_croisee:
                     msgs.append("Un groupe d'équivalence ne contient qu'une seule réf : "
                                 "aucune équivalence ne sera créée.")
-        cross = set(cross_anchors(groups))
-        cross_checked = sum(1 for g in groups if g.cross_equivalent)
-        if cross_checked and len(cross) < 2:
-            msgs.append("« Équivalente » est cochée mais moins de deux lignées (avec "
-                        "courante) ou groupes sont cochés : aucune équivalence croisée "
-                        "ne sera créée.")
+        cross_msg = self._cross_warning(cross)
+        if cross_msg:
+            msgs.append(cross_msg)
         elif self.all_equiv_check.isChecked() and n_courantes < 2:
             msgs.append("« Toutes les lignées équivalentes entre elles » est cochée mais "
                         "moins de deux lignées ont une courante : aucune équivalence "
                         "ne sera créée par cette case.")
         return msgs
+
+    def _cross_warning(self, cross):
+        """Alerte « équivalence croisée sans effet », qui nomme la cause réelle.
+
+        L'équivalence croisée relie UNE réf par cadre coché (son ancre : courante
+        d'une lignée, 1re réf ou courante d'un groupe) ; il en faut au moins deux.
+        Raisonne sur les CADRES (et non sur groups(), qui écarte les cadres vides) :
+        un cadre coché mais vide est justement la cause la plus fréquente. L'ancien
+        texte (« moins de deux lignées ou groupes sont cochés ») était faux à la
+        lettre quand deux cadres étaient cochés dont un vide.
+        """
+        coches = [b for b in self.all_boxes()
+                  if b.cross_check is not None and b.cross_check.isChecked()]
+        if not coches or len(cross) >= 2:
+            return None
+
+        def nom(b):
+            return f"« {'Lignée' if b.kind == KIND_SUCCESSION else 'Groupe'} {b.index + 1} »"
+
+        vides, sans_courante, participants = [], [], []
+        for b in coches:
+            g = b.to_group()
+            ancre = cross_anchor(g)
+            if not g.members and not g.courante:
+                vides.append(b)
+            elif ancre is None:
+                sans_courante.append(b)       # lignée avec réfs mais sans courante
+            else:
+                participants.append((b, ancre))
+
+        causes = []
+        if vides:
+            noms = ", ".join(nom(b) for b in vides)
+            if len(vides) == 1:
+                accord = "cochée" if vides[0].kind == KIND_SUCCESSION else "coché"
+                causes.append(f"{noms} est {accord} mais vide")
+            else:
+                causes.append(f"{noms} sont cochés mais vides")
+        if sans_courante:
+            noms = ", ".join(nom(b) for b in sans_courante)
+            causes.append(f"{noms} {'est cochée mais n’a pas de courante' if len(sans_courante) == 1 else 'sont cochées mais sans courante'}")
+        if len(participants) == 1:
+            b, ancre = participants[0]
+            seul = "seule" if b.kind == KIND_SUCCESSION else "seul"
+            causes.append(f"{seul} {nom(b)} ({ancre}) participe")
+        elif not participants:
+            causes.append("aucun cadre coché ne porte de réf")
+
+        if vides:
+            conseil = "Glissez une réf dans le cadre vide ou cochez une autre lignée."
+        elif sans_courante:
+            conseil = "Renseignez la courante de la lignée."
+        else:
+            conseil = "Cochez une autre lignée ou un autre groupe."
+        texte = " ; ".join(causes)
+        return f"{texte[0].upper()}{texte[1:]} : aucune équivalence croisée ne sera créée. {conseil}"
 
     def _update_recap(self, *_):
         """Rafraîchir le récap (ce qui sera appliqué) + avertissements + grisage

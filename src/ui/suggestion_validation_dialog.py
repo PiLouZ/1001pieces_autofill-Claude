@@ -10,6 +10,7 @@ principale (chemin batché + historisé existant).
 Non bloquant : ouvert via show() + callback (jamais exec_(), cf. conventions projet).
 """
 
+from .style_manager import StyleManager
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QBrush, QKeySequence
 from PyQt5.QtWidgets import (
@@ -180,21 +181,27 @@ class SuggestionValidationDialog(QDialog):
         self._tree.setColumnWidth(COL_TIER, 104)
         root.addWidget(self._tree, 1)
 
-        # Zone D — barre d'actions bas (couleurs : vert valider, rouge annuler)
+        # Zone D — barre d'actions bas. Convention de l'appli : Annuler neutre à
+        # gauche, action principale verte à droite (Annuler était en rouge plein,
+        # comme une action destructive).
         actions = QHBoxLayout()
         uncheck_btn = QPushButton("Tout décocher")
+        uncheck_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+        uncheck_btn.setAutoDefault(False)
         uncheck_btn.clicked.connect(lambda: self._set_all_checked(False))
         actions.addWidget(uncheck_btn)
         check_btn = QPushButton("Tout cocher")
+        check_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+        check_btn.setAutoDefault(False)
         check_btn.clicked.connect(lambda: self._set_all_checked(True))
         actions.addWidget(check_btn)
         actions.addStretch()
         cancel_btn = QPushButton("Annuler")
-        cancel_btn.setProperty("class", "danger")   # rouge — ligne directrice projet
+        cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         actions.addWidget(cancel_btn)
         self._validate_btn = QPushButton()
-        self._validate_btn.setProperty("class", "success")  # vert
+        self._validate_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         self._validate_btn.setDefault(True)
         self._validate_btn.clicked.connect(self._on_validate_clicked)
         actions.addWidget(self._validate_btn)
