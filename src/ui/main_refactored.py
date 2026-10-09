@@ -255,8 +255,6 @@ class MainWindow(QMainWindow):
         from ..services.paste_cleanup_service import PasteCleanupService
         self.paste_cleanup_service = PasteCleanupService(self)
 
-        # Note: AutoSaveManager est initialisé dans _setup_statusbar() pour ordre correct
-
         # PHASE 3.1: Service de tri et filtrage
         self.sorting_filtering_service = None  # Sera initialisé après création de la table
         
@@ -325,10 +323,7 @@ class MainWindow(QMainWindow):
 
     def _setup_timers(self):
         """Configurer les timers"""
-        # Feature Flag: AutoSaveManager - Phase 1 Refactoring
-        if Config.USE_NEW_AUTO_SAVE_MANAGER:
-            self.auto_save_manager.setup_auto_save()
-        elif not Config.ENABLE_EVENT_DRIVEN_SAVE:
+        if not Config.ENABLE_EVENT_DRIVEN_SAVE:
             # Ancien système timer-based (pour rollback)
             self.auto_save_timer = QTimer()
             self.auto_save_timer.timeout.connect(self._auto_save)
@@ -710,16 +705,6 @@ class MainWindow(QMainWindow):
         # Connecter l'indicateur au service de sauvegarde événementielle (créé avant la statusbar)
         if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
             self.event_driven_save_service.save_indicator = self.save_indicator
-
-        # Feature Flag: AutoSaveManager - Initialisation retardée + Configuration indicateur UI
-        if Config.USE_NEW_AUTO_SAVE_MANAGER:
-            from ..services.auto_save_manager import AutoSaveManager
-            self.auto_save_manager = AutoSaveManager(
-                self.db_manager,
-                self.user_interaction_service,
-                self.statusbar
-            )
-            self.auto_save_manager.setup_ui_indicator(self.save_indicator)
 
         self.connection_indicator = StatusLabel('fa5s.circle', Config.get_message('connected'), color='green')
         self.statusbar.addPermanentWidget(self.connection_indicator)
@@ -1241,9 +1226,7 @@ class MainWindow(QMainWindow):
     def _apply_cell_edit_logic(self, row: int, col: int, old_value: str, new_value: str, db_id):
         """Tronc commun post-validation : sauvegarde, historique et mises à jour UI."""
         # Sauvegarde
-        if Config.USE_NEW_AUTO_SAVE_MANAGER:
-            self.auto_save_manager.mark_cell_modified(row, col, self.table)
-        elif not Config.ENABLE_EVENT_DRIVEN_SAVE:
+        if not Config.ENABLE_EVENT_DRIVEN_SAVE:
             self.modified_cells.add((row, col))
             self.save_indicator.setText(Config.get_message('save_pending'))
             self.save_indicator.setStyleSheet("color: orange;")
@@ -1401,11 +1384,6 @@ class MainWindow(QMainWindow):
         # PHASE 3.3: Déléguer au DatabaseOperationsService
         if hasattr(self, 'database_operations_service') and self.database_operations_service:
             self.database_operations_service.auto_save()
-            return
-
-        # Feature Flag: AutoSaveManager fallback
-        if Config.USE_NEW_AUTO_SAVE_MANAGER:
-            self.auto_save_manager.perform_auto_save(self.table)
 
     def _manual_save(self):
         """Sauvegarde manuelle"""
@@ -1417,13 +1395,9 @@ class MainWindow(QMainWindow):
                 self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
             return
 
-        # Feature Flag: AutoSaveManager fallback
-        if Config.USE_NEW_AUTO_SAVE_MANAGER:
-            self.auto_save_manager.trigger_manual_save()
-        else:
-            self._auto_save()
-            self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
-            self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
+        self._auto_save()
+        self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
+        self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
 
 
     

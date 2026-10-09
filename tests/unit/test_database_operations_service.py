@@ -28,7 +28,6 @@ class TestDatabaseOperationsService:
         parent.table_fill_service = Mock()
         parent.cell_editing_service = Mock()
         parent.cache_service = Mock()
-        parent.auto_save_manager = Mock()
 
         # Mock des attributs UI
         parent.modified_cells = set()
@@ -277,20 +276,19 @@ class TestDatabaseOperationsService:
         success = database_service.save_drag_changes(invalid_handle)
         assert not success
 
-    def test_manual_save_with_manager(self, database_service):
-        """Test sauvegarde manuelle avec AutoSaveManager"""
-        database_service.auto_save_manager.save_now.return_value = True
-        # Simuler des cellules modifiées pour déclencher la sauvegarde
+    def test_manual_save_cellules_modifiees_passe_par_le_batch(self, database_service):
+        """Sauvegarde manuelle avec des cellules modifiées : délègue à save_cells_batch"""
         database_service.parent_window.modified_cells = {(0, 1)}
-
-        success = database_service.manual_save()
+        with patch.object(database_service, '_convert_modified_cells_to_updates',
+                          return_value={42: {'type': 'X'}}), \
+             patch.object(database_service, 'save_cells_batch', return_value=True) as batch:
+            success = database_service.manual_save()
 
         assert success
-        database_service.auto_save_manager.save_now.assert_called_once()
+        batch.assert_called_once_with({42: {'type': 'X'}})
 
-    def test_manual_save_fallback(self, database_service):
-        """Test sauvegarde manuelle avec fallback"""
-        database_service.auto_save_manager = None
+    def test_manual_save_sans_modification(self, database_service):
+        """Sauvegarde manuelle sans cellule modifiée : succès immédiat"""
         database_service.db_manager.update_multiple_cells_batch.return_value = True
 
         success = database_service.manual_save()

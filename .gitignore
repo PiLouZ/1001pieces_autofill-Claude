@@ -81,12 +81,3 @@ dist/
 
 # Tests
 .pytest_cache/
-
-# Virtual envs
-.auditor_venv/
-.pf/
-
-# TheAuditor (outil satellite) : copie scaffoldée par `aud` dans le repo,
-# jamais importée par le projet — ne pas versionner. Sortie de l'outil = .pf/
-src/theauditor/
-theauditor/

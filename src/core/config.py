@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.78.2"
+    VERSION = "3.78.3"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -88,9 +88,6 @@ class Config:
     # False = fallback LIKE %terme% (si l'index est absent ou corrompu)
     # Note  : désactivé automatiquement si SEARCH_PIECES_ONLY=True (pièces non indexées)
     USE_FTS5 = True
-
-    # Feature Flags - Refactoring Phase 1
-    USE_NEW_AUTO_SAVE_MANAGER = False  # Migration AutoSaveManager - REPORTÉE (cycle init complexe)
 
     # Feature Flags - Phase 2 Async Operations
     USE_ASYNC_LOAD_DATA = True  # Phase 2d: Migration pilote load_data_async() - TEST A/B ACTIVÉ

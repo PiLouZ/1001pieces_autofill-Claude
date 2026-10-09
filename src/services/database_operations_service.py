@@ -27,8 +27,7 @@ class DatabaseOperationsService(BaseService):
         # Services requis pour l'injection automatique (seulement les essentiels disponibles)
         self._required_services = [
             'db_manager',
-            'cache_service',
-            'auto_save_manager'
+            'cache_service'
         ]
 
         # État interne
@@ -279,13 +278,7 @@ class DatabaseOperationsService(BaseService):
         # Convertir modified_cells en format attendu (utiliser parent_modified_cells)
         updates_by_db_id = self._convert_modified_cells_to_updates(parent_modified_cells)
 
-        # Déléguer au AutoSaveManager si disponible
-        auto_save_manager = getattr(self, 'auto_save_manager', None)
-        if auto_save_manager and hasattr(auto_save_manager, 'save_now'):
-            return auto_save_manager.save_now()
-        else:
-            # Fallback vers sauvegarde batch
-            return self.save_cells_batch(updates_by_db_id)
+        return self.save_cells_batch(updates_by_db_id)
 
     @service_operation("sauvegarde_automatique")
     def auto_save(self) -> bool:
