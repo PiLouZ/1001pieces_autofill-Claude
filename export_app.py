@@ -213,9 +213,9 @@ def _compile_app_launcher(dest: Path, use_venv: bool) -> bool:
     import tempfile
 
     if use_venv:
-        launch_cmd = "source venv/bin/activate && nohup python3 run.py > /dev/null 2>&1 &"
+        launch_cmd = "source venv/bin/activate && nohup python3 run.py > /dev/null 2>&1"
     else:
-        launch_cmd = "nohup python3 run.py > /dev/null 2>&1 &"
+        launch_cmd = "nohup python3 run.py > /dev/null 2>&1"
 
     # Le script est écrit dans un fichier temporaire pour éviter les problèmes
     # d'échappement des guillemets avec les chemins contenant des espaces.
@@ -225,11 +225,17 @@ def _compile_app_launcher(dest: Path, use_venv: bool) -> bool:
     #   • La commande bash -c est délimitée par des guillemets DOUBLES (\" ... \")
     #     afin que les guillemets simples de quoted form puissent y être insérés
     #     sans conflit.
-    #   Résultat : /bin/bash -l -c "cd '/chemin avec espaces' && ..."
+    #   Résultat : /bin/bash -l -c "cd '/chemin avec espaces' && ..." > /dev/null 2>&1 &
+    #
+    # Mise en arrière-plan À L'EXTÉRIEUR de bash -c, sorties redirigées :
+    # `do shell script` attend que plus aucun processus ne tienne sa sortie.
+    # Avec le `&` à l'intérieur (« cd … && nohup … & »), bash mettait toute la
+    # liste dans un sous-shell qui gardait cette sortie jusqu'à la fermeture de
+    # l'application : le lanceur restait ouvert, d'où une 2ᵉ icône dans le Dock.
     applescript = f"""\
 set appPath to POSIX path of (path to me)
 set appFolder to do shell script "dirname " & quoted form of appPath
-do shell script "/bin/bash -l -c \\"cd " & quoted form of appFolder & " && {launch_cmd}\\""
+do shell script "/bin/bash -l -c \\"cd " & quoted form of appFolder & " && {launch_cmd}\\" > /dev/null 2>&1 &"
 """
     app_path = dest / '1001pieces_autofill.app'
 
