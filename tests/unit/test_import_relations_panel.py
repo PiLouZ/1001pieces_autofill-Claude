@@ -158,6 +158,38 @@ class TestCross:
         assert z.planned_counts()['equivalences'] == 0
         assert any("qu'une seule réf" in m for m in z.warnings())
 
+    def test_alerte_croisee_nomme_le_groupe_vide(self, qapp):
+        """Cas réel 2026-10-09 : Lignée 2 cochée + Groupe 1 coché mais vide.
+        L'alerte nomme la cause (groupe vide) et la seule lignée qui participe."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        lig1 = z._succ_boxes[0]                     # lignée pré-créée, non cochée
+        lig1.courante_input.setText("B1"); _move(panel, "B2", lig1)
+        lig2 = z.add_group(KIND_SUCCESSION)
+        lig2.courante_input.setText("B3"); _move(panel, "S1", lig2)
+        lig2.cross_check.setChecked(True)
+        grp = z._equiv_boxes[0]                     # groupe pré-créé, vide
+        grp.cross_check.setChecked(True)
+        panel.recompute()
+        msgs = [m for m in z.warnings() if "croisée" in m]
+        assert msgs == ["« Groupe 1 » est coché mais vide ; seule « Lignée 2 » (B3) participe : "
+                        "aucune équivalence croisée ne sera créée. "
+                        "Glissez une réf dans le cadre vide ou cochez une autre lignée."]
+
+    def test_alerte_croisee_lignee_sans_courante(self, qapp):
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        lig = z._succ_boxes[0]
+        _move(panel, "B1", lig)                     # réf mais pas de courante
+        lig.cross_check.setChecked(True)
+        grp = z._equiv_boxes[0]
+        _move(panel, "S1", grp)
+        grp.cross_check.setChecked(True)
+        panel.recompute()
+        msg = next(m for m in z.warnings() if "croisée" in m)
+        assert msg.startswith("« Lignée 1 » est cochée mais n’a pas de courante ; seul « Groupe 1 » (S1) participe")
+        assert msg.endswith("Renseignez la courante de la lignée.")
+
     def test_toutes_lignees_ne_coche_pas_les_groupes(self, qapp):
         """« Toutes les lignées équivalentes » reste limitée aux lignées."""
         panel = _panel(qapp)

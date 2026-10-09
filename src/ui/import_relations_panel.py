@@ -623,16 +623,70 @@ class GroupsZone(QWidget):
                 if len(effective) == 1 and not rejoint_croisee:
                     msgs.append("Un groupe d'équivalence ne contient qu'une seule réf : "
                                 "aucune équivalence ne sera créée.")
-        cross_checked = sum(1 for g in groups if g.cross_equivalent)
-        if cross_checked and len(cross) < 2:
-            msgs.append("« Équivalente » est cochée mais moins de deux lignées (avec "
-                        "courante) ou groupes sont cochés : aucune équivalence croisée "
-                        "ne sera créée.")
+        cross_msg = self._cross_warning(cross)
+        if cross_msg:
+            msgs.append(cross_msg)
         elif self.all_equiv_check.isChecked() and n_courantes < 2:
             msgs.append("« Toutes les lignées équivalentes entre elles » est cochée mais "
                         "moins de deux lignées ont une courante : aucune équivalence "
                         "ne sera créée par cette case.")
         return msgs
+
+    def _cross_warning(self, cross):
+        """Alerte « équivalence croisée sans effet », qui nomme la cause réelle.
+
+        L'équivalence croisée relie UNE réf par cadre coché (son ancre : courante
+        d'une lignée, 1re réf ou courante d'un groupe) ; il en faut au moins deux.
+        Raisonne sur les CADRES (et non sur groups(), qui écarte les cadres vides) :
+        un cadre coché mais vide est justement la cause la plus fréquente. L'ancien
+        texte (« moins de deux lignées ou groupes sont cochés ») était faux à la
+        lettre quand deux cadres étaient cochés dont un vide.
+        """
+        coches = [b for b in self.all_boxes()
+                  if b.cross_check is not None and b.cross_check.isChecked()]
+        if not coches or len(cross) >= 2:
+            return None
+
+        def nom(b):
+            return f"« {'Lignée' if b.kind == KIND_SUCCESSION else 'Groupe'} {b.index + 1} »"
+
+        vides, sans_courante, participants = [], [], []
+        for b in coches:
+            g = b.to_group()
+            ancre = cross_anchor(g)
+            if not g.members and not g.courante:
+                vides.append(b)
+            elif ancre is None:
+                sans_courante.append(b)       # lignée avec réfs mais sans courante
+            else:
+                participants.append((b, ancre))
+
+        causes = []
+        if vides:
+            noms = ", ".join(nom(b) for b in vides)
+            if len(vides) == 1:
+                accord = "cochée" if vides[0].kind == KIND_SUCCESSION else "coché"
+                causes.append(f"{noms} est {accord} mais vide")
+            else:
+                causes.append(f"{noms} sont cochés mais vides")
+        if sans_courante:
+            noms = ", ".join(nom(b) for b in sans_courante)
+            causes.append(f"{noms} {'est cochée mais n’a pas de courante' if len(sans_courante) == 1 else 'sont cochées mais sans courante'}")
+        if len(participants) == 1:
+            b, ancre = participants[0]
+            seul = "seule" if b.kind == KIND_SUCCESSION else "seul"
+            causes.append(f"{seul} {nom(b)} ({ancre}) participe")
+        elif not participants:
+            causes.append("aucun cadre coché ne porte de réf")
+
+        if vides:
+            conseil = "Glissez une réf dans le cadre vide ou cochez une autre lignée."
+        elif sans_courante:
+            conseil = "Renseignez la courante de la lignée."
+        else:
+            conseil = "Cochez une autre lignée ou un autre groupe."
+        texte = " ; ".join(causes)
+        return f"{texte[0].upper()}{texte[1:]} : aucune équivalence croisée ne sera créée. {conseil}"
 
     def _update_recap(self, *_):
         """Rafraîchir le récap (ce qui sera appliqué) + avertissements + grisage

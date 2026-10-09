@@ -82,6 +82,11 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   « Équivalent aux lignées cochées », rejoint l'équivalence croisée (le récap
   annonçait bien « 1 équivalence »). Test du cas réel + test de non-régression de
   l'alerte légitime ; le nouveau test échoue sur l'ancien code.
+- Alerte « équivalence croisée sans effet » réécrite : elle nomme la cause réelle
+  (« « Groupe 1 » est coché mais vide ; seule « Lignée 2 » (167260368) participe »)
+  et propose quoi faire. L'ancien texte (« moins de deux lignées ou groupes sont
+  cochés ») était faux à la lettre quand deux cadres étaient cochés dont un vide :
+  il raisonnait sur la liste des groupes, qui écarte les cadres vides.
 - Cadres « Lignée » et « Groupe » de même hauteur : la case « Toutes les lignées
   équivalentes entre elles » passe sous les deux colonnes (elle raccourcissait
   la colonne des lignées).
