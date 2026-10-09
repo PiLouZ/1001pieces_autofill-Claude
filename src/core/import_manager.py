@@ -826,9 +826,15 @@ class ImportDialog(QDialog):
             left_layout.addWidget(individual_group, 1)
 
             if rel_group is not None:
+                # Marge gauche symétrique de celle de la colonne gauche : la zone
+                # Relations collait à la poignée du séparateur.
+                rel_container = QWidget()
+                rel_container_layout = QVBoxLayout(rel_container)
+                rel_container_layout.setContentsMargins(10, 0, 0, 0)
+                rel_container_layout.addWidget(rel_group)
                 splitter = QSplitter(Qt.Horizontal)
                 splitter.addWidget(left_col)
-                splitter.addWidget(rel_group)
+                splitter.addWidget(rel_container)
                 splitter.setStretchFactor(0, 2)
                 splitter.setStretchFactor(1, 3)
                 splitter.setChildrenCollapsible(False)

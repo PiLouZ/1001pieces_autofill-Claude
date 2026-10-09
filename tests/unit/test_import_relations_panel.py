@@ -132,6 +132,32 @@ class TestCross:
         assert z.planned_counts()['equivalences'] == 2          # S1≡S2 + B3≡S1
         assert z.warnings() == []
 
+    def test_groupe_une_seule_ref_coche_rejoint_la_lignee(self, qapp):
+        """Cas réel 2026-10-09 : groupe d'UNE réf coché « Équivalent aux lignées
+        cochées » + lignée cochée → l'équivalence croisée est créée ; l'alerte
+        « une seule réf : aucune équivalence » ne doit pas s'afficher."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        lig = z.add_group(KIND_SUCCESSION)
+        lig.courante_input.setText("B3"); _move(panel, "B1", lig); _move(panel, "B2", lig)
+        lig.cross_check.setChecked(True)
+        grp = z.add_group(KIND_EQUIVALENCE)
+        _move(panel, "S1", grp)
+        grp.cross_check.setChecked(True)
+        panel.recompute()
+        assert z.planned_counts()['equivalences'] == 1          # B3≡S1
+        assert z.warnings() == []
+
+    def test_groupe_une_seule_ref_non_coche_alerte(self, qapp):
+        """Sans la case, un groupe d'une réf reste sans effet : l'alerte est due."""
+        panel = _panel(qapp)
+        z = panel.groups_zone
+        grp = z.add_group(KIND_EQUIVALENCE)
+        _move(panel, "S1", grp)
+        panel.recompute()
+        assert z.planned_counts()['equivalences'] == 0
+        assert any("qu'une seule réf" in m for m in z.warnings())
+
     def test_toutes_lignees_ne_coche_pas_les_groupes(self, qapp):
         """« Toutes les lignées équivalentes » reste limitée aux lignées."""
         panel = _panel(qapp)

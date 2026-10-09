@@ -63,10 +63,38 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - La liste ne colle plus à la poignée du séparateur (marge basse de 8 px).
 
 **Infobulles**
-- Sombres et compactes (fond `#343a40`, texte 11 px) : 41 px de haut pour deux
-  lignes, contre ~59 px. Piège mesuré : sur une infobulle, Qt convertit `padding`
-  en une marge unique sur les 4 côtés (2 px + la plus grande valeur), d'où
-  `padding: 2px`.
+- Compactes (texte 11 px) : 41 px de haut pour deux lignes, contre ~59 px. Piège
+  mesuré : sur une infobulle, Qt convertit `padding` en une marge unique sur les
+  4 côtés (2 px + la plus grande valeur), d'où `padding: 2px`.
+- Fond clair conservé : un fond sombre a été essayé puis écarté. Une feuille de
+  style sans sélecteur posée sur un widget (`setStyleSheet("color: …")`, des
+  dizaines de cas) colore aussi le texte de son infobulle, illisible sur fond
+  sombre (ex. liste des pièces sélectionnées du gestionnaire).
+
+**Cases à cocher (toute l'application)**
+- Les cases cochées s'affichaient en carré bleu plein, sans coche : la coche
+  était une image `data:image/svg+xml` que Qt ne charge pas. Remplacée par un PNG
+  qtawesome généré au démarrage (même principe que le chevron des listes).
+
+**Import — panneau des relations**
+- Alerte erronée corrigée : « Un groupe d'équivalence ne contient qu'une seule
+  réf : aucune équivalence ne sera créée » s'affichait alors que le groupe, coché
+  « Équivalent aux lignées cochées », rejoint l'équivalence croisée (le récap
+  annonçait bien « 1 équivalence »). Test du cas réel + test de non-régression de
+  l'alerte légitime ; le nouveau test échoue sur l'ancien code.
+- Cadres « Lignée » et « Groupe » de même hauteur : la case « Toutes les lignées
+  équivalentes entre elles » passe sous les deux colonnes (elle raccourcissait
+  la colonne des lignées).
+- « vider » / « suppr » → icônes gomme / corbeille avec infobulle ; champ
+  « Courante » compacté.
+- Zone Relations décollée de la poignée du séparateur (marge gauche de 10 px).
+
+**Gestionnaire de pièces — cartes du panneau latéral**
+- Équivalences / Remplace / Remplacée par : fond gris clair arrondi, sans bordure
+  (`StyleManager.side_card`), au lieu de cadres gris bordés ; plus de cadre
+  englobant autour de la succession.
+- Poignée entre les cartes : espace de 8 px, teinté seulement au survol
+  (`StyleManager.AIRY_SPLITTER`) ; boutons « + » transparents.
 
 **Historique persistant**
 - Colonnes lisibles : « Appareil » ne se cale plus sur son contenu (il réduisait

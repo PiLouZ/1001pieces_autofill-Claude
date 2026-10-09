@@ -434,10 +434,14 @@ class PiecesManagerWindow(QDialog):
         # ── 2 zones : Équivalences (prioritaire) / Succession + actions ────────
         sections_splitter = QSplitter(Qt.Vertical)
         sections_splitter.setChildrenCollapsible(False)
+        # Espace de 8 px entre les cartes au lieu d'un trait collé à elles
+        sections_splitter.setHandleWidth(8)
+        sections_splitter.setStyleSheet(StyleManager.AIRY_SPLITTER)
 
         # Section "≡ Équivalences" — zone prioritaire en haut
         equiv_section = QFrame()
-        equiv_section.setFrameShape(QFrame.StyledPanel)
+        equiv_section.setObjectName("equivSection")
+        equiv_section.setStyleSheet(StyleManager.side_card("equivSection"))
         self.equiv_section = equiv_section
         eq_sec_layout = QVBoxLayout(equiv_section)
         eq_sec_layout.setContentsMargins(6, 4, 6, 4)
@@ -454,7 +458,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_link_equiv.setFixedSize(20, 20)
         self.btn_link_equiv.setToolTip("Ajouter une équivalence")
         self.btn_link_equiv.setStyleSheet(
-            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton { border: none; border-radius: 3px; background: transparent; }"
             "QPushButton:hover { background: rgba(142,68,173,0.12); }"
         )
         self.btn_link_equiv.setFlat(True)
@@ -477,9 +481,11 @@ class PiecesManagerWindow(QDialog):
 
         # ── Zone "Succession" (Remplace / Remplacée par en 2 colonnes + actions) ──
         succession_combined = QFrame()
-        succession_combined.setFrameShape(QFrame.StyledPanel)
+        # Simple conteneur : ce sont ses deux cartes (Remplace / Remplacée par) qui
+        # portent le fond ; plus de cadre englobant.
+        succession_combined.setFrameShape(QFrame.NoFrame)
         succ_combined_layout = QVBoxLayout(succession_combined)
-        succ_combined_layout.setContentsMargins(6, 4, 6, 4)
+        succ_combined_layout.setContentsMargins(0, 0, 0, 0)  # cartes alignées sur celle des équivalences
         succ_combined_layout.setSpacing(4)
 
         succession_row = QHBoxLayout()
@@ -487,7 +493,8 @@ class PiecesManagerWindow(QDialog):
 
         # Colonne "↑ Remplace"
         replaces_section = QFrame()
-        replaces_section.setFrameShape(QFrame.StyledPanel)
+        replaces_section.setObjectName("replacesSection")
+        replaces_section.setStyleSheet(StyleManager.side_card("replacesSection"))
         self.replaces_section = replaces_section
         rep_sec_layout = QVBoxLayout(replaces_section)
         rep_sec_layout.setContentsMargins(6, 4, 6, 4)
@@ -504,7 +511,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_replaces.setFixedSize(20, 20)
         self.btn_mark_replaces.setToolTip("Ajouter une référence remplacée")
         self.btn_mark_replaces.setStyleSheet(
-            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton { border: none; border-radius: 3px; background: transparent; }"
             "QPushButton:hover { background: rgba(41,128,185,0.12); }"
         )
         self.btn_mark_replaces.setFlat(True)
@@ -520,8 +527,8 @@ class PiecesManagerWindow(QDialog):
 
         # Colonne "↳ Remplacée par"
         superseded_section = QFrame()
-        superseded_section.setFrameShape(QFrame.StyledPanel)
         superseded_section.setObjectName("superseded_section")
+        superseded_section.setStyleSheet(StyleManager.side_card("superseded_section"))
         self.superseded_section = superseded_section
         sup_sec_layout = QVBoxLayout(superseded_section)
         sup_sec_layout.setContentsMargins(6, 4, 6, 4)
@@ -538,7 +545,7 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_superseded.setFixedSize(20, 20)
         self.btn_mark_superseded.setToolTip("Déclarer remplacée par une autre référence")
         self.btn_mark_superseded.setStyleSheet(
-            "QPushButton { border: none; border-radius: 3px; }"
+            "QPushButton { border: none; border-radius: 3px; background: transparent; }"
             "QPushButton:hover { background: rgba(230,126,34,0.12); }"
         )
         self.btn_mark_superseded.setFlat(True)

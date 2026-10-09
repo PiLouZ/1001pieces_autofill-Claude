@@ -26,6 +26,25 @@ def _generate_combo_arrow() -> str:
     return _combo_arrow_path
 
 
+_check_mark_path: str = ""
+
+
+def _generate_check_mark() -> str:
+    """Coche blanche (qtawesome) pour les cases cochées ; chemin du PNG, ou ""."""
+    global _check_mark_path
+    if _check_mark_path:
+        return _check_mark_path
+    try:
+        import qtawesome as qta
+        pixmap = qta.icon('fa5s.check', color='#ffffff').pixmap(12, 12)
+        path = os.path.join(tempfile.gettempdir(), '1001pieces_check_mark.png')
+        pixmap.save(path)
+        _check_mark_path = path
+    except Exception:
+        _check_mark_path = ""
+    return _check_mark_path
+
+
 _inline_icon_paths: dict = {}
 
 
@@ -170,6 +189,22 @@ class StyleManager:
         "QComboBox, QLineEdit, QDateEdit { padding: 3px 8px; min-height: 20px;"
         " border: 1px solid #ced4da; border-radius: 4px; background: white; }"
         "QComboBox:focus, QLineEdit:focus, QDateEdit:focus { border-color: #80bdff; }"
+    )
+
+    # Cartes du panneau latéral du gestionnaire de pièces (Équivalences, Remplace,
+    # Remplacée par) : fond gris clair arrondi, sans bordure — remplace les cadres
+    # gris bordés (QFrame.StyledPanel). Appliqué par objectName pour ne pas
+    # descendre sur les widgets enfants.
+    @staticmethod
+    def side_card(object_name: str) -> str:
+        return (f"QFrame#{object_name} {{ background: #f1f3f5; border: none;"
+                f" border-radius: 6px; }}")
+
+    # Séparateur entre deux cartes : un espace (pas de trait collé aux cartes),
+    # teinté seulement au survol pour rester repérable.
+    AIRY_SPLITTER = (
+        "QSplitter::handle { background: transparent; }"
+        "QSplitter::handle:hover { background: #dee2e6; border-radius: 2px; }"
     )
 
     # Surlignage temporaire d'une pièce tout juste ajoutée (vert pâle, 2 s)
@@ -598,7 +633,7 @@ class StyleManager:
         QCheckBox::indicator:checked {
             background-color: #0d6efd;
             border-color: #0d6efd;
-            image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xMC42IDEuNEw0LjIgNy44TDEuNCAwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
+            %%CHECK_RULE%%
         }
 
         /* === DIALOG BOXES === */
@@ -710,16 +745,20 @@ class StyleManager:
         }
 
         /* === TOOLTIPS === */
-        /* Infobulles sombres et compactes (esprit macOS natif) : se détachent
-           des fenêtres blanches sans cadre.
+        /* Infobulles claires et compactes.
+           Fond CLAIR obligatoire : une feuille de style sans sélecteur posée sur
+           un widget (ex. setStyleSheet("color: #495057; …") sur un QLabel) colore
+           aussi le texte de SON infobulle — des dizaines de cas dans l'appli. Sur
+           fond sombre ce texte devenait illisible ; toutes ces couleurs sont
+           pensées pour du blanc.
            Piège mesuré : sur une infobulle, Qt convertit `padding` en UNE marge
            identique sur les 4 côtés (2 px + la plus grande valeur) — « 3px 7px »
            donnait 9 px partout. D'où une valeur unique et petite : 41 px de haut
            pour 2 lignes, contre ~59 px avant. */
         QToolTip {
-            background-color: #343a40;
-            color: #f8f9fa;
-            border: 1px solid #343a40;
+            background-color: #ffffff;
+            color: #212529;
+            border: 1px solid #ced4da;
             border-radius: 4px;
             padding: 2px;
             font-size: 11px;
@@ -736,5 +775,10 @@ class StyleManager:
             if arrow_path else
             "width: 8px; height: 8px;"
         )
+        # Coche des cases : l'ancienne image `data:image/svg+xml` n'était pas chargée
+        # par Qt → case cochée = carré bleu plein, sans coche. PNG qtawesome à la place.
+        check_path = _generate_check_mark()
+        check_rule = f"image: url({check_path});" if check_path else ""
         return (style.replace('%%ARROW_RULE%%', arrow_rule)
-                     .replace('%%MENU_ARROW_RULE%%', menu_arrow_rule))
+                     .replace('%%MENU_ARROW_RULE%%', menu_arrow_rule)
+                     .replace('%%CHECK_RULE%%', check_rule))
