@@ -108,6 +108,15 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   chevauchait l'aperçu). Hauteur de l'aperçu calculée sur la police effective
   (la dernière ligne était coupée).
 
+**Guide d'utilisation réécrit** (`docs/guide_utilisation.html`)
+- Menus actuels (Affichage / Données / Configuration au lieu de « Gestion »,
+  « Action ») ; nouvelles sections : fenêtre principale, édition, relations entre
+  références ; nouveautés 3.78 à la place des « Nouveautés v3.58.0 ».
+- Raccourcis vérifiés un à un dans le code : retrait des raccourcis de pagination
+  annoncés (Ctrl+Droite / Gauche / Début / Fin) qui n'existent pas ; ajout de F2,
+  Cmd+Espace, Maj+Espace, Cmd+Maj+flèche, qui existaient sans être documentés.
+- Plus d'emoji ; typographie française.
+
 **Import — panneau des relations**
 - Alerte erronée corrigée : « Un groupe d'équivalence ne contient qu'une seule
   réf : aucune équivalence ne sera créée » s'affichait alors que le groupe, coché
