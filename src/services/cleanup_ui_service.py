@@ -177,21 +177,17 @@ class DuplicateDevicesWidget(QWidget):
         # En-tête avec actions
         header_layout = QHBoxLayout()
         
-        _compact_style = (
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
 
         self.select_all_btn = QPushButton("Tout sélectionner")
-        self.select_all_btn.setStyleSheet(_compact_style)
+        self.select_all_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.select_none_btn = QPushButton("Tout désélectionner")
-        self.select_none_btn.setStyleSheet(_compact_style)
+        self.select_none_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.auto_select_most_pieces_btn = QPushButton("Auto (+ de pièces)")
         self.auto_select_most_pieces_btn.setToolTip("Sélectionner automatiquement l'appareil avec le plus de pièces")
-        self.auto_select_most_pieces_btn.setStyleSheet(_compact_style)
+        self.auto_select_most_pieces_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.auto_select_newest_btn = QPushButton("Auto (+ récents)")
         self.auto_select_newest_btn.setToolTip("Sélectionner automatiquement les appareils les plus récents")
-        self.auto_select_newest_btn.setStyleSheet(_compact_style)
+        self.auto_select_newest_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         # Boutons pour décisions sur doublons
         self.mark_distinct_btn = QPushButton("Marquer comme distinct(s)")
@@ -611,15 +607,11 @@ class DuplicatePiecesWidget(QWidget):
         layout = QVBoxLayout(self)
         
         # Actions
-        _compact = (
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
         actions_layout = QHBoxLayout()
         self.select_all_pieces_btn = QPushButton("Tout sélectionner")
-        self.select_all_pieces_btn.setStyleSheet(_compact)
+        self.select_all_pieces_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.select_none_pieces_btn = QPushButton("Tout désélectionner")
-        self.select_none_pieces_btn.setStyleSheet(_compact)
+        self.select_none_pieces_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         actions_layout.addWidget(self.select_all_pieces_btn)
         actions_layout.addWidget(self.select_none_pieces_btn)
@@ -785,10 +777,7 @@ class DistinctReferencesWidget(QWidget):
         self.remove_btn = QPushButton("Retirer la sélection")
         self.remove_btn.setIcon(qta.icon('fa5s.trash-alt', color='white'))
         self.remove_btn.setIconSize(QSize(11, 11))
-        self.remove_btn.setStyleSheet(
-            "QPushButton { background-color: #dc3545; color: white; font-weight: bold;"
-            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
-        )
+        self.remove_btn.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
         self.remove_btn.setEnabled(False)
 
         buttons_layout.addWidget(self.refresh_btn)
@@ -975,18 +964,12 @@ class ActionHistoryWidget(QWidget):
         self.clear_btn = QPushButton("Vider l'historique")
         self.clear_btn.setIcon(qta.icon('fa5s.trash-alt', color='white'))
         self.clear_btn.setIconSize(QSize(11, 11))
-        self.clear_btn.setStyleSheet(
-            "QPushButton { background-color: #dc3545; color: white; font-weight: bold;"
-            " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
-        )
+        self.clear_btn.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
 
         self.export_btn = QPushButton("Exporter")
         self.export_btn.setIcon(qta.icon('fa5s.file-export', color='#555555'))
         self.export_btn.setIconSize(QSize(11, 11))
-        self.export_btn.setStyleSheet(
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
+        self.export_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
 
         buttons_layout.addWidget(self.refresh_btn)
         buttons_layout.addWidget(self.clear_btn)

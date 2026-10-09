@@ -28,6 +28,7 @@ from ..ui.qt_imports import QFont
 
 from ..core.logger import app_logger
 from functools import wraps
+from ..ui.style_manager import StyleManager
 
 def _handle_dialog_errors(default_return=None, context="Dialogue"):
     """
@@ -320,15 +321,10 @@ class ComplexDialogs:
         pied = QHBoxLayout()
         pied.addStretch()
         annuler = QPushButton("Annuler")
-        annuler.setStyleSheet("QPushButton { padding: 4px 12px; }")
         annuler.clicked.connect(dialog.reject)
         valider = QPushButton(bouton_valider)
         valider.setDefault(True)
-        valider.setStyleSheet(
-            "QPushButton { background-color: #198754; color: white; padding: 5px 14px;"
-            " border-radius: 4px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #157347; }"
-        )
+        valider.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         valider.clicked.connect(dialog.accept)
         pied.addWidget(annuler)
         pied.addWidget(valider)

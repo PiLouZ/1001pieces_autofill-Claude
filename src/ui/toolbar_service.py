@@ -12,6 +12,7 @@ import qtawesome as qta
 from .qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy, QHBoxLayout
 from .qt_imports import QSize, Qt
 from .qt_imports import QKeySequence
+from .style_manager import StyleManager
 
 class ToolbarService:
     """
@@ -327,7 +328,7 @@ class ToolbarService:
                 
                 # Exemple
                 example_label = QLabel(
-                    "\nExemple: \"46X0008.pdf 45X2378.csv\" → \"46X0008 || 45X2378\""
+                    "\nExemple : \"46X0008.pdf 45X2378.csv\" → \"46X0008 || 45X2378\""
                 )
                 example_label.setStyleSheet("color: #666; font-style: italic; margin-top: 10px;")
                 layout.addWidget(example_label)
@@ -339,22 +340,24 @@ class ToolbarService:
                 clear_memory_btn = QPushButton("Effacer mémoire")
                 clear_memory_btn.setIcon(qta.icon('fa5s.trash-alt', color='#dc3545'))
                 clear_memory_btn.setIconSize(QSize(11, 11))
-                clear_memory_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+                clear_memory_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
                 clear_memory_btn.setToolTip("Effacer tous les choix mémorisés")
                 clear_memory_btn.clicked.connect(self.clear_memory)
                 buttons_layout.addWidget(clear_memory_btn)
 
                 buttons_layout.addStretch()
 
-                ok_btn = QPushButton("OK")
-                ok_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
-                ok_btn.clicked.connect(self.accept)
-                buttons_layout.addWidget(ok_btn)
-
+                # Ordre de l'appli : Annuler à gauche, action principale à droite
                 cancel_btn = QPushButton("Annuler")
-                cancel_btn.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+                cancel_btn.setAutoDefault(False)
                 cancel_btn.clicked.connect(self.reject)
                 buttons_layout.addWidget(cancel_btn)
+
+                ok_btn = QPushButton("Enregistrer")
+                ok_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
+                ok_btn.setDefault(True)
+                ok_btn.clicked.connect(self.accept)
+                buttons_layout.addWidget(ok_btn)
                 
                 layout.addLayout(buttons_layout)
                 self.setLayout(layout)

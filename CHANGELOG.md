@@ -108,6 +108,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   chevauchait l'aperçu). Hauteur de l'aperçu calculée sur la police effective
   (la dernière ligne était coupée).
 
+**Uniformisation des champs et des boutons (toute l'application)**
+
+Relevé préalable : 64 styles de boutons locaux (une vingtaine de formes) et 11
+styles de champs, plus tous les éléments non stylés (style global : boutons
+13 px à marge 8 × 16 px, champs de 36 px). Standard retenu :
+- Champs : une seule hauteur (~30 px) pour `QLineEdit`, `QComboBox`,
+  `QDateEdit`, `QSpinBox` ; `QTextEdit` à part.
+- Boutons, quatre rôles centralisés dans `StyleManager` :
+  - **Principal** `PRIMARY_ACTION_BUTTON` — valider une fenêtre (vert, 12 px gras) ;
+  - **Secondaire** = style global par défaut — Annuler, Fermer, tout bouton non
+    stylé (blanc, contour gris, 12 px, même hauteur que Principal) ;
+  - **Compact** `SECONDARY_COMPACT_BUTTON` — outils internes (11 px) ;
+  - **Danger** `DANGER_COMPACT_BUTTON` / `DANGER_ACTION_BUTTON` — destructif,
+    texte rouge plutôt que rouge plein (Restaurer une sauvegarde : rouge, pas vert).
+  - Onglets segmentés : `SEGMENTED_BUTTON`.
+- 33 sites raccordés aux rôles, 9 styles locaux supprimés au profit du global,
+  + les styles passés par variables locales (`_compact`, `_btn_style`).
+- Cases intégrées aux arbres et tableaux (`QTreeView::indicator`…) : même
+  apparence que les `QCheckBox` (elles n'avaient pas de cadre).
+- Nouvelle pièce / Modifier la pièce : même formulaire (`_formulaire_piece`),
+  libellés alignés, « Créer » en bouton principal comme « Sauvegarder ».
+- Choix de pièce : tri croissant par défaut (s'ouvrait de Z à A), statuts avec
+  les icônes du gestionnaire (au lieu de « ✓ » / « ⚠ »).
+- Validation des suggestions : « Annuler » n'est plus rouge plein (convention de
+  l'appli : Annuler neutre à gauche, action verte à droite).
+- Configuration du collage : ordre Annuler / Enregistrer rétabli, « OK » →
+  « Enregistrer ».
+- Progression : convention « Étape — détail » (le détail ne crée pas de ligne) ;
+  l'export de l'application l'utilise, sinon une ligne par fichier copié.
+- Garde-fou `test_style_manager_references` : tout `StyleManager.X` utilisé doit
+  exister. Il aurait attrapé une régression survenue pendant ce chantier
+  (`side_card` supprimée par erreur → gestionnaire de pièces impossible à ouvrir,
+  invisible pour la suite de tests existante).
+
 **Fenêtres secondaires — harmonisation**
 - Nettoyage des doublons : « Aucun doublon détecté » centré quand l'analyse ne
   trouve rien (idem références distinctes et historique), posé après l'analyse

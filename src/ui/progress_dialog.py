@@ -57,8 +57,20 @@ def analyser_etape(texte: str):
     if not detail and compteurs:
         a, b = compteurs[-1]
         detail = f"{_milliers(int(a))} / {_milliers(int(b))}"
+    # Convention « Étape — détail » : le détail (fichier en cours…) n'ouvre pas de
+    # nouvelle ligne ; sans elle, un message par fichier copié en créait des centaines.
+    if " — " in t:
+        t, _, suite = t.partition(" — ")
+        if not detail:
+            detail = _abreger(suite.strip())
     etape = t.strip().rstrip("…. :").strip()
     return etape, detail, total_pages
+
+
+def _abreger(texte: str, maxi: int = 40) -> str:
+    """Raccourcit par la gauche (« …/ui/fichier.py ») : la fin d'un chemin est
+    la partie parlante."""
+    return texte if len(texte) <= maxi else "…" + texte[-(maxi - 1):]
 
 
 def meme_fichier(etape_a: str, etape_b: str) -> bool:
@@ -188,9 +200,6 @@ class ProgressDialog(QDialog):
 
         if cancel_button_text:
             self._cancel_btn = QPushButton(cancel_button_text)
-            self._cancel_btn.setStyleSheet(
-                "QPushButton { font-size: 11px; padding: 3px 12px; }"
-            )
             self._cancel_btn.clicked.connect(self._on_cancel)
             bottom.addWidget(self._cancel_btn)
         else:

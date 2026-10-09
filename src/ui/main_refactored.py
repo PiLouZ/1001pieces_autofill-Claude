@@ -2294,10 +2294,6 @@ class MainWindow(QMainWindow):
 
         # Bouton de fermeture
         close_button = QPushButton("Fermer")
-        close_button.setStyleSheet(
-            "QPushButton { padding: 2px 8px; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
-        )
         close_button.clicked.connect(dialog.close)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -2383,22 +2379,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(list_widget)
 
         buttons_layout = QHBoxLayout()
-        _compact = (
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
 
         restore_btn = QPushButton("Restaurer")
         restore_btn.setIcon(qta.icon('fa5s.history', color='#dc3545'))
         restore_btn.setIconSize(QSize(12, 12))
-        restore_btn.setStyleSheet(_compact)
+        restore_btn.setStyleSheet(StyleManager.DANGER_ACTION_BUTTON)
         restore_btn.setEnabled(False)
         buttons_layout.addWidget(restore_btn)
 
         buttons_layout.addStretch()
 
         cancel_btn = QPushButton("Annuler")
-        cancel_btn.setStyleSheet(_compact)
         cancel_btn.clicked.connect(dialog.reject)
         buttons_layout.addWidget(cancel_btn)
 
@@ -2496,14 +2487,10 @@ class MainWindow(QMainWindow):
         # Boutons
         buttons_layout = QHBoxLayout()
 
-        _compact = (
-            "QPushButton { padding: 3px 10px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
         rebuild_btn = QPushButton("Construire / Reconstruire l'index")
-        rebuild_btn.setIcon(qta.icon('fa5s.cog', color='#495057'))
+        rebuild_btn.setIcon(qta.icon('fa5s.cog', color='white'))
         rebuild_btn.setIconSize(QSize(12, 12))
-        rebuild_btn.setStyleSheet(_compact)
+        rebuild_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         rebuild_btn.setToolTip("Lance la construction complète de l'index FTS5 (~2 secondes)")
 
         def do_rebuild():
@@ -2527,7 +2514,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 rebuild_btn.setEnabled(True)
                 rebuild_btn.setText("Construire / Reconstruire l'index")
-                rebuild_btn.setIcon(qta.icon('fa5s.cog', color='#495057'))
+                rebuild_btn.setIcon(qta.icon('fa5s.cog', color='white'))
                 QMessageBox.critical(dialog, "Erreur FTS5", f"Échec de la construction de l'index :\n{e}")
 
         rebuild_btn.clicked.connect(do_rebuild)
@@ -2538,7 +2525,6 @@ class MainWindow(QMainWindow):
         close_btn = QPushButton("Fermer")
         close_btn.setIcon(qta.icon('fa5s.times', color='#495057'))
         close_btn.setIconSize(QSize(12, 12))
-        close_btn.setStyleSheet(_compact)
         close_btn.clicked.connect(dialog.accept)
         buttons_layout.addWidget(close_btn)
 
@@ -2595,29 +2581,22 @@ class MainWindow(QMainWindow):
             layout.addWidget(checkbox)
 
         # Boutons
-        _compact = "QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }"
         button_layout = QHBoxLayout()
 
         reset_btn = QPushButton("Réinitialiser")
-        reset_btn.setStyleSheet(_compact)
         reset_btn.clicked.connect(lambda: self._reset_column_defaults(checkboxes))
         button_layout.addWidget(reset_btn)
 
         button_layout.addStretch()
 
         cancel_btn = QPushButton("Annuler")
-        cancel_btn.setStyleSheet(_compact)
         cancel_btn.clicked.connect(dialog.reject)
         button_layout.addWidget(cancel_btn)
 
         apply_btn = QPushButton("Appliquer")
         apply_btn.setIcon(qta.icon('fa5s.check', color='white'))
         apply_btn.setIconSize(QSize(12, 12))
-        apply_btn.setStyleSheet(
-            "QPushButton { background-color: #198754; color: white;"
-            " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #157347; }"
-        )
+        apply_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         apply_btn.clicked.connect(lambda: self._apply_column_config(checkboxes, dialog))
         button_layout.addWidget(apply_btn)
 

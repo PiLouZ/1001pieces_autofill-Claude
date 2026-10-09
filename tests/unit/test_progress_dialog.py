@@ -85,6 +85,25 @@ class TestAnalyserEtape:
         assert analyser_etape("Import de 00611388.pdf… (2/3)")[0] == "Import de 00611388.pdf"
 
 
+class TestEtapeTiretDetail:
+    def test_copie_fichier_par_fichier_reste_une_etape(self, qapp):
+        """Export de l'application : un message par fichier copié ne doit pas
+        créer une ligne par fichier dans le journal."""
+        dlg = ProgressDialog("Export de l'application", None, 0, 0, None)
+        dlg.setLabelText("Copie du code source…")
+        for f in ("src/a.py", "src/ui/b.py", "src/ui/c.py"):
+            dlg.setLabelText(f"Copie du code source — {f}")
+        dlg.setLabelText("Génération de requirements_frozen.txt…")
+        assert [e['etape'] for e in dlg._etapes] == ["Copie du code source",
+                                                     "Génération de requirements_frozen.txt"]
+        dlg.close()
+
+    def test_detail_long_abrege_par_la_gauche(self):
+        etape, detail, _ = analyser_etape("Copie du code source — " + "x/" * 30 + "fin.py")
+        assert etape == "Copie du code source"
+        assert detail.startswith("…") and detail.endswith("fin.py") and len(detail) == 40
+
+
 class TestMemeFichier:
     def test_import_puis_extraction_du_meme_fichier(self):
         assert meme_fichier("Import de 00611388.pdf", "Extraction de 00611388.pdf")

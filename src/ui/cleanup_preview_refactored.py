@@ -190,10 +190,7 @@ class CleanupPreviewDialog(QDialog):
             btn.setIconSize(QSize(12, 12))
             btn.setCheckable(True)
             btn.setChecked(is_first)
-            btn.setStyleSheet("""
-                QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }
-                QPushButton:checked { background-color: #495057; color: white; }
-            """)
+            btn.setStyleSheet(StyleManager.SEGMENTED_BUTTON)
             btn.toggled.connect(_make_nav_toggle(btn, icon_name, icon_color))
             btn.toggled.connect(
                 lambda checked, idx=i: self._nav_stack.setCurrentIndex(idx) if checked else None

@@ -89,14 +89,14 @@ class LogViewer(QDialog):
         control_layout.addWidget(self.refresh_button)
 
         self.auto_refresh_button = QPushButton("Actualisation auto : activée")
-        self.auto_refresh_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+        self.auto_refresh_button.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         self.auto_refresh_button.clicked.connect(self.toggle_auto_refresh)
         control_layout.addWidget(self.auto_refresh_button)
 
         self.clear_button = QPushButton("Effacer")
         self.clear_button.setIcon(qta.icon('fa5s.trash-alt', color='#dc3545'))
         self.clear_button.setIconSize(QSize(11, 11))
-        self.clear_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
+        self.clear_button.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
         self.clear_button.clicked.connect(self.clear_logs)
         control_layout.addWidget(self.clear_button)
         
@@ -124,10 +124,7 @@ class LogViewer(QDialog):
             is_first = (i == 0)
             btn.setIcon(qta.icon(icon_name, color='white' if is_first else icon_color))
             btn.setIconSize(QSize(12, 12))
-            btn.setStyleSheet(
-                "QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }"
-                "QPushButton:checked { background-color: #495057; color: white; }"
-            )
+            btn.setStyleSheet(StyleManager.SEGMENTED_BUTTON)
             btn.toggled.connect(
                 lambda checked, idx=i: self._nav_stack.setCurrentIndex(idx) if checked else None
             )

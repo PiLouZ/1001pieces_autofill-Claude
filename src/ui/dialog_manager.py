@@ -12,6 +12,7 @@ from .qt_imports import (
 )
 from .message_helper import MessageHelper
 from ..core.constants import Messages, UIConfig
+from .style_manager import StyleManager
 
 class SimpleDialogManager:
     """
@@ -223,7 +224,6 @@ class ImportOptionsDialog(QDialog):
         self.ok_button.clicked.connect(self.accept)
         
         cancel_button = QPushButton("Annuler")
-        cancel_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_button.clicked.connect(self.reject)
 
         button_layout.addStretch()
@@ -330,11 +330,10 @@ class ReferenceSelectionDialog(QDialog):
         select_button = QPushButton("Sélectionner")
         select_button.setIcon(qta.icon('fa5s.check', color='white'))
         select_button.setIconSize(QSize(11, 11))
-        select_button.setStyleSheet("QPushButton { background-color: #198754; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:hover { background-color: #157347; }")
+        select_button.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         select_button.clicked.connect(self._on_select_clicked)
 
         cancel_button = QPushButton("Annuler")
-        cancel_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         cancel_button.clicked.connect(self.reject)
         
         button_layout.addStretch()

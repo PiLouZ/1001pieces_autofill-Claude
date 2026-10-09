@@ -57,7 +57,10 @@ class UIComponentService:
             lambda: self.main_window._export_data(ExportFormat.HTML_BRANDS)
         )
         self.main_window.export_html_brands_btn.setEnabled(False)
+        # Gabarit explicite, aligné sur CSV / Méta (8 × 12 px) : le style global
+        # des boutons est plus compact.
         self.main_window.export_html_brands_btn.setStyleSheet(
+            "QPushButton { padding: 8px 12px; font-weight: 500; }"
             f"QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}"
         )
         export_layout.addWidget(self.main_window.export_html_brands_btn)
@@ -131,23 +134,20 @@ class UIComponentService:
         """Style du bouton split "HTML Détails" — aligné sur le QPushButton global."""
         return f"""
             QToolButton {{
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #ffffff, stop: 1 #f8f9fa);
-                border: 1px solid #dee2e6;
-                border-radius: 6px;
-                padding: 6px 16px;
+                background: white;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                padding: 6px 12px;
                 font-weight: 500;
-                color: #495057;
+                color: #343a40;
             }}
             QToolButton:hover {{
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #e9ecef, stop: 1 #dee2e6);
+                background: #f1f3f5;
                 border-color: #adb5bd;
                 color: #212529;
             }}
             QToolButton:pressed {{
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #dee2e6, stop: 1 #ced4da);
+                background: #e9ecef;
                 border-color: #6c757d;
             }}
             QToolButton:disabled {{

@@ -169,13 +169,39 @@ class StyleManager:
         "QPushButton:hover { background: #f1f3f5; border-color: #adb5bd; }"
     )
 
-    # Bouton secondaire compact : contour discret, sans fond de couleur. À côté
-    # d'UN seul bouton principal plein par fenêtre.
+    # Rôle « Compact » : outils à l'intérieur d'une fenêtre (Parcourir, Ajouter une
+    # colonne, Désélectionner tout, actions groupées) — contour discret, 11 px.
     SECONDARY_COMPACT_BUTTON = (
         "QPushButton { background: white; color: #343a40; border: 1px solid #ced4da;"
         " padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: normal; }"
         "QPushButton:hover { background: #f1f3f5; border-color: #adb5bd; }"
         "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; }"
+    )
+
+    # Action finale destructive (Restaurer une sauvegarde : remplace la base) :
+    # mêmes mesures que PRIMARY / SECONDARY_ACTION_BUTTON, en rouge contour —
+    # un vert « valider » serait trompeur.
+    DANGER_ACTION_BUTTON = (
+        "QPushButton { background: white; color: #c0392b; border: 1px solid #ea868f;"
+        " padding: 5px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; }"
+        "QPushButton:hover { background: #f8d7da; border-color: #dc3545; }"
+        "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; font-weight: normal; }"
+    )
+
+    # Rôle « Danger » : action destructive (vider, retirer). Texte rouge sur fond
+    # blanc plutôt que rouge plein : signale sans crier ; mêmes mesures que Compact.
+    DANGER_COMPACT_BUTTON = (
+        "QPushButton { background: white; color: #c0392b; border: 1px solid #f1aeb5;"
+        " padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: normal; }"
+        "QPushButton:hover { background: #f8d7da; border-color: #ea868f; }"
+        "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; }"
+    )
+
+    # Onglets segmentés (CSV / HTML, Logs bruts / Auto-complétion…, onglets du
+    # nettoyage) : bouton coché = fond gris foncé.
+    SEGMENTED_BUTTON = (
+        "QPushButton { padding: 4px 12px; font-size: 11px; border-radius: 4px; }"
+        "QPushButton:checked { background-color: #495057; color: white; border-color: #495057; }"
     )
 
     # Petits boutons-icônes plats (en-tête du panneau des pièces) : sans cadre,
@@ -207,14 +233,9 @@ class StyleManager:
         "QPushButton#pieceAddSubmit:pressed { background: #0a58ca; }"
     )
 
-    # Barre de filtres compacte des fenêtres secondaires : liste déroulante, champs
-    # texte et dates à la même hauteur (le style global des champs, 8 px de marge,
-    # rendait la liste déroulante deux fois plus haute que les champs de date).
-    COMPACT_FILTER_BAR = (
-        "QComboBox, QLineEdit, QDateEdit { padding: 3px 8px; min-height: 20px;"
-        " border: 1px solid #ced4da; border-radius: 4px; background: white; }"
-        "QComboBox:focus, QLineEdit:focus, QDateEdit:focus { border-color: #80bdff; }"
-    )
+    # Barre de filtres des fenêtres secondaires : désormais identique au standard
+    # global des champs (conservée pour ses appelants ; rien à surcharger).
+    COMPACT_FILTER_BAR = ""
 
     # Cartes du panneau latéral du gestionnaire de pièces (Équivalences, Remplace,
     # Remplacée par) : fond gris clair arrondi, sans bordure — remplace les cadres
@@ -250,34 +271,36 @@ class StyleManager:
             color: #212529;
         }
 
-        /* === BOUTONS MODERNES === */
+        /* === BOUTONS ===
+           Style par défaut = rôle « Secondaire » (Annuler, Fermer, tout bouton
+           sans style particulier) : blanc, contour gris, 12 px. Mêmes mesures
+           que StyleManager.SECONDARY_ACTION_BUTTON et PRIMARY_ACTION_BUTTON →
+           un bouton non stylé est aligné sur les boutons d'action. Avant :
+           dégradé, 13 px, marge 8 × 16 px (plus gros que les boutons stylés). */
         QPushButton {
-            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #ffffff, stop: 1 #f8f9fa);
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-weight: 500;
-            color: #495057;
-            min-height: 16px;
+            background: white;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 5px 14px;
+            font-size: 12px;
+            font-weight: normal;
+            color: #343a40;
         }
-        
+
         QPushButton:hover {
-            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #e9ecef, stop: 1 #dee2e6);
+            background: #f1f3f5;
             border-color: #adb5bd;
             color: #212529;
         }
-        
+
         QPushButton:pressed {
-            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #dee2e6, stop: 1 #ced4da);
+            background: #e9ecef;
             border-color: #6c757d;
         }
-        
+
         QPushButton:disabled {
             background-color: #f8f9fa;
-            color: #6c757d;
+            color: #adb5bd;
             border-color: #e9ecef;
         }
 
@@ -347,10 +370,23 @@ class StyleManager:
         }
 
         /* === CHAMPS DE SAISIE === */
-        QLineEdit, QTextEdit, QComboBox {
+        /* Champs : UNE hauteur pour toute l'application (~30 px). Avant : 36 px
+           pour les champs non stylés, 22 à 30 px pour les autres. Les zones de
+           texte multilignes gardent une marge plus large (règle suivante). */
+        QLineEdit, QComboBox, QDateEdit, QSpinBox {
             border: 1px solid #ced4da;
             border-radius: 4px;
-            padding: 8px 12px;
+            padding: 4px 8px;
+            min-height: 20px;
+            background-color: white;
+            color: #495057;
+            selection-background-color: #0d6efd;
+        }
+
+        QTextEdit {
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 6px 8px;
             background-color: white;
             color: #495057;
             selection-background-color: #0d6efd;
@@ -646,6 +682,23 @@ class StyleManager:
             background-color: white;
         }
         
+        /* Cases intégrées aux arbres, tableaux et listes (validation des
+           suggestions, nettoyage des doublons…) : même apparence que les
+           QCheckBox — sinon cases sans cadre, seule la coche était visible. */
+        QTreeView::indicator, QTableView::indicator, QListView::indicator {
+            width: 15px;
+            height: 15px;
+            border: 1px solid #adb5bd;
+            border-radius: 3px;
+            background-color: white;
+        }
+
+        QTreeView::indicator:checked, QTableView::indicator:checked, QListView::indicator:checked {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+            %%CHECK_RULE%%
+        }
+
         QCheckBox::indicator:hover {
             border-color: #adb5bd;
         }

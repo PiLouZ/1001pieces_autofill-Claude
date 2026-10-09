@@ -1255,10 +1255,7 @@ class TableController:
 
         # Style unique pour les 4 boutons de navigation, avec règle :disabled
         # pour une désactivation cohérente (une seule page → tout grisé).
-        _btn_style = (
-            "QPushButton { padding: 3px 8px; font-size: 11px; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.07); }"
-        )
+        _btn_style = StyleManager.SECONDARY_COMPACT_BUTTON   # rôle Compact
 
         def _nav_button(icon_name: str, tooltip: str) -> QPushButton:
             btn = QPushButton()

@@ -342,7 +342,7 @@ class HistoryViewDialog(QDialog):
 
         clear_btn = QPushButton("Effacer l'historique")
         clear_btn.setIcon(qta.icon('fa5s.trash-alt', color='#c0392b'))
-        clear_btn.setStyleSheet("color: #c0392b;")
+        clear_btn.setStyleSheet(StyleManager.DANGER_COMPACT_BUTTON)
         clear_btn.clicked.connect(self._confirm_clear)
         bottom_bar.addWidget(clear_btn)
 
