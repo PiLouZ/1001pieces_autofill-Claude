@@ -292,16 +292,25 @@ class TableController:
         raz_btn = QPushButton()
         raz_btn.setIcon(_qta_f.icon('fa5s.times', color='#868e96'))
         raz_btn.setIconSize(QSize(10, 10))
+        # Largeur fixe ; hauteur calée sur celle des champs dans _sync_filter_alignment
+        # (la hauteur d'une QComboBox mesurée à la construction, avant le style
+        # global, rendait le bouton plus haut que les champs)
         raz_btn.setFixedSize(28, _filter_btn_h)
         raz_btn.setToolTip("Réinitialiser tous les filtres")
         raz_btn.setStyleSheet(StyleManager.CLEAR_FILTERS_BUTTON)
         raz_btn.clicked.connect(self._clear_all_column_filters)
         self.raz_btn = raz_btn
-        filter_layout.addWidget(raz_btn, 0, Qt.AlignVCenter)
 
-        # Espace réservé à droite = largeur de la colonne figée "Nb Pièces" (overlay),
-        # pour que le filtre stretch (col 4) s'arrête où la colonne visible s'arrête.
+        # Zone au-dessus de la colonne figée « Pièces » (+ ascenseur + cadre) : le
+        # bouton RAZ y est CENTRÉ sur la colonne. Avant, il était placé juste avant
+        # cette zone (31 px à gauche du centre, au-dessus d'« Autre référence ») et
+        # privait le filtre de la colonne 4 de 15 px. Largeurs : _sync_filter_alignment.
         self.filter_trailing_spacer = QWidget()
+        _zone = QHBoxLayout(self.filter_trailing_spacer)
+        _zone.setContentsMargins(0, 0, 0, 0)
+        _zone.setSpacing(0)
+        _zone.addWidget(raz_btn, 0, Qt.AlignCenter)
+        self._raz_zone_layout = _zone
         self.filter_trailing_spacer.setFixedWidth(52)
         filter_layout.addWidget(self.filter_trailing_spacer)
 
@@ -632,8 +641,6 @@ class TableController:
         for w in getattr(self, 'filter_widgets', {}).values():
             if w is not None:
                 w.setVisible(visible)
-        if getattr(self, 'raz_btn', None) is not None:
-            self.raz_btn.setVisible(visible)
         if getattr(self, 'filter_trailing_spacer', None) is not None:
             self.filter_trailing_spacer.setVisible(visible)
 
@@ -680,10 +687,20 @@ class TableController:
             col_w = self.table.columnWidth(i)
             if col_w > 0:
                 w.setFixedWidth(col_w)
-        # Réserver à droite la largeur de la colonne figée "Nb Pièces"
+        # Zone de droite = colonne figée « Pièces » + ascenseur + cadre du tableau ;
+        # le bouton RAZ est centré sur la colonne (marge droite = ascenseur + cadre)
         if getattr(self, 'filter_trailing_spacer', None) is not None:
             frozen_w = getattr(self.table, '_frozen_col_width', 52) or 52
-            self.filter_trailing_spacer.setFixedWidth(frozen_w)
+            reste = self.table.verticalScrollBar().sizeHint().width() + self.table.frameWidth()
+            self.filter_trailing_spacer.setFixedWidth(frozen_w + reste)
+            if getattr(self, '_raz_zone_layout', None) is not None:
+                self._raz_zone_layout.setContentsMargins(0, 0, reste, 0)
+        # Bouton RAZ à la hauteur des champs de filtre
+        if getattr(self, 'raz_btn', None) is not None:
+            hauteurs = [w.sizeHint().height() for w in getattr(self, 'filter_widgets', {}).values()
+                        if w is not None]
+            if hauteurs:
+                self.raz_btn.setFixedHeight(min(hauteurs))
 
     def set_row_height(self, height: int):
         """Appliquer une hauteur de ligne au tableau ET à sa colonne figée.
