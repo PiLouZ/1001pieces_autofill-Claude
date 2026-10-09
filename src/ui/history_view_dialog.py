@@ -22,21 +22,25 @@ _ACTION_LABELS = {
     'import': 'Import',
     'export': 'Export',
     'delete': 'Suppression',
+    'error':  'Erreur',
     'piece':  'Pièce',
     'undo':   'Annulation',
 }
 
+# Mêmes teintes que l'historique de la fenêtre principale
+# (_ACTION_STYLES dans user_interaction_service.py).
 _ACTION_COLORS = {
-    'edit':   '#4A9EFF',
-    'import': '#34D058',
-    'export': '#9B59B6',
-    'delete': '#E05252',
-    'piece':  '#1ABC9C',
-    'undo':   '#F39C12',
+    'edit':   '#2F6CD0',
+    'import': '#1E7F36',
+    'export': '#8E44AD',
+    'delete': '#A33A3A',
+    'error':  '#D61F1F',
+    'piece':  '#0E7A64',
+    'undo':   '#B05E00',
 }
 
 # Types d'action pour lesquels un popup de détails est pertinent
-_DETAIL_ACTION_TYPES = {'import', 'export', 'delete', 'piece', 'undo'}
+_DETAIL_ACTION_TYPES = {'import', 'export', 'delete', 'error', 'piece', 'undo'}
 
 
 # ── Popup de détails ──────────────────────────────────────────────────────────

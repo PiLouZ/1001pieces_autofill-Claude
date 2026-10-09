@@ -20,16 +20,24 @@ from src.core.logger import app_logger
 
 
 # ── Styles par type d'action ───────────────────────────────────────────────────
-# label : badge texte court affiché à la place d'une icône emoji (emojis non fiables dans Qt)
+# label : badge texte affiché à la place d'une icône emoji (emojis non fiables dans Qt)
+# Teintes choisies pour un contraste ≥ 4,5:1 avec le texte blanc du badge (WCAG AA).
+# Erreur (rouge vif) et suppression (bordeaux) sont distinctes : un échec ne doit
+# pas se confondre avec une suppression voulue.
 _ACTION_STYLES: Dict[str, Dict[str, str]] = {
-    'edit':   {'color': '#4A9EFF', 'label': 'MOD'},
-    'import': {'color': '#34D058', 'label': 'IMP'},
-    'export': {'color': '#9B59B6', 'label': 'EXP'},
-    'delete': {'color': '#E05252', 'label': 'SUP'},
-    'undo':   {'color': '#F39C12', 'label': 'ANN'},
-    'piece':  {'color': '#1ABC9C', 'label': 'PIC'},
-    'system': {'color': '#95A5A6', 'label': 'SYS'},
+    'edit':   {'color': '#2F6CD0', 'label': 'Modif.'},
+    'import': {'color': '#1E7F36', 'label': 'Import'},
+    'export': {'color': '#8E44AD', 'label': 'Export'},
+    'delete': {'color': '#A33A3A', 'label': 'Suppr.'},
+    'error':  {'color': '#D61F1F', 'label': 'Erreur'},
+    'undo':   {'color': '#B05E00', 'label': 'Annul.'},
+    'piece':  {'color': '#0E7A64', 'label': 'Pièce'},
+    'system': {'color': '#6B7778', 'label': 'Système'},
 }
+
+# Largeur commune des badges, pour que les titres restent alignés malgré des
+# libellés de longueurs différentes (« Pièce » / « Système »).
+_BADGE_WIDTH = max(len(s['label']) for s in _ACTION_STYLES.values())
 
 _MAX_HISTORY = 100          # Nombre max d'entrées visibles
 _TIME_GAP_MINUTES = 5       # Seuil pour insérer un séparateur temporel
@@ -58,7 +66,9 @@ def _strip_emoji(text: str) -> str:
 def _detect_action_type(message: str) -> str:
     """Déduire le type d'action à partir du contenu du message."""
     m = message.lower()
-    if any(k in m for k in ('suppression', 'supprimé', 'supprimée', '[err]', 'erreur', 'error', 'échec')):
+    if any(k in m for k in ('[err]', 'erreur', 'error', 'échec')):
+        return 'error'
+    if any(k in m for k in ('suppression', 'supprimé', 'supprimée')):
         return 'delete'
     if any(k in m for k in ('export csv', 'html marques', 'html détails', 'export html', 'export {')):
         return 'export'
@@ -369,6 +379,7 @@ class UserInteractionService:
         Rendu compatible Qt QTextEdit (subset HTML/CSS limité) :
         - Barre colorée : colonne <td> de 3px avec bgcolor (border-left non supporté)
         - Badge ×N : <span> inline avec background-color
+        - Entrée sur deux lignes : [heure] + badge type, puis le titre en dessous
         - Séparateurs temporels : ligne <hr> + texte centré
         """
         css = """
@@ -407,9 +418,12 @@ class UserInteractionService:
             style = _ACTION_STYLES.get(entry['action_type'], _ACTION_STYLES['system'])
             color = style['color']
             label = style['label']
-            # Badge type : texte blanc sur fond coloré (plus fiable qu'emoji dans Qt)
+            # Badge type : texte blanc sur fond coloré (plus fiable qu'emoji dans Qt).
+            # Qt ignore le padding des <span> : la marge intérieure et l'alignement
+            # passent par des espaces insécables (police à chasse fixe).
+            label_padded = label.ljust(_BADGE_WIDTH).replace(' ', '&nbsp;')
             icon = (f'<span style="background-color:{color}; color:white; '
-                    f'font-size:10px; padding:1px 4px;">{label}</span>')
+                    f'font-size:10px;">&nbsp;{label_padded}&nbsp;</span>')
 
             # Titre et badge
             safe_title = (entry['title']
@@ -470,13 +484,17 @@ class UserInteractionService:
 
             # Assemblage : table avec barre colorée en TD gauche
             html += (
-                f'<table width="100%" cellpadding="0" cellspacing="1" style="margin:2px 0;">\n'
+                f'<table width="100%" cellpadding="0" cellspacing="1" style="margin:5px 0;">\n'
                 f'<tr>'
                 f'<td bgcolor="{color}" width="3"></td>'
                 f'<td width="6"></td>'
                 f'<td>'
                 f'<span class="ts">[{entry["timestamp_str"]}]</span>&nbsp;'
-                f'{icon}&nbsp;'
+                f'{icon}'
+                f'</td></tr>\n'
+                f'<tr><td bgcolor="{color}" width="3"></td>'
+                f'<td width="6"></td>'
+                f'<td>'
                 f'<span class="title">{safe_title}</span>'
                 f'{badge}'
                 f'{duration_suffix}'

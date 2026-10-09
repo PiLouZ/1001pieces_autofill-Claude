@@ -644,7 +644,7 @@ class MainWindow(QMainWindow):
         # Style pour ressembler à une liste
         self.history_list.setStyleSheet("""
             QTextBrowser {
-                background-color: #f8f9fa;
+                background-color: #ffffff;
                 border: 1px solid #dee2e6;
                 border-radius: 4px;
                 padding: 4px;

@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.78.0] - 2026-10-09 (branche `feature/refonte-visuelle-fenetre-principale`)
+
+### Refonte visuelle de la fenêtre principale
+
+**Historique des opérations**
+- Fond blanc au lieu de gris (`#f8f9fa` → `#ffffff`).
+- Nouveau type **Erreur** (rouge vif), distinct de **Suppression** (bordeaux) : un
+  message contenant « erreur », « échec », « error » ou « [err] » était jusqu'ici
+  classé et coloré comme une suppression voulue. Les entrées déjà enregistrées en
+  base gardent leur ancien type.
+- Badges en clair (`Modif.`, `Import`, `Export`, `Suppr.`, `Erreur`, `Annul.`,
+  `Pièce`, `Système`) au lieu de `MOD`/`IMP`/`PIC`…, à largeur commune.
+- Teintes assombries : 6 badges sur 7 étaient sous le contraste 4,5:1 avec le texte
+  blanc (l'import à 2,0:1) ; tous le dépassent désormais.
+- Entrées sur deux lignes : `[heure] badge`, puis le titre en dessous ; plus
+  d'espace entre deux entrées.
+- La fenêtre d'historique persistant reconnaît le type Erreur (filtre, popup de
+  détails) et reprend les mêmes teintes.
+
+---
+
 ## [3.77.2] - 2026-10-08 (branche `chore/faux-echec-et-code-mort`)
 
 ### Faux « Échec de l'ajout de nouvelle ligne » corrigé, drapeaux de migration retirés
