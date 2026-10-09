@@ -13,7 +13,7 @@ from .qt_imports import (
     QAction, QStatusBar, QSplitter, QTabWidget,
     QListWidgetItem, QFileDialog, QComboBox,
     QCheckBox, QMenu, QDialog, QTextEdit, QTextBrowser,
-    QColor,
+    QColor, QIcon,
     Qt, QSettings, QEvent, QMimeData, QUrl, QSizePolicy, QFrame, QSize
 )
 
@@ -35,7 +35,7 @@ from ..utils.error_handler import (
     handle_data_management_errors, handle_drag_operation_errors,
     handle_event_handler_errors, handle_ui_update_errors
 )
-from ..core.constants import UIConfig, Messages, DatabaseConfig
+from ..core.constants import UIConfig, Messages, DatabaseConfig, Paths
 
 from ..services import SearchService, ImportService
 from ..services.advanced_search_service import AdvancedSearchService
@@ -3160,6 +3160,11 @@ def main():
     # Supprimer les warnings macOS inutiles
     app.setAttribute(Qt.AA_DontShowIconsInMenus, False)
     app.setQuitOnLastWindowClosed(True)
+
+    # Icône du Dock et des fenêtres (générée par scripts/generer_icone.py)
+    icone = Paths.get_app_root() / "app_icon.png"
+    if icone.exists():
+        app.setWindowIcon(QIcon(str(icone)))
 
     _safe_launch_main_window(app)
 

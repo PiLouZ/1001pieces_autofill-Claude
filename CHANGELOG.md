@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.79.0] - 2026-10-09 (branche `feature/icone-application`)
+
+### Nouvelle icône d'application (bureau, Dock, export)
+
+- L'ancienne icône était le logo horizontal (180 × 52 px) collé au centre d'un
+  carré blanc : une petite tache illisible sur le bureau.
+- Nouvelle icône carrée au gabarit macOS (carré arrondi, ombre douce) : « 1001 »
+  en blanc et « pièces » avec la clé sur un dégradé bleu → marine, couleurs du logo.
+  Nette de 16 à 1024 px.
+- `app_icon.png` (1024 px, fond transparent) est désormais cette icône. Elle sert :
+  - au lanceur `1001pieces_autofill.app` (`applet.icns` régénéré via
+    `export_app._inject_icon`) ;
+  - à l'application exportée pour une autre machine (même fonction) ;
+  - au **Dock et aux fenêtres** pendant l'exécution (`QApplication.setWindowIcon`),
+    qui affichaient jusqu'ici l'icône générique de Python.
+- Script `scripts/generer_icone.py` pour la régénérer.
+
+---
+
 ## [3.78.5] - 2026-10-09 (branche `chore/sauvegardes-rotation-legacy`)
 
 ### Sauvegardes : 2 copies, rotation complète, restauration de la plus ancienne réparée
