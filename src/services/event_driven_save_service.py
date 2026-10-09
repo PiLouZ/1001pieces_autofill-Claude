@@ -35,9 +35,6 @@ class EventDrivenSaveService(BaseService):
         self.database_operations_service = None
         self.save_indicator = None
 
-        # État interne
-        self.is_enabled = False
-
         # Initialisation différée des services
         self._initialize_services()
 
@@ -52,13 +49,7 @@ class EventDrivenSaveService(BaseService):
         if hasattr(self.parent_window, 'save_indicator'):
             self.save_indicator = self.parent_window.save_indicator
 
-        # Vérifier si le service est activé
-        self.is_enabled = Config.ENABLE_EVENT_DRIVEN_SAVE
-
-        if self.is_enabled:
-            app_logger.debug("EventDrivenSaveService: Service activé")
-        else:
-            app_logger.debug("EventDrivenSaveService: Service désactivé (fallback timer)")
+        app_logger.debug("EventDrivenSaveService: Service activé")
 
     # ================================
     # SAUVEGARDE CELLULES INDIVIDUELLES
@@ -78,9 +69,6 @@ class EventDrivenSaveService(BaseService):
         Returns:
             bool: True si sauvegarde réussie
         """
-        if not self.is_enabled:
-            return False
-
         # Validation des prérequis
         if not self._validate_save_requirements():
             return False
@@ -129,7 +117,7 @@ class EventDrivenSaveService(BaseService):
         Returns:
             bool: True si sauvegarde réussie
         """
-        if not self.is_enabled or not modified_cells:
+        if not modified_cells:
             return False
 
         if not self._validate_save_requirements():
@@ -164,9 +152,6 @@ class EventDrivenSaveService(BaseService):
         Returns:
             bool: True si sauvegarde réussie
         """
-        if not self.is_enabled:
-            return False
-
         if not self._validate_save_requirements():
             return False
 
@@ -196,9 +181,6 @@ class EventDrivenSaveService(BaseService):
         Returns:
             bool: True si sauvegarde réussie
         """
-        if not self.is_enabled:
-            return False
-
         app_logger.debug(f"Sauvegarde événementielle après suppression de {deleted_count} appareil(s)")
 
         # Après une suppression, les données sont déjà commitées en base

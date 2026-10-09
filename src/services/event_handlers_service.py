@@ -5,7 +5,7 @@ Extrait des méthodes _on_* de main_refactored.py
 
 from typing import Any, Dict
 from src.core.logger import app_logger
-from src.core.config import Config, pluralize
+from src.core.config import pluralize
 from src.utils.error_handler import handle_event_handler_errors
 
 class EventHandlersService:
@@ -94,30 +94,9 @@ class EventHandlersService:
                 5000
             )
 
-        # Feature Flag: Phase 4 - Sauvegarde événementielle après import (délégation service)
-        if Config.ENABLE_EVENT_DRIVEN_SAVE:
-            if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
-                self.main_window.event_driven_save_service.handle_import_completed()
-            else:
-                # Fallback si service pas encore initialisé
-                app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
-                self._trigger_event_driven_save("import_completed")
-
-    @handle_event_handler_errors()
-    def _trigger_event_driven_save(self, event_type: str):
-        """Déclencher sauvegarde événementielle"""
-        if (hasattr(self.main_window, 'database_operations_service') and
-            self.main_window.database_operations_service):
-
-            app_logger.debug(f"Sauvegarde événementielle déclenchée: {event_type}")
-            # Pour les imports, pas de modified_cells à sauvegarder car déjà commitées
-            # Mais on peut forcer un commit des transactions en attente
-            success = self.main_window.database_operations_service.auto_save()
-
-            if success:
-                app_logger.debug(f"Sauvegarde événementielle réussie pour {event_type}")
-            else:
-                app_logger.warning(f"Échec sauvegarde événementielle pour {event_type}")
+        # Sauvegarde événementielle après import (délégation service)
+        if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
+            self.main_window.event_driven_save_service.handle_import_completed()
     
     def on_import_error(self, data: Dict[str, Any]):
         """Gestionnaire événement erreur d'import"""

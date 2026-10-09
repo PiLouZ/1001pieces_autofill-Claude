@@ -3941,13 +3941,10 @@ class ImportManager:
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mises à jour post-import")
     def _trigger_post_import_updates(self):
         """Déclencher les mises à jour post-import (Phase 4 - EventDrivenSaveService)"""
-        from ..core.config import Config
-
-        # Déclencher la sauvegarde événementielle si activée
-        if Config.ENABLE_EVENT_DRIVEN_SAVE:
-            if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
-                self.main_window.event_driven_save_service.handle_import_completed()
-                app_logger.debug("EventDrivenSaveService: Sauvegarde événementielle déclenchée après import")
+        # Déclencher la sauvegarde événementielle
+        if hasattr(self.main_window, 'event_driven_save_service') and self.main_window.event_driven_save_service:
+            self.main_window.event_driven_save_service.handle_import_completed()
+            app_logger.debug("EventDrivenSaveService: Sauvegarde événementielle déclenchée après import")
 
         # Toujours déclencher la mise à jour du bouton "lignes à compléter"
         if hasattr(self.main_window, '_update_incomplete_button_visibility'):

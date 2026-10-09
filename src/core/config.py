@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.78.3"
+    VERSION = "3.78.4"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -41,7 +41,6 @@ class Config:
     WINDOW_HEIGHT = 800
     
     # Timers et intervalles
-    AUTO_SAVE_INTERVAL = 5000  # ms - Sauvegarde automatique toutes les 5 secondes
     STATUS_MESSAGE_TIMEOUT = 2000  # ms
     LONG_STATUS_MESSAGE_TIMEOUT = 3000  # ms
     SEARCH_STATUS_MESSAGE_TIMEOUT = 6000  # ms — total d'une recherche (barre d'état)
@@ -91,9 +90,6 @@ class Config:
 
     # Feature Flags - Phase 2 Async Operations
     USE_ASYNC_LOAD_DATA = True  # Phase 2d: Migration pilote load_data_async() - TEST A/B ACTIVÉ
-
-    # Feature Flags - Phase 4 Event-Driven Save System
-    ENABLE_EVENT_DRIVEN_SAVE = True  # Phase 4: Migration timer → événements - ACTIVÉ (EventDrivenSaveService)
 
     # Feature Flags - Phase 5 Search Optimization
     SEARCH_PIECES_ONLY = True  # Phase 5: Recherche principale → pièces uniquement (désactivé = comportement actuel)

@@ -4,6 +4,34 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.78.4] - 2026-10-09 (branche `chore/retrait-anciens-systemes-rollback`)
+
+### Ménage : anciens systèmes « pour rollback » retirés
+
+Ces blocs ne s'exécutaient que si un service manquait. Or tous les services sont
+créés sans condition au démarrage, et si l'un échoue, le décorateur de
+`_init_components` interrompt toute la suite de l'initialisation : la fenêtre ne
+s'ouvre pas. Aucun de ces secours n'était donc atteignable dans une fenêtre ouverte.
+
+- **Drapeau `ENABLE_EVENT_DRIVEN_SAVE` retiré** (toujours `True`) avec l'ancien
+  système de sauvegarde par minuterie (`_setup_timers`, `AUTO_SAVE_INTERVAL`) et
+  l'attribut `EventDrivenSaveService.is_enabled`.
+- **Replis morts retirés** dans `main_refactored.py` : `_import_file`,
+  `_manual_save`, `_toggle_incomplete_filter`, `_refresh_application`, et la
+  méthode `_update_incomplete_button_visibility_legacy` (avec son helper).
+  Deux d'entre eux lisaient `self.pending_search_term`, un attribut qui n'existe
+  pas sur la fenêtre.
+- Replis « service pas encore initialisé » retirés dans `EventHandlersService`
+  et `DatabaseOperationsService` (avec `_trigger_event_driven_save*`).
+- Conservés, car ce sont de vrais secours sur erreur : le repli PDF de
+  `FileProcessingService` (exception d'`ImportManager`), FTS5 → LIKE, et les
+  stratégies Camelot.
+- Vérifié par un même scénario joué sur `main` et sur la branche (ajout,
+  édition relue sur connexion neuve, sauvegarde manuelle, filtre, rafraîchissement,
+  post-import, suppression) : résultats identiques.
+
+---
+
 ## [3.78.3] - 2026-10-09 (branche `chore/eradication-theauditor`)
 
 ### Ménage : TheAuditor, AutoSaveManager, AppInfo
