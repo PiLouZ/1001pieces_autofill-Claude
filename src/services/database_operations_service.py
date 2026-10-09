@@ -491,14 +491,9 @@ class DatabaseOperationsService(BaseService):
                     f"{pluralize(deleted_count, 'appareil supprimé', 'appareils supprimés')} avec succès"
                 )
 
-            # Feature Flag: Phase 4 - Sauvegarde événementielle après suppression (délégation service)
-            if Config.ENABLE_EVENT_DRIVEN_SAVE:
-                if hasattr(self.parent_window, 'event_driven_save_service') and self.parent_window.event_driven_save_service:
-                    self.parent_window.event_driven_save_service.handle_deletion_completed(deleted_count)
-                else:
-                    # Fallback si service pas encore initialisé
-                    app_logger.warning("EventDrivenSaveService non disponible, fallback méthode locale")
-                    self._trigger_event_driven_save_after_deletion(deleted_count)
+            # Sauvegarde événementielle après suppression (délégation service)
+            if hasattr(self.parent_window, 'event_driven_save_service') and self.parent_window.event_driven_save_service:
+                self.parent_window.event_driven_save_service.handle_deletion_completed(deleted_count)
 
             # Émettre le signal
             self.device_deleted.emit(device_ids[:deleted_count])
@@ -801,20 +796,3 @@ class DatabaseOperationsService(BaseService):
         # Confirmer la transaction
         self.db_manager.commit_transaction()
         return True
-
-    def _trigger_event_driven_save_after_deletion(self, deleted_count: int):
-        """Déclencher sauvegarde événementielle après suppression"""
-        self._safe_trigger_event_driven_save_after_deletion(deleted_count)
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur sauvegarde événementielle après suppression")
-    def _safe_trigger_event_driven_save_after_deletion(self, deleted_count: int):
-        """Version sécurisée de _trigger_event_driven_save_after_deletion"""
-        app_logger.debug(f"Sauvegarde événementielle après suppression de {deleted_count} appareil(s)")
-        # Après une suppression, les données sont déjà commitées en base
-        # On peut forcer un auto_save pour s'assurer que les transactions en attente sont terminées
-        success = self.auto_save()
-
-        if success:
-            app_logger.debug(f"Sauvegarde événementielle réussie après suppression")
-        else:
-            app_logger.warning(f"Échec sauvegarde événementielle après suppression")

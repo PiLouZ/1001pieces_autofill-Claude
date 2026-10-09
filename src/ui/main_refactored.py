@@ -14,7 +14,7 @@ from .qt_imports import (
     QListWidgetItem, QFileDialog, QComboBox,
     QCheckBox, QMenu, QDialog, QTextEdit, QTextBrowser,
     QColor,
-    Qt, QTimer, QSettings, QEvent, QMimeData, QUrl, QSizePolicy, QFrame, QSize
+    Qt, QSettings, QEvent, QMimeData, QUrl, QSizePolicy, QFrame, QSize
 )
 
 # Imports Python standard consolidés
@@ -307,10 +307,7 @@ class MainWindow(QMainWindow):
         self.use_pagination = True  # Contrôle pagination
         self.modified_cells = set()
         self.log_viewer = None
-        
-        # Configuration des timers
-        self._setup_timers()
-    
+            
     def _init_column_visibility(self):
         """Initialiser la configuration de visibilité des colonnes"""
         self.settings = QSettings("1001pieces", "autofill")
@@ -321,14 +318,6 @@ class MainWindow(QMainWindow):
             saved_state = self.settings.value(f"column_{col['index']}_visible", col['visible'])
             self.visible_columns[col['index']] = saved_state if isinstance(saved_state, bool) else col['visible']
 
-    def _setup_timers(self):
-        """Configurer les timers"""
-        if not Config.ENABLE_EVENT_DRIVEN_SAVE:
-            # Ancien système timer-based (pour rollback)
-            self.auto_save_timer = QTimer()
-            self.auto_save_timer.timeout.connect(self._auto_save)
-            self.auto_save_timer.start(Config.AUTO_SAVE_INTERVAL)
-        # Sinon: système événementiel (pas de timer)
 
         # PHASE 2.3: Recherche gérée par AdvancedSearchService
         # Plus besoin de timer local - géré par le service
@@ -1226,18 +1215,13 @@ class MainWindow(QMainWindow):
     def _apply_cell_edit_logic(self, row: int, col: int, old_value: str, new_value: str, db_id):
         """Tronc commun post-validation : sauvegarde, historique et mises à jour UI."""
         # Sauvegarde
-        if not Config.ENABLE_EVENT_DRIVEN_SAVE:
-            self.modified_cells.add((row, col))
-            self.save_indicator.setText(Config.get_message('save_pending'))
-            self.save_indicator.setStyleSheet("color: orange;")
-        else:
-            bulk_collector = getattr(self, '_bulk_edit_collector', None)
-            if bulk_collector is not None:
-                # Effacement multi-cellules (Suppr) : la sauvegarde est différée et
-                # regroupée en une seule transaction par l'appelant (cf. CustomTableView)
-                bulk_collector.add((row, col))
-            elif hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
-                self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
+        bulk_collector = getattr(self, '_bulk_edit_collector', None)
+        if bulk_collector is not None:
+            # Effacement multi-cellules (Suppr) : la sauvegarde est différée et
+            # regroupée en une seule transaction par l'appelant (cf. CustomTableView)
+            bulk_collector.add((row, col))
+        elif hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
+            self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
 
         # Historique undo
         self.undo_manager.add_action({
@@ -1393,11 +1377,6 @@ class MainWindow(QMainWindow):
             if success:
                 self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
                 self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
-            return
-
-        self._auto_save()
-        self.statusbar.showMessage(Config.get_message('auto_save_done'), Config.STATUS_MESSAGE_TIMEOUT)
-        self.user_interaction_service.add_to_history("Sauvegarde manuelle effectuée")
 
 
     
@@ -1757,22 +1736,6 @@ class MainWindow(QMainWindow):
         # PHASE 3.2: Déléguer au ImportExportService
         if hasattr(self, 'import_export_service') and self.import_export_service:
             self.import_export_service.import_file()
-            return
-
-        # Ancien système (pour compatibilité/rollback)
-        from .qt_imports import QFileDialog
-        filenames, _ = QFileDialog.getOpenFileNames(
-            self, "Importer fichier(s)", "",
-            "Fichiers supportés (*.csv *.pdf);;Fichiers CSV (*.csv);;Fichiers PDF (*.pdf)"
-        )
-
-        if filenames:
-            # PHASE 2.2 OPTIMISATION: Utiliser callback pour dialogue non-bloquant
-            self.import_manager.import_files(
-                filenames,
-                show_dialog=True,
-                callback=self._on_import_complete
-            )
     
     def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
         """Dialogue unifié pour choisir les options d'import - Phase 2.6"""
@@ -2088,33 +2051,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'incomplete_button_service'):
             # Programmer une mise à jour différée pour éviter les appels répétés
             self.incomplete_button_service.schedule_update()
-        else:
-            # Fallback vers l'ancienne méthode si le service n'est pas encore initialisé
-            self._update_incomplete_button_visibility_legacy()
-
-    def _update_incomplete_button_visibility_legacy(self):
-        """Ancienne méthode de mise à jour (fallback)"""
-        return self._safe_update_incomplete_button_visibility_legacy()
-
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mise à jour bouton incomplètes (legacy)")
-    def _safe_update_incomplete_button_visibility_legacy(self):
-        """Helper sécurisé pour mise à jour legacy du bouton incomplètes"""
-        incomplete_count = self.db_manager.count_incomplete_devices()
-        if hasattr(self, 'incomplete_filter_btn'):
-            if incomplete_count > 0:
-                self.incomplete_filter_btn.show()
-                from src.core.config import pluralize
-                if self.show_incomplete_only:
-                    self.incomplete_filter_btn.setText(f"Filtre actif, plus que {pluralize(incomplete_count, 'ligne')}")
-                    self.incomplete_filter_btn.setToolTip(f"Filtre actif - {pluralize(incomplete_count, 'ligne')} avec des champs vides")
-                else:
-                    self.incomplete_filter_btn.setText(f"{pluralize(incomplete_count, 'incomplète')}")
-                    self.incomplete_filter_btn.setToolTip(f"Afficher uniquement les {pluralize(incomplete_count, 'ligne')} avec des champs vides")
-            else:
-                self.incomplete_filter_btn.hide()
-                if self.show_incomplete_only:
-                    self.show_incomplete_only = False
-                    self.table_controller.load_data()
 
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
@@ -2126,16 +2062,6 @@ class MainWindow(QMainWindow):
                 app_logger.info(f"🔄 Synchronisation incomplete_button_service: filtre {'activé' if checked else 'désactivé'}")
 
             self.sorting_filtering_service.toggle_incomplete_filter()
-            return
-
-        # Legacy fallback (conservé temporairement)
-        self.show_incomplete_only = checked
-        if hasattr(self, 'incomplete_button_service'):
-            self.incomplete_button_service.set_filter_active(checked)
-        if checked:
-            self.search_input.clear()
-        search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-        self.table_controller.load_data(search_term)
 
     def _on_incomplete_filter_auto_disabled(self):
         """Gérer la désactivation automatique du filtre lignes incomplètes"""
@@ -3085,13 +3011,8 @@ class MainWindow(QMainWindow):
     def _refresh_application(self):
         """Rafraîchir l'application - CORRECTION: utiliser la même logique que F5"""
         # Utiliser la même logique que F5 (raccourci clavier) pour cohérence
-        if hasattr(self, 'advanced_search_service') and hasattr(self, 'table_controller'):
-            search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
-            self.table_controller.load_data(search_term)
-        else:
-            # Fallback vers ancienne logique si services indisponibles
-            search_term = self.pending_search_term if hasattr(self, 'pending_search_term') else None
-            self.table_controller.load_data(search_term)
+        search_term = self.advanced_search_service.get_current_search_term_with_fallback(self)
+        self.table_controller.load_data(search_term)
         self.statusbar.showMessage("Application rafraîchie", Config.STATUS_MESSAGE_TIMEOUT)
     
     def _refresh_pieces_count_column(self):
