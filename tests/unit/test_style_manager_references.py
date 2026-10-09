@@ -18,8 +18,6 @@ _RACINE = pathlib.Path(__file__).resolve().parents[2] / "src"
 def test_toutes_les_references_stylemanager_existent():
     references = set()
     for fichier in _RACINE.rglob("*.py"):
-        if "theauditor" in fichier.parts:
-            continue
         references |= set(re.findall(r"StyleManager\.([A-Za-z_]+)", fichier.read_text(encoding="utf-8")))
     manquants = sorted(r for r in references if not hasattr(StyleManager, r))
     assert references, "aucune référence trouvée : le chemin de recherche est faux"
