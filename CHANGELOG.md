@@ -76,6 +76,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   était une image `data:image/svg+xml` que Qt ne charge pas. Remplacée par un PNG
   qtawesome généré au démarrage (même principe que le chevron des listes).
 
+**Fenêtre de progression : journal d'étapes**
+- Une ligne par étape au lieu d'un libellé unique écrasé : étapes terminées
+  cochées avec leur durée (« Extraction de 00611388.pdf · 1 667 pages — 48 s »),
+  étape courante en gras avec son détail (« page 560 / 1 667 », « 12 / 17 ») ou
+  son temps écoulé. Défilement au-delà de 8 lignes (imports multi-fichiers).
+- Construit seul à partir des `setLabelText()` existants (`analyser_etape` :
+  étape = libellé hors compteurs) : aucun appelant modifié, toutes les fenêtres
+  de progression en profitent. « Import de X » puis « Extraction de X » forment
+  une seule ligne.
+- Pied : « Étape 5 · 70 % · 22 s au total », rafraîchi chaque seconde (les étapes
+  longues et muettes, comme l'index de suggestions, ne semblent plus figées).
+  L'ancien « 335 / 1000 » exposait l'échelle interne de la barre.
+
 **Import — panneau des relations**
 - Alerte erronée corrigée : « Un groupe d'équivalence ne contient qu'une seule
   réf : aucune équivalence ne sera créée » s'affichait alors que le groupe, coché
