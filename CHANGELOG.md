@@ -4,6 +4,21 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.78.2] - 2026-10-09 (branche `fix/alignement-bouton-raz-filtres`)
+
+### Bouton « effacer les filtres » centré au-dessus de la colonne Pièces
+
+- Le bouton ✕ était placé juste AVANT la zone réservée à la colonne figée
+  « Pièces » : son centre tombait 31 px à gauche du centre de la colonne
+  (au-dessus d'« Autre référence »), et le filtre de cette colonne perdait 15 px.
+  Il est désormais dans cette zone, centré sur la colonne (écart mesuré : 0 px) ;
+  la zone couvre aussi l'ascenseur et le cadre du tableau.
+- Hauteur calée sur celle des champs de filtre (26 px au lieu de 28) : elle était
+  mesurée sur une liste déroulante créée avant l'application du style global.
+- Repli / dépli des filtres inchangé (le bouton suit la zone).
+
+---
+
 ## [3.78.1] - 2026-10-09 (branche `fix/types-appareils-virgule`)
 
 ### Gestionnaire de pièces : plus de virgule parasite dans « Types d'appareils »
