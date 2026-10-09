@@ -190,7 +190,7 @@ class TableController:
         widget = QWidget()
         layout = QVBoxLayout(widget)
         m = layout.contentsMargins()
-        layout.setContentsMargins(m.left(), 0, m.right(), 0)
+        layout.setContentsMargins(m.left(), 0, 0, 0)  # droite : l'espace est la poignée (8 px)
         layout.setSpacing(6)
 
         # Barre de recherche supprimée d'ici - maintenant sous le tableau

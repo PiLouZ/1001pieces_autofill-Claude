@@ -506,7 +506,7 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         m = layout.contentsMargins()
-        layout.setContentsMargins(m.left(), 0, m.right(), 0)
+        layout.setContentsMargins(0, 0, m.right(), 0)  # gauche : l'espace est la poignée (8 px)
 
         # Splitter vertical pour diviser en deux parties
         pieces_splitter = QSplitter(Qt.Vertical)
@@ -514,8 +514,7 @@ class MainWindow(QMainWindow):
         # Partie haute - Onglets pour les pièces
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
-        # Marge basse : décolle la liste de la poignée du séparateur (elle collait)
-        top_layout.setContentsMargins(0, 0, 0, 8)
+        top_layout.setContentsMargins(0, 0, 0, 0)  # bas : l'espace est la poignée (8 px)
         top_layout.setSpacing(2)
         
         # ── En-tête : nom appareil + bouton rafraîchir ──────────────────────
@@ -611,7 +610,7 @@ class MainWindow(QMainWindow):
         history_header_layout.addWidget(_make_separator(), 1)
 
         history_layout.addLayout(history_header_layout)
-        history_layout.setContentsMargins(8, 12, 8, 0)  # Padding moderne, sans marge basse
+        history_layout.setContentsMargins(8, 0, 8, 0)  # haut : l'espace est la poignée (8 px)
         
         self.history_list = QTextBrowser()
         self.history_list.setOpenExternalLinks(False)  # Gérer les liens nous-mêmes

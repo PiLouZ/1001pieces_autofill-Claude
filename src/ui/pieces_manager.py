@@ -412,7 +412,7 @@ class PiecesManagerWindow(QDialog):
         side_panel = QWidget()
         side_panel.setMinimumWidth(200)
         side_layout = QVBoxLayout(side_panel)
-        side_layout.setContentsMargins(6, 4, 4, 4)
+        side_layout.setContentsMargins(0, 4, 4, 4)  # gauche : l'espace est la poignée (8 px)
         side_layout.setSpacing(6)
 
         # En-tête : référence sélectionnée
@@ -434,9 +434,6 @@ class PiecesManagerWindow(QDialog):
         # ── 2 zones : Équivalences (prioritaire) / Succession + actions ────────
         sections_splitter = QSplitter(Qt.Vertical)
         sections_splitter.setChildrenCollapsible(False)
-        # Espace de 8 px entre les cartes au lieu d'un trait collé à elles
-        sections_splitter.setHandleWidth(8)
-        sections_splitter.setStyleSheet(StyleManager.AIRY_SPLITTER)
 
         # Section "≡ Équivalences" — zone prioritaire en haut
         equiv_section = QFrame()
@@ -489,7 +486,7 @@ class PiecesManagerWindow(QDialog):
         succ_combined_layout.setSpacing(4)
 
         succession_row = QHBoxLayout()
-        succession_row.setSpacing(6)
+        succession_row.setSpacing(8)  # même écart que les poignées entre cartes
 
         # Colonne "↑ Remplace"
         replaces_section = QFrame()

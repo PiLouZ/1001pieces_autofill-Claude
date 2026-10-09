@@ -93,8 +93,17 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - Équivalences / Remplace / Remplacée par : fond gris clair arrondi, sans bordure
   (`StyleManager.side_card`), au lieu de cadres gris bordés ; plus de cadre
   englobant autour de la succession.
-- Poignée entre les cartes : espace de 8 px, teinté seulement au survol
-  (`StyleManager.AIRY_SPLITTER`) ; boutons « + » transparents.
+- Boutons « + » transparents.
+
+**Poignées de redimensionnement (toute l'application)**
+- Une seule règle dans le style global : poignée de 8 px transparente, teintée au
+  survol ; les blocs voisins n'ont plus de marge côté poignée. Avant : 1, 2 ou
+  8 px selon la fenêtre, avec 0 à 22 px de marge (poignée collée à l'ascenseur du
+  tableau dans le gestionnaire de pièces). Six poignées concernées : fenêtre
+  principale (tableau | panneau, pièces | historique), gestionnaire de pièces
+  (tableau | panneau, cartes), import (colonnes, relations).
+- Écarts visibles mesurés : 8 px partout (y compris entre « Remplace » et
+  « Remplacée par », 6 → 8 px).
 
 **Historique persistant**
 - Colonnes lisibles : « Appareil » ne se cale plus sur son contenu (il réduisait

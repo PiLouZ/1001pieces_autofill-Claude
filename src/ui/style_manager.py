@@ -200,13 +200,6 @@ class StyleManager:
         return (f"QFrame#{object_name} {{ background: #f1f3f5; border: none;"
                 f" border-radius: 6px; }}")
 
-    # Séparateur entre deux cartes : un espace (pas de trait collé aux cartes),
-    # teinté seulement au survol pour rester repérable.
-    AIRY_SPLITTER = (
-        "QSplitter::handle { background: transparent; }"
-        "QSplitter::handle:hover { background: #dee2e6; border-radius: 2px; }"
-    )
-
     # Surlignage temporaire d'une pièce tout juste ajoutée (vert pâle, 2 s)
     PIECE_ADDED_HIGHLIGHT = "#d1e7dd"
 
@@ -644,20 +637,25 @@ class StyleManager:
         }
 
         /* === SPLITTER === */
+        /* Poignées de redimensionnement : UNE règle pour toute l'application.
+           8 px transparents = l'espace entre deux blocs (les blocs n'ont pas de
+           marge côté poignée) ; teinte au survol pour rester repérable. Avant :
+           1, 2 ou 8 px selon la fenêtre, avec des marges de 0 à 22 px — les
+           poignées collaient au contenu par endroits. */
         QSplitter::handle {
-            background-color: #dee2e6;
+            background-color: transparent;
         }
-        
+
         QSplitter::handle:vertical {
-            height: 2px;
+            height: 8px;
         }
-        
+
         QSplitter::handle:horizontal {
-            width: 2px;
+            width: 8px;
         }
-        
+
         QSplitter::handle:hover {
-            background-color: #0d6efd;
+            background-color: #dee2e6;
         }
 
         /* === GROUPBOX === */

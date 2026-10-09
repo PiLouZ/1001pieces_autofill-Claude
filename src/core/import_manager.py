@@ -819,26 +819,19 @@ class ImportDialog(QDialog):
             # (sinon le champ Description pousse la poignée et étrique les 2 sous-colonnes).
             left_col.setMaximumWidth(580)
             left_layout = QVBoxLayout(left_col)
-            left_layout.setContentsMargins(0, 0, 10, 0)  # respiration vers la poignée
+            left_layout.setContentsMargins(0, 0, 0, 0)  # l'espace vers la zone Relations est la poignée (8 px)
             left_layout.setSpacing(6)
             if getattr(self, '_common_ref_group', None) is not None:
                 left_layout.addWidget(self._common_ref_group)
             left_layout.addWidget(individual_group, 1)
 
             if rel_group is not None:
-                # Marge gauche symétrique de celle de la colonne gauche : la zone
-                # Relations collait à la poignée du séparateur.
-                rel_container = QWidget()
-                rel_container_layout = QVBoxLayout(rel_container)
-                rel_container_layout.setContentsMargins(10, 0, 0, 0)
-                rel_container_layout.addWidget(rel_group)
                 splitter = QSplitter(Qt.Horizontal)
                 splitter.addWidget(left_col)
-                splitter.addWidget(rel_container)
+                splitter.addWidget(rel_group)
                 splitter.setStretchFactor(0, 2)
                 splitter.setStretchFactor(1, 3)
                 splitter.setChildrenCollapsible(False)
-                splitter.setHandleWidth(1)    # poignée fine ; l'aération vient des marges
                 # Relations plus large par défaut (deux sous-colonnes succ.|équiv.)
                 splitter.setSizes([500, 760])
                 layout.addWidget(splitter, 1)
