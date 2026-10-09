@@ -53,7 +53,7 @@ from ..core.config import Config, pluralize
 from ..utils.error_handler import handle_ui_errors
 from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
-from .style_manager import StyleManager
+from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 
 class ActionButtonWidget(QWidget):
@@ -285,7 +285,7 @@ class PiecesManagerWindow(QDialog):
             cluster_col.setSpacing(1)
 
             cluster_title = QLabel(cluster_label)
-            cluster_title.setStyleSheet("color: #adb5bd; font-size: 9px;")
+            cluster_title.setStyleSheet("color: #adb5bd; font-size: 11px;")
             cluster_col.addWidget(cluster_title)
 
             cluster_row = QHBoxLayout()
@@ -622,7 +622,7 @@ class PiecesManagerWindow(QDialog):
             ("ÉQUIVALENCES", [self.btn_unlink_equiv, self.btn_harmonize_labels]),
         ]:
             title_lbl = QLabel(section_title)
-            title_lbl.setStyleSheet("color: #adb5bd; font-size: 9px; font-weight: bold;")
+            title_lbl.setStyleSheet("color: #adb5bd; font-size: 11px; font-weight: bold;")
             succ_combined_layout.addWidget(title_lbl)
             btn_row = QHBoxLayout()
             btn_row.setSpacing(6)
@@ -1495,17 +1495,18 @@ class PiecesManagerWindow(QDialog):
                 MAX_DESC = 38
                 desc_display = desc[:MAX_DESC] + "…" if len(desc) > MAX_DESC else desc
                 lbl_desc = QLabel(desc_display)
-                lbl_desc.setStyleSheet("font-size: 10px; color: #868e96; font-style: italic;")
+                lbl_desc.setStyleSheet("font-size: 11px; color: #868e96; font-style: italic;")
                 lbl_desc.setToolTip("<html>" + _html.escape(desc) + "</html>")
                 rl.addWidget(lbl_desc, 1)
             else:
                 rl.addStretch()
-            btn_x = QPushButton("×")
+            btn_x = QPushButton()
+            btn_x.setIcon(qta.icon('fa5s.times', color='#868e96'))
+            btn_x.setIconSize(QSize(9, 9))
             btn_x.setFixedSize(18, 18)
             btn_x.setStyleSheet(
-                "QPushButton { color: #868e96; border: none; font-size: 14px; padding: 0;"
-                " background: transparent; }"
-                "QPushButton:hover { color: #dc3545; background: #f8d7da; border-radius: 3px; }"
+                "QPushButton { border: none; padding: 0; background: transparent; }"
+                "QPushButton:hover { background: #f8d7da; border-radius: 3px; }"
             )
             btn_x.setToolTip(f"Retirer {ref} de la sélection")
             btn_x.clicked.connect(lambda checked, r=ref, p=popup: self._remove_ref_from_sticky(r, p))
@@ -1663,11 +1664,13 @@ class PiecesManagerWindow(QDialog):
 
         # Message d'état (obsolète ou rien)
         if is_obsolete:
-            self.succession_status_label.setText("⚠ Obsolète")
+            self.succession_status_label.setText(
+                f"{inline_icon_html('fa5s.exclamation-triangle', '#c0392b', 12)}&nbsp;Obsolète")
             self.succession_status_label.setStyleSheet(
                 "color: #c0392b; font-size: 12px; font-weight: bold;")
         elif not ref_new and not predecessors:
-            self.succession_status_label.setText("✓ Référence courante")
+            self.succession_status_label.setText(
+                f"{inline_icon_html('fa5s.check-circle', '#2e7d32', 12)}&nbsp;Référence courante")
             self.succession_status_label.setStyleSheet(
                 "color: #34A853; font-size: 12px; font-weight: bold;")
         else:

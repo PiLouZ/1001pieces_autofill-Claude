@@ -123,7 +123,7 @@ class RefCard(QFrame):
         lay.addWidget(self.base_zone)
 
         self.obs_hint = QLabel("")
-        self.obs_hint.setStyleSheet("color: #9e9e9e; font-size: 10px; border: none;")
+        self.obs_hint.setStyleSheet("color: #9e9e9e; font-size: 11px; border: none;")
         self.obs_hint.setVisible(False)
         lay.addWidget(self.obs_hint)
 
@@ -282,12 +282,12 @@ class GroupBox(QFrame):
         head.addStretch(1)
         empty = QPushButton("vider")
         empty.setFlat(True)
-        empty.setStyleSheet("color: #0066cc; font-size: 10px; border: none;")
+        empty.setStyleSheet("color: #0066cc; font-size: 11px; border: none;")
         empty.clicked.connect(lambda: self.empty_requested.emit(self))
         head.addWidget(empty)
         rem = QPushButton("suppr")
         rem.setFlat(True)
-        rem.setStyleSheet("color: #c0392b; font-size: 10px; border: none;")
+        rem.setStyleSheet("color: #c0392b; font-size: 11px; border: none;")
         rem.clicked.connect(lambda: self.remove_requested.emit(self))
         head.addWidget(rem)
         lay.addLayout(head)
@@ -325,7 +325,7 @@ class GroupBox(QFrame):
                 "les réfs de ce groupe deviennent équivalentes à sa courante\n"
                 "(et, par la chaîne, à ses anciennes versions).")
             hint = "Réfs interchangeables (glissez ici) :"
-        self.cross_check.setStyleSheet(f"font-size: 10px; border: none; color: {_EQUIV_COLORS[0]};")
+        self.cross_check.setStyleSheet(f"font-size: 11px; border: none; color: {_EQUIV_COLORS[0]};")
         self.cross_check.stateChanged.connect(lambda *_: self.changed.emit())
         lay.addWidget(self.cross_check)
         lay.addWidget(_lbl(hint, size=10, color="#607d8b"))

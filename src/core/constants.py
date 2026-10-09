@@ -94,7 +94,7 @@ class UIConfig:
     COLUMN_WIDTH_STOCK = 60
     
     # Couleurs de l'interface
-    COLOR_SUCCESS = "#28a745"
+    COLOR_SUCCESS = "#198754"
     COLOR_WARNING = "#ffc107" 
     COLOR_ERROR = "#dc3545"
     COLOR_INFO = "#17a2b8"
@@ -110,7 +110,7 @@ class UIConfig:
 
     # Pagination
     DEFAULT_PAGE_SIZE = 500
-    COLOR_PRIMARY = "#007bff"
+    COLOR_PRIMARY = "#0d6efd"
     COLOR_SECONDARY = "#6c757d"
     
     # Styles CSS fréquents

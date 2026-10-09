@@ -536,7 +536,7 @@ class MainWindow(QMainWindow):
 
         self.pieces_count_label = QLabel("")
         self.pieces_count_label.setStyleSheet(
-            "color: #6c757d; font-size: 10px;"
+            "color: #6c757d; font-size: 11px;"
         )
         header_layout.addWidget(self.pieces_count_label)
 
@@ -2618,9 +2618,9 @@ class MainWindow(QMainWindow):
         apply_btn.setIcon(qta.icon('fa5s.check', color='white'))
         apply_btn.setIconSize(QSize(12, 12))
         apply_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
+            "QPushButton { background-color: #198754; color: white;"
             " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #218838; }"
+            "QPushButton:hover { background-color: #157347; }"
         )
         apply_btn.clicked.connect(lambda: self._apply_column_config(checkboxes, dialog))
         button_layout.addWidget(apply_btn)
@@ -2746,7 +2746,7 @@ class MainWindow(QMainWindow):
             self.table.setStyleSheet(self.table.styleSheet() + """
                 QTableWidget {
                     background-color: rgba(0, 123, 255, 0.1);
-                    border: 2px dashed #007bff;
+                    border: 2px dashed #0d6efd;
                 }
                 QTableWidget::item {
                     background-color: rgba(0, 123, 255, 0.05);
@@ -2765,7 +2765,7 @@ class MainWindow(QMainWindow):
                         font-weight: bold;
                         padding: 20px;
                         border-radius: 10px;
-                        border: 2px solid #007bff;
+                        border: 2px solid #0d6efd;
                     }
                 """)
             
@@ -2784,7 +2784,7 @@ class MainWindow(QMainWindow):
             self.table.setStyleSheet(self.table.styleSheet().replace("""
                 QTableWidget {
                     background-color: rgba(0, 123, 255, 0.1);
-                    border: 2px dashed #007bff;
+                    border: 2px dashed #0d6efd;
                 }
                 QTableWidget::item {
                     background-color: rgba(0, 123, 255, 0.05);

@@ -191,7 +191,7 @@ class RefTagList(QWidget):
         if desc:
             desc_lbl = QLabel(desc)
             desc_lbl.setStyleSheet(
-                "color: #6c757d; font-size: 10px; background: transparent; border: none;"
+                "color: #6c757d; font-size: 11px; background: transparent; border: none;"
             )
             desc_lbl.setMaximumWidth(200)
             h.addWidget(desc_lbl, 1)
@@ -296,7 +296,7 @@ class PiecePickerDialog(QDialog):
         self._ok_btn = QPushButton("Sélectionner (plusieurs avec Ctrl/⇧)" if self._multi_select else "Sélectionner")
         self._ok_btn.setIcon(qta.icon('fa5s.check', color='white'))
         self._ok_btn.setIconSize(QSize(11, 11))
-        self._ok_btn.setStyleSheet("QPushButton { background-color: #28a745; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:disabled { background-color: #adb5bd; }")
+        self._ok_btn.setStyleSheet("QPushButton { background-color: #198754; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:disabled { background-color: #adb5bd; }")
         self._ok_btn.setEnabled(False)
         self._ok_btn.setDefault(True)
         self._ok_btn.clicked.connect(self.accept)

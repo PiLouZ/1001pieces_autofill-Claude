@@ -101,7 +101,7 @@ class ProgressDialog(QDialog):
         bottom = QHBoxLayout()
 
         self._counter_label = QLabel("")
-        self._counter_label.setStyleSheet("color: #adb5bd; font-size: 10px;")
+        self._counter_label.setStyleSheet("color: #adb5bd; font-size: 11px;")
         bottom.addWidget(self._counter_label)
         bottom.addStretch()
 

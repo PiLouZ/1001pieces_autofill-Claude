@@ -9,7 +9,7 @@ from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout,
                             QTableWidgetItem, QLineEdit, QComboBox, QPushButton, QToolButton,
                             QLabel,
                             Qt, QTimer, QThread, pyqtSignal,
-                            QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView,
+                            QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView, QSize,
                             QHeaderView, QCompleter, QStringListModel)
 
 from ..core.config import Config, pluralize
@@ -215,7 +215,7 @@ class TableController:
         self.filters_toggle_btn.setToolTip("Afficher / masquer les filtres par colonne")
         self.filters_toggle_btn.setStyleSheet(
             "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
-            "QToolButton:checked { background: #e7f1ff; border-color: #0078d4; }"
+            "QToolButton:checked { background: #e7f1ff; border-color: #0d6efd; }"
         )
         self.filters_toggle_btn.toggled.connect(self._toggle_column_filters)
         filter_layout.addWidget(self.filters_toggle_btn, 0, Qt.AlignVCenter)
@@ -241,7 +241,7 @@ class TableController:
                         background-color: white;
                     }
                     QComboBox:focus {
-                        border-color: #0078d4;
+                        border-color: #0d6efd;
                     }
                 """)
                 # Autocomplétion différée : suggestions chargées à la frappe (≥ 2 chars)
@@ -279,7 +279,7 @@ class TableController:
                         background-color: white;
                     }
                     QLineEdit:focus {
-                        border-color: #0078d4;
+                        border-color: #0d6efd;
                         outline: none;
                     }
                 """)
@@ -289,7 +289,9 @@ class TableController:
                 filter_layout.addWidget(filter_input, 1 if i == 4 else 0)
 
         # Bouton RAZ pour vider tous les filtres colonne
-        raz_btn = QPushButton("×")
+        raz_btn = QPushButton()
+        raz_btn.setIcon(_qta_f.icon('fa5s.times', color='#868e96'))
+        raz_btn.setIconSize(QSize(10, 10))
         raz_btn.setFixedSize(28, _filter_btn_h)
         raz_btn.setToolTip("Réinitialiser tous les filtres")
         raz_btn.setStyleSheet(StyleManager.CLEAR_FILTERS_BUTTON)
@@ -415,7 +417,7 @@ class TableController:
         )
         self.extend_search_btn.setStyleSheet(
             "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
-            "QToolButton:checked { background: #e7f1ff; border-color: #0078d4; }"
+            "QToolButton:checked { background: #e7f1ff; border-color: #0d6efd; }"
         )
         self.extend_search_btn.toggled.connect(self._toggle_extend_search)
         search_layout2.addWidget(self.extend_search_btn, 0, Qt.AlignVCenter)
@@ -1279,7 +1281,7 @@ class TableController:
         self.page_input.setToolTip("Saisir un numéro de page puis Entrée")
         self.page_input.setStyleSheet(
             "QLineEdit { padding: 2px; font-size: 11px; border: 1px solid #bdbdbd;"
-            " border-radius: 3px; } QLineEdit:focus { border: 1px solid #0078d4; }"
+            " border-radius: 3px; } QLineEdit:focus { border: 1px solid #0d6efd; }"
             " QLineEdit:disabled { color: #adb5bd; border-color: #dee2e6; }"
         )
         nav_layout.addWidget(self.page_input)
@@ -1322,10 +1324,10 @@ class TableController:
                 min-width: 65px;
             }
             QComboBox:hover {
-                border-color: #0078d4;
+                border-color: #0d6efd;
             }
             QComboBox:focus {
-                border-color: #0078d4;
+                border-color: #0d6efd;
                 outline: none;
             }
             QComboBox::drop-down {

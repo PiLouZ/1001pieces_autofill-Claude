@@ -148,7 +148,7 @@ class Config:
         
         SUCCESS = "#198754"        # Vert succès
         SUCCESS_HOVER = "#157347"  # Vert succès au survol
-        SUCCESS_LIGHT = "#28a745"  # Vert succès clair
+        SUCCESS_LIGHT = "#198754"  # Ancien alias (#28a745), aligné sur SUCCESS en v3.78.0
         SUCCESS_BG = "#d1e7dd"     # Fond vert succès
         SUCCESS_TEXT = "#0a3622"   # Texte vert succès
         

@@ -189,7 +189,7 @@ class DuplicateDevicesWidget(QWidget):
         self.mark_distinct_btn.setIcon(qta.icon('fa5s.check-double', color='white'))
         self.mark_distinct_btn.setIconSize(QSize(11, 11))
         self.mark_distinct_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white; font-weight: bold;"
+            "QPushButton { background-color: #198754; color: white; font-weight: bold;"
             " padding: 2px 8px; font-size: 11px; border-radius: 3px; }"
         )
         self.mark_distinct_btn.setEnabled(False)
@@ -302,7 +302,7 @@ class DuplicateDevicesWidget(QWidget):
                     if group_item.child(j).checkState(0) == Qt.Checked
                 )
                 if checked == 1:
-                    group_item.setIcon(0, qta.icon('fa5s.check-circle', color='#28a745'))
+                    group_item.setIcon(0, qta.icon('fa5s.check-circle', color='#198754'))
                     group_item.setToolTip(0, "Prêt à fusionner : 1 maître désigné")
                 elif checked == 0:
                     group_item.setIcon(0, qta.icon('fa5s.minus-circle', color='#adb5bd'))

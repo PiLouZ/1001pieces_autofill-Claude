@@ -397,7 +397,7 @@ class UserInteractionService:
         .badge   { color: #666666; font-size: 11px; }
         .devices { color: #888888; font-size: 11px; }
         .detail  { color: #666666; font-size: 11px; }
-        .sep     { color: #bbbbbb; font-size: 10px; }
+        .sep     { color: #bbbbbb; font-size: 11px; }
         """
 
         html = f'<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>\n'
@@ -426,7 +426,7 @@ class UserInteractionService:
             # passent par des espaces insécables (police à chasse fixe).
             label_padded = label.ljust(_BADGE_WIDTH).replace(' ', '&nbsp;')
             icon = (f'<span style="background-color:{color}; color:white; '
-                    f'font-size:10px;">&nbsp;{label_padded}&nbsp;</span>')
+                    f'font-size:11px;">&nbsp;{label_padded}&nbsp;</span>')
 
             # Titre et badge
             safe_title = (entry['title']
@@ -445,7 +445,7 @@ class UserInteractionService:
             if entry.get('duration_ms') is not None:
                 ms = entry['duration_ms']
                 dur_str = f'{ms / 1000:.1f}s' if ms >= 1000 else f'{ms}ms'
-                duration_suffix = (f'&nbsp;<span style="color:#999999; font-size:10px;">'
+                duration_suffix = (f'&nbsp;<span style="color:#999999; font-size:11px;">'
                                    f'{dur_str}</span>')
 
 

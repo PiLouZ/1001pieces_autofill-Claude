@@ -26,8 +26,44 @@ def _generate_combo_arrow() -> str:
     return _combo_arrow_path
 
 
+_inline_icon_paths: dict = {}
+
+
+def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
+    """Icône qtawesome insérable dans le texte riche d'un QLabel (`<img>`).
+
+    Remplace les glyphes (⚠, ✓…) dans les libellés : l'icône est rendue en PNG
+    une seule fois par (nom, couleur, taille), comme le chevron des listes
+    déroulantes. Chaîne vide si qtawesome échoue (le texte reste lisible).
+    """
+    key = (icon_name, color, size)
+    path = _inline_icon_paths.get(key)
+    if path is None:
+        try:
+            import qtawesome as qta
+            pixmap = qta.icon(icon_name, color=color).pixmap(size * 2, size * 2)
+            safe = f"{icon_name}_{color}_{size}".replace('.', '_').replace('#', '')
+            path = os.path.join(tempfile.gettempdir(), f'1001pieces_icone_{safe}.png')
+            pixmap.save(path)
+        except Exception:
+            path = ""
+        _inline_icon_paths[key] = path
+    if not path:
+        return ""
+    # Image 2× affichée à `size` : nette sur écran Retina
+    return f'<img src="{path}" width="{size}" height="{size}" style="vertical-align: middle;">'
+
+
 class StyleManager:
-    """Gestionnaire centralisé des styles CSS modernes"""
+    """Gestionnaire centralisé des styles CSS modernes
+
+    Palette de référence : `Config.Colors` (src/core/config.py) — PRIMARY #0d6efd,
+    SUCCESS #198754, DANGER #dc3545, WARNING #fd7e14 et leurs variantes survol /
+    fond / texte. Toute nouvelle couleur de rôle (bouton principal, validation,
+    erreur, focus) doit en reprendre la valeur. Les couleurs de CATÉGORIE (types
+    d'action de l'historique, relations Remplace / Remplacée par / Équivalence)
+    sont volontairement distinctes et ne s'y rattachent pas.
+    """
 
     # === Styles QSS réutilisables (boutons plats / transparents) ===
     # Centralisés ici pour éviter la duplication de ces littéraux dans les
@@ -88,14 +124,14 @@ class StyleManager:
     # changerait de taille en s'activant.
     EXPORT_BTN_DISABLED_RULES = "background: #f1f3f5; color: #adb5bd;"
 
-    # Bouton « effacer les filtres » : gris neutre au repos (vider des champs n'est
-    # pas une action destructrice), rouge seulement au survol.
+    # Bouton « effacer les filtres » (icône ✕ qtawesome) : gris neutre au repos
+    # (vider des champs n'est pas une action destructrice), rouge pâle au survol.
     CLEAR_FILTERS_BUTTON = (
         "QPushButton { background-color: #f8f9fa; color: #868e96;"
         " border: 1px solid #ced4da; border-radius: 3px;"
-        " font-weight: bold; font-size: 14px; padding: 0px; }"
-        "QPushButton:hover { background-color: #e53935; color: white; border-color: #c62828; }"
-        "QPushButton:pressed { background-color: #c62828; color: white; border-color: #b71c1c; }"
+        " padding: 0px; }"
+        "QPushButton:hover { background-color: #f8d7da; border-color: #f1aeb5; }"
+        "QPushButton:pressed { background-color: #f1aeb5; border-color: #ea868f; }"
     )
 
     # Petits boutons-icônes plats (en-tête du panneau des pièces) : sans cadre,

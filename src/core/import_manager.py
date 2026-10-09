@@ -211,7 +211,7 @@ class MappingGroupWidget(QWidget):
             else:
                 hint_lbl = QLabel("Format non standard — assignez au moins la colonne Réf. Modèle")
             hint_lbl.setStyleSheet(
-                "color: #856404; font-size: 10px; background: transparent; border: none;"
+                "color: #856404; font-size: 11px; background: transparent; border: none;"
             )
             title_col.addWidget(hint_lbl)
 
@@ -221,7 +221,7 @@ class MappingGroupWidget(QWidget):
             # Label de statut dynamique (rouge/orange selon état du mapping)
             self._status_label = QLabel()
             self._status_label.setStyleSheet(
-                "color: #dc3545; font-size: 10px; padding: 1px 0;"
+                "color: #dc3545; font-size: 11px; padding: 1px 0;"
             )
             outer.addWidget(self._status_label)
 
@@ -250,7 +250,7 @@ class MappingGroupWidget(QWidget):
                         examples.append(f'"{val}"')
             ex_lbl = QLabel("  /  ".join(examples) if examples else "—")
             ex_lbl.setStyleSheet(
-                "color: #6c757d; font-family: monospace; font-size: 10px;"
+                "color: #6c757d; font-family: monospace; font-size: 11px;"
                 " background: transparent; border: none;"
             )
             ex_lbl.setMinimumWidth(0)
@@ -296,12 +296,12 @@ class MappingGroupWidget(QWidget):
             if self.has_ref_modele():
                 self._status_label.setText("Réf. Modèle assignée — mapping prêt")
                 self._status_label.setStyleSheet(
-                    "color: #28a745; font-size: 10px; padding: 1px 0;"
+                    "color: #198754; font-size: 11px; padding: 1px 0;"
                 )
             else:
                 self._status_label.setText("Réf. Modèle non assignée — import bloqué")
                 self._status_label.setStyleSheet(
-                    "color: #dc3545; font-size: 10px; padding: 1px 0;"
+                    "color: #dc3545; font-size: 11px; padding: 1px 0;"
                 )
 
     # ── API publique ─────────────────────────────────────────────────────────
@@ -874,9 +874,9 @@ class ImportDialog(QDialog):
             self.ok_btn.setIcon(import_icon)
             self.ok_btn.setIconSize(QSize(11, 11))
         self.ok_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
+            "QPushButton { background-color: #198754; color: white;"
             " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #218838; }"
+            "QPushButton:hover { background-color: #157347; }"
             "QPushButton:disabled { background-color: #94d3a2; color: #e9f7ec; }"
         )
         self.ok_btn.setDefault(True)
@@ -1896,7 +1896,7 @@ class ImportPreviewDialog(QDialog):
 
         # Comptage exact depuis v3.40.1 (réplique en lecture seule du chemin réel)
         note = QLabel("* Associations qui seront créées (les doublons déjà en base sont exclus)")
-        note.setStyleSheet("font-size: 10px; color: #999;")
+        note.setStyleSheet("font-size: 11px; color: #999;")
         layout.addWidget(note)
 
         # ── Boutons ───────────────────────────────────────────────────────
@@ -1910,9 +1910,9 @@ class ImportPreviewDialog(QDialog):
         confirm_btn = QPushButton("Confirmer l'import")
         confirm_btn.setDefault(True)
         confirm_btn.setStyleSheet(
-            "QPushButton { background: #2ecc71; color: white; font-weight: bold;"
+            "QPushButton { background: #198754; color: white; font-weight: bold;"
             " border-radius: 4px; padding: 4px 14px; }"
-            "QPushButton:hover { background: #27ae60; }"
+            "QPushButton:hover { background: #157347; }"
         )
         confirm_btn.clicked.connect(self._on_confirm)
         btn_bar.addWidget(confirm_btn)

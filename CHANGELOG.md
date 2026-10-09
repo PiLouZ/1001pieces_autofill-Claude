@@ -88,6 +88,30 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   `isHidden()`, faux tant que la fenêtre n'est pas affichée).
 - Fond de la colonne « Nb » adouci (`Config.Colors`).
 
+**Palette**
+- La palette de référence existait déjà (`Config.Colors`) mais n'était presque pas
+  utilisée. Les alias d'un même rôle y sont ramenés : bleus `#007bff` / `#0078d4`
+  → `#0d6efd` (PRIMARY), vert de validation `#28a745` → `#198754` (SUCCESS, texte
+  blanc lisible à 4,5:1 contre 3,1:1), survols correspondants, bouton
+  « Confirmer » de l'import (`#2ecc71`, contraste 2,0:1) → SUCCESS.
+- Les couleurs de catégorie (Remplace / Remplacée par / Équivalence, lignes du
+  récapitulatif d'import, types de l'historique) restent volontairement distinctes.
+  Règle documentée en tête de `StyleManager`.
+
+**Tailles de police**
+- 9 et 10 px → 11 px (27 emplacements) : 11 px devient le plancher. Échelle :
+  11 légende, 12 secondaire, 13 texte, 14 titre de dialogue, 18 titre de fenêtre.
+- Hauteur des pièces du panneau : `max(calcul existant, hauteur demandée)` pour
+  qu'aucune ligne ne soit rognée (vérifié : marge de 6 px sur le cas le plus
+  chargé — obsolète + remplacée + équivalences).
+
+**Icônes au lieu de glyphes**
+- « ⚠ Obsolète » (3 endroits) et « ✓ Référence courante » : icônes qtawesome
+  insérées dans le texte (`inline_icon_html`, rendu PNG mis en cache comme le
+  chevron des listes déroulantes).
+- Boutons « × » (effacer les filtres, retirer de la sélection) : icône `fa5s.times`
+  grise, fond rouge pâle au survol.
+
 **Typographie des libellés**
 - Capitales à la française : « Gestionnaire des pièces », « Référence pièce »,
   « Types d'appareils », « Configuration du collage ». L'en-tête du CSV exporté

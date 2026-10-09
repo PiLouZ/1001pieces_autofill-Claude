@@ -221,7 +221,7 @@ class CleanupPreviewDialog(QDialog):
         self.preview_btn.setIcon(qta.icon('fa5s.eye', color='white'))
         self.preview_btn.setIconSize(QSize(12, 12))
         self.preview_btn.setStyleSheet(
-            "QPushButton { background-color: #007bff; color: white;"
+            "QPushButton { background-color: #0d6efd; color: white;"
             " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
         )
 
@@ -229,7 +229,7 @@ class CleanupPreviewDialog(QDialog):
         self.apply_btn.setIcon(qta.icon('fa5s.check', color='white'))
         self.apply_btn.setIconSize(QSize(12, 12))
         self.apply_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
+            "QPushButton { background-color: #198754; color: white;"
             " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
         )
 

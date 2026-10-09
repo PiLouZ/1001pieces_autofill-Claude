@@ -330,7 +330,7 @@ class ReferenceSelectionDialog(QDialog):
         select_button = QPushButton("Sélectionner")
         select_button.setIcon(qta.icon('fa5s.check', color='white'))
         select_button.setIconSize(QSize(11, 11))
-        select_button.setStyleSheet("QPushButton { background-color: #28a745; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:hover { background-color: #218838; }")
+        select_button.setStyleSheet("QPushButton { background-color: #198754; color: white; padding: 3px 10px; font-size: 11px; border-radius: 4px; } QPushButton:hover { background-color: #157347; }")
         select_button.clicked.connect(self._on_select_clicked)
 
         cancel_button = QPushButton("Annuler")

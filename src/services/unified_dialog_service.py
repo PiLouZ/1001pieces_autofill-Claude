@@ -170,7 +170,7 @@ class ComplexDialogs:
         # Information sur les colonnes détectées
         if detected_columns:
             info_label = QLabel(f"Données {import_method} détectées : {detected_columns} colonnes")
-            info_label.setStyleSheet("color: #28a745; font-weight: bold; margin: 5px;")
+            info_label.setStyleSheet("color: #198754; font-weight: bold; margin: 5px;")
             layout.addWidget(info_label)
 
         # Référence par défaut
@@ -325,9 +325,9 @@ class ComplexDialogs:
         valider = QPushButton(bouton_valider)
         valider.setDefault(True)
         valider.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white; padding: 5px 14px;"
+            "QPushButton { background-color: #198754; color: white; padding: 5px 14px;"
             " border-radius: 4px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #218838; }"
+            "QPushButton:hover { background-color: #157347; }"
         )
         valider.clicked.connect(dialog.accept)
         pied.addWidget(annuler)

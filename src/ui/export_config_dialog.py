@@ -61,7 +61,7 @@ class VariableChipsBar(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet(
                 "QPushButton {"
-                "  padding: 1px 6px; font-size: 10px; font-family: monospace;"
+                "  padding: 1px 6px; font-size: 11px; font-family: monospace;"
                 "  background: #eef1f4; color: #495057;"
                 "  border: 1px solid #dee2e6; border-radius: 8px;"
                 "}"
@@ -544,9 +544,9 @@ class ExportConfigDialog(QDialog):
         save_btn.setIcon(qta.icon('fa5s.save', color='white'))
         save_btn.setIconSize(QSize(12, 12))
         save_btn.setStyleSheet(
-            "QPushButton { background-color: #28a745; color: white;"
+            "QPushButton { background-color: #198754; color: white;"
             " padding: 3px 10px; border-radius: 4px; font-size: 11px; }"
-            "QPushButton:hover { background-color: #218838; }"
+            "QPushButton:hover { background-color: #157347; }"
         )
         save_btn.clicked.connect(self._on_save)
         footer.addWidget(save_btn)
