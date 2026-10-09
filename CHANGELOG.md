@@ -4,6 +4,20 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.78.1] - 2026-10-09 (branche `fix/types-appareils-virgule`)
+
+### Gestionnaire de pièces : plus de virgule parasite dans « Types d'appareils »
+
+La colonne affichait « Lave-vaisselle, » quand un appareil associé avait un type
+**vide** (`''`) — cellule Type vidée par Suppr, ou ligne Cmd+N pas encore remplie.
+`GROUP_CONCAT` écarte `NULL` mais pas la chaîne vide. La requête ignore désormais
+les types vides ou blancs (`NULLIF(TRIM(a.type), '')`) ; le nombre d'appareils
+n'est pas touché. Requête isolée en constante (`REQUETE_PIECES_COMPLETE`) et
+testée : l'ancienne produisait `'Lave-vaisselle,,  ,Four'`, les deux nouveaux
+tests échouent dessus. L'export CSV de la liste en bénéficie aussi.
+
+---
+
 ## [3.78.0] - 2026-10-09 (branche `feature/refonte-visuelle-fenetre-principale`)
 
 ### Refonte visuelle de la fenêtre principale

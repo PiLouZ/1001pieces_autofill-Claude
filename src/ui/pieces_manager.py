@@ -784,20 +784,7 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur chargement complet pièces", show_message=True)
     def _load_pieces_data_full(self, checked=False):
         """Phase 2 : chargement complet avec comptages, types et statuts de succession."""
-        query = """
-        SELECT
-            p.ref_piece,
-            p.description,
-            COUNT(DISTINCT pa.appareil_id) as nb_appareils,
-            GROUP_CONCAT(DISTINCT a.type) as types_appareils,
-            COALESCE(p.is_phantom, 0) as is_phantom
-        FROM pieces p
-        LEFT JOIN piece_associations pa ON p.id = pa.piece_id
-        LEFT JOIN appareils a ON pa.appareil_id = a.id
-        GROUP BY p.id, p.ref_piece, p.description, p.is_phantom
-        ORDER BY nb_appareils DESC, p.ref_piece ASC
-        """
-        results = self.db_manager.execute_query(query) or []
+        results = self.db_manager.execute_query(REQUETE_PIECES_COMPLETE) or []
 
         total_pieces = len(results)
         orphan_pieces = len([r for r in results if r[2] == 0])
@@ -2399,6 +2386,25 @@ class PiecesManagerWindow(QDialog):
                 self._current_ref_piece = None
             self._load_pieces_data()
             self._add_to_main_history(ref_piece, nb_appareils)
+
+# Chargement complet du gestionnaire de pièces (comptages, types, fantômes).
+# Types : NULLIF(TRIM(…), '') — un type VIDE (cellule vidée par Suppr, ligne
+# Cmd+N non remplie) n'est pas NULL, donc GROUP_CONCAT l'ajoutait et la
+# colonne affichait « Lave-vaisselle, » (virgule finale).
+REQUETE_PIECES_COMPLETE = """
+        SELECT
+            p.ref_piece,
+            p.description,
+            COUNT(DISTINCT pa.appareil_id) as nb_appareils,
+            GROUP_CONCAT(DISTINCT NULLIF(TRIM(a.type), '')) as types_appareils,
+            COALESCE(p.is_phantom, 0) as is_phantom
+        FROM pieces p
+        LEFT JOIN piece_associations pa ON p.id = pa.piece_id
+        LEFT JOIN appareils a ON pa.appareil_id = a.id
+        GROUP BY p.id, p.ref_piece, p.description, p.is_phantom
+        ORDER BY nb_appareils DESC, p.ref_piece ASC
+        """
+
 
 def _formulaire_piece(ref: str = "", libelle: str = ""):
     """Champs Référence / Libellé communs aux fenêtres « Nouvelle pièce » et
