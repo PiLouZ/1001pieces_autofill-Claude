@@ -127,6 +127,15 @@ class StyleManager:
         "QPushButton#pieceAddSubmit:pressed { background: #0a58ca; }"
     )
 
+    # Barre de filtres compacte des fenêtres secondaires : liste déroulante, champs
+    # texte et dates à la même hauteur (le style global des champs, 8 px de marge,
+    # rendait la liste déroulante deux fois plus haute que les champs de date).
+    COMPACT_FILTER_BAR = (
+        "QComboBox, QLineEdit, QDateEdit { padding: 3px 8px; min-height: 20px;"
+        " border: 1px solid #ced4da; border-radius: 4px; background: white; }"
+        "QComboBox:focus, QLineEdit:focus, QDateEdit:focus { border-color: #80bdff; }"
+    )
+
     # Surlignage temporaire d'une pièce tout juste ajoutée (vert pâle, 2 s)
     PIECE_ADDED_HIGHLIGHT = "#d1e7dd"
 
@@ -283,6 +292,17 @@ class StyleManager:
         }
         
         QComboBox::down-arrow {
+            %%ARROW_RULE%%
+        }
+
+        /* Champs de date à calendrier : même chevron que les listes déroulantes
+           (sinon bloc sombre natif) */
+        QDateEdit::drop-down {
+            border: none;
+            width: 20px;
+        }
+
+        QDateEdit::down-arrow {
             %%ARROW_RULE%%
         }
         
@@ -654,13 +674,19 @@ class StyleManager:
         }
 
         /* === TOOLTIPS === */
+        /* Infobulles sombres et compactes (esprit macOS natif) : se détachent
+           des fenêtres blanches sans cadre.
+           Piège mesuré : sur une infobulle, Qt convertit `padding` en UNE marge
+           identique sur les 4 côtés (2 px + la plus grande valeur) — « 3px 7px »
+           donnait 9 px partout. D'où une valeur unique et petite : 41 px de haut
+           pour 2 lignes, contre ~59 px avant. */
         QToolTip {
-            background-color: #ffffff;
-            color: #2c3e50;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 12px;
+            background-color: #343a40;
+            color: #f8f9fa;
+            border: 1px solid #343a40;
+            border-radius: 4px;
+            padding: 2px;
+            font-size: 11px;
             font-family: -apple-system, 'SF Pro Display', system-ui, 'Helvetica Neue', sans-serif;
         }
 

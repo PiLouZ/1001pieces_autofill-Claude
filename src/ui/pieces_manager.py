@@ -185,7 +185,7 @@ class PiecesManagerWindow(QDialog):
 
         # Titre et statistiques
         header_layout = QHBoxLayout()
-        title_label = QLabel("Gestionnaire des Pièces")
+        title_label = QLabel("Gestionnaire des pièces")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
         header_layout.addWidget(title_label)
 
@@ -319,7 +319,7 @@ class PiecesManagerWindow(QDialog):
         self.pieces_table = PiecesTableWidget()
         self.pieces_table.setColumnCount(6)
         self.pieces_table.setHorizontalHeaderLabels([
-            "Référence Pièce", "Libellé", "Nb", "Statut", "Types d'Appareils", ""
+            "Référence pièce", "Libellé", "Nb", "Statut", "Types d'appareils", ""
         ])
 
         # Configuration du tableau — Libellé en Interactive (redimensionnable par l'utilisateur),
@@ -328,13 +328,13 @@ class PiecesManagerWindow(QDialog):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Référence
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Libellé (redimensionnable)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)        # Nb
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)        # Statut
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Statut
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)      # Types d'Appareils
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)        # Actions
         self.pieces_table.setColumnWidth(0, 130)   # Référence Pièce
         self.pieces_table.setColumnWidth(1, 220)   # Libellé
         self.pieces_table.setColumnWidth(2, 55)    # Nb
-        self.pieces_table.setColumnWidth(3, 78)    # Statut
+        self.pieces_table.setColumnWidth(3, 130)   # Statut (78 tronquait « → … », « Remp… »)
         self.pieces_table.setColumnWidth(5, 72)    # Actions (3 boutons × 22px)
 
         self.pieces_table.setAlternatingRowColors(True)
@@ -631,6 +631,9 @@ class PiecesManagerWindow(QDialog):
             btn_row.addStretch()
             succ_combined_layout.addLayout(btn_row)
             self._action_sections.append((title_lbl, buttons))
+        # État initial : aucune sélection → titres masqués (ils restaient affichés,
+        # orphelins, jusqu'au premier changement de sélection)
+        self._sync_action_sections()
 
         sections_splitter.addWidget(succession_combined)
         sections_splitter.setStretchFactor(0, 3)
@@ -810,11 +813,15 @@ class PiecesManagerWindow(QDialog):
         # bien réelles sans libellé).
         unlabeled_str = (f"  •  {pluralize(unlabeled_pieces, 'sans libellé', 'sans libellé')}"
                          if unlabeled_pieces else "")
+        def _milliers(nombre: int) -> str:
+            # 4771467 → « 4 771 467 » (espace fine insécable, usage français)
+            return f"{nombre:,}".replace(",", "\u202f")
+
         self.stats_label.setText(
-            f"{pluralize(total_pieces, 'référence')}  •  "
+            f"{_milliers(total_pieces)} référence{'s' if total_pieces > 1 else ''}  •  "
             f"{pluralize(orphan_pieces, 'orpheline')}"
             f"{phantom_str}{unlabeled_str}  •  "
-            f"{pluralize(total_associations, 'association')}"
+            f"{_milliers(total_associations)} association{'s' if total_associations > 1 else ''}"
         )
 
         self.all_pieces_data = results
@@ -966,7 +973,8 @@ class PiecesManagerWindow(QDialog):
             elif status == 'superseded':
                 ref_new = status_info.get('ref_new', '')
                 _icon = qta.icon('fa5s.long-arrow-alt-right', color='#e67e22')
-                _status_text = f"→ {ref_new}" if ref_new else "Remplacée"
+                # L'icône est déjà une flèche : pas de « → » en plus dans le texte
+                _status_text = ref_new if ref_new else "Remplacée"
                 _status_tip = f"Remplacée par {ref_new}" if ref_new else "Remplacée"
             elif status == 'replacing':
                 _raw = status_info.get('refs_old') or []
@@ -1580,8 +1588,10 @@ class PiecesManagerWindow(QDialog):
     def _sync_action_sections(self):
         """Masquer le mini-titre d'une sous-section d'actions si aucun de ses
         boutons n'est visible (Approche A)."""
+        # isHidden() et non isVisible() : isVisible() vaut False tant que la
+        # fenêtre n'est pas affichée, même pour un bouton destiné à apparaître.
         for title_lbl, buttons in getattr(self, '_action_sections', []):
-            title_lbl.setVisible(any(b.isVisible() for b in buttons))
+            title_lbl.setVisible(any(not b.isHidden() for b in buttons))
 
     def _refresh_succession_panel_impl(self, ref_piece):
         """Mettre à jour le panneau Succession pour la pièce courante (dernière sélectionnée)."""
@@ -1593,6 +1603,11 @@ class PiecesManagerWindow(QDialog):
         # Option B : les sections restent TOUJOURS visibles (vidées) pour un
         # layout stable — comme le fait déjà ≡ Équivalences. Plus aucun bloc
         # ne « disparaît » quand rien n'est sélectionné.
+        # Messages d'état vide : seulement en sélection unique (sinon trompeurs)
+        _single = has_selection and ref_piece is not None and n == 1
+        self.superseded_by_tag_list.set_empty_text("Non remplacée" if _single else "")
+        self.replaces_tag_list.set_empty_text("Ne remplace aucune référence" if _single else "")
+
         if not has_selection or ref_piece is None:
             self.succession_status_label.setText("Sélectionnez une pièce pour voir son statut.")
             self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
@@ -1980,6 +1995,8 @@ class PiecesManagerWindow(QDialog):
         has_selection = n > 0
 
         self.btn_link_equiv.setEnabled(has_selection)
+        self.equiv_tag_list.set_empty_text(
+            "Aucune équivalence" if has_selection and ref_piece is not None and n == 1 else "")
 
         # ── Aucune sélection ──────────────────────────────────────────────
         if not has_selection or ref_piece is None:

@@ -216,7 +216,7 @@ class ToolbarService:
         config_btn.setObjectName("menuButton")
         config_menu = QMenu()
 
-        paste_config_action = QAction("Configuration Collage", self.main_window)
+        paste_config_action = QAction("Configuration du collage", self.main_window)
         paste_config_action.setToolTip("Configurer le nettoyage automatique des extensions collées")
         paste_config_action.triggered.connect(self._configure_paste_cleanup)
         config_menu.addAction(paste_config_action)
@@ -270,7 +270,7 @@ class ToolbarService:
         class PasteConfigDialog(QDialog):
             def __init__(self, parent=None):
                 super().__init__(parent)
-                self.setWindowTitle("Configuration du Collage Automatique")
+                self.setWindowTitle("Configuration du collage automatique")
                 self.setModal(True)
                 self.setup_ui()
                 

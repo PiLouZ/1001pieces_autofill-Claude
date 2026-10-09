@@ -617,7 +617,7 @@ class DuplicatePiecesWidget(QWidget):
         # Table des pièces
         self.pieces_table = QTableWidget()
         self.pieces_table.setColumnCount(3)
-        self.pieces_table.setHorizontalHeaderLabels(["Supprimer", "Référence Pièce", "Nombre de doublons"])
+        self.pieces_table.setHorizontalHeaderLabels(["Supprimer", "Référence pièce", "Nombre de doublons"])
         self.pieces_table.horizontalHeader().setStretchLastSection(True)
         # Tri par clic sur en-tête (ex. trier par nombre de doublons). Les cases sont
         # des items checkables (et non des QCheckBox en cellWidget) : la coche voyage

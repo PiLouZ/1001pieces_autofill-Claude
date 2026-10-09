@@ -62,6 +62,37 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   `PieceManagementService.add_piece` renvoie désormais un booléen de succès.
 - La liste ne colle plus à la poignée du séparateur (marge basse de 8 px).
 
+**Infobulles**
+- Sombres et compactes (fond `#343a40`, texte 11 px) : 41 px de haut pour deux
+  lignes, contre ~59 px. Piège mesuré : sur une infobulle, Qt convertit `padding`
+  en une marge unique sur les 4 côtés (2 px + la plus grande valeur), d'où
+  `padding: 2px`.
+
+**Historique persistant**
+- Colonnes lisibles : « Appareil » ne se cale plus sur son contenu (il réduisait
+  Description / Ancienne / Nouvelle à « crip », « ne », « lle ») ; texte complet en
+  infobulle au-delà de 20 caractères ; fenêtre ouverte en 1200 × 650.
+- Dates au format des filtres (`09/10/2026 10:09`).
+- Liste « Type », champs de date et recherche à la même hauteur ; chevron des
+  champs de date aligné sur celui des listes déroulantes (règle globale `QDateEdit`).
+
+**Gestionnaire de pièces**
+- Colonne Statut 78 → 130 px, redimensionnable : « → … », « Remp… », « Équiv… »
+  sont désormais entiers ; plus de « → » redondant avec l'icône flèche.
+- Compteurs avec séparateur de milliers (« 4 771 467 associations »).
+- Panneau de droite : cadres blancs au lieu de gris ; « Aucune équivalence »,
+  « Ne remplace aucune référence », « Non remplacée » en sélection unique
+  (`RefTagList.set_empty_text`, mode pleine hauteur seulement).
+- Titres « SUCCESSION » / « ÉQUIVALENCES » masqués à l'ouverture : ils restaient
+  orphelins jusqu'au premier changement de sélection (`isVisible()` remplacé par
+  `isHidden()`, faux tant que la fenêtre n'est pas affichée).
+- Fond de la colonne « Nb » adouci (`Config.Colors`).
+
+**Typographie des libellés**
+- Capitales à la française : « Gestionnaire des pièces », « Référence pièce »,
+  « Types d'appareils », « Configuration du collage ». L'en-tête du CSV exporté
+  (« Référence Pièce ») n'est pas modifié : c'est une donnée, pas un libellé.
+
 **Édition dans le tableau**
 - Le champ d'édition d'une cellule (double-clic / F2) héritait de la marge
   intérieure de 8 px des champs de formulaire : le texte était rogné, illisible à

@@ -65,6 +65,8 @@ class RefTagList(QWidget):
 
         self._refs = []
         self._full_height_mode = False
+        # Message affiché quand la liste est vide (mode pleine hauteur seulement)
+        self._empty_text = ""
         self.setVisible(False)
 
     # ── API publique ─────────────────────────────────────────────────────────
@@ -108,6 +110,13 @@ class RefTagList(QWidget):
                 row_widget = self._make_row(ref, desc, color)
                 self._layout.addWidget(row_widget)
 
+            if n == 0 and self._full_height_mode and self._empty_text:
+                empty = QLabel(self._empty_text)
+                empty.setAlignment(Qt.AlignCenter)
+                empty.setWordWrap(True)
+                empty.setStyleSheet("color: #adb5bd; font-size: 11px; padding-top: 12px;")
+                self._layout.addWidget(empty)
+
             self._layout.addStretch()
 
             if not self._full_height_mode:
@@ -128,6 +137,15 @@ class RefTagList(QWidget):
         self.setVisible(True)
         self._scroll.setMaximumHeight(16777215)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        # Fond du cadre parent plutôt que le gris par défaut de la zone défilante
+        # (grands blocs gris vides dans le panneau du gestionnaire de pièces)
+        self._scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self._scroll.viewport().setAutoFillBackground(False)
+
+    def set_empty_text(self, text: str):
+        """Message centré et estompé affiché quand la liste est vide (mode pleine
+        hauteur). Pris en compte au prochain set_refs()."""
+        self._empty_text = text
 
     # ── Interne ──────────────────────────────────────────────────────────────
 
