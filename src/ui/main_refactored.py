@@ -514,7 +514,8 @@ class MainWindow(QMainWindow):
         # Partie haute - Onglets pour les pièces
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(0, 0, 0, 0)  # retire le double niveau de marges internes
+        # Marge basse : décolle la liste de la poignée du séparateur (elle collait)
+        top_layout.setContentsMargins(0, 0, 0, 8)
         top_layout.setSpacing(2)
         
         # ── En-tête : nom appareil + bouton rafraîchir ──────────────────────
@@ -556,33 +557,21 @@ class MainWindow(QMainWindow):
 
         top_layout.addWidget(header_widget)
 
+        # Carte « nouvelle pièce » en tête de liste (masquée, ouverte par ＋).
+        # piece_input / piece_libelle_input restent les points d'accès lus par
+        # PieceManagementService.add_piece.
+        from .piece_add_card import PieceAddCard
+        self.piece_add_card = PieceAddCard(on_submit=self._add_piece)
+        self.piece_input = self.piece_add_card.ref_input
+        self.piece_libelle_input = self.piece_add_card.libelle_input
+        add_toggle_btn.clicked.connect(
+            lambda: self.piece_add_card.toggle(len(self.pieces_panel_service._get_selected_rows()))
+        )
+        top_layout.addWidget(self.piece_add_card)
+
         # Liste des pièces directement (plus de QTabWidget)
         self.pieces_list = self.pieces_list_service.create_pieces_list_widget()
         top_layout.addWidget(self.pieces_list, 1)
-
-        # Formulaire d'ajout de pièce (masqué par défaut, toggle via ＋)
-        pieces_add_widget = QWidget()
-        pieces_add_widget.setVisible(False)
-        pieces_add_layout = QVBoxLayout(pieces_add_widget)
-        pieces_add_layout.setContentsMargins(4, 4, 4, 4)
-        pieces_add_layout.setSpacing(4)
-
-        self.piece_input = QLineEdit()
-        self.piece_input.setPlaceholderText("Référence de la pièce...")
-        pieces_add_layout.addWidget(self.piece_input)
-
-        self.piece_libelle_input = QLineEdit()
-        self.piece_libelle_input.setPlaceholderText("Libellé de la pièce (optionnel)...")
-        pieces_add_layout.addWidget(self.piece_libelle_input)
-
-        add_piece_btn = QPushButton("Ajouter")
-        add_piece_btn.clicked.connect(self._add_piece)
-        pieces_add_layout.addWidget(add_piece_btn)
-
-        add_toggle_btn.clicked.connect(
-            lambda: pieces_add_widget.setVisible(not pieces_add_widget.isVisible())
-        )
-        top_layout.addWidget(pieces_add_widget)
         pieces_splitter.addWidget(top_widget)
 
         # Partie basse - Historique des modifications
@@ -1574,8 +1563,15 @@ class MainWindow(QMainWindow):
         self.search_input.setFocus()
 
     def _add_piece(self):
-        """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService"""
-        self.piece_management_service.add_piece()
+        """Ajouter une pièce - Phase 2.14: Délégation vers PieceManagementService.
+
+        Ajout réussi : la carte se referme et la pièce est surlignée en vert 2 s.
+        Échec : la carte reste ouverte, saisie conservée.
+        """
+        ref_piece = self.piece_input.text().strip()
+        if self.piece_management_service.add_piece():
+            self.piece_add_card.close_card()
+            self.pieces_list.highlight_piece(ref_piece, StyleManager.PIECE_ADDED_HIGHLIGHT)
 
     def _edit_piece(self, item: QListWidgetItem):
         """Éditer une pièce - Phase 2.14: Délégation vers PieceManagementService"""

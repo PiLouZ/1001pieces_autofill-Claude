@@ -34,6 +34,11 @@ class PiecesPanelService:
         self.main_window.pieces_list.clear()
         selected_rows = self._get_selected_rows()
 
+        # Carte « nouvelle pièce » ouverte : sa cible suit la sélection
+        card = getattr(self.main_window, 'piece_add_card', None)
+        if card is not None and card.isVisible():
+            card.set_target_count(len(selected_rows))
+
         if not selected_rows:
             self._show_placeholder()
             self._update_header(label="", count=0)

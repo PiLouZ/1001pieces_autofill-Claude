@@ -473,6 +473,34 @@ class PiecesListWidget(QListWidget):
         self._placeholder_text = text
         self.viewport().update()
 
+    def highlight_piece(self, ref_piece: str, color: str, duration_ms: int = 2000):
+        """Surligner brièvement la pièce `ref_piece` (ex. tout juste ajoutée).
+
+        Le fond est posé sur le widget de la pièce, pas sur l'item : la feuille de
+        style globale (règle QListWidget::item) fait ignorer le fond des items.
+        Si la liste a été reconstruite entre-temps (changement de sélection), le
+        widget a été détruit : la restauration est simplement ignorée.
+        """
+        for i in range(self.count()):
+            item = self.item(i)
+            if item.data(Qt.UserRole) != ref_piece:
+                continue
+            widget = self.itemWidget(item)
+            if widget is None:
+                return
+            # Nécessaire pour qu'un QWidget dérivé peigne le fond de sa feuille de style
+            widget.setAttribute(Qt.WA_StyledBackground, True)
+            widget.setStyleSheet(f"PieceItemWidget {{ background-color: {color}; }}")
+            self.scrollToItem(item)
+
+            def _restore(w=widget):
+                try:
+                    w.setStyleSheet("")
+                except RuntimeError:
+                    pass  # widget détruit par un clear() de la liste entre-temps
+            QTimer.singleShot(duration_ms, _restore)
+            return
+
     def paintEvent(self, event):
         """Peindre le message d'état vide au centre (même principe que le tableau)."""
         super().paintEvent(event)

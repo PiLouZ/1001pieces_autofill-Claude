@@ -106,6 +106,30 @@ class StyleManager:
         "QPushButton:hover { background-color: #e9ecef; }"
     )
 
+    # Carte « nouvelle pièce » du panneau des pièces (PieceAddCard) : contour
+    # pointillé bleu = élément en cours de création ; champs et boutons compacts
+    # (le style global des champs, 8 px de marge, est trop haut pour ce panneau).
+    PIECE_ADD_CARD = (
+        "QFrame#pieceAddCard { background: white; border: 1px dashed #80bdff; border-radius: 6px; }"
+        "QFrame#pieceAddCard QLineEdit { padding: 3px 8px; border: 1px solid #ced4da;"
+        " border-radius: 4px; font-size: 12px; background: white; }"
+        "QFrame#pieceAddCard QLineEdit:focus { border-color: #80bdff; }"
+        "QLineEdit#pieceAddRef { font-weight: bold; }"
+        "QLabel#pieceAddTarget { background: #e7f1ff; color: #0b5ed7; border-radius: 3px;"
+        " padding: 1px 6px; font-size: 11px; }"
+        "QLabel#pieceAddHint { color: #adb5bd; font-size: 11px; }"
+        "QPushButton#pieceAddCancel { background: transparent; border: none; color: #6c757d;"
+        " padding: 3px 8px; font-size: 12px; font-weight: normal; min-height: 0px; }"
+        "QPushButton#pieceAddCancel:hover { color: #212529; background: #e9ecef; border-radius: 4px; }"
+        "QPushButton#pieceAddSubmit { background: #0d6efd; color: white; border: none;"
+        " border-radius: 4px; padding: 3px 12px; font-size: 12px; font-weight: 600; min-height: 0px; }"
+        "QPushButton#pieceAddSubmit:hover { background: #0b5ed7; }"
+        "QPushButton#pieceAddSubmit:pressed { background: #0a58ca; }"
+    )
+
+    # Surlignage temporaire d'une pièce tout juste ajoutée (vert pâle, 2 s)
+    PIECE_ADDED_HIGHLIGHT = "#d1e7dd"
+
     @staticmethod
     def get_modern_style() -> str:
         """Retourner le style CSS moderne complet de l'application"""
@@ -241,6 +265,15 @@ class StyleManager:
         
         QLineEdit:hover, QTextEdit:hover, QComboBox:hover {
             border-color: #adb5bd;
+        }
+
+        /* Éditeur de cellule des tableaux (double-clic / F2) : sans la marge
+           intérieure de 8 px des champs de formulaire, qui ne laissait que 7 px au
+           texte dans une ligne de 26 px. Bordure bleue = cellule en édition. */
+        QTableView QLineEdit {
+            padding: 0px 4px;
+            border: 1px solid #80bdff;
+            border-radius: 0px;
         }
 
         /* === COMBOBOX SPECIFIQUE === */

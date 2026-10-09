@@ -35,8 +35,12 @@ class PieceManagementService:
         # Cache pour éviter de redemander les confirmations de mise à jour
         self._piece_description_decisions = {}
     
-    def add_piece(self) -> None:
-        """Ajouter une pièce aux appareils sélectionnés"""
+    def add_piece(self) -> bool:
+        """Ajouter une pièce aux appareils sélectionnés.
+
+        Returns:
+            True si la pièce a été ajoutée à au moins un appareil.
+        """
         # Récupérer la référence et le libellé
         ref_piece = self.main_window.piece_input.text().strip()
         libelle_piece = self.main_window.piece_libelle_input.text().strip()
@@ -58,18 +62,18 @@ class PieceManagementService:
         
         if not selected_rows:
             self.main_window.user_interaction_service.show_info(Config.get_message('no_selection'))
-            return
+            return False
         
         if not ref_piece:
             self.main_window.user_interaction_service.show_info(Config.get_message('no_piece_ref'))
-            return
+            return False
         
         # Validation des caractères spéciaux
         if any(char in ref_piece for char in ['||', '&&']):
             self.main_window.user_interaction_service.show_error(
                 "La référence de pièce ne peut pas contenir les caractères '||' ou '&&'"
             )
-            return
+            return False
         
         success_count = 0
         error_count = 0
@@ -128,6 +132,8 @@ class PieceManagementService:
             self.main_window.user_interaction_service.show_error(error_msg)
         elif error_count > 5:
             self.main_window.user_interaction_service.show_error(f"{error_count} erreurs détectées (trop nombreuses pour être affichées)")
+
+        return success_count > 0
 
     @handle_ui_errors(log_prefix="Erreur ouverture pièce", show_message=True)
     def edit_piece(self, item: QListWidgetItem) -> None:

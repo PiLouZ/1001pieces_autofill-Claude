@@ -54,6 +54,18 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   « Sélectionnez un appareil… », et nouveau « Aucune pièce associée à cet appareil »
   (le panneau restait blanc, sans explication).
 - Boutons ↺ et ＋ remplacés par des icônes qtawesome plates.
+- Ajout de pièce refondu : carte « nouvelle pièce » en tête de liste
+  (`src/ui/piece_add_card.py`), même forme qu'une pièce, avec le nombre d'appareils
+  visés (« → 2 appareils », suit la sélection). Entrée ajoute, Échap annule, bouton
+  Annuler. Après un ajout réussi, la carte se referme et la pièce est surlignée en
+  vert 2 s ; en cas d'erreur, elle reste ouverte avec la saisie.
+  `PieceManagementService.add_piece` renvoie désormais un booléen de succès.
+- La liste ne colle plus à la poignée du séparateur (marge basse de 8 px).
+
+**Édition dans le tableau**
+- Le champ d'édition d'une cellule (double-clic / F2) héritait de la marge
+  intérieure de 8 px des champs de formulaire : le texte était rogné, illisible à
+  26 px. Règle `QTableView QLineEdit` dédiée (marge 0 × 4 px, bordure bleue).
 
 Vérifié par rendu de la vraie `MainWindow` (offscreen, copie de la base) : hauteurs
 22/26/30 px identiques entre tableau et colonne figée, numéros de ligne et pastilles
