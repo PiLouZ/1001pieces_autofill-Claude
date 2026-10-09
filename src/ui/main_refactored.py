@@ -2453,37 +2453,42 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         # Titre
-        title_label = QLabel("<b>Gestion de l'index de recherche plein texte (FTS5)</b>")
+        title_label = QLabel("<b>Index de recherche plein texte (FTS5)</b>")
         title_label.setStyleSheet("font-size: 14px; margin-bottom: 4px;")
         layout.addWidget(title_label)
 
-        # Explication
+        # Explication — texte riche EXPLICITE : sans setTextFormat, Qt prenait ce
+        # texte (qui ne commence pas par une balise) pour du texte brut et
+        # affichait les balises <code> / <b> telles quelles.
         info_text = (
-            "L'index FTS5 accélère drastiquement les recherches en remplaçant les\n"
-            "requêtes <code>LIKE '%terme%'</code> (full table scan) par une recherche\n"
-            "indexée par trigrammes. Résultat : ~10× plus rapide sur 600k enregistrements.\n\n"
-            "<b>La construction prend ~2 secondes. L'application reste responsive.</b>"
+            "<p>L'index accélère la recherche par fragment (ex. « 802A ») dans les "
+            "colonnes des <b>appareils</b> : type, fabricant et références.</p>"
+            "<p>Il ne sert pas quand la recherche principale porte sur les "
+            "<b>références de pièces</b>, ce qui est le réglage actuel de l'application. "
+            "La construction prend quelques secondes.</p>"
         )
         info_label = QLabel(info_text)
+        info_label.setTextFormat(Qt.RichText)
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
-        # Statut de l'index
+        # Statut de l'index : dit si l'index sert RÉELLEMENT (fts5_utilisable), et
+        # non seulement s'il est construit
         def get_status_text():
             try:
                 populated = self.db_manager.is_fts5_populated()
-                active = Config.USE_FTS5
-                if populated:
-                    count = self.db_manager.get_fts5_row_count()
-                    active_str = "Actif" if active else "Construit mais non activé"
-                    return f"Statut : {active_str} — {count:,} enregistrements indexés".replace(",", " ")
-                else:
-                    return "Statut : Index non construit"
+                count = self.db_manager.get_fts5_row_count() if populated else 0
+                construit = (f"construit ({count:,} appareils indexés)".replace(",", "\u202f")
+                             if populated else "non construit")
+                if not self.db_manager.fts5_utilisable():
+                    return f"Statut : non utilisé par la recherche actuelle — index {construit}"
+                return f"Statut : actif — index {construit}" if populated else "Statut : index non construit"
             except Exception as e:
-                return f"Statut : Erreur — {e}"
+                return f"Statut : erreur — {e}"
 
         status_label = QLabel(get_status_text())
-        status_label.setStyleSheet("font-weight: bold; padding: 6px; background: #f0f0f0; border-radius: 4px;")
+        status_label.setWordWrap(True)
+        status_label.setStyleSheet("font-weight: bold; padding: 6px 8px; background: #f1f3f5; border-radius: 4px;")
         layout.addWidget(status_label)
 
         layout.addStretch()
@@ -2511,9 +2516,7 @@ class MainWindow(QMainWindow):
             try:
                 count = self.db_manager.rebuild_fts5()
                 Config.USE_FTS5 = True
-                status_label.setText(
-                    f"Statut : Actif — {count:,} enregistrements indexés".replace(",", " ")
-                )
+                status_label.setText(get_status_text())
                 rebuild_btn.setText("Index construit")
                 rebuild_btn.setIcon(qta.icon('fa5s.check', color='#27ae60'))
                 if hasattr(self, 'statusBar'):
@@ -2541,14 +2544,8 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(buttons_layout)
 
-        # Note persistance
-        persist_note = QLabel(
-            "<i>Note : l'activation est en mémoire pour cette session. "
-            "Pour la rendre permanente, définir <code>USE_FTS5 = True</code> dans <code>src/core/config.py</code>.</i>"
-        )
-        persist_note.setWordWrap(True)
-        persist_note.setStyleSheet("color: #666; font-size: 11px; margin-top: 8px;")
-        layout.addWidget(persist_note)
+        # (Ancienne note « définir USE_FTS5 = True dans config.py » retirée : le
+        # réglage est déjà actif ; seule SEARCH_PIECES_ONLY décide de l'usage.)
 
         dialog.exec_()
 

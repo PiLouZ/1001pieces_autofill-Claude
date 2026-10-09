@@ -9,6 +9,7 @@ Onglet HTML : templates marques et détails avec preview en temps réel
 import os
 
 import qtawesome as qta
+from .flow_layout import FlowLayout
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
@@ -51,9 +52,10 @@ class VariableChipsBar(QWidget):
         self._targets = list(targets)
         self._active_target = self._targets[-1] if self._targets else None
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        # Disposition qui passe à la ligne : une rangée unique compressait les
+        # puces sous leur taille utile et coupait leur texte quand la fenêtre
+        # était étroite.
+        layout = FlowLayout(self, spacing=4)
 
         for name, description in variables:
             btn = QPushButton("{" + name + "}")
@@ -69,7 +71,6 @@ class VariableChipsBar(QWidget):
             )
             btn.clicked.connect(lambda _checked, n=name: self._insert_variable(n))
             layout.addWidget(btn)
-        layout.addStretch()
 
         for target in self._targets:
             self._target_widget(target).installEventFilter(self)

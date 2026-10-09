@@ -19,6 +19,7 @@ from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QCompleter, QStringListModel, QRadioButton, QButtonGroup,
                              QSizePolicy, QSize, QSplitter, pyqtSignal)
 
+from PyQt5.QtWidgets import QLayout
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
 
@@ -348,7 +349,10 @@ class ImportDialog(QDialog):
             self.setMinimumHeight(720)
             self.resize(1280, 900)
         else:
-            self.setMinimumHeight(1000)
+            # Fichier unique : hauteur ajustée au contenu après chargement
+            # (cf _ajuster_hauteur_fichier_unique). L'ancien minimum de 1000 px
+            # laissait ~500 px vides sous le formulaire.
+            self.setMinimumHeight(480)
 
         # PHASE 2.1: Flag pour indiquer si les données sont chargées
         self._data_loaded = False
@@ -396,10 +400,39 @@ class ImportDialog(QDialog):
 
         # Maintenant, peupler l'interface avec les vraies données
         self._populate_data()
+        self._ajuster_hauteur_fichier_unique()
+
+    def _ajuster_hauteur_fichier_unique(self):
+        """Fichier unique : la fenêtre prend la hauteur de son contenu (bornée par
+        l'écran). Multi-fichiers : taille fixée à la construction, inchangée."""
+        if self.import_config.import_type == ImportType.MULTI_FILE:
+            return
+        # Recalcul forcé de la mise en page AVANT de mesurer : sinon sizeHint()
+        # ignore la nouvelle hauteur de l'aperçu et la fenêtre est réduite sous
+        # le minimum de son contenu (blocs comprimés, lien chevauchant l'aperçu).
+        if self.layout() is not None:
+            self.layout().activate()
+        hauteur = max(self.minimumHeight(), self.sizeHint().height(),
+                      self.minimumSizeHint().height())
+        ecran = self.screen()
+        if ecran is not None:   # bornée par l'écran, seulement s'il est connu
+            hauteur = min(hauteur, ecran.availableGeometry().height() - 60)
+        self.resize(self.width(), hauteur)
 
     def _setup_ui(self):
         """Créer l'interface utilisateur"""
         layout = QVBoxLayout()
+        if self.import_config.import_type != ImportType.MULTI_FILE:
+            # Fichier unique : la fenêtre ne descend jamais sous le minimum de son
+            # contenu et s'agrandit seule quand il grandit (aperçu, panneau de
+            # mapping, section Succession remplis ou ouverts après coup). Sans
+            # cela, les blocs se comprimaient : le lien « Adapter le mapping »
+            # chevauchait l'aperçu.
+            layout.setSizeConstraint(QLayout.SetMinimumSize)
+            # Cette contrainte remplace aussi la largeur minimale : un « étai »
+            # inscrit les 1000 px dans le contenu lui-même.
+            marges = layout.contentsMargins()
+            layout.addStrut(self.minimumWidth() - marges.left() - marges.right())
         
         # Section format reconnu et aperçu des données
         format_group = QGroupBox("Format reconnu et aperçu")
@@ -1027,12 +1060,20 @@ class ImportDialog(QDialog):
         """Définit le texte de l'aperçu et ajuste la hauteur pour éviter l'ascenseur."""
         self.preview_text.setPlainText(text)
         n_lines = text.count('\n') + 1 if text else 0
-        self.preview_text.setFixedHeight(max(n_lines * 16 + 6, 30))
+        # Hauteur d'une ligne mesurée sur la police EFFECTIVE (feuille de style
+        # appliquée) : l'ancienne estimation fixe de 16 px coupait la dernière
+        # ligne de l'aperçu à mi-hauteur.
+        self.preview_text.ensurePolished()
+        interligne = self.preview_text.fontMetrics().lineSpacing()
+        marges = int(self.preview_text.document().documentMargin() * 2) + self.preview_text.frameWidth() * 2
+        self.preview_text.setFixedHeight(max(n_lines * interligne + marges + 2, 30))
+
 
     def _toggle_succ(self):
         """Ouvre/ferme la section Succession."""
         visible = not self._succ_content.isVisible()
         self._succ_content.setVisible(visible)
+        self._ajuster_hauteur_fichier_unique()   # la section ouverte ne doit pas être écrasée
         arrow = "▼" if visible else "▶"
         text = self._succ_toggle_btn.text()
         self._succ_toggle_btn.setText(arrow + text[1:])

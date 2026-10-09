@@ -53,14 +53,17 @@ class LogViewer(QDialog):
         control_layout = QHBoxLayout()
         
         # Sélecteur de type de log
-        control_layout.addWidget(QLabel("Type de log:"))
+        control_layout.addWidget(QLabel("Type de log :"))
         self.log_type_combo = QComboBox()
-        self.log_type_combo.addItems(["detailed", "errors", "data_operations"])
-        self.log_type_combo.currentTextChanged.connect(self.on_log_type_changed)
+        # Libellés français ; la clé du fichier de log reste en donnée associée
+        for libelle, cle in (("Détaillé", "detailed"), ("Erreurs", "errors"),
+                             ("Opérations sur les données", "data_operations")):
+            self.log_type_combo.addItem(libelle, cle)
+        self.log_type_combo.currentIndexChanged.connect(self.on_log_type_changed)
         control_layout.addWidget(self.log_type_combo)
         
         # Nombre de lignes
-        control_layout.addWidget(QLabel("Lignes:"))
+        control_layout.addWidget(QLabel("Lignes :"))
         self.lines_spinbox = QSpinBox()
         self.lines_spinbox.setRange(10, 1000)
         self.lines_spinbox.setValue(100)
@@ -68,7 +71,7 @@ class LogViewer(QDialog):
         control_layout.addWidget(self.lines_spinbox)
         
         # Filtre de recherche
-        control_layout.addWidget(QLabel("Filtre:"))
+        control_layout.addWidget(QLabel("Filtre :"))
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText("Rechercher dans les logs...")
         self.filter_input.textChanged.connect(self.apply_filter)
@@ -85,7 +88,7 @@ class LogViewer(QDialog):
         self.refresh_button.clicked.connect(self.load_logs)
         control_layout.addWidget(self.refresh_button)
 
-        self.auto_refresh_button = QPushButton("Auto-actualisation: ON")
+        self.auto_refresh_button = QPushButton("Actualisation auto : activée")
         self.auto_refresh_button.setStyleSheet("QPushButton { padding: 2px 8px; font-size: 11px; } QPushButton:hover { background: rgba(0,0,0,0.07); border-radius: 3px; }")
         self.auto_refresh_button.clicked.connect(self.toggle_auto_refresh)
         control_layout.addWidget(self.auto_refresh_button)
@@ -97,7 +100,11 @@ class LogViewer(QDialog):
         self.clear_button.clicked.connect(self.clear_logs)
         control_layout.addWidget(self.clear_button)
         
-        layout.addLayout(control_layout)
+        # Contrôles de même hauteur (liste, champ de filtre) — cf. historique persistant
+        control_widget = QWidget()
+        control_widget.setLayout(control_layout)
+        control_widget.setStyleSheet(StyleManager.COMPACT_FILTER_BAR)
+        layout.addWidget(control_widget)
 
         # Barre de navigation (remplace QTabWidget)
         nav_layout = QHBoxLayout()
@@ -107,9 +114,9 @@ class LogViewer(QDialog):
         self._nav_stack = QStackedWidget()
 
         _nav_defs = [
-            ("Logs Bruts",         'fa5s.list',     '#2980b9'),
+            ("Logs bruts",         'fa5s.list',     '#2980b9'),
             ("Auto-complétion",    'fa5s.magic',    '#e67e22'),
-            ("Opérations Données", 'fa5s.database', '#8e44ad'),
+            ("Opérations sur les données", 'fa5s.database', '#8e44ad'),
         ]
         for i, (label, icon_name, icon_color) in enumerate(_nav_defs):
             btn = QPushButton(label)
@@ -139,7 +146,10 @@ class LogViewer(QDialog):
         self.raw_logs_tab = QWidget()
         raw_layout = QVBoxLayout(self.raw_logs_tab)
         self.raw_logs_text = QTextEdit()
-        self.raw_logs_text.setFont(QFont("Courier", 10))
+        # Police à chasse fixe via feuille de style : setFont() était écrasé par la
+        # police système du style global → colonnes « | » désalignées
+        self.raw_logs_text.setStyleSheet(
+            "QTextEdit { font-family: 'Menlo', 'Monaco', 'Courier New', monospace; font-size: 11px; }")
         self.raw_logs_text.setReadOnly(True)
         raw_layout.addWidget(self.raw_logs_text)
         self._nav_stack.addWidget(self.raw_logs_tab)
@@ -192,10 +202,10 @@ class LogViewer(QDialog):
         self.auto_refresh = not self.auto_refresh
         
         if self.auto_refresh:
-            self.auto_refresh_button.setText("Auto-actualisation: ON")
+            self.auto_refresh_button.setText("Actualisation auto : activée")
             self.timer.start(self.refresh_interval)
         else:
-            self.auto_refresh_button.setText("Auto-actualisation: OFF")
+            self.auto_refresh_button.setText("Actualisation auto : désactivée")
             self.timer.stop()
     
     def on_log_type_changed(self):
@@ -205,7 +215,7 @@ class LogViewer(QDialog):
     @handle_log_viewer_errors()
     def load_logs(self, value=None):
         """Charger les logs depuis les fichiers - value accepte argument signal Qt"""
-        log_type = self.log_type_combo.currentText()
+        log_type = self.log_type_combo.currentData()
         lines = self.lines_spinbox.value()
 
         # Charger les logs bruts
@@ -219,7 +229,7 @@ class LogViewer(QDialog):
         if log_type == "data_operations":
             self.parse_data_operations_logs(raw_logs)
 
-        self.status_label.setText(f"Logs actualisés: {datetime.now().strftime('%H:%M:%S')}")
+        self.status_label.setText(f"Logs actualisés : {datetime.now().strftime('%H:%M:%S')}")
     
     def format_logs_for_display(self, raw_logs: str) -> str:
         """Formater les logs pour un affichage optimisé dans l'historique"""

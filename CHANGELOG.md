@@ -89,6 +89,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   longues et muettes, comme l'index de suggestions, ne semblent plus figées).
   L'ancien « 335 / 1000 » exposait l'échelle interne de la barre.
 
+**Fenêtres secondaires — défauts corrigés**
+- Index FTS5 : les balises `<code>` / `<b>` s'affichaient en clair (texte non
+  déclaré riche). Texte réécrit et exact : l'index ne sert pas tant que la
+  recherche porte sur les pièces (réglage actuel) — l'ancien « ~10× plus rapide »
+  était trompeur. Le statut dit si l'index sert réellement (`fts5_utilisable`).
+  Note obsolète « définir USE_FTS5 = True » retirée (déjà actif).
+- Configuration des exports : les puces de variables, compressées dans une
+  rangée unique, étaient tronquées (« xport_ref », « anufactur »). Nouvelle
+  disposition qui passe à la ligne (`src/ui/flow_layout.py`).
+- Journal des logs : police à chasse fixe effective (`setFont` était écrasé par la
+  police du style global → colonnes « | » désalignées) ; libellés en français
+  (« Détaillé », « Erreurs », « Actualisation auto : activée »…) ; contrôles de
+  même hauteur.
+- Import d'un seul fichier : fenêtre ajustée à son contenu (≈ 570 px au lieu
+  d'un minimum de 1000 px, ~500 px vides) ; elle ne descend jamais sous le
+  minimum de son contenu (blocs comprimés, lien « Adapter le mapping » qui
+  chevauchait l'aperçu). Hauteur de l'aperçu calculée sur la police effective
+  (la dernière ligne était coupée).
+
 **Import — panneau des relations**
 - Alerte erronée corrigée : « Un groupe d'équivalence ne contient qu'une seule
   réf : aucune équivalence ne sera créée » s'affichait alors que le groupe, coché
