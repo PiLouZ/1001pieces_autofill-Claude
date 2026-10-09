@@ -51,7 +51,7 @@ class DatabaseConfig:
     DB_NAME = "appareils.db"
     BACKUP_SUFFIX = "_backup"
     BACKUP_DIR_NAME = "backups"          # data/backups/
-    BACKUP_MAX_COPIES = 3                # rotation (~840 Mo par copie)
+    BACKUP_MAX_COPIES = 2                # rotation (~900 Mo par copie)
     BACKUP_MIN_INTERVAL_IMPORT_H = 24    # avant import : au plus 1 copie / 24h
 
     # Réglages de performance SQLite (PRAGMA appliqués à chaque connexion)
