@@ -47,7 +47,9 @@ class RestoreService(BaseService):
             db_path = self.parent_window.backup_service._get_db_path()
 
             # Sauvegarde de sécurité de l'état actuel avant écrasement
-            self.parent_window.backup_service.create_backup("avant_restauration")
+            # (la copie à restaurer est protégée de la rotation : elle peut être la plus ancienne)
+            self.parent_window.backup_service.create_backup("avant_restauration",
+                                                            proteger=backup_path)
 
             # Fermer la connexion active avant de remplacer le fichier
             self.parent_window.db_manager.close()

@@ -39,7 +39,8 @@ class BackupService(BaseService):
         return backups_dir
 
     def create_backup(self, reason: str = "manuel",
-                      max_age_hours: Optional[float] = None) -> Optional[Path]:
+                      max_age_hours: Optional[float] = None,
+                      proteger: Optional[Path] = None) -> Optional[Path]:
         """Créer une copie de sécurité de la base.
 
         Args:
@@ -47,6 +48,8 @@ class BackupService(BaseService):
             max_age_hours: si fourni et qu'une copie plus récente que ce délai
                            existe déjà, la sauvegarde est sautée (évite de copier
                            ~840 Mo à chaque import quotidien)
+            proteger: copie à ne jamais supprimer lors de la rotation (ex. la copie
+                      en cours de restauration, qui peut être la plus ancienne)
 
         Returns:
             Chemin de la copie créée, ou None (sauvegarde sautée ou échouée).
@@ -89,7 +92,7 @@ class BackupService(BaseService):
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
             app_logger.info(f"[Backup] {target.name} créé en {elapsed_ms}ms ({reason})")
 
-            self._rotate_backups(backups_dir)
+            self._rotate_backups(backups_dir, proteger)
             return target
 
         except (sqlite3.Error, OSError) as e:
@@ -109,9 +112,15 @@ class BackupService(BaseService):
             return None
         return max(f.stat().st_mtime for f in backups)
 
-    def _rotate_backups(self, backups_dir: Path) -> None:
-        """Ne conserver que les BACKUP_MAX_COPIES copies les plus récentes"""
-        backups = sorted(backups_dir.glob("appareils_*.db"),
+    def _rotate_backups(self, backups_dir: Path, proteger: Optional[Path] = None) -> None:
+        """Ne conserver que les BACKUP_MAX_COPIES copies les plus récentes.
+
+        La copie `proteger` n'est jamais supprimée ni comptée. Les fichiers
+        annexes -wal/-shm d'une copie supprimée partent avec elle.
+        """
+        proteger = proteger.resolve() if proteger is not None else None
+        backups = sorted((f for f in backups_dir.glob("appareils_*.db")
+                          if f.resolve() != proteger),
                          key=lambda f: f.stat().st_mtime, reverse=True)
         for old in backups[DatabaseConfig.BACKUP_MAX_COPIES:]:
             try:
@@ -119,3 +128,10 @@ class BackupService(BaseService):
                 app_logger.info(f"[Backup] Rotation : {old.name} supprimé")
             except OSError as e:
                 app_logger.warning(f"[Backup] Rotation impossible pour {old.name} : {e}")
+                continue
+            for suffixe in ("-wal", "-shm"):
+                annexe = Path(str(old) + suffixe)
+                try:
+                    annexe.unlink(missing_ok=True)
+                except OSError as e:
+                    app_logger.warning(f"[Backup] Rotation impossible pour {annexe.name} : {e}")

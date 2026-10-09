@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.78.4"
+    VERSION = "3.78.5"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -93,9 +93,6 @@ class Config:
 
     # Feature Flags - Phase 5 Search Optimization
     SEARCH_PIECES_ONLY = True  # Phase 5: Recherche principale → pièces uniquement (désactivé = comportement actuel)
-
-    # Feature Flags - v3.30.0 Mapping de colonnes à l'import
-    ENABLE_COLUMN_MAPPING = True   # Mapping manuel des colonnes (activé v3.30.0)
 
     # Feature Flags - Suggestions Type/Marque par similarité de référence
     # Complète (ne remplace JAMAIS) l'auto-complétion exacte de l'import.

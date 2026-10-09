@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.78.5] - 2026-10-09 (branche `chore/sauvegardes-rotation-legacy`)
+
+### Sauvegardes : 2 copies, rotation complète, restauration de la plus ancienne réparée
+
+- **2 copies conservées au lieu de 3** (`BACKUP_MAX_COPIES`) : environ 900 Mo
+  de moins dans `data/backups/`. La copie en trop part à la prochaine sauvegarde.
+- **La rotation supprime aussi les fichiers `-wal` et `-shm`** de la copie
+  retirée. Elle les laissait orphelins (8 fichiers depuis juin).
+- **Correctif : restaurer la copie la plus ancienne échouait.** La copie de
+  sécurité « avant_restauration » déclenchait la rotation, qui supprimait
+  justement la copie choisie, alors que la connexion à la base était déjà fermée :
+  message « No such file or directory » et application laissée sans base.
+  La copie à restaurer est désormais protégée de la rotation.
+- 4 tests ajoutés (`test_sauvegardes_rotation.py`). Ils échouaient tous les trois
+  sur l'ancien code.
+
+### Ménage : drapeau `ENABLE_COLUMN_MAPPING` retiré
+
+Toujours activé depuis la v3.30.0. Retrait de l'ancienne analyse d'aperçu
+(`_analyze_formats_and_preview_legacy`, ~95 lignes) qui ne servait que s'il était désactivé.
+
+---
+
 ## [3.78.4] - 2026-10-09 (branche `chore/retrait-anciens-systemes-rollback`)
 
 ### Ménage : anciens systèmes « pour rollback » retirés

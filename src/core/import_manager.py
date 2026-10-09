@@ -1299,8 +1299,7 @@ class ImportDialog(QDialog):
         # (Obsolète multi-fichiers : désormais porté par relations_cards ci-dessus.)
 
         # Mapping de colonnes personnalisé (v3.30.0)
-        from .config import Config
-        if Config.ENABLE_COLUMN_MAPPING and hasattr(self, '_mapping_widgets') and self._mapping_widgets:
+        if hasattr(self, '_mapping_widgets') and self._mapping_widgets:
             mapping = {}
             for widget in self._mapping_widgets:
                 # Stocker si : groupe non reconnu (obligatoire) OU utilisateur a modifié
@@ -1457,8 +1456,7 @@ class ImportDialog(QDialog):
 
     def _update_import_button(self):
         """Active/désactive le bouton Importer selon l'état des groupes non reconnus."""
-        from .config import Config
-        if not Config.ENABLE_COLUMN_MAPPING or not hasattr(self, '_mapping_widgets'):
+        if not hasattr(self, '_mapping_widgets'):
             return
         all_ok = not any(w.is_mandatory_and_incomplete() for w in self._mapping_widgets)
         if hasattr(self, 'ok_btn'):
@@ -1586,12 +1584,6 @@ class ImportDialog(QDialog):
         if not self.import_config.files:
             return
 
-        from .config import Config
-        if not Config.ENABLE_COLUMN_MAPPING:
-            # Comportement actuel inchangé
-            self._analyze_formats_and_preview_legacy()
-            return
-
         # Grouper les fichiers par structure
         self._file_groups = self._group_files_by_columns()
 
@@ -1698,97 +1690,6 @@ class ImportDialog(QDialog):
         # (le mapping prime à l'import — ils ne doivent jamais se contredire).
         self._on_mapping_third_col_changed()
         self._update_import_button()
-
-    def _analyze_formats_and_preview_legacy(self):
-        """Comportement historique : analyse le premier fichier pour le format général"""
-        # Analyser le premier fichier pour déterminer le format général
-        first_file = self.import_config.files[0]
-        detected_columns, sample_data = self._safe_analyze_file_format(first_file)
-        
-        # Mise à jour de la configuration d'import
-        self.import_config.csv_import_mode = detected_columns
-        
-        # Afficher les informations de format
-        file_types = set(f.type.value.upper() for f in self.import_config.files)
-        if len(self.import_config.files) == 1:
-            info_text = f" Fichier {first_file.type.value.upper()} détecté: {detected_columns} colonnes"
-        else:
-            types_str = ", ".join(file_types)
-            info_text = f" Fichiers détectés ({types_str}): {detected_columns} colonnes"
-        
-        # Description du format
-        format_non_reconnu = False
-        if detected_columns == 1:
-            format_desc = "• 1 colonne → Réf. Modèle uniquement"
-        elif detected_columns == 2:
-            format_desc = "• 2 colonnes → Réf. Modèle + Réf. Commerciale"
-        elif detected_columns == 3:
-            if FileType.PDF in [f.type for f in self.import_config.files]:
-                format_desc = "• 3 colonnes → Réf. technique + Réf. commerciale + Description"
-            else:
-                format_desc = "• 3 colonnes → Réf. Modèle + Réf. Commerciale + Autre"
-        elif detected_columns >= 4:
-            format_desc = "• 4+ colonnes → Format complet (Type, Fabricant, Réf. Modèle, Réf. Commerciale, ...)"
-        else:
-            format_desc = ""
-            format_non_reconnu = True
-
-        if format_non_reconnu:
-            self.format_info_label.setText("")
-            self.format_desc_label.setText("")
-            self.format_warning_widget.setVisible(True)
-            if hasattr(self, 'ok_btn'):
-                self.ok_btn.setEnabled(False)
-        else:
-            self.format_info_label.setText("Format reconnu :")
-            self.format_desc_label.setText(format_desc)
-            self.format_warning_widget.setVisible(False)
-            if hasattr(self, 'ok_btn'):
-                self.ok_btn.setEnabled(True)
-        
-        # Générer l'aperçu des données
-        if sample_data:
-            preview_content = ""
-            
-            # En-têtes de colonnes
-            if detected_columns > 0:
-                header_line = ""
-                for i in range(detected_columns):
-                    header_line += f"Col{i+1:<15} "
-                preview_content += f"{header_line}\n{'='*60}\n"
-            
-            # Données d'exemple
-            for row in sample_data:
-                line = ""
-                for j in range(min(detected_columns, len(row))):
-                    cell_value = str(row[j])[:12] + "..." if len(str(row[j])) > 12 else str(row[j])
-                    line += f"{cell_value:<15} "
-                preview_content += f"{line}\n"
-            
-            if len(first_file.data or []) > 3:
-                preview_content += f"\n... et {len(first_file.data or []) - 3} autres lignes"
-            
-            self._set_preview_text(preview_content)
-
-        # Afficher les options spécifiques selon le format
-        if detected_columns == 3:
-            self.third_col_widget.show()
-            if FileType.PDF in [f.type for f in self.import_config.files]:
-                self.third_col_label.setText("Destination de la description :")
-            else:
-                self.third_col_label.setText("Destination de la 3ᵉ colonne :")
-        else:
-            self.third_col_widget.hide()
-        
-        # Afficher l'option en-têtes si nécessaire (CSV et collage, cf. _analyze_formats_and_preview)
-        has_headers_option = any(
-            f.type in (FileType.CSV, FileType.CLIPBOARD) for f in self.import_config.files
-        )
-        if has_headers_option:
-            self.headers_checkbox.show()
-        else:
-            self.headers_checkbox.hide()
-    
 
 
 class _ImportWorker(QThread):
