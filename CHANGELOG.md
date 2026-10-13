@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.81.0] - 2026-10-13 (branche `feature/historique-recharge-demarrage`)
+
+### Panneau Historique : les 100 dernières entrées reviennent au lancement
+
+- Le panneau Historique était vide à chaque ouverture (session seulement depuis la
+  v3.24.0), alors que tout est enregistré en base. Il recharge désormais les
+  **100 dernières entrées**, sous un séparateur « Sessions précédentes ».
+- Rendu identique aux entrées de la session : badges ×N reconstruits avec tous
+  leurs appareils (une ligne par modification en base), alertes `[!]` en jaune.
+- Non conservés en base, donc absents au rechargement : durée d'import, lien
+  « Compléter le libellé ».
+- Les entrées rechargées ne sont **jamais réenregistrées** (sinon chaque lancement
+  dupliquerait l'historique) et ne se regroupent jamais avec celles de la session.
+- Séparateurs au-delà de la journée : « Hier à 16:48 », « 12 oct. à 16:48 » au lieu
+  de « Il y a 52 heures ».
+- Regroupement factorisé (`_inserer_entree`) entre l'ajout en direct et le
+  rechargement ; ajout en direct comparé à l'ancien code sur 400 messages :
+  entrées et HTML identiques. Démarrage sur une copie de la base : 100 entrées,
+  table d'historique inchangée (174 760 lignes avant et après).
+- 10 tests (`test_historique_rechargement.py`).
+
+---
+
 ## [3.80.2] - 2026-10-13 (branche `feature/historique-popup-alertes`)
 
 ### Historique persistant : alertes surlignées dans le détail

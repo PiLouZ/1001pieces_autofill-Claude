@@ -123,6 +123,9 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._init_connections()
 
+        # Panneau Historique : recharger les dernières entrées des sessions précédentes
+        self.user_interaction_service.restaurer_historique()
+
         # Configuration du nettoyage automatique pour le champ de recherche (après init UI)
         self._setup_paste_cleanup_for_search_input()
 

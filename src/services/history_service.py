@@ -103,6 +103,30 @@ class HistoryService(BaseService):
 
     # ── Lecture ───────────────────────────────────────────────────────────────
 
+    def get_recent_rows(self, limit: int = 2000) -> List[tuple]:
+        """Dernières lignes persistées, de la plus récente à la plus ancienne.
+
+        Sert à recharger le panneau Historique au lancement. La limite est large :
+        les modifications regroupées (badge ×N) consomment plusieurs lignes pour
+        une seule entrée affichée.
+
+        Returns:
+            Liste de tuples (timestamp, action_type, title, details,
+                             device_ref, field_name, new_value)
+        """
+        if not self.db_manager:
+            return []
+        return self.db_manager.execute_query(
+            """
+            SELECT timestamp, action_type, title, details,
+                   device_ref, field_name, new_value
+            FROM modifications_history
+            ORDER BY timestamp DESC, id DESC
+            LIMIT ?
+            """,
+            [limit]
+        ) or []
+
     def get_entries(
         self,
         limit: int = 200,
