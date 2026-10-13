@@ -10,6 +10,7 @@ Changements v2 :
 - API publique add_to_history(message) inchangée — zéro régression
 """
 
+import json
 import re
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
@@ -41,6 +42,10 @@ _BADGE_WIDTH = max(len(s['label']) for s in _ACTION_STYLES.values())
 
 _MAX_HISTORY = 100          # Nombre max d'entrées visibles
 _TIME_GAP_MINUTES = 5       # Seuil pour insérer un séparateur temporel
+
+# Mois abrégés en français, indépendants de la locale système
+_MOIS_ABREGES = ('janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+                 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.')
 
 # Regex pour parser une ligne "==> Field : 'old' → 'new'"
 _RE_ARROW = re.compile(r"==>\s*(.+?)\s*:\s*'(.*)'\s*→\s*'(.*)'")
@@ -221,6 +226,73 @@ def _parse_entry(message: str, timestamp: datetime) -> Dict[str, Any]:
     }
 
 
+def _entree_depuis_base(row: tuple) -> Optional[Dict[str, Any]]:
+    """Reconstruire une entrée du panneau depuis une ligne de modifications_history.
+
+    Même structure que _parse_entry, marquée `restauree` : elle ne se regroupe
+    jamais avec une entrée de la session en cours, et n'est jamais re-persistée.
+    Non conservés en base : durée d'import et lien d'action. Les appareils d'un
+    regroupement ×N reviennent tous : chaque modification a sa propre ligne.
+    """
+    timestamp, action_type, title, details_json, device_ref, field_name, new_value = row
+    try:
+        ts = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+    except (TypeError, ValueError):
+        return None
+    try:
+        details = json.loads(details_json) if details_json else []
+    except ValueError:
+        details = []
+    if not isinstance(details, list):
+        details = []
+
+    # Clé d'agrégation, reconstruite comme dans _parse_entry
+    agg_key = None
+    if action_type == 'edit':
+        if field_name:
+            agg_key = (field_name, new_value if new_value is not None else '')
+        else:
+            paires = [_RE_ARROW.match(d) for d in details]
+            if paires and all(paires):
+                agg_key = tuple(sorted((m.group(1), m.group(3)) for m in paires))
+
+    return {
+        'timestamp': ts,
+        'timestamp_str': ts.strftime('%H:%M:%S'),
+        'action_type': action_type,
+        'title': title,
+        'details': details,
+        'count': 1,
+        'devices': [device_ref] if device_ref else [],
+        'agg_key': agg_key,
+        'duration_ms': None,
+        'restauree': True,
+    }
+
+
+def _inserer_entree(entries: List[Dict[str, Any]], entry: Dict[str, Any]) -> None:
+    """Insérer une entrée en tête de liste, ou la regrouper avec la précédente.
+
+    Regroupement : même clé d'agrégation que la dernière entrée (edit identique
+    sur plusieurs appareils) → compteur ×N. Une entrée restaurée ne se regroupe
+    qu'avec une entrée restaurée : la session en cours reste séparée.
+    """
+    if (entry['agg_key'] is not None and
+            entries and
+            entries[0]['agg_key'] == entry['agg_key'] and
+            entries[0].get('restauree', False) == entry.get('restauree', False)):
+        last = entries[0]
+        last['count'] += 1
+        if entry['devices']:
+            last['devices'].extend(entry['devices'])
+        # Mettre à jour le timestamp pour refléter la dernière modification
+        last['timestamp'] = entry['timestamp']
+        last['timestamp_str'] = entry['timestamp_str']
+    else:
+        entries.insert(0, entry)
+        del entries[_MAX_HISTORY:]
+
+
 class UserInteractionService:
     """
     Service spécialisé pour les interactions avec l'utilisateur.
@@ -342,26 +414,42 @@ class UserInteractionService:
             entry['lien'] = lien
 
         # Tentative d'agrégation avec la dernière entrée
-        if (entry['agg_key'] is not None and
-                self._history_entries and
-                self._history_entries[0]['agg_key'] == entry['agg_key']):
-            last = self._history_entries[0]
-            last['count'] += 1
-            if entry['devices']:
-                last['devices'].extend(entry['devices'])
-            # Mettre à jour le timestamp pour refléter la dernière modification
-            last['timestamp'] = now
-            last['timestamp_str'] = now.strftime('%H:%M:%S')
-        else:
-            self._history_entries.insert(0, entry)
-            if len(self._history_entries) > _MAX_HISTORY:
-                self._history_entries = self._history_entries[:_MAX_HISTORY]
+        _inserer_entree(self._history_entries, entry)
 
         self._refresh_display()
 
         # Persistance inter-sessions (silencieuse si le service n'est pas disponible)
         if hasattr(self.main_window, 'history_service'):
             self.main_window.history_service.persist(entry)
+
+    def restaurer_historique(self) -> None:
+        """Recharger dans le panneau les dernières entrées des sessions précédentes.
+
+        Appelé une fois au lancement. Les entrées restaurées passent par le même
+        regroupement que les entrées en direct (rejeu chronologique), puis se
+        placent SOUS celles de la session déjà présentes. Elles ne sont jamais
+        re-persistées : sinon chaque lancement dupliquerait l'historique en base.
+        """
+        history_service = getattr(self.main_window, 'history_service', None)
+        if history_service is None:
+            return
+        try:
+            rows = history_service.get_recent_rows()
+        except Exception as e:
+            app_logger.warning(f"Historique : rechargement impossible — {e}")
+            return
+
+        restaurees: List[Dict[str, Any]] = []
+        for row in reversed(rows):  # de la plus ancienne à la plus récente
+            entry = _entree_depuis_base(row)
+            if entry is not None:
+                _inserer_entree(restaurees, entry)
+
+        if not restaurees:
+            return
+        self._history_entries.extend(restaurees)
+        del self._history_entries[_MAX_HISTORY:]
+        self._refresh_display()
 
     def _refresh_display(self) -> None:
         """Reconstruire et afficher le HTML de l'historique."""
@@ -403,9 +491,22 @@ class UserInteractionService:
         html = f'<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>\n'
 
         prev_ts = None
+        prev_restauree = False
         for entry in self._history_entries:
+            # Séparateur « Sessions précédentes » avant la 1re entrée restaurée :
+            # il remplace le séparateur temporel à cet endroit.
+            restauree = entry.get('restauree', False)
+            if restauree and not prev_restauree:
+                label = f"Sessions précédentes · {self._time_label(entry['timestamp'])}"
+                html += (
+                    f'<table width="100%" cellpadding="0" cellspacing="0">'
+                    f'<tr><td><hr/></td>'
+                    f'<td width="1" style="white-space:nowrap;" align="center">'
+                    f'<span class="sep">&nbsp;{label}&nbsp;</span></td>'
+                    f'<td><hr/></td></tr></table>\n'
+                )
             # Séparateur temporel entre blocs distants
-            if prev_ts is not None:
+            elif prev_ts is not None:
                 delta = prev_ts - entry['timestamp']
                 if delta > timedelta(minutes=_TIME_GAP_MINUTES):
                     label = self._time_label(entry['timestamp'])
@@ -417,6 +518,7 @@ class UserInteractionService:
                         f'<td><hr/></td></tr></table>\n'
                     )
             prev_ts = entry['timestamp']
+            prev_restauree = restauree
 
             style = _ACTION_STYLES.get(entry['action_type'], _ACTION_STYLES['system'])
             color = style['color']
@@ -538,8 +640,19 @@ class UserInteractionService:
             return "Il y a moins d'une minute"
         if minutes < 60:
             return f"Il y a {minutes} minute{'s' if minutes > 1 else ''}"
-        hours = minutes // 60
-        return f"Il y a {hours} heure{'s' if hours > 1 else ''}"
+        maintenant = datetime.now()
+        if ts.date() == maintenant.date():
+            hours = minutes // 60
+            return f"Il y a {hours} heure{'s' if hours > 1 else ''}"
+        # Au-delà de la journée, « Il y a 52 heures » est illisible :
+        # date explicite (entrées restaurées, ou application ouverte la veille).
+        heure = ts.strftime('%H:%M')
+        if ts.date() == (maintenant - timedelta(days=1)).date():
+            return f"Hier à {heure}"
+        mois = _MOIS_ABREGES[ts.month - 1]
+        if ts.year != maintenant.year:
+            return f"{ts.day} {mois} {ts.year} à {heure}"
+        return f"{ts.day} {mois} à {heure}"
 
     # ── Statut et performance ──────────────────────────────────────────────────
 
