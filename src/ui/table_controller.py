@@ -830,6 +830,18 @@ class TableController:
         if not search_term:
             self._hide_supersession_banner()
             self._hide_equivalence_banner()
+        else:
+            # Nouveau terme : les réf. ajoutées par les bandeaux (anciennes réf.,
+            # équivalents) appartiennent à la recherche précédente. Les oublier AVANT
+            # de construire la requête, sinon une réf. sans bandeau affichait les
+            # lignes de la recherche d'avant (le bandeau n'était caché qu'après le
+            # remplissage, sans relance). Même terme (pagination, tri, filtres,
+            # cases des bandeaux) : états conservés.
+            terme = search_term.strip() if isinstance(search_term, str) else search_term
+            if self._supersession_term is not None and terme != self._supersession_term:
+                self._hide_supersession_banner()
+            if self._equivalence_term is not None and terme != self._equivalence_term:
+                self._hide_equivalence_banner()
 
         # Annuler tout prefetch planifié (le worker en cours finira sur sa propre connexion)
         self.prefetch_timer.stop()

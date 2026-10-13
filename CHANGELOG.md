@@ -4,6 +4,23 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.81.2] - 2026-10-13 (branche `fix/recherche-banniere-perimee`)
+
+### Recherche : le tableau ne garde plus les lignes de la recherche précédente
+
+- **Correctif** : après une réf. à bandeau (anciennes réf. ou équivalents inclus),
+  chercher une réf. sans bandeau — typiquement une réf. inexistante — affichait
+  les lignes de la recherche d'avant au lieu de « Aucun résultat » (ex. 471 lignes
+  après `1751309700`). Il fallait relancer pour voir le bon résultat.
+- Cause : la requête était construite avec les réf. du bandeau encore en mémoire ;
+  le bandeau n'était caché qu'après le remplissage, sans relance. Le choix « bypass
+  chaîne » fuyait de la même façon (réf. à équivalence : 13 lignes au lieu de 1 612).
+- Les états des bandeaux sont désormais oubliés avant la requête dès que le terme
+  change. Même terme (pagination, tri, filtres, cases des bandeaux) : inchangé.
+- Vérifié sur copie de la base : 22 étapes enchaînées (réf. qui remplace, ancienne
+  réf., équivalence, inexistante, bascules) donnent chacune le même résultat
+  qu'une recherche faite à neuf.
+
 ## [3.81.1] - 2026-10-13 (branche `feature/historique-popup-multi-fichiers`)
 
 ### Historique complet : tous les fichiers d'un import multi-fichiers sont affichés
