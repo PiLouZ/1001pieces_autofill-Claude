@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.81.1] - 2026-10-13 (branche `feature/historique-popup-multi-fichiers`)
+
+### Historique complet : tous les fichiers d'un import multi-fichiers sont affichés
+
+- **Correctif** : dans le popup de détail (bouton ↗), un import multi-fichiers
+  n'affichait que son dernier fichier, avec le total de l'import comme s'il l'avait
+  produit seul. Les 676 multi-imports de l'historique étaient touchés (191 fichiers
+  masqués sur l'import de 192).
+- Les lignes de fichiers sont réunies dans une section « N fichiers » : nom et
+  nombre de lignes de chacun, puis « Lignes traitées » à la fin. Les noms longs
+  passent à la ligne. Les grandes listes défilent dans le popup.
+- Imports d'un seul fichier et autres entrées inchangés : 5 572 entrées réelles
+  comparées à l'ancien code, widgets identiques ; 676/676 multi-imports affichent
+  tous leurs fichiers.
+- Seul l'affichage change : rien n'est réécrit en base.
+- 3 tests ajoutés (`test_historique_popup_alertes.py`) ; rendu vérifié par capture.
+
+---
+
 ## [3.81.0] - 2026-10-13 (branche `feature/historique-recharge-demarrage`)
 
 ### Panneau Historique : les 100 dernières entrées reviennent au lancement

@@ -3,6 +3,7 @@ Dialogue de consultation de l'historique persistant des modifications.
 """
 
 import json
+import re
 from datetime import datetime
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -62,6 +63,45 @@ def _format_timestamp(timestamp) -> str:
 
 # Types d'action pour lesquels un popup de détails est pertinent
 _DETAIL_ACTION_TYPES = {'import', 'export', 'delete', 'error', 'piece', 'undo'}
+
+# Ligne de fichier d'un import multi-fichiers : « Fichier PDF 805101.pdf : 357 lignes extraites »
+# (un import d'un seul fichier écrit « Fichier PDF : 357 lignes extraites », sans nom)
+_RE_LIGNE_FICHIER = re.compile(r'^Fichier \S+ (.+) : (\d+) lignes? extraites?$')
+
+
+def _regrouper_fichiers(details: list) -> tuple:
+    """Réunir les lignes de fichiers consécutives d'un import multi-fichiers.
+
+    Le popup forme une section par ligne de titre et y range les lignes « ==> »
+    qui suivent ; une section sans ligne « ==> » n'est pas affichée. Or les lignes
+    de fichiers se suivent : seule la dernière restait, avec le total de l'import
+    comme si elle l'avait produit seule. Une suite d'au moins 2 lignes de fichiers
+    devient donc une section « N fichiers » listant chaque fichier ; le total
+    (« ==> Lignes traitées ») qui suit s'y range à la fin.
+
+    Returns:
+        (détails transformés, titres des sections de fichiers créées)
+    """
+    resultat, titres = [], set()
+    i = 0
+    while i < len(details):
+        j = i
+        while j < len(details) and isinstance(details[j], str) \
+                and _RE_LIGNE_FICHIER.match(details[j].strip()):
+            j += 1
+        if j - i >= 2:
+            titre = f"{j - i} fichiers"
+            titres.add(titre)
+            resultat.append(titre)
+            for ligne in details[i:j]:
+                nom, n = _RE_LIGNE_FICHIER.match(ligne.strip()).groups()
+                pluriel = '' if n == '1' else 's'
+                resultat.append(f"==> {nom} : {n} ligne{pluriel} extraite{pluriel}")
+            i = j
+        else:
+            resultat.append(details[i])
+            i += 1
+    return resultat, titres
 
 
 # ── Popup de détails ──────────────────────────────────────────────────────────
@@ -145,11 +185,13 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
             alerte = bool(current_section and current_section.startswith('[!]'))
             if current_section is not None and (section_items or alerte):
                 c_layout.addWidget(
-                    self._section(current_section, section_items, color, alerte)
+                    self._section(current_section, section_items, color, alerte,
+                                  retour_ligne=current_section in titres_fichiers)
                 )
             current_section = None
             section_items = []
 
+        details, titres_fichiers = _regrouper_fichiers(details)
         for line in details:
             stripped = line.strip()
             if not stripped:
@@ -179,7 +221,8 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
         self.setFixedWidth(self.WIDTH)
 
     @staticmethod
-    def _section(title: str, items: list, color: str, alerte: bool = False) -> QWidget:
+    def _section(title: str, items: list, color: str, alerte: bool = False,
+                 retour_ligne: bool = False) -> QWidget:
         """Bloc section : titre optionnel + liste d'items.
 
         Alerte « [!] » : jaune avertissement, comme dans le panneau Historique
@@ -191,6 +234,8 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
         if alerte:
             color = Config.Colors.WARNING_TEXT
         texte = Config.Colors.WARNING_TEXT if alerte else '#2c3e50'
+        # Retour à la ligne : alertes, et noms de fichiers longs d'un multi-import
+        retour_ligne = retour_ligne or alerte
 
         w = QWidget()
         w.setStyleSheet(
@@ -206,7 +251,7 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
                 f"color: {color}; font-weight: bold; font-size: 11px;"
                 "background: transparent; border: none;"
             )
-            title_lbl.setWordWrap(alerte)
+            title_lbl.setWordWrap(retour_ligne)
             layout.addWidget(title_lbl)
 
         for item in items:
@@ -215,7 +260,7 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
                 f"color: {texte}; font-size: 11px;"
                 "background: transparent; border: none;"
             )
-            item_lbl.setWordWrap(alerte)
+            item_lbl.setWordWrap(retour_ligne)
             layout.addWidget(item_lbl)
 
         return w
