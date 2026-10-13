@@ -15,6 +15,7 @@ from PyQt5.QtCore import QDate
 import qtawesome as qta
 from .popup_positioning import PopupAuCurseurMixin
 from .style_manager import StyleManager
+from ..core.config import Config
 
 _PAGE_SIZE = 100
 
@@ -139,9 +140,12 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
 
         def _flush_section():
             nonlocal current_section, section_items
-            if current_section is not None and section_items:
+            # Une alerte « [!] » s'affiche même sans ligne « ==> » sous elle
+            # (alerte de mapping) : sans cette exception, elle disparaissait.
+            alerte = bool(current_section and current_section.startswith('[!]'))
+            if current_section is not None and (section_items or alerte):
                 c_layout.addWidget(
-                    self._section(current_section, section_items, color)
+                    self._section(current_section, section_items, color, alerte)
                 )
             current_section = None
             section_items = []
@@ -175,10 +179,18 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
         self.setFixedWidth(self.WIDTH)
 
     @staticmethod
-    def _section(title: str, items: list, color: str) -> QWidget:
-        """Bloc section : titre optionnel + liste d'items."""
-        bg = '#f8f9fa'
-        border = '#dee2e6'
+    def _section(title: str, items: list, color: str, alerte: bool = False) -> QWidget:
+        """Bloc section : titre optionnel + liste d'items.
+
+        Alerte « [!] » : jaune avertissement, comme dans le panneau Historique
+        (pas de rouge, réservé aux erreurs), et retour à la ligne pour que la
+        fourchette ou le conseil ne soient pas coupés au bord du popup.
+        """
+        bg = Config.Colors.WARNING_BG if alerte else '#f8f9fa'
+        border = Config.Colors.WARNING if alerte else '#dee2e6'
+        if alerte:
+            color = Config.Colors.WARNING_TEXT
+        texte = Config.Colors.WARNING_TEXT if alerte else '#2c3e50'
 
         w = QWidget()
         w.setStyleSheet(
@@ -194,14 +206,16 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
                 f"color: {color}; font-weight: bold; font-size: 11px;"
                 "background: transparent; border: none;"
             )
+            title_lbl.setWordWrap(alerte)
             layout.addWidget(title_lbl)
 
         for item in items:
             item_lbl = QLabel(f"  {item}")
             item_lbl.setStyleSheet(
-                "color: #2c3e50; font-size: 11px;"
+                f"color: {texte}; font-size: 11px;"
                 "background: transparent; border: none;"
             )
+            item_lbl.setWordWrap(alerte)
             layout.addWidget(item_lbl)
 
         return w

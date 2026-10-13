@@ -4,6 +4,23 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.80.2] - 2026-10-13 (branche `feature/historique-popup-alertes`)
+
+### Historique persistant : alertes surlignées dans le détail
+
+- Dans la fenêtre d'historique complet (bouton ↗), le popup de détail d'une entrée
+  affiche les alertes `[!]` en **jaune avertissement**, comme le panneau Historique
+  depuis la 3.80.1 : fond `WARNING_BG`, bordure `WARNING`, texte `WARNING_TEXT`.
+- **Correctif** : une alerte sans ligne `==>` sous elle (alerte de mapping)
+  n'apparaissait pas du tout dans le popup. Elle s'affiche désormais.
+- **Correctif** : les lignes longues d'une alerte (titre des pages vides, conseil)
+  étaient coupées au bord du popup ; elles passent maintenant à la ligne.
+- Sections ordinaires inchangées : 3 000 entrées réelles sans alerte comparées à
+  l'ancien code, widgets identiques (textes, styles, retour à la ligne).
+- 4 tests (`test_historique_popup_alertes.py`) ; rendu vérifié par capture offscreen.
+
+---
+
 ## [3.80.1] - 2026-10-13 (branche `feature/historique-alertes-surlignees`)
 
 ### Historique : alertes d'import surlignées
