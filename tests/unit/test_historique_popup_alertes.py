@@ -71,3 +71,47 @@ def test_alerte_sans_detail_affichee(popup):
     p = popup(MAPPING)
     titre = _label(p, "vérifiez le mapping")
     assert Config.Colors.WARNING_BG in titre.parentWidget().styleSheet()
+
+
+# ── Imports multi-fichiers : toutes les lignes de fichiers sont affichées ──
+
+from src.ui.history_view_dialog import _regrouper_fichiers
+
+MULTI = [
+    "Fichier PDF SS-8030002362.pdf : 15 lignes extraites",
+    "Fichier PDF MS-5A21289.pdf : 206 lignes extraites",
+    "Fichier PDF 1763070234.pdf : 1 lignes extraites",
+    "==> Lignes traitées : 222",
+    "Appareils :", "==> Créés : 220",
+]
+
+
+def test_regroupement_des_fichiers():
+    details, titres = _regrouper_fichiers(MULTI)
+    assert titres == {"3 fichiers"}
+    assert details == [
+        "3 fichiers",
+        "==> SS-8030002362.pdf : 15 lignes extraites",
+        "==> MS-5A21289.pdf : 206 lignes extraites",
+        "==> 1763070234.pdf : 1 ligne extraite",
+        "==> Lignes traitées : 222",
+        "Appareils :", "==> Créés : 220",
+    ]
+
+
+def test_import_un_seul_fichier_inchange():
+    simple = ["Fichier PDF : 357 lignes extraites", "==> Lignes traitées : 357"]
+    assert _regrouper_fichiers(simple) == (simple, set())
+    un_nomme = ["Fichier PDF a.pdf : 3 lignes extraites", "==> Lignes traitées : 3"]
+    assert _regrouper_fichiers(un_nomme) == (un_nomme, set())
+
+
+def test_popup_affiche_tous_les_fichiers_et_le_total(popup):
+    p = popup(MULTI)
+    textes = [l.text() for l in p.findChildren(QLabel)]
+    for nom in ("SS-8030002362.pdf", "MS-5A21289.pdf", "1763070234.pdf"):
+        assert any(nom in t for t in textes)
+    section = _label(p, "3 fichiers").parentWidget()
+    assert _label(p, "Lignes traitées : 222").parentWidget() is section
+    assert _label(p, "MS-5A21289.pdf").wordWrap()
+    assert not _label(p, "Créés : 220").wordWrap()
