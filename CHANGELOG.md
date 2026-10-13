@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.80.1] - 2026-10-13 (branche `feature/historique-alertes-surlignees`)
+
+### Historique : alertes d'import surlignées
+
+- Les alertes `[!]` d'une synthèse d'import (pages vides d'un PDF, mapping de
+  colonnes suspect) sont surlignées en **jaune avertissement** : fond `WARNING_BG`,
+  texte `WARNING_TEXT`, ligne `[!]` en gras. Pas de rouge : il est réservé aux
+  erreurs, et ici rien n'a échoué, il faut seulement vérifier.
+- Le bloc couvre la ligne `[!]` et les lignes `==>` qui la suivent directement
+  (fourchettes de pages, tiret rétabli, conseil) ; il s'arrête à « Appareils : ».
+- Seul le rendu change : le texte enregistré dans l'historique est identique.
+  HTML des entrées sans alerte comparé à l'ancien code : identique au caractère près.
+- 6 tests (`test_historique_alertes_surlignees.py`) ; rendu vérifié par capture offscreen.
+
+---
+
 ## [3.80.0] - 2026-10-13 (branche `feature/double-clic-remplissage-haut`)
 
 ### Double-clic sur la poignée : remplissage vers le haut

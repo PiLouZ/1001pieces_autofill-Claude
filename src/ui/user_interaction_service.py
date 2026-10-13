@@ -463,14 +463,33 @@ class UserInteractionService:
                 )
 
             # Lignes de détail (==>)
+            # Bloc d'alerte : une ligne « [!] » et les lignes « ==> » qui la suivent
+            # directement (fourchettes de pages vides, conseil…). Surligné en jaune
+            # avertissement — pas en rouge, réservé aux erreurs : rien n'a échoué,
+            # il faut seulement vérifier.
             details_html = ''
+            en_alerte = False
             for line in entry['details']:
                 safe = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                indent = '&nbsp;&nbsp;' if line.lstrip().startswith('==>') else ''
+                debut = line.lstrip()
+                indent = '&nbsp;&nbsp;' if debut.startswith('==>') else ''
+                if debut.startswith('[!]'):
+                    en_alerte = True
+                elif not debut.startswith('==>'):
+                    en_alerte = False
+                if en_alerte:
+                    gras = ' font-weight:bold;' if debut.startswith('[!]') else ''
+                    cellule = (
+                        f'<td bgcolor="{Config.Colors.WARNING_BG}">'
+                        f'<span class="detail" style="color:{Config.Colors.WARNING_TEXT};{gras}">'
+                        f'{indent}{safe}</span></td>'
+                    )
+                else:
+                    cellule = f'<td><span class="detail">{indent}{safe}</span></td>'
                 details_html += (
                     f'<tr><td bgcolor="{color}" width="3"></td>'
                     f'<td width="6"></td>'
-                    f'<td><span class="detail">{indent}{safe}</span></td></tr>\n'
+                    f'{cellule}</tr>\n'
                 )
 
             # Ligne d'action cliquable (ex. « Compléter le libellé »)
