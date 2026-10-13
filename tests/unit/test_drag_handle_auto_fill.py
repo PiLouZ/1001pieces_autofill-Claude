@@ -93,3 +93,36 @@ def test_rien_si_premiere_ligne_et_dessous_rempli(app):
     valeurs, hist, _ = _double_clic(["A", "Y"], 0, 0)
     assert valeurs == ["A", "Y"]
     assert hist == []
+
+
+# ── Glisser vers le haut (DragHandle._fill_cells_up) ────────────────────────
+
+def _glisser_haut(grid, top, bottom, nb_lignes):
+    """Simuler un glisser de nb_lignes vers le haut depuis la sélection [top..bottom]."""
+    model = QStandardItemModel(len(grid), 1)
+    for r, v in enumerate(grid):
+        model.setItem(r, 0, QStandardItem(v))
+    table = _Table()
+    table.setModel(model)
+    handle = DragHandle(table=table, main_window=MagicMock())
+    table.selectionModel().select(
+        QItemSelection(model.index(top, 0), model.index(bottom, 0)),
+        QItemSelectionModel.ClearAndSelect,
+    )
+    handle.orig_selection = handle._get_current_selection()
+    handle._fill_cells_up(nb_lignes)
+    return [model.data(model.index(r, 0)) or "" for r in range(len(grid))]
+
+
+def test_glisser_haut_une_ligne_inchange(app):
+    assert _glisser_haut(["", "", "A", "Z"], 2, 2, 2) == ["A", "A", "A", "Z"]
+
+
+def test_glisser_haut_prolonge_le_motif(app):
+    """Sélection A, B → au-dessus : … A, B (avant le correctif : B, A, A, B)."""
+    assert _glisser_haut(["", "", "", "A", "B"], 3, 4, 3) == ["B", "A", "B", "A", "B"]
+
+
+def test_glisser_haut_motif_trois_lignes(app):
+    assert _glisser_haut(["", "", "", "", "A", "B", "C"], 4, 6, 4) == \
+        ["C", "A", "B", "C", "A", "B", "C"]

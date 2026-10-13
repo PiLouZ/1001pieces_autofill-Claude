@@ -211,7 +211,9 @@ class DragHandle(QWidget):
 
         for dest_row in range(dest_start_row, dest_end_row + 1):
             distance = dest_end_row - dest_row
-            source_row_idx = distance % source_height
+            # Distance d (0 = juste au-dessus) → source[(N - 1 - d) % N] :
+            # le motif A, B se prolonge en … A, B au-dessus (et non B, A, A, B).
+            source_row_idx = (source_height - 1 - distance) % source_height
             row_modified = False
             for dest_col, source_value in source_data[source_row_idx]:
                 if dest_col == 5:
