@@ -29,7 +29,7 @@ class DragHandle(QWidget):
         self.main_window = main_window
         self.setFixedSize(Config.DRAG_HANDLE_SIZE, Config.DRAG_HANDLE_SIZE)
         self.setCursor(Qt.CrossCursor)
-        self.setToolTip("Tirer pour recopier | Double-clic pour remplir automatiquement vers le bas")
+        self.setToolTip("Tirer pour recopier | Double-clic pour remplir automatiquement vers le bas (ou vers le haut si le bas est déjà rempli)")
         self.dragging = False
         self.start_pos = None
         self.orig_selection = None
@@ -253,7 +253,7 @@ class DragHandle(QWidget):
         self._stop_auto_scroll()
     
     def mouseDoubleClickEvent(self, event):
-        """Gérer le double-clic sur la poignée pour duplication automatique vers le bas"""
+        """Gérer le double-clic sur la poignée pour duplication automatique (bas, sinon haut)"""
         if event.button() != Qt.LeftButton:
             return
 
@@ -267,10 +267,15 @@ class DragHandle(QWidget):
         if forbidden_cols.intersection(selected_cols):
             return
 
-        self._auto_fill_down()
+        self._auto_fill()
     
-    def _auto_fill_down(self):
-        """Dupliquer automatiquement vers le bas jusqu'aux cellules vides"""
+    def _auto_fill(self):
+        """Dupliquer automatiquement jusqu'aux cellules non vides.
+
+        Vers le bas d'abord (comportement historique). Vers le haut seulement
+        si rien n'est à remplir en bas : case du dessous déjà remplie, ou
+        sélection sur la dernière ligne chargée.
+        """
         selection = self._get_current_selection()
         if not selection:
             return
@@ -286,21 +291,33 @@ class DragHandle(QWidget):
         if not source_data:
             return
 
+        source_row_count = len(source_data)
+
         start_row = selection.bottomRow() + 1
         end_row = self._find_fill_end_row(selection, start_row)
 
-        if start_row > end_row:
-            return
-
-        num_rows = end_row - start_row + 1
-        source_row_count = len(source_data)
+        if start_row <= end_row:
+            direction_text = "vers le bas"
+            # Ligne de destination → index source : le motif se prolonge depuis le haut
+            dest_rows = [(row, (row - start_row) % source_row_count)
+                         for row in range(start_row, end_row + 1)]
+            sel_top, sel_bottom = selection.topRow(), end_row
+        else:
+            end_row = selection.topRow() - 1
+            start_row = self._find_fill_start_row_up(selection, end_row)
+            if start_row > end_row:
+                return
+            direction_text = "vers le haut"
+            # Distance d (0 = juste au-dessus) → source[(N - 1 - d) % N] :
+            # le motif A, B se prolonge en … A, B au-dessus de la sélection.
+            dest_rows = [(row, (source_row_count - 1 - (end_row - row)) % source_row_count)
+                         for row in range(start_row, end_row + 1)]
+            sel_top, sel_bottom = start_row, selection.bottomRow()
 
         duplicated_cells = 0
         modified_rows = []
 
-        for i in range(num_rows):
-            dest_row = start_row + i
-            source_row_idx = i % source_row_count
+        for dest_row, source_row_idx in dest_rows:
             row_modified = False
             for col_idx, source_value in source_data[source_row_idx]:
                 if dest_row < self.table.rowCount():
@@ -312,10 +329,11 @@ class DragHandle(QWidget):
 
         if duplicated_cells > 0 and self.main_window:
             self._apply_selection(
-                selection.topRow(), selection.leftColumn(),
-                end_row, selection.rightColumn()
+                sel_top, selection.leftColumn(),
+                sel_bottom, selection.rightColumn()
             )
-            self.main_window.user_interaction_service.add_to_history("Duplication automatique vers le bas")
+            self.main_window.user_interaction_service.add_to_history(
+                f"Duplication automatique {direction_text}")
             self._save_auto_fill_changes(modified_rows, selection.leftColumn(), selection.rightColumn())
     
     @handle_drag_operation_errors()
@@ -362,6 +380,17 @@ class DragHandle(QWidget):
             if has_non_empty:
                 return row - 1
         return self.table.rowCount() - 1
+    
+    def _find_fill_start_row_up(self, selection, end_row):
+        """Trouver la première ligne à remplir vers le haut (tant que les cellules sont vides dans la sélection)"""
+        for row in range(end_row, -1, -1):
+            has_non_empty = any(
+                self._read_cell(row, col).strip()
+                for col in range(selection.leftColumn(), selection.rightColumn() + 1)
+            )
+            if has_non_empty:
+                return row + 1
+        return 0
     
     def _check_auto_scroll(self, event):
         """Vérifier si le défilement automatique est nécessaire"""

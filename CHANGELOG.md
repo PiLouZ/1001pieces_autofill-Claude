@@ -4,6 +4,23 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.80.0] - 2026-10-13 (branche `feature/double-clic-remplissage-haut`)
+
+### Double-clic sur la poignée : remplissage vers le haut
+
+- Le double-clic sur la poignée de recopie remplit toujours **vers le bas d'abord**,
+  sans changement. Quand rien n'est à remplir en bas (case du dessous déjà remplie,
+  ou sélection sur la dernière ligne chargée), il remplit désormais **vers le haut**
+  tant que les cases sont vides. Avant, il ne se passait rien.
+- Avec plusieurs lignes sélectionnées, le motif se prolonge correctement vers le
+  haut (A, B → … A, B au-dessus).
+- Historique : « Duplication automatique vers le haut » ; infobulle mise à jour.
+- Pas de limite de lignes, comme pour le remplissage vers le bas.
+- Non-régression : 3 000 grilles aléatoires comparées à l'ancien code, résultat
+  vers le bas identique dans tous les cas ; 7 tests (`test_drag_handle_auto_fill.py`).
+
+---
+
 ## [3.79.0] - 2026-10-09 (branche `feature/icone-application`)
 
 ### Nouvelle icône d'application (bureau, Dock, export)
