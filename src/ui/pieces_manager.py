@@ -23,6 +23,39 @@ def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
     return ", ".join(refs[:max_shown]) + f", … et {pluralize(len(refs) - max_shown, 'autre')}"
 
 
+# Catégories de références liées (get_references_liees) : (clé, singulier, pluriel)
+_CATEGORIES_LIEES = (
+    ('nouvelles', "nouvelle référence", "nouvelles références"),
+    ('anciennes', "ancienne référence", "anciennes références"),
+    ('autres', "autre version de la lignée", "autres versions de la lignée"),
+    ('equivalentes', "équivalente", "équivalentes"),
+)
+
+
+def refs_liees_a_plat(liees: dict) -> list:
+    """Toutes les références liées, dans l'ordre des catégories."""
+    return [ref for cle, _s, _p in _CATEGORIES_LIEES for ref in (liees or {}).get(cle, [])]
+
+
+def resume_references_liees(liees: dict) -> List[str]:
+    """Une ligne par catégorie non vide : « ancienne référence : 11025804 »."""
+    lignes = []
+    for cle, singulier, pluriel in _CATEGORIES_LIEES:
+        refs = (liees or {}).get(cle, [])
+        if refs:
+            libelle = singulier if len(refs) == 1 else pluriel
+            lignes.append(f"{libelle} : {_format_refs_recap(refs)}")
+    return lignes
+
+
+def libelles_remplaces(libelles: dict, refs: list, nouveau: str) -> List[Tuple[str, str]]:
+    """(ref, libellé actuel) des références dont un libellé NON VIDE et différent
+    serait écrasé par `nouveau`. Remplir un libellé vide n'est pas remplacer."""
+    nouveau = (nouveau or '').strip()
+    return [(ref, libelles[ref]) for ref in refs
+            if libelles.get(ref) and libelles[ref] != nouveau]
+
+
 def libelles_candidats(libelles) -> list:
     """Libellés distincts et non vides d'un groupe, dans l'ordre de rencontre.
 
@@ -2265,8 +2298,11 @@ class PiecesManagerWindow(QDialog):
     
     def _do_edit_piece(self, current_ref: str, current_desc: str, focus_field: str = 'ref'):
         """Logique commune d'édition d'une pièce : dialogue, validation, mise à jour DB, historique."""
-        equivalents = self.db_manager.get_equivalents(current_ref)
-        dialog = PieceEditDialog(self, current_ref, current_desc, equivalents, focus_field=focus_field)
+        liees = self.db_manager.get_references_liees(current_ref)
+        refs_liees = refs_liees_a_plat(liees)
+        libelles = self.db_manager.get_descriptions(refs_liees)
+        dialog = PieceEditDialog(self, current_ref, current_desc, liees, libelles,
+                                 focus_field=focus_field)
 
         def _on_accepted():
             new_ref, new_desc, propagate = dialog.get_values()
@@ -2282,9 +2318,9 @@ class PiecesManagerWindow(QDialog):
 
             # La référence était validée non vide, le libellé ne l'était pas :
             # valider le dialogue avec le champ effacé suffisait à perdre le
-            # libellé, et à le perdre pour tout le groupe si « propager » est coché.
+            # libellé, et à le perdre pour toute la lignée si « propager » est coché.
             if not new_desc.strip() and (current_desc or '').strip():
-                cibles = 1 + (len(equivalents) if (propagate and equivalents) else 0)
+                cibles = 1 + (len(refs_liees) if (propagate and refs_liees) else 0)
                 if QMessageBox.question(
                     self, "Effacer le libellé",
                     f"Le libellé « {current_desc} » va être effacé "
@@ -2307,12 +2343,13 @@ class PiecesManagerWindow(QDialog):
                 if msg:
                     self.parent().user_interaction_service.add_to_history(msg)
 
-            if propagate and equivalents:
-                updated = self.db_manager.set_description_for_refs(equivalents, new_desc)
+            if propagate and refs_liees:
+                updated = self.db_manager.set_description_for_refs(refs_liees, new_desc)
                 if updated and hasattr(self.parent(), 'user_interaction_service'):
+                    details = "\n".join(f"   {l}" for l in resume_references_liees(liees))
                     self.parent().user_interaction_service.add_to_history(
-                        f"Libellé :\n==> {pluralize(updated, 'pièce équivalente', 'pièces équivalentes')} → « {new_desc} » "
-                        f"({_format_refs_recap(equivalents)})"
+                        f"Libellé :\n==> {pluralize(updated, 'référence liée', 'références liées')} "
+                        f"→ « {new_desc} »\n{details}"
                     )
                     self._load_pieces_data()
 
@@ -2431,7 +2468,8 @@ def _formulaire_piece(ref: str = "", libelle: str = ""):
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""
     
-    def __init__(self, parent, current_ref, current_desc, equivalents=None, focus_field='ref'):
+    def __init__(self, parent, current_ref, current_desc, liees=None, libelles=None,
+                 focus_field='ref'):
         super().__init__(parent)
         self.setWindowTitle("Modifier la pièce")
         self.setModal(True)
@@ -2445,17 +2483,40 @@ class PieceEditDialog(QDialog):
         champs, self.ref_input, self.desc_input = _formulaire_piece(current_ref, current_desc)
         layout.addLayout(champs)
 
-        # Propagation au groupe d'équivalence (B)
-        self.equivalents = equivalents or []
+        # Propagation du libellé à toutes les références liées : lignée de
+        # succession (nouvelles, anciennes, autres versions) et équivalentes.
+        # Jusqu'en 3.85.0, seules les équivalentes : la case restait invisible
+        # pour 626 familles de succession sur 722.
+        self.liees = liees or {}
+        self.refs_liees = refs_liees_a_plat(self.liees)
+        self.libelles = libelles or {}
         self.propagate_checkbox = QCheckBox()
-        if self.equivalents:
+        self.detail_label = QLabel()
+        self.remplaces_label = QLabel()
+        if self.refs_liees:
+            n = len(self.refs_liees)
             self.propagate_checkbox.setText(
-                f"Appliquer aussi ce libellé aux {len(self.equivalents)} pièces équivalentes "
-                f"({_format_refs_recap(self.equivalents)})"
+                "Appliquer aussi ce libellé à la référence liée" if n == 1
+                else f"Appliquer aussi ce libellé aux {n} références liées"
             )
-            layout.addWidget(self.propagate_checkbox)
+            self.detail_label.setText("\n".join(resume_references_liees(self.liees)))
+            self.detail_label.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
+            self.detail_label.setWordWrap(True)
+            self.remplaces_label.setStyleSheet(StyleManager.TEXTE_AVERTISSEMENT)
+            self.remplaces_label.setWordWrap(True)
+            bloc = QVBoxLayout()
+            bloc.setSpacing(2)
+            bloc.addWidget(self.propagate_checkbox)
+            for label in (self.detail_label, self.remplaces_label):
+                label.setContentsMargins(22, 0, 0, 0)   # aligné sous le texte de la case
+                bloc.addWidget(label)
+            layout.addLayout(bloc)
+            self.desc_input.textChanged.connect(self._maj_libelles_remplaces)
+            self._maj_libelles_remplaces()
         else:
             self.propagate_checkbox.setVisible(False)
+            self.detail_label.setVisible(False)
+            self.remplaces_label.setVisible(False)
 
         # Boutons
         buttons_layout = QHBoxLayout()
@@ -2480,6 +2541,20 @@ class PieceEditDialog(QDialog):
         target.selectAll()
         target.setFocus()
         
+    def _maj_libelles_remplaces(self, *_):
+        """Lister, à la frappe, les libellés différents que la propagation écraserait."""
+        remplaces = libelles_remplaces(self.libelles, self.refs_liees, self.desc_input.text())
+        if not remplaces:
+            self.remplaces_label.setVisible(False)
+            return
+        apercu = ", ".join(f"{ref} « {lib} »" for ref, lib in remplaces[:3])
+        if len(remplaces) > 3:
+            apercu += f", … et {pluralize(len(remplaces) - 3, 'autre')}"
+        self.remplaces_label.setText(
+            f"dont {pluralize(len(remplaces), 'libellé différent remplacé', 'libellés différents remplacés')} : "
+            f"{apercu}")
+        self.remplaces_label.setVisible(True)
+
     def get_values(self):
         """Retourner les valeurs saisies"""
         return (self.ref_input.text().strip(), self.desc_input.text().strip(),
