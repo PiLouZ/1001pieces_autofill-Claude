@@ -1815,6 +1815,21 @@ class MainWindow(QMainWindow):
         
         self.user_interaction_service.show_info(summary)
     
+    @staticmethod
+    def _lignes_marques(results, retrait):
+        """Bloc d'historique des marques réécrites, une marque par ligne :
+
+            ==> Marques alignées sur la base :
+            - DELTA → Delta (7),
+            - HEXATHERM → Hexatherm (1)
+
+        Les lignes « - » sont rendues en retrait sous le « ==> » qui les précède.
+        """
+        from ..services.marque_normalisation_service import MarqueNormalisationService
+        lignes = MarqueNormalisationService.lignes(results['marques_alignees'])
+        bloc = f"{retrait}==> Marques alignées sur la base :\n"
+        return bloc + ''.join(f"{retrait}- {ligne}\n" for ligne in lignes)
+
     def _generate_console_summary(self, results, ref_piece, source, pdf_files_info=None):
         """Générer la synthèse dans le format console standardisé"""
         summary = f"Import {source}"
@@ -1835,6 +1850,8 @@ class MainWindow(QMainWindow):
         original_line_count = results.get('original_line_count', total_processed + duplicates_ignored)
         summary += f"Lignes traitées : {original_line_count}\n"
 
+        if results.get('marques_alignees'):
+            summary += self._lignes_marques(results, retrait="")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"[!] {alerte}\n"
@@ -2004,6 +2021,11 @@ class MainWindow(QMainWindow):
         # Signal de mapping suspect : remonté ici et non plus seulement en log.
         # 25 des 495 imports de l'historique le déclenchaient sans que rien ne
         # l'affiche — un import silencieusement faux passait inaperçu.
+        # Casse des marques réécrite (« DELTA » → « Delta ») : jamais silencieuse.
+        # Placée avant l'alerte de mapping : sous un « [!] », ses lignes seraient
+        # surlignées en jaune comme faisant partie de l'alerte.
+        if results.get('marques_alignees'):
+            summary += self._lignes_marques(results, retrait="     ")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"     [!] {alerte}\n"

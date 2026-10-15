@@ -1877,6 +1877,10 @@ class ImportManager:
         # Initialisés ici car _try_auto_complete est aussi appelable hors import.
         self._log_counters = self._nouveaux_compteurs_log()
 
+        # Casse des marques alignée sur la base (v3.82.0) : « DELTA » → « Delta »
+        from ..services.marque_normalisation_service import MarqueNormalisationService
+        self._marques = MarqueNormalisationService(db_manager)
+
     @staticmethod
     def _nouveaux_compteurs_log() -> Dict[str, int]:
         """Compteurs de log remis à zéro (un jeu par import)."""
@@ -2413,6 +2417,7 @@ class ImportManager:
 
             shared_devices_cache      = self._preload_existing_devices()
             shared_autocomplete_cache = self._build_autocomplete_cache(shared_devices_cache)
+            self._marques.charger()
             app_logger.info(f" Cache prêt : {len(shared_devices_cache)} appareils")
 
             for i, file in enumerate(config.files):
@@ -2459,6 +2464,12 @@ class ImportManager:
 
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
+
+            # Marques réécrites (« DELTA → Delta ») : tracées dans l'historique
+            alignements = self._marques.alignements()
+            if alignements:
+                results['marques_alignees'] = alignements
+                app_logger.info(f"[Import] Marques alignées : {self._marques.resume(alignements)}")
 
             # Les fichiers en échec sont sautés, pas fatals : le lot se termine et
             # la liste des refusés part dans results['errors'] jusqu'à l'UI.
@@ -2801,9 +2812,18 @@ class ImportManager:
         individual_ref = config.individual_references.get(file.path, file.suggested_reference)
         individual_label = config.individual_labels.get(file.path, "")
         
-        # Garder le libellé vide si l'utilisateur n'a rien saisi
-        references_and_labels.append((individual_ref, individual_label))
-        
+        if references_and_labels and individual_ref == references_and_labels[0][0]:
+            # Même référence que la commune : une seule association par ligne. Sans
+            # ce garde, la 2ᵈᵉ était retrouvée en base et comptée « déjà associée »
+            # (collage de 25 lignes : « Nouvelles : 25 » ET « Déjà associées : 25 »).
+            # Libellé du fichier prioritaire s'il est renseigné — c'était déjà l'effet
+            # des deux passages, le 2ᵈ remplaçant le libellé du 1ᵉʳ.
+            if individual_label:
+                references_and_labels[0] = (individual_ref, individual_label)
+        else:
+            # Garder le libellé vide si l'utilisateur n'a rien saisi
+            references_and_labels.append((individual_ref, individual_label))
+
         # Effectuer l'import des données - Mode batch pour gros volumes
         # Seuil pour activer le mode batch optimisé (réduit pour meilleure performance)
         BATCH_THRESHOLD = 50  # lignes - batch dès 50 lignes pour optimisation immédiate
@@ -3609,6 +3629,7 @@ class ImportManager:
                     data[field] = str(row[i]).strip()
             if not any(v for v in data.values() if v):
                 return None
+            self._normaliser_marque(data)
             if not data.get('type') or not data.get('manufacturer'):
                 self._try_auto_complete(data)
             return data
@@ -3649,13 +3670,21 @@ class ImportManager:
         # Vérifier qu'on a au moins une donnée utile
         if not any(v for v in data.values() if v):
             return None
-        
+
+        self._normaliser_marque(data)
+
         # Appliquer l'autocomplétion si Type ou Fabricant sont manquants
         if data and (not data.get('type') or not data.get('manufacturer')):
             self._try_auto_complete(data)
         
         return data
     
+    def _normaliser_marque(self, data: Dict[str, Any]) -> None:
+        """Marque importée réécrite selon la base (« DELTA » → « Delta »), avant
+        l'auto-complétion. Commun aux deux modes de parsing, donc aux deux chemins."""
+        if data.get('manufacturer'):
+            data['manufacturer'] = self._marques.normaliser(data['manufacturer'])
+
     def _needs_manual_completion(self, device_data: Dict[str, Any]) -> bool:
         """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""
         type_val = device_data.get('type') or ''

@@ -202,6 +202,12 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
                     # Items sans section parente → section implicite
                     current_section = ''
                 section_items.append(item_text)
+            elif stripped.startswith('- '):
+                # Sous-élément du « ==> » précédent (marques alignées) : reste
+                # dans la section, en retrait, au lieu d'ouvrir une section
+                if current_section is None:
+                    current_section = ''
+                section_items.append(f"      {stripped}")
             else:
                 _flush_section()
                 current_section = stripped.rstrip(':')

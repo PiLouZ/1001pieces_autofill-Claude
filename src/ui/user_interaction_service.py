@@ -574,10 +574,16 @@ class UserInteractionService:
             for line in entry['details']:
                 safe = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 debut = line.lstrip()
-                indent = '&nbsp;&nbsp;' if debut.startswith('==>') else ''
+                # « - » : élément de liste sous le « ==> » précédent (marques
+                # alignées), en retrait plus profond ; ne rompt pas un bloc d'alerte
+                sous_element = debut.startswith('- ')
+                if sous_element:
+                    indent = '&nbsp;' * 10
+                else:
+                    indent = '&nbsp;&nbsp;' if debut.startswith('==>') else ''
                 if debut.startswith('[!]'):
                     en_alerte = True
-                elif not debut.startswith('==>'):
+                elif not debut.startswith('==>') and not sous_element:
                     en_alerte = False
                 if en_alerte:
                     gras = ' font-weight:bold;' if debut.startswith('[!]') else ''
