@@ -4,6 +4,24 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.86.2] - 2026-10-15 (branche `fix/provenance-suggestions-historique`)
+
+### Historique : la provenance des suggestions n'est plus perdue
+
+- Une édition **Type + Fabricant** validée depuis une suggestion perdait sa ligne
+  « (source : suggestion réf. X (score Y)) », dans le panneau Historique comme en
+  base : seules les lignes « ==> » étaient gardées. Les suggestions acceptées ne
+  laissaient donc aucune trace (la dernière datait du 2026-07-02), alors qu'environ
+  1 100 appareils ont été complétés par suggestion depuis le 2026-09-15.
+- La ligne de provenance est désormais conservée (panneau, base, rechargement au
+  lancement). Une édition issue d'une suggestion ne se regroupe plus avec une édition
+  manuelle identique ; plusieurs suggestions se regroupent entre elles (×N), avec
+  « (source : suggestions par similarité) » quand leurs références diffèrent.
+- 10 tests ajoutés (`test_provenance_suggestions_historique.py`), dont un de bout en
+  bout depuis le message réel de `grouped_history_service`.
+
+---
+
 ## [3.86.1] - 2026-10-15 (branche `feature/reserve-ponctuelle-deux-copies`)
 
 ### Sauvegardes : 2 copies ponctuelles au lieu d'une
