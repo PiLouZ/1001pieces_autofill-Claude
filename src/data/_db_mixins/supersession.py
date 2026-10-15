@@ -598,6 +598,43 @@ class DatabaseSupersessionMixin:
             app_logger.error(f"Erreur resolve_current_ref({ref_piece}): {e}")
             return ref_piece
 
+    def resolve_current_refs_batch(self, refs: list, max_depth: int = 20) -> dict:
+        """
+        Version en lot de resolve_current_ref : une requête par tranche de 500 refs
+        au lieu d'une par ref (panneau des pièces en sélection multiple).
+
+        Returns:
+            dict {ref: ref courante} — une ref sans successeur se résout vers elle-même.
+        """
+        refs = list(dict.fromkeys(r for r in refs if r))
+        result = {ref: ref for ref in refs}
+        taille_tranche = 500  # sous la limite historique de 999 variables SQLite
+        for debut in range(0, len(refs), taille_tranche):
+            tranche = refs[debut:debut + taille_tranche]
+            valeurs = ",".join("(?)" for _ in tranche)
+            try:
+                rows = self.execute_query(
+                    f"""WITH RECURSIVE chain(origine, ref, depth) AS (
+                            SELECT column1, column1, 0 FROM (VALUES {valeurs})
+                            UNION ALL
+                            SELECT chain.origine, ps.ref_new, chain.depth + 1
+                            FROM chain
+                            JOIN piece_supersessions ps ON ps.ref_old = chain.ref
+                            WHERE ps.ref_new IS NOT NULL AND chain.depth < ?
+                        )
+                        SELECT origine, ref, depth FROM chain""",
+                    tranche + [max_depth]
+                )
+            except Exception as e:
+                app_logger.error(f"Erreur resolve_current_refs_batch: {e}")
+                continue
+            profondeurs = {}
+            for origine, ref, depth in (rows or []):
+                if depth >= profondeurs.get(origine, -1):
+                    profondeurs[origine] = depth
+                    result[origine] = ref
+        return result
+
     def get_all_predecessors(self, ref_piece: str, max_depth: int = 20) -> list:
         """
         Retourner toutes les refs qui ont été remplacées (directement ou indirectement)
