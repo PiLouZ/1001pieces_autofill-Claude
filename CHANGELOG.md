@@ -4,6 +4,92 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.88.1] - 2026-10-15 (branche `feature/suggestions-hors-page`)
+
+### Fenêtre « Valider les suggestions » : toutes les suggestions, chargées ou non
+
+- La fenêtre ne listait que les appareils de la page chargée, alors que la bannière
+  les comptait tous. Après un import, le tableau se recharge sans filtre (page 1,
+  tri par id décroissant) : les appareils **existants** touchés par l'import ont
+  d'anciens id et restaient invisibles. Reproduit sur une copie de la base réelle
+  (scénario de l'import du 2026-10-12 10:34, 0 nouvel appareil) : bannière 70,
+  fenêtre **24** ; après correctif, **70**.
+- Les appareils hors page sont relus en base par lots de 900 id
+  (`DatabaseManager.lire_appareils_par_id`). Un appareil supprimé entre-temps est
+  retiré des suggestions et la bannière est recalée ; un échec de lecture ne
+  retire rien.
+- Valider un appareil hors page s'écrivait déjà en base, mais **sans entrée
+  d'historique**. Il est désormais historisé avec sa provenance (« source :
+  suggestion réf. X ») et sa référence lisible. Le résumé précise combien ne sont
+  pas annulables par Cmd+Z (la pile d'annulation est indexée par ligne affichée).
+
+---
+
+## [3.88.0] - 2026-10-15 (branche `feature/pieces-communes-lignee`)
+
+### Panneau des pièces : pièces communes par lignée
+
+- En sélection multiple, une pièce est désormais reconnue commune quand les appareils
+  la portent sous des références **différentes d'une même lignée** de succession.
+  Cas réel : 6 centrales vapeur Moulinex, cartouche `FS-9100017944` → `XD9030E0`,
+  2 appareils sur l'ancienne réf., 1 sur la nouvelle, 3 sur les deux : le panneau
+  affichait « Aucune pièce commune aux 6 appareils sélectionnés ».
+- La pièce s'affiche sous sa **référence courante**, avec la mention
+  « ⇄ Commune par lignée : N appareils sur <ancienne réf.> ».
+- Une pièce commune à l'identique s'affiche exactement comme avant (pas de doublon
+  par lignée). Les équivalences restent hors périmètre : une équivalente n'est pas
+  la même pièce.
+- Pas de suppression multi-appareils (bouton × et menu contextuel) sur une pièce
+  commune par lignée : sa référence courante n'est pas portée par tous les appareils.
+- Nouvelle méthode `resolve_current_refs_batch` : tête de lignée de N références en
+  une requête par tranche de 500 (2 ms pour 500 appareils sur la base réelle).
+
+---
+
+## [3.87.0] - 2026-10-15 (branche `feature/suggestion-type-piece`)
+
+### Import : suggestion du Type d'après la pièce importée
+
+- Nouvelle suggestion pour les lignes importées **sans type** : le type que portent
+  déjà les appareils de la pièce, quand il couvre **au moins 95 % d'au moins 5
+  appareils**. Mesuré le 2026-10-15 sur les saisies réelles (données de la veille
+  seulement) : juste à 94 % dans ce cas, pour ~37 % des remplissages de Type ; 68 %
+  entre 80 et 95 %, d'où le seuil.
+- La suggestion ne propose que le **Type** (la marque n'est jamais écrite) et passe par
+  le même mécanisme que la similarité : case ambrée, info-bulle (« type de 100 % des
+  51 appareils de la pièce 11047540 »), fenêtre de validation (fiabilité « Type de la
+  pièce »), fenêtre Cmd+D, provenance dans l'historique. Jamais appliquée sans
+  validation.
+- Fusion avec la similarité : si un candidat propose déjà ce type, rien n'est ajouté ;
+  sinon les deux sont proposés et la ligne n'est pas pré-cochée.
+- Référence commune + référence du fichier : les appareils des deux pièces comptent.
+- Interrupteur et seuils dans `Config` (`ENABLE_TYPE_PIECE_SUGGESTION`,
+  `TYPE_PIECE_PART_MIN`, `TYPE_PIECE_APPAREILS_MIN`).
+- Fenêtre de validation : colonne Fiabilité élargie à son plus long libellé (« Quasi-
+  certain » était déjà tronqué).
+- 18 tests ajoutés (`test_suggestion_type_piece.py`), dont les deux chemins d'import
+  (standard < 50 lignes et batch).
+
+---
+
+## [3.86.2] - 2026-10-15 (branche `fix/provenance-suggestions-historique`)
+
+### Historique : la provenance des suggestions n'est plus perdue
+
+- Une édition **Type + Fabricant** validée depuis une suggestion perdait sa ligne
+  « (source : suggestion réf. X (score Y)) », dans le panneau Historique comme en
+  base : seules les lignes « ==> » étaient gardées. Les suggestions acceptées ne
+  laissaient donc aucune trace (la dernière datait du 2026-07-02), alors qu'environ
+  1 100 appareils ont été complétés par suggestion depuis le 2026-09-15.
+- La ligne de provenance est désormais conservée (panneau, base, rechargement au
+  lancement). Une édition issue d'une suggestion ne se regroupe plus avec une édition
+  manuelle identique ; plusieurs suggestions se regroupent entre elles (×N), avec
+  « (source : suggestions par similarité) » quand leurs références diffèrent.
+- 10 tests ajoutés (`test_provenance_suggestions_historique.py`), dont un de bout en
+  bout depuis le message réel de `grouped_history_service`.
+
+---
+
 ## [3.86.1] - 2026-10-15 (branche `feature/reserve-ponctuelle-deux-copies`)
 
 ### Sauvegardes : 2 copies ponctuelles au lieu d'une

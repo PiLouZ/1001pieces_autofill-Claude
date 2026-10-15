@@ -45,9 +45,10 @@ _TIER_LABEL = {
     'B_fuzzy_alpha': "Probable",
     'B_fuzzy_numeric': "Probable",
     'C_prefix_consensus': "À vérifier",
+    'P_type_piece': "Type de la pièce",
 }
 _TIER_ORDER = {'A_suffix_variant': 0, 'B_fuzzy_alpha': 1, 'B_fuzzy_numeric': 1,
-               'C_prefix_consensus': 2}
+               'P_type_piece': 1, 'C_prefix_consensus': 2}
 
 
 def tier_label(tier):
@@ -178,7 +179,11 @@ class SuggestionValidationDialog(QDialog):
         self._tree.setColumnWidth(COL_NEW_TYPE, 160)
         self._tree.setColumnWidth(COL_NEW_MFR, 160)
         self._tree.setColumnWidth(COL_SCORE, 78)
-        self._tree.setColumnWidth(COL_TIER, 104)
+        # Calée sur le plus long libellé (« Type de la pièce ») : à 104 px, même
+        # « Quasi-certain » était tronqué.
+        largeur_tier = max(self._tree.fontMetrics().horizontalAdvance(l)
+                           for l in _TIER_LABEL.values()) + 24
+        self._tree.setColumnWidth(COL_TIER, max(104, largeur_tier))
         root.addWidget(self._tree, 1)
 
         # Zone D — barre d'actions bas. Convention de l'appli : Annuler neutre à
@@ -297,6 +302,14 @@ class SuggestionValidationDialog(QDialog):
         leaf.setText(COL_SCORE, f"{int(score * 100)} %")
         leaf.setForeground(COL_SCORE, QBrush(score_color(score)))
         leaf.setText(COL_TIER, tier_label(cand.get('confidence_tier')))
+        # « Type de la pièce » : le % n'est pas une ressemblance de référence mais
+        # la part des appareils de la pièce qui portent ce type — le dire au survol.
+        from ..services.reference_similarity_service import est_type_piece
+        aide = (f"{score:.0%} des {cand.get('nb_appareils', 0)} appareils typés de la pièce "
+                f"{cand.get('ref', '')} sont de type « {cand.get('type', '')} »"
+                if est_type_piece(cand) else "")
+        leaf.setToolTip(COL_SCORE, aide)
+        leaf.setToolTip(COL_TIER, aide)
         bg, fg = fiability_colors(score)   # couleur liée au score (rouge si faible)
         leaf.setBackground(COL_TIER, QBrush(QColor(bg)))
         leaf.setForeground(COL_TIER, QBrush(QColor(fg)))

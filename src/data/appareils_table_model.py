@@ -122,9 +122,8 @@ class AppareillsTableModel(QAbstractTableModel):
             if col in _SUGGESTION_COLS:
                 suggestions = self._pending_suggestions.get(record[0])
                 if suggestions:
-                    best = suggestions[0]
-                    return (f"Suggestion : {best['type']} / {best['manufacturer']} "
-                            f"(score {best['score']:.0%}) — clic pour voir les candidats")
+                    from ..services.reference_similarity_service import infobulle_candidat
+                    return infobulle_candidat(suggestions[0])
 
         return None
 
@@ -370,27 +369,53 @@ class AppareillsTableModel(QAbstractTableModel):
         return [(db_id, cands[0]) for db_id, cands in self._pending_suggestions.items()
                 if len(cands) == 1]
 
-    def suggestions_snapshot(self):
+    def suggestions_snapshot(self, lire_hors_page=None):
         """Décrit chaque appareil ayant des suggestions en attente, pour alimenter la
         fenêtre de validation. Chaque entrée :
         {db_id, ref_modele, commercial_ref, current_type, current_manufacturer,
-         candidates: [candidat_dict, ...]}.
+         candidates: [candidat_dict, ...], hors_page: bool}.
 
         Record : (db_id, type, manufacturer, ref_modele, commercial_ref, ...).
-        Les db_id sans enregistrement chargé (hors page courante) sont ignorés."""
+
+        Après un import, le tableau est rechargé sans filtre (page 1, tri id DESC) :
+        les appareils existants touchés par l'import ont d'anciens id et ne sont
+        pas chargés, alors que la bannière les compte.
+
+        lire_hors_page : callable([db_id]) -> {db_id: (type, manufacturer,
+            ref_modele, commercial_ref)} ou None si la lecture a échoué. Fourni par
+            l'appelant (le modèle n'accède pas à la base). Les db_id qu'il ne
+            renvoie pas n'existent plus : leurs suggestions sont retirées, pour que
+            bannière et fenêtre restent d'accord. Un échec de lecture (None) ne
+            retire rien. Sans ce callable, les db_id hors page sont ignorés."""
         by_id = {rec[0]: rec for rec in self._records}
+        manquants = [db_id for db_id in self._pending_suggestions if db_id not in by_id]
+        hors_page = {}
+        if manquants and lire_hors_page is not None:
+            lus = lire_hors_page(manquants)
+            if lus is not None:
+                hors_page = lus
+                disparus = [db_id for db_id in manquants if db_id not in lus]
+                for db_id in disparus:
+                    del self._pending_suggestions[db_id]
         out = []
         for db_id, cands in self._pending_suggestions.items():
             rec = by_id.get(db_id)
-            if rec is None:
+            if rec is not None:
+                type_v, mfr_v, ref_modele, commercial_ref = (
+                    rec[1] if len(rec) > 1 else '', rec[2] if len(rec) > 2 else '',
+                    rec[3] if len(rec) > 3 else '', rec[4] if len(rec) > 4 else '')
+            elif db_id in hors_page:
+                type_v, mfr_v, ref_modele, commercial_ref = hors_page[db_id]
+            else:
                 continue
             out.append({
                 'db_id': db_id,
-                'ref_modele': (rec[3] or '') if len(rec) > 3 else '',
-                'commercial_ref': (rec[4] or '') if len(rec) > 4 else '',
-                'current_type': (rec[1] or '') if len(rec) > 1 else '',
-                'current_manufacturer': (rec[2] or '') if len(rec) > 2 else '',
+                'ref_modele': ref_modele or '',
+                'commercial_ref': commercial_ref or '',
+                'current_type': type_v or '',
+                'current_manufacturer': mfr_v or '',
                 'candidates': list(cands),
+                'hors_page': rec is None,
             })
         return out
 

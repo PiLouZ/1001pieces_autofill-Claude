@@ -1001,9 +1001,15 @@ class MainWindow(QMainWindow):
         # fragile au virtual scroll) ; la persistance réelle se fait ensuite par db_id.
         self._bulk_edit_collector = set()
         updates_by_db_id = {}
+        # Appareils hors page (non chargés) : setData est impossible, donc ni
+        # historique ni annulation par ce chemin. Historisés après la boucle.
+        hors_page = {}
         try:
             for idx, (db_id, cand) in enumerate(decisions):
-                self._apply_suggestion_with_provenance(cand, model, db_id)
+                if model.find_row_by_db_id(db_id) is None:
+                    hors_page[db_id] = cand
+                else:
+                    self._apply_suggestion_with_provenance(cand, model, db_id)
                 fields = {}
                 if (cand.get('type') or '').strip():
                     fields['type'] = cand['type']
@@ -1025,6 +1031,8 @@ class MainWindow(QMainWindow):
         if progress is not None:
             progress.setLabelText("Enregistrement…")
             QApplication.processEvents()
+        if hors_page:
+            self._historiser_suggestions_hors_page(hors_page, updates_by_db_id)
         db_ops = getattr(self, 'database_operations_service', None)
         if db_ops is not None and updates_by_db_id:
             db_ops.save_cells_batch(updates_by_db_id)
@@ -1048,7 +1056,11 @@ class MainWindow(QMainWindow):
         model = self.table_controller.model
         if not model or not hasattr(model, 'suggestions_snapshot'):
             return
-        snapshot = model.suggestions_snapshot()
+        # Les appareils hors page (ex. existants touchés par un import) sont relus
+        # en base ; ceux qui ont disparu sont retirés, d'où le rafraîchissement.
+        snapshot = model.suggestions_snapshot(
+            lire_hors_page=self.db_manager.lire_appareils_par_id)
+        self.table_controller._update_similarity_banner()
         if not snapshot:
             self.user_interaction_service.add_to_history(
                 "Validation des suggestions : aucune suggestion en attente.")
@@ -1056,11 +1068,17 @@ class MainWindow(QMainWindow):
         from .suggestion_validation_dialog import SuggestionValidationDialog
 
         def _on_validate(decisions):
+            nb_hors_page = sum(1 for db_id, _ in decisions
+                               if model.find_row_by_db_id(db_id) is None)
             applied = self._apply_suggestion_decisions(decisions)
             if applied:
+                detail = (f" (dont {nb_hors_page} hors de la page affichée, "
+                          f"non annulable{'s' if nb_hors_page > 1 else ''} par Cmd+Z)"
+                          if nb_hors_page else "")
                 self.user_interaction_service.add_to_history(
                     f"Suggestions validées via la fenêtre : "
-                    f"{pluralize(applied, 'appareil')} complété{'s' if applied > 1 else ''}.")
+                    f"{pluralize(applied, 'appareil')} complété{'s' if applied > 1 else ''}"
+                    f"{detail}.")
 
         def _pick_value(db_field, current_value, candidates):
             # Réutilise la fenêtre Cmd+D (valeurs existantes + suggestions) du tableau.
@@ -1073,12 +1091,44 @@ class MainWindow(QMainWindow):
         )
         self._suggestion_validation_dialog.show()
 
+    @staticmethod
+    def _provenance_suggestion(candidate):
+        """Libellé de provenance d'une suggestion appliquée, pour l'historique groupé
+        (suggestion par similarité ou type de la pièce)."""
+        from ..services.reference_similarity_service import provenance_candidat
+        return provenance_candidat(candidate)
+
+    def _historiser_suggestions_hors_page(self, hors_page, updates_by_db_id):
+        """Inscrit dans l'historique groupé, avec leur provenance, les suggestions
+        appliquées à des appareils non chargés dans la page courante.
+
+        Appelée AVANT la persistance : les anciennes valeurs sont relues en base.
+        Pas d'action d'annulation : la pile Cmd+Z est indexée par ligne affichée,
+        qui n'existe pas pour ces appareils.
+        """
+        anciens = self.db_manager.lire_appareils_par_id(list(hors_page)) or {}
+        colonnes = (('type', 0), ('manufacturer', 1))
+        for db_id, cand in hors_page.items():
+            champs = updates_by_db_id.get(db_id, {})
+            avant = anciens.get(db_id, ('', '', '', ''))
+            source = self._provenance_suggestion(cand)
+            # Même libellé que pour une ligne affichée : « réf. modèle - réf. commerciale ».
+            reference = " - ".join(r.strip() for r in (avant[2] or '', avant[3] or '')
+                                   if r.strip()) or None
+            for champ, col in colonnes:
+                if champ not in champs:
+                    continue
+                old_value = avant[col] or ''
+                if old_value == champs[champ]:
+                    continue
+                self.grouped_history_service.add_modification(
+                    db_id, self._get_column_display_name(col), old_value, champs[champ],
+                    source=source, reference=reference)
+
     def _apply_suggestion_with_provenance(self, candidate, model, db_id):
         """Applique un candidat en marquant la provenance pour l'historique groupé
         (visible dans l'entrée comme « source : suggestion réf. X (score Y) »)."""
-        self._suggestion_provenance = (
-            f"suggestion réf. {candidate.get('ref', '')} (score {candidate.get('score', 0):.0%})"
-        )
+        self._suggestion_provenance = self._provenance_suggestion(candidate)
         try:
             return self.autocompletion_service.apply_suggestion_pair(candidate, model, db_id)
         finally:

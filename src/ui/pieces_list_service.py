@@ -365,6 +365,22 @@ class PieceItemWidget(QWidget):
             text_layout.addWidget(lbl)
             extra_lines += 1
 
+        # Ligne 5 : pièce commune par lignée (sélection multiple uniquement)
+        par_lignee = status_info.get('commune_par_lignee')
+        if par_lignee is not None:
+            nb = sum(par_lignee.values())
+            if par_lignee:
+                texte = (f"⇄ Commune par lignée : {nb} appareil{'s' if nb > 1 else ''} "
+                         f"sur {', '.join(sorted(par_lignee))}")
+            else:
+                texte = "⇄ Commune par lignée"
+            lbl = QLabel(texte)
+            lbl.setStyleSheet("color: #16a085; font-style: italic; font-size: 11px;")
+            lbl.setToolTip("Les appareils sélectionnés partagent cette pièce, "
+                           "certains sous une ancienne référence.")
+            text_layout.addWidget(lbl)
+            extra_lines += 1
+
         self._has_line2   = extra_lines > 0  # rétrocompat
         self._extra_lines = extra_lines
         outer.addWidget(text_widget, 1)
@@ -376,6 +392,10 @@ class PieceItemWidget(QWidget):
         self._edit_btn   = self._make_btn("✎",  "#0d6efd", "#0b5ed7", "Modifier cette pièce")
         self._delete_btn = self._make_btn("×",  "#dc3545", "#c82333", "Supprimer cette pièce")
 
+        # Pièce commune par lignée : la supprimer par sa réf courante échouerait sur
+        # les appareils qui ne portent que l'ancienne → pas de bouton de suppression
+        self._hover_btns = (self._search_btn, self._edit_btn) if par_lignee is not None \
+            else (self._search_btn, self._edit_btn, self._delete_btn)
         for btn in (self._search_btn, self._edit_btn, self._delete_btn):
             btn.setVisible(False)
             outer.addWidget(btn)
@@ -415,7 +435,7 @@ class PieceItemWidget(QWidget):
     # ── Hover ──────────────────────────────────────────────────────────────
 
     def enterEvent(self, event):
-        for btn in (self._search_btn, self._edit_btn, self._delete_btn):
+        for btn in self._hover_btns:
             btn.setVisible(True)
         super().enterEvent(event)
 
@@ -570,6 +590,10 @@ class PiecesListService:
 
         if total_selected <= 1:
             return  # Rien de spécial à proposer pour sélection simple
+
+        widget = self.main_window.pieces_list.itemWidget(item)
+        if widget is not None and getattr(widget, '_status_info', {}).get('commune_par_lignee') is not None:
+            return  # Commune par lignée : réfs différentes selon l'appareil
 
         menu = QMenu(self.main_window)
         delete_all = menu.addAction(

@@ -50,6 +50,31 @@ _MOIS_ABREGES = ('janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
 # Regex pour parser une ligne "==> Field : 'old' → 'new'"
 _RE_ARROW = re.compile(r"==>\s*(.+?)\s*:\s*'(.*)'\s*→\s*'(.*)'")
 
+# Ligne de provenance ajoutée par grouped_history_service, ex. :
+#   « (source : suggestion réf. HB978GNM1/K2 (score 100%)) »
+_PREFIXE_SOURCE = "(source :"
+# Clé d'agrégation : une édition issue d'une suggestion ne se regroupe jamais
+# avec une édition manuelle identique (sa provenance serait perdue)
+_MARQUE_SOURCE = ("__source__",)
+# Plusieurs suggestions regroupées dont la provenance diffère (réf., score)
+_SOURCE_REGROUPEE = "(source : suggestions par similarité)"
+
+
+def _est_ligne_source(ligne: str) -> bool:
+    return ligne.strip().startswith(_PREFIXE_SOURCE)
+
+
+def _separer_source(message: str):
+    """(message sans la ligne de provenance, ligne de provenance ou None)."""
+    raw = message.replace('\\n', '\n')
+    lignes = raw.split('\n')
+    sources = [l.strip() for l in lignes if _est_ligne_source(l)]
+    if not sources:
+        return message, None
+    reste = '\n'.join(l for l in lignes if not _est_ligne_source(l))
+    return reste, sources[0]
+
+
 # Regex pour supprimer les emojis du titre (plages Unicode emoji + sélecteurs)
 _RE_EMOJI = re.compile(
     '['
@@ -179,6 +204,10 @@ def _parse_entry(message: str, timestamp: datetime) -> Dict[str, Any]:
     agg_key = None
     devices = []
     if action_type == 'edit':
+        # La provenance (suggestion) est une ligne en plus : sans ce retrait, une
+        # édition Type + Fabricant n'était plus reconnue comme multi-champs, ou
+        # perdait sa provenance — les suggestions acceptées ne laissaient aucune trace.
+        message, source = _separer_source(message)
         parsed = _parse_single_edit(message)
         if parsed is not None:
             # Mono-champ : titre concis, pas de details
@@ -200,6 +229,10 @@ def _parse_entry(message: str, timestamp: datetime) -> Dict[str, Any]:
                 if device_ref:
                     devices = [device_ref]
                 details = [f"==> {f} : '{o}' → '{n}'" for (f, o, n) in pairs]
+        if source:
+            details = details + [source]
+            if agg_key is not None:
+                agg_key = (agg_key, _MARQUE_SOURCE)
 
     elif action_type == 'export':
         # Exports : "HTML Marques: 7 marques..." → titre "HTML Marques:" + détail "==> 7 marques..."
@@ -249,12 +282,15 @@ def _entree_depuis_base(row: tuple) -> Optional[Dict[str, Any]]:
     # Clé d'agrégation, reconstruite comme dans _parse_entry
     agg_key = None
     if action_type == 'edit':
+        lignes = [d for d in details if not _est_ligne_source(d)]
         if field_name:
             agg_key = (field_name, new_value if new_value is not None else '')
         else:
-            paires = [_RE_ARROW.match(d) for d in details]
+            paires = [_RE_ARROW.match(d) for d in lignes]
             if paires and all(paires):
                 agg_key = tuple(sorted((m.group(1), m.group(3)) for m in paires))
+        if agg_key is not None and len(lignes) != len(details):
+            agg_key = (agg_key, _MARQUE_SOURCE)
 
     return {
         'timestamp': ts,
@@ -283,6 +319,11 @@ def _inserer_entree(entries: List[Dict[str, Any]], entry: Dict[str, Any]) -> Non
             entries[0].get('restauree', False) == entry.get('restauree', False)):
         last = entries[0]
         last['count'] += 1
+        # Suggestions regroupées : chaque appareil a sa réf. et son score, l'entrée
+        # ×N ne peut en citer qu'une — la dire générique plutôt que trompeuse.
+        if last['details'] != entry['details'] and any(_est_ligne_source(d) for d in last['details']):
+            last['details'] = [_SOURCE_REGROUPEE if _est_ligne_source(d) else d
+                               for d in last['details']]
         if entry['devices']:
             last['devices'].extend(entry['devices'])
         # Mettre à jour le timestamp pour refléter la dernière modification

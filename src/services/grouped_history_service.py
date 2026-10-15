@@ -39,7 +39,7 @@ class GroupedHistoryService(QObject):
         }
 
     def add_modification(self, db_id: int, field_name: str, old_value: str, new_value: str,
-                         source: str = None):
+                         source: str = None, reference: str = None):
         """
         Ajouter une modification au buffer de groupement
 
@@ -50,6 +50,8 @@ class GroupedHistoryService(QObject):
             new_value: Nouvelle valeur
             source: provenance optionnelle (ex: "suggestion réf. X (score 95%)"),
                 affichée une fois par appareil dans l'entrée d'historique groupée.
+            reference: libellé de l'appareil fourni par l'appelant, pour un appareil
+                absent du tableau affiché (sinon l'entrée n'afficherait que son id).
         """
         try:
             current_time = datetime.now()
@@ -64,6 +66,8 @@ class GroupedHistoryService(QObject):
             # Mémoriser la provenance au niveau de l'appareil (la dernière prime).
             if source:
                 self.pending_modifications[db_id]['source'] = source
+            if reference:
+                self.pending_modifications[db_id]['reference'] = reference
 
             # Ajouter la modification
             self.pending_modifications[db_id]['modifications'].append((field_name, old_value, new_value))
@@ -118,13 +122,14 @@ class GroupedHistoryService(QObject):
             if len(modifications) == 1:
                 # Modification unique : utiliser le format harmonisé avec appareil
                 field_name, old_value, new_value = modifications[0]
-                appareil_ref = self._get_appareil_reference(db_id)
+                appareil_ref = data.get('reference') or self._get_appareil_reference(db_id)
                 message = f"Modification de l'appareil {appareil_ref}\n     ==> {field_name} : '{old_value}' → '{new_value}'"
                 self.stats['single_modifications'] += 1
 
             else:
                 # Modifications multiples : utiliser le format groupé
-                message = self._format_grouped_modifications(db_id, modifications, timestamp)
+                message = self._format_grouped_modifications(
+                    db_id, modifications, timestamp, appareil_ref=data.get('reference'))
                 self.stats['grouped_modifications'] += 1
 
             # Provenance optionnelle (ex: suggestion par similarité) — une ligne par appareil.
@@ -141,7 +146,8 @@ class GroupedHistoryService(QObject):
             for field_name, old_value, new_value in data['modifications']:
                 self._fallback_to_normal_history(field_name, old_value, new_value)
 
-    def _format_grouped_modifications(self, db_id: int, modifications: List[Tuple[str, str, str]], timestamp: datetime) -> str:
+    def _format_grouped_modifications(self, db_id: int, modifications: List[Tuple[str, str, str]], timestamp: datetime,
+                                      appareil_ref: str = None) -> str:
         """
         Formater les modifications groupées selon le format cible
 
@@ -151,7 +157,7 @@ class GroupedHistoryService(QObject):
              ==> {Champ} : '{Ancien}' → '{Nouveau}'
         """
         # Obtenir une référence lisible pour l'appareil
-        appareil_ref = self._get_appareil_reference(db_id)
+        appareil_ref = appareil_ref or self._get_appareil_reference(db_id)
 
         # IMPORTANT: Ne pas inclure le timestamp ici car add_to_history() l'ajoute automatiquement
         lines = [f"Modification de l'appareil {appareil_ref}"]
