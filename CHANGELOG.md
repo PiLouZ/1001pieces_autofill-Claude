@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.83.0] - 2026-10-15 (branche `feature/normalisation-saisie-types`)
+
+### Casse alignée sur la base : types à l'import et saisie manuelle
+
+- **Types à l'import** : un type connu reprend l'orthographe de la base
+  (« CHAUFFAGE » → « Chauffage », « SÈCHE-LINGE » → « Sèche-linge »). Un type
+  nouveau tout en capitales de plus de 4 caractères prend une majuscule initiale
+  seule, comme les 42 types existants (« CHAUFFE-EAU » → « Chauffe-eau »).
+  L'historique d'import ajoute un bloc « Types alignés sur la base : ».
+- **Saisie manuelle** : une marque ou un type tapé dans le tableau suit les mêmes
+  règles qu'à l'import (« DELTA » → « Delta »). Couvre l'édition, Cmd+D et la
+  poignée de remplissage. La cellule affiche aussitôt la valeur retenue, et la
+  sauvegarde, l'annulation et l'historique reprennent cette valeur.
+- Une valeur apparue en base après le chargement de la liste (import,
+  restauration) est retrouvée : relecture des valeurs distinctes, servie par
+  l'index (< 1 ms), à chaque valeur inconnue.
+- `MarqueNormalisationService` devient `CasseNormalisationService` (une instance
+  par colonne : marque ou type).
+- 15 tests ajoutés (`test_casse_normalisation.py`, 35 au total). Vérifié dans la
+  vraie fenêtre sur une copie de la base : import, saisie, puis annulation.
+
+---
+
 ## [3.82.1] - 2026-10-15 (branche `fix/recherche-banniere-perimee`)
 
 ### Recherche : le tableau ne garde plus les lignes de la recherche précédente

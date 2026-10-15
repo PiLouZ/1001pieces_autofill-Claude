@@ -1877,9 +1877,11 @@ class ImportManager:
         # Initialisés ici car _try_auto_complete est aussi appelable hors import.
         self._log_counters = self._nouveaux_compteurs_log()
 
-        # Casse des marques alignée sur la base (v3.82.0) : « DELTA » → « Delta »
-        from ..services.marque_normalisation_service import MarqueNormalisationService
-        self._marques = MarqueNormalisationService(db_manager)
+        # Casse alignée sur la base : marques (v3.82.0, « DELTA » → « Delta ») et
+        # types (v3.83.0, « CHAUFFAGE » → « Chauffage »)
+        from ..services.casse_normalisation_service import CasseNormalisationService
+        self._marques = CasseNormalisationService(db_manager, 'manufacturer')
+        self._types = CasseNormalisationService(db_manager, 'type')
 
     @staticmethod
     def _nouveaux_compteurs_log() -> Dict[str, int]:
@@ -2418,6 +2420,7 @@ class ImportManager:
             shared_devices_cache      = self._preload_existing_devices()
             shared_autocomplete_cache = self._build_autocomplete_cache(shared_devices_cache)
             self._marques.charger()
+            self._types.charger()
             app_logger.info(f" Cache prêt : {len(shared_devices_cache)} appareils")
 
             for i, file in enumerate(config.files):
@@ -2465,11 +2468,13 @@ class ImportManager:
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
 
-            # Marques réécrites (« DELTA → Delta ») : tracées dans l'historique
-            alignements = self._marques.alignements()
-            if alignements:
-                results['marques_alignees'] = alignements
-                app_logger.info(f"[Import] Marques alignées : {self._marques.resume(alignements)}")
+            # Marques et types réécrits (« DELTA → Delta ») : tracés dans l'historique
+            for service, cle, libelle in ((self._marques, 'marques_alignees', 'Marques alignées'),
+                                          (self._types, 'types_alignes', 'Types alignés')):
+                alignements = service.alignements()
+                if alignements:
+                    results[cle] = alignements
+                    app_logger.info(f"[Import] {libelle} : {service.resume(alignements)}")
 
             # Les fichiers en échec sont sautés, pas fatals : le lot se termine et
             # la liste des refusés part dans results['errors'] jusqu'à l'UI.
@@ -3629,7 +3634,7 @@ class ImportManager:
                     data[field] = str(row[i]).strip()
             if not any(v for v in data.values() if v):
                 return None
-            self._normaliser_marque(data)
+            self._normaliser_casse(data)
             if not data.get('type') or not data.get('manufacturer'):
                 self._try_auto_complete(data)
             return data
@@ -3671,7 +3676,7 @@ class ImportManager:
         if not any(v for v in data.values() if v):
             return None
 
-        self._normaliser_marque(data)
+        self._normaliser_casse(data)
 
         # Appliquer l'autocomplétion si Type ou Fabricant sont manquants
         if data and (not data.get('type') or not data.get('manufacturer')):
@@ -3679,11 +3684,14 @@ class ImportManager:
         
         return data
     
-    def _normaliser_marque(self, data: Dict[str, Any]) -> None:
-        """Marque importée réécrite selon la base (« DELTA » → « Delta »), avant
-        l'auto-complétion. Commun aux deux modes de parsing, donc aux deux chemins."""
+    def _normaliser_casse(self, data: Dict[str, Any]) -> None:
+        """Marque et type importés réécrits selon la base (« DELTA » → « Delta »),
+        avant l'auto-complétion. Commun aux deux modes de parsing, donc aux deux
+        chemins."""
         if data.get('manufacturer'):
             data['manufacturer'] = self._marques.normaliser(data['manufacturer'])
+        if data.get('type'):
+            data['type'] = self._types.normaliser(data['type'])
 
     def _needs_manual_completion(self, device_data: Dict[str, Any]) -> bool:
         """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""
