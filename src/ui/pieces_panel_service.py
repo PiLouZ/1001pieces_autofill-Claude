@@ -7,7 +7,7 @@ Responsabilités:
 - Placeholder quand aucun appareil n'est sélectionné
 """
 
-from typing import Set, List, Optional
+from typing import Dict, Set, List, Optional
 from .qt_imports import QListWidgetItem, Qt, QColor
 from src.core.logger import app_logger
 from ..utils.error_handler import handle_pieces_panel_errors
@@ -83,12 +83,14 @@ class PiecesPanelService:
             return
 
         common_pieces = set.intersection(*all_pieces_sets)
+        communes_par_lignee = self._get_communes_par_lignee(all_pieces_sets, common_pieces)
 
-        if common_pieces:
+        if common_pieces or communes_par_lignee:
             self._display_common_pieces(common_pieces, selected_rows)
+            self._display_communes_par_lignee(communes_par_lignee)
             self._update_header(
                 label=f"{len(selected_rows)} appareils sélectionnés",
-                count=len(common_pieces)
+                count=len(common_pieces) + len(communes_par_lignee)
             )
         else:
             self._display_no_common_pieces(len(selected_rows))
@@ -111,6 +113,53 @@ class PiecesPanelService:
             description = self._get_piece_description(ref, selected_rows)
             status_info = statuses.get(ref, {'status': 'current', 'ref_new': None, 'refs_old': None})
             item = self.main_window.pieces_list.add_piece_item(ref, description or "", status_info)
+            item.setBackground(QColor(240, 248, 255))
+
+    def _get_communes_par_lignee(self, all_pieces_sets: List[Set[str]],
+                                 common_pieces: Set[str]) -> Dict[str, Dict[str, int]]:
+        """
+        Pièces communes à tous les appareils une fois chaque réf ramenée à la tête
+        de sa lignée de succession (ex. FS-9100017944 → XD9030E0), en excluant
+        celles déjà communes à l'identique.
+
+        Returns:
+            dict {réf courante: {ancienne réf: nb d'appareils qui n'ont qu'elle}}
+        """
+        toutes_refs = set().union(*all_pieces_sets)
+        resolveur = getattr(self.main_window.db_manager, 'resolve_current_refs_batch', None)
+        if resolveur is None:
+            return {}
+        tetes = resolveur(list(toutes_refs))
+        tetes_par_appareil = [{tetes.get(r, r) for r in refs} for refs in all_pieces_sets]
+        deja_communes = {tetes.get(r, r) for r in common_pieces}
+        candidates = set.intersection(*tetes_par_appareil) - deja_communes
+
+        result = {}
+        for tete in candidates:
+            anciennes = {}
+            for refs in all_pieces_sets:
+                if tete in refs:
+                    continue  # appareil déjà rattaché à la réf courante
+                for ref in refs:
+                    if ref != tete and tetes.get(ref, ref) == tete:
+                        anciennes[ref] = anciennes.get(ref, 0) + 1
+            result[tete] = anciennes
+        return result
+
+    def _display_communes_par_lignee(self, communes: Dict[str, Dict[str, int]]) -> None:
+        if not communes:
+            return
+        db = self.main_window.db_manager
+        statuses = db.get_pieces_statuses_batch(list(communes))
+        refs_libelles = set(communes).union(*communes.values())
+        descriptions = db.get_descriptions(list(refs_libelles)) if hasattr(db, 'get_descriptions') else {}
+        for tete in sorted(communes):
+            status_info = dict(statuses.get(tete, {'status': 'current', 'ref_new': None, 'refs_old': None}))
+            status_info['commune_par_lignee'] = communes[tete]
+            # Libellé de la réf courante, sinon celui d'une ancienne réf
+            description = descriptions.get(tete) or next(
+                (descriptions[r] for r in sorted(communes[tete]) if descriptions.get(r)), "")
+            item = self.main_window.pieces_list.add_piece_item(tete, description, status_info)
             item.setBackground(QColor(240, 248, 255))
 
     def _display_no_common_pieces(self, selected_count: int) -> None:

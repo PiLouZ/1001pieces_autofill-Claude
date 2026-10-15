@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.88.0] - 2026-10-15 (branche `feature/pieces-communes-lignee`)
+
+### Panneau des pièces : pièces communes par lignée
+
+- En sélection multiple, une pièce est désormais reconnue commune quand les appareils
+  la portent sous des références **différentes d'une même lignée** de succession.
+  Cas réel : 6 centrales vapeur Moulinex, cartouche `FS-9100017944` → `XD9030E0`,
+  2 appareils sur l'ancienne réf., 1 sur la nouvelle, 3 sur les deux : le panneau
+  affichait « Aucune pièce commune aux 6 appareils sélectionnés ».
+- La pièce s'affiche sous sa **référence courante**, avec la mention
+  « ⇄ Commune par lignée : N appareils sur <ancienne réf.> ».
+- Une pièce commune à l'identique s'affiche exactement comme avant (pas de doublon
+  par lignée). Les équivalences restent hors périmètre : une équivalente n'est pas
+  la même pièce.
+- Pas de suppression multi-appareils (bouton × et menu contextuel) sur une pièce
+  commune par lignée : sa référence courante n'est pas portée par tous les appareils.
+- Nouvelle méthode `resolve_current_refs_batch` : tête de lignée de N références en
+  une requête par tranche de 500 (2 ms pour 500 appareils sur la base réelle).
+
+---
+
 ## [3.86.1] - 2026-10-15 (branche `feature/reserve-ponctuelle-deux-copies`)
 
 ### Sauvegardes : 2 copies ponctuelles au lieu d'une
