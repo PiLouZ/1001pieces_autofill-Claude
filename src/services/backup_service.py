@@ -6,8 +6,13 @@ Utilise l'API backup native de SQLite (sqlite3.Connection.backup) :
 - cohérente même avec le mode WAL actif (pas besoin d'arrêter l'application)
 - travaille sur ses propres connexions (aucune interaction avec la connexion partagée)
 
-Rotation automatique : seules les BACKUP_MAX_COPIES copies les plus récentes
-sont conservées dans data/backups/ (base ~840 Mo, limite l'espace disque utilisé).
+Rotation automatique dans data/backups/ (base ~840 Mo, limite l'espace disque),
+en deux réserves indépendantes (v3.84.0) :
+- automatiques (import, nettoyage, avant restauration) : BACKUP_MAX_COPIES copies ;
+- ponctuelles (tout autre motif : fusion de marques, script…) :
+  BACKUP_MAX_COPIES_PONCTUELLES copie.
+Avant, une seule réserve : deux copies ponctuelles le même jour avaient évincé
+les deux copies d'import (2026-10-15).
 """
 
 import sqlite3
@@ -65,9 +70,10 @@ class BackupService(BaseService):
 
             backups_dir = self._get_backups_dir()
 
-            # Sauvegarde récente déjà présente ? (fenêtre glissante)
+            # Sauvegarde récente déjà présente ? (fenêtre glissante, dans la même
+            # réserve : une copie ponctuelle ne dispense pas de la copie d'import)
             if max_age_hours is not None:
-                latest = self._latest_backup_mtime(backups_dir)
+                latest = self._latest_backup_mtime(backups_dir, self._reserve(reason))
                 if latest is not None and (time.time() - latest) < max_age_hours * 3600:
                     app_logger.info(
                         f"[Backup] Copie récente (< {max_age_hours}h) déjà présente — sauvegarde sautée"
@@ -105,24 +111,44 @@ class BackupService(BaseService):
                 pass
             return None
 
-    def _latest_backup_mtime(self, backups_dir: Path) -> Optional[float]:
-        """mtime (epoch) de la copie la plus récente, ou None si aucune"""
-        backups = list(backups_dir.glob("appareils_*.db"))
+    @staticmethod
+    def _motif(copie: Path) -> str:
+        """Motif tiré du nom : appareils_20261015_085138_fusion_midea.db → 'fusion_midea'."""
+        parties = copie.stem.split('_', 3)
+        return parties[3] if len(parties) == 4 else ''
+
+    @staticmethod
+    def _reserve(motif: str) -> str:
+        return 'automatique' if motif in DatabaseConfig.BACKUP_MOTIFS_AUTOMATIQUES else 'ponctuelle'
+
+    def _copies(self, backups_dir: Path, reserve: str) -> list:
+        return [f for f in backups_dir.glob("appareils_*.db")
+                if self._reserve(self._motif(f)) == reserve]
+
+    def _latest_backup_mtime(self, backups_dir: Path, reserve: str = 'automatique') -> Optional[float]:
+        """mtime (epoch) de la copie la plus récente de la réserve, ou None si aucune"""
+        backups = self._copies(backups_dir, reserve)
         if not backups:
             return None
         return max(f.stat().st_mtime for f in backups)
 
     def _rotate_backups(self, backups_dir: Path, proteger: Optional[Path] = None) -> None:
-        """Ne conserver que les BACKUP_MAX_COPIES copies les plus récentes.
+        """Ne conserver que les copies les plus récentes de chaque réserve :
+        BACKUP_MAX_COPIES automatiques, BACKUP_MAX_COPIES_PONCTUELLES ponctuelles.
 
         La copie `proteger` n'est jamais supprimée ni comptée. Les fichiers
         annexes -wal/-shm d'une copie supprimée partent avec elle.
         """
         proteger = proteger.resolve() if proteger is not None else None
-        backups = sorted((f for f in backups_dir.glob("appareils_*.db")
-                          if f.resolve() != proteger),
-                         key=lambda f: f.stat().st_mtime, reverse=True)
-        for old in backups[DatabaseConfig.BACKUP_MAX_COPIES:]:
+        limites = {'automatique': DatabaseConfig.BACKUP_MAX_COPIES,
+                   'ponctuelle': DatabaseConfig.BACKUP_MAX_COPIES_PONCTUELLES}
+        a_supprimer = []
+        for reserve, limite in limites.items():
+            backups = sorted((f for f in self._copies(backups_dir, reserve)
+                              if f.resolve() != proteger),
+                             key=lambda f: f.stat().st_mtime, reverse=True)
+            a_supprimer.extend(backups[limite:])
+        for old in a_supprimer:
             try:
                 old.unlink()
                 app_logger.info(f"[Backup] Rotation : {old.name} supprimé")
