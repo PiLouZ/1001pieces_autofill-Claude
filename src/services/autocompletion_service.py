@@ -151,6 +151,7 @@ class AutoCompletionService(BaseService):
 
     def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value, select_all: bool = True, suggestions: Optional[List[dict]] = None):
         """Configurer l'interface du dialogue de manière sécurisée"""
+        from .reference_similarity_service import decrire_candidat
         # Récupérer les valeurs de la base de données
         all_values = self.db_manager.get_column_values(db_field)
         # Résultat : candidat de suggestion choisi (sinon None → on renvoie le texte saisi).
@@ -166,13 +167,11 @@ class AutoCompletionService(BaseService):
 
             # Section « Suggestions » en tête, uniquement sans filtre actif.
             if suggestions and not filter_text:
-                header = QListWidgetItem("— Suggestions (similarité) —")
+                header = QListWidgetItem("— Suggestions —")
                 header.setFlags(Qt.NoItemFlags)
                 values_list.addItem(header)
                 for cand in suggestions:
-                    text = (f"{cand.get('type', '')} / {cand.get('manufacturer', '')}  "
-                            f"(score {cand.get('score', 0):.0%}, réf. {cand.get('ref', '')})")
-                    s_item = QListWidgetItem(text)
+                    s_item = QListWidgetItem(decrire_candidat(cand))
                     s_item.setData(Qt.UserRole, cand)   # dict complet → application en paire
                     values_list.addItem(s_item)
                 separator = QListWidgetItem("— Valeurs existantes —")

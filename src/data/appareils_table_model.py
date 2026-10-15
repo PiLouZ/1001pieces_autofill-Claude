@@ -122,9 +122,8 @@ class AppareillsTableModel(QAbstractTableModel):
             if col in _SUGGESTION_COLS:
                 suggestions = self._pending_suggestions.get(record[0])
                 if suggestions:
-                    best = suggestions[0]
-                    return (f"Suggestion : {best['type']} / {best['manufacturer']} "
-                            f"(score {best['score']:.0%}) — clic pour voir les candidats")
+                    from ..services.reference_similarity_service import infobulle_candidat
+                    return infobulle_candidat(suggestions[0])
 
         return None
 

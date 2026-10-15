@@ -165,6 +165,68 @@ def reference_shape_signature(ref: str) -> str:
     return ''.join(sig)
 
 
+# Palier « type de la pièce importée » : candidat Type seul (marque vide), calculé
+# par l'import à partir des appareils déjà rattachés à la pièce — pas une similarité
+# de référence. 'ref' porte la ou les références de pièce, 'score' la part du type.
+TIER_TYPE_PIECE = 'P_type_piece'
+
+
+def est_type_piece(candidat: dict) -> bool:
+    return (candidat or {}).get('confidence_tier') == TIER_TYPE_PIECE
+
+
+def candidat_type_piece(type_piece: str, refs_pieces: List[str], part: float,
+                        nb_appareils: int) -> dict:
+    """Candidat au même format que SimilarityCandidate.to_dict()."""
+    return {
+        'ref': ", ".join(refs_pieces),
+        'type': type_piece,
+        'manufacturer': '',
+        'score': part,
+        'source': 'piece',
+        'confidence_tier': TIER_TYPE_PIECE,
+        'db_id': None,
+        'nb_appareils': nb_appareils,
+    }
+
+
+def type_majoritaire(compte_par_type: Dict[str, int], part_min: float,
+                     appareils_min: int) -> Optional[Tuple[str, float, int]]:
+    """(type, part, nb appareils) si un type domine assez, sinon None."""
+    total = sum(compte_par_type.values())
+    if total < appareils_min or not compte_par_type:
+        return None
+    type_top, n = max(compte_par_type.items(), key=lambda kv: (kv[1], kv[0]))
+    part = n / total
+    return (type_top, part, total) if part >= part_min else None
+
+
+def decrire_candidat(candidat: dict) -> str:
+    """Libellé d'un candidat pour les listes (fenêtre Cmd+D)."""
+    if est_type_piece(candidat):
+        return (f"{candidat.get('type', '')}  (type de la pièce {candidat.get('ref', '')}, "
+                f"{candidat.get('score', 0):.0%})")
+    return (f"{candidat.get('type', '')} / {candidat.get('manufacturer', '')}  "
+            f"(score {candidat.get('score', 0):.0%}, réf. {candidat.get('ref', '')})")
+
+
+def provenance_candidat(candidat: dict) -> str:
+    """Texte de provenance pour l'historique (« source : … »)."""
+    if est_type_piece(candidat):
+        return f"type de la pièce {candidat.get('ref', '')} ({candidat.get('score', 0):.0%})"
+    return f"suggestion réf. {candidat.get('ref', '')} (score {candidat.get('score', 0):.0%})"
+
+
+def infobulle_candidat(candidat: dict) -> str:
+    """Info-bulle des cases Type/Marque en attente de validation."""
+    if est_type_piece(candidat):
+        return (f"Suggestion : {candidat.get('type', '')} — type de "
+                f"{candidat.get('score', 0):.0%} des {candidat.get('nb_appareils', 0)} appareils "
+                f"de la pièce {candidat.get('ref', '')} — clic pour voir les candidats")
+    return (f"Suggestion : {candidat.get('type', '')} / {candidat.get('manufacturer', '')} "
+            f"(score {candidat.get('score', 0):.0%}) — clic pour voir les candidats")
+
+
 @dataclass(frozen=True)
 class SimilarityCandidate:
     """Un candidat de suggestion. Immuable, sérialisable via to_dict()."""
