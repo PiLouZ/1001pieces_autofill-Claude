@@ -174,6 +174,14 @@ class MainWindow(QMainWindow):
         
         from ..services.autocompletion_service import AutoCompletionService
         self.autocompletion_service = AutoCompletionService(self.db_manager, self)
+
+        # Saisie manuelle de Type/Marque alignée sur la base (v3.83.0), comme à
+        # l'import : « DELTA » tapé dans le tableau devient « Delta »
+        from ..services.casse_normalisation_service import CasseNormalisationService
+        self.normalisation_casse = {
+            colonne: CasseNormalisationService(self.db_manager, colonne, self)
+            for colonne in ('manufacturer', 'type')
+        }
     
     def _init_import_export_services(self):
         """Initialiser les services d'import/export - PHASE 4 : Service unifié"""
@@ -1206,6 +1214,20 @@ class MainWindow(QMainWindow):
                     model.dataChanged.emit(idx, idx, [Qt.DisplayRole])
                 return
 
+        # Type/Marque : orthographe de la base (« DELTA » → « Delta »). Couvre
+        # l'édition, Cmd+D et la poignée de remplissage, qui passent tous ici. La
+        # cellule affiche aussitôt la valeur retenue, que la sauvegarde, l'annulation
+        # et l'historique reprennent ensuite.
+        service_casse = self.normalisation_casse.get(field_name)
+        if service_casse and new_value:
+            retenue = service_casse.normaliser(new_value)
+            if retenue != new_value:
+                app_logger.info(f"[Saisie] {field_name} aligné sur la base : {new_value} → {retenue}")
+                self._set_cell_value_in_table(row, col, retenue)
+                new_value = retenue
+                if old_value == new_value:
+                    return
+
         db_id = model.get_db_id(row) if model else None
         self._apply_cell_edit_logic(row, col, old_value, new_value, db_id)
 
@@ -1816,19 +1838,26 @@ class MainWindow(QMainWindow):
         self.user_interaction_service.show_info(summary)
     
     @staticmethod
-    def _lignes_marques(results, retrait):
-        """Bloc d'historique des marques réécrites, une marque par ligne :
+    def _lignes_alignements(results, retrait):
+        """Blocs d'historique des marques et types réécrits, une valeur par ligne :
 
             ==> Marques alignées sur la base :
             - DELTA → Delta (7),
             - HEXATHERM → Hexatherm (1)
+            ==> Types alignés sur la base :
+            - CHAUFFAGE → Chauffage (25)
 
         Les lignes « - » sont rendues en retrait sous le « ==> » qui les précède.
+        Chaîne vide si rien n'a été réécrit.
         """
-        from ..services.marque_normalisation_service import MarqueNormalisationService
-        lignes = MarqueNormalisationService.lignes(results['marques_alignees'])
-        bloc = f"{retrait}==> Marques alignées sur la base :\n"
-        return bloc + ''.join(f"{retrait}- {ligne}\n" for ligne in lignes)
+        from ..services.casse_normalisation_service import CasseNormalisationService
+        texte = ''
+        for cle, titre in (('marques_alignees', 'Marques alignées'), ('types_alignes', 'Types alignés')):
+            if results.get(cle):
+                texte += f"{retrait}==> {titre} sur la base :\n"
+                texte += ''.join(f"{retrait}- {ligne}\n"
+                                 for ligne in CasseNormalisationService.lignes(results[cle]))
+        return texte
 
     def _generate_console_summary(self, results, ref_piece, source, pdf_files_info=None):
         """Générer la synthèse dans le format console standardisé"""
@@ -1850,8 +1879,8 @@ class MainWindow(QMainWindow):
         original_line_count = results.get('original_line_count', total_processed + duplicates_ignored)
         summary += f"Lignes traitées : {original_line_count}\n"
 
-        if results.get('marques_alignees'):
-            summary += self._lignes_marques(results, retrait="")
+        if results.get('marques_alignees') or results.get('types_alignes'):
+            summary += self._lignes_alignements(results, retrait="")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"[!] {alerte}\n"
@@ -2024,8 +2053,8 @@ class MainWindow(QMainWindow):
         # Casse des marques réécrite (« DELTA » → « Delta ») : jamais silencieuse.
         # Placée avant l'alerte de mapping : sous un « [!] », ses lignes seraient
         # surlignées en jaune comme faisant partie de l'alerte.
-        if results.get('marques_alignees'):
-            summary += self._lignes_marques(results, retrait="     ")
+        if results.get('marques_alignees') or results.get('types_alignes'):
+            summary += self._lignes_alignements(results, retrait="     ")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"     [!] {alerte}\n"

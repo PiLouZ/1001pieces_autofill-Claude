@@ -4,6 +4,35 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.83.0] - 2026-10-15 (branche `feature/normalisation-saisie-types`)
+
+### Casse alignée sur la base : types à l'import et saisie manuelle
+
+- **Types à l'import** : un type connu reprend l'orthographe de la base
+  (« CHAUFFAGE » → « Chauffage », « SÈCHE-LINGE » → « Sèche-linge »). Un type
+  nouveau tout en capitales de plus de 4 caractères prend une majuscule initiale
+  seule, comme les 42 types existants (« CHAUFFE-EAU » → « Chauffe-eau »).
+  L'historique d'import ajoute un bloc « Types alignés sur la base : ».
+- **Saisie manuelle** : une marque ou un type tapé dans le tableau suit les mêmes
+  règles qu'à l'import (« DELTA » → « Delta »). Couvre l'édition, Cmd+D et la
+  poignée de remplissage. La cellule affiche aussitôt la valeur retenue, et la
+  sauvegarde, l'annulation et l'historique reprennent cette valeur.
+- Une valeur apparue en base après le chargement de la liste (import,
+  restauration) est retrouvée : relecture des valeurs distinctes, servie par
+  l'index (< 1 ms), à chaque valeur inconnue.
+- **Aperçu d'import** : encadré « Orthographe alignée sur la base » qui annonce
+  les marques et types réécrits avant l'écriture (8 lignes max par colonne).
+- `MarqueNormalisationService` devient `CasseNormalisationService` (une instance
+  par colonne : marque ou type).
+- Base de production : marques voisines fusionnées après sauvegarde, sur
+  décision de l'utilisateur. Glemglas (faute de frappe) et Glem deviennent
+  « Glem Gas » (63) ; Fust et Fust Novamatic deviennent « Novamatic » (6) ; le
+  lave-linge « Concorde » passe en « Concord » (1), les radiateurs Concorde restent.
+- 19 tests ajoutés (`test_casse_normalisation.py`, 39 au total). Vérifié dans la
+  vraie fenêtre sur une copie de la base : import, saisie, puis annulation.
+
+---
+
 ## [3.82.1] - 2026-10-15 (branche `fix/recherche-banniere-perimee`)
 
 ### Recherche : le tableau ne garde plus les lignes de la recherche précédente
