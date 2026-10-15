@@ -1815,6 +1815,12 @@ class MainWindow(QMainWindow):
         
         self.user_interaction_service.show_info(summary)
     
+    @staticmethod
+    def _resume_marques(results):
+        """« DELTA → Delta (7), HEXATHERM → Hexatherm (1) » pour l'historique."""
+        from ..services.marque_normalisation_service import MarqueNormalisationService
+        return MarqueNormalisationService.resume(results['marques_alignees'])
+
     def _generate_console_summary(self, results, ref_piece, source, pdf_files_info=None):
         """Générer la synthèse dans le format console standardisé"""
         summary = f"Import {source}"
@@ -1838,6 +1844,8 @@ class MainWindow(QMainWindow):
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"[!] {alerte}\n"
+        if results.get('marques_alignees'):
+            summary += f"Marques alignées sur la base : {self._resume_marques(results)}\n"
 
         # Section Appareils avec sous-détails
         summary += "Appareils :\n"
@@ -2007,6 +2015,9 @@ class MainWindow(QMainWindow):
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"     [!] {alerte}\n"
+        # Casse des marques réécrite (« DELTA » → « Delta ») : jamais silencieuse
+        if results.get('marques_alignees'):
+            summary += f"     ==> Marques alignées sur la base : {self._resume_marques(results)}\n"
         # Pages vides d'un PDF (contenu perdu à l'impression) : la fourchette de
         # références permet de retrouver à la main les appareils manquants.
         # Préfixe « ==> » : seul retrait que conserve le rendu HTML de l'historique.

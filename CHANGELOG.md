@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.82.0] - 2026-10-15 (branche `feature/marques-casse-normalisee`)
+
+### Import : la casse des marques est alignée sur la base
+
+- **Nouveau** : une marque importée qui existe déjà en base reprend son orthographe
+  exacte, comparée sans casse, accents, espaces ni tirets (« DELTA » → « Delta »,
+  « SCHOLTES » → « Scholtès », « HOTPOINT ARISTON » → « Hotpoint-Ariston »).
+  « AEG » et « LG » restent en capitales, puisque c'est leur forme en base.
+- Une marque **nouvelle** tout en capitales et de plus de 4 caractères prend une
+  majuscule en tête de chaque mot (« ARTHUR-MARTIN » → « Arthur-Martin ») ; les
+  sigles courts (« CDA ») et les casses mixtes (« KitchenAid ») sont conservés.
+- Jamais silencieux : l'historique d'import liste les marques réécrites
+  (« Marques alignées sur la base : DELTA → Delta (7), … »).
+- Appliqué dans `_parse_row_data`, donc aux deux chemins d'import (standard et
+  batch), fichiers, PDF et collage. Logique dans `MarqueNormalisationService`.
+- Base de production : les 11 appareils « MIDEA » fusionnés en « Midea » (seul
+  doublon de casse sur 488 marques), après sauvegarde.
+- 20 tests ajoutés (`test_marque_normalisation.py`), dont les deux chemins d'import.
+
+---
+
 ## [3.81.1] - 2026-10-13 (branche `feature/historique-popup-multi-fichiers`)
 
 ### Historique complet : tous les fichiers d'un import multi-fichiers sont affichés
