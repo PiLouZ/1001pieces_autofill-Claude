@@ -17,7 +17,7 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - La règle « au plus 1 copie par 24 h avant import » ne regarde plus que les
   copies automatiques : une copie de fusion récente ne fait plus sauter la copie
   d'import.
-- Espace disque : 3 copies au plus (~2,5 Go) au lieu de 2.
+- Espace disque : 3 copies au plus (~2,9 Go, 964 Mo par copie) au lieu de 2.
 - 10 tests ajoutés (`test_sauvegardes_rotation.py`) ; les 2 tests de rotation
   utilisent désormais le motif « import », celui de la réserve qu'ils vérifient.
 
