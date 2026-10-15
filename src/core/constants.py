@@ -56,7 +56,10 @@ class DatabaseConfig:
     # Tout autre motif (fusion de marques, script ponctuel…) a sa propre réserve,
     # pour ne jamais évincer ces copies-là (v3.84.0).
     BACKUP_MOTIFS_AUTOMATIQUES = ("import", "nettoyage", "avant_restauration")
-    BACKUP_MAX_COPIES_PONCTUELLES = 1
+    # 2 et non 1 (v3.86.1) : avec une seule place, chaque opération ponctuelle
+    # effaçait la précédente — le 2026-10-15, la copie du nettoyage des orphelins
+    # a évincé celle d'avant la fusion des marques, prise le matin même.
+    BACKUP_MAX_COPIES_PONCTUELLES = 2
     BACKUP_MIN_INTERVAL_IMPORT_H = 24    # avant import : au plus 1 copie / 24h
 
     # Réglages de performance SQLite (PRAGMA appliqués à chaque connexion)

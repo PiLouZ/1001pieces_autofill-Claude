@@ -4,6 +4,21 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.86.1] - 2026-10-15 (branche `feature/reserve-ponctuelle-deux-copies`)
+
+### Sauvegardes : 2 copies ponctuelles au lieu d'une
+
+- La réserve des copies ponctuelles (fusion de marques, script de nettoyage…) garde
+  désormais **2 copies**. Avec une seule place, chaque opération ponctuelle effaçait
+  la précédente : le 2026-10-15, la copie du nettoyage des orphelins a évincé celle
+  d'avant la fusion des marques, prise le matin même.
+- Coût : environ 1 Go de disque en plus (une copie pèse ~965 Mo). Les copies
+  automatiques (import, nettoyage, avant restauration) ne changent pas : 2 copies.
+- Test de rotation renforcé : sur 3 copies ponctuelles, les 2 plus récentes restent.
+  Le motif `nettoyage_orphelins` est bien classé ponctuel malgré le mot « nettoyage ».
+
+---
+
 ## [3.86.0] - 2026-10-15 (branche `feature/libelle-references-liees`)
 
 ### « Modifier la pièce » : le libellé se propage à toute la lignée

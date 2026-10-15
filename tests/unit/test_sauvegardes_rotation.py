@@ -116,11 +116,25 @@ def test_copies_ponctuelles_n_evincent_pas_les_copies_d_import(env):
     base, dossier, copies, service = env
     service.create_backup("fusion_midea")
     service.create_backup("fusion_marques_voisines")
+    service.create_backup("nettoyage_orphelins")
 
     assert all(c.exists() for c in copies)                     # imports intacts
-    ponctuelles = list(dossier.glob("appareils_*_fusion_*.db"))
+    ponctuelles = sorted(BackupService._motif(f) for f in dossier.glob("appareils_*.db")
+                         if BackupService._reserve(BackupService._motif(f)) == 'ponctuelle')
     assert len(ponctuelles) == DatabaseConfig.BACKUP_MAX_COPIES_PONCTUELLES
-    assert "fusion_marques_voisines" in ponctuelles[0].name     # la plus récente
+    # Les plus récentes restent, la plus ancienne part
+    assert ponctuelles == ["fusion_marques_voisines", "nettoyage_orphelins"]
+
+
+def test_reserve_ponctuelle_a_deux_copies():
+    """Le 2026-10-15, avec une seule place, la copie du nettoyage des orphelins
+    avait évincé celle d'avant la fusion des marques, du matin même."""
+    assert DatabaseConfig.BACKUP_MAX_COPIES_PONCTUELLES == 2
+
+
+def test_nettoyage_orphelins_est_ponctuel():
+    """Le motif contient « nettoyage » mais n'est pas le motif automatique."""
+    assert BackupService._reserve("nettoyage_orphelins") == 'ponctuelle'
 
 
 def test_copie_d_import_n_evince_pas_la_copie_ponctuelle(env):
