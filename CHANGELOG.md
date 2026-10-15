@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.84.1] - 2026-10-15 (branche `fix/filtres-type-marque`)
+
+### Filtres Type et Marque : liste complète et RAZ réparé
+
+- **Correctif RAZ** : le bouton ✕ ne vidait pas le filtre Type (ni Marque) après
+  une saisie validée par Entrée. Qt ajoutait la saisie comme élément de la liste,
+  et le RAZ (`setCurrentIndex(0)`) resélectionnait ce texte au lieu de vider le champ.
+  Entrée n'ajoute plus rien (`NoInsert`) et le RAZ vide le texte du champ.
+- **Liste complète** : la flèche déroule tous les types (42) et toutes les marques
+  (484) présents en base, triés sans tenir compte de la casse, à pleine largeur
+  (les libellés n'étaient plus tronqués).
+- **Filtrage à la frappe** dès le 1er caractère, sur une partie du mot
+  (« linge » → Lave-linge, Sèche-linge). Fin du seuil de 2 caractères et de la
+  limite de 20 suggestions.
+- La liste est relue à l'ouverture et à la prise de focus : un type ou une marque
+  ajouté depuis le lancement apparaît sans relancer, et le texte saisi est conservé.
+- 6 tests ajoutés (`test_combo_filtre_colonne.py`).
+
+---
+
 ## [3.84.0] - 2026-10-15 (branche `feature/sauvegardes-rotation-par-motif`)
 
 ### Sauvegardes : les copies ponctuelles n'évincent plus les copies d'import

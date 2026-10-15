@@ -40,6 +40,66 @@ def _truncate_refs(refs: list, max_inline: int = 3) -> tuple:
     return f"{shown}  … +{len(refs) - max_inline}", full
 
 
+class ComboFiltreColonne(QComboBox):
+    """Liste de filtre (Type, Marque) : toutes les valeurs en base, filtrées à la frappe.
+
+    `charger_valeurs` est appelée à l'ouverture de la liste et à la prise de focus,
+    pour que les types/marques ajoutés depuis le lancement apparaissent sans relancer.
+    Le texte saisi est conservé lors du rechargement (sinon Qt sélectionnerait
+    le 1er élément et appliquerait un filtre non voulu).
+    """
+
+    def __init__(self, charger_valeurs, parent=None):
+        super().__init__(parent)
+        self._charger_valeurs = charger_valeurs
+        self.setEditable(True)
+        # Entrée ne doit pas ajouter la saisie comme nouvel élément de la liste
+        self.setInsertPolicy(QComboBox.NoInsert)
+        self.setMaxVisibleItems(25)
+        # Complétion sur le modèle de la liste elle-même : une seule source de valeurs.
+        # Filtrage par sous-chaîne, cohérent avec la requête LIKE '%text%' du filtre.
+        completer = QCompleter(self.model(), self)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setMaxVisibleItems(20)
+        self.setCompleter(completer)
+
+    def rafraichir_valeurs(self):
+        """Recharger la liste depuis la base en conservant le texte saisi."""
+        valeurs = self._charger_valeurs() or []
+        if valeurs == [self.itemText(i) for i in range(self.count())]:
+            return
+        texte = self.currentText()
+        self.blockSignals(True)
+        try:
+            self.clear()
+            self.addItems(valeurs)
+            self.setCurrentIndex(-1)
+            self.setEditText(texte)
+        finally:
+            self.blockSignals(False)
+        # La liste prend par défaut la largeur du champ (alignée sur la colonne) et
+        # tronquait les libellés (« Cent…sage ») : largeur calée sur le plus long.
+        if valeurs:
+            largeur = max(self.view().fontMetrics().horizontalAdvance(v) for v in valeurs) + 40
+            self.view().setMinimumWidth(largeur)
+            self.completer().popup().setMinimumWidth(largeur)
+
+    def vider_saisie(self):
+        """Vider le texte du filtre (setCurrentIndex(0) ne vide pas une liste modifiable)."""
+        self.setCurrentIndex(-1)
+        self.setEditText("")
+
+    def showPopup(self):
+        self.rafraichir_valeurs()
+        super().showPopup()
+
+    def focusInEvent(self, event):
+        self.rafraichir_valeurs()
+        super().focusInEvent(event)
+
+
 class DatabaseQueryWorker(QThread):
     """Worker thread pour les requêtes DB async - Phase 2c"""
 
@@ -229,8 +289,8 @@ class TableController:
             
             # Create dropdown filters for Type (index 0) and Fabricant (index 1)
             if i == 0 or i == 1:  # Type or Fabricant columns
-                filter_combo = QComboBox()
-                filter_combo.setEditable(True)
+                filter_combo = ComboFiltreColonne(
+                    lambda col=i: self._valeurs_filtre_colonne(col))
                 filter_combo.lineEdit().setPlaceholderText(f"{header}...")
                 filter_combo.setStyleSheet("""
                     QComboBox {
@@ -244,24 +304,10 @@ class TableController:
                         border-color: #0d6efd;
                     }
                 """)
-                # Autocomplétion différée : suggestions chargées à la frappe (≥ 2 chars)
-                # Le modèle est PARENTÉ au completer : sans parent ni référence Python,
-                # le QStringListModel temporaire était garbage-collecté (completer.model()
-                # devenait None) et l'autocomplétion échouait silencieusement à chaque frappe.
-                completer = QCompleter(filter_combo)
-                completer_model = QStringListModel(completer)
-                completer.setModel(completer_model)
-                completer.setCompletionMode(QCompleter.PopupCompletion)
-                completer.setCaseSensitivity(Qt.CaseInsensitive)
-                # Filtrage par sous-chaîne (et non par préfixe) pour rester cohérent
-                # avec la requête DB LIKE '%text%' : sans cela, "linge" ne suggérerait
-                # pas "Lave-linge" et des résultats remontés étaient masqués.
-                completer.setFilterMode(Qt.MatchContains)
-                completer.setMaxVisibleItems(20)
-                filter_combo.setCompleter(completer)
-                filter_combo.lineEdit().textEdited.connect(
-                    lambda text, col=i, c=completer: self._update_filter_completions(col, text, c)
-                )
+                # Liste complète (flèche) + complétion par sous-chaîne dès le 1er
+                # caractère : cf. ComboFiltreColonne. Valeurs chargées ici puis
+                # relues à l'ouverture de la liste et à la prise de focus.
+                filter_combo.rafraichir_valeurs()
                 filter_combo.currentTextChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 self.filter_widgets[i] = filter_combo
                 filter_layout.addWidget(filter_combo)  # largeur fixée au sync (alignée colonne)
@@ -1454,25 +1500,20 @@ class TableController:
             # Nettoyer
             self.pending_column_filter = None
     
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur autocomplétion filtre")
-    def _update_filter_completions(self, column: int, text: str, completer: QCompleter):
-        """Mettre à jour les suggestions du QCompleter selon la saisie (≥ 2 chars).
+    @handle_database_operation_errors(return_value=[], log_prefix="Erreur liste filtre colonne")
+    def _valeurs_filtre_colonne(self, column: int) -> List[str]:
+        """Toutes les valeurs distinctes de la colonne Type (0) ou Marque (1).
 
-        La requête LIKE '%text%' est indexée sur les colonnes type/manufacturer.
-        LIMIT 20 : évite de surcharger le popup sur des termes courts.
+        Volumétrie mesurée : ~40 types, ~500 marques ; la requête parcourt l'index
+        couvrant de la colonne (6 ms pour les types, ~40 ms pour les marques).
         """
-        if len(text.strip()) < 2:
-            completer.model().setStringList([])
-            return
-
         db_field = "type" if column == 0 else "manufacturer"
         results = self.db_manager.execute_query(
             f"SELECT DISTINCT [{db_field}] FROM appareils "
-            f"WHERE [{db_field}] LIKE ? AND [{db_field}] != '' "
-            f"ORDER BY [{db_field}] LIMIT 20",
-            [f"%{text}%"]
+            f"WHERE [{db_field}] IS NOT NULL AND [{db_field}] != '' "
+            f"ORDER BY [{db_field}] COLLATE NOCASE"
         )
-        completer.model().setStringList([row[0] for row in results if row[0]])
+        return [row[0] for row in results if row[0]]
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage filtres colonnes")
     def clear_column_filters(self):
@@ -1507,8 +1548,10 @@ class TableController:
                 continue
             widget.blockSignals(True)
             try:
-                if isinstance(widget, QComboBox):
-                    widget.setCurrentIndex(0)
+                if isinstance(widget, ComboFiltreColonne):
+                    widget.vider_saisie()
+                elif isinstance(widget, QComboBox):
+                    widget.setCurrentText("")
                 else:
                     widget.clear()
             except RuntimeError:

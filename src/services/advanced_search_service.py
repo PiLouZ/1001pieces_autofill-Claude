@@ -158,7 +158,7 @@ class AdvancedSearchService(QObject):
             main_window.search_input.clear()
             
         # Effacer aussi tous les filtres de colonnes via TableController
-        # Déléguer à _clear_all_column_filters qui gère correctement QComboBox (setCurrentIndex(0))
+        # Déléguer à _clear_all_column_filters qui gère correctement les listes Type/Marque (vider_saisie)
         # et QLineEdit (clear()) — évite le bug QComboBox.clear() qui détruit tous les items
         if hasattr(main_window, 'table_controller'):
             tc = main_window.table_controller
