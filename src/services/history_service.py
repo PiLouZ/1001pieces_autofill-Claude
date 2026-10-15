@@ -64,6 +64,11 @@ class HistoryService(BaseService):
             # Pour un edit mono-champ, agg_key = (field, new_value) — strings
             # Pour un edit multi-champs, agg_key = tuple de tuples → ignorer
             agg_key = entry.get('agg_key')
+            # Édition issue d'une suggestion : clé enveloppée (clé, ('__source__',))
+            # par user_interaction_service, pour ne pas la regrouper avec une manuelle.
+            if (agg_key and isinstance(agg_key, tuple) and len(agg_key) == 2
+                    and agg_key[1] == ("__source__",)):
+                agg_key = agg_key[0]
             if (agg_key and isinstance(agg_key, tuple) and len(agg_key) == 2
                     and isinstance(agg_key[0], str)):
                 field_name, new_value = agg_key
