@@ -1640,6 +1640,31 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.cursor.execute(query, params)
             return self.cursor.fetchall()
     
+    # Lots sous la limite historique de 999 paramètres par requête SQLite.
+    _TAILLE_LOT_IDS = 900
+
+    @_with_query_lock
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur lecture appareils par id")
+    def lire_appareils_par_id(self, db_ids) -> Optional[Dict[int, Tuple]]:
+        """Lit Type, Fabricant et références d'appareils désignés par id.
+
+        Returns:
+            {id: (type, manufacturer, ref_modele, commercial_ref)} — un id absent
+            du résultat n'existe plus en base. None si la lecture a échoué
+            (à la différence d'execute_query, qui renverrait [] dans les deux cas).
+        """
+        ids = list(dict.fromkeys(db_ids))
+        out = {}
+        for debut in range(0, len(ids), self._TAILLE_LOT_IDS):
+            lot = ids[debut:debut + self._TAILLE_LOT_IDS]
+            marqueurs = ",".join("?" * len(lot))
+            self.cursor.execute(
+                "SELECT id, type, manufacturer, ref_modele, commercial_ref "
+                f"FROM appareils WHERE id IN ({marqueurs})", lot)
+            for row in self.cursor.fetchall():
+                out[row[0]] = tuple(row[1:])
+        return out
+
     # Méthodes pour gérer les décisions sur les doublons de références
     def save_reference_decision(self, ref_modele: str, decision: str, notes: str = None) -> bool:
         """Sauvegarder une décision sur un doublon de référence"""
