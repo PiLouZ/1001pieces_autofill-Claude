@@ -262,6 +262,52 @@ class DatabaseSupersessionMixin:
             resultat.append(ref)
         return resultat
 
+    def get_references_liees(self, ref_piece: str) -> dict:
+        """
+        Toutes les références liées à ref_piece, par catégorie (hors ref_piece) :
+
+        - 'nouvelles'     : la chaîne qui la remplace, jusqu'à la courante ;
+        - 'anciennes'     : celles qu'elle remplace, directement ou non ;
+        - 'autres'        : le reste de la famille — les autres branches remplacées
+                            par la même courante (ex. 9 anciennes réfs → 11047540) ;
+        - 'equivalentes'  : son groupe d'équivalence, hors famille (les anciennes
+                            versions y entrent via _propagate_predecessors_to_group).
+
+        Chaque référence n'apparaît que dans une catégorie. Sert à la propagation
+        du libellé depuis « Modifier la pièce ».
+        """
+        chaine = self.get_supersession_chain(ref_piece)
+        nouvelles = chaine[1:]
+        tete = chaine[-1]
+        anciennes = self.get_all_predecessors(ref_piece)
+        famille = {tete, *self.get_all_predecessors(tete)}
+        deja = {ref_piece, *nouvelles, *anciennes}
+        autres = sorted(famille - deja)
+        deja |= famille
+        equivalentes = [r for r in self.get_equivalents(ref_piece) if r not in deja]
+        return {
+            'nouvelles': nouvelles,
+            'anciennes': anciennes,
+            'autres': autres,
+            'equivalentes': equivalentes,
+        }
+
+    def get_descriptions(self, refs: list) -> dict:
+        """Libellé actuel de chaque référence ({ref: libellé nettoyé, '' si vide}).
+        Une référence absente de la base n'apparaît pas dans le résultat."""
+        if not refs:
+            return {}
+        resultat = {}
+        # Par paquets : SQLite limite le nombre de paramètres d'une requête
+        for i in range(0, len(refs), 500):
+            paquet = refs[i:i + 500]
+            placeholders = ",".join("?" * len(paquet))
+            rows = self.execute_query(
+                f"SELECT ref_piece, COALESCE(TRIM(description), '') FROM pieces "
+                f"WHERE ref_piece IN ({placeholders})", paquet) or []
+            resultat.update({ref: lib for ref, lib in rows})
+        return resultat
+
     def set_description_for_refs(self, refs: list, description: str) -> int:
         """
         Appliquer le même libellé à plusieurs pièces en une seule transaction.

@@ -91,6 +91,12 @@ class StyleManager:
     # Style nu pour un widget plat sans bord ni fond (ex: bouton-spinner)
     FLAT_TRANSPARENT = "border: none; background: transparent;"
 
+    # Texte d'appoint sous un contrôle (détail, récapitulatif) : gris, petit
+    TEXTE_SECONDAIRE = "color: #6c757d; font-size: 11px;"
+
+    # Même gabarit, en orange : ce qui va être écrasé ou perdu
+    TEXTE_AVERTISSEMENT = "color: #b45309; font-size: 11px;"
+
     # Idem mais ciblé sur QPushButton
     FLAT_TRANSPARENT_BUTTON = "QPushButton { border: none; background: transparent; }"
 

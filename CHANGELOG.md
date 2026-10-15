@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.86.0] - 2026-10-15 (branche `feature/libelle-references-liees`)
+
+### « Modifier la pièce » : le libellé se propage à toute la lignée
+
+- La case « Appliquer aussi ce libellé » vise désormais **toutes les références
+  liées** : nouvelles et anciennes références, autres versions de la même lignée
+  (branches remplacées par la même courante) et équivalentes. Avant, seulement les
+  équivalentes : la case restait invisible pour 626 familles de succession sur 722.
+  Cas réel : `00650715` « Amortisseur » → `00751249` « A », impossible à harmoniser.
+- Sous la case : le détail par catégorie, et en orange les **libellés différents
+  qui seront remplacés**, mis à jour à la frappe (remplir un libellé vide n'est pas
+  remplacer). Grandes familles tronquées (« … et 184 autres »).
+- Décochée par défaut. Cochée, elle propage même si le libellé n'a pas changé :
+  c'est ce qui permet d'harmoniser une famille depuis la pièce déjà juste.
+- Historique : une entrée avec le nombre de références et le détail par catégorie.
+- `get_references_liees` et `get_descriptions` (mixin supersession) ; styles
+  `TEXTE_SECONDAIRE` et `TEXTE_AVERTISSEMENT` centralisés dans `StyleManager`.
+- 20 tests ajoutés (`test_libelle_references_liees.py`).
+
+---
+
 ## [3.85.0] - 2026-10-15 (branche `feature/activation-cles-etrangeres`)
 
 ### La base vérifie enfin ses liens : clés étrangères activées
