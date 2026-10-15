@@ -1833,6 +1833,12 @@ class ImportPreviewDialog(QDialog):
         note.setStyleSheet("font-size: 11px; color: #999;")
         layout.addWidget(note)
 
+        # ── Casse alignée sur la base (v3.83.0) ───────────────────────────
+        # Annoncée avant d'écrire, et non découverte dans l'historique après coup
+        encadre = self._encadre_alignements(results)
+        if encadre is not None:
+            layout.addWidget(encadre)
+
         # ── Boutons ───────────────────────────────────────────────────────
         btn_bar = QHBoxLayout()
         btn_bar.addStretch()
@@ -1849,6 +1855,48 @@ class ImportPreviewDialog(QDialog):
         btn_bar.addWidget(confirm_btn)
 
         layout.addLayout(btn_bar)
+
+    # Au-delà, la liste allongerait la fenêtre sans aider à décider : le détail
+    # complet reste dans l'historique après l'import
+    MAX_ALIGNEMENTS_AFFICHES = 8
+
+    @classmethod
+    def _lignes_alignements(cls, results: dict) -> List[str]:
+        """['Marques :', 'DELTA → Delta (7),', …, 'Types :', …] ; vide si rien."""
+        from ..services.casse_normalisation_service import CasseNormalisationService
+        lignes = []
+        for cle, titre in (('marques_alignees', 'Marques'), ('types_alignes', 'Types')):
+            alignements = results.get(cle) or []
+            if not alignements:
+                continue
+            lignes.append(f"{titre} :")
+            visibles = CasseNormalisationService.lignes(alignements[:cls.MAX_ALIGNEMENTS_AFFICHES])
+            if len(alignements) > cls.MAX_ALIGNEMENTS_AFFICHES:
+                visibles[-1] += ','
+                visibles.append(f"… et {len(alignements) - cls.MAX_ALIGNEMENTS_AFFICHES} autres")
+            lignes.extend(f"    {v}" for v in visibles)
+        return lignes
+
+    def _encadre_alignements(self, results: dict) -> Optional[QWidget]:
+        """Encadré « Orthographe alignée sur la base », ou None si rien n'est réécrit."""
+        lignes = self._lignes_alignements(results)
+        if not lignes:
+            return None
+        encadre = QWidget()
+        encadre.setStyleSheet(
+            "background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;"
+        )
+        couche = QVBoxLayout(encadre)
+        couche.setContentsMargins(12, 8, 12, 8)
+        couche.setSpacing(2)
+        titre = QLabel("<b>Orthographe alignée sur la base</b>")
+        titre.setStyleSheet("font-size: 11px; color: #2c3e50; background: transparent; border: none;")
+        couche.addWidget(titre)
+        for ligne in lignes:
+            lbl = QLabel(ligne)
+            lbl.setStyleSheet("font-size: 11px; color: #555; background: transparent; border: none;")
+            couche.addWidget(lbl)
+        return encadre
 
     def _on_confirm(self):
         self.confirmed.emit()

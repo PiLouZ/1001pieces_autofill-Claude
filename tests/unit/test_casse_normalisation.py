@@ -338,3 +338,45 @@ def test_autres_colonnes_et_effacement_intacts():
     handler(fenetre, 1, 1, "Delta", "")               # effacement de la marque
     assert modele.ecrit == {}
     assert appels == [(0, 2, "", "ABCDEFG", 100), (1, 1, "Delta", "", 101)]
+
+
+# ─── Aperçu d'import : corrections annoncées avant d'écrire (v3.83.0) ────────
+
+def test_apercu_liste_marques_puis_types():
+    from src.core.import_manager import ImportPreviewDialog
+    assert ImportPreviewDialog._lignes_alignements({
+        'marques_alignees': [("DELTA", "Delta", 7), ("HEXATHERM", "Hexatherm", 1)],
+        'types_alignes': [("CHAUFFAGE", "Chauffage", 25)],
+    }) == ["Marques :", "    DELTA → Delta (7),", "    HEXATHERM → Hexatherm (1)",
+           "Types :", "    CHAUFFAGE → Chauffage (25)"]
+
+
+def test_apercu_liste_longue_tronquee():
+    from src.core.import_manager import ImportPreviewDialog
+    lignes = ImportPreviewDialog._lignes_alignements(
+        {'marques_alignees': [(f"MARQUE{i}", f"Marque{i}", 1) for i in range(11)]})
+    assert len(lignes) == 1 + ImportPreviewDialog.MAX_ALIGNEMENTS_AFFICHES + 1
+    assert lignes[-2].endswith(',') and lignes[-1] == "    … et 3 autres"
+
+
+def test_apercu_sans_correction_sans_encadre(qapp):
+    from src.core.import_manager import ImportPreviewDialog
+    dialogue = ImportPreviewDialog({'new_entries': 1}, None)
+    assert dialogue._encadre_alignements({'new_entries': 1}) is None
+    assert dialogue._encadre_alignements({'types_alignes': [("CHAUFFAGE", "Chauffage", 1)]}) is not None
+
+
+def test_analyse_a_blanc_remonte_les_alignements(manager):
+    """L'aperçu repose sur le dry run : il doit porter les corrections sans rien écrire."""
+    im, db = manager
+    fichier = ImportFile(path='Collage', type=FileType.CLIPBOARD, suggested_reference='REF_TEST',
+                         suggested_label='', data=LIGNES)
+    config = ImportConfiguration(
+        files=[fichier], import_type=ImportType.SINGLE_FILE, common_reference="REF_TEST",
+        use_common_reference=True, label_config=LabelConfiguration(), individual_references={},
+        individual_labels={}, has_headers=False,
+        column_mapping={4: ['type', 'manufacturer', 'ref_modele', 'commercial_ref']})
+    resultats = im._run_import_files(config, dry_run=True)
+    assert ("DELTA", "Delta", 1) in resultats['marques_alignees']
+    assert resultats['types_alignes'] == [("CHAUFFAGE", "Chauffage", 1)]
+    assert db.execute_query("SELECT COUNT(*) FROM appareils")[0][0] == 3   # rien d'écrit
