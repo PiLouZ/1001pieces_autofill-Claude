@@ -20,9 +20,15 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - Une valeur apparue en base après le chargement de la liste (import,
   restauration) est retrouvée : relecture des valeurs distinctes, servie par
   l'index (< 1 ms), à chaque valeur inconnue.
+- **Aperçu d'import** : encadré « Orthographe alignée sur la base » qui annonce
+  les marques et types réécrits avant l'écriture (8 lignes max par colonne).
 - `MarqueNormalisationService` devient `CasseNormalisationService` (une instance
   par colonne : marque ou type).
-- 15 tests ajoutés (`test_casse_normalisation.py`, 35 au total). Vérifié dans la
+- Base de production : marques voisines fusionnées après sauvegarde, sur
+  décision de l'utilisateur. Glemglas (faute de frappe) et Glem deviennent
+  « Glem Gas » (63) ; Fust et Fust Novamatic deviennent « Novamatic » (6) ; le
+  lave-linge « Concorde » passe en « Concord » (1), les radiateurs Concorde restent.
+- 19 tests ajoutés (`test_casse_normalisation.py`, 39 au total). Vérifié dans la
   vraie fenêtre sur une copie de la base : import, saisie, puis annulation.
 
 ---
