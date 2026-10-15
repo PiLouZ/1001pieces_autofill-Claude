@@ -4,6 +4,31 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.85.0] - 2026-10-15 (branche `feature/activation-cles-etrangeres`)
+
+### La base vérifie enfin ses liens : clés étrangères activées
+
+- **Clés étrangères actives** (`PRAGMA foreign_keys=ON`) à l'ouverture de la base.
+  SQLite refuse désormais une association vers une pièce ou un appareil absent : les
+  94 918 associations orphelines de 2025 ne pourraient plus s'accumuler en silence.
+  Interrupteur `Config.FOREIGN_KEYS` (activé par défaut) : le repasser à `False`
+  suffit à revenir en arrière, rien n'est écrit dans le fichier de la base.
+- Activation **après** les migrations : trois migrations de l'ancien schéma font
+  `DROP TABLE pieces`, qui déclencherait les suppressions en cascade.
+- **Correctif de schéma (bases neuves)** : `piece_associations.piece_id` pointait vers
+  une table `pieces_new` inexistante, reliquat d'une ancienne migration. La base de
+  production n'était pas concernée (créée par la migration, qui pointe vers `pieces`) ;
+  les bases de test et toute nouvelle installation l'étaient.
+- **Renommage d'une pièce liée** par une succession ou une équivalence : la
+  vérification est différée jusqu'à la validation, sinon le renommage échouait
+  (« FOREIGN KEY constraint failed »).
+- Vérifié sur une copie de la production : renommage, ajout d'association, succession
+  et équivalence vers fantôme, suppression de pièce liée, fusion de doublons,
+  suppression de 200 appareils — tout passe, 0 violation, temps inchangés.
+- 12 tests ajoutés (`test_cles_etrangeres.py`).
+
+---
+
 ## [3.84.3] - 2026-10-15 (branche `fix/nettoyage-associations-orphelines`)
 
 ### Script de nettoyage des associations orphelines (à lancer à la main)

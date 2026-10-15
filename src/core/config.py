@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.84.3"
+    VERSION = "3.85.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -87,6 +87,14 @@ class Config:
     # False = fallback LIKE %terme% (si l'index est absent ou corrompu)
     # Note  : désactivé automatiquement si SEARCH_PIECES_ONLY=True (pièces non indexées)
     USE_FTS5 = True
+
+    # Clés étrangères SQLite (v3.85.0)
+    # True  = `PRAGMA foreign_keys=ON` à l'ouverture : la base refuse une association
+    #         vers une pièce ou un appareil absent, et applique les ON DELETE déclarés.
+    # False = contraintes purement déclaratives (comportement d'avant la v3.85.0).
+    # Réglage par connexion, jamais écrit dans le fichier : repasser à False suffit
+    # pour revenir en arrière, sans migration.
+    FOREIGN_KEYS = True
 
     # Feature Flags - Phase 2 Async Operations
     USE_ASYNC_LOAD_DATA = True  # Phase 2d: Migration pilote load_data_async() - TEST A/B ACTIVÉ

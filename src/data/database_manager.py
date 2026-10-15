@@ -90,7 +90,28 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cache_invalidation = SearchCacheInvalidationService(self)
         self._connect()
         self._setup_database()
-    
+        self._activer_cles_etrangeres()
+
+    def _activer_cles_etrangeres(self):
+        """Activer les clés étrangères, APRÈS les migrations de `_setup_database`.
+
+        L'ordre compte : trois migrations de l'ancien schéma (setup.py) font
+        `DROP TABLE pieces` / `piece_associations`. Clés actives, un DROP TABLE
+        vide d'abord la table et déclenche les `ON DELETE CASCADE` — toutes les
+        associations partiraient avec. Elles ne tournent plus sur le schéma
+        actuel, mais activer après elles écarte le risque.
+
+        Sans effet dans une transaction ouverte : on valide d'abord ce que les
+        migrations auraient laissé en cours."""
+        if not Config.FOREIGN_KEYS:
+            return
+        if self.conn.in_transaction:
+            self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys=ON")
+        actives = self.conn.execute("PRAGMA foreign_keys").fetchone()[0]
+        if not actives:
+            app_logger.warning("Clés étrangères demandées mais non activées par SQLite")
+
     @handle_database_errors(title="Erreur de connexion")
     def _connect(self):
         """Établir la connexion à la base de données"""
@@ -1165,10 +1186,11 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         sans quoi elles pointent vers une référence qui n'existe plus.
         `piece_associations` n'est pas concernée : elle pointe par `piece_id`.
 
-        Le schéma déclare pourtant des FOREIGN KEY vers `pieces(ref_piece)`, mais
-        elles ne protègent rien ici : elles ne couvrent que `ON DELETE`, et surtout
-        `PRAGMA foreign_keys` n'est activé nulle part dans l'application (SQLite le
-        désactive par défaut). Ces contraintes sont donc purement déclaratives.
+        Les FOREIGN KEY vers `pieces(ref_piece)` ne couvrent que `ON DELETE` (pas
+        de `ON UPDATE CASCADE`). Clés actives (`Config.FOREIGN_KEYS`), mettre à
+        jour la pièce avant ses relations violerait la contrainte le temps d'une
+        instruction : la vérification est donc différée jusqu'au COMMIT, où tout
+        est de nouveau cohérent.
 
         Cas réel du 2026-09-10 : une succession importée avec une coquille
         (`2080942408 → 96001828`) puis corrigée par renommage de la pièce en
@@ -1181,6 +1203,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 return False
 
         try:
+            # Remis à OFF automatiquement au COMMIT ou au ROLLBACK : ne vaut que
+            # pour ce renommage.
+            self.cursor.execute("PRAGMA defer_foreign_keys=ON")
             self.cursor.execute(
                 "UPDATE pieces SET ref_piece = ?, description = ? WHERE ref_piece = ?",
                 (new_ref_piece, description, old_ref_piece)
@@ -1209,6 +1234,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             # (group_id, ref_piece) celle de piece_equivalence_groups : la
             # référence cible peut déjà porter une relation orpheline. Tout
             # annuler plutôt que renommer la pièce en abandonnant ses relations.
+            # (Une clé étrangère encore violée au COMMIT différé arrive ici aussi.)
             self.conn.rollback()
             app_logger.warning(
                 f"Renommage '{old_ref_piece}' → '{new_ref_piece}' annulé : la "
@@ -1247,9 +1273,10 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         Trou jumeau de celui du renommage : le schéma déclare bien
         `ON DELETE CASCADE` sur `piece_supersessions.ref_old` et
         `piece_equivalence_groups.ref_piece`, et `ON DELETE SET NULL` sur
-        `piece_supersessions.ref_new` — mais `PRAGMA foreign_keys` n'étant activé
-        nulle part, ces clauses ne se déclenchent jamais. Sans les ordres explicites
-        ci-dessous, supprimer une pièce laissait ses relations pointer dans le vide.
+        `piece_supersessions.ref_new` — mais `PRAGMA foreign_keys` n'a été activé
+        qu'en v3.85.0, et reste désactivable (`Config.FOREIGN_KEYS`). Les ordres
+        explicites ci-dessous ne dépendent donc pas des clauses : sans eux,
+        clés désactivées, les relations pointeraient dans le vide.
 
         Ces ordres suppriment la ligne des deux côtés (`ref_old` comme `ref_new`).
         C'est le seul comportement valable sur les DEUX schémas rencontrés : le code
