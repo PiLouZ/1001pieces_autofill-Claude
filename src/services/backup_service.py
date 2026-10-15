@@ -10,7 +10,7 @@ Rotation automatique dans data/backups/ (base ~840 Mo, limite l'espace disque),
 en deux réserves indépendantes (v3.84.0) :
 - automatiques (import, nettoyage, avant restauration) : BACKUP_MAX_COPIES copies ;
 - ponctuelles (tout autre motif : fusion de marques, script…) :
-  BACKUP_MAX_COPIES_PONCTUELLES copie.
+  BACKUP_MAX_COPIES_PONCTUELLES copies.
 Avant, une seule réserve : deux copies ponctuelles le même jour avaient évincé
 les deux copies d'import (2026-10-15).
 """
