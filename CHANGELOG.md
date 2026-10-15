@@ -4,7 +4,7 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
-## [3.81.2] - 2026-10-13 (branche `fix/recherche-banniere-perimee`)
+## [3.82.1] - 2026-10-15 (branche `fix/recherche-banniere-perimee`)
 
 ### Recherche : le tableau ne garde plus les lignes de la recherche précédente
 
@@ -20,6 +20,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - Vérifié sur copie de la base : 22 étapes enchaînées (réf. qui remplace, ancienne
   réf., équivalence, inexistante, bascules) donnent chacune le même résultat
   qu'une recherche faite à neuf.
+
+---
+
+## [3.82.0] - 2026-10-15 (branche `feature/marques-casse-normalisee`)
+
+### Import : la casse des marques est alignée sur la base
+
+- **Nouveau** : une marque importée qui existe déjà en base reprend son orthographe
+  exacte, comparée sans casse, accents, espaces ni tirets (« DELTA » → « Delta »,
+  « SCHOLTES » → « Scholtès », « HOTPOINT ARISTON » → « Hotpoint-Ariston »).
+  « AEG » et « LG » restent en capitales, puisque c'est leur forme en base.
+- Une marque **nouvelle** tout en capitales et de plus de 4 caractères prend une
+  majuscule en tête de chaque mot (« ARTHUR-MARTIN » → « Arthur-Martin ») ; les
+  sigles courts (« CDA ») et les casses mixtes (« KitchenAid ») sont conservés.
+- Jamais silencieux : l'historique d'import liste les marques réécrites, une
+  par ligne en retrait sous « Marques alignées sur la base : », avant toute
+  alerte de mapping (sinon surlignées en jaune avec elle). Lignes « - » rendues
+  en sous-éléments dans le panneau Historique et dans le popup du persistant.
+- Appliqué dans `_parse_row_data`, donc aux deux chemins d'import (standard et
+  batch), fichiers, PDF et collage. Logique dans `MarqueNormalisationService`.
+- Base de production : les 11 appareils « MIDEA » fusionnés en « Midea » (seul
+  doublon de casse sur 488 marques), après sauvegarde.
+- 22 tests ajoutés (`test_marque_normalisation.py`), dont les deux chemins d'import.
+
+### Import : compteur « Déjà associées » doublé
+
+- **Correctif** : quand la référence commune est aussi celle du fichier (collage,
+  ou multi-import « 805101 » + 805101.pdf), chaque ligne était associée deux fois :
+  créée, puis retrouvée et comptée « déjà associée » (« Nouvelles : 25 » ET
+  « Déjà associées : 25 »). La base était juste ; le comptage et 1 requête par
+  ligne étaient en trop. Le libellé du fichier reste prioritaire, comme avant.
+- 7 tests (`test_import_reference_commune_doublon.py`), deux chemins et aperçu.
+
+---
 
 ## [3.81.1] - 2026-10-13 (branche `feature/historique-popup-multi-fichiers`)
 
