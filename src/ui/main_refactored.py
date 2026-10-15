@@ -1076,9 +1076,8 @@ class MainWindow(QMainWindow):
     def _apply_suggestion_with_provenance(self, candidate, model, db_id):
         """Applique un candidat en marquant la provenance pour l'historique groupé
         (visible dans l'entrée comme « source : suggestion réf. X (score Y) »)."""
-        self._suggestion_provenance = (
-            f"suggestion réf. {candidate.get('ref', '')} (score {candidate.get('score', 0):.0%})"
-        )
+        from ..services.reference_similarity_service import provenance_candidat
+        self._suggestion_provenance = provenance_candidat(candidate)
         try:
             return self.autocompletion_service.apply_suggestion_pair(candidate, model, db_id)
         finally:

@@ -4,6 +4,32 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.87.0] - 2026-10-15 (branche `feature/suggestion-type-piece`)
+
+### Import : suggestion du Type d'après la pièce importée
+
+- Nouvelle suggestion pour les lignes importées **sans type** : le type que portent
+  déjà les appareils de la pièce, quand il couvre **au moins 95 % d'au moins 5
+  appareils**. Mesuré le 2026-10-15 sur les saisies réelles (données de la veille
+  seulement) : juste à 94 % dans ce cas, pour ~37 % des remplissages de Type ; 68 %
+  entre 80 et 95 %, d'où le seuil.
+- La suggestion ne propose que le **Type** (la marque n'est jamais écrite) et passe par
+  le même mécanisme que la similarité : case ambrée, info-bulle (« type de 100 % des
+  51 appareils de la pièce 11047540 »), fenêtre de validation (fiabilité « Type de la
+  pièce »), fenêtre Cmd+D, provenance dans l'historique. Jamais appliquée sans
+  validation.
+- Fusion avec la similarité : si un candidat propose déjà ce type, rien n'est ajouté ;
+  sinon les deux sont proposés et la ligne n'est pas pré-cochée.
+- Référence commune + référence du fichier : les appareils des deux pièces comptent.
+- Interrupteur et seuils dans `Config` (`ENABLE_TYPE_PIECE_SUGGESTION`,
+  `TYPE_PIECE_PART_MIN`, `TYPE_PIECE_APPAREILS_MIN`).
+- Fenêtre de validation : colonne Fiabilité élargie à son plus long libellé (« Quasi-
+  certain » était déjà tronqué).
+- 18 tests ajoutés (`test_suggestion_type_piece.py`), dont les deux chemins d'import
+  (standard < 50 lignes et batch).
+
+---
+
 ## [3.86.2] - 2026-10-15 (branche `fix/provenance-suggestions-historique`)
 
 ### Historique : la provenance des suggestions n'est plus perdue

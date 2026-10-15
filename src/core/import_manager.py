@@ -2465,6 +2465,9 @@ class ImportManager:
             # l'index de similarité pour que les incomplètes du lot « voient » leurs
             # frères importés en même temps (pas encore en base au moment du calcul).
             self._imported_complete_for_similarity = []
+            # Références de pièce de chaque ligne incomplète (clé : id(device_data)),
+            # pour la suggestion « type de la pièce importée ».
+            self._refs_pieces_candidats = {}
 
             n = len(config.files)
             if progress_cb:
@@ -2910,7 +2913,7 @@ class ImportManager:
             return {'created': association_created, 'assoc_id': assoc_id}
         return None
 
-    def _collecter_candidat_similarite(self, device_data, actif=True):
+    def _collecter_candidat_similarite(self, device_data, actif=True, refs_pieces=()):
         """Ranger une ligne importée pour le calcul différé des suggestions Type/Marque.
 
         Une ligne restée incomplète après le mécanisme exact devient un candidat ;
@@ -2924,6 +2927,8 @@ class ImportManager:
 
         Args:
             actif: False en dry-run, où l'on ne collecte rien.
+            refs_pieces: références de pièce auxquelles la ligne est rattachée
+                (suggestion « type de la pièce importée »).
         """
         from .config import Config
 
@@ -2937,6 +2942,9 @@ class ImportManager:
             self._imported_complete_for_similarity.append(device_data)
         else:
             self._pending_similarity_candidates.append(device_data)
+            refs = [r for r in refs_pieces if r]
+            if refs and hasattr(self, '_refs_pieces_candidats'):
+                self._refs_pieces_candidats[id(device_data)] = refs
 
     # Verdicts rendus par _preparer_ligne
     LIGNE_IGNOREE = 'ignoree'      # vide ou non parsable : rien à faire
@@ -3055,7 +3063,8 @@ class ImportManager:
                 else:
                     results['matches_found'] += 1
 
-                self._collecter_candidat_similarite(device_data)
+                self._collecter_candidat_similarite(
+                    device_data, refs_pieces=[r for r, _ in references_and_labels])
 
                 # Associer les références (chaque paire référence-libellé)
                 for reference, label in references_and_labels:
@@ -3174,7 +3183,9 @@ class ImportManager:
                     results['manual_completion'] += 1
                 new_devices_batch.append(device_data)
 
-            self._collecter_candidat_similarite(device_data, actif=not dry_run)
+            self._collecter_candidat_similarite(
+                device_data, actif=not dry_run,
+                refs_pieces=[r for r, _ in references_and_labels])
 
             # Préparer associations (sera traitée après insertion batch)
             # CORRECTION: Utiliser processed_line_index pour avoir des indices consécutifs
@@ -3329,6 +3340,78 @@ class ImportManager:
         return cache
 
     def _compute_pending_similarity_suggestions(self, progress_cb=None) -> Dict[int, list]:
+        """Suggestions Type/Marque des lignes restées incomplètes : similarité de
+        référence, complétée par le type de la pièce importée. Jamais d'écriture,
+        jamais d'échec d'import (chaque étape attrape ses erreurs)."""
+        suggestions = self._suggestions_par_similarite(progress_cb=progress_cb)
+        return self._ajouter_suggestions_type_piece(suggestions)
+
+    def _ajouter_suggestions_type_piece(self, suggestions: Dict[int, list]) -> Dict[int, list]:
+        """Ajoute, pour chaque ligne SANS type, le type que portent déjà au moins
+        TYPE_PIECE_PART_MIN des appareils de sa pièce (au moins
+        TYPE_PIECE_APPAREILS_MIN appareils typés).
+
+        Fusion avec la similarité : si un candidat propose déjà ce type, rien
+        n'est ajouté ; sinon le candidat « pièce » s'ajoute en concurrent (la
+        fenêtre de validation ne pré-coche alors plus la ligne).
+        """
+        from .config import Config
+        if not Config.ENABLE_TYPE_PIECE_SUGGESTION:
+            return suggestions
+        refs_par_ligne = getattr(self, '_refs_pieces_candidats', None) or {}
+        if not refs_par_ligne:
+            return suggestions
+        try:
+            from ..services.reference_similarity_service import (
+                candidat_type_piece, type_majoritaire)
+            lignes = [d for d in getattr(self, '_pending_similarity_candidates', [])
+                      if d.get('id') and not (d.get('type') or '').strip()
+                      and id(d) in refs_par_ligne]
+            if not lignes:
+                return suggestions
+            toutes_refs = sorted({r for d in lignes for r in refs_par_ligne[id(d)]})
+            types_par_ref: Dict[str, Dict[str, int]] = {}
+            for i in range(0, len(toutes_refs), 500):
+                paquet = toutes_refs[i:i + 500]
+                placeholders = ','.join('?' * len(paquet))
+                rows = self.db_manager.execute_query(
+                    f"""SELECT p.ref_piece, TRIM(a.type), COUNT(*)
+                        FROM pieces p
+                        JOIN piece_associations pa ON pa.piece_id = p.id
+                        JOIN appareils a ON a.id = pa.appareil_id
+                        WHERE p.ref_piece IN ({placeholders})
+                          AND COALESCE(TRIM(a.type), '') <> ''
+                        GROUP BY p.ref_piece, TRIM(a.type)""", paquet) or []
+                for ref, type_app, n in rows:
+                    types_par_ref.setdefault(ref, {})[type_app] = n
+
+            ajoutees = 0
+            for d in lignes:
+                refs = refs_par_ligne[id(d)]
+                compte: Dict[str, int] = {}
+                for ref in refs:
+                    for type_app, n in types_par_ref.get(ref, {}).items():
+                        compte[type_app] = compte.get(type_app, 0) + n
+                dominant = type_majoritaire(compte, Config.TYPE_PIECE_PART_MIN,
+                                            Config.TYPE_PIECE_APPAREILS_MIN)
+                if dominant is None:
+                    continue
+                type_piece, part, total = dominant
+                existants = suggestions.get(d['id'], [])
+                if any((c.get('type') or '').strip().lower() == type_piece.lower()
+                       for c in existants):
+                    continue          # la similarité propose déjà ce type
+                suggestions[d['id']] = existants + [
+                    candidat_type_piece(type_piece, refs, part, total)]
+                ajoutees += 1
+            app_logger.info(f"Suggestions « type de la pièce » : {ajoutees} appareil(s) "
+                            f"sur {len(lignes)} ligne(s) sans type")
+            return suggestions
+        except Exception as e:
+            app_logger.error(f"Suggestions « type de la pièce » échouées (non bloquant) : {e}")
+            return suggestions
+
+    def _suggestions_par_similarite(self, progress_cb=None) -> Dict[int, list]:
         """Calcule les suggestions Type/Marque par similarité pour les lignes
         restées incomplètes après le mécanisme exact (collectées pendant la boucle
         d'import dans self._pending_similarity_candidates).
