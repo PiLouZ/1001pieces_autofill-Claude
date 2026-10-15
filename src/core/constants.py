@@ -52,6 +52,11 @@ class DatabaseConfig:
     BACKUP_SUFFIX = "_backup"
     BACKUP_DIR_NAME = "backups"          # data/backups/
     BACKUP_MAX_COPIES = 2                # rotation (~900 Mo par copie)
+    # Copies faites par l'application elle-même, avant une opération à risque.
+    # Tout autre motif (fusion de marques, script ponctuel…) a sa propre réserve,
+    # pour ne jamais évincer ces copies-là (v3.84.0).
+    BACKUP_MOTIFS_AUTOMATIQUES = ("import", "nettoyage", "avant_restauration")
+    BACKUP_MAX_COPIES_PONCTUELLES = 1
     BACKUP_MIN_INTERVAL_IMPORT_H = 24    # avant import : au plus 1 copie / 24h
 
     # Réglages de performance SQLite (PRAGMA appliqués à chaque connexion)

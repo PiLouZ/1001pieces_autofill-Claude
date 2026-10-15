@@ -4,6 +4,25 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.84.0] - 2026-10-15 (branche `feature/sauvegardes-rotation-par-motif`)
+
+### Sauvegardes : les copies ponctuelles n'évincent plus les copies d'import
+
+- **Correctif** : la rotation comptait toutes les copies ensemble (2 max). Le
+  2026-10-15, deux copies faites avant des fusions de marques ont supprimé les
+  copies d'import du 13 et du 14/10 : plus aucune copie antérieure au jour même.
+- Deux réserves indépendantes : **automatiques** (import, nettoyage, avant
+  restauration), 2 copies ; **ponctuelles** (tout autre motif), 1 copie. Le motif
+  est lu dans le nom du fichier.
+- La règle « au plus 1 copie par 24 h avant import » ne regarde plus que les
+  copies automatiques : une copie de fusion récente ne fait plus sauter la copie
+  d'import.
+- Espace disque : 3 copies au plus (~2,9 Go, 964 Mo par copie) au lieu de 2.
+- 10 tests ajoutés (`test_sauvegardes_rotation.py`) ; les 2 tests de rotation
+  utilisent désormais le motif « import », celui de la réserve qu'ils vérifient.
+
+---
+
 ## [3.83.0] - 2026-10-15 (branche `feature/normalisation-saisie-types`)
 
 ### Casse alignée sur la base : types à l'import et saisie manuelle
