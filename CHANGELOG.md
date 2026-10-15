@@ -4,6 +4,31 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.84.2] - 2026-10-15 (branche `refacto/import-manager-methodes-tiedes`)
+
+### Import : découpage de deux méthodes complexes, aucun changement de comportement
+
+- **`_validate_and_accept`** (fenêtre d'import) : 115 lignes découpées en 4 étapes
+  nommées (`_collecter_references_et_libelles`, `_collecter_options_format`,
+  `_collecter_relations`, `_collecter_mapping_colonnes`). La méthode ne fait plus
+  qu'enchaîner ces étapes puis les deux garde-fous. Configuration produite
+  vérifiée identique sur 7 états de la fenêtre (mono, collage, multi, les 3 choix
+  de 3ᵉ colonne, les 2 avertissements).
+- **`_apply_succession_from_config`** : le motif « créer la relation, compter,
+  journaliser, propager le libellé », répété 3 fois, passe dans
+  `_appliquer_relation_import`. Messages de log inchangés.
+- **Branche morte retirée** : la branche multi-fichiers de
+  `_apply_succession_from_config` dépendait de `succession_current_ref` et
+  `equivalence_refs`, que plus aucun code ne renseignait depuis le panneau de
+  relations par groupes. Elle ne créait aucune relation en production. Les deux
+  champs sont retirés d'`ImportConfiguration`. L'obsolescence multi-fichiers sans
+  panneau reste appliquée.
+- Tests : 10 tests de la branche retirée supprimés, 1 test ajouté qui fige le
+  comportement réel (multi-fichiers sans panneau → aucune relation tentée), test
+  de robustesse réécrit sur le chemin fichier unique.
+
+---
+
 ## [3.84.1] - 2026-10-15 (branche `fix/filtres-type-marque`)
 
 ### Filtres Type et Marque : liste complète et RAZ réparé
