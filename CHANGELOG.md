@@ -4,6 +4,28 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.84.3] - 2026-10-15 (branche `fix/nettoyage-associations-orphelines`)
+
+### Script de nettoyage des associations orphelines (à lancer à la main)
+
+- **`scripts/nettoyage_associations_orphelines.py`** : supprime les associations
+  pièce↔appareil dont la pièce ou l'appareil n'existe plus. Audit du 2026-10-15 :
+  94 905 associations vers 96 pièces supprimées, plus 13 vers un appareil supprimé,
+  toutes créées entre juillet et septembre 2025. Aucun chemin de suppression actuel
+  n'en crée plus.
+- Simulation par défaut. Avec `--ecrire` : refus si l'application est ouverte,
+  sauvegarde ponctuelle obligatoire (`nettoyage_orphelins`), suppression en une
+  transaction annulée en cas d'écart de comptage, puis contrôles sur une connexion
+  neuve (0 violation de clé étrangère, intégrité, comptes du gestionnaire, volume).
+- Arrêt si le nombre d'orphelines dépasse celui de l'audit : de nouvelles
+  orphelines seraient à comprendre avant de supprimer.
+- Effet visible après exécution : 4 pièces retrouvent leur vrai nombre d'appareils
+  dans le gestionnaire (481010552514 : 2287 → 2282, C00861955 : 10 → 5,
+  76X3143 : 1396 → 1394, C00031025 : 14 → 13).
+- 12 tests ajoutés (`test_nettoyage_associations_orphelines.py`).
+
+---
+
 ## [3.84.2] - 2026-10-15 (branche `refacto/import-manager-methodes-tiedes`)
 
 ### Import : découpage de deux méthodes complexes, aucun changement de comportement
