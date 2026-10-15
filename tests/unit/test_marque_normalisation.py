@@ -181,3 +181,33 @@ def test_import_aligne_les_marques(manager, chemin):
     assert marques['999002'] == 'CDA'
     assert im._marques.alignements() == [
         ("DELTA", "Delta", 1), ("HEXATHERM", "Hexatherm", 1), ("NOUVEAUMARQ", "Nouveaumarq", 1)]
+
+
+# ─── Historique : une marque par ligne ───────────────────────────────────────
+
+def test_lignes_virgule_sauf_la_derniere():
+    alignements = [("DELTA", "Delta", 7), ("EQUATION", "Equation", 2), ("HEXATHERM", "Hexatherm", 1)]
+    assert MarqueNormalisationService.lignes(alignements) == [
+        "DELTA → Delta (7),", "EQUATION → Equation (2),", "HEXATHERM → Hexatherm (1)"]
+    assert MarqueNormalisationService.lignes([("DELTA", "Delta", 1)]) == ["DELTA → Delta (1)"]
+
+
+def test_bloc_historique_avant_l_alerte_de_mapping():
+    """Les lignes de marques précèdent le « [!] » : placées après, elles seraient
+    surlignées en jaune comme faisant partie de l'alerte."""
+    import types
+    from src.ui.main_refactored import MainWindow
+    historique = []
+    fenetre = types.SimpleNamespace(
+        user_interaction_service=types.SimpleNamespace(
+            add_to_history=lambda s, duration_ms=None: historique.append(s)),
+        _lignes_marques=MainWindow._lignes_marques)
+    MainWindow._safe_show_import_results_new(fenetre, {
+        'total_files': 1, 'file_details': [{'filename': 'Collage', 'type': 'CSV', 'lines_processed': 2}],
+        'marques_alignees': [("DELTA", "Delta", 1), ("HEXATHERM", "Hexatherm", 1)],
+        'alerte_mapping': "alerte",
+    })
+    lignes = historique[0].splitlines()
+    i = lignes.index("     ==> Marques alignées sur la base :")
+    assert lignes[i + 1:i + 4] == ["     - DELTA → Delta (1),", "     - HEXATHERM → Hexatherm (1)",
+                                   "     [!] alerte"]

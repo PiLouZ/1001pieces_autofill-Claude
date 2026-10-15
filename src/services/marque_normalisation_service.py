@@ -111,6 +111,13 @@ class MarqueNormalisationService(BaseService):
         return sorted((brute, retenue, nb) for (brute, retenue), nb in self._alignements.items())
 
     @staticmethod
-    def resume(alignements: List[Tuple[str, str, int]]) -> str:
-        """« DELTA → Delta (7), HEXATHERM → Hexatherm (1) »"""
-        return ', '.join(f"{brute} → {retenue} ({nb})" for brute, retenue, nb in alignements)
+    def lignes(alignements: List[Tuple[str, str, int]]) -> List[str]:
+        """['DELTA → Delta (7),', 'HEXATHERM → Hexatherm (1)'] : une par marque,
+        virgule sauf sur la dernière."""
+        textes = [f"{brute} → {retenue} ({nb})" for brute, retenue, nb in alignements]
+        return [t + ',' for t in textes[:-1]] + textes[-1:]
+
+    @classmethod
+    def resume(cls, alignements: List[Tuple[str, str, int]]) -> str:
+        """« DELTA → Delta (7), HEXATHERM → Hexatherm (1) » (journal)."""
+        return ' '.join(cls.lignes(alignements))

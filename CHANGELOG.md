@@ -15,8 +15,10 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - Une marque **nouvelle** tout en capitales et de plus de 4 caractères prend une
   majuscule en tête de chaque mot (« ARTHUR-MARTIN » → « Arthur-Martin ») ; les
   sigles courts (« CDA ») et les casses mixtes (« KitchenAid ») sont conservés.
-- Jamais silencieux : l'historique d'import liste les marques réécrites
-  (« Marques alignées sur la base : DELTA → Delta (7), … »).
+- Jamais silencieux : l'historique d'import liste les marques réécrites, une
+  par ligne en retrait sous « Marques alignées sur la base : », avant toute
+  alerte de mapping (sinon surlignées en jaune avec elle). Lignes « - » rendues
+  en sous-éléments dans le panneau Historique et dans le popup du persistant.
 - Appliqué dans `_parse_row_data`, donc aux deux chemins d'import (standard et
   batch), fichiers, PDF et collage. Logique dans `MarqueNormalisationService`.
 - Base de production : les 11 appareils « MIDEA » fusionnés en « Midea » (seul
