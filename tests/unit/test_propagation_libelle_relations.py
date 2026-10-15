@@ -9,7 +9,8 @@ libellé**. Deux chemins d'import s'excluent mutuellement
 - `apply_relations` (socle commun du panneau de relations, v3.72.0) ne propageait
   **rien** ;
 - `_apply_succession_from_config` ne propageait que sur sa branche fichier unique,
-  jamais sur la branche multi-fichiers ;
+  jamais sur la branche multi-fichiers (branche retirée en 3.84.2 : elle ne
+  créait plus aucune relation en production) ;
 - `inherit_phantom_description` n'allait que dans un sens et exigeait
   `is_phantom = 1`, donc ne rattrapait jamais une réf promue par une association
   mais restée anonyme.
@@ -20,10 +21,6 @@ pourtant une voisine nommée.
 
 import pytest
 
-from src.core.import_manager import (
-    ImportManager, ImportConfiguration, ImportFile, ImportType,
-    LabelConfiguration, FileType,
-)
 from src.services.import_relations import (
     Group, CardData, apply_relations, KIND_SUCCESSION, KIND_EQUIVALENCE,
 )
@@ -184,48 +181,3 @@ class TestApplyRelationsPropage:
         assert counts['errors'] == 0
         assert counts['successions'] == 1
         assert minimal.supersessions == [("M", "C")]
-
-
-# ── L'autre chemin : branche multi-fichiers ───────────────────────────────────
-
-class TestSuccessionMultiFichiers:
-    """`_apply_succession_from_config` reste atteignable en multi-fichiers quand
-    le panneau de relations est absent — sa branche multi ne propageait rien."""
-
-    @pytest.fixture
-    def manager(self, qapp, test_db_manager):
-        return ImportManager(db_manager=test_db_manager, parent_widget=None)
-
-    def _config(self, refs, **relations):
-        fichiers = [ImportFile(path=f"/tmp/f{i}.csv", type=FileType.CSV,
-                               suggested_reference=r) for i, r in enumerate(refs)]
-        return ImportConfiguration(
-            files=fichiers, import_type=ImportType.MULTI_FILE,
-            label_config=LabelConfiguration(),
-            individual_references={f.path: r for f, r in zip(fichiers, refs)},
-            individual_labels={}, **relations
-        )
-
-    # Deux fichiers au minimum : `len(config.files) == 1` capte le flux avant la
-    # branche multi, même quand l'import_type dit MULTI_FILE.
-
-    def test_succession_multi_propage(self, manager):
-        db = manager.db_manager
-        db.create_piece_standalone("ANCIENNE", LIBELLE)
-        config = self._config(["ANCIENNE", "AUTRE"],
-                              succession_current_ref="COURANTE")
-
-        manager._apply_succession_from_config(config, {})
-
-        assert _desc(db, "COURANTE") == LIBELLE
-
-    def test_equivalence_multi_propage(self, manager):
-        db = manager.db_manager
-        db.create_piece_standalone("EQUIV_A", LIBELLE)
-        config = self._config(["EQUIV_A", "AUTRE"],
-                              succession_current_ref="PIVOT",
-                              equivalence_refs=["EQUIV_A"])
-
-        manager._apply_succession_from_config(config, {})
-
-        assert _desc(db, "PIVOT") == LIBELLE

@@ -94,17 +94,13 @@ class ImportConfiguration:
     # Succession déclarée lors de l'import (optionnel)
     succession_replaces: Optional[str] = None       # Réf existante que cette réf remplace (ref_old=existing, ref_new=imported)
     succession_replaced_by: Optional[str] = None    # Réf existante qui remplace cette réf (ref_old=imported, ref_new=existing)
-    succession_current_ref: Optional[str] = None    # Multi-fichiers : réf désignée comme courante (les autres lui sont successées)
     equivalence_ref: Optional[str] = None           # Fichier unique : réf existante équivalente à cette réf
-
-    # Équivalences déclarées lors de l'import (multi-fichiers)
-    equivalence_refs: Optional[List[str]] = None    # Réfs cochées comme équivalentes à la courante (ou entre elles si pas de courante)
 
     # Références à marquer obsolètes lors de l'import
     obsolete_refs: Optional[List[str]] = None       # Réfs à marquer comme obsolètes après import
 
     # Modèle « par groupes » (nouveau panneau de relations) — si renseigné, il PRIME
-    # sur les champs succession_*/equivalence_refs/obsolete_refs ci-dessus.
+    # sur les champs succession_*/equivalence_ref/obsolete_refs ci-dessus.
     relations_groups: Optional[List] = None         # List[import_relations.Group]
     relations_cards: Optional[List] = None           # List[import_relations.CardData]
 
@@ -122,8 +118,6 @@ class ImportConfiguration:
             self.individual_references = {}
         if self.individual_labels is None:
             self.individual_labels = {}
-        if self.equivalence_refs is None:
-            self.equivalence_refs = []
         if self.obsolete_refs is None:
             self.obsolete_refs = []
 
@@ -1216,7 +1210,31 @@ class ImportDialog(QDialog):
             files=self.import_config.files,
             import_type=self.import_config.import_type
         )
-        
+        self._collecter_references_et_libelles(config)
+        self._collecter_options_format(config)
+        self._collecter_relations(config)
+        self._collecter_mapping_colonnes(config)
+
+        # Garde-fou : une option d'équivalence est cochée mais l'état déclaré ne
+        # produira AUCUNE équivalence → avertir avant de lancer l'import (sinon
+        # l'utilisateur découvre après coup que sa déclaration a été perdue).
+        warning = self._equivalence_warning_message(config)
+        if warning:
+            self._confirm_import_sans_equivalence(config, warning)
+            return
+
+        # Garde-fou : collage sans référence de pièce → appareils orphelins.
+        warning_ref = self._reference_manquante_warning_message(config)
+        if warning_ref:
+            self._confirm_import_malgre_avertissement(
+                config, "Aucune pièce ne sera associée", warning_ref)
+            return
+
+        self.result_config = config
+        self.accept()
+
+    def _collecter_references_et_libelles(self, config: ImportConfiguration):
+        """Référence commune (multi-fichiers) puis référence et libellé de chaque fichier."""
         # Référence commune (pas de case à cocher, juste si le champ n'est pas vide)
         if self.import_config.import_type == ImportType.MULTI_FILE:
             common_ref = self.common_ref_input.text().strip()
@@ -1225,10 +1243,10 @@ class ImportDialog(QDialog):
             # Libellé de la référence commune
             if hasattr(self, 'common_ref_description'):
                 config.common_label = self.common_ref_description.text().strip()
-        
+
         # Nouvelle logique: séparation références/libellés avec prise en compte de la case à cocher
         auto_references_enabled = self.auto_file_references_checkbox.isChecked()
-        
+
         for file in config.files:
             # Référence — champ éditable pour le clipboard, sinon basé sur le fichier
             if file.type == FileType.CLIPBOARD:
@@ -1238,31 +1256,37 @@ class ImportDialog(QDialog):
                 config.individual_references[file.path] = file.suggested_reference
             else:
                 config.individual_references[file.path] = ""
-            
+
             # Libellé = ce que tape l'utilisateur (peut être vide)
             desc_input = self.findChild(QLineEdit, f"desc_{file.path}")
             if desc_input:
                 user_label = desc_input.text().strip()
                 config.individual_labels[file.path] = user_label if user_label else ""
-        
-        # Options de format et techniques
+
+    # Libellé du menu « 3ᵉ colonne » → valeur de ImportConfiguration.third_column_choice
+    _CHOIX_TROISIEME_COLONNE = {
+        "Ignorer": "ignore",
+        "Autre référence": "other_ref",
+        "Notes": "notes",
+    }
+
+    def _collecter_options_format(self, config: ImportConfiguration):
+        """3ᵉ colonne, en-têtes et aperçu."""
         if hasattr(self, 'third_col_combo'):
-            choice = self.third_col_combo.currentText()
-            if choice == "Ignorer":
-                config.third_column_choice = "ignore"
-            elif choice == "Autre référence":
-                config.third_column_choice = "other_ref"
-            elif choice == "Notes":
-                config.third_column_choice = "notes"
-        
+            choice = self._CHOIX_TROISIEME_COLONNE.get(self.third_col_combo.currentText())
+            if choice:
+                config.third_column_choice = choice
+
         if hasattr(self, 'headers_checkbox'):
             config.has_headers = self.headers_checkbox.isChecked()
 
         config.show_preview = self.preview_checkbox.isChecked()
-        
+
         # Ancienne configuration (pour compatibilité si nécessaire)
         config.label_config = LabelConfiguration()
 
+    def _collecter_relations(self, config: ImportConfiguration):
+        """Succession, équivalence et obsolescence déclarées dans le dialogue."""
         # Succession — fichier unique
         if len(config.files) == 1 and self.succ_replaces_input is not None:
             config.succession_replaces = self.succ_replaces_input.text().strip() or None
@@ -1270,8 +1294,8 @@ class ImportDialog(QDialog):
             config.equivalence_ref = self.equiv_input.text().strip() or None
 
         # Succession / équivalence — multi-fichiers : modèle « par groupes » du
-        # nouveau panneau de relations (lignées + groupes d'équivalence). Prime sur
-        # les anciens champs et route vers _apply_relations_from_config.
+        # panneau de relations (lignées + groupes d'équivalence), appliqué par
+        # _apply_relations_from_config. Porte aussi l'obsolescence multi-fichiers.
         if (config.import_type == ImportType.MULTI_FILE
                 and getattr(self, '_relations_groups_zone', None) is not None):
             from ..services.import_relations import CardData
@@ -1296,9 +1320,8 @@ class ImportDialog(QDialog):
             if ref:
                 config.obsolete_refs.append(ref)
 
-        # (Obsolète multi-fichiers : désormais porté par relations_cards ci-dessus.)
-
-        # Mapping de colonnes personnalisé (v3.30.0)
+    def _collecter_mapping_colonnes(self, config: ImportConfiguration):
+        """Mapping de colonnes personnalisé (v3.30.0)."""
         if hasattr(self, '_mapping_widgets') and self._mapping_widgets:
             mapping = {}
             for widget in self._mapping_widgets:
@@ -1307,24 +1330,6 @@ class ImportDialog(QDialog):
                     mapping[widget._n_cols] = widget.get_mapping()
             if mapping:
                 config.column_mapping = mapping
-
-        # Garde-fou : une option d'équivalence est cochée mais l'état déclaré ne
-        # produira AUCUNE équivalence → avertir avant de lancer l'import (sinon
-        # l'utilisateur découvre après coup que sa déclaration a été perdue).
-        warning = self._equivalence_warning_message(config)
-        if warning:
-            self._confirm_import_sans_equivalence(config, warning)
-            return
-
-        # Garde-fou : collage sans référence de pièce → appareils orphelins.
-        warning_ref = self._reference_manquante_warning_message(config)
-        if warning_ref:
-            self._confirm_import_malgre_avertissement(
-                config, "Aucune pièce ne sera associée", warning_ref)
-            return
-
-        self.result_config = config
-        self.accept()
 
     def _equivalence_warning_message(self, config) -> Optional[str]:
         """Message d'avertissement si une intention d'équivalence est déclarée mais
@@ -2682,14 +2687,15 @@ class ImportManager:
 
     def _apply_succession_from_config(self, config: ImportConfiguration, results: Dict) -> None:
         """
-        Appliquer les relations de succession déclarées dans le dialogue d'import.
+        Appliquer les relations déclarées dans le dialogue d'import fichier unique
+        (l'import multi-fichiers passe par _apply_relations_from_config).
 
         Fichier unique :
           - succession_replaces    → (ref_old=existing, ref_new=imported_ref)
           - succession_replaced_by → (ref_old=imported_ref, ref_new=existing)
           - equivalence_ref        → add_equivalence(imported_ref, equivalence_ref)
-        Multi-fichiers :
-          - succession_current_ref → toutes les autres refs pointent vers la ref courante
+        Tous modes :
+          - obsolete_refs          → mark_obsolete
         """
         if not config.files:
             return
@@ -2701,70 +2707,28 @@ class ImportManager:
                 return
 
             if config.succession_replaces:
-                ok, msg = self.db_manager.add_supersession(config.succession_replaces, file_ref)
-                if ok:
-                    results['succession_created'] = results.get('succession_created', 0) + 1
-                    app_logger.info(f"Succession import : {config.succession_replaces} → {file_ref}")
-                    # La réf saisie peut être créée en fantôme, ou exister déjà en base
-                    # avec son propre libellé : la propagation va dans le sens utile.
-                    self.db_manager.propagate_description(file_ref, config.succession_replaces)
-                else:
-                    app_logger.warning(f"Succession import non créée ({config.succession_replaces} → {file_ref}) : {msg}")
+                ancienne = config.succession_replaces
+                self._appliquer_relation_import(
+                    results, 'succession_created', "Succession import",
+                    f"{ancienne} → {file_ref}",
+                    self.db_manager.add_supersession(ancienne, file_ref),
+                    file_ref, ancienne)
 
             if config.succession_replaced_by:
-                ok, msg = self.db_manager.add_supersession(file_ref, config.succession_replaced_by)
-                if ok:
-                    results['succession_created'] = results.get('succession_created', 0) + 1
-                    app_logger.info(f"Succession import : {file_ref} → {config.succession_replaced_by}")
-                    # Idem : la réf citée hérite, ou donne son libellé à l'importée.
-                    self.db_manager.propagate_description(file_ref, config.succession_replaced_by)
-                else:
-                    app_logger.warning(f"Succession import non créée ({file_ref} → {config.succession_replaced_by}) : {msg}")
+                nouvelle = config.succession_replaced_by
+                self._appliquer_relation_import(
+                    results, 'succession_created', "Succession import",
+                    f"{file_ref} → {nouvelle}",
+                    self.db_manager.add_supersession(file_ref, nouvelle),
+                    file_ref, nouvelle)
 
             if config.equivalence_ref:
-                ok, msg = self.db_manager.add_equivalence(file_ref, config.equivalence_ref)
-                if ok:
-                    results['equivalences_created'] = results.get('equivalences_created', 0) + 1
-                    app_logger.info(f"Équivalence import : {file_ref} ≡ {config.equivalence_ref}")
-                    # Manquait ici alors que les deux branches de succession ci-dessus
-                    # le faisaient : le libellé n'atteignait le fantôme que selon le
-                    # type de relation déclarée, jamais selon les données.
-                    self.db_manager.propagate_description(file_ref, config.equivalence_ref)
-                else:
-                    app_logger.warning(f"Équivalence import non créée ({file_ref} ≡ {config.equivalence_ref}) : {msg}")
-
-        # --- Multi-fichiers ---
-        elif config.import_type == ImportType.MULTI_FILE:
-            current = config.succession_current_ref   # Peut être None (Option B)
-            equiv_refs = config.equivalence_refs or []
-
-            for file in config.files:
-                other_ref = config.individual_references.get(file.path, '') or ''
-                if not other_ref or other_ref == current:
-                    continue
-
-                if other_ref in equiv_refs:
-                    # Équivalence — lier à la courante, ou au premier équivalent si pas de courante
-                    pivot = current or (equiv_refs[0] if equiv_refs[0] != other_ref else None)
-                    if pivot:
-                        ok, msg = self.db_manager.add_equivalence(pivot, other_ref)
-                        if ok:
-                            results['equivalences_created'] = results.get('equivalences_created', 0) + 1
-                            app_logger.info(f"Équivalence import : {other_ref} ≡ {pivot}")
-                            # La branche fichier unique propageait le libellé, pas
-                            # celle-ci : une réf courante hors du lot restait anonyme.
-                            self.db_manager.propagate_description(pivot, other_ref)
-                        else:
-                            app_logger.warning(f"Équivalence import non créée ({other_ref} ≡ {pivot}) : {msg}")
-                elif current:
-                    # Succession normale
-                    ok, msg = self.db_manager.add_supersession(other_ref, current)
-                    if ok:
-                        results['succession_created'] = results.get('succession_created', 0) + 1
-                        app_logger.info(f"Succession import (multi) : {other_ref} → {current}")
-                        self.db_manager.propagate_description(other_ref, current)
-                    else:
-                        app_logger.warning(f"Succession import (multi) non créée ({other_ref} → {current}) : {msg}")
+                equivalente = config.equivalence_ref
+                self._appliquer_relation_import(
+                    results, 'equivalences_created', "Équivalence import",
+                    f"{file_ref} ≡ {equivalente}",
+                    self.db_manager.add_equivalence(file_ref, equivalente),
+                    file_ref, equivalente)
 
         # --- Obsolètes (tous modes) ---
         for ref in (config.obsolete_refs or []):
@@ -2775,6 +2739,23 @@ class ImportManager:
                     app_logger.info(f"Obsolète import : {ref}")
                 else:
                     app_logger.warning(f"Obsolète import non appliqué : {ref}")
+
+    def _appliquer_relation_import(self, results: Dict, compteur: str, libelle: str,
+                                   lien: str, resultat, file_ref: str, partenaire: str) -> None:
+        """Comptabiliser et journaliser une relation créée à l'import fichier unique.
+
+        En cas de succès, le libellé est propagé entre la réf importée et la réf
+        citée : celle-ci peut être créée en fantôme, ou exister déjà en base avec
+        son propre libellé — la propagation va dans le sens utile, quel que soit
+        le type de relation déclarée (succession dans un sens ou l'autre, ou
+        équivalence)."""
+        ok, msg = resultat
+        if ok:
+            results[compteur] = results.get(compteur, 0) + 1
+            app_logger.info(f"{libelle} : {lien}")
+            self.db_manager.propagate_description(file_ref, partenaire)
+        else:
+            app_logger.warning(f"{libelle} non créée ({lien}) : {msg}")
 
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur import fichier")
     def _safe_import_single_file(self, file: ImportFile, config: ImportConfiguration, file_seen_device_refs: set,
