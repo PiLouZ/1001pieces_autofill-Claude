@@ -66,7 +66,7 @@ class DatabaseSetupMixin:
                 piece_id INTEGER NOT NULL,
                 appareil_id INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(piece_id) REFERENCES pieces_new(id) ON DELETE CASCADE,
+                FOREIGN KEY(piece_id) REFERENCES pieces(id) ON DELETE CASCADE,
                 FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
                 UNIQUE(piece_id, appareil_id)
             )

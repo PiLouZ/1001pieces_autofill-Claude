@@ -319,8 +319,8 @@ class DuplicatesAnalysisService(BaseService):
         # la fusion était visible dans l'interface mais perdue au lancement suivant
         # si rien d'autre n'écrivait entre-temps. Un lot atomique règle aussi le
         # second défaut : supprimer l'appareil sans avoir transféré ses pièces
-        # laisserait des associations orphelines (les FOREIGN KEY sont inertes,
-        # PRAGMA foreign_keys n'est activé nulle part).
+        # laisserait des associations orphelines (les FOREIGN KEY ne protègent
+        # que si Config.FOREIGN_KEYS est actif, et ne transfèrent rien).
         operations = []
         for duplicate_id in duplicate_ids:
             # Stratégie: Supprimer d'abord les doublons de pièces puis transférer les uniques
