@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.88.1] - 2026-10-15 (branche `feature/suggestions-hors-page`)
+
+### Fenêtre « Valider les suggestions » : toutes les suggestions, chargées ou non
+
+- La fenêtre ne listait que les appareils de la page chargée, alors que la bannière
+  les comptait tous. Après un import, le tableau se recharge sans filtre (page 1,
+  tri par id décroissant) : les appareils **existants** touchés par l'import ont
+  d'anciens id et restaient invisibles. Reproduit sur une copie de la base réelle
+  (scénario de l'import du 2026-10-12 10:34, 0 nouvel appareil) : bannière 70,
+  fenêtre **24** ; après correctif, **70**.
+- Les appareils hors page sont relus en base par lots de 900 id
+  (`DatabaseManager.lire_appareils_par_id`). Un appareil supprimé entre-temps est
+  retiré des suggestions et la bannière est recalée ; un échec de lecture ne
+  retire rien.
+- Valider un appareil hors page s'écrivait déjà en base, mais **sans entrée
+  d'historique**. Il est désormais historisé avec sa provenance (« source :
+  suggestion réf. X ») et sa référence lisible. Le résumé précise combien ne sont
+  pas annulables par Cmd+Z (la pile d'annulation est indexée par ligne affichée).
+
+---
+
 ## [3.88.0] - 2026-10-15 (branche `feature/pieces-communes-lignee`)
 
 ### Panneau des pièces : pièces communes par lignée
