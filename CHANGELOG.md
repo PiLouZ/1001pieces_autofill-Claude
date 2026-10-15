@@ -23,7 +23,16 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   batch), fichiers, PDF et collage. Logique dans `MarqueNormalisationService`.
 - Base de production : les 11 appareils « MIDEA » fusionnés en « Midea » (seul
   doublon de casse sur 488 marques), après sauvegarde.
-- 20 tests ajoutés (`test_marque_normalisation.py`), dont les deux chemins d'import.
+- 22 tests ajoutés (`test_marque_normalisation.py`), dont les deux chemins d'import.
+
+### Import : compteur « Déjà associées » doublé
+
+- **Correctif** : quand la référence commune est aussi celle du fichier (collage,
+  ou multi-import « 805101 » + 805101.pdf), chaque ligne était associée deux fois :
+  créée, puis retrouvée et comptée « déjà associée » (« Nouvelles : 25 » ET
+  « Déjà associées : 25 »). La base était juste ; le comptage et 1 requête par
+  ligne étaient en trop. Le libellé du fichier reste prioritaire, comme avant.
+- 7 tests (`test_import_reference_commune_doublon.py`), deux chemins et aperçu.
 
 ---
 

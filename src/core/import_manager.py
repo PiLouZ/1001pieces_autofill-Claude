@@ -2812,9 +2812,18 @@ class ImportManager:
         individual_ref = config.individual_references.get(file.path, file.suggested_reference)
         individual_label = config.individual_labels.get(file.path, "")
         
-        # Garder le libellé vide si l'utilisateur n'a rien saisi
-        references_and_labels.append((individual_ref, individual_label))
-        
+        if references_and_labels and individual_ref == references_and_labels[0][0]:
+            # Même référence que la commune : une seule association par ligne. Sans
+            # ce garde, la 2ᵈᵉ était retrouvée en base et comptée « déjà associée »
+            # (collage de 25 lignes : « Nouvelles : 25 » ET « Déjà associées : 25 »).
+            # Libellé du fichier prioritaire s'il est renseigné — c'était déjà l'effet
+            # des deux passages, le 2ᵈ remplaçant le libellé du 1ᵉʳ.
+            if individual_label:
+                references_and_labels[0] = (individual_ref, individual_label)
+        else:
+            # Garder le libellé vide si l'utilisateur n'a rien saisi
+            references_and_labels.append((individual_ref, individual_label))
+
         # Effectuer l'import des données - Mode batch pour gros volumes
         # Seuil pour activer le mode batch optimisé (réduit pour meilleure performance)
         BATCH_THRESHOLD = 50  # lignes - batch dès 50 lignes pour optimisation immédiate
