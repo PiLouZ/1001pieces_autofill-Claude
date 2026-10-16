@@ -2205,6 +2205,18 @@ class ImportManager:
             progress.close()
             worker.wait()
             app_logger.error(f"Import worker ({source}) : {msg}")
+            # Sans ce message, l'import interrompu (ex. lecture des appareils
+            # existants impossible) ne laissait qu'une ligne de log.
+            # show() et non exec_() : convention du projet (gel macOS).
+            if self.parent_widget:
+                from PyQt5.QtWidgets import QMessageBox
+                from PyQt5.QtCore import Qt
+                box = QMessageBox(QMessageBox.Critical, "Import interrompu",
+                                  f"L'import a été interrompu par une erreur :\n\n{msg}\n\n"
+                                  f"Relancez l'import ; le détail est dans le journal.",
+                                  QMessageBox.Ok, self.parent_widget)
+                box.setAttribute(Qt.WA_DeleteOnClose)
+                box.show()
             if callback:
                 callback(None)
             if dialog:
@@ -3317,10 +3329,12 @@ class ImportManager:
         return results
     
     def _preload_existing_devices(self) -> Dict[str, Dict]:
-        """Pré-charger tous les appareils existants pour éviter les requêtes répétées"""
-        from .config import Config
-        query = Config.QUERIES['preload_all_devices']
-        rows = self.db_manager.execute_query(query)
+        """Pré-charger tous les appareils existants pour éviter les requêtes répétées.
+
+        Lève DatabaseError si la lecture échoue : l'import s'arrête plutôt que de
+        tourner sur un cache vide (cf. lire_appareils_pour_import).
+        """
+        rows = self.db_manager.lire_appareils_pour_import()
 
         # Conserver les lignes brutes pour le calcul des suggestions par similarité
         # (réutilise la même lecture — pas de requête supplémentaire). Les colonnes

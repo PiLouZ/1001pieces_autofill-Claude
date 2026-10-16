@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.88.3] - 2026-10-16 (branche `fix/course-curseur-import-demarrage`)
+
+### Import lancé dès l'ouverture : préchargement vide ou tronqué
+
+- Un import lancé pendant les comptages différés du démarrage (doublons, lignes
+  incomplètes) préchargeait **0 appareil, ou ~32 000 sur 708 166**, et faisait
+  parfois planter l'application. Reproduit 10 fois sur 10 sur une copie de la
+  base (fenêtre offscreen, import au tick 0). Un cache vide fait de chaque ligne
+  importée un nouvel appareil : la table `appareils` n'a aucune contrainte
+  d'unicité pour l'empêcher.
+- Cause : `execute_custom_query` et `count_incomplete_devices`, appelées depuis le
+  fil principal, utilisaient le curseur partagé **sans** `_query_lock`, pendant
+  que le fil d'import le tenait. La troncature était silencieuse côté import.
+- Ces deux méthodes, ainsi que `get_column_values`, `get_export_data`,
+  `remove_duplicate_pieces` et `close`, passent désormais sous `_query_lock`.
+  Après correctif : 17 essais sur 17 complets (708 166), délais de 0 à 3 s.
+- Filet : le préchargement lit par `DatabaseManager.lire_appareils_pour_import`,
+  qui lève une erreur au lieu de renvoyer `[]`. L'import s'arrête alors avec un
+  message « Import interrompu » (non bloquant) au lieu de tourner sur un cache
+  vide ; auparavant, une erreur du fil d'import ne laissait qu'une ligne de log.
+
+---
+
 ## [3.88.2] - 2026-10-16 (branche `fix/completion-appareils-existants`)
 
 ### Import : Type/Fabricant enfin écrits sur les appareils existants vides
