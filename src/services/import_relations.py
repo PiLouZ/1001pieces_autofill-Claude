@@ -4,7 +4,8 @@ des états et orchestration de l'application en base.
 L'utilisateur organise les réfs en GROUPES (il ne connaît pas l'ordre des chaînes,
 il connaît la courante). Deux types de groupes :
 - **lignée de succession** : une `courante` (réf récente, lot / base / à créer en
-  fantôme) + des `members` (anciennes versions). À l'application : chaque membre →
+  fantôme) + des `members` (anciennes versions : réfs du lot, ou saisies hors lot
+  — en base ou à créer en fantôme). À l'application : chaque membre →
   add_supersession(membre, courante) + mark_obsolete(membre).
 - **groupe d'équivalence** : des `members` (+ `courante` repère optionnelle), tous
   valides et mutuellement équivalents (add_equivalence). Aucune obsolescence.
@@ -83,6 +84,10 @@ def derive(groups: List[Group], cards: List[CardData],
     cited_external: Set[str] = set()
 
     for gi, g in enumerate(groups):
+        # Membres saisis hors lot (v3.91.0) : absents de la base → fantômes.
+        for m in g.members:
+            if m and m not in lot_refs and m not in base_refs:
+                cited_external.add(m)
         if g.kind == KIND_SUCCESSION:
             if g.courante:
                 if g.courante in lot_refs:

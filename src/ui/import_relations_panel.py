@@ -27,6 +27,7 @@ from ..services.import_relations import (
 )
 from ..core.config import pluralize
 from .style_manager import StyleManager
+from .ref_chips_input import RefSaisieLineEdit
 
 # Couleurs alignées sur les bannières du tableau principal (table_controller.py) :
 # succession = famille BLEUE (#E3F2FD/#64B5F6/#0D47A1), équivalence = famille VIOLETTE
@@ -44,6 +45,32 @@ def _succ_color(i):
 
 def _equiv_color(i):
     return _EQUIV_COLORS[i % len(_EQUIV_COLORS)]
+
+
+# Réf « hors lot » saisie dans un cadre (v3.91.0) : déjà en base, ou nouvelle —
+# créée en fantôme à l'import par add_supersession / add_equivalence. Marquée
+# sur l'item (rôle conservé au glisser entre listes) : elle ne retourne jamais
+# dans « Non groupées », réservé aux réfs du lot.
+_ROLE_HORS_LOT = Qt.UserRole + 1
+_INFOBULLE_HORS_LOT = ("Réf. hors lot (saisie) : déjà en base, ou créée en fantôme à l'import.\n"
+                       "Glisser vers « Non groupées » la retire.")
+
+
+def _item_ref(ref, hors_lot=False):
+    """Item de liste pour une réf ; en italique si elle est hors lot."""
+    it = QListWidgetItem(ref)
+    if hors_lot:
+        it.setData(_ROLE_HORS_LOT, True)
+        f = it.font()
+        f.setItalic(True)
+        it.setFont(f)
+        it.setIcon(qta.icon('fa5s.plus', color='#78909c'))
+        it.setToolTip(_INFOBULLE_HORS_LOT)
+    return it
+
+
+def _est_hors_lot(item):
+    return bool(item.data(_ROLE_HORS_LOT))
 
 
 def _lbl(text, size=11, color="#495057", width=None, bold=False):
@@ -188,6 +215,7 @@ class _RefList(QListWidget):
             # Réservoir « Non groupées » : bandeau compact de pastilles
             self.setMaximumHeight(80)
         self.setSpacing(2)
+        self.setIconSize(QSize(9, 9))   # « + » discret des réfs hors lot
         # Contour fin inchangé + léger fond translucide pour distinguer la zone ;
         # chaque réf est rendue comme un badge (pastille blanche arrondie).
         self.setStyleSheet(
@@ -251,6 +279,7 @@ class GroupBox(QFrame):
     changed = pyqtSignal()
     remove_requested = pyqtSignal(object)
     empty_requested = pyqtSignal(object)
+    refs_saisies = pyqtSignal(object, list)   # (boîte, réfs tapées dans le champ d'ajout)
 
     def __init__(self, kind, index, ref_model=None, parent=None):
         super().__init__(parent)
@@ -346,6 +375,25 @@ class GroupBox(QFrame):
             self.members.itemDoubleClicked.connect(self._promote_member)
         lay.addWidget(self.members, 1)
 
+        # Saisie de réfs hors lot (en base ou nouvelles → fantômes) : pour les
+        # pièces connues sans liste d'appareils. Séparateur : espace.
+        self.saisie_refs = RefSaisieLineEdit()
+        self.saisie_refs.setPlaceholderText(
+            "+ ajouter des réfs hors lot…")
+        self.saisie_refs.setToolTip(
+            "Ajouter des réfs absentes des fichiers importés : déjà en base,\n"
+            "ou nouvelles (créées en fantôme à l'import). Espace ou Entrée pour valider.\n"
+            "Une réf du lot tapée ici est simplement déplacée dans ce cadre.")
+        self.saisie_refs.setStyleSheet(
+            "background: #ffffff; color: #212121; padding: 3px 8px; font-size: 11px;")
+        self.saisie_refs.refs_saisies.connect(lambda refs: self.refs_saisies.emit(self, refs))
+        if self._ref_model is not None:
+            comp_saisie = QCompleter(self._ref_model, self.saisie_refs)
+            comp_saisie.setCaseSensitivity(Qt.CaseInsensitive)
+            comp_saisie.setFilterMode(Qt.MatchContains)
+            self.saisie_refs.setCompleter(comp_saisie)
+        lay.addWidget(self.saisie_refs)
+
         if is_succ:
             # Complétion : réfs du lot (alimentées par set_courante_options) + base
             self._base_refs_list = (self._ref_model.stringList()
@@ -418,6 +466,8 @@ class GroupsZone(QWidget):
         self.reservoir = _RefList()
         for r in self._all_refs:
             self.reservoir.addItem(QListWidgetItem(r))
+        # Avant `changed` : le récap ne doit pas compter une réf hors lot déposée ici.
+        self.reservoir.dropped.connect(self._purger_hors_lot_reservoir)
         self.reservoir.dropped.connect(self.changed)
         lay.addWidget(self.reservoir)
 
@@ -532,6 +582,7 @@ class GroupsZone(QWidget):
         box.remove_requested.connect(self._remove_box)
         box.empty_requested.connect(self._empty_box)
         box.members.dropped.connect(self.changed)
+        box.refs_saisies.connect(self.ajouter_refs)
         # Pré-coche « Équivalente » si la checkbox globale est active
         if (kind == KIND_SUCCESSION and box.cross_check is not None
                 and getattr(self, 'all_equiv_check', None) is not None
@@ -562,15 +613,60 @@ class GroupsZone(QWidget):
         if box is not None and box in self._equiv_boxes:
             self._remove_box(box)
 
+    def ajouter_refs(self, box, refs):
+        """Ajoute au cadre `box` des réfs tapées dans son champ de saisie.
+
+        - Réf du lot : DÉPLACÉE depuis là où elle est (réservoir ou autre cadre),
+          comme un glisser — jamais dupliquée.
+        - Réf hors lot (en base ou nouvelle) : ajoutée en italique ; si elle était
+          déjà saisie dans un autre cadre, elle y est retirée (une réf, un cadre).
+        """
+        lot = set(self._all_refs)
+        listes = [self.reservoir] + [b.members for b in self.all_boxes()]
+        for ref in refs:
+            if ref in box.members.refs():
+                continue
+            for lst in listes:
+                if lst is box.members:
+                    continue
+                for i in reversed(range(lst.count())):
+                    if lst.item(i).text() == ref:
+                        lst.takeItem(i)
+            box.members.addItem(_item_ref(ref, hors_lot=ref not in lot))
+        self.changed.emit()
+
+    def refs_hors_lot(self):
+        """Réfs hors lot saisies dans les cadres (ordre d'affichage, sans doublon)."""
+        out = []
+        for b in self.all_boxes():
+            for i in range(b.members.count()):
+                it = b.members.item(i)
+                if _est_hors_lot(it) and it.text() not in out:
+                    out.append(it.text())
+        return out
+
+    def _purger_hors_lot_reservoir(self):
+        """« Non groupées » = réfs du lot uniquement : une réf hors lot qui y est
+        glissée est retirée (elle n'a pas de fichier, elle n'existe que par le cadre)."""
+        for i in reversed(range(self.reservoir.count())):
+            if _est_hors_lot(self.reservoir.item(i)):
+                self.reservoir.takeItem(i)
+
+    def _rendre_au_reservoir(self, box):
+        """Renvoie les réfs du lot d'un cadre vers « Non groupées » ; les réfs
+        hors lot sont abandonnées (elles n'appartiennent à aucun fichier)."""
+        for i in range(box.members.count()):
+            it = box.members.item(i)
+            if not _est_hors_lot(it):
+                self.reservoir.addItem(QListWidgetItem(it.text()))
+
     def _empty_box(self, box):
-        for r in box.members.refs():
-            self.reservoir.addItem(QListWidgetItem(r))
+        self._rendre_au_reservoir(box)
         box.members.clear()
         self.changed.emit()
 
     def _remove_box(self, box):
-        for r in box.members.refs():
-            self.reservoir.addItem(QListWidgetItem(r))
+        self._rendre_au_reservoir(box)
         boxes = self._succ_boxes if box.kind == KIND_SUCCESSION else self._equiv_boxes
         if box in boxes:
             boxes.remove(box)
@@ -702,6 +798,9 @@ class GroupsZone(QWidget):
         n_reservoir = self.reservoir.count()
         if n_reservoir:
             parts.append(f"{pluralize(n_reservoir, 'réf non groupée', 'réfs non groupées')}")
+        n_hors_lot = len(self.refs_hors_lot())
+        if n_hors_lot:
+            parts.append(pluralize(n_hors_lot, 'réf hors lot', 'réfs hors lot'))
         self.recap_label.setText(" · ".join(parts))
 
         msgs = self.warnings()

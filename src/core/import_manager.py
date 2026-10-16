@@ -4,7 +4,7 @@ Factorisation du code d'importation avec support des libellés hiérarchiques
 """
 
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple, Callable
+from typing import List, Dict, Any, Optional, Tuple, Callable, Union
 from enum import Enum
 import os
 import time as _time
@@ -23,6 +23,8 @@ from PyQt5.QtWidgets import QLayout
 from ..ui.style_manager import StyleManager
 from .logger import app_logger
 from ..utils.error_handler import handle_ui_operation_errors, handle_database_operation_errors
+from ..utils.text_utils import decouper_refs
+from ..ui.ref_chips_input import RefChipsInput
 
 
 
@@ -92,9 +94,13 @@ class ImportConfiguration:
     show_preview: bool = False
 
     # Succession déclarée lors de l'import (optionnel)
-    succession_replaces: Optional[str] = None       # Réf existante que cette réf remplace (ref_old=existing, ref_new=imported)
+    # `succession_replaces` et `equivalence_ref` acceptent PLUSIEURS réfs (v3.91.0) :
+    # liste, ou chaîne à réfs séparées par des espaces (normalisées par decouper_refs).
+    # `succession_replaced_by` reste UNIQUE : piece_supersessions.ref_old est clé
+    # primaire, une réf ne peut être remplacée que par une seule autre.
+    succession_replaces: Optional[Union[str, List[str]]] = None  # Réfs existantes que cette réf remplace (ref_old=existing, ref_new=imported)
     succession_replaced_by: Optional[str] = None    # Réf existante qui remplace cette réf (ref_old=imported, ref_new=existing)
-    equivalence_ref: Optional[str] = None           # Fichier unique : réf existante équivalente à cette réf
+    equivalence_ref: Optional[Union[str, List[str]]] = None      # Fichier unique : réfs existantes équivalentes à cette réf
 
     # Références à marquer obsolètes lors de l'import
     obsolete_refs: Optional[List[str]] = None       # Réfs à marquer comme obsolètes après import
@@ -712,10 +718,8 @@ class ImportDialog(QDialog):
             lbl1.setStyleSheet("font-weight: bold; background: transparent; border: none;")
             lbl1.setFixedWidth(220)
             row1.addWidget(lbl1)
-            self.succ_replaces_input = QLineEdit()
-            self.succ_replaces_input.setPlaceholderText("Ancienne réf. remplacée par cette réf. (ex : REF123)")
+            self.succ_replaces_input = RefChipsInput("Anciennes réfs remplacées par cette réf, séparées par un espace (ex : REF123 REF124)", max_refs=None)
             self.succ_replaces_input.setMinimumHeight(30)
-            self.succ_replaces_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px;")
             row1.addWidget(self.succ_replaces_input)
             succ_layout.addLayout(row1)
 
@@ -724,10 +728,12 @@ class ImportDialog(QDialog):
             lbl2.setStyleSheet("font-weight: bold; background: transparent; border: none;")
             lbl2.setFixedWidth(220)
             row2.addWidget(lbl2)
-            self.succ_replaced_by_input = QLineEdit()
-            self.succ_replaced_by_input.setPlaceholderText("Nouvelle réf. qui remplace cette réf. (ex : REF456)")
+            self.succ_replaced_by_input = RefChipsInput("Nouvelle réf. qui remplace cette réf. (ex : REF456)", max_refs=1)
             self.succ_replaced_by_input.setMinimumHeight(30)
-            self.succ_replaced_by_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px;")
+            self.succ_replaced_by_input.setToolTip(
+                "Une seule réf. : une pièce ne peut être remplacée que par une autre.\n"
+                "(Plusieurs réfs. de remplacement interchangeables → déclarez-les\n"
+                "équivalentes entre elles.)")
             row2.addWidget(self.succ_replaced_by_input)
             succ_layout.addLayout(row2)
 
@@ -736,10 +742,8 @@ class ImportDialog(QDialog):
             lbl3.setStyleSheet("font-weight: bold; background: transparent; border: none;")
             lbl3.setFixedWidth(220)
             row3.addWidget(lbl3)
-            self.equiv_input = QLineEdit()
-            self.equiv_input.setPlaceholderText("Réf. existante équivalente à cette réf. (ex : REF789)")
+            self.equiv_input = RefChipsInput("Réfs équivalentes à cette réf, séparées par un espace (ex : REF789 REF790)", max_refs=None)
             self.equiv_input.setMinimumHeight(30)
-            self.equiv_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px;")
             row3.addWidget(self.equiv_input)
             succ_layout.addLayout(row3)
 
@@ -1289,9 +1293,9 @@ class ImportDialog(QDialog):
         """Succession, équivalence et obsolescence déclarées dans le dialogue."""
         # Succession — fichier unique
         if len(config.files) == 1 and self.succ_replaces_input is not None:
-            config.succession_replaces = self.succ_replaces_input.text().strip() or None
-            config.succession_replaced_by = self.succ_replaced_by_input.text().strip() or None
-            config.equivalence_ref = self.equiv_input.text().strip() or None
+            config.succession_replaces = self.succ_replaces_input.refs() or None
+            config.succession_replaced_by = next(iter(self.succ_replaced_by_input.refs()), None)
+            config.equivalence_ref = self.equiv_input.refs() or None
 
         # Succession / équivalence — multi-fichiers : modèle « par groupes » du
         # panneau de relations (lignées + groupes d'équivalence), appliqué par
@@ -2719,9 +2723,9 @@ class ImportManager:
         (l'import multi-fichiers passe par _apply_relations_from_config).
 
         Fichier unique :
-          - succession_replaces    → (ref_old=existing, ref_new=imported_ref)
+          - succession_replaces    → (ref_old=existing, ref_new=imported_ref), pour chaque réf
           - succession_replaced_by → (ref_old=imported_ref, ref_new=existing)
-          - equivalence_ref        → add_equivalence(imported_ref, equivalence_ref)
+          - equivalence_ref        → add_equivalence(imported_ref, réf), pour chaque réf
         Tous modes :
           - obsolete_refs          → mark_obsolete
         """
@@ -2734,8 +2738,9 @@ class ImportManager:
             if not file_ref:
                 return
 
-            if config.succession_replaces:
-                ancienne = config.succession_replaces
+            # Plusieurs anciennes réfs possibles : chacune est remplacée par la réf
+            # importée. Un refus (cycle, réf = elle-même) n'empêche pas les suivantes.
+            for ancienne in decouper_refs(config.succession_replaces):
                 self._appliquer_relation_import(
                     results, 'succession_created', "Succession import",
                     f"{ancienne} → {file_ref}",
@@ -2750,8 +2755,7 @@ class ImportManager:
                     self.db_manager.add_supersession(file_ref, nouvelle),
                     file_ref, nouvelle)
 
-            if config.equivalence_ref:
-                equivalente = config.equivalence_ref
+            for equivalente in decouper_refs(config.equivalence_ref):
                 self._appliquer_relation_import(
                     results, 'equivalences_created', "Équivalence import",
                     f"{file_ref} ≡ {equivalente}",

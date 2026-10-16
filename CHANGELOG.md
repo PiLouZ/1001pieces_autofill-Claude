@@ -4,6 +4,30 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.91.0] - 2026-10-16 (branche `claude/multiple-import-references-a947a4`)
+
+### Plusieurs références dans les relations déclarées à l'import
+
+- **Import d'un seul fichier** : « Cette réf. remplace » et « Cette réf. est
+  équivalente à » acceptent plusieurs réfs, séparées par un espace. Chaque réf
+  devient une pastille (✕ pour la retirer, Retour arrière dans le champ vide
+  retire la dernière), au style des réfs de l'import multi-fichiers. Espace,
+  Entrée, un choix dans la complétion ou un collage valident la saisie ; le
+  texte tapé mais non validé est pris en compte à l'import.
+- « Cette réf. est remplacée par » reste limitée à **une** réf :
+  `piece_supersessions.ref_old` est clé primaire, une 2ᵉ réf écraserait la 1re
+  en silence (`INSERT OR REPLACE`). Infobulle explicative.
+- **Import multi-fichiers** : chaque lignée et chaque groupe d'équivalence a un
+  champ « + ajouter des réfs hors lot… » : réfs déjà en base ou nouvelles
+  (créées en fantôme à l'import), pour les pièces connues sans liste d'appareils.
+  Affichées en italique ; une réf du lot tapée là est déplacée, pas dupliquée ;
+  vider ou supprimer un cadre ne les renvoie pas dans « Non groupées ». Le récap
+  compte les « réfs hors lot ».
+- Un refus (cycle, réf = elle-même) n'empêche pas les réfs suivantes d'être liées.
+- Tests : `test_import_refs_multiples.py` (28).
+
+---
+
 ## [3.90.0] - 2026-10-16 (branche `feature/export-windows-allege`)
 
 ### Export de l'application : version Windows portable, archive allégée

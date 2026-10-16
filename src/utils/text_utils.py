@@ -30,6 +30,33 @@ def strip_accents(text):
     return ''.join(c for c in nfkd if not unicodedata.combining(c))
 
 
+def decouper_refs(texte):
+    """
+    Découpe une saisie de références de pièces en liste, sans doublon ni vide.
+
+    Le séparateur est l'espace (et tout blanc : tabulation, retour à la ligne
+    d'un collage multi-lignes). L'ordre de saisie est conservé.
+
+    Ex: '00420214  00427589 00420214' -> ['00420214', '00427589'].
+
+    Args:
+        texte: str, liste de str, ou None. Une liste est aplatie (chaque
+            élément peut lui-même contenir plusieurs réfs séparées par des espaces).
+
+    Returns:
+        list[str]
+    """
+    if not texte:
+        return []
+    morceaux = texte if isinstance(texte, (list, tuple)) else [texte]
+    refs = []
+    for morceau in morceaux:
+        for ref in str(morceau or '').split():
+            if ref not in refs:
+                refs.append(ref)
+    return refs
+
+
 def clean_display_text(text):
     """
     Nettoie le texte pour l'affichage en supprimant les caractères illisibles.
