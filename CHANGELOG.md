@@ -28,6 +28,56 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.90.0] - 2026-10-16 (branche `feature/export-windows-allege`)
+
+### Export de l'application : version Windows portable, archive allégée
+- **Choix du système cible** à l'export (Configuration → Exporter l'application…) :
+  **Windows** (par défaut) ou **macOS**. Confirmation non bloquante (show + callback).
+- **Windows, rien à installer** : Python 3.12.10 « embeddable » officiel (empreinte
+  SHA-256 vérifiée, mis en cache dans `~/.cache/1001pieces_export`) et dépendances
+  Windows (wheels cp312 win_amd64 décompressés dans `python/Lib/site-packages`, pas de
+  pip sur le poste cible). `python312._pth` déclare `Lib\site-packages` et la racine de
+  l'application. Lanceurs `1001pieces_autofill.bat` (sans console, pythonw) et
+  `1001pieces_autofill_console.bat` (diagnostic), `LISEZMOI.txt`.
+- **Liste blanche** au lieu d'exclusions : `run.py`, `src/**/*.py`, icône, guide,
+  `requirements.txt`, réglages d'export (dossier de sortie vidé : c'était un chemin
+  `/Users/…`) et **fichiers de test d'import** (`fichiers_test_import/`, 9 PDF + 1 CSV).
+  Ne partent plus : les **sauvegardes (2,7 Go)**, tests, docs de développement,
+  CHANGELOG, scripts, `.pytest_cache`.
+- **Base la plus récente, cohérente** : instantané `VACUUM INTO` sur connexion en lecture
+  seule. L'ancienne copie de fichier excluait le `-wal` et perdait les écritures non
+  encore reportées dans la base ; la copie est aussi compactée (965 → 913 Mo).
+- **Dépendances épinglées sans outils de développement** : fermeture des dépendances
+  directes (26 paquets) au lieu de tout `pip freeze` (47, dont pytest, py-spy, vulture…).
+  Sous Windows, PyQt5-Qt5 n'est pas épinglé (5.15.2 est la dernière version Windows).
+- **Archive .zip** (droits Unix conservés pour le Mac), dossier intermédiaire supprimé,
+  rien laissé derrière en cas d'échec. Mesuré : **348 Mo** pour Windows (base 214 Mo
+  compressée), contre ~3,7 Go de dossier auparavant.
+- Téléchargement HTTPS avec le magasin de certificats de pip (le Python de python.org
+  sur macOS n'en a pas : CERTIFICATE_VERIFY_FAILED).
+- Un poste installé depuis un export n'a pas `export_app.py` : le menu affiche un message
+  au lieu d'échouer. Le lanceur `.app` source n'est régénéré que sur macOS.
+- Correctif : `install.command` (macOS) invitait à lancer `1001pieces_autofill.command`,
+  absent de l'export ; il désigne désormais `1001pieces_autofill.app`.
+- Vérifié : export Windows réel (base identique à la source, `quick_check` ok, 0 violation
+  de clé étrangère, application démarrée depuis l'arborescence exportée) ; export macOS
+  réel installé hors réseau puis lancé, aucune erreur. **Non éprouvé sur un vrai PC
+  Windows.**
+
+### Portabilité Windows
+- Dossier d'export par défaut : si `~/Desktop` n'existe pas (Windows + OneDrive), le
+  Bureau réel est demandé au système (`QStandardPaths`), repli sur le dossier personnel.
+  Inchangé sur macOS.
+
+### Guide d'utilisation mis à jour
+- Mac/Windows (Cmd = Ctrl), auto-complétion et vérification des auto-complétés, poignée
+  de recopie, filtres Type/Marque, pièces communes par lignée, libellé de famille,
+  sauvegardes, nouveautés 3.79 → 3.90, installation Windows pas à pas.
+
+- 26 tests ajoutés (`test_export_application.py`).
+
+---
+
 ## [3.89.2] - 2026-10-16 (branche `feature/validation-rapide-autocompletes`)
 
 ### « Tout valider » accolé au bouton des auto-complétés

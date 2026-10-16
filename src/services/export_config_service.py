@@ -208,8 +208,23 @@ class ExportConfigService(BaseService):
 
     @staticmethod
     def get_default_output_dir() -> str:
-        """Dossier d'export par défaut : le Bureau de l'utilisateur."""
-        return os.path.join(os.path.expanduser("~"), "Desktop")
+        """Dossier d'export par défaut : le Bureau de l'utilisateur.
+
+        ~/Desktop d'abord (macOS, comportement historique). Sous Windows, le
+        Bureau est souvent ailleurs (OneDrive\\Bureau) : on demande alors son
+        emplacement réel au système via Qt, avec repli sur le dossier personnel.
+        """
+        bureau = os.path.join(os.path.expanduser("~"), "Desktop")
+        if os.path.isdir(bureau):
+            return bureau
+        try:
+            from PyQt5.QtCore import QStandardPaths
+            systeme = QStandardPaths.writableLocation(QStandardPaths.DesktopLocation)
+            if systeme and os.path.isdir(systeme):
+                return systeme
+        except Exception:
+            pass
+        return os.path.expanduser("~")
 
     def get_output_dir(self) -> str:
         """Dossier de destination des exports fichier (chemin absolu).

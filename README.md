@@ -123,6 +123,13 @@ pip3 install -r requirements.txt
 # PyQt5>=5.15.0 + camelot-py[cv] pour les PDF
 ```
 
+### Installer sur un autre poste (Windows ou macOS)
+
+Configuration → Exporter l'application… (ou `python3 export_app.py --cible windows|macos`)
+produit une archive `.zip` : code, base la plus récente, guide, fichiers de test d'import.
+Windows : version portable (Python inclus), dézipper puis `1001pieces_autofill.bat`.
+Détail dans le guide d'utilisation (`docs/guide_utilisation.html`).
+
 ## Raccourcis clavier
 
 | Raccourci | Action |
