@@ -1,0 +1,90 @@
+# Validation de l'export « Windows portable » (export_app.py, cible windows)
+# sur un vrai Windows, sans PC Windows : arborescence construite avec les
+# fonctions de l'export, puis imports, démarrage de l'application et import
+# d'un PDF, le tout avec le Python EMBARQUÉ de l'arborescence.
+#
+# Lancement manuel : onglet Actions → « Valider l'export Windows » → Run workflow.
+# GitHub n'offre ce bouton qu'une fois le fichier présent sur la branche par
+# défaut : d'ici là (et ensuite pour toute PR qui touche l'export), il tourne
+# aussi sur les pull requests qui modifient l'export.
+name: Valider l'export Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      pdf:
+        description: "PDF de tests/fixtures/pdf_samples à importer"
+        default: "00213989.pdf"
+      duree:
+        description: "Durée de fonctionnement exigée au démarrage (secondes)"
+        default: "30"
+  pull_request:
+    paths:
+      - export_app.py
+      - scripts/ci/**
+      - .github/workflows/valider-export-windows.yml
+
+jobs:
+  windows-portable:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      SCRIPT: ${{ github.workspace }}\scripts\ci\valider_export_windows.py
+      PDF: ${{ inputs.pdf || '00213989.pdf' }}
+      DUREE: ${{ inputs.duree || '30' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Espace et accent dans le chemin, comme un dossier Documents réel
+      - name: Dossier d'export
+        run: |
+          "DEST=$env:RUNNER_TEMP\Export 1001 pièces\1001pieces_autofill" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Python du runner : seulement pour piloter (pip download --platform
+      # win_amd64). L'application, elle, tourne avec le Python embarqué.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 1. Construire l'arborescence portable
+        run: python $env:SCRIPT construire $env:DEST
+
+      - name: Petite base SQLite de test (à la place de data\appareils.db)
+        working-directory: ${{ env.DEST }}
+        run: .\python\python.exe $env:SCRIPT creer-base
+
+      - name: 2. Imports des dépendances avec le Python embarqué
+        working-directory: ${{ env.DEST }}
+        run: |
+          .\python\python.exe -c "import sys; print(sys.version); print(*sys.path, sep='\n')"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          .\python\python.exe -c "import PyQt5.QtCore, PyQt5.QtWidgets, camelot, cv2, pandas, qtawesome, pdfminer, chardet; print('Imports OK - Qt', PyQt5.QtCore.QT_VERSION_STR, '- OpenCV', cv2.__version__)"
+
+      - name: 3. Démarrer l'application (offscreen) et vérifier errors.log
+        run: python $env:SCRIPT demarrer $env:DEST --duree $env:DUREE
+
+      - name: 4. Importer un PDF via l'extracteur camelot
+        working-directory: ${{ env.DEST }}
+        run: .\python\python.exe $env:SCRIPT importer-pdf "fichiers_test_import\$env:PDF"
+
+      - name: errors.log toujours vide après l'import
+        run: |
+          $log = Join-Path $env:DEST 'data\logs\errors.log'
+          if ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).Length -gt 0) {
+            Get-Content -LiteralPath $log -Tail 200
+            exit 1
+          }
+          Write-Output "errors.log vide"
+
+      - name: Journaux en pièce jointe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journaux-export-windows
+          path: |
+            ${{ env.DEST }}\data\logs
+            ${{ env.DEST }}\sortie_*.txt
+          if-no-files-found: ignore
