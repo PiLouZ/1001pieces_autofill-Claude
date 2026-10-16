@@ -2468,6 +2468,9 @@ class ImportManager:
             # Références de pièce de chaque ligne incomplète (clé : id(device_data)),
             # pour la suggestion « type de la pièce importée ».
             self._refs_pieces_candidats = {}
+            # Appareils existants dont Type/Fabricant vides ont été complétés
+            # (clé : id), pour le bloc d'historique de l'import.
+            self._completions_existants = {}
 
             n = len(config.files)
             if progress_cb:
@@ -2523,6 +2526,10 @@ class ImportManager:
 
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
+
+            # Appareils existants complétés (Type/Fabricant vides) : tracés dans l'historique
+            if self._completions_existants:
+                results['appareils_completes'] = list(self._completions_existants.values())
 
             # Marques et types réécrits (« DELTA → Delta ») : tracés dans l'historique
             for service, cle, libelle in ((self._marques, 'marques_alignees', 'Marques alignées'),
@@ -2623,7 +2630,8 @@ class ImportManager:
             f"[Import] Synthèse : {traitees} lignes traitées, {distinctes} clés "
             f"d'appareil distinctes, {doublons} doublons "
             f"— auto-complétion : {compteurs['autocomplete_type']} types, "
-            f"{compteurs['autocomplete_manufacturer']} fabricants"
+            f"{compteurs['autocomplete_manufacturer']} fabricants, "
+            f"{len(results.get('appareils_completes', []))} appareils existants complétés"
         )
         # Signal fort : beaucoup de lignes pour une seule identité d'appareil.
         # Le total inclut les doublons — c'est justement là qu'elles atterrissent
@@ -3038,7 +3046,9 @@ class ImportManager:
 
             if verdict == self.LIGNE_DOUBLON:
                 # Trouver l'appareil existant et créer l'association même pour les doublons
-                device_id_dup = self._insert_or_find_device(device_data)
+                # Pas de complétion sur un doublon : le chemin batch ne la tente qu'à
+                # la 1ʳᵉ occurrence de l'identité (clé = références seules)
+                device_id_dup = self._insert_or_find_device(device_data, completer=False)
                 if device_id_dup:
                     for reference, label in references_and_labels:
                         if reference:
@@ -3113,6 +3123,7 @@ class ImportManager:
         
         new_devices_batch = []
         existing_updates = []
+        completions = []  # (id, device_data, champs) : Type/Fabricant vides en base
         associations_batch = []
         processed_line_index = 0  # Compteur pour les lignes réellement traitées (hors continue)
         # 1ʳᵉ occurrence de chaque clé DANS CE FICHIER : {device_key: (data_index, existing_id)}.
@@ -3176,6 +3187,14 @@ class ImportManager:
                 device_data['id'] = existing_id   # pour la collecte des suggestions (ci-dessous)
                 if self._needs_update(device_data):
                     existing_updates.append((existing_id, device_data))
+                # Type/Fabricant vides en base : le cache filtre en amont, pour ne pas
+                # émettre un UPDATE par appareil retrouvé sur un import de 90 000 lignes
+                entree = existing_devices_cache.get(device_key) if device_key else None
+                champs = self._champs_a_completer(device_data, entree) if entree else {}
+                if champs:
+                    completions.append((existing_id, device_data, champs))
+                    if not dry_run:
+                        entree.update(champs)  # cache partagé : fichiers suivants du lot
             else:
                 # Nouvel appareil à créer (l'id sera réinjecté après insertion batch)
                 results['new_entries'] += 1
@@ -3223,6 +3242,7 @@ class ImportManager:
             app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
             if existing_updates:
                 self._batch_update_devices(existing_updates)
+            self._completer_appareils_existants(completions)
 
             app_logger.debug(f" BATCH: Création de {len(associations_batch)} associations…")
 
@@ -3567,7 +3587,84 @@ class ImportManager:
     def _needs_update(self, device_data: Dict[str, Any]) -> bool:
         """Vérifier si l'appareil a besoin d'une mise à jour (3ème colonne)"""
         return bool(device_data.get('other_ref') or device_data.get('notes'))
-    
+
+    # Champs qu'un import peut compléter sur un appareil existant — jamais écraser
+    CHAMPS_COMPLETABLES = ('type', 'manufacturer')
+
+    def _champs_a_completer(self, device_data: Dict[str, Any],
+                            valeurs_base: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+        """Type/Fabricant de la ligne (lus dans le fichier ou auto-complétés) à
+        reporter sur un appareil existant.
+
+        Jusqu'en v3.88.1, ils n'étaient jamais écrits : `_update_existing_device`
+        et `_batch_update_devices` ne portent que la 3ᵉ colonne. L'appareil vide
+        restait vide, et comme la ligne paraissait complète en mémoire, il n'était
+        pas non plus proposé en suggestion.
+
+        Args:
+            valeurs_base: Type/Fabricant connus en base (cache du chemin batch) ; un
+                champ déjà renseigné est écarté. None : la garde SQL tranche seule.
+        """
+        champs = {}
+        for champ in self.CHAMPS_COMPLETABLES:
+            valeur = (device_data.get(champ) or '').strip()
+            if not valeur:
+                continue
+            if valeurs_base is not None and (valeurs_base.get(champ) or '').strip():
+                continue
+            champs[champ] = valeur
+        return champs
+
+    def _completer_appareils_existants(
+            self, completions: List[Tuple[int, Dict[str, Any], Dict[str, str]]]) -> int:
+        """Écrire les champs vides des appareils existants, commun aux deux chemins.
+
+        La garde WHERE des requêtes refuse d'écraser une valeur : seules les
+        écritures effectives (rowcount) sont tracées dans `_completions_existants`,
+        restitué en fin d'import dans results['appareils_completes'] pour le bloc
+        d'historique. Un même appareil touché par plusieurs fichiers n'y figure
+        qu'une fois.
+
+        Returns:
+            Nombre d'appareils effectivement complétés.
+        """
+        if not completions:
+            return 0
+        from .config import Config
+        requetes = {'type': Config.QUERIES['complete_device_type'],
+                    'manufacturer': Config.QUERIES['complete_device_manufacturer']}
+
+        faits = []
+        conn = self.db_manager.get_connection()
+        # _query_lock : accès brut à la connexion partagée depuis _ImportWorker → sérialiser.
+        with self.db_manager._query_lock:
+            cursor = conn.cursor()
+            try:
+                for device_id, device_data, champs in completions:
+                    ecrits = {}
+                    for champ, valeur in champs.items():
+                        cursor.execute(requetes[champ], (valeur, device_id))
+                        if cursor.rowcount:
+                            ecrits[champ] = valeur
+                    if ecrits:
+                        faits.append((device_id, device_data, ecrits))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                app_logger.error(f"Complétion des appareils existants échouée : {e}")
+                return 0
+
+        if not hasattr(self, '_completions_existants'):
+            self._completions_existants = {}
+        for device_id, device_data, ecrits in faits:
+            trace = self._completions_existants.setdefault(device_id, {
+                'id': device_id,
+                'ref_modele': (device_data.get('ref_modele') or '').strip(),
+                'commercial_ref': (device_data.get('commercial_ref') or '').strip(),
+            })
+            trace.update(ecrits)
+        return len(faits)
+
     def _batch_insert_devices(self, devices_batch: List[Dict[str, Any]]) -> List[int]:
         """Insertion en lot des nouveaux appareils avec chunking optimisé"""
         if not devices_batch:
@@ -3835,9 +3932,19 @@ class ImportManager:
             self.db_manager.execute_query(update_query, params)
             app_logger.debug(f" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
     
+    def _completer_existant(self, device_id: int, device_data: Dict[str, Any]) -> None:
+        """Chemin standard : la garde SQL tient lieu du cache du chemin batch."""
+        champs = self._champs_a_completer(device_data)
+        if champs:
+            self._completer_appareils_existants([(device_id, device_data, champs)])
+
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur insertion appareil")
-    def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
+    def _insert_or_find_device(self, device_data: Dict[str, Any],
+                               completer: bool = True) -> Optional[int]:
         """Insérer ou trouver un appareil existant.
+
+        Un appareil retrouvé reçoit le Type/Fabricant de la ligne là où il est vide
+        en base (`completer`), comme sur le chemin batch.
 
         La résolution reproduit exactement la clé composite du chemin batch
         (_find_in_cache) : une ligne complète ne correspond qu'à un appareil
@@ -3867,6 +3974,8 @@ class ImportManager:
                 # Appareil trouvé, on le met à jour avec les nouvelles données si nécessaire
                 existing_id = results[0][0]
                 self._update_existing_device(existing_id, device_data)
+                if completer:
+                    self._completer_existant(existing_id, device_data)
                 return existing_id
 
             # Repli « ref_modele seule » — ne s'applique QUE si la ligne entrante est
@@ -3884,6 +3993,8 @@ class ImportManager:
                 """
                 results_ref = self.db_manager.execute_query(search_query_ref, [ref_modele])
                 if results_ref:
+                    if completer:
+                        self._completer_existant(results_ref[0][0], device_data)
                     return results_ref[0][0]
 
             # Cas miroir : seule commercial_ref correspond (v3.65.1).
@@ -3906,6 +4017,8 @@ class ImportManager:
                 """
                 results_com = self.db_manager.execute_query(search_query_com, [commercial_ref])
                 if results_com:
+                    if completer:
+                        self._completer_existant(results_com[0][0], device_data)
                     return results_com[0][0]
 
         # Créer un nouvel appareil.

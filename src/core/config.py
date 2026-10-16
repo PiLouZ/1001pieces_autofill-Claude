@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.88.1"
+    VERSION = "3.88.2"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -258,6 +258,12 @@ class Config:
                                 VALUES (?, ?, ?, ?, ?, ?, ?)""",
         'update_device_other_ref': "UPDATE appareils SET other_ref = ? WHERE id = ?",
         'update_device_notes': "UPDATE appareils SET notes = ? WHERE id = ?",
+        # Complétion d'un appareil existant à l'import : la garde WHERE interdit
+        # d'écraser une valeur déjà saisie, quel que soit l'état du cache.
+        'complete_device_type': """UPDATE appareils SET type = ?
+                                 WHERE id = ? AND (type IS NULL OR TRIM(type) = '')""",
+        'complete_device_manufacturer': """UPDATE appareils SET manufacturer = ?
+                                 WHERE id = ? AND (manufacturer IS NULL OR TRIM(manufacturer) = '')""",
         'autocomplete_search': """SELECT id, ref_modele, commercial_ref, type, manufacturer 
                                FROM appareils 
                                WHERE (ref_modele LIKE ? OR commercial_ref LIKE ?) 

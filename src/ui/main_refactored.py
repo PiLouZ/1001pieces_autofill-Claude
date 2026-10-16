@@ -1909,6 +1909,35 @@ class MainWindow(QMainWindow):
                                  for ligne in CasseNormalisationService.lignes(results[cle]))
         return texte
 
+    # Au-delà, le bloc d'historique résume au lieu de lister
+    MAX_LIGNES_COMPLETIONS = 20
+
+    @classmethod
+    def _lignes_completions(cls, results, retrait):
+        """Bloc d'historique des appareils existants complétés par l'import :
+
+            ==> Appareils existants complétés : 2
+            - X1 / CR1 : type Four, fabricant Bosch
+            - X3 : type Lave-linge
+
+        Seuls des champs vides en base ont été écrits. Chaîne vide si aucun.
+        """
+        completes = results.get('appareils_completes') or []
+        if not completes:
+            return ''
+        texte = f"{retrait}==> Appareils existants complétés : {len(completes)}\n"
+        for appareil in completes[:cls.MAX_LIGNES_COMPLETIONS]:
+            refs = ' / '.join(r for r in (appareil.get('ref_modele'),
+                                          appareil.get('commercial_ref')) if r)
+            champs = [f"{libelle} {appareil[cle]}"
+                      for cle, libelle in (('type', 'type'), ('manufacturer', 'fabricant'))
+                      if appareil.get(cle)]
+            texte += f"{retrait}- {refs or '#' + str(appareil.get('id'))} : {', '.join(champs)}\n"
+        reste = len(completes) - cls.MAX_LIGNES_COMPLETIONS
+        if reste > 0:
+            texte += f"{retrait}- … ({reste} de plus)\n"
+        return texte
+
     def _generate_console_summary(self, results, ref_piece, source, pdf_files_info=None):
         """Générer la synthèse dans le format console standardisé"""
         summary = f"Import {source}"
@@ -1931,6 +1960,7 @@ class MainWindow(QMainWindow):
 
         if results.get('marques_alignees') or results.get('types_alignes'):
             summary += self._lignes_alignements(results, retrait="")
+        summary += MainWindow._lignes_completions(results, retrait="")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"[!] {alerte}\n"
@@ -2105,6 +2135,9 @@ class MainWindow(QMainWindow):
         # surlignées en jaune comme faisant partie de l'alerte.
         if results.get('marques_alignees') or results.get('types_alignes'):
             summary += self._lignes_alignements(results, retrait="     ")
+        # Appareils existants complétés : avant l'alerte, pour la même raison.
+        # Appel qualifié par la classe : les tests passent une fenêtre factice.
+        summary += MainWindow._lignes_completions(results, retrait="     ")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"     [!] {alerte}\n"

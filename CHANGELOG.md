@@ -4,6 +4,31 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.88.2] - 2026-10-16 (branche `fix/completion-appareils-existants`)
+
+### Import : Type/Fabricant enfin écrits sur les appareils existants vides
+
+- Un appareil **déjà en base** dont le Type ou le Fabricant est vide recevait,
+  en mémoire, celui de la ligne importée (lu dans le fichier ou auto-complété
+  depuis un appareil de même référence), mais **rien n'était écrit** : seule la
+  3ᵉ colonne (autre réf. / notes) était reportée, sur les deux chemins d'import.
+  Et comme la ligne paraissait complète, l'appareil n'était pas non plus proposé
+  en suggestion. Constaté sur une copie de la base : 30 appareils vidés puis
+  réimportés → « auto-complétion : 24 types, 24 fabricants », 30/30 toujours
+  vides, 6 candidats de suggestion seulement.
+- Les champs vides sont désormais complétés, **sans jamais écraser** une valeur
+  saisie (garde `type IS NULL OR TRIM(type) = ''` dans la requête). Chemin
+  standard (< 50 lignes) et chemin batch se comportent à l'identique, replis
+  mono-référence compris ; aucun appareil n'est complété depuis une ligne
+  doublon, comme le batch.
+- L'entrée d'historique de l'import liste les appareils complétés
+  (« ==> Appareils existants complétés : N », 20 lignes au plus), et la
+  synthèse du log en donne le nombre.
+- Un appareil sans source d'auto-complétion reste candidat de suggestion, comme
+  avant.
+
+---
+
 ## [3.88.1] - 2026-10-15 (branche `feature/suggestions-hors-page`)
 
 ### Fenêtre « Valider les suggestions » : toutes les suggestions, chargées ou non
