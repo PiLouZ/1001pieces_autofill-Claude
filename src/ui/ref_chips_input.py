@@ -13,13 +13,12 @@ Les pastilles reprennent le style des réfs de l'import multi-fichiers
 (`_RefList` : badge blanc arrondi).
 """
 
-from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize, QRect, QPoint
 from PyQt5.QtWidgets import (
-    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QToolButton,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QToolButton, QSizePolicy,
 )
 
 from ..utils.text_utils import decouper_refs
-from .flow_layout import FlowLayout
 
 # Style des pastilles : identique aux réfs du réservoir multi-fichiers (_RefList)
 _STYLE_PASTILLE = ("QFrame#pastilleRef { background: #ffffff; border: 1px solid #cfd8dc;"
@@ -118,6 +117,13 @@ class _PastilleRef(QFrame):
 class RefChipsInput(QFrame):
     """Champ de saisie de références multiples, affichées en pastilles.
 
+    Disposition faite à la main (et non par layout) : pastilles en ligne, puis le
+    champ de saisie sur la place restante de la dernière ligne, ou sur une ligne
+    à lui s'il reste moins de `_LARGEUR_MIN_SAISIE`. La hauteur découle de cette
+    disposition (`heightForWidth`) et la politique verticale est fixe : dans un
+    dialogue à hauteur contrainte, le cadre ne peut plus être écrasé sous sa
+    taille utile (v3.91.1 — pastilles rognées et champ disparu en réel).
+
     Args:
         placeholder: texte d'aide du champ (affiché tant qu'aucune réf n'est saisie).
         max_refs: nombre maximal de réfs (None = illimité). Atteint, le champ se
@@ -125,31 +131,32 @@ class RefChipsInput(QFrame):
     """
     changed = pyqtSignal()
 
+    _MARGE_H, _MARGE_V = 4, 3
+    _ESPACE = 4
+    _HAUTEUR_SAISIE = 22
+    _LARGEUR_MIN_SAISIE = 140
+
     def __init__(self, placeholder="", max_refs=None, parent=None):
         super().__init__(parent)
         self._refs = []
+        self._pastilles = []
         self._max = max_refs
         self._placeholder = placeholder
         self.setObjectName("refChipsInput")
         self.setStyleSheet("QFrame#refChipsInput { background: white; border: 1px solid #ced4da;"
                            " border-radius: 4px; }")
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(4, 3, 4, 3)
-        lay.setSpacing(3)
+        sp = self.sizePolicy()
+        sp.setHorizontalPolicy(QSizePolicy.Expanding)
+        sp.setVerticalPolicy(QSizePolicy.Fixed)
+        sp.setHeightForWidth(True)
+        self.setSizePolicy(sp)
 
-        self._zone_pastilles = QWidget()
-        self._zone_pastilles.setStyleSheet("background: transparent; border: none;")
-        self._flow = FlowLayout(self._zone_pastilles, spacing=4)
-        self._zone_pastilles.setVisible(False)
-        lay.addWidget(self._zone_pastilles)
-
-        self.line_edit = RefSaisieLineEdit()
-        self.line_edit.setMinimumHeight(22)
+        self.line_edit = RefSaisieLineEdit(self)
+        self.line_edit.setFixedHeight(self._HAUTEUR_SAISIE)
         self.line_edit.setStyleSheet("QLineEdit { border: none; background: transparent; padding: 2px 2px; }")
         self.line_edit.setPlaceholderText(placeholder)
         self.line_edit.refs_saisies.connect(self.add_refs)
         self.line_edit.retour_arriere_vide.connect(self._retirer_derniere)
-        lay.addWidget(self.line_edit)
 
         # Clic dans le cadre (hors champ) → focus dans le champ
         self.setCursor(Qt.IBeamCursor)
@@ -197,10 +204,61 @@ class RefChipsInput(QFrame):
         """Compatibilité avec l'ancien QLineEdit : réfs séparées par un espace."""
         return " ".join(self.refs())
 
+    # ── Taille ──────────────────────────────────────────────────────────────
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, largeur):
+        return self._disposer(largeur, appliquer=False)
+
+    def sizeHint(self):
+        largeur = self.width() if self.width() > 50 else 400
+        return QSize(largeur, self._disposer(largeur, appliquer=False))
+
+    def minimumSizeHint(self):
+        return QSize(self._LARGEUR_MIN_SAISIE + 2 * self._MARGE_H, self.sizeHint().height())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        hauteur = self._disposer(self.width(), appliquer=True)
+        if hauteur != self.height():
+            # Largeur changée → nombre de lignes changé : redemander la hauteur.
+            self.updateGeometry()
+
     # ── Interne ─────────────────────────────────────────────────────────────
 
+    def _saisie_affichee(self):
+        return self._max is None or len(self._refs) < self._max
+
+    def _disposer(self, largeur, appliquer):
+        """Place pastilles + champ ; renvoie la hauteur totale du cadre."""
+        cadre = self.frameWidth()
+        x0 = self._MARGE_H + cadre
+        y0 = self._MARGE_V + cadre
+        droite = max(largeur - self._MARGE_H - cadre, x0 + self._LARGEUR_MIN_SAISIE)
+        x, y, h_ligne = x0, y0, 0
+        for p in self._pastilles:
+            t = p.sizeHint()
+            if x > x0 and x + t.width() > droite:
+                x, y, h_ligne = x0, y + h_ligne + self._ESPACE, 0
+            if appliquer:
+                p.setGeometry(QRect(QPoint(x, y), t))
+            x += t.width() + self._ESPACE
+            h_ligne = max(h_ligne, t.height())
+        if self._saisie_affichee():
+            if x > x0 and droite - x < self._LARGEUR_MIN_SAISIE:
+                x, y, h_ligne = x0, y + h_ligne + self._ESPACE, 0
+            h_ligne = max(h_ligne, self._HAUTEUR_SAISIE)
+            if appliquer:
+                # Champ centré verticalement sur la ligne des pastilles
+                self.line_edit.setGeometry(QRect(
+                    x, y + (h_ligne - self._HAUTEUR_SAISIE) // 2,
+                    max(droite - x, 10), self._HAUTEUR_SAISIE))
+        return y + h_ligne + self._MARGE_V + cadre
+
     def mousePressEvent(self, event):
-        if self.line_edit.isVisible():
+        if self._saisie_affichee():
             self.line_edit.setFocus()
         super().mousePressEvent(event)
 
@@ -209,19 +267,16 @@ class RefChipsInput(QFrame):
             self.remove_ref(self._refs[-1])
 
     def _reconstruire(self):
-        while self._flow.count():
-            item = self._flow.takeAt(0)
-            w = item.widget() if item is not None else None
-            if w is not None:
-                w.setParent(None)
-                w.deleteLater()
+        for p in self._pastilles:
+            p.setParent(None)
+            p.deleteLater()
+        self._pastilles = []
         for r in self._refs:
-            p = _PastilleRef(r)
+            p = _PastilleRef(r, self)
             p.retrait_demande.connect(self.remove_ref)
-            self._flow.addWidget(p)
-        self._zone_pastilles.setVisible(bool(self._refs))
-        plein = self._max is not None and len(self._refs) >= self._max
-        self.line_edit.setVisible(not plein)
+            p.show()
+            self._pastilles.append(p)
+        self.line_edit.setVisible(self._saisie_affichee())
         self.line_edit.setPlaceholderText("" if self._refs else self._placeholder)
-        self._zone_pastilles.updateGeometry()
+        self._disposer(self.width(), appliquer=True)
         self.updateGeometry()

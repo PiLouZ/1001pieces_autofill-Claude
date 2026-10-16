@@ -4,6 +4,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.91.1] - 2026-10-16 (branche `fix/pastilles-hauteur`)
+
+### Pastilles de réfs rognées dans « Succession »
+
+- En réel, le dialogue d'import à hauteur contrainte écrasait les champs à
+  pastilles : réfs coupées en haut et en bas, champ de saisie disparu.
+- Les pastilles et le champ de saisie partagent désormais la même ligne (le champ
+  passe à la ligne s'il reste moins de 140 px) ; la hauteur découle de cette
+  disposition et ne peut plus être comprimée.
+- 3 tests ajoutés (`TestHauteurPastilles`).
+
+---
+
 ## [3.91.0] - 2026-10-16 (branche `claude/multiple-import-references-a947a4`)
 
 ### Plusieurs références dans les relations déclarées à l'import
