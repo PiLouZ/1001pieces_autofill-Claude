@@ -4,6 +4,29 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.91.3] - 2026-10-16 (branche `fix/historique-libelle-hors-affichage`)
+
+### Historique : l'id de l'appareil au lieu de ses références
+
+- **Symptôme** : validation en masse de 1858 suggestions Type/Marque (production,
+  2026-10-16 14:39) → 124 entrées d'historique intitulées « Modification de
+  l'appareil 788245 » au lieu de « 3EP700S/03 - 3EP700S ». Valeurs en base
+  correctes : seul le libellé était faux.
+- **Cause** : `GroupedHistoryService` cherchait l'appareil avec `table.rowCount()`
+  et `table.item()`. Avec le défilement virtuel, ils ne voient que les
+  `FETCH_INITIAL` (200) lignes affichées : un appareil chargé dans la page mais
+  plus bas n'était pas trouvé et retombait sur son id.
+- **Correctif** : index construit sur toutes les lignes chargées
+  (`loaded_record_count`), cellules lues par `value_at` (sans le garde
+  d'affichage). Les appareils absents du tableau et sans libellé fourni par
+  l'appelant sont relus en base en une seule lecture (`lire_appareils_par_id`) ;
+  repli sur l'id s'ils ont disparu ou si la lecture échoue.
+- **Tests** : `tests/unit/test_historique_libelle_hors_affichage.py` (6 tests,
+  vrai modèle virtuel 300 lignes chargées / 200 affichées). Suite complète :
+  1445 passed, 1 skipped. Entrées déjà écrites en production non modifiées.
+
+---
+
 ## [3.91.2] - 2026-10-16 (branche `claude/recursing-haibt-437e9c`)
 
 ### Validation en masse des suggestions : 55 s de gel → instantané
