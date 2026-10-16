@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body  { font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 13px;
+  body  { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px;
           color: #212529; padding: 10px 14px; }
   h1    { font-size: 17px; color: #212529; margin: 0 0 10px 0; }
   h2    { font-size: 14px; color: #343a40; margin: 18px 0 4px 0;
@@ -30,6 +30,10 @@
 
 <h1>Guide d'utilisation — 1001pieces.com</h1>
 
+<div class="note"><b>Mac ou Windows ?</b> Ce guide écrit <b>Cmd</b> (touche ⌘ du Mac).
+Sous <b>Windows</b>, utilisez <b>Ctrl</b> à la place : <b>Cmd+S</b> devient <b>Ctrl+S</b>,
+<b>Cmd+Clic</b> devient <b>Ctrl+Clic</b>, etc. Tout le reste est identique.</div>
+
 <h2>Démarrage rapide</h2>
 
 <h3>Importer des données</h3>
@@ -37,15 +41,25 @@
   <li><b>Fichiers PDF ou CSV</b> : bouton <b>Importer</b> de la barre d'outils, ou glisser-déposer les fichiers sur le tableau.</li>
   <li><b>Collage</b> : copiez des lignes depuis Excel ou Calc, puis <b>Cmd+V</b> dans le tableau.</li>
   <li><b>Référence de pièce</b> : elle est remplie d'après le nom du fichier ; vous pouvez la modifier et lui donner un libellé avant d'importer.</li>
-  <li><b>Progression</b> : la fenêtre d'import affiche une ligne par étape (extraction, finalisation, suggestions…) avec sa durée.</li>
+  <li><b>Aperçu</b> : avant de valider, la fenêtre montre ce qui sera créé. Un encadré « Orthographe alignée sur la base » annonce les marques et types réécrits (ex. <code>MIDEA</code> → <code>Midea</code>, déjà présent en base).</li>
+  <li><b>Progression</b> : une ligne par étape (extraction, finalisation, suggestions…) avec sa durée.</li>
 </ol>
+<div class="note">Pour essayer sans risque : le dossier <code>fichiers_test_import</code>, livré avec
+l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
+
+<h3>Ce que l'import complète tout seul</h3>
+<ul>
+  <li><b>Auto-complétion</b> : un appareil importé sans Type ou sans Fabricant reçoit celui d'un appareil de même référence déjà en base. Un appareil existant dont le Type ou le Fabricant est vide est complété de la même façon ; une valeur déjà saisie n'est <b>jamais écrasée</b>.</li>
+  <li>Ces valeurs déduites s'affichent en <i>italique</i> dans le tableau, jusqu'à leur vérification (voir <b>Vérifier les auto-complétés</b> ci-dessous).</li>
+  <li><b>Suggestions</b> : quand rien ne permet de déduire la valeur, l'import propose un Type / une Marque d'après des références proches, ou le type que portent déjà les appareils de la pièce. Rien n'est écrit sans votre validation (voir ci-dessous).</li>
+</ul>
 
 <h3>Retrouver les appareils d'une pièce</h3>
 <ul>
   <li>Tapez la référence dans <b>Recherche par pièce</b> (sous le tableau, ou au-dessus selon Affichage → Recherche pièce en haut du tableau).</li>
   <li>Plusieurs références : <code>ref1 || ref2</code> (OU). Combinaison : <code>ref1 &amp;&amp; ref2</code> (ET).</li>
   <li>La recherche est <b>exacte</b> par défaut ; le bouton loupe à droite du champ la rend <b>partielle</b>.</li>
-  <li>Si la pièce a été remplacée ou a des équivalences, un <b>bandeau</b> le signale au-dessus du tableau.</li>
+  <li>Si la pièce a été remplacée ou a des équivalences, un <b>bandeau</b> le signale au-dessus du tableau ; il permet d'inclure les anciennes références ou les équivalentes.</li>
 </ul>
 
 <hr/>
@@ -66,17 +80,24 @@
   <tr><td><b>Nettoyer les doublons</b></td><td>Passe à l'orange quand des doublons attendent d'être traités</td></tr>
 </table>
 
+<h3>Filtres au-dessus du tableau</h3>
+<ul>
+  <li>Un champ par colonne. Pour <b>Type</b> et <b>Marque</b>, la flèche déroule la liste complète ; la frappe filtre dès la 1ʳᵉ lettre, sur une partie du mot.</li>
+  <li>Le bouton <b>✕</b> (au-dessus de la colonne Pièces) efface tous les filtres.</li>
+</ul>
+
 <h3>Panneau de droite</h3>
 <ul>
-  <li><b>Pièces</b> de l'appareil sélectionné (ou pièces communes à plusieurs appareils sélectionnés).</li>
+  <li><b>Pièces</b> de l'appareil sélectionné. Avec plusieurs appareils sélectionnés : les pièces <b>communes</b>, y compris celles portées sous des références différentes d'une même lignée (mention « ⇄ Commune par lignée »).</li>
   <li><b>Ajouter une pièce</b> : bouton <b>+</b>, puis saisie de la référence et du libellé. <b>Entrée</b> ajoute, <b>Échap</b> annule ; la pastille indique à combien d'appareils la pièce sera ajoutée. La pièce ajoutée est surlignée en vert un instant.</li>
-  <li><b>Historique des opérations</b> : chaque action, avec un badge par type (Modif., Import, Export, Suppr., Erreur, Annul., Pièce, Système). L'icône à côté du titre ouvre l'historique complet.</li>
+  <li><b>Historique des opérations</b> : chaque action, avec un badge par type (Modif., Import, Export, Suppr., Erreur, Annul., Pièce, Système). Les 100 dernières entrées sont rechargées à l'ouverture. Les alertes d'import (pages vides d'un PDF, colonnes mal reconnues) sont <b>surlignées en jaune</b>. L'icône ↗ à côté du titre ouvre l'historique complet.</li>
   <li><b>Exports</b> : HTML Marques, HTML Détails, CSV et métas SEO (Méta Title, Méta Desc ; Maj+clic pour une autre formulation). Ils s'activent après une recherche par pièce.</li>
 </ul>
 
-<h3>Barre d'état</h3>
+<h3>Barre d'état (sous le tableau)</h3>
 <ul>
   <li><b>Lignes à traiter ▲ ▼</b> : passe d'une ligne incomplète (Type ou Fabricant manquant) à la suivante.</li>
+  <li><b>Auto-complétés à vérifier (N) | Tout valider</b> : visible quand des valeurs auto-complétées attendent une vérification (voir plus bas).</li>
 </ul>
 
 <hr/>
@@ -87,7 +108,26 @@
   <li><b>Entrée</b> : passe à la ligne suivante, même colonne.</li>
   <li><b>Suppr / Retour arrière</b> : vide les cellules sélectionnées.</li>
   <li><b>Cmd+D</b> : liste des valeurs déjà utilisées dans la colonne (sauf colonnes de référence).</li>
-  <li><b>Suggestions</b> : quand le Type ou le Fabricant manque, l'import peut proposer une valeur d'après des références proches. Les cellules concernées sont teintées ; un clic montre les candidats.</li>
+  <li><b>Marque et Type</b> : une valeur tapée reprend l'orthographe déjà présente en base (<code>bosch</code> → <code>Bosch</code>).</li>
+  <li><b>Poignée de recopie</b> (petit carré en bas à droite de la sélection), comme dans un tableur :
+    <ul>
+      <li><b>glisser</b> vers le bas ou vers le haut recopie la valeur (ou le motif de plusieurs lignes) ;</li>
+      <li><b>double-clic</b> remplit vers le bas les cases vides ; s'il n'y a rien à remplir en bas, il remplit vers le haut.</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>Valider les suggestions</h3>
+<ul>
+  <li>Les cellules avec une suggestion sont teintées ; un clic montre les candidats.</li>
+  <li>Le bandeau <b>« Examiner N suggestions… »</b> ouvre la fenêtre de validation : cochez celles à appliquer (<b>Espace</b> coche/décoche la ligne), double-clic sur Type ou Marque pour corriger. Clic sur un en-tête pour trier.</li>
+</ul>
+
+<h3>Vérifier les auto-complétés</h3>
+<ul>
+  <li>Bouton bleu <b>« Auto-complétés à vérifier (N) »</b> : ouvre la liste, du moins sûr au plus sûr. Tout est coché d'office ; décochez ce qui est douteux, corrigez par double-clic, puis <b>Marquer comme vérifiés</b>.</li>
+  <li>Bouton vert <b>« Tout valider »</b> : valide tout d'un coup, après une confirmation qui rappelle la confiance des sources. Une validation en masse ne s'annule pas.</li>
+  <li>Dans le tableau : <b>clic droit → Marquer comme vérifié</b> sur les lignes sélectionnées. Corriger une valeur en italique la vérifie aussi.</li>
 </ul>
 
 <hr/>
@@ -106,12 +146,14 @@
 <ul>
   <li>Sélectionnez une pièce : le panneau de droite affiche ses <b>équivalences</b>, ce qu'elle <b>remplace</b> et ce qui la <b>remplace</b>. Les boutons <b>+</b> ajoutent une relation.</li>
   <li>Filtres en haut : orphelines, fantômes, sans libellé, obsolètes, remplacées, remplaçantes, équivalentes, libellés incohérents.</li>
+  <li><b>Modifier la pièce</b> : la case « Appliquer aussi ce libellé » recopie le libellé sur toute la famille (anciennes et nouvelles références, équivalentes). Les libellés qui seront remplacés sont affichés en orange.</li>
   <li><b>Cmd+Clic</b> pour sélectionner plusieurs pièces et appliquer une action groupée.</li>
 </ul>
 
 <hr/>
 
 <h2>Raccourcis clavier</h2>
+<p>Sous Windows : <b>Ctrl</b> à la place de <b>Cmd</b>.</p>
 
 <h3>Édition</h3>
 <table>
@@ -135,6 +177,7 @@
   <tr><td class="key">Cmd+Espace</td><td>Sélectionner la colonne</td></tr>
   <tr><td class="key">Maj+Espace</td><td>Sélectionner la ligne</td></tr>
   <tr><td class="key">Cmd+Maj+flèche</td><td>Étendre la sélection jusqu'au bord</td></tr>
+  <tr><td class="key">Espace</td><td>Dans les fenêtres à cases (suggestions, auto-complétés, doublons) : coche / décoche la ligne courante</td></tr>
 </table>
 
 <h3>Recherche et affichage</h3>
@@ -149,14 +192,15 @@
 
 <hr/>
 
-<h2>Nouveautés de la version 3.78</h2>
+<h2>Nouveautés depuis la version 3.78</h2>
 <ul>
-  <li><b>Historique</b> plus lisible : badges en clair, type Erreur distinct de Suppression, une entrée sur deux lignes.</li>
-  <li><b>Hauteur des lignes</b> réglable (Affichage → Hauteur des lignes) et une ligne sur deux teintée.</li>
-  <li><b>Ajout de pièce</b> repensé : carte en tête de liste, Entrée / Échap, pièce ajoutée surlignée.</li>
-  <li><b>Progression d'import</b> : une ligne par étape avec sa durée.</li>
-  <li><b>Gestionnaire de pièces</b> : colonne Statut complète, messages quand une relation est vide.</li>
-  <li><b>Alertes de relations</b> à l'import : elles nomment la cause (zone cochée mais vide, lignée sans courante).</li>
+  <li><b>3.90</b> — Export de l'application pour <b>Windows</b> (portable, rien à installer), archive bien plus légère.</li>
+  <li><b>3.89</b> — Auto-complétions en italique, fenêtre « Auto-complétés à vérifier », bouton « Tout valider », Espace coche/décoche partout.</li>
+  <li><b>3.88</b> — Pièces communes par lignée ; l'import complète les appareils existants vides ; la fenêtre de suggestions les montre toutes.</li>
+  <li><b>3.87</b> — Suggestion du Type d'après la pièce importée.</li>
+  <li><b>3.86</b> — Libellé recopié sur toute la famille d'une pièce.</li>
+  <li><b>3.82 – 3.84</b> — Orthographe des marques et types alignée sur la base ; filtres Type / Marque avec liste complète.</li>
+  <li><b>3.80 – 3.81</b> — Double-clic sur la poignée de recopie vers le haut ; historique rechargé au lancement, alertes surlignées.</li>
 </ul>
 
 <hr/>
@@ -168,37 +212,60 @@
   <li>Vérifiez l'encodage du fichier CSV (UTF-8 recommandé) et qu'il compte au moins 2 colonnes.</li>
   <li>Si la première ligne contient des noms de colonnes, cochez « 1ʳᵉ ligne = en-têtes ».</li>
   <li>Si les colonnes sont mal reconnues, ouvrez « Adapter le mapping » sous l'aperçu.</li>
+  <li>Une alerte surlignée en jaune dans l'historique (ex. pages vides d'un PDF) explique ce qui a été ignoré et pourquoi.</li>
 </ul>
 
 <h3>Revenir en arrière</h3>
 <ul>
-  <li>Une copie de la base est faite avant chaque nettoyage de doublons, et avant un import (au plus une par 24 h). <b>Configuration → Restaurer une sauvegarde…</b> remet une copie en place.</li>
+  <li><b>Cmd+Z</b> annule les dernières modifications du tableau.</li>
+  <li>Une copie de la base est faite automatiquement avant chaque nettoyage de doublons et avant un import (au plus une par 24 h). Les 2 dernières sont gardées, plus 2 copies faites avant des opérations exceptionnelles.</li>
+  <li><b>Configuration → Restaurer une sauvegarde…</b> remet une copie en place (l'application se ferme ensuite ; relancez-la).</li>
 </ul>
 
 <hr/>
 
-<h2>Déploiement sur une autre machine</h2>
+<h2>Installer l'application sur un autre poste</h2>
 
-<h3>Générer le dossier d'export</h3>
+<h3>1. Créer l'export (sur le poste d'origine)</h3>
 <ol>
   <li><b>Configuration → Exporter l'application…</b></li>
+  <li>Choisissez le système du poste cible : <b>Windows</b> ou <b>macOS</b>.</li>
   <li>Choisissez un dossier de destination (Bureau recommandé).</li>
-  <li>Patientez 1 à 2 minutes (téléchargement des dépendances).</li>
-  <li>Un dossier <code>1001pieces_export_AAAAMMJJ_HHMM/</code> est créé.</li>
+  <li>Patientez 2 à 3 minutes. Une archive <code>1001pieces_export_windows_AAAAMMJJ_HHMM.zip</code> (ou <code>…_macos_…</code>) est créée, environ 350 Mo.</li>
 </ol>
+<p>L'archive contient l'application, la base de données <b>la plus récente</b>, ce guide et les
+fichiers de test d'import. Les sauvegardes et les journaux restent sur le poste d'origine.
+Envoyez l'archive par un service de transfert de gros fichiers ou une clé USB.</p>
 
-<h3>Sur le poste cible (macOS)</h3>
+<h3>2. Sur un PC Windows (10 ou 11, 64 bits)</h3>
+<p>Rien à installer : Python et tout le nécessaire sont dans l'archive.</p>
+<ol>
+  <li>Si l'archive a été téléchargée : clic droit sur le .zip → <b>Propriétés</b> → cocher <b>Débloquer</b> → OK.</li>
+  <li>Clic droit sur le .zip → <b>Extraire tout…</b> → choisir un dossier court (ex. <code>C:\1001pieces</code> ou Documents).</li>
+  <li>Dans le dossier extrait, double-clic sur <b><code>1001pieces_autofill.bat</code></b>.</li>
+  <li>Si Windows affiche « Windows a protégé votre ordinateur » : <b>Informations complémentaires</b> → <b>Exécuter quand même</b> (une seule fois).</li>
+  <li>Raccourci sur le Bureau : clic droit sur <code>1001pieces_autofill.bat</code> → <b>Envoyer vers</b> → <b>Bureau (créer un raccourci)</b>.</li>
+</ol>
+<div class="note">Ne lancez pas l'application depuis l'intérieur du .zip : extrayez-le d'abord.
+Si l'application ne s'ouvre pas, lancez <code>1001pieces_autofill_console.bat</code> : une fenêtre
+noire affiche le message d'erreur.</div>
+
+<h3>3. Sur un Mac</h3>
 <p><b>Prérequis</b> : Python 3.10 ou plus récent (<code>python3 --version</code> pour vérifier).</p>
 <ol>
+  <li>Double-clic sur le .zip pour l'extraire.</li>
   <li><b>Double-cliquez sur <code>install.command</code></b> : installe les dépendances (une seule fois).</li>
   <li><b>Double-cliquez sur <code>1001pieces_autofill.app</code></b> : lance l'application.</li>
 </ol>
-<div class="note">Aucune connexion internet n'est nécessaire sur le poste cible : les dépendances sont incluses.</div>
+<div class="note">Aucune connexion internet n'est nécessaire sur le poste cible, ni sous Windows ni sous macOS.
+Chaque poste travaille ensuite sur <b>sa propre copie</b> de la base : les modifications ne se
+synchronisent pas entre postes.</div>
 
 <hr/>
 
 <h2>Assistance</h2>
-<p>En cas de problème, consultez les logs via <b>Journal</b> dans la barre d'outils (ou F12).</p>
+<p>En cas de problème, consultez les logs via <b>Journal</b> dans la barre d'outils (ou F12). Les fichiers
+sont aussi dans le dossier <code>data/logs</code> de l'application.</p>
 
 </body>
 </html>
