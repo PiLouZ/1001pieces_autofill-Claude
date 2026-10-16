@@ -1,84 +1,219 @@
 """
 Script d'export de l'application 1001pieces_autofill.
 
-Crée un dossier auto-suffisant pour installation sur une autre machine macOS.
-Inclut le code source, la base de données et toutes les dépendances pip (wheels).
+Crée une archive .zip auto-suffisante pour installer l'application sur un autre
+poste, au choix :
+
+- **Windows** : version portable. Python 3.12 « embeddable » officiel et toutes
+  les dépendances sont inclus ; sur le poste cible, on dézippe puis on
+  double-clique sur 1001pieces_autofill.bat. Rien à installer.
+- **macOS** : code + dépendances (wheels) ; install.command crée un
+  environnement virtuel avec le Python du poste cible.
+
+N'est copié que le nécessaire pour faire tourner l'application (liste blanche) :
+code, icône, guide d'utilisation, réglages d'export et UNE base de données, la
+plus récente — instantané cohérent et compacté (VACUUM INTO). Les sauvegardes,
+journaux, tests, documents de développement et caches restent sur ce poste.
 
 Usage CLI :
-    python3 export_app.py
+    python3 export_app.py                       # cible Windows, sur le Bureau
+    python3 export_app.py --cible macos
     python3 export_app.py --output ~/Bureau/mon_export
 """
 
 import os
+import re
 import sys
+import json
 import shutil
+import sqlite3
+import hashlib
+import zipfile
+import tempfile
 import subprocess
 import argparse
+import urllib.request
 from pathlib import Path
 from datetime import datetime
 
 ROOT = Path(__file__).parent
 
-# Dossiers à exclure de la copie du code source
-EXCLUDE_DIRS = {
-    '.git', '__pycache__', '.claude', 'tests',
-}
+CIBLE_WINDOWS = 'windows'
+CIBLE_MACOS = 'macos'
+CIBLES = (CIBLE_WINDOWS, CIBLE_MACOS)
 
-# Fichiers / patterns à exclure
-EXCLUDE_SUFFIXES = {'.pyc', '.pyo', '.db-shm', '.db-wal'}
-EXCLUDE_FILES    = {'export_app.py', '.DS_Store'}
+# ── Liste blanche : seuls ces fichiers partent dans l'export ─────────────────
+# (chemins relatifs à la racine du projet ; src/ est copié à part, .py seuls)
+FICHIERS_EXPORTES = (
+    'run.py',
+    'app_icon.png',
+    'requirements.txt',
+    'docs/guide_utilisation.html',
+)
 
-# Fichiers data à exclure (les journaux sont régénérés au lancement)
-EXCLUDE_DATA_SUBDIRS = {'logs'}
+# Fichiers d'exemple pour essayer l'import sur le poste cible (PDF fournisseur,
+# CSV) : copiés à plat dans fichiers_test_import/ (< 1 Mo)
+DOSSIER_TESTS_IMPORT = 'fichiers_test_import'
+SOURCES_TESTS_IMPORT = (
+    'tests/fixtures/pdf_samples/*.pdf',
+    'tests/fixtures/whirlpool_suggestions_test.csv',
+)
+
+# Dépendances directes de l'application (les transitives s'en déduisent).
+# camelot-py tire pandas, numpy, opencv… ; chardet et pdfminer.six sont aussi
+# importés directement par le code.
+DEPENDANCES_DIRECTES = ('PyQt5', 'QtAwesome', 'camelot-py', 'chardet', 'pdfminer.six')
+
+# ── Python embarqué pour Windows ─────────────────────────────────────────────
+# Distribution « embeddable » officielle de python.org : un dossier autonome,
+# sans installation ni droits administrateur. Empreinte SHA-256 relevée sur
+# le fichier officiel : un téléchargement altéré ou tronqué est refusé.
+PYTHON_WIN_VERSION = '3.12.10'
+PYTHON_WIN_URL = (f'https://www.python.org/ftp/python/{PYTHON_WIN_VERSION}/'
+                  f'python-{PYTHON_WIN_VERSION}-embed-amd64.zip')
+PYTHON_WIN_SHA256 = '4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3'
+PYTHON_WIN_TAG = '312'   # python312._pth, wheels cp312
+
+# Épinglages à ne pas reporter sur Windows : PyQt5-Qt5 5.15.2 est la dernière
+# version publiée pour Windows (les suivantes n'existent que pour macOS/Linux).
+NON_EPINGLES_WINDOWS = {'pyqt5-qt5'}
+# Dépendances propres à Windows, absentes de l'environnement macOS (marqueur
+# platform_system == "Windows" de click) : ajoutées explicitement.
+DEPENDANCES_WINDOWS_SEULEMENT = ('colorama',)
+
+# Cache des téléchargements entre deux exports (Python embarqué)
+CACHE_DIR = Path.home() / '.cache' / '1001pieces_export'
 
 
-def _should_exclude(path: Path, rel: Path) -> bool:
-    """Retourne True si ce chemin doit être ignoré lors de la copie."""
-    parts = rel.parts
-    if parts[0] in EXCLUDE_DIRS:
-        return True
-    if path.suffix in EXCLUDE_SUFFIXES:
-        return True
-    if path.name in EXCLUDE_FILES:
-        return True
-    # Exclure data/logs/
-    if len(parts) >= 2 and parts[0] == 'data' and parts[1] in EXCLUDE_DATA_SUBDIRS:
-        return True
-    return False
+def _notifier(progress_callback, message: str):
+    if progress_callback:
+        progress_callback(message)
 
+
+def _nom_normalise(nom: str) -> str:
+    """Nom de paquet normalisé (PEP 503) : « PyQt5_sip » == « pyqt5-sip »."""
+    return re.sub(r'[-_.]+', '-', nom).lower()
+
+
+# ── 1. Code source ───────────────────────────────────────────────────────────
 
 def _copy_source(dest: Path, progress_callback=None) -> int:
-    """Copie le code source vers dest/. Retourne le nombre de fichiers copiés."""
+    """Copie le strict nécessaire (liste blanche) vers dest/.
+
+    src/ : uniquement les .py (ni __pycache__, ni .DS_Store). Retourne le
+    nombre de fichiers copiés.
+    """
+    fichiers = [ROOT / rel for rel in FICHIERS_EXPORTES]
+    fichiers += sorted(p for p in (ROOT / 'src').rglob('*.py')
+                       if '__pycache__' not in p.parts)
     count = 0
-    for src_file in ROOT.rglob('*'):
+    for src_file in fichiers:
         if not src_file.is_file():
             continue
         rel = src_file.relative_to(ROOT)
-        if _should_exclude(src_file, rel):
-            continue
         dst_file = dest / rel
         dst_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_file, dst_file)
         count += 1
-        if progress_callback:
-            # « Étape — détail » : le journal de progression met à jour la ligne
-            # « Copie du code source » au lieu d'ajouter une ligne par fichier
-            progress_callback(f"Copie du code source — {rel}")
+        # « Étape — détail » : le journal de progression met à jour la ligne
+        # « Copie du code source » au lieu d'ajouter une ligne par fichier
+        _notifier(progress_callback, f"Copie du code source — {rel}")
     return count
 
 
+def _copy_test_import_files(dest: Path) -> int:
+    """Copie les fichiers d'exemple d'import dans dest/fichiers_test_import/."""
+    cible = dest / DOSSIER_TESTS_IMPORT
+    count = 0
+    for motif in SOURCES_TESTS_IMPORT:
+        for src_file in sorted(ROOT.glob(motif)):
+            cible.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_file, cible / src_file.name)
+            count += 1
+    return count
+
+
+def _write_export_config(dest: Path):
+    """Réglages d'export (profils CSV/HTML) recopiés, dossier de sortie vidé.
+
+    Le dossier de sortie est un chemin propre à ce poste (ex. /Users/…) :
+    vidé, il retombe sur le Bureau du poste cible.
+    """
+    source = ROOT / 'data' / 'export_config.json'
+    if not source.exists():
+        source = ROOT / 'data' / 'export_config.example.json'
+    if not source.exists():
+        return
+    config = json.loads(source.read_text(encoding='utf-8'))
+    config['output_dir'] = ''
+    cible = dest / 'data' / 'export_config.json'
+    cible.parent.mkdir(parents=True, exist_ok=True)
+    cible.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+# ── 2. Base de données ───────────────────────────────────────────────────────
+
+def _snapshot_database(dest: Path, progress_callback=None,
+                       db_path: Path | None = None) -> Path:
+    """Instantané de la base via VACUUM INTO.
+
+    Une simple copie de fichier perdrait les écritures encore dans le journal
+    -wal et pourrait capturer une base à mi-écriture. VACUUM INTO, lancé sur
+    une connexion en lecture seule, produit une copie cohérente qui inclut le
+    WAL, sans toucher à la base de travail, et compactée au passage.
+    """
+    if db_path is None:
+        db_path = ROOT / 'data' / 'appareils.db'
+    if not db_path.exists():
+        raise FileNotFoundError(f"Base de données introuvable : {db_path}")
+    cible = dest / 'data' / 'appareils.db'
+    cible.parent.mkdir(parents=True, exist_ok=True)
+    _notifier(progress_callback, "Copie de la base de données (1 à 2 minutes)…")
+    conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+    try:
+        conn.execute('VACUUM INTO ?', (str(cible),))
+    finally:
+        conn.close()
+    return cible
+
+
+# ── 3. Dépendances ───────────────────────────────────────────────────────────
+
+def _dependances_epinglees() -> dict:
+    """{nom normalisé: 'Nom==version'} des dépendances de l'application.
+
+    Fermeture des dépendances directes dans l'environnement courant : les
+    versions exactes, éprouvées ici, sans les outils de développement (pytest,
+    py-spy…) qu'un « pip freeze » emporterait.
+    """
+    from importlib import metadata
+    from packaging.requirements import Requirement
+
+    pins, a_voir = {}, list(DEPENDANCES_DIRECTES)
+    while a_voir:
+        nom = a_voir.pop()
+        cle = _nom_normalise(nom)
+        if cle in pins:
+            continue
+        try:
+            dist = metadata.distribution(nom)
+        except metadata.PackageNotFoundError:
+            continue  # dépendance conditionnelle absente de ce poste
+        pins[cle] = f"{dist.metadata['Name']}=={dist.version}"
+        for exigence in dist.requires or []:
+            req = Requirement(exigence)
+            # Extras : seul camelot-py[cv] est demandé (requirements.txt)
+            env = {'extra': 'cv' if cle == 'camelot-py' else ''}
+            if req.marker is None or req.marker.evaluate(env):
+                a_voir.append(req.name)
+    return pins
+
+
 def _freeze_requirements(dest: Path) -> Path:
-    """
-    Génère requirements_frozen.txt avec les versions exactes installées,
-    filtré sur les dépendances directes + transitives de requirements.txt.
-    Retourne le chemin du fichier généré.
-    """
-    result = subprocess.run(
-        [sys.executable, '-m', 'pip', 'freeze'],
-        capture_output=True, text=True, check=True
-    )
+    """Écrit requirements_frozen.txt : dépendances de l'application, épinglées."""
     frozen_path = dest / 'requirements_frozen.txt'
-    frozen_path.write_text(result.stdout, encoding='utf-8')
+    lignes = sorted(_dependances_epinglees().values(), key=str.lower)
+    frozen_path.write_text('\n'.join(lignes) + '\n', encoding='utf-8')
     return frozen_path
 
 
@@ -133,7 +268,7 @@ venv/bin/pip install --quiet --no-index --find-links=wheels -r requirements_froz
 
 echo ""
 echo "✅ Installation terminée."
-echo "   Pour lancer l'application : double-cliquez sur 1001pieces_autofill.command"
+echo "   Pour lancer l'application : double-cliquez sur 1001pieces_autofill.app"
 echo ""
 read -n 1 -s -r -p "Appuyez sur une touche pour fermer cette fenêtre…"
 """
@@ -273,9 +408,9 @@ def create_source_launcher(project_root: Path | str | None = None) -> bool:
 
 
 def _write_readme(dest: Path, export_date: str):
-    """Crée README_INSTALL.md dans le dossier d'export."""
+    """Crée README_INSTALL.md dans le dossier d'export (cible macOS)."""
     content = f"""\
-# 1001pieces_autofill — Guide d'installation
+# 1001pieces_autofill — Guide d'installation (macOS)
 
 Export généré le : **{export_date}**
 
@@ -309,7 +444,9 @@ Aucune connexion internet nécessaire (les fichiers `.whl` sont inclus dans `whe
 | Élément | Description |
 |---------|-------------|
 | `src/` | Code source de l'application |
-| `data/appareils.db` | Base de données (598 000+ enregistrements) |
+| `data/appareils.db` | Base de données (copie la plus récente) |
+| `docs/guide_utilisation.html` | Guide d'utilisation (aussi via le bouton Guide) |
+| `fichiers_test_import/` | Fichiers PDF et CSV pour essayer l'import |
 | `wheels/` | Dépendances pip pré-téléchargées |
 | `requirements_frozen.txt` | Versions exactes des dépendances |
 | `install.command` | Installation (double-clic, une seule fois) |
@@ -326,80 +463,294 @@ Aucune connexion internet nécessaire (les fichiers `.whl` sont inclus dans `whe
     (dest / 'README_INSTALL.md').write_text(content, encoding='utf-8')
 
 
-def create_export(output_dir: Path | str | None = None,
-                  progress_callback=None) -> dict:
+# ── Cible Windows ────────────────────────────────────────────────────────────
+
+def _contexte_ssl():
+    """Contexte SSL avec un magasin de certificats utilisable.
+
+    Le Python de python.org sur macOS n'a pas de certificats tant que
+    « Install Certificates.command » n'a pas été lancé (CERTIFICATE_VERIFY_FAILED).
+    pip embarque le magasin certifi : on s'en sert, comme pip le fait.
     """
-    Crée le dossier d'export complet.
+    import ssl
+    for module in ('certifi', 'pip._vendor.certifi'):
+        try:
+            certifi = __import__(module, fromlist=['where'])
+            return ssl.create_default_context(cafile=certifi.where())
+        except (ImportError, OSError):
+            continue
+    return ssl.create_default_context()
+
+
+def _telecharger_python_windows(progress_callback=None) -> Path:
+    """Zip du Python embarqué Windows, depuis le cache ou python.org (vérifié)."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    archive = CACHE_DIR / Path(PYTHON_WIN_URL).name
+
+    def _empreinte(chemin: Path) -> str:
+        return hashlib.sha256(chemin.read_bytes()).hexdigest()
+
+    if archive.exists() and _empreinte(archive) == PYTHON_WIN_SHA256:
+        return archive
+
+    _notifier(progress_callback, f"Téléchargement de Python {PYTHON_WIN_VERSION} pour Windows…")
+    partiel = archive.with_suffix('.part')
+    with urllib.request.urlopen(PYTHON_WIN_URL, timeout=120,
+                                context=_contexte_ssl()) as reponse, \
+            open(partiel, 'wb') as sortie:
+        shutil.copyfileobj(reponse, sortie)
+    if _empreinte(partiel) != PYTHON_WIN_SHA256:
+        partiel.unlink(missing_ok=True)
+        raise RuntimeError("Le Python pour Windows téléchargé est altéré "
+                           "(empreinte inattendue). Réessayez l'export.")
+    partiel.replace(archive)
+    return archive
+
+
+def _preparer_python_windows(dest: Path, archive: Path) -> Path:
+    """Décompresse Python dans dest/python et règle son chemin d'import.
+
+    Le fichier python312._pth fixe sys.path (le dossier du script n'y est PAS
+    ajouté automatiquement) : on y déclare Lib\\site-packages pour les
+    dépendances et « .. » (la racine de l'application) pour `import src…`.
+    """
+    dossier = dest / 'python'
+    with zipfile.ZipFile(archive) as zf:
+        zf.extractall(dossier)
+    (dossier / 'Lib' / 'site-packages').mkdir(parents=True, exist_ok=True)
+    pth = dossier / f'python{PYTHON_WIN_TAG}._pth'
+    pth.write_text(
+        f"python{PYTHON_WIN_TAG}.zip\r\n"
+        ".\r\n"
+        "Lib\\site-packages\r\n"
+        "..\r\n"
+        "import site\r\n",
+        encoding='utf-8')
+    return dossier
+
+
+def _ecrire_exigences_windows(dossier: Path) -> tuple:
+    """(exigences directes, contraintes) pour le pip download Windows.
+
+    Les dépendances directes sont demandées, les versions éprouvées sur ce
+    poste servent de contraintes (pip ignore celles qui ne servent pas).
+    """
+    pins = _dependances_epinglees()
+    directes = [pins.get(_nom_normalise(n), n) for n in DEPENDANCES_DIRECTES]
+    directes += list(DEPENDANCES_WINDOWS_SEULEMENT)
+    contraintes = [v for k, v in pins.items() if k not in NON_EPINGLES_WINDOWS]
+    req = dossier / 'exigences.txt'
+    cst = dossier / 'contraintes.txt'
+    req.write_text('\n'.join(directes) + '\n', encoding='utf-8')
+    cst.write_text('\n'.join(sorted(contraintes, key=str.lower)) + '\n', encoding='utf-8')
+    return req, cst
+
+
+def _installer_dependances_windows(python_dir: Path, progress_callback=None):
+    """Télécharge les wheels Windows (cp312, 64 bits) et les décompresse.
+
+    Un wheel est une archive zip prête à poser dans site-packages : pas besoin
+    de pip sur le poste cible. Les répertoires *.data/ (scripts en ligne de
+    commande) ne servent pas à l'application et sont ignorés.
+    """
+    _notifier(progress_callback, "Téléchargement des dépendances Windows (1 à 2 minutes)…")
+    site_packages = python_dir / 'Lib' / 'site-packages'
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        req, cst = _ecrire_exigences_windows(tmp)
+        wheels = tmp / 'wheels'
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', 'download',
+             '-r', str(req), '-c', str(cst), '-d', str(wheels),
+             '--only-binary=:all:', '--platform', 'win_amd64',
+             '--python-version', PYTHON_WIN_VERSION.rsplit('.', 1)[0],
+             '--implementation', 'cp', '--quiet'],
+            capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError("Échec du téléchargement des dépendances Windows. "
+                               "Vérifiez la connexion internet.\n"
+                               + result.stderr.strip()[-800:])
+        _notifier(progress_callback, "Installation des dépendances dans le Python embarqué…")
+        for wheel in sorted(wheels.glob('*.whl')):
+            with zipfile.ZipFile(wheel) as zf:
+                for membre in zf.infolist():
+                    if membre.filename.split('/', 1)[0].endswith('.data'):
+                        continue
+                    zf.extract(membre, site_packages)
+
+
+def _ecrire_lanceurs_windows(dest: Path):
+    """Lanceurs .bat (fins de ligne CRLF, texte ASCII pour cmd.exe).
+
+    - 1001pieces_autofill.bat : lance sans console (pythonw).
+    - 1001pieces_autofill_console.bat : même chose avec console visible, pour
+      lire un message d'erreur au démarrage.
+    """
+    lanceur = (
+        "@echo off\r\n"
+        "rem Lance 1001pieces_autofill sans fenetre de console\r\n"
+        "cd /d \"%~dp0\"\r\n"
+        "start \"\" \"%~dp0python\\pythonw.exe\" \"%~dp0run.py\"\r\n"
+    )
+    console = (
+        "@echo off\r\n"
+        "rem Lance 1001pieces_autofill avec la console (diagnostic)\r\n"
+        "chcp 65001 >nul\r\n"
+        "set PYTHONUTF8=1\r\n"
+        "cd /d \"%~dp0\"\r\n"
+        "\"%~dp0python\\python.exe\" \"%~dp0run.py\"\r\n"
+        "echo.\r\n"
+        "pause\r\n"
+    )
+    (dest / '1001pieces_autofill.bat').write_bytes(lanceur.encode('ascii'))
+    (dest / '1001pieces_autofill_console.bat').write_bytes(console.encode('ascii'))
+
+
+def _write_readme_windows(dest: Path, export_date: str):
+    """LISEZMOI.txt pour le poste Windows (texte brut, CRLF)."""
+    content = f"""\
+1001pieces_autofill - Installation sur Windows
+===============================================
+
+Export genere le : {export_date}
+
+Rien a installer : Python et toutes les dependances sont inclus.
+
+1. Dezipper l'archive
+   - Si l'archive vient d'un e-mail ou d'Internet : clic droit sur le .zip,
+     Proprietes, cocher "Debloquer", OK (sinon Windows peut bloquer le lancement).
+   - Clic droit sur le .zip, "Extraire tout...", choisir un dossier court
+     (par exemple C:\\1001pieces ou le dossier Documents).
+     Ne pas lancer l'application depuis l'interieur du .zip.
+
+2. Lancer l'application
+   - Double-clic sur 1001pieces_autofill.bat
+   - Au premier lancement, si Windows affiche "Windows a protege votre
+     ordinateur" : cliquer "Informations complementaires" puis "Executer quand meme".
+   - Pour l'avoir sur le Bureau : clic droit sur 1001pieces_autofill.bat,
+     "Afficher d'autres options", "Envoyer vers", "Bureau (creer un raccourci)".
+
+3. En cas de probleme
+   - Double-clic sur 1001pieces_autofill_console.bat : la meme application,
+     avec une fenetre noire qui affiche les messages d'erreur.
+   - Les journaux sont dans le dossier data\\logs.
+
+Contenu du dossier
+------------------
+  1001pieces_autofill.bat          Lancement (double-clic)
+  1001pieces_autofill_console.bat  Lancement avec messages de diagnostic
+  data\\appareils.db                Base de donnees (copie la plus recente)
+  docs\\guide_utilisation.html      Guide d'utilisation (aussi via le bouton Guide)
+  fichiers_test_import\\            Fichiers PDF et CSV pour essayer l'import
+  python\\                          Python {PYTHON_WIN_VERSION} et dependances (ne pas modifier)
+  src\\, run.py                     Code de l'application
+
+Raccourcis clavier : le guide indique Cmd (Mac) ; sous Windows c'est Ctrl.
+"""
+    (dest / 'LISEZMOI.txt').write_bytes(content.replace('\n', '\r\n').encode('utf-8'))
+
+
+# ── Archive finale ───────────────────────────────────────────────────────────
+
+def _zipper(dossier: Path, progress_callback=None) -> Path:
+    """Compresse dossier/ en dossier.zip (dossier racine inclus) puis le supprime.
+
+    La base de données se compresse très bien (~1/6). Les droits Unix sont
+    conservés (install.command et le lanceur .app restent exécutables sur Mac).
+    """
+    archive = dossier.with_suffix('.zip')
+    _notifier(progress_callback, "Compression de l'archive (1 à 2 minutes)…")
+    with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for chemin in sorted(dossier.rglob('*')):
+            if chemin.is_dir() or chemin.is_symlink():
+                continue
+            zf.write(chemin, (Path(dossier.name) / chemin.relative_to(dossier)).as_posix())
+    shutil.rmtree(dossier)
+    return archive
+
+
+def create_export(output_dir: Path | str | None = None,
+                  progress_callback=None,
+                  cible: str = CIBLE_WINDOWS) -> dict:
+    """
+    Crée l'archive d'export pour le système cible.
 
     Args:
         output_dir : dossier parent dans lequel créer l'export.
                      Par défaut : Bureau de l'utilisateur.
         progress_callback : callable(message: str) appelé à chaque étape.
+        cible : 'windows' (version portable, Python inclus) ou 'macos'.
 
     Returns:
-        {'success': bool, 'path': str, 'size_mb': float, 'error': str}
+        {'success': bool, 'path': str, 'size_mb': float, 'error': str, 'cible': str}
     """
+    dest = None
     try:
+        if cible not in CIBLES:
+            raise ValueError(f"Cible d'export inconnue : {cible}")
         if output_dir is None:
             output_dir = Path.home() / 'Desktop'
         output_dir = Path(output_dir)
 
         export_date = datetime.now().strftime('%Y%m%d_%H%M')
-        dest = output_dir / f'1001pieces_export_{export_date}'
-
+        dest = output_dir / f'1001pieces_export_{cible}_{export_date}'
         if dest.exists():
             shutil.rmtree(dest)
+        dest.with_suffix('.zip').unlink(missing_ok=True)
         dest.mkdir(parents=True)
+        date_lisible = datetime.now().strftime('%d/%m/%Y %H:%M')
 
-        # ── 1. Copie du code source ──────────────────────────────────────────
-        if progress_callback:
-            progress_callback("Copie du code source…")
+        # ── 1. Code, guide, réglages, fichiers de test ──────────────────────
+        _notifier(progress_callback, "Copie du code source…")
         nb_files = _copy_source(dest, progress_callback)
+        _write_export_config(dest)
+        nb_files += _copy_test_import_files(dest)
 
-        # ── 2. requirements_frozen.txt ───────────────────────────────────────
-        if progress_callback:
-            progress_callback("Génération de requirements_frozen.txt…")
-        frozen_req = _freeze_requirements(dest)
+        # ── 2. Base de données (instantané le plus récent) ──────────────────
+        _snapshot_database(dest, progress_callback)
 
-        # ── 3. Téléchargement des wheels ─────────────────────────────────────
-        wheels_dir = dest / 'wheels'
-        ok = _download_wheels(frozen_req, wheels_dir, progress_callback)
-        if not ok:
-            return {
-                'success': False,
-                'path': str(dest),
-                'size_mb': 0.0,
-                'error': "Échec du téléchargement des wheels pip. "
-                         "Vérifiez la connexion internet.",
-            }
+        # ── 3. Python / dépendances + lanceurs ──────────────────────────────
+        if cible == CIBLE_WINDOWS:
+            archive_py = _telecharger_python_windows(progress_callback)
+            python_dir = _preparer_python_windows(dest, archive_py)
+            _installer_dependances_windows(python_dir, progress_callback)
+            _ecrire_lanceurs_windows(dest)
+            _write_readme_windows(dest, date_lisible)
+        else:
+            _notifier(progress_callback, "Génération de requirements_frozen.txt…")
+            frozen_req = _freeze_requirements(dest)
+            if not _download_wheels(frozen_req, dest / 'wheels', progress_callback):
+                raise RuntimeError("Échec du téléchargement des wheels pip. "
+                                   "Vérifiez la connexion internet.")
+            _notifier(progress_callback,
+                      "Génération du script install.command et du lanceur .app…")
+            _write_install_script(dest)
+            _compile_app_launcher(dest, use_venv=True)
+            _write_readme(dest, date_lisible)
 
-        # ── 4. Script install + lanceur .app ─────────────────────────────────
-        if progress_callback:
-            progress_callback("Génération du script install.command et du lanceur .app…")
-        _write_install_script(dest)
-        _compile_app_launcher(dest, use_venv=True)
-        _write_readme(dest, datetime.now().strftime('%d/%m/%Y %H:%M'))
-
-        # ── 5. Calcul de la taille totale ────────────────────────────────────
-        total_bytes = sum(f.stat().st_size for f in dest.rglob('*') if f.is_file())
-        size_mb = total_bytes / (1024 * 1024)
-
-        if progress_callback:
-            progress_callback(f"Export terminé — {nb_files} fichiers, {size_mb:.0f} Mo")
+        # ── 4. Archive .zip ─────────────────────────────────────────────────
+        archive = _zipper(dest, progress_callback)
+        size_mb = archive.stat().st_size / (1024 * 1024)
+        _notifier(progress_callback, f"Export terminé — {nb_files} fichiers, {size_mb:.0f} Mo")
 
         return {
             'success': True,
-            'path': str(dest),
+            'path': str(archive),
             'size_mb': size_mb,
             'error': '',
+            'cible': cible,
         }
 
     except Exception as e:
+        # Pas de dossier à moitié rempli laissé derrière soi
+        if dest is not None and dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
         return {
             'success': False,
             'path': '',
             'size_mb': 0.0,
             'error': str(e),
+            'cible': cible,
         }
 
 
@@ -407,7 +758,7 @@ def create_export(output_dir: Path | str | None = None,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Exporter 1001pieces_autofill vers un dossier portable."
+        description="Exporter 1001pieces_autofill vers une archive portable."
     )
     parser.add_argument(
         '--output', '-o',
@@ -415,24 +766,36 @@ def main():
         default=None,
         help="Dossier parent de l'export (défaut : Bureau)"
     )
+    parser.add_argument(
+        '--cible', '-c',
+        choices=CIBLES,
+        default=CIBLE_WINDOWS,
+        help="Système du poste cible (défaut : windows)"
+    )
     args = parser.parse_args()
 
     def _print(msg):
         print(f"  {msg}")
 
-    print("\n=== Export 1001pieces_autofill ===\n")
+    print(f"\n=== Export 1001pieces_autofill ({args.cible}) ===\n")
     result = create_export(
         output_dir=args.output,
         progress_callback=_print,
+        cible=args.cible,
     )
 
     if result['success']:
         print(f"\n✅ Succès !")
-        print(f"   Dossier : {result['path']}")
+        print(f"   Archive : {result['path']}")
         print(f"   Taille  : {result['size_mb']:.0f} Mo")
         print(f"\n   Sur le poste cible :")
-        print(f"     bash install.sh   # une seule fois")
-        print(f"     bash launch.sh    # pour lancer\n")
+        if args.cible == CIBLE_WINDOWS:
+            print(f"     1. Dézipper l'archive")
+            print(f"     2. Double-clic sur 1001pieces_autofill.bat\n")
+        else:
+            print(f"     1. Dézipper l'archive")
+            print(f"     2. Double-clic sur install.command   (une seule fois)")
+            print(f"     3. Double-clic sur 1001pieces_autofill.app\n")
     else:
         print(f"\n❌ Échec : {result['error']}\n")
         sys.exit(1)
