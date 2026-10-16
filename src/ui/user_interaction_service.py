@@ -498,7 +498,7 @@ class UserInteractionService:
 
     @contextmanager
     def differer_affichage(self):
-        """Regrouper le rendu du panneau pendant une rafale d'entrées (v3.91.1).
+        """Regrouper le rendu du panneau pendant une rafale d'entrées (v3.91.2).
 
         Chaque `add_to_history` reconstruit le HTML des 100 entrées visibles puis
         le remet en page (`setHtml`, ~15 ms) : 1858 suggestions validées d'un coup

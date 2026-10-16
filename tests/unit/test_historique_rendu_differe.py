@@ -1,4 +1,4 @@
-"""Historique : rendu du panneau différé pendant une rafale d'entrées (v3.91.1).
+"""Historique : rendu du panneau différé pendant une rafale d'entrées (v3.91.2).
 
 1858 suggestions validées d'un coup : le vidage de l'historique groupé appelait
 `add_to_history` 1858 fois, et chaque appel remettait en page les 100 entrées du

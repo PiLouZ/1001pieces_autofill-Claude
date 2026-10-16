@@ -55,7 +55,7 @@ class TestRefChipsInput:
         w = RefChipsInput("aide")
         QTest.keyClicks(w.line_edit, "REF1 REF2 ")
         assert w.refs() == ["REF1", "REF2"]
-        assert w._flow.count() == 2
+        assert len(w._pastilles) == 2
         assert w.line_edit.text() == ""
 
     def test_texte_non_valide_compte_quand_meme(self, qapp):
@@ -310,3 +310,35 @@ class TestRefsHorsLot:
         d = derive([g], [], lot_refs={"B1", "B3"}, base_refs={"EN_BASE"})
         assert d.phantoms == {"NOUVELLE"}
         assert d.obsoletes == {"B1", "NOUVELLE", "EN_BASE"}
+
+
+class TestHauteurPastilles:
+    """v3.91.1 : en réel, dialogue à hauteur contrainte → cadre écrasé, pastilles
+    rognées et champ de saisie disparu. La hauteur suit désormais la disposition
+    et la politique verticale est fixe (incompressible)."""
+
+    def test_politique_verticale_fixe(self, qapp):
+        from PyQt5.QtWidgets import QSizePolicy
+        w = RefChipsInput()
+        assert w.sizePolicy().verticalPolicy() == QSizePolicy.Fixed
+
+    def test_une_ligne_puis_plusieurs(self, qapp):
+        w = RefChipsInput()
+        vide = w.heightForWidth(600)
+        w.add_refs("C00268319 482000023099")
+        une_ligne = w.heightForWidth(600)
+        assert une_ligne < vide + 10                  # pastilles + champ sur une ligne
+        w.add_refs(" ".join(f"REF{i:03d}" for i in range(40)))
+        assert w.heightForWidth(600) > 2 * vide       # plusieurs lignes
+        assert w.heightForWidth(300) > w.heightForWidth(600)
+
+    def test_pastilles_jamais_rognees(self, qapp):
+        w = RefChipsInput()
+        w.resize(600, 10)
+        w.add_refs(" ".join(f"REF{i:03d}" for i in range(40)))
+        w.show()
+        w.resize(600, w.heightForWidth(600))
+        for p in w._pastilles:
+            assert p.height() == p.sizeHint().height()
+            assert p.geometry().bottom() < w.height()
+        w.close()
