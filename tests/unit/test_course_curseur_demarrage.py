@@ -1,5 +1,5 @@
 """
-Course au démarrage entre l'import et les comptages différés (v3.88.2).
+Course au démarrage entre l'import et les comptages différés (v3.88.3).
 
 Constat (2026-10-15, simulation offscreen sur une copie de la base) : un import lancé
 juste après l'ouverture de la fenêtre a préchargé 0 appareil, ou ~32 000 sur 708 166,

@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.88.4] - 2026-10-16 (branche `fix/troisieme-colonne-mono-reference`)
+
+### Import : 3ᵉ colonne écrite de la même façon par les deux chemins
+
+- Chemin standard (< 50 lignes) : un appareil **mono-référence** déjà en base
+  (ref_modele seule ou réf. commerciale seule) ne recevait jamais la 3ᵉ colonne
+  de la ligne (autre réf. / notes) ; seule la correspondance stricte (les deux
+  références) l'écrivait. Le chemin batch, lui, l'écrit pour tout appareil
+  existant.
+- Doublons (même fichier ou fichier suivant) dont la 3ᵉ colonne diffère : le
+  chemin standard réécrivait la valeur à chaque occurrence (**dernière gagnante**),
+  le batch ne traite que la 1ʳᵉ (**première gagnante**). Aligné sur le batch.
+- Les trois recherches de `_insert_or_find_device` ne servent plus qu'à trouver
+  l'appareil ; un bloc commun écrit ensuite 3ᵉ colonne et Type/Fabricant vides,
+  à la 1ʳᵉ occurrence seulement.
+- Tests d'équivalence : la photo de la base inclut désormais other_ref/notes
+  (5 nouveaux cas, dont 4 en échec avant correctif).
+
+---
+
 ## [3.88.3] - 2026-10-16 (branche `fix/course-curseur-import-demarrage`)
 
 ### Import lancé dès l'ouverture : préchargement vide ou tronqué
