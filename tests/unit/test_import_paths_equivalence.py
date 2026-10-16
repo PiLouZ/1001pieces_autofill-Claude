@@ -53,10 +53,16 @@ def _etat_base(db_manager):
         "SELECT type, manufacturer, ref_modele, commercial_ref "
         "FROM appareils ORDER BY 1, 2, 3, 4"
     ) or []
+    # 3ᵉ colonne à part : les assertions existantes portent sur des quadruplets
+    troisieme = db_manager.execute_query(
+        "SELECT ref_modele, commercial_ref, COALESCE(other_ref, ''), COALESCE(notes, '') "
+        "FROM appareils ORDER BY 1, 2, 3, 4"
+    ) or []
     associations = db_manager.execute_query(
         "SELECT COUNT(*) FROM piece_associations"
     )[0][0]
-    return {'appareils': [tuple(a) for a in appareils], 'associations': associations}
+    return {'appareils': [tuple(a) for a in appareils], 'associations': associations,
+            'troisieme_colonne': [tuple(t) for t in troisieme]}
 
 
 def _executer(chemin: str, lots, config_surcharges=None, preexistants=(), details=None):
@@ -135,6 +141,10 @@ def _assert_equivalents(lots, config_surcharges=None, preexistants=(), details=N
     assert e_std['appareils'] == e_bat['appareils'], (
         f"Appareils en base divergents.\n"
         f"  standard = {e_std['appareils']}\n  batch    = {e_bat['appareils']}"
+    )
+    assert e_std['troisieme_colonne'] == e_bat['troisieme_colonne'], (
+        f"3ᵉ colonne (other_ref, notes) divergente.\n"
+        f"  standard = {e_std['troisieme_colonne']}\n  batch    = {e_bat['troisieme_colonne']}"
     )
     assert e_std['associations'] == e_bat['associations'], (
         f"Nombre d'associations divergent : "
@@ -392,3 +402,44 @@ class TestCompletionAppareilsExistants:
         _, etat = _assert_equivalents([lignes], preexistants=vides, details=details)
         assert len(details) == 20
         assert all(a[:2] == ('Aspirateur', 'Samsung') for a in etat['appareils'])
+
+
+class TestTroisiemeColonneAppareilsExistants:
+    """La 3ᵉ colonne (other_ref / notes) d'une ligne qui retrouve un appareil
+    existant doit être écrite de la même façon par les deux chemins, quelle que
+    soit la forme de l'appareil (complet ou mono-référence).
+
+    Colonnes en mode positionnel 3 champs : ref_modele, commercial_ref, 3ᵉ colonne.
+    """
+
+    def test_appareil_complet(self, qapp):
+        _, etat = _assert_equivalents(
+            [[['X1', 'CR1', 'AUTRE_1']]], {'third_column_choice': 'other_ref'},
+            preexistants=[('', '', 'X1', 'CR1')])
+        assert etat['troisieme_colonne'] == [('X1', 'CR1', 'AUTRE_1', '')]
+
+    def test_ref_modele_seule(self, qapp):
+        _, etat = _assert_equivalents(
+            [[['M1', '', 'AUTRE_M']]], {'third_column_choice': 'other_ref'},
+            preexistants=[('', '', 'M1', '')])
+        assert etat['troisieme_colonne'] == [('M1', '', 'AUTRE_M', '')]
+
+    def test_commercial_ref_seule(self, qapp):
+        _, etat = _assert_equivalents(
+            [[['', 'C1', 'une note']]], {'third_column_choice': 'notes'},
+            preexistants=[('', '', '', 'C1')])
+        assert etat['troisieme_colonne'] == [('', 'C1', '', 'une note')]
+
+    def test_doublon_inter_fichiers_valeur_differente(self, qapp):
+        """Deux fichiers, même appareil, 3ᵉ colonne différente."""
+        _assert_equivalents(
+            [[['X7', 'CR7', 'PREMIERE']], [['X7', 'CR7', 'SECONDE']]],
+            {'third_column_choice': 'other_ref'},
+            preexistants=[('', '', 'X7', 'CR7')])
+
+    def test_doublon_intra_fichier_valeur_differente(self, qapp):
+        """Un fichier, deux lignes du même appareil, 3ᵉ colonne différente."""
+        _assert_equivalents(
+            [[['X8', 'CR8', 'PREMIERE'], ['X8', 'CR8', 'SECONDE']]],
+            {'third_column_choice': 'other_ref'},
+            preexistants=[('', '', 'X8', 'CR8')])

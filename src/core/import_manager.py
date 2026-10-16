@@ -3943,8 +3943,10 @@ class ImportManager:
                                completer: bool = True) -> Optional[int]:
         """Insérer ou trouver un appareil existant.
 
-        Un appareil retrouvé reçoit le Type/Fabricant de la ligne là où il est vide
-        en base (`completer`), comme sur le chemin batch.
+        Un appareil retrouvé reçoit la 3ᵉ colonne (other_ref / notes) de la ligne et
+        son Type/Fabricant là où il est vide en base — seulement à la 1ʳᵉ occurrence
+        de la ligne (`completer`), comme sur le chemin batch : sur un doublon, la
+        première valeur l'emporte.
 
         La résolution reproduit exactement la clé composite du chemin batch
         (_find_in_cache) : une ligne complète ne correspond qu'à un appareil
@@ -3970,13 +3972,7 @@ class ImportManager:
             """
             results = self.db_manager.execute_query(search_query, [ref_modele, commercial_ref])
 
-            if results:
-                # Appareil trouvé, on le met à jour avec les nouvelles données si nécessaire
-                existing_id = results[0][0]
-                self._update_existing_device(existing_id, device_data)
-                if completer:
-                    self._completer_existant(existing_id, device_data)
-                return existing_id
+            existing_id = results[0][0] if results else None
 
             # Repli « ref_modele seule » — ne s'applique QUE si la ligne entrante est
             # elle-même partielle. Sans cette garde, une ligne COMPLÈTE se rattachait
@@ -3984,7 +3980,7 @@ class ImportManager:
             # 2 appareils au lieu de 3 sur le chemin standard, 3 sur le chemin batch
             # (divergence B mesurée en v3.69.1). La doctrine v3.66.1 — « un appareil
             # partiel ne correspond qu'à un autre appareil partiel » — est ainsi tenue.
-            if ref_modele and not commercial_ref:
+            if existing_id is None and ref_modele and not commercial_ref:
                 search_query_ref = """
                     SELECT id FROM appareils
                     WHERE ref_modele = ? AND ref_modele != ''
@@ -3993,9 +3989,7 @@ class ImportManager:
                 """
                 results_ref = self.db_manager.execute_query(search_query_ref, [ref_modele])
                 if results_ref:
-                    if completer:
-                        self._completer_existant(results_ref[0][0], device_data)
-                    return results_ref[0][0]
+                    existing_id = results_ref[0][0]
 
             # Cas miroir : seule commercial_ref correspond (v3.65.1).
             #
@@ -4008,7 +4002,7 @@ class ImportManager:
             # Garde symétrique du repli ci-dessus : les deux sont désormais
             # mutuellement exclusifs (l'un exige commercial_ref vide, l'autre
             # ref_modele vide), il n'y a donc plus de priorité à arbitrer.
-            if commercial_ref and not ref_modele:
+            if existing_id is None and commercial_ref and not ref_modele:
                 search_query_com = """
                     SELECT id FROM appareils
                     WHERE commercial_ref = ? AND commercial_ref != ''
@@ -4017,9 +4011,18 @@ class ImportManager:
                 """
                 results_com = self.db_manager.execute_query(search_query_com, [commercial_ref])
                 if results_com:
-                    if completer:
-                        self._completer_existant(results_com[0][0], device_data)
-                    return results_com[0][0]
+                    existing_id = results_com[0][0]
+
+            # Appareil retrouvé, quelle que soit la recherche qui l'a trouvé (v3.88.3).
+            # Jusqu'en v3.88.2, seule la recherche stricte écrivait la 3ᵉ colonne : les
+            # replis mono-référence la perdaient (le batch l'écrit pour tout appareil
+            # existant), et un doublon la réécrivait — dernière valeur gagnante contre
+            # première sur le batch, qui ne traite pas les doublons.
+            if existing_id is not None:
+                if completer:
+                    self._update_existing_device(existing_id, device_data)
+                    self._completer_existant(existing_id, device_data)
+                return existing_id
 
         # Créer un nouvel appareil.
         # Champs absents complétés à '' — exactement ce que fait _batch_insert_devices
