@@ -130,6 +130,27 @@ class StyleManager:
         "QPushButton:hover { background-color: #e55a2b; }"
     )
 
+    # « Auto-complétés à vérifier (N) | Tout valider » (v3.89.2) : deux moitiés
+    # accolées, même géométrie que le cluster ci-dessus (même hauteur dans la barre
+    # d'état). Bleu = consulter (couleur principale), vert = valider (comme les
+    # actions finales des fenêtres) : deux gestes, deux couleurs.
+    AUTOCOMPLETES_OUVRIR_BTN = (
+        "QPushButton { background-color: #0d6efd; color: white; font-weight: bold;"
+        " border: 2px solid #0d6efd; border-top-left-radius: 4px; border-bottom-left-radius: 4px;"
+        " border-top-right-radius: 0px; border-bottom-right-radius: 0px;"
+        " padding: 3px 9px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #0b5ed7; border-color: #0b5ed7; }"
+    )
+    AUTOCOMPLETES_VALIDER_BTN = (
+        "QPushButton { background-color: #198754; color: white; font-weight: bold;"
+        " border: 2px solid #198754; border-left: 1px solid white;"
+        " border-top-right-radius: 4px; border-bottom-right-radius: 4px;"
+        " border-top-left-radius: 0px; border-bottom-left-radius: 0px;"
+        " padding: 3px 9px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #157347; border-color: #157347;"
+        " border-left: 1px solid white; }"
+    )
+
     # Flèches ▲/▼ qui encadrent « Lignes à traiter » : même bordure 2px et même
     # rayon que les boutons du cluster → même hauteur, alignées sans retouche.
     HEALTH_NAV_BTN = (

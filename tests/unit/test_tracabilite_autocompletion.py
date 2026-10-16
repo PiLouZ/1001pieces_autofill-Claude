@@ -246,3 +246,15 @@ def test_tri_par_colonne_fenetre_suggestions(qapp):
     fenetre._group_combo.setCurrentIndex(2)              # regrouper : le tri survit
     fenetre._group_combo.setCurrentIndex(0)
     assert arbre.sortColumn() == COL_SCORE
+
+
+# ─── « Tout valider » (v3.89.2) ─────────────────────────────────────────────
+
+def test_repartition_par_niveau_de_confiance():
+    def ligne(i, accord, total):
+        return (i, f'R{i}', '', 'Four', 'Bosch', 'type', 'Four', 'S', accord, total, TS)
+    entrees = regrouper_traces([ligne(1, 3, 3), ligne(2, 5, 5), ligne(3, 1, 1),
+                                ligne(4, 1, 2), ligne(5, None, None)])
+    assert MainWindow._repartition_confiance(entrees) == {
+        'unanimes': 2, 'source_unique': 1, 'partagees': 1, 'inconnues': 1}
+

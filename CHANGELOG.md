@@ -4,6 +4,22 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.89.2] - 2026-10-16 (branche `feature/validation-rapide-autocompletes`)
+
+### « Tout valider » accolé au bouton des auto-complétés
+
+- Le bouton de la barre d'état devient un groupe de deux moitiés accolées :
+  **« Auto-complétés à vérifier (N) »** en bleu (consulter : ouvre la fenêtre) et
+  **« Tout valider »** en vert (valider, comme les actions finales des fenêtres).
+  Mêmes mesures que les boutons « Lignes à traiter » ; masqué tant que N = 0.
+- « Tout valider » demande une **confirmation non bloquante** qui rappelle la
+  confiance des sources (unanimes, source unique, partagées, inconnue) : une
+  validation en masse ne s'annule pas. Choix : « Voir la liste » (ouvre la
+  fenêtre), « Annuler », « Tout valider ». L'entrée d'historique indique
+  l'origine (« bouton « Tout valider » »).
+
+---
+
 ## [3.89.1] - 2026-10-16 (branche `feature/cases-espace-precochees`)
 
 ### Espace coche/décoche dans toutes les fenêtres à cases

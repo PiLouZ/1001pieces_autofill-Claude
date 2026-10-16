@@ -699,17 +699,28 @@ class MainWindow(QMainWindow):
         self.statusbar.setFixedHeight(self.incomplete_nav_widget.content_height() + 6)
         self._wire_incomplete_nav()
 
-        # « Auto-complétés à vérifier (N) » juste après, masqué tant que N = 0
-        from .qt_imports import QPushButton
+        # « Auto-complétés à vérifier (N) | Tout valider » juste après, deux moitiés
+        # accolées dans un même conteneur, masqué tant que N = 0
+        from .qt_imports import QPushButton, QWidget, QHBoxLayout
         import qtawesome as qta
+        self.autocompletes_groupe = QWidget()
+        groupe = QHBoxLayout(self.autocompletes_groupe)
+        groupe.setContentsMargins(0, 0, 0, 0)
+        groupe.setSpacing(0)
         self.autocompletes_btn = QPushButton()
-        self.autocompletes_btn.setIcon(qta.icon('fa5s.magic', color='#555555'))
-        self.autocompletes_btn.setStyleSheet(StyleManager.HEALTH_BTN_NEUTRAL)
+        self.autocompletes_btn.setIcon(qta.icon('fa5s.magic', color='white'))
+        self.autocompletes_btn.setStyleSheet(StyleManager.AUTOCOMPLETES_OUVRIR_BTN)
         self.autocompletes_btn.setToolTip(
             "Type ou Fabricant écrits par l'auto-complétion d'un import, à contrôler")
         self.autocompletes_btn.clicked.connect(self._open_autocompletion_review_dialog)
-        self.autocompletes_btn.setVisible(False)
-        self.statusbar.insertWidget(1, self.autocompletes_btn)
+        groupe.addWidget(self.autocompletes_btn)
+        self.autocompletes_valider_btn = QPushButton("Tout valider")
+        self.autocompletes_valider_btn.setIcon(qta.icon('fa5s.check-double', color='white'))
+        self.autocompletes_valider_btn.setStyleSheet(StyleManager.AUTOCOMPLETES_VALIDER_BTN)
+        self.autocompletes_valider_btn.clicked.connect(self._confirmer_tout_valider_autocompletes)
+        groupe.addWidget(self.autocompletes_valider_btn)
+        self.autocompletes_groupe.setVisible(False)
+        self.statusbar.insertWidget(1, self.autocompletes_groupe)
         self._rafraichir_bouton_autocompletes()
         
         self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
@@ -1124,17 +1135,96 @@ class MainWindow(QMainWindow):
             model.set_autocompletes(par_appareil)
         n = len(par_appareil)
         bouton.setText(f"Auto-complétés à vérifier ({n})")
-        bouton.setVisible(n > 0)
+        valider = getattr(self, 'autocompletes_valider_btn', None)
+        if valider is not None:
+            valider.setToolTip(f"Marquer les {pluralize(n, 'appareil')} comme vérifiés "
+                               f"sans ouvrir la fenêtre (une confirmation est demandée)")
+        groupe = getattr(self, 'autocompletes_groupe', None)
+        (groupe or bouton).setVisible(n > 0)
 
-    def _marquer_lignes_verifiees(self, appareil_ids):
-        """Clic droit « Marquer comme vérifié » : retire les traces des lignes
-        sélectionnées, sans toucher à leurs valeurs."""
+    @staticmethod
+    def _repartition_confiance(entrees):
+        """Compte des appareils à vérifier par niveau de confiance (champ le
+        moins sûr de chacun), pour la confirmation de « Tout valider ».
+
+        Returns: {'unanimes', 'source_unique', 'partagees', 'inconnues'}.
+        """
+        from .autocompletion_review_dialog import confiance
+        compte = {'unanimes': 0, 'source_unique': 0, 'partagees': 0, 'inconnues': 0}
+        for entree in entrees:
+            accord, total = confiance(entree)
+            if accord is None:
+                compte['inconnues'] += 1
+            elif accord < total:
+                compte['partagees'] += 1
+            elif total == 1:
+                compte['source_unique'] += 1
+            else:
+                compte['unanimes'] += 1
+        return compte
+
+    def _confirmer_tout_valider_autocompletes(self):
+        """« Tout valider » : confirmation non bloquante (show() + callback), qui
+        rappelle la confiance des sources — une validation en masse ne s'annule pas."""
+        from .autocompletion_review_dialog import regrouper_traces
+        from .qt_imports import QMessageBox
+        entrees = regrouper_traces(self.db_manager.lire_autocompletions_a_verifier())
+        if not entrees:
+            self._rafraichir_bouton_autocompletes()
+            return
+        n = len(entrees)
+        compte = self._repartition_confiance(entrees)
+        lignes = []
+        if compte['unanimes']:
+            lignes.append(f"{compte['unanimes']} sur sources unanimes (2 sources ou plus).")
+        doutes = [(compte['source_unique'], "sur une seule source"),
+                  (compte['partagees'], "sur des sources partagées"),
+                  (compte['inconnues'], "de confiance inconnue")]
+        for nombre, libelle in doutes:
+            if nombre:
+                lignes.append(f"<span style='color:#b06a00;'>{nombre} {libelle} : "
+                              f"à regarder en cas de doute.</span>")
+
+        boite = QMessageBox(self)
+        boite.setIcon(QMessageBox.Question)
+        boite.setWindowTitle("Tout valider")
+        boite.setTextFormat(Qt.RichText)
+        boite.setText(f"<b>Marquer les {pluralize(n, 'appareil')} auto-complété"
+                      f"{'s' if n > 1 else ''} comme vérifiés ?</b>")
+        boite.setInformativeText("<br>".join(lignes))
+        voir = boite.addButton("Voir la liste", QMessageBox.ActionRole)
+        boite.addButton("Annuler", QMessageBox.RejectRole)
+        valider = boite.addButton("Tout valider", QMessageBox.AcceptRole)
+        valider.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
+        boite.setDefaultButton(valider)
+        # QMessageBox ignore setMinimumWidth : une entretoise dans sa grille évite
+        # que la question se coupe au milieu de « auto-complétés »
+        from PyQt5.QtWidgets import QSpacerItem, QSizePolicy
+        grille = boite.layout()
+        grille.addItem(QSpacerItem(440, 0, QSizePolicy.Minimum, QSizePolicy.Expanding),
+                       grille.rowCount(), 0, 1, grille.columnCount())
+        ids = [e['id'] for e in entrees]
+
+        def _on_choix(bouton):
+            if bouton is valider:
+                self._marquer_lignes_verifiees(ids, origine="bouton « Tout valider »")
+            elif bouton is voir:
+                self._open_autocompletion_review_dialog()
+
+        boite.buttonClicked.connect(_on_choix)
+        boite.setWindowModality(Qt.WindowModal)
+        self._confirmation_tout_valider = boite   # garder une référence (show non bloquant)
+        boite.show()
+
+    def _marquer_lignes_verifiees(self, appareil_ids, origine="depuis le tableau"):
+        """Retire les traces des appareils donnés, sans toucher à leurs valeurs
+        (clic droit « Marquer comme vérifié », bouton « Tout valider »)."""
         retirees = self.db_manager.marquer_autocompletions_verifiees(appareil_ids)
         self._rafraichir_bouton_autocompletes()
         if retirees:
             self.user_interaction_service.add_to_history(
                 f"Auto-complétés vérifiés : {pluralize(len(appareil_ids), 'appareil')} "
-                f"(depuis le tableau).")
+                f"({origine}).")
 
     def _open_autocompletion_review_dialog(self):
         """Fenêtre « Auto-complétés à vérifier » (show() + callback).
