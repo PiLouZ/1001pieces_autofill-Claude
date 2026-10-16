@@ -4,6 +4,51 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.89.0] - 2026-10-16 (branche `feature/tracabilite-autocompletion`)
+
+### Auto-complétions traçables et vérifiables
+
+- Chaque Type ou Fabricant écrit par l'**auto-complétion** d'un import (et non lu
+  dans le fichier) laisse une trace en base, table `appareils_autocompletes` :
+  valeur, appareil source, **accord des sources** (« 2/3 » = 2 appareils sur 3
+  de même référence donnaient cette valeur) et date de l'import. Appareils créés
+  comme appareils existants complétés (v3.88.2), sur les deux chemins d'import.
+- Nouvelle fenêtre **« Auto-complétés à vérifier »**, sur le modèle de « Valider
+  les suggestions » : triée du moins sûr au plus sûr (confiance inconnue, sources
+  partagées, source unique, puis unanimité), valeurs auto-complétées en italique
+  avec leur source en infobulle. Cocher = vérifié ; double-clic sur Type/Marque =
+  corriger via la fenêtre Cmd+D (écriture batchée et historisée, provenance
+  « vérification des auto-complétés »).
+- Ouverte par le bouton **« Auto-complétés à vérifier (N) »** de la barre d'état
+  (masqué à 0) et par le lien « Vérifier les N appareils auto-complétés » sous
+  l'entrée d'historique de l'import.
+- La trace disparaît d'elle-même, par **déclencheur SQL**, dès que le champ
+  change par n'importe quel chemin (saisie, suggestion, Cmd+D, fusion) ou que
+  l'appareil est supprimé. Une simple réécriture de casse (« BOSCH » → « Bosch »)
+  ne vaut pas vérification.
+- Un appareil auto-complété **non encore vérifié ne sert plus de source** à
+  l'auto-complétion : sa valeur n'est qu'une déduction, et le chemin standard,
+  qui écrit au fil de l'eau, la recomptait aussitôt (confiance « 3/3 » au lieu
+  de « 1/1 »). Les ex aequo sont désormais départagés par ordre alphabétique
+  (choix reproductible). Aucun effet sur la base actuelle, qui n'a aucune trace.
+- Les appareils auto-complétés avant cette version ne sont pas identifiables :
+  aucune information ne permet de les reconstituer.
+
+### Vérification depuis le tableau principal + tri des fenêtres
+
+- Dans le **tableau principal**, les valeurs auto-complétées non vérifiées sont
+  en **italique**, avec en infobulle leur source et leur confiance. On les
+  vérifie dans sa routine habituelle (filtre par pièce, tri, poignée de recopie).
+- **Clic droit → « Marquer comme vérifié »** sur les lignes sélectionnées. Toute
+  correction (saisie, poignée, Cmd+D, suggestion) retire aussi l'italique, tout
+  de suite à l'écran et en base par le déclencheur.
+- **Tri par colonne** au clic sur l'en-tête dans « Valider les suggestions » et
+  « Auto-complétés à vérifier » : score et confiance triés par valeur (« 100 % »
+  avant « 92 % »), date par ordre chronologique, fiabilité par niveau. L'ordre
+  d'ouverture reste celui d'avant tant qu'on n'a pas cliqué.
+
+---
+
 ## [3.88.4] - 2026-10-16 (branche `fix/troisieme-colonne-mono-reference`)
 
 ### Import : 3ᵉ colonne écrite de la même façon par les deux chemins

@@ -698,6 +698,19 @@ class MainWindow(QMainWindow):
         self.statusbar.add_leading_widget(self.incomplete_nav_widget)
         self.statusbar.setFixedHeight(self.incomplete_nav_widget.content_height() + 6)
         self._wire_incomplete_nav()
+
+        # « Auto-complétés à vérifier (N) » juste après, masqué tant que N = 0
+        from .qt_imports import QPushButton
+        import qtawesome as qta
+        self.autocompletes_btn = QPushButton()
+        self.autocompletes_btn.setIcon(qta.icon('fa5s.magic', color='#555555'))
+        self.autocompletes_btn.setStyleSheet(StyleManager.HEALTH_BTN_NEUTRAL)
+        self.autocompletes_btn.setToolTip(
+            "Type ou Fabricant écrits par l'auto-complétion d'un import, à contrôler")
+        self.autocompletes_btn.clicked.connect(self._open_autocompletion_review_dialog)
+        self.autocompletes_btn.setVisible(False)
+        self.statusbar.insertWidget(1, self.autocompletes_btn)
+        self._rafraichir_bouton_autocompletes()
         
         self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
         self.statusbar.addPermanentWidget(self.save_indicator)
@@ -1090,6 +1103,72 @@ class MainWindow(QMainWindow):
             self, snapshot, on_validate=_on_validate, value_picker=_pick_value
         )
         self._suggestion_validation_dialog.show()
+
+    def _rafraichir_bouton_autocompletes(self):
+        """Compteur du bouton « Auto-complétés à vérifier (N) » et italique des
+        cellules concernées dans le tableau, relus dans la table de trace (petite :
+        quelques centaines de lignes au plus après un gros import)."""
+        bouton = getattr(self, 'autocompletes_btn', None)
+        lire = getattr(getattr(self, 'db_manager', None),
+                       'lire_autocompletions_a_verifier', None)
+        if bouton is None or lire is None:
+            return
+        lignes = lire()
+        if lignes is None:   # lecture échouée (journalisée) : on garde l'affichage
+            return
+        par_appareil = {}
+        for (appareil_id, _rm, _cr, _t, _f, champ, _v, source, accord, total, _ts) in lignes:
+            par_appareil.setdefault(appareil_id, {})[champ] = (source, accord, total)
+        model = getattr(getattr(self, 'table_controller', None), 'model', None)
+        if model is not None and hasattr(model, 'set_autocompletes'):
+            model.set_autocompletes(par_appareil)
+        n = len(par_appareil)
+        bouton.setText(f"Auto-complétés à vérifier ({n})")
+        bouton.setVisible(n > 0)
+
+    def _marquer_lignes_verifiees(self, appareil_ids):
+        """Clic droit « Marquer comme vérifié » : retire les traces des lignes
+        sélectionnées, sans toucher à leurs valeurs."""
+        retirees = self.db_manager.marquer_autocompletions_verifiees(appareil_ids)
+        self._rafraichir_bouton_autocompletes()
+        if retirees:
+            self.user_interaction_service.add_to_history(
+                f"Auto-complétés vérifiés : {pluralize(len(appareil_ids), 'appareil')} "
+                f"(depuis le tableau).")
+
+    def _open_autocompletion_review_dialog(self):
+        """Fenêtre « Auto-complétés à vérifier » (show() + callback).
+
+        Les corrections passent par `_apply_suggestion_decisions` (même chemin batché
+        et historisé que les suggestions) : le déclencheur SQL retire la trace du
+        champ modifié, puis les appareils cochés sont marqués vérifiés.
+        """
+        from .autocompletion_review_dialog import AutocompletionReviewDialog, regrouper_traces
+        entrees = regrouper_traces(self.db_manager.lire_autocompletions_a_verifier())
+        self._rafraichir_bouton_autocompletes()
+        if not entrees:
+            self.user_interaction_service.add_to_history(
+                "Auto-complétés à vérifier : aucun appareil en attente.")
+            return
+
+        def _on_validate(verifies, corrections):
+            provenance = "vérification des auto-complétés"
+            decisions = [(appareil_id, dict(champs, provenance=provenance))
+                         for appareil_id, champs in corrections]
+            corriges = self._apply_suggestion_decisions(decisions) if decisions else 0
+            self.db_manager.marquer_autocompletions_verifiees(verifies)
+            self._rafraichir_bouton_autocompletes()
+            detail = f", dont {pluralize(corriges, 'corrigé')}" if corriges else ""
+            self.user_interaction_service.add_to_history(
+                f"Auto-complétés vérifiés : {pluralize(len(verifies), 'appareil')}{detail}.")
+
+        def _pick_value(db_field, current_value, candidates):
+            return self.autocompletion_service.show_field_values_dialog(
+                db_field, current_value, suggestions=candidates)
+
+        self._autocompletion_review_dialog = AutocompletionReviewDialog(
+            self, entrees, on_validate=_on_validate, value_picker=_pick_value)
+        self._autocompletion_review_dialog.show()
 
     @staticmethod
     def _provenance_suggestion(candidate):
@@ -1546,6 +1625,9 @@ class MainWindow(QMainWindow):
             ref = unquote(url_str[len(UIConfig.LIEN_HISTORIQUE_LIBELLE):])
             self.piece_management_service.completer_libelle(ref)
             return
+        if url_str.startswith(UIConfig.LIEN_HISTORIQUE_AUTOCOMPLETES):
+            self._open_autocompletion_review_dialog()
+            return
         self.user_interaction_service.show_error(f"Lien non reconnu: {url_str}")
 
     def _handle_history_link(self, url):
@@ -1909,6 +1991,19 @@ class MainWindow(QMainWindow):
                                  for ligne in CasseNormalisationService.lignes(results[cle]))
         return texte
 
+    @staticmethod
+    def _lien_autocompletes(results):
+        """Argument `lien` de add_to_history (« Vérifier les N auto-complétés »),
+        sous forme de kwargs : vide s'il n'y a rien à vérifier, l'appel reste alors
+        celui d'avant la v3.89.0."""
+        n = results.get('autocompletes_a_verifier') if isinstance(results, dict) else 0
+        if not n:
+            return {}
+        from src.core.constants import UIConfig
+        return {'lien': (UIConfig.LIEN_HISTORIQUE_AUTOCOMPLETES,
+                         f"Vérifier les {pluralize(n, 'appareil')} "
+                         f"auto-complété{'s' if n > 1 else ''}")}
+
     # Au-delà, le bloc d'historique résume au lieu de lister
     MAX_LIGNES_COMPLETIONS = 20
 
@@ -1961,6 +2056,8 @@ class MainWindow(QMainWindow):
         if results.get('marques_alignees') or results.get('types_alignes'):
             summary += self._lignes_alignements(results, retrait="")
         summary += MainWindow._lignes_completions(results, retrait="")
+        if results.get('autocompletes_a_verifier'):
+            summary += f"==> Auto-complétés à vérifier : {results['autocompletes_a_verifier']}\n"
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"[!] {alerte}\n"
@@ -2030,7 +2127,8 @@ class MainWindow(QMainWindow):
         })
         
         # Ajouter à l'historique visible avec le format console
-        self.user_interaction_service.add_to_history(console_summary)
+        self.user_interaction_service.add_to_history(
+            console_summary, **MainWindow._lien_autocompletes(results))
     
     def _on_import_complete(self, results):
         """
@@ -2041,6 +2139,9 @@ class MainWindow(QMainWindow):
         """
         if results:
             self._show_import_results_new(results)
+            # Compteur du bouton « Auto-complétés à vérifier » : sans attendre le
+            # rafraîchissement différé des boutons de la barre d'état
+            self._rafraichir_bouton_autocompletes()
 
             # Réinitialiser tous les champs de recherche après import
             if hasattr(self, 'search_input') and self.search_input:
@@ -2138,6 +2239,8 @@ class MainWindow(QMainWindow):
         # Appareils existants complétés : avant l'alerte, pour la même raison.
         # Appel qualifié par la classe : les tests passent une fenêtre factice.
         summary += MainWindow._lignes_completions(results, retrait="     ")
+        if results.get('autocompletes_a_verifier'):
+            summary += f"     ==> Auto-complétés à vérifier : {results['autocompletes_a_verifier']}\n"
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"     [!] {alerte}\n"
@@ -2170,7 +2273,8 @@ class MainWindow(QMainWindow):
 
         # Ajouter SEULEMENT à l'historique (timestamp ajouté automatiquement)
         duration_ms = results.get('processing_time_ms')
-        self.user_interaction_service.add_to_history(summary, duration_ms=duration_ms)
+        self.user_interaction_service.add_to_history(
+            summary, duration_ms=duration_ms, **MainWindow._lien_autocompletes(results))
 
     
     def _open_pieces_manager(self):
@@ -2188,6 +2292,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'incomplete_button_service'):
             # Programmer une mise à jour différée pour éviter les appels répétés
             self.incomplete_button_service.schedule_update()
+        self._rafraichir_bouton_autocompletes()
 
     def _toggle_incomplete_filter(self, checked: bool):
         """Basculer le filtre pour afficher seulement les lignes incomplètes"""
@@ -2871,6 +2976,18 @@ class MainWindow(QMainWindow):
                 lambda checked=False, rows=list(selected_rows): self._suggest_similarity_for_rows(rows)
             )
             context_menu.addAction(suggest_action)
+
+        # — Auto-complétés à vérifier (cellules en italique) ———————————————
+        if hasattr(mdl, 'ids_autocompletes'):
+            a_verifier = mdl.ids_autocompletes(
+                [i for i in (mdl.get_db_id(r) for r in selected_rows) if i is not None])
+            if a_verifier:
+                libelle = ("Marquer comme vérifié" if len(a_verifier) == 1
+                           else f"Marquer comme vérifiés ({len(a_verifier)} appareils)")
+                verifier_action = QAction(libelle, self)
+                verifier_action.triggered.connect(
+                    lambda checked=False, ids=a_verifier: self._marquer_lignes_verifiees(ids))
+                context_menu.addAction(verifier_action)
 
         context_menu.addSeparator()
 
