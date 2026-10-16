@@ -90,6 +90,7 @@ class GroupedHistoryService(QObject):
         # complet de la table (O(lignes x colonnes)) pour chaque appareil flushé,
         # ce qui devenait O(n²) lors d'une édition en masse (ex: 6615 cellules)
         self._row_index_cache = self._build_row_index()
+        self._completer_references_depuis_base()
 
         # Panneau rendu une seule fois pour tout le lot (v3.91.2) : sinon une
         # remise en page complète par appareil (1858 suggestions → ~30 à 55 s gelées)
@@ -109,17 +110,49 @@ class GroupedHistoryService(QObject):
         self.pending_modifications.clear()
 
     def _build_row_index(self) -> Dict[int, int]:
-        """Construire un index {db_id: row} à partir du modèle affiché"""
+        """Construire un index {db_id: row} sur toutes les lignes CHARGÉES du modèle.
+
+        Avec le défilement virtuel, `table.rowCount()` ne compte que les lignes
+        affichées (FETCH_INITIAL) : les appareils chargés au-delà n'étaient pas
+        trouvés et leur entrée d'historique ne portait que l'id (v3.91.3).
+        """
         index: Dict[int, int] = {}
         if hasattr(self.main_window, 'table') and self.main_window.table:
             table = self.main_window.table
             model = table.model() if hasattr(table, 'model') and callable(table.model) else None
             if model and hasattr(model, 'get_db_id'):
-                for row in range(table.rowCount()):
+                nb_lignes = (model.loaded_record_count()
+                             if hasattr(model, 'loaded_record_count') else table.rowCount())
+                for row in range(nb_lignes):
                     db_id = model.get_db_id(row)
                     if db_id is not None:
                         index[int(db_id)] = row
         return index
+
+    def _completer_references_depuis_base(self):
+        """Libellé des appareils absents du tableau et sans référence fournie,
+        relu en base en une seule lecture (repli sur l'id s'ils ont disparu)."""
+        manquants = [db_id for db_id, data in self.pending_modifications.items()
+                     if not data.get('reference') and db_id not in self._row_index_cache]
+        db_manager = getattr(self.main_window, 'db_manager', None)
+        if not manquants or db_manager is None:
+            return
+        try:
+            lus = db_manager.lire_appareils_par_id(manquants)
+        except Exception as e:
+            app_logger.warning(f"Libellés d'historique non relus en base : {e}")
+            return
+        if not isinstance(lus, dict):
+            return
+        for db_id in manquants:
+            valeurs = lus.get(db_id)
+            if not isinstance(valeurs, tuple) or len(valeurs) < 4:
+                continue
+            # Même libellé que pour une ligne affichée : « réf. modèle - réf. commerciale »
+            reference = " - ".join(r.strip() for r in (valeurs[2] or '', valeurs[3] or '')
+                                   if r.strip())
+            if reference:
+                self.pending_modifications[db_id]['reference'] = reference
 
     def _flush_device_modifications(self, db_id: int, data: Dict):
         """Flusher les modifications d'un appareil spécifique"""
@@ -181,18 +214,33 @@ class GroupedHistoryService(QObject):
             # Chercher dans la table affichée pour trouver la ligne correspondante
             if hasattr(self.main_window, 'table') and self.main_window.table:
                 table = self.main_window.table
+                model = table.model() if hasattr(table, 'model') and callable(table.model) else None
+                # Lecture directe du modèle quand il le permet : `table.item()` renvoie
+                # None au-delà des lignes affichées par le défilement virtuel
+                lecture_directe = model is not None and hasattr(model, 'value_at')
+
+                def cellule(row, col):
+                    if lecture_directe:
+                        return model.value_at(row, col).strip()
+                    item = table.item(row, col)
+                    return item.text().strip() if item else ""
 
                 # Utiliser l'index pré-calculé (flush en masse) si disponible,
-                # sinon balayer la table (cas d'un flush isolé, ex: force_flush_device)
+                # sinon chercher la ligne (cas d'un flush isolé, ex: force_flush_device)
                 row_index_cache = getattr(self, '_row_index_cache', None)
+                ligne_connue = True   # ligne déjà identifiée par son db_id
                 if row_index_cache is not None:
                     rows_to_check = [row_index_cache[db_id]] if db_id in row_index_cache else []
+                elif lecture_directe and hasattr(model, 'find_row_by_db_id'):
+                    row = model.find_row_by_db_id(db_id)
+                    rows_to_check = [row] if row is not None else []
                 else:
                     rows_to_check = range(table.rowCount())
+                    ligne_connue = False
 
                 for row in rows_to_check:
                     # Vérifier si cette ligne correspond au db_id en cherchant dans toutes les colonnes
-                    found_row = row_index_cache is not None
+                    found_row = ligne_connue
                     if not found_row:
                         for col in range(table.columnCount()):
                             item = table.item(row, col)
@@ -202,11 +250,8 @@ class GroupedHistoryService(QObject):
 
                     if found_row:
                         # Récupérer Référence Modèle et Référence Commerciale
-                        ref_modele_item = table.item(row, 2)
-                        commercial_ref_item = table.item(row, 3)
-
-                        ref_modele = ref_modele_item.text().strip() if ref_modele_item else ""
-                        commercial_ref = commercial_ref_item.text().strip() if commercial_ref_item else ""
+                        ref_modele = cellule(row, 2)
+                        commercial_ref = cellule(row, 3)
 
                         # Combiner les références avec " - "
                         if ref_modele and commercial_ref:
@@ -217,15 +262,13 @@ class GroupedHistoryService(QObject):
                             return commercial_ref
 
                         # Fallback: Autre Référence (colonne 4)
-                        other_ref_item = table.item(row, 4)
-                        if other_ref_item and other_ref_item.text().strip():
-                            return other_ref_item.text().strip()
+                        other_ref = cellule(row, 4)
+                        if other_ref:
+                            return other_ref
 
                         # Fallback final: Type + Fabricant
-                        type_item = table.item(row, 0)
-                        fabricant_item = table.item(row, 1)
-                        type_text = type_item.text().strip() if type_item else ""
-                        fabricant_text = fabricant_item.text().strip() if fabricant_item else ""
+                        type_text = cellule(row, 0)
+                        fabricant_text = cellule(row, 1)
 
                         if type_text and fabricant_text:
                             return f"{type_text} {fabricant_text}"
