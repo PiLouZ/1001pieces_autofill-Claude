@@ -107,44 +107,83 @@ def _lire_errors_log(dest: Path) -> str:
     return chemin.read_text(encoding='utf-8', errors='replace') if chemin.exists() else ''
 
 
-def demarrer(dest: Path, duree: int) -> int:
-    """Lance l'application comme les deux lanceurs .bat, vérifie errors.log.
+def _pids(image: str) -> set:
+    """PID des processus Windows de ce nom (tasklist, sans dépendance)."""
+    sortie = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {image}', '/FO', 'CSV', '/NH'],
+                            capture_output=True, text=True).stdout
+    return {int(l.split('","')[1]) for l in sortie.splitlines() if l.startswith('"')}
 
-    - pythonw.exe : ce que lance 1001pieces_autofill.bat (aucune console) ;
-    - python.exe + PYTHONUTF8=1 : ce que lance la version « console », dont on
-      garde la sortie pour le diagnostic.
+
+def _tuer(pid: int):
+    subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], capture_output=True)
+
+
+def _verifier_errors_log(dest: Path) -> bool:
+    erreurs = _lire_errors_log(dest)
+    if erreurs.strip():
+        print(f"ÉCHEC : data\\logs\\errors.log n'est pas vide :\n{erreurs[-6000:]}")
+        return False
+    print("OK : data\\logs\\errors.log vide")
+    return True
+
+
+def demarrer(dest: Path, duree: int) -> int:
+    """Lance l'application par ses deux VRAIS lanceurs .bat, vérifie errors.log.
+
+    - 1001pieces_autofill_console.bat (python.exe, chcp 65001, PYTHONUTF8) :
+      sortie conservée pour le diagnostic ;
+    - 1001pieces_autofill.bat (start pythonw.exe), lancé dans une console
+      neuve comme un double-clic depuis l'Explorateur : pythonw n'hérite
+      alors d'aucune sortie utilisable (sys.stdout vaut None). Rediriger sa
+      sortie vers un fichier fausserait l'essai : les print() à émoji de
+      run.py échoueraient en cp1252, ce qui n'arrive pas en vrai.
     L'application doit être encore en vie après `duree` secondes.
     """
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen')
-    env.pop('AUTOFILL_LOG_DIR', None)
-    python = dest / 'python'
+    for variable in ('AUTOFILL_LOG_DIR', 'PYTHONIOENCODING', 'PYTHONUTF8'):
+        env.pop(variable, None)
     echecs = 0
-    for nom, exe, extra in (('pythonw (lanceur principal)', python / 'pythonw.exe', {}),
-                            ('python (lanceur console)', python / 'python.exe',
-                             {'PYTHONUTF8': '1'})):
-        print(f"\n== Démarrage via {nom}, {duree} s ==", flush=True)
-        sortie = dest / f'sortie_{exe.stem}.txt'
-        with open(sortie, 'wb') as f:
-            proc = subprocess.Popen([str(exe), str(dest / 'run.py')], cwd=dest,
-                                    env={**env, **extra}, stdin=subprocess.DEVNULL,
-                                    stdout=f, stderr=subprocess.STDOUT)
-            try:
-                code = proc.wait(timeout=duree)
-                print(f"ÉCHEC : l'application s'est arrêtée d'elle-même (code {code})")
-                echecs += 1
-            except subprocess.TimeoutExpired:
-                print(f"OK : toujours en marche après {duree} s")
-                proc.kill()
-                proc.wait()
-        texte = sortie.read_text(encoding='utf-8', errors='replace').strip()
-        if texte:
-            print(f"-- sortie --\n{texte[-4000:]}")
-        erreurs = _lire_errors_log(dest)
-        if erreurs.strip():
-            print(f"ÉCHEC : data\\logs\\errors.log n'est pas vide :\n{erreurs[-6000:]}")
+
+    print(f"\n== Lanceur console (1001pieces_autofill_console.bat), {duree} s ==", flush=True)
+    sortie = dest / 'sortie_console.txt'
+    with open(sortie, 'wb') as f:
+        proc = subprocess.Popen(['cmd', '/c', str(dest / '1001pieces_autofill_console.bat')],
+                                cwd=dest, env=env, stdin=subprocess.DEVNULL,
+                                stdout=f, stderr=subprocess.STDOUT)
+        try:
+            code = proc.wait(timeout=duree)
+            print(f"ÉCHEC : l'application s'est arrêtée d'elle-même (code {code})")
             echecs += 1
+        except subprocess.TimeoutExpired:
+            print(f"OK : toujours en marche après {duree} s")
+            _tuer(proc.pid)
+            proc.wait()
+    texte = sortie.read_text(encoding='utf-8', errors='replace').strip()
+    if texte:
+        print(f"-- sortie --\n{texte[-4000:]}")
+    echecs += not _verifier_errors_log(dest)
+
+    print(f"\n== Lanceur principal (1001pieces_autofill.bat, pythonw), {duree} s ==", flush=True)
+    avant = _pids('pythonw.exe')
+    subprocess.run(['cmd', '/c', str(dest / '1001pieces_autofill.bat')], cwd=dest, env=env,
+                   creationflags=subprocess.CREATE_NEW_CONSOLE, timeout=60)
+    time.sleep(3)
+    lances = _pids('pythonw.exe') - avant
+    if not lances:
+        print("ÉCHEC : aucun pythonw.exe en marche 3 s après le lanceur")
+        echecs += 1
+    else:
+        time.sleep(duree - 3)
+        vivants = _pids('pythonw.exe') & lances
+        if vivants:
+            print(f"OK : toujours en marche après {duree} s (PID {sorted(vivants)})")
         else:
-            print("OK : data\\logs\\errors.log vide")
+            print("ÉCHEC : l'application s'est arrêtée d'elle-même")
+            echecs += 1
+        for pid in vivants:
+            _tuer(pid)
+    echecs += not _verifier_errors_log(dest)
+
     journaux = dest / 'data' / 'logs'
     if journaux.exists():
         print("\nJournaux produits : " + ", ".join(sorted(p.name for p in journaux.iterdir())))
@@ -190,6 +229,9 @@ def importer_pdf(pdf: Path) -> int:
 
 
 def main():
+    # Console du runner en cp1252 : ne pas planter sur un caractère de la
+    # sortie de l'application
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     sous = parser.add_subparsers(dest='commande', required=True)
     p = sous.add_parser('construire')
