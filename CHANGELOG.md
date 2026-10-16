@@ -34,6 +34,19 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 - Les appareils auto-complétés avant cette version ne sont pas identifiables :
   aucune information ne permet de les reconstituer.
 
+### Vérification depuis le tableau principal + tri des fenêtres
+
+- Dans le **tableau principal**, les valeurs auto-complétées non vérifiées sont
+  en **italique**, avec en infobulle leur source et leur confiance. On les
+  vérifie dans sa routine habituelle (filtre par pièce, tri, poignée de recopie).
+- **Clic droit → « Marquer comme vérifié »** sur les lignes sélectionnées. Toute
+  correction (saisie, poignée, Cmd+D, suggestion) retire aussi l'italique, tout
+  de suite à l'écran et en base par le déclencheur.
+- **Tri par colonne** au clic sur l'en-tête dans « Valider les suggestions » et
+  « Auto-complétés à vérifier » : score et confiance triés par valeur (« 100 % »
+  avant « 92 % »), date par ordre chronologique, fiabilité par niveau. L'ordre
+  d'ouverture reste celui d'avant tant qu'on n'a pas cliqué.
+
 ---
 
 ## [3.88.2] - 2026-10-16 (branche `fix/completion-appareils-existants`)

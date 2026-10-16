@@ -1105,15 +1105,36 @@ class MainWindow(QMainWindow):
         self._suggestion_validation_dialog.show()
 
     def _rafraichir_bouton_autocompletes(self):
-        """Compteur et visibilité du bouton « Auto-complétés à vérifier (N) »."""
+        """Compteur du bouton « Auto-complétés à vérifier (N) » et italique des
+        cellules concernées dans le tableau, relus dans la table de trace (petite :
+        quelques centaines de lignes au plus après un gros import)."""
         bouton = getattr(self, 'autocompletes_btn', None)
-        compter = getattr(getattr(self, 'db_manager', None),
-                          'compter_autocompletions_a_verifier', None)
-        if bouton is None or compter is None:
+        lire = getattr(getattr(self, 'db_manager', None),
+                       'lire_autocompletions_a_verifier', None)
+        if bouton is None or lire is None:
             return
-        n = compter()
+        lignes = lire()
+        if lignes is None:   # lecture échouée (journalisée) : on garde l'affichage
+            return
+        par_appareil = {}
+        for (appareil_id, _rm, _cr, _t, _f, champ, _v, source, accord, total, _ts) in lignes:
+            par_appareil.setdefault(appareil_id, {})[champ] = (source, accord, total)
+        model = getattr(getattr(self, 'table_controller', None), 'model', None)
+        if model is not None and hasattr(model, 'set_autocompletes'):
+            model.set_autocompletes(par_appareil)
+        n = len(par_appareil)
         bouton.setText(f"Auto-complétés à vérifier ({n})")
         bouton.setVisible(n > 0)
+
+    def _marquer_lignes_verifiees(self, appareil_ids):
+        """Clic droit « Marquer comme vérifié » : retire les traces des lignes
+        sélectionnées, sans toucher à leurs valeurs."""
+        retirees = self.db_manager.marquer_autocompletions_verifiees(appareil_ids)
+        self._rafraichir_bouton_autocompletes()
+        if retirees:
+            self.user_interaction_service.add_to_history(
+                f"Auto-complétés vérifiés : {pluralize(len(appareil_ids), 'appareil')} "
+                f"(depuis le tableau).")
 
     def _open_autocompletion_review_dialog(self):
         """Fenêtre « Auto-complétés à vérifier » (show() + callback).
@@ -2955,6 +2976,18 @@ class MainWindow(QMainWindow):
                 lambda checked=False, rows=list(selected_rows): self._suggest_similarity_for_rows(rows)
             )
             context_menu.addAction(suggest_action)
+
+        # — Auto-complétés à vérifier (cellules en italique) ———————————————
+        if hasattr(mdl, 'ids_autocompletes'):
+            a_verifier = mdl.ids_autocompletes(
+                [i for i in (mdl.get_db_id(r) for r in selected_rows) if i is not None])
+            if a_verifier:
+                libelle = ("Marquer comme vérifié" if len(a_verifier) == 1
+                           else f"Marquer comme vérifiés ({len(a_verifier)} appareils)")
+                verifier_action = QAction(libelle, self)
+                verifier_action.triggered.connect(
+                    lambda checked=False, ids=a_verifier: self._marquer_lignes_verifiees(ids))
+                context_menu.addAction(verifier_action)
 
         context_menu.addSeparator()
 

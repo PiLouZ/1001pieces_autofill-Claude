@@ -161,3 +161,77 @@ def test_lien_et_ligne_dans_l_historique():
 def test_sans_autocompletion_appel_inchange():
     """Rien à vérifier : add_to_history est appelé sans `lien`, comme avant."""
     assert MainWindow._lien_autocompletes({'total_files': 1}) == {}
+
+
+# ─── Tableau principal : italique, infobulle, oubli à la modification ───────
+
+def _modele():
+    from src.data.appareils_table_model import AppareillsTableModel
+    modele = AppareillsTableModel()
+    modele.load_records([(1, 'Four', 'Bosch', 'A1', 'C1', '', '', '', 0),
+                         (2, 'Hotte', 'Elica', 'A2', 'C2', '', '', '', 0)])
+    modele.set_autocompletes({1: {'type': ('S1', 2, 3), 'manufacturer': ('S1', 3, 3)}})
+    return modele
+
+
+def test_italique_et_infobulle_des_seules_cellules_auto_completees(qapp):
+    modele = _modele()
+    assert modele.data(modele.index(0, 0), Qt.FontRole).italic()
+    assert modele.data(modele.index(0, 1), Qt.FontRole).italic()
+    assert modele.data(modele.index(0, 2), Qt.FontRole) is None     # réf. modèle
+    assert modele.data(modele.index(1, 0), Qt.FontRole) is None     # autre appareil
+    assert "d'après S1 (2/3)" in modele.data(modele.index(0, 0), Qt.ToolTipRole)
+    assert modele.ids_autocompletes([1, 2]) == [1]
+
+
+def test_modifier_la_cellule_retire_l_italique(qapp):
+    modele = _modele()
+    modele.setData(modele.index(0, 0), 'Cuisinière')
+    assert modele.data(modele.index(0, 0), Qt.FontRole) is None
+    assert modele.data(modele.index(0, 1), Qt.FontRole).italic()
+    modele.set_field_value(0, 1, 'Siemens')
+    assert modele.ids_autocompletes([1]) == []
+
+
+def test_changer_la_casse_garde_l_italique(qapp):
+    modele = _modele()
+    modele.setData(modele.index(0, 1), 'BOSCH')
+    assert modele.data(modele.index(0, 1), Qt.FontRole).italic()
+
+
+# ─── Tri par colonne des deux fenêtres ──────────────────────────────────────
+
+def _ordre(arbre, col):
+    return [arbre.topLevelItem(i).text(col) for i in range(arbre.topLevelItemCount())]
+
+
+def test_tri_par_colonne_fenetre_autocompletes(qapp):
+    def ligne(i, ref, accord, total, ts):
+        return (i, ref, '', 'Four', 'Bosch', 'type', 'Four', 'S', accord, total, ts)
+    fenetre = AutocompletionReviewDialog(None, regrouper_traces([
+        ligne(1, 'B', 12, 12, '2026-10-01 10:00:00'), ligne(2, 'A', 1, 2, '2026-10-16 08:00:00'),
+        ligne(3, 'C', 1, 1, '2026-10-10 09:00:00')]), on_validate=None)
+    arbre = fenetre._tree
+    assert _ordre(arbre, 1) == ['A', 'C', 'B']           # ordre d'ouverture conservé
+    arbre.sortByColumn(1, Qt.DescendingOrder)
+    assert _ordre(arbre, 1) == ['C', 'B', 'A']
+    arbre.sortByColumn(4, Qt.DescendingOrder)            # confiance : 12/12 > 1/1 > 1/2
+    assert _ordre(arbre, 4) == ['12/12', '1/1', '1/2']
+    arbre.sortByColumn(6, Qt.AscendingOrder)             # date réelle, pas le texte jj/mm
+    assert _ordre(arbre, 1) == ['B', 'C', 'A']
+
+
+def test_tri_par_colonne_fenetre_suggestions(qapp):
+    from src.ui.suggestion_validation_dialog import SuggestionValidationDialog, COL_SCORE, COL_REF
+    def entree(i, ref, score):
+        return {'db_id': i, 'ref_modele': ref, 'commercial_ref': '', 'candidates': [
+            {'type': 'Four', 'manufacturer': 'Bosch', 'score': score, 'ref': 'X',
+             'confidence_tier': 'B_fuzzy_alpha'}]}
+    fenetre = SuggestionValidationDialog(
+        None, [entree(1, 'R1', 0.92), entree(2, 'R2', 1.0), entree(3, 'R3', 0.87)], on_validate=None)
+    arbre = fenetre._tree
+    arbre.sortByColumn(COL_SCORE, Qt.DescendingOrder)    # « 100 % » avant « 92 % »
+    assert _ordre(arbre, COL_REF) == ['R2', 'R1', 'R3']
+    fenetre._group_combo.setCurrentIndex(2)              # regrouper : le tri survit
+    fenetre._group_combo.setCurrentIndex(0)
+    assert arbre.sortColumn() == COL_SCORE

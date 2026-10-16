@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
 import qtawesome as qta
 
 from src.core.config import pluralize
+from .tri_colonnes import ItemTriable, ROLE_TRI, activer_tri, TriSuspendu
 
 # ── Colonnes ────────────────────────────────────────────────────────────────
 COL_CHECK = 0      # case à cocher (étroite ; le libellé de groupe va sur COL_REF)
@@ -184,6 +185,7 @@ class SuggestionValidationDialog(QDialog):
         largeur_tier = max(self._tree.fontMetrics().horizontalAdvance(l)
                            for l in _TIER_LABEL.values()) + 24
         self._tree.setColumnWidth(COL_TIER, max(104, largeur_tier))
+        activer_tri(self._tree)
         root.addWidget(self._tree, 1)
 
         # Zone D — barre d'actions bas. Convention de l'appli : Annuler neutre à
@@ -214,6 +216,10 @@ class SuggestionValidationDialog(QDialog):
 
     # ── Remplissage ──────────────────────────────────────────────────────────
     def _populate(self, group_by):
+        with TriSuspendu(self._tree):
+            self._remplir(group_by)
+
+    def _remplir(self, group_by):
         self._suppress = True
         self._tree.clear()
         self._leaves = []
@@ -229,7 +235,7 @@ class SuggestionValidationDialog(QDialog):
             for key in self._sorted_group_keys(groups.keys(), group_by):
                 entries = groups[key]
                 # Libellé de groupe sur COL_REF pour garder COL_CHECK étroite
-                parent = QTreeWidgetItem(self._tree)
+                parent = ItemTriable(self._tree)
                 parent.setText(COL_REF, f"{key} ({len(entries)})")
                 parent.setData(COL_CHECK, _ROLE_IS_LEAF, False)
                 f = parent.font(COL_REF)
@@ -270,7 +276,7 @@ class SuggestionValidationDialog(QDialog):
         comm = entry.get('commercial_ref') or ''
         ref_text = ref if not comm else f"{ref}  ·  {comm}"
 
-        leaf = QTreeWidgetItem(parent)
+        leaf = ItemTriable(parent)
         leaf.setData(COL_CHECK, _ROLE_IS_LEAF, True)
         leaf.setData(COL_CHECK, _ROLE_DBID, entry.get('db_id'))
         leaf.setData(COL_CHECK, _ROLE_CANDS, cands)
@@ -300,8 +306,10 @@ class SuggestionValidationDialog(QDialog):
         leaf.setBackground(COL_NEW_MFR, QBrush())
         score = float(cand.get('score', 0))
         leaf.setText(COL_SCORE, f"{int(score * 100)} %")
+        leaf.setData(COL_SCORE, ROLE_TRI, score)
         leaf.setForeground(COL_SCORE, QBrush(score_color(score)))
         leaf.setText(COL_TIER, tier_label(cand.get('confidence_tier')))
+        leaf.setData(COL_TIER, ROLE_TRI, _TIER_ORDER.get(cand.get('confidence_tier'), 1))
         # « Type de la pièce » : le % n'est pas une ressemblance de référence mais
         # la part des appareils de la pièce qui portent ce type — le dire au survol.
         from ..services.reference_similarity_service import est_type_piece
@@ -378,6 +386,7 @@ class SuggestionValidationDialog(QDialog):
     def _mark_edited(self, leaf):
         leaf.setData(COL_CHECK, _ROLE_EDITED, True)
         leaf.setText(COL_SCORE, "— (modifié)")
+        leaf.setData(COL_SCORE, ROLE_TRI, -1.0)
         leaf.setForeground(COL_SCORE, QBrush(QColor("#9e9e9e")))
         leaf.setBackground(COL_NEW_TYPE, QBrush(QColor("#E3F2FD")))
         leaf.setBackground(COL_NEW_MFR, QBrush(QColor("#E3F2FD")))

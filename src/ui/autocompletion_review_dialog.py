@@ -20,12 +20,13 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QBrush, QFont, QKeySequence
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QFrame, QHeaderView, QMenu, QShortcut,
+    QTreeWidget, QFrame, QHeaderView, QMenu, QShortcut,
     QApplication, QAbstractItemView,
 )
 import qtawesome as qta
 
 from src.core.config import pluralize
+from .tri_colonnes import ItemTriable, ROLE_TRI, activer_tri, TriSuspendu
 
 # ── Colonnes ────────────────────────────────────────────────────────────────
 COL_CHECK = 0
@@ -197,6 +198,7 @@ class AutocompletionReviewDialog(QDialog):
         # Calée sur la date affichée : à 118 px, l'heure était tronquée
         self._tree.setColumnWidth(
             COL_IMPORT, self._tree.fontMetrics().horizontalAdvance("00/00/0000 00:00") + 24)
+        activer_tri(self._tree)
         root.addWidget(self._tree, 1)
 
         actions = QHBoxLayout()
@@ -224,11 +226,15 @@ class AutocompletionReviewDialog(QDialog):
 
     # ── Remplissage ──────────────────────────────────────────────────────────
     def _populate(self):
+        with TriSuspendu(self._tree):
+            self._remplir()
+
+    def _remplir(self):
         self._suppress = True
         italique = QFont()
         italique.setItalic(True)
         for entree in self._entrees:
-            item = QTreeWidgetItem(self._tree)
+            item = ItemTriable(self._tree)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(COL_CHECK, Qt.Unchecked)
             refs = " - ".join(r for r in (entree['ref_modele'], entree['commercial_ref']) if r)
@@ -249,6 +255,8 @@ class AutocompletionReviewDialog(QDialog):
                     item.setForeground(col, QBrush(QColor("#9e9e9e")))
             accord, total = confiance(entree)
             item.setText(COL_CONFIANCE, libelle_confiance(accord, total))
+            # Même ordre que l'ouverture : inconnue, puis accord et nb de sources croissants
+            item.setData(COL_CONFIANCE, ROLE_TRI, cle_de_tri(entree)[:3])
             item.setForeground(COL_CONFIANCE, QBrush(couleur_confiance(accord, total)))
             item.setTextAlignment(COL_CONFIANCE, Qt.AlignCenter)
             if accord is None:
@@ -256,6 +264,7 @@ class AutocompletionReviewDialog(QDialog):
             sources = sorted({p['source'] for p in entree['champs'].values() if p['source']})
             item.setText(COL_SOURCE, ", ".join(sources))
             item.setText(COL_IMPORT, date_lisible(entree.get('import_ts')))
+            item.setData(COL_IMPORT, ROLE_TRI, entree.get('import_ts') or '')
             self._items.append(item)
         self._suppress = False
 
