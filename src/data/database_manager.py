@@ -21,6 +21,7 @@ from ._db_mixins import DatabaseError, with_query_lock as _with_query_lock
 from ._db_mixins.fts5 import DatabaseFts5Mixin
 from ._db_mixins.supersession import DatabaseSupersessionMixin
 from ._db_mixins.setup import DatabaseSetupMixin
+from ._db_mixins.autocompletion import DatabaseAutocompletionMixin
 
 import sys
 import os
@@ -68,7 +69,8 @@ class SearchCache:
         self.misses = 0
     
 
-class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin):
+class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin,
+                      DatabaseAutocompletionMixin):
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
 
     def __init__(self, db_file: str = None):
@@ -736,6 +738,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute(query, params)
         return self.cursor.fetchone()[0]
     
+    @_with_query_lock
     @handle_db_query_errors(return_value=0, log_prefix="Erreur comptage appareils incomplets")
     def count_incomplete_devices(self) -> int:
         """Compter le nombre d'appareils où colonne A et/ou B est vide"""
@@ -1385,6 +1388,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     
 
     
+    @_with_query_lock
     def remove_duplicate_pieces(self) -> int:
         """Supprimer les références de pièces dupliquées (nouvelle structure)"""
         try:
@@ -1429,6 +1433,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute("SELECT name FROM categories ORDER BY name")
         return [row[0] for row in self.cursor.fetchall()]
 
+    @_with_query_lock
     @handle_database_errors(title="Erreur récupération valeurs colonne")
     def get_column_values(self, db_field: str) -> List[str]:
         """Récupérer les valeurs distinctes d'un champ de la table appareils.
@@ -1458,6 +1463,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         return True
     
     
+    @_with_query_lock
     @handle_database_errors(title="Erreur récupération données export")
     def get_export_data(self, search_term: str,
                        column_filters: Optional[Dict[int, str]] = None,
@@ -1521,6 +1527,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute(query, params)
         return self.cursor.fetchall()
     
+    @_with_query_lock
     @handle_database_errors(title="Erreur requête personnalisée")
     def execute_custom_query(self, query: str, params: Optional[List] = None) -> List[Tuple]:
         """Exécuter une requête SQL personnalisée — **lecture uniquement**.
@@ -1640,6 +1647,21 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.cursor.execute(query, params)
             return self.cursor.fetchall()
     
+    @_with_query_lock
+    def lire_appareils_pour_import(self) -> List[Tuple]:
+        """Lit tous les appareils référencés, pour le cache de dédoublonnage de l'import.
+
+        À la différence d'execute_query, une erreur SQLite N'EST PAS avalée : elle
+        remonte en DatabaseError. Un [] silencieux ferait croire à l'import que la
+        base est vide, et chaque ligne importée deviendrait un nouvel appareil
+        (la table appareils n'a aucune contrainte d'unicité pour l'en empêcher).
+        """
+        try:
+            self.cursor.execute(Config.QUERIES['preload_all_devices'])
+            return self.cursor.fetchall()
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Lecture des appareils existants impossible : {e}") from e
+
     # Lots sous la limite historique de 999 paramètres par requête SQLite.
     _TAILLE_LOT_IDS = 900
 
@@ -1697,6 +1719,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
 
     
+    @_with_query_lock
     def close(self):
         """Fermer proprement la connexion à la base de données.
 

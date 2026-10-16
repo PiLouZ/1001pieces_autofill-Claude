@@ -130,6 +130,9 @@ class DatabaseSetupMixin:
         # Table d'équivalence des références pièces
         self._setup_equivalence_table()
 
+        # Trace des auto-complétions à vérifier (v3.89.0)
+        self._setup_autocompletion_trace_table()
+
         self.conn.commit()
 
     @handle_database_errors(title="Erreur ajout colonnes")

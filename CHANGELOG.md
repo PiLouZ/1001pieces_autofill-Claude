@@ -4,6 +4,119 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.89.0] - 2026-10-16 (branche `feature/tracabilite-autocompletion`)
+
+### Auto-complétions traçables et vérifiables
+
+- Chaque Type ou Fabricant écrit par l'**auto-complétion** d'un import (et non lu
+  dans le fichier) laisse une trace en base, table `appareils_autocompletes` :
+  valeur, appareil source, **accord des sources** (« 2/3 » = 2 appareils sur 3
+  de même référence donnaient cette valeur) et date de l'import. Appareils créés
+  comme appareils existants complétés (v3.88.2), sur les deux chemins d'import.
+- Nouvelle fenêtre **« Auto-complétés à vérifier »**, sur le modèle de « Valider
+  les suggestions » : triée du moins sûr au plus sûr (confiance inconnue, sources
+  partagées, source unique, puis unanimité), valeurs auto-complétées en italique
+  avec leur source en infobulle. Cocher = vérifié ; double-clic sur Type/Marque =
+  corriger via la fenêtre Cmd+D (écriture batchée et historisée, provenance
+  « vérification des auto-complétés »).
+- Ouverte par le bouton **« Auto-complétés à vérifier (N) »** de la barre d'état
+  (masqué à 0) et par le lien « Vérifier les N appareils auto-complétés » sous
+  l'entrée d'historique de l'import.
+- La trace disparaît d'elle-même, par **déclencheur SQL**, dès que le champ
+  change par n'importe quel chemin (saisie, suggestion, Cmd+D, fusion) ou que
+  l'appareil est supprimé. Une simple réécriture de casse (« BOSCH » → « Bosch »)
+  ne vaut pas vérification.
+- Un appareil auto-complété **non encore vérifié ne sert plus de source** à
+  l'auto-complétion : sa valeur n'est qu'une déduction, et le chemin standard,
+  qui écrit au fil de l'eau, la recomptait aussitôt (confiance « 3/3 » au lieu
+  de « 1/1 »). Les ex aequo sont désormais départagés par ordre alphabétique
+  (choix reproductible). Aucun effet sur la base actuelle, qui n'a aucune trace.
+- Les appareils auto-complétés avant cette version ne sont pas identifiables :
+  aucune information ne permet de les reconstituer.
+
+### Vérification depuis le tableau principal + tri des fenêtres
+
+- Dans le **tableau principal**, les valeurs auto-complétées non vérifiées sont
+  en **italique**, avec en infobulle leur source et leur confiance. On les
+  vérifie dans sa routine habituelle (filtre par pièce, tri, poignée de recopie).
+- **Clic droit → « Marquer comme vérifié »** sur les lignes sélectionnées. Toute
+  correction (saisie, poignée, Cmd+D, suggestion) retire aussi l'italique, tout
+  de suite à l'écran et en base par le déclencheur.
+- **Tri par colonne** au clic sur l'en-tête dans « Valider les suggestions » et
+  « Auto-complétés à vérifier » : score et confiance triés par valeur (« 100 % »
+  avant « 92 % »), date par ordre chronologique, fiabilité par niveau. L'ordre
+  d'ouverture reste celui d'avant tant qu'on n'a pas cliqué.
+
+---
+
+## [3.88.4] - 2026-10-16 (branche `fix/troisieme-colonne-mono-reference`)
+
+### Import : 3ᵉ colonne écrite de la même façon par les deux chemins
+
+- Chemin standard (< 50 lignes) : un appareil **mono-référence** déjà en base
+  (ref_modele seule ou réf. commerciale seule) ne recevait jamais la 3ᵉ colonne
+  de la ligne (autre réf. / notes) ; seule la correspondance stricte (les deux
+  références) l'écrivait. Le chemin batch, lui, l'écrit pour tout appareil
+  existant.
+- Doublons (même fichier ou fichier suivant) dont la 3ᵉ colonne diffère : le
+  chemin standard réécrivait la valeur à chaque occurrence (**dernière gagnante**),
+  le batch ne traite que la 1ʳᵉ (**première gagnante**). Aligné sur le batch.
+- Les trois recherches de `_insert_or_find_device` ne servent plus qu'à trouver
+  l'appareil ; un bloc commun écrit ensuite 3ᵉ colonne et Type/Fabricant vides,
+  à la 1ʳᵉ occurrence seulement.
+- Tests d'équivalence : la photo de la base inclut désormais other_ref/notes
+  (5 nouveaux cas, dont 4 en échec avant correctif).
+
+---
+
+## [3.88.3] - 2026-10-16 (branche `fix/course-curseur-import-demarrage`)
+
+### Import lancé dès l'ouverture : préchargement vide ou tronqué
+
+- Un import lancé pendant les comptages différés du démarrage (doublons, lignes
+  incomplètes) préchargeait **0 appareil, ou ~32 000 sur 708 166**, et faisait
+  parfois planter l'application. Reproduit 10 fois sur 10 sur une copie de la
+  base (fenêtre offscreen, import au tick 0). Un cache vide fait de chaque ligne
+  importée un nouvel appareil : la table `appareils` n'a aucune contrainte
+  d'unicité pour l'empêcher.
+- Cause : `execute_custom_query` et `count_incomplete_devices`, appelées depuis le
+  fil principal, utilisaient le curseur partagé **sans** `_query_lock`, pendant
+  que le fil d'import le tenait. La troncature était silencieuse côté import.
+- Ces deux méthodes, ainsi que `get_column_values`, `get_export_data`,
+  `remove_duplicate_pieces` et `close`, passent désormais sous `_query_lock`.
+  Après correctif : 17 essais sur 17 complets (708 166), délais de 0 à 3 s.
+- Filet : le préchargement lit par `DatabaseManager.lire_appareils_pour_import`,
+  qui lève une erreur au lieu de renvoyer `[]`. L'import s'arrête alors avec un
+  message « Import interrompu » (non bloquant) au lieu de tourner sur un cache
+  vide ; auparavant, une erreur du fil d'import ne laissait qu'une ligne de log.
+
+---
+
+## [3.88.2] - 2026-10-16 (branche `fix/completion-appareils-existants`)
+
+### Import : Type/Fabricant enfin écrits sur les appareils existants vides
+
+- Un appareil **déjà en base** dont le Type ou le Fabricant est vide recevait,
+  en mémoire, celui de la ligne importée (lu dans le fichier ou auto-complété
+  depuis un appareil de même référence), mais **rien n'était écrit** : seule la
+  3ᵉ colonne (autre réf. / notes) était reportée, sur les deux chemins d'import.
+  Et comme la ligne paraissait complète, l'appareil n'était pas non plus proposé
+  en suggestion. Constaté sur une copie de la base : 30 appareils vidés puis
+  réimportés → « auto-complétion : 24 types, 24 fabricants », 30/30 toujours
+  vides, 6 candidats de suggestion seulement.
+- Les champs vides sont désormais complétés, **sans jamais écraser** une valeur
+  saisie (garde `type IS NULL OR TRIM(type) = ''` dans la requête). Chemin
+  standard (< 50 lignes) et chemin batch se comportent à l'identique, replis
+  mono-référence compris ; aucun appareil n'est complété depuis une ligne
+  doublon, comme le batch.
+- L'entrée d'historique de l'import liste les appareils complétés
+  (« ==> Appareils existants complétés : N », 20 lignes au plus), et la
+  synthèse du log en donne le nombre.
+- Un appareil sans source d'auto-complétion reste candidat de suggestion, comme
+  avant.
+
+---
+
 ## [3.88.1] - 2026-10-15 (branche `feature/suggestions-hors-page`)
 
 ### Fenêtre « Valider les suggestions » : toutes les suggestions, chargées ou non

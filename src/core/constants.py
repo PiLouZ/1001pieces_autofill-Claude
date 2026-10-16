@@ -128,6 +128,7 @@ class UIConfig:
 
     # Liens d'action de l'historique des opérations (MainWindow._handle_history_link)
     LIEN_HISTORIQUE_LIBELLE = "libelle:"   # + référence encodée → « Modifier la pièce » sur le libellé
+    LIEN_HISTORIQUE_AUTOCOMPLETES = "autocompletes:"  # → fenêtre « Auto-complétés à vérifier »
 
 
 class Messages:

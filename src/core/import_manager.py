@@ -2205,6 +2205,18 @@ class ImportManager:
             progress.close()
             worker.wait()
             app_logger.error(f"Import worker ({source}) : {msg}")
+            # Sans ce message, l'import interrompu (ex. lecture des appareils
+            # existants impossible) ne laissait qu'une ligne de log.
+            # show() et non exec_() : convention du projet (gel macOS).
+            if self.parent_widget:
+                from PyQt5.QtWidgets import QMessageBox
+                from PyQt5.QtCore import Qt
+                box = QMessageBox(QMessageBox.Critical, "Import interrompu",
+                                  f"L'import a été interrompu par une erreur :\n\n{msg}\n\n"
+                                  f"Relancez l'import ; le détail est dans le journal.",
+                                  QMessageBox.Ok, self.parent_widget)
+                box.setAttribute(Qt.WA_DeleteOnClose)
+                box.show()
             if callback:
                 callback(None)
             if dialog:
@@ -2468,6 +2480,12 @@ class ImportManager:
             # Références de pièce de chaque ligne incomplète (clé : id(device_data)),
             # pour la suggestion « type de la pièce importée ».
             self._refs_pieces_candidats = {}
+            # Appareils existants dont Type/Fabricant vides ont été complétés
+            # (clé : id), pour le bloc d'historique de l'import.
+            self._completions_existants = {}
+            # Appareils dont un champ auto-complété a été tracé (fenêtre « à vérifier »)
+            self._appareils_autocompletes = set()
+            self._horodatage_import = datetime.now().isoformat(sep=' ', timespec='seconds')
 
             n = len(config.files)
             if progress_cb:
@@ -2523,6 +2541,12 @@ class ImportManager:
 
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
+
+            # Appareils existants complétés (Type/Fabricant vides) : tracés dans l'historique
+            if self._completions_existants:
+                results['appareils_completes'] = list(self._completions_existants.values())
+            if self._appareils_autocompletes:
+                results['autocompletes_a_verifier'] = len(self._appareils_autocompletes)
 
             # Marques et types réécrits (« DELTA → Delta ») : tracés dans l'historique
             for service, cle, libelle in ((self._marques, 'marques_alignees', 'Marques alignées'),
@@ -2623,7 +2647,8 @@ class ImportManager:
             f"[Import] Synthèse : {traitees} lignes traitées, {distinctes} clés "
             f"d'appareil distinctes, {doublons} doublons "
             f"— auto-complétion : {compteurs['autocomplete_type']} types, "
-            f"{compteurs['autocomplete_manufacturer']} fabricants"
+            f"{compteurs['autocomplete_manufacturer']} fabricants, "
+            f"{len(results.get('appareils_completes', []))} appareils existants complétés"
         )
         # Signal fort : beaucoup de lignes pour une seule identité d'appareil.
         # Le total inclut les doublons — c'est justement là qu'elles atterrissent
@@ -3038,7 +3063,9 @@ class ImportManager:
 
             if verdict == self.LIGNE_DOUBLON:
                 # Trouver l'appareil existant et créer l'association même pour les doublons
-                device_id_dup = self._insert_or_find_device(device_data)
+                # Pas de complétion sur un doublon : le chemin batch ne la tente qu'à
+                # la 1ʳᵉ occurrence de l'identité (clé = références seules)
+                device_id_dup = self._insert_or_find_device(device_data, completer=False)
                 if device_id_dup:
                     for reference, label in references_and_labels:
                         if reference:
@@ -3113,6 +3140,7 @@ class ImportManager:
         
         new_devices_batch = []
         existing_updates = []
+        completions = []  # (id, device_data, champs) : Type/Fabricant vides en base
         associations_batch = []
         processed_line_index = 0  # Compteur pour les lignes réellement traitées (hors continue)
         # 1ʳᵉ occurrence de chaque clé DANS CE FICHIER : {device_key: (data_index, existing_id)}.
@@ -3176,6 +3204,14 @@ class ImportManager:
                 device_data['id'] = existing_id   # pour la collecte des suggestions (ci-dessous)
                 if self._needs_update(device_data):
                     existing_updates.append((existing_id, device_data))
+                # Type/Fabricant vides en base : le cache filtre en amont, pour ne pas
+                # émettre un UPDATE par appareil retrouvé sur un import de 90 000 lignes
+                entree = existing_devices_cache.get(device_key) if device_key else None
+                champs = self._champs_a_completer(device_data, entree) if entree else {}
+                if champs:
+                    completions.append((existing_id, device_data, champs))
+                    if not dry_run:
+                        entree.update(champs)  # cache partagé : fichiers suivants du lot
             else:
                 # Nouvel appareil à créer (l'id sera réinjecté après insertion batch)
                 results['new_entries'] += 1
@@ -3219,10 +3255,13 @@ class ImportManager:
             # new_device_ids est parallèle à new_devices_batch ; zip tronque si tailles diffèrent.
             for _dev_data, _new_id in zip(new_devices_batch, new_device_ids):
                 _dev_data['id'] = _new_id
+            self._tracer_autocompletions(
+                (d['id'], d, None) for d in new_devices_batch[:len(new_device_ids)])
 
             app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
             if existing_updates:
                 self._batch_update_devices(existing_updates)
+            self._completer_appareils_existants(completions)
 
             app_logger.debug(f" BATCH: Création de {len(associations_batch)} associations…")
 
@@ -3297,10 +3336,12 @@ class ImportManager:
         return results
     
     def _preload_existing_devices(self) -> Dict[str, Dict]:
-        """Pré-charger tous les appareils existants pour éviter les requêtes répétées"""
-        from .config import Config
-        query = Config.QUERIES['preload_all_devices']
-        rows = self.db_manager.execute_query(query)
+        """Pré-charger tous les appareils existants pour éviter les requêtes répétées.
+
+        Lève DatabaseError si la lecture échoue : l'import s'arrête plutôt que de
+        tourner sur un cache vide (cf. lire_appareils_pour_import).
+        """
+        rows = self.db_manager.lire_appareils_pour_import()
 
         # Conserver les lignes brutes pour le calcul des suggestions par similarité
         # (réutilise la même lecture — pas de requête supplémentaire). Les colonnes
@@ -3495,8 +3536,14 @@ class ImportManager:
     def _build_autocomplete_cache(self, existing_devices_cache: Dict[str, Dict]) -> Dict[str, Dict[str, str]]:
         """Construire un cache pour l'auto-complétion (Type + Fabricant par référence)"""
         autocomplete_cache = {}
-        
+        # Même règle que _try_auto_complete : pas d'auto-complété non vérifié comme source
+        lignes = self.db_manager.execute_query(
+            "SELECT DISTINCT appareil_id FROM appareils_autocompletes") or []
+        non_verifies = {ligne[0] for ligne in lignes}
+
         for key, device in existing_devices_cache.items():
+            if device.get('id') in non_verifies:
+                continue
             ref_modele = (device.get('ref_modele') or '').strip()
             commercial_ref = (device.get('commercial_ref') or '').strip()
             device_type = (device.get('type') or '').strip()
@@ -3508,14 +3555,16 @@ class ImportManager:
                 if ref_modele:
                     autocomplete_cache[ref_modele.lower()] = {
                         'type': device_type,
-                        'manufacturer': manufacturer
+                        'manufacturer': manufacturer,
+                        'source': ref_modele or commercial_ref,
                     }
                 
                 # Indexer par commercial_ref si disponible et différent
                 if commercial_ref and commercial_ref.lower() != ref_modele.lower():
                     autocomplete_cache[commercial_ref.lower()] = {
                         'type': device_type,
-                        'manufacturer': manufacturer
+                        'manufacturer': manufacturer,
+                        'source': ref_modele or commercial_ref,
                     }
         
         return autocomplete_cache
@@ -3540,10 +3589,12 @@ class ImportManager:
         
         # Appliquer les données trouvées si disponibles
         if cache_entry:
-            if not (device_data.get('type') or '').strip() and cache_entry.get('type'):
-                device_data['type'] = cache_entry['type']
-            if not (device_data.get('manufacturer') or '').strip() and cache_entry.get('manufacturer'):
-                device_data['manufacturer'] = cache_entry['manufacturer']
+            # Le cache ne garde qu'un appareil par référence : confiance inconnue
+            for champ in self.CHAMPS_COMPLETABLES:
+                if not (device_data.get(champ) or '').strip() and cache_entry.get(champ):
+                    device_data[champ] = cache_entry[champ]
+                    self._noter_autocompletion(device_data, champ, cache_entry[champ],
+                                               cache_entry.get('source'), None, None)
     
     def _find_in_cache(self, device_data: Dict[str, Any], cache: Dict[str, Dict]) -> Optional[int]:
         """Trouver un appareil dans le cache (pas de SQL!)
@@ -3567,7 +3618,128 @@ class ImportManager:
     def _needs_update(self, device_data: Dict[str, Any]) -> bool:
         """Vérifier si l'appareil a besoin d'une mise à jour (3ème colonne)"""
         return bool(device_data.get('other_ref') or device_data.get('notes'))
-    
+
+    # Champs qu'un import peut compléter sur un appareil existant — jamais écraser
+    CHAMPS_COMPLETABLES = ('type', 'manufacturer')
+
+    def _champs_a_completer(self, device_data: Dict[str, Any],
+                            valeurs_base: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+        """Type/Fabricant de la ligne (lus dans le fichier ou auto-complétés) à
+        reporter sur un appareil existant.
+
+        Jusqu'en v3.88.1, ils n'étaient jamais écrits : `_update_existing_device`
+        et `_batch_update_devices` ne portent que la 3ᵉ colonne. L'appareil vide
+        restait vide, et comme la ligne paraissait complète en mémoire, il n'était
+        pas non plus proposé en suggestion.
+
+        Args:
+            valeurs_base: Type/Fabricant connus en base (cache du chemin batch) ; un
+                champ déjà renseigné est écarté. None : la garde SQL tranche seule.
+        """
+        champs = {}
+        for champ in self.CHAMPS_COMPLETABLES:
+            valeur = (device_data.get(champ) or '').strip()
+            if not valeur:
+                continue
+            if valeurs_base is not None and (valeurs_base.get(champ) or '').strip():
+                continue
+            champs[champ] = valeur
+        return champs
+
+    # Clé privée de device_data : provenance des champs auto-complétés. Sans effet
+    # sur les insertions, qui lisent les colonnes une à une (DB_HEADERS, get).
+    CLE_AUTOCOMPLETION = '_autocompletion'
+
+    def _noter_autocompletion(self, device_data: Dict[str, Any], champ: str, valeur: str,
+                              source: Optional[str], accord: Optional[int],
+                              total: Optional[int]) -> None:
+        """Retenir d'où vient un champ auto-complété, en attendant l'id de l'appareil.
+
+        accord/total : appareils sources donnant cette valeur / appareils sources
+        trouvés (« 1/2 »). None quand la source n'en dit rien (cache du batch).
+        """
+        device_data.setdefault(self.CLE_AUTOCOMPLETION, {})[champ] = {
+            'valeur': valeur, 'source': source or '', 'accord': accord, 'total': total}
+
+    def _tracer_autocompletions(self, appareils) -> None:
+        """Inscrire dans appareils_autocompletes les champs auto-complétés ÉCRITS.
+
+        Args:
+            appareils: (appareil_id, device_data, champs_ecrits). champs_ecrits None :
+                appareil créé, tous ses champs auto-complétés ont été insérés. Sinon,
+                seuls ceux réellement écrits (et de même valeur) sont tracés — un
+                champ déjà renseigné en base n'a rien reçu.
+        Appelée après l'écriture : le déclencheur effacerait sinon la trace.
+        """
+        enregistrer = getattr(self.db_manager, 'enregistrer_autocompletions', None)
+        if enregistrer is None:
+            return
+        horodatage = (getattr(self, '_horodatage_import', None)
+                      or datetime.now().isoformat(sep=' ', timespec='seconds'))
+        lignes = []
+        for appareil_id, device_data, champs in appareils:
+            for champ, prov in (device_data.get(self.CLE_AUTOCOMPLETION) or {}).items():
+                ecrit = (device_data.get(champ) if champs is None else champs.get(champ)) or ''
+                if not appareil_id or ecrit.strip() != (prov['valeur'] or '').strip():
+                    continue
+                lignes.append((appareil_id, champ, prov['valeur'], prov['source'],
+                               prov['accord'], prov['total'], horodatage))
+        if lignes and enregistrer(lignes):
+            traces = getattr(self, '_appareils_autocompletes', None)
+            if traces is not None:
+                traces.update(ligne[0] for ligne in lignes)
+
+    def _completer_appareils_existants(
+            self, completions: List[Tuple[int, Dict[str, Any], Dict[str, str]]]) -> int:
+        """Écrire les champs vides des appareils existants, commun aux deux chemins.
+
+        La garde WHERE des requêtes refuse d'écraser une valeur : seules les
+        écritures effectives (rowcount) sont tracées dans `_completions_existants`,
+        restitué en fin d'import dans results['appareils_completes'] pour le bloc
+        d'historique. Un même appareil touché par plusieurs fichiers n'y figure
+        qu'une fois.
+
+        Returns:
+            Nombre d'appareils effectivement complétés.
+        """
+        if not completions:
+            return 0
+        from .config import Config
+        requetes = {'type': Config.QUERIES['complete_device_type'],
+                    'manufacturer': Config.QUERIES['complete_device_manufacturer']}
+
+        faits = []
+        conn = self.db_manager.get_connection()
+        # _query_lock : accès brut à la connexion partagée depuis _ImportWorker → sérialiser.
+        with self.db_manager._query_lock:
+            cursor = conn.cursor()
+            try:
+                for device_id, device_data, champs in completions:
+                    ecrits = {}
+                    for champ, valeur in champs.items():
+                        cursor.execute(requetes[champ], (valeur, device_id))
+                        if cursor.rowcount:
+                            ecrits[champ] = valeur
+                    if ecrits:
+                        faits.append((device_id, device_data, ecrits))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                app_logger.error(f"Complétion des appareils existants échouée : {e}")
+                return 0
+
+        self._tracer_autocompletions(faits)
+        if not hasattr(self, '_completions_existants'):
+            self._completions_existants = {}
+        for device_id, device_data, ecrits in faits:
+            trace = self._completions_existants.setdefault(device_id, {
+                'id': device_id,
+                'ref_modele': (device_data.get('ref_modele') or '').strip(),
+                'commercial_ref': (device_data.get('commercial_ref') or '').strip(),
+            })
+            trace.update(ecrits)
+        return len(faits)
+
     def _batch_insert_devices(self, devices_batch: List[Dict[str, Any]]) -> List[int]:
         """Insertion en lot des nouveaux appareils avec chunking optimisé"""
         if not devices_batch:
@@ -3835,9 +4007,21 @@ class ImportManager:
             self.db_manager.execute_query(update_query, params)
             app_logger.debug(f" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
     
+    def _completer_existant(self, device_id: int, device_data: Dict[str, Any]) -> None:
+        """Chemin standard : la garde SQL tient lieu du cache du chemin batch."""
+        champs = self._champs_a_completer(device_data)
+        if champs:
+            self._completer_appareils_existants([(device_id, device_data, champs)])
+
     @handle_database_operation_errors(return_value=None, log_prefix="Erreur insertion appareil")
-    def _insert_or_find_device(self, device_data: Dict[str, Any]) -> Optional[int]:
+    def _insert_or_find_device(self, device_data: Dict[str, Any],
+                               completer: bool = True) -> Optional[int]:
         """Insérer ou trouver un appareil existant.
+
+        Un appareil retrouvé reçoit la 3ᵉ colonne (other_ref / notes) de la ligne et
+        son Type/Fabricant là où il est vide en base — seulement à la 1ʳᵉ occurrence
+        de la ligne (`completer`), comme sur le chemin batch : sur un doublon, la
+        première valeur l'emporte.
 
         La résolution reproduit exactement la clé composite du chemin batch
         (_find_in_cache) : une ligne complète ne correspond qu'à un appareil
@@ -3863,11 +4047,7 @@ class ImportManager:
             """
             results = self.db_manager.execute_query(search_query, [ref_modele, commercial_ref])
 
-            if results:
-                # Appareil trouvé, on le met à jour avec les nouvelles données si nécessaire
-                existing_id = results[0][0]
-                self._update_existing_device(existing_id, device_data)
-                return existing_id
+            existing_id = results[0][0] if results else None
 
             # Repli « ref_modele seule » — ne s'applique QUE si la ligne entrante est
             # elle-même partielle. Sans cette garde, une ligne COMPLÈTE se rattachait
@@ -3875,7 +4055,7 @@ class ImportManager:
             # 2 appareils au lieu de 3 sur le chemin standard, 3 sur le chemin batch
             # (divergence B mesurée en v3.69.1). La doctrine v3.66.1 — « un appareil
             # partiel ne correspond qu'à un autre appareil partiel » — est ainsi tenue.
-            if ref_modele and not commercial_ref:
+            if existing_id is None and ref_modele and not commercial_ref:
                 search_query_ref = """
                     SELECT id FROM appareils
                     WHERE ref_modele = ? AND ref_modele != ''
@@ -3884,7 +4064,7 @@ class ImportManager:
                 """
                 results_ref = self.db_manager.execute_query(search_query_ref, [ref_modele])
                 if results_ref:
-                    return results_ref[0][0]
+                    existing_id = results_ref[0][0]
 
             # Cas miroir : seule commercial_ref correspond (v3.65.1).
             #
@@ -3897,7 +4077,7 @@ class ImportManager:
             # Garde symétrique du repli ci-dessus : les deux sont désormais
             # mutuellement exclusifs (l'un exige commercial_ref vide, l'autre
             # ref_modele vide), il n'y a donc plus de priorité à arbitrer.
-            if commercial_ref and not ref_modele:
+            if existing_id is None and commercial_ref and not ref_modele:
                 search_query_com = """
                     SELECT id FROM appareils
                     WHERE commercial_ref = ? AND commercial_ref != ''
@@ -3906,7 +4086,18 @@ class ImportManager:
                 """
                 results_com = self.db_manager.execute_query(search_query_com, [commercial_ref])
                 if results_com:
-                    return results_com[0][0]
+                    existing_id = results_com[0][0]
+
+            # Appareil retrouvé, quelle que soit la recherche qui l'a trouvé (v3.88.4).
+            # Jusqu'en v3.88.2, seule la recherche stricte écrivait la 3ᵉ colonne : les
+            # replis mono-référence la perdaient (le batch l'écrit pour tout appareil
+            # existant), et un doublon la réécrivait — dernière valeur gagnante contre
+            # première sur le batch, qui ne traite pas les doublons.
+            if existing_id is not None:
+                if completer:
+                    self._update_existing_device(existing_id, device_data)
+                    self._completer_existant(existing_id, device_data)
+                return existing_id
 
         # Créer un nouvel appareil.
         # Champs absents complétés à '' — exactement ce que fait _batch_insert_devices
@@ -3920,6 +4111,7 @@ class ImportManager:
         device_id = self.db_manager.insert_appareil(donnees_insert)
         if device_id:
             device_data['is_new'] = True
+            self._tracer_autocompletions([(device_id, device_data, None)])
         return device_id
     
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur auto-completion")
@@ -3956,31 +4148,45 @@ class ImportManager:
             params.append(commercial_ref)
 
         where_clause = ' OR '.join(conditions)
+        # Toutes les combinaisons, et non plus la seule gagnante (LIMIT 1) : leur
+        # répartition donne l'indice de confiance tracé (v3.89.0). Le départage
+        # des ex aequo par valeur rend le choix reproductible.
+        # Un appareil auto-complété non encore vérifié ne sert pas de source : sa
+        # valeur n'est qu'une déduction, et le chemin standard, qui écrit au fil de
+        # l'eau, la recompterait aussitôt (confiance gonflée, « 3/3 » pour « 1/1 »).
         query = f"""
-            SELECT type, manufacturer, COUNT(*) as freq
+            SELECT type, manufacturer, COUNT(*) as freq,
+                   MIN(COALESCE(NULLIF(ref_modele, ''), commercial_ref)) AS exemple
             FROM appareils
             WHERE ({where_clause})
               AND type IS NOT NULL AND type != ''
               AND manufacturer IS NOT NULL AND manufacturer != ''
+              AND id NOT IN (SELECT appareil_id FROM appareils_autocompletes)
             GROUP BY type, manufacturer
-            ORDER BY freq DESC
-            LIMIT 1
+            ORDER BY freq DESC, type, manufacturer
         """
 
         results = self.db_manager.execute_query(query, params)
 
         if results:
-            found_type, found_manufacturer = results[0][0], results[0][1]
+            found_type, found_manufacturer, _, exemple = results[0][:4]
+            total = sum(r[2] for r in results)
             # Agrégé plutôt qu'unitaire (v3.66.0) : ces deux messages représentaient
             # à eux seuls ~550 000 lignes de log, soit le premier poste de volume.
             # Le total est journalisé une fois en fin d'import (_log_resume_import).
             if type_empty:
                 appareil_data['type'] = found_type
+                self._noter_autocompletion(
+                    appareil_data, 'type', found_type, exemple,
+                    sum(r[2] for r in results if r[0] == found_type), total)
                 self._log_counters['autocomplete_type'] += 1
                 if Config.LOG_VERBOSE_PER_DEVICE:
                     app_logger.debug(f"  [OK] Type complété: '' -> '{found_type}'")
             if manufacturer_empty:
                 appareil_data['manufacturer'] = found_manufacturer
+                self._noter_autocompletion(
+                    appareil_data, 'manufacturer', found_manufacturer, exemple,
+                    sum(r[2] for r in results if r[1] == found_manufacturer), total)
                 self._log_counters['autocomplete_manufacturer'] += 1
                 if Config.LOG_VERBOSE_PER_DEVICE:
                     app_logger.debug(f"  [OK] Fabricant complété: '' -> '{found_manufacturer}'")

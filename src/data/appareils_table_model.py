@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 
 import qtawesome as qta
 from PyQt5.QtCore import Qt, QAbstractTableModel, QEvent, QModelIndex, QRect, QRectF, QSize, pyqtSignal
-from PyQt5.QtGui import QBrush, QColor, QPainter
+from PyQt5.QtGui import QBrush, QColor, QFont, QPainter
 from PyQt5.QtWidgets import QStyle, QStyledItemDelegate
 
 from src.core.config import Config, pluralize
@@ -22,6 +22,8 @@ from src.core.config import Config, pluralize
 # Colonnes Type (0) et Fabricant (1) — cibles des suggestions par similarité.
 _SUGGESTION_COLS = (0, 1)
 _SUGGESTION_BG = QColor('#FFF8E1')   # jaune pâle, distinct de l'alerte doublons
+# Champ de chaque colonne Type/Fabricant, pour les auto-complétions à vérifier
+_CHAMP_PAR_COLONNE = {0: 'type', 1: 'manufacturer'}
 
 
 class AppareillsTableModel(QAbstractTableModel):
@@ -56,6 +58,10 @@ class AppareillsTableModel(QAbstractTableModel):
         # Le rendu (teinte de fond + texte fantôme + icône) est assuré par
         # SuggestionCellDelegate ; le modèle n'expose que l'état et le BackgroundRole.
         self._pending_suggestions = {}
+        # Champs auto-complétés à l'import et non vérifiés (v3.89.0), rendus en
+        # italique : {db_id: {champ: (source, accord, total)}}. Indexé par db_id,
+        # donc indépendant de la page chargée — alimenté par set_autocompletes().
+        self._autocompletes = {}
 
     # ── API Qt obligatoire ───────────────────────────────────────────────────
 
@@ -115,6 +121,12 @@ class AppareillsTableModel(QAbstractTableModel):
             # Highlight de recherche : délégué au service (Phase 3+)
             return None
 
+        elif role == Qt.FontRole:
+            if self.autocompletion_de(record[0], col):
+                police = QFont()
+                police.setItalic(True)
+                return police
+
         elif role == Qt.ToolTipRole:
             if col == len(Config.DB_HEADERS):
                 pieces = record[-1] if len(record) > len(Config.DB_HEADERS) + 1 else 0
@@ -124,6 +136,12 @@ class AppareillsTableModel(QAbstractTableModel):
                 if suggestions:
                     from ..services.reference_similarity_service import infobulle_candidat
                     return infobulle_candidat(suggestions[0])
+                prov = self.autocompletion_de(record[0], col)
+                if prov:
+                    source, accord, total = prov
+                    confiance = f"{accord}/{total}" if accord is not None else "confiance inconnue"
+                    return (f"Auto-complété d'après {source or '?'} ({confiance}) — à vérifier : "
+                            f"clic droit « Marquer comme vérifié », ou corrigez la valeur")
 
         return None
 
@@ -139,7 +157,8 @@ class AppareillsTableModel(QAbstractTableModel):
         if col < len(Config.DB_HEADERS):
             record[col + 1] = new_value
         self._records[row] = tuple(record)
-        self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+        self._oublier_autocompletion(record[0], col, old_value, new_value)
+        self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole, Qt.FontRole])
         self.cell_edited.emit(row, col, old_value, new_value)
         return True
 
@@ -167,9 +186,10 @@ class AppareillsTableModel(QAbstractTableModel):
         record = list(self._records[row])
         record[col + 1] = new_value
         self._records[row] = tuple(record)
+        self._oublier_autocompletion(record[0], col, old_value, new_value)
         if row < self._display_count:
             idx = self.index(row, col)
-            self.dataChanged.emit(idx, idx, [Qt.DisplayRole, Qt.EditRole])
+            self.dataChanged.emit(idx, idx, [Qt.DisplayRole, Qt.EditRole, Qt.FontRole])
         self.cell_edited.emit(row, col, old_value, new_value)
         return True
 
@@ -342,6 +362,42 @@ class AppareillsTableModel(QAbstractTableModel):
         """Retourne la liste des candidats pour un db_id, ou [] si aucune."""
         return self._pending_suggestions.get(db_id, [])
 
+    # ── Auto-complétions à vérifier (v3.89.0) ───────────────────────────────
+    def set_autocompletes(self, par_appareil):
+        """Remplace la map des champs auto-complétés non vérifiés et rafraîchit
+        les cellules concernées (anciennes ET nouvelles lignes).
+
+        par_appareil : {db_id: {champ: (source, accord, total)}}.
+        """
+        affected = set(self._autocompletes) | set(par_appareil)
+        self._autocompletes = {k: dict(v) for k, v in par_appareil.items()}
+        self._emit_data_changed_for_db_ids(affected)
+
+    def autocompletion_de(self, db_id, col):
+        """(source, accord, total) si la cellule porte une auto-complétion non
+        vérifiée, sinon None."""
+        champ = _CHAMP_PAR_COLONNE.get(col)
+        if champ is None:
+            return None
+        return self._autocompletes.get(db_id, {}).get(champ)
+
+    def ids_autocompletes(self, db_ids):
+        """Ceux des db_ids fournis qui portent au moins une auto-complétion."""
+        return [i for i in db_ids if self._autocompletes.get(i)]
+
+    def _oublier_autocompletion(self, db_id, col, ancienne, nouvelle):
+        """Une valeur modifiée n'est plus « auto-complétée » : même règle que le
+        déclencheur SQL (la casse seule ne compte pas), appliquée sans attendre le
+        prochain rafraîchissement depuis la base."""
+        champ = _CHAMP_PAR_COLONNE.get(col)
+        champs = self._autocompletes.get(db_id)
+        if not champs or champ not in champs:
+            return
+        if (ancienne or '').lower() != (nouvelle or '').lower():
+            del champs[champ]
+            if not champs:
+                del self._autocompletes[db_id]
+
     def incomplete_records(self):
         """Retourne [(db_id, ref_modele, commercial_ref)] pour toutes les lignes
         CHARGÉES (pas seulement visibles) dont Type OU Marque est vide.
@@ -433,7 +489,7 @@ class AppareillsTableModel(QAbstractTableModel):
                 self.dataChanged.emit(
                     self.index(row, _SUGGESTION_COLS[0]),
                     self.index(row, _SUGGESTION_COLS[-1]),
-                    [Qt.BackgroundRole, Qt.DecorationRole, Qt.ToolTipRole],
+                    [Qt.BackgroundRole, Qt.DecorationRole, Qt.ToolTipRole, Qt.FontRole],
                 )
 
     def set_search_term(self, term):
