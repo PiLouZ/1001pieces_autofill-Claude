@@ -36,17 +36,13 @@ class KeyboardTreeWidget(QTreeWidget):
 
     def keyPressEvent(self, event: QKeyEvent):
         """Gérer les événements clavier"""
-        if event.key() == Qt.Key_Space:
-            # Basculer l'état de la checkbox de l'élément sélectionné
-            current_item = self.currentItem()
-            if current_item and current_item.flags() & Qt.ItemIsUserCheckable:
-                # Vérifier que c'est un appareil (pas un groupe)
-                if current_item.parent() is not None:  # C'est un enfant (appareil)
-                    current_state = current_item.checkState(0)
-                    new_state = Qt.Unchecked if current_state == Qt.Checked else Qt.Checked
-                    current_item.setCheckState(0, new_state)
-                    event.accept()
-                    return
+        # Espace : bascule la case de la ligne courante (mécanisme commun à toutes
+        # les fenêtres à cases, cf. src/ui/espace_coche.py). Les groupes d'appareils
+        # n'ont pas de case : la touche suit alors son cours normal.
+        from ..ui.espace_coche import basculer_case_courante, est_espace_seul
+        if est_espace_seul(event) and basculer_case_courante(self, 0):
+            event.accept()
+            return
 
         # Pour toutes les autres touches, comportement par défaut
         super().keyPressEvent(event)
@@ -628,6 +624,8 @@ class DuplicatePiecesWidget(QWidget):
         # des items checkables (et non des QCheckBox en cellWidget) : la coche voyage
         # donc avec la ligne au tri, sans désynchronisation.
         self.pieces_table.setSortingEnabled(True)
+        from ..ui.espace_coche import activer_espace_coche
+        activer_espace_coche(self.pieces_table)
 
         layout.addWidget(self.pieces_table)
 

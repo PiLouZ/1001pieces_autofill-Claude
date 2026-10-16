@@ -27,6 +27,7 @@ import qtawesome as qta
 
 from src.core.config import pluralize
 from .tri_colonnes import ItemTriable, ROLE_TRI, activer_tri, TriSuspendu
+from .espace_coche import activer_espace_coche
 
 # ── Colonnes ────────────────────────────────────────────────────────────────
 COL_CHECK = 0
@@ -153,8 +154,9 @@ class AutocompletionReviewDialog(QDialog):
         title_row.addStretch()
         b_lay.addLayout(title_row)
         help_label = QLabel(
-            "Valeurs en italique : écrites par l'auto-complétion d'un import. Cochez les "
-            "appareils vérifiés ; double-cliquez une valeur Type ou Marque pour la corriger. "
+            "Valeurs en italique : écrites par l'auto-complétion d'un import. Tout est coché "
+            "(présumé juste) : décochez ce qui reste à revoir (Espace sur la ligne courante), "
+            "double-cliquez une valeur Type ou Marque pour la corriger. "
             "Confiance : appareils sources d'accord / appareils sources trouvés."
         )
         help_label.setStyleSheet("border: none; color: #666; font-size: 11px;")
@@ -199,6 +201,7 @@ class AutocompletionReviewDialog(QDialog):
         self._tree.setColumnWidth(
             COL_IMPORT, self._tree.fontMetrics().horizontalAdvance("00/00/0000 00:00") + 24)
         activer_tri(self._tree)
+        activer_espace_coche(self._tree)
         root.addWidget(self._tree, 1)
 
         actions = QHBoxLayout()
@@ -236,7 +239,9 @@ class AutocompletionReviewDialog(QDialog):
         for entree in self._entrees:
             item = ItemTriable(self._tree)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(COL_CHECK, Qt.Unchecked)
+            # Cochée par défaut : une auto-complétion est présumée juste, on ne
+            # décoche que celles à revoir (demande utilisateur, v3.89.1)
+            item.setCheckState(COL_CHECK, Qt.Checked)
             refs = " - ".join(r for r in (entree['ref_modele'], entree['commercial_ref']) if r)
             item.setText(COL_REF, refs or f"#{entree['id']}")
             item.setData(COL_CHECK, _ROLE_ID, entree['id'])

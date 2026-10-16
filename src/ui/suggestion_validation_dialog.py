@@ -22,6 +22,7 @@ import qtawesome as qta
 
 from src.core.config import pluralize
 from .tri_colonnes import ItemTriable, ROLE_TRI, activer_tri, TriSuspendu
+from .espace_coche import activer_espace_coche
 
 # ── Colonnes ────────────────────────────────────────────────────────────────
 COL_CHECK = 0      # case à cocher (étroite ; le libellé de groupe va sur COL_REF)
@@ -186,6 +187,7 @@ class SuggestionValidationDialog(QDialog):
                            for l in _TIER_LABEL.values()) + 24
         self._tree.setColumnWidth(COL_TIER, max(104, largeur_tier))
         activer_tri(self._tree)
+        activer_espace_coche(self._tree)
         root.addWidget(self._tree, 1)
 
         # Zone D — barre d'actions bas. Convention de l'appli : Annuler neutre à

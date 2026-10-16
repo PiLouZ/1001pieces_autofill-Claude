@@ -4,6 +4,28 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.89.1] - 2026-10-16 (branche `feature/cases-espace-precochees`)
+
+### Espace coche/décoche dans toutes les fenêtres à cases
+
+- La touche **Espace** bascule la case de la ligne courante **quelle que soit la
+  colonne où se trouve le curseur**. Qt ne le faisait que si la cellule courante
+  était celle de la case : en naviguant sur la Référence ou le Type, Espace ne
+  faisait rien. Comportement de la fenêtre des doublons, désormais commun
+  (`src/ui/espace_coche.py`) : « Valider les suggestions », « Auto-complétés à
+  vérifier », et dans la fenêtre des doublons le tableau des pièces en double et
+  la liste des références distinctes, qui en étaient privés.
+- Seule la ligne courante bascule, comme avant dans la fenêtre des doublons (la
+  multi-sélection y sert à marquer des groupes distincts). Maj/Cmd+Espace gardent
+  leur sens ; une ligne sans case (groupe d'appareils) n'en reçoit pas.
+
+### « Auto-complétés à vérifier » : tout coché à l'ouverture
+
+- Une auto-complétion est présumée juste : toutes les lignes sont cochées, on
+  décoche seulement celles à revoir avant « Marquer comme vérifiés ».
+
+---
+
 ## [3.89.0] - 2026-10-16 (branche `feature/tracabilite-autocompletion`)
 
 ### Auto-complétions traçables et vérifiables

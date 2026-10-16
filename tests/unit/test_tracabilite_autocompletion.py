@@ -129,14 +129,25 @@ def test_decisions_remises_au_callback(qapp, db):
     item_four = fenetre._items[1]
     fenetre._on_item_double_clicked(item_four, COL_TYPE)   # corrige et coche
     assert item_four.checkState(COL_CHECK) == Qt.Checked
-    fenetre._items[0].setCheckState(COL_CHECK, Qt.Checked)  # vérifié sans correction
+    assert fenetre._items[0].checkState(COL_CHECK) == Qt.Checked  # coché d'office
     fenetre._on_validate_clicked()
     assert recus == [([2, 1], [(1, {'type': 'Cuisinière'})])]
+
+
+def test_tout_coche_par_defaut(qapp, db):
+    """Une auto-complétion est présumée juste : tout est coché à l'ouverture."""
+    recus = []
+    fenetre = AutocompletionReviewDialog(None, _entrees(db), on_validate=lambda v, c: recus.append((v, c)))
+    assert all(it.checkState(COL_CHECK) == Qt.Checked for it in fenetre._items)
+    assert fenetre._validate_btn.text() == "Marquer comme vérifiés (2)"
+    fenetre._on_validate_clicked()
+    assert recus == [([2, 1], [])]
 
 
 def test_rien_coche_rien_remis(qapp, db):
     recus = []
     fenetre = AutocompletionReviewDialog(None, _entrees(db), on_validate=lambda v, c: recus.append(1))
+    fenetre._set_all_checked(False)
     fenetre._on_validate_clicked()
     assert recus == []
 
