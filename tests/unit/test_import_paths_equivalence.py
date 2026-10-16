@@ -56,7 +56,15 @@ def _etat_base(db_manager):
     associations = db_manager.execute_query(
         "SELECT COUNT(*) FROM piece_associations"
     )[0][0]
-    return {'appareils': [tuple(a) for a in appareils], 'associations': associations}
+    # Trace des auto-complétions (v3.89.0) : désignée par les références, les id
+    # pouvant différer d'un chemin à l'autre
+    autocompletes = db_manager.execute_query(
+        "SELECT a.ref_modele, a.commercial_ref, t.champ, t.valeur, t.source, t.accord, t.total "
+        "FROM appareils_autocompletes t JOIN appareils a ON a.id = t.appareil_id "
+        "ORDER BY 1, 2, 3"
+    ) or []
+    return {'appareils': [tuple(a) for a in appareils], 'associations': associations,
+            'autocompletes': [tuple(t) for t in autocompletes]}
 
 
 def _executer(chemin: str, lots, config_surcharges=None, preexistants=(), details=None):
@@ -142,6 +150,10 @@ def _assert_equivalents(lots, config_surcharges=None, preexistants=(), details=N
     )
     assert s_std == s_bat, (
         f"Candidats à la similarité divergents : standard={s_std} batch={s_bat}"
+    )
+    assert e_std['autocompletes'] == e_bat['autocompletes'], (
+        f"Traces d'auto-complétion divergentes.\n"
+        f"  standard = {e_std['autocompletes']}\n  batch    = {e_bat['autocompletes']}"
     )
     return c_std, e_std
 
@@ -392,3 +404,47 @@ class TestCompletionAppareilsExistants:
         _, etat = _assert_equivalents([lignes], preexistants=vides, details=details)
         assert len(details) == 20
         assert all(a[:2] == ('Aspirateur', 'Samsung') for a in etat['appareils'])
+
+
+class TestTraceAutocompletion:
+    """v3.89.0 — tout champ écrit par l'auto-complétion laisse une trace (valeur,
+    source, accord des sources), identique sur les deux chemins."""
+
+    SOURCES = [('Four', 'Bosch', 'X2', 'CR1'), ('Four', 'Bosch', 'X3', 'CR1'),
+               ('Hotte', 'Bosch', 'X4', 'CR1')]
+
+    def test_appareils_crees(self, qapp):
+        _, etat = _assert_equivalents(
+            [[['', '', 'N1', 'CR1'], ['Lave-linge', '', 'N2', 'CR1']]],
+            preexistants=self.SOURCES)
+        # Four : 2 sources sur 3 ; Bosch : 3 sur 3 ; source = plus petite réf. du groupe gagnant
+        assert etat['autocompletes'] == [
+            ('N1', 'CR1', 'manufacturer', 'Bosch', 'X2', 3, 3),
+            ('N1', 'CR1', 'type', 'Four', 'X2', 2, 3),
+            ('N2', 'CR1', 'manufacturer', 'Bosch', 'X2', 3, 3),
+        ]
+
+    def test_appareil_existant_complete(self, qapp):
+        _, etat = _assert_equivalents(
+            [[['', '', 'E1', 'CR1']]],
+            preexistants=self.SOURCES + [('', 'Bosch', 'E1', 'CR1')])
+        # Fabricant déjà saisi : rien écrit, donc rien tracé
+        assert etat['autocompletes'] == [('E1', 'CR1', 'type', 'Four', 'X2', 2, 3)]
+
+    def test_valeur_du_fichier_jamais_tracee(self, qapp):
+        _, etat = _assert_equivalents(
+            [[['Four', 'Bosch', 'N1', 'CR1']]], preexistants=self.SOURCES)
+        assert etat['autocompletes'] == []
+
+    def test_auto_complete_non_verifie_ne_sert_pas_de_source(self, qapp):
+        """2ᵉ lot : N1, auto-complété au 1ᵉʳ et pas encore vérifié, ne compte pas."""
+        _, etat = _assert_equivalents(
+            [[['', '', 'N1', 'CR7']], [['', '', 'N2', 'CR7']]],
+            preexistants=[('Four', 'Bosch', 'S1', 'CR7')])
+        assert [t[0] for t in etat['autocompletes']] == ['N1', 'N1', 'N2', 'N2']
+        assert all(t[4:] == ('S1', 1, 1) for t in etat['autocompletes'])
+
+    def test_au_dela_du_seuil_de_bascule(self, qapp):
+        lignes = [['', '', f'V{i:03d}', 'CR1'] for i in range(60)]
+        _, etat = _assert_equivalents([lignes], preexistants=self.SOURCES)
+        assert len(etat['autocompletes']) == 120

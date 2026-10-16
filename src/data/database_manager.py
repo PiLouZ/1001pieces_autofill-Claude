@@ -21,6 +21,7 @@ from ._db_mixins import DatabaseError, with_query_lock as _with_query_lock
 from ._db_mixins.fts5 import DatabaseFts5Mixin
 from ._db_mixins.supersession import DatabaseSupersessionMixin
 from ._db_mixins.setup import DatabaseSetupMixin
+from ._db_mixins.autocompletion import DatabaseAutocompletionMixin
 
 import sys
 import os
@@ -68,7 +69,8 @@ class SearchCache:
         self.misses = 0
     
 
-class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin):
+class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin,
+                      DatabaseAutocompletionMixin):
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
 
     def __init__(self, db_file: str = None):

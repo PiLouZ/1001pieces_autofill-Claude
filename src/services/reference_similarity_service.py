@@ -212,6 +212,9 @@ def decrire_candidat(candidat: dict) -> str:
 
 def provenance_candidat(candidat: dict) -> str:
     """Texte de provenance pour l'historique (« source : … »)."""
+    if candidat.get('provenance'):
+        # Écriture qui n'est pas une suggestion (correction d'un auto-complété)
+        return candidat['provenance']
     if est_type_piece(candidat):
         return f"type de la pièce {candidat.get('ref', '')} ({candidat.get('score', 0):.0%})"
     return f"suggestion réf. {candidat.get('ref', '')} (score {candidat.get('score', 0):.0%})"

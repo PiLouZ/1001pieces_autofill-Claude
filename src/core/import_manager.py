@@ -2471,6 +2471,9 @@ class ImportManager:
             # Appareils existants dont Type/Fabricant vides ont été complétés
             # (clé : id), pour le bloc d'historique de l'import.
             self._completions_existants = {}
+            # Appareils dont un champ auto-complété a été tracé (fenêtre « à vérifier »)
+            self._appareils_autocompletes = set()
+            self._horodatage_import = datetime.now().isoformat(sep=' ', timespec='seconds')
 
             n = len(config.files)
             if progress_cb:
@@ -2530,6 +2533,8 @@ class ImportManager:
             # Appareils existants complétés (Type/Fabricant vides) : tracés dans l'historique
             if self._completions_existants:
                 results['appareils_completes'] = list(self._completions_existants.values())
+            if self._appareils_autocompletes:
+                results['autocompletes_a_verifier'] = len(self._appareils_autocompletes)
 
             # Marques et types réécrits (« DELTA → Delta ») : tracés dans l'historique
             for service, cle, libelle in ((self._marques, 'marques_alignees', 'Marques alignées'),
@@ -3238,6 +3243,8 @@ class ImportManager:
             # new_device_ids est parallèle à new_devices_batch ; zip tronque si tailles diffèrent.
             for _dev_data, _new_id in zip(new_devices_batch, new_device_ids):
                 _dev_data['id'] = _new_id
+            self._tracer_autocompletions(
+                (d['id'], d, None) for d in new_devices_batch[:len(new_device_ids)])
 
             app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
             if existing_updates:
@@ -3515,8 +3522,14 @@ class ImportManager:
     def _build_autocomplete_cache(self, existing_devices_cache: Dict[str, Dict]) -> Dict[str, Dict[str, str]]:
         """Construire un cache pour l'auto-complétion (Type + Fabricant par référence)"""
         autocomplete_cache = {}
-        
+        # Même règle que _try_auto_complete : pas d'auto-complété non vérifié comme source
+        lignes = self.db_manager.execute_query(
+            "SELECT DISTINCT appareil_id FROM appareils_autocompletes") or []
+        non_verifies = {ligne[0] for ligne in lignes}
+
         for key, device in existing_devices_cache.items():
+            if device.get('id') in non_verifies:
+                continue
             ref_modele = (device.get('ref_modele') or '').strip()
             commercial_ref = (device.get('commercial_ref') or '').strip()
             device_type = (device.get('type') or '').strip()
@@ -3528,14 +3541,16 @@ class ImportManager:
                 if ref_modele:
                     autocomplete_cache[ref_modele.lower()] = {
                         'type': device_type,
-                        'manufacturer': manufacturer
+                        'manufacturer': manufacturer,
+                        'source': ref_modele or commercial_ref,
                     }
                 
                 # Indexer par commercial_ref si disponible et différent
                 if commercial_ref and commercial_ref.lower() != ref_modele.lower():
                     autocomplete_cache[commercial_ref.lower()] = {
                         'type': device_type,
-                        'manufacturer': manufacturer
+                        'manufacturer': manufacturer,
+                        'source': ref_modele or commercial_ref,
                     }
         
         return autocomplete_cache
@@ -3560,10 +3575,12 @@ class ImportManager:
         
         # Appliquer les données trouvées si disponibles
         if cache_entry:
-            if not (device_data.get('type') or '').strip() and cache_entry.get('type'):
-                device_data['type'] = cache_entry['type']
-            if not (device_data.get('manufacturer') or '').strip() and cache_entry.get('manufacturer'):
-                device_data['manufacturer'] = cache_entry['manufacturer']
+            # Le cache ne garde qu'un appareil par référence : confiance inconnue
+            for champ in self.CHAMPS_COMPLETABLES:
+                if not (device_data.get(champ) or '').strip() and cache_entry.get(champ):
+                    device_data[champ] = cache_entry[champ]
+                    self._noter_autocompletion(device_data, champ, cache_entry[champ],
+                                               cache_entry.get('source'), None, None)
     
     def _find_in_cache(self, device_data: Dict[str, Any], cache: Dict[str, Dict]) -> Optional[int]:
         """Trouver un appareil dans le cache (pas de SQL!)
@@ -3615,6 +3632,49 @@ class ImportManager:
             champs[champ] = valeur
         return champs
 
+    # Clé privée de device_data : provenance des champs auto-complétés. Sans effet
+    # sur les insertions, qui lisent les colonnes une à une (DB_HEADERS, get).
+    CLE_AUTOCOMPLETION = '_autocompletion'
+
+    def _noter_autocompletion(self, device_data: Dict[str, Any], champ: str, valeur: str,
+                              source: Optional[str], accord: Optional[int],
+                              total: Optional[int]) -> None:
+        """Retenir d'où vient un champ auto-complété, en attendant l'id de l'appareil.
+
+        accord/total : appareils sources donnant cette valeur / appareils sources
+        trouvés (« 1/2 »). None quand la source n'en dit rien (cache du batch).
+        """
+        device_data.setdefault(self.CLE_AUTOCOMPLETION, {})[champ] = {
+            'valeur': valeur, 'source': source or '', 'accord': accord, 'total': total}
+
+    def _tracer_autocompletions(self, appareils) -> None:
+        """Inscrire dans appareils_autocompletes les champs auto-complétés ÉCRITS.
+
+        Args:
+            appareils: (appareil_id, device_data, champs_ecrits). champs_ecrits None :
+                appareil créé, tous ses champs auto-complétés ont été insérés. Sinon,
+                seuls ceux réellement écrits (et de même valeur) sont tracés — un
+                champ déjà renseigné en base n'a rien reçu.
+        Appelée après l'écriture : le déclencheur effacerait sinon la trace.
+        """
+        enregistrer = getattr(self.db_manager, 'enregistrer_autocompletions', None)
+        if enregistrer is None:
+            return
+        horodatage = (getattr(self, '_horodatage_import', None)
+                      or datetime.now().isoformat(sep=' ', timespec='seconds'))
+        lignes = []
+        for appareil_id, device_data, champs in appareils:
+            for champ, prov in (device_data.get(self.CLE_AUTOCOMPLETION) or {}).items():
+                ecrit = (device_data.get(champ) if champs is None else champs.get(champ)) or ''
+                if not appareil_id or ecrit.strip() != (prov['valeur'] or '').strip():
+                    continue
+                lignes.append((appareil_id, champ, prov['valeur'], prov['source'],
+                               prov['accord'], prov['total'], horodatage))
+        if lignes and enregistrer(lignes):
+            traces = getattr(self, '_appareils_autocompletes', None)
+            if traces is not None:
+                traces.update(ligne[0] for ligne in lignes)
+
     def _completer_appareils_existants(
             self, completions: List[Tuple[int, Dict[str, Any], Dict[str, str]]]) -> int:
         """Écrire les champs vides des appareils existants, commun aux deux chemins.
@@ -3654,6 +3714,7 @@ class ImportManager:
                 app_logger.error(f"Complétion des appareils existants échouée : {e}")
                 return 0
 
+        self._tracer_autocompletions(faits)
         if not hasattr(self, '_completions_existants'):
             self._completions_existants = {}
         for device_id, device_data, ecrits in faits:
@@ -4033,6 +4094,7 @@ class ImportManager:
         device_id = self.db_manager.insert_appareil(donnees_insert)
         if device_id:
             device_data['is_new'] = True
+            self._tracer_autocompletions([(device_id, device_data, None)])
         return device_id
     
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur auto-completion")
@@ -4069,31 +4131,45 @@ class ImportManager:
             params.append(commercial_ref)
 
         where_clause = ' OR '.join(conditions)
+        # Toutes les combinaisons, et non plus la seule gagnante (LIMIT 1) : leur
+        # répartition donne l'indice de confiance tracé (v3.89.0). Le départage
+        # des ex aequo par valeur rend le choix reproductible.
+        # Un appareil auto-complété non encore vérifié ne sert pas de source : sa
+        # valeur n'est qu'une déduction, et le chemin standard, qui écrit au fil de
+        # l'eau, la recompterait aussitôt (confiance gonflée, « 3/3 » pour « 1/1 »).
         query = f"""
-            SELECT type, manufacturer, COUNT(*) as freq
+            SELECT type, manufacturer, COUNT(*) as freq,
+                   MIN(COALESCE(NULLIF(ref_modele, ''), commercial_ref)) AS exemple
             FROM appareils
             WHERE ({where_clause})
               AND type IS NOT NULL AND type != ''
               AND manufacturer IS NOT NULL AND manufacturer != ''
+              AND id NOT IN (SELECT appareil_id FROM appareils_autocompletes)
             GROUP BY type, manufacturer
-            ORDER BY freq DESC
-            LIMIT 1
+            ORDER BY freq DESC, type, manufacturer
         """
 
         results = self.db_manager.execute_query(query, params)
 
         if results:
-            found_type, found_manufacturer = results[0][0], results[0][1]
+            found_type, found_manufacturer, _, exemple = results[0][:4]
+            total = sum(r[2] for r in results)
             # Agrégé plutôt qu'unitaire (v3.66.0) : ces deux messages représentaient
             # à eux seuls ~550 000 lignes de log, soit le premier poste de volume.
             # Le total est journalisé une fois en fin d'import (_log_resume_import).
             if type_empty:
                 appareil_data['type'] = found_type
+                self._noter_autocompletion(
+                    appareil_data, 'type', found_type, exemple,
+                    sum(r[2] for r in results if r[0] == found_type), total)
                 self._log_counters['autocomplete_type'] += 1
                 if Config.LOG_VERBOSE_PER_DEVICE:
                     app_logger.debug(f"  [OK] Type complété: '' -> '{found_type}'")
             if manufacturer_empty:
                 appareil_data['manufacturer'] = found_manufacturer
+                self._noter_autocompletion(
+                    appareil_data, 'manufacturer', found_manufacturer, exemple,
+                    sum(r[2] for r in results if r[1] == found_manufacturer), total)
                 self._log_counters['autocomplete_manufacturer'] += 1
                 if Config.LOG_VERBOSE_PER_DEVICE:
                     app_logger.debug(f"  [OK] Fabricant complété: '' -> '{found_manufacturer}'")
