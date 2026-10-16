@@ -3,6 +3,7 @@ Service de groupement d'historique pour les modifications d'appareils
 Groupe les modifications multiples d'un même appareil en une seule entrée
 """
 
+from contextlib import nullcontext
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 from ..ui.qt_imports import QTimer, QObject, pyqtSignal
@@ -90,10 +91,17 @@ class GroupedHistoryService(QObject):
         # ce qui devenait O(n²) lors d'une édition en masse (ex: 6615 cellules)
         self._row_index_cache = self._build_row_index()
 
+        # Panneau rendu une seule fois pour tout le lot (v3.91.2) : sinon une
+        # remise en page complète par appareil (1858 suggestions → ~30 à 55 s gelées)
+        # Lu sur la classe : une doublure (Mock) inventerait l'attribut sans en
+        # fournir le protocole de contexte
+        uis = self.user_interaction_service
+        differer = getattr(type(uis), 'differer_affichage', None)
         try:
-            # Traiter chaque appareil
-            for db_id, data in self.pending_modifications.items():
-                self._flush_device_modifications(db_id, data)
+            with (differer(uis) if differer is not None else nullcontext()):
+                # Traiter chaque appareil
+                for db_id, data in self.pending_modifications.items():
+                    self._flush_device_modifications(db_id, data)
         finally:
             self._row_index_cache = None
 

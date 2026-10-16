@@ -12,6 +12,7 @@ Changements v2 :
 
 import json
 import re
+from contextlib import contextmanager
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from .qt_imports import QMessageBox, QTimer
@@ -345,6 +346,9 @@ class UserInteractionService:
     def __init__(self, main_window):
         self.main_window = main_window
         self._history_entries: List[Dict[str, Any]] = []
+        # Rendu du panneau différé (> 0) pendant une rafale d'entrées
+        self._affichage_differe = 0
+        self._affichage_en_retard = False
 
     # ── Dialogues ──────────────────────────────────────────────────────────────
 
@@ -492,8 +496,30 @@ class UserInteractionService:
         del self._history_entries[_MAX_HISTORY:]
         self._refresh_display()
 
+    @contextmanager
+    def differer_affichage(self):
+        """Regrouper le rendu du panneau pendant une rafale d'entrées (v3.91.2).
+
+        Chaque `add_to_history` reconstruit le HTML des 100 entrées visibles puis
+        le remet en page (`setHtml`, ~15 ms) : 1858 suggestions validées d'un coup
+        gelaient l'interface ~30 à 55 s. Les entrées et leur persistance restent
+        identiques ; seul le rendu est fait une fois, à la sortie du bloc.
+        Réentrant : seul le bloc le plus externe déclenche le rendu.
+        """
+        self._affichage_differe += 1
+        try:
+            yield
+        finally:
+            self._affichage_differe -= 1
+            if self._affichage_differe == 0 and self._affichage_en_retard:
+                self._affichage_en_retard = False
+                self._refresh_display()
+
     def _refresh_display(self) -> None:
         """Reconstruire et afficher le HTML de l'historique."""
+        if self._affichage_differe:
+            self._affichage_en_retard = True
+            return
         if hasattr(self.main_window, 'history_list'):
             if self._history_entries:
                 html = self._build_history_html()

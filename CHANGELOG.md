@@ -4,6 +4,32 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.91.2] - 2026-10-16 (branche `claude/recursing-haibt-437e9c`)
+
+### Validation en masse des suggestions : 55 s de gel → instantané
+
+- **Symptôme** : 1858 suggestions Type/Marque validées d'un coup (fenêtre
+  « Examiner N suggestions… ») → l'application semblait mouliner près d'une
+  minute. Écriture en base correcte (1 transaction, 0,1 s) ; le gel survenait
+  **2 s plus tard**, au vidage de l'historique groupé.
+- **Cause** : `GroupedHistoryService.flush_all_pending_modifications` appelait
+  `add_to_history` une fois par appareil, et chaque appel remettait en page les
+  100 entrées du panneau Historique (`setHtml`, ~15 ms). 1858 remises en page,
+  sur le fil de l'interface : 94 % du temps. Les 1858 commits d'historique,
+  eux, ne pèsent que 0,1 s.
+- **Correctif** : `UserInteractionService.differer_affichage()` (réentrant) ;
+  le vidage groupé n'affiche le panneau qu'une fois, à la fin. Entrées,
+  persistance et panneau final inchangés. Vaut pour toute édition en masse
+  (glisser, collage, Cmd+D sur une colonne…).
+- **Mesure** (copie de la base réelle, 1858 appareils, offscreen) : vidage de
+  l'historique 28,8 s → 0,17 s ; `modifications_history` et `appareils`
+  identiques octet pour octet entre les deux versions.
+- Production vérifiée en lecture seule : les 1858 validations du 2026-10-16
+  14:39 sont toutes en base et dans l'historique.
+- Tests : `test_historique_rendu_differe.py` (6).
+
+---
+
 ## [3.91.1] - 2026-10-16 (branche `fix/pastilles-hauteur`)
 
 ### Pastilles de réfs rognées dans « Succession »
