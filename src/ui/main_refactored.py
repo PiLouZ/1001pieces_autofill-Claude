@@ -699,10 +699,27 @@ class MainWindow(QMainWindow):
         self.statusbar.setFixedHeight(self.incomplete_nav_widget.content_height() + 6)
         self._wire_incomplete_nav()
 
-        # « Auto-complétés à vérifier (N) | Tout valider » juste après, deux moitiés
-        # accolées dans un même conteneur, masqué tant que N = 0
         from .qt_imports import QPushButton, QWidget, QHBoxLayout
         import qtawesome as qta
+
+        # « Suggestions à valider (N) » juste après (remplace le bandeau au-dessus
+        # de la recherche, v3.92.0) : ouvre la fenêtre de validation, masqué tant
+        # que N = 0. Pas de « Tout valider » : une suggestion n'est jamais écrite
+        # sans regard humain, à la différence d'un auto-complété déjà en base.
+        self.suggestions_btn = QPushButton()
+        self.suggestions_btn.setIcon(qta.icon('fa5s.lightbulb', color='#4e342e'))
+        self.suggestions_btn.setStyleSheet(StyleManager.SUGGESTIONS_BTN)
+        self.suggestions_btn.setToolTip(
+            "Type ou Fabricant proposés d'après des références voisines, pas encore "
+            "écrits.\nClic : fenêtre de validation. Une cellule surlignée se valide "
+            "aussi seule, d'un clic.")
+        self.suggestions_btn.clicked.connect(self._open_suggestion_validation_dialog)
+        self.suggestions_btn.setVisible(False)
+        self.statusbar.insertWidget(1, self.suggestions_btn)
+        self._rafraichir_bouton_suggestions()
+
+        # « Auto-complétés à vérifier (N) | Tout valider » ensuite, deux moitiés
+        # accolées dans un même conteneur, masqué tant que N = 0
         self.autocompletes_groupe = QWidget()
         groupe = QHBoxLayout(self.autocompletes_groupe)
         groupe.setContentsMargins(0, 0, 0, 0)
@@ -720,7 +737,7 @@ class MainWindow(QMainWindow):
         self.autocompletes_valider_btn.clicked.connect(self._confirmer_tout_valider_autocompletes)
         groupe.addWidget(self.autocompletes_valider_btn)
         self.autocompletes_groupe.setVisible(False)
-        self.statusbar.insertWidget(1, self.autocompletes_groupe)
+        self.statusbar.insertWidget(2, self.autocompletes_groupe)
         self._rafraichir_bouton_autocompletes()
         
         self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
@@ -993,8 +1010,8 @@ class MainWindow(QMainWindow):
         """Cœur batché partagé : applique une liste de décisions [(db_id, candidat)]
         en UNE seule transaction (collecteur `_bulk_edit_collector` →
         `save_cells_batch_immediate`), dissipe les indicateurs appliqués et rafraîchit
-        la bannière. Utilisé par le bouton « sans concurrence » ET par la fenêtre de
-        validation (un seul chemin d'écriture = pas de divergence).
+        le compteur de la barre d'état. Utilisé par le bouton « sans concurrence » ET
+        par la fenêtre de validation (un seul chemin d'écriture = pas de divergence).
 
         `candidat` porte au minimum 'type'/'manufacturer' (valeurs retenues, possiblement
         éditées) et idéalement 'ref'/'score' pour la provenance dans l'historique groupé.
@@ -1034,7 +1051,8 @@ class MainWindow(QMainWindow):
                     hors_page[db_id] = cand
                 else:
                     self._apply_suggestion_with_provenance(cand, model, db_id)
-                fields = {}
+                    self._vider_champs(cand, model, db_id)
+                fields = {champ: '' for champ in cand.get('vider', ())}
                 if (cand.get('type') or '').strip():
                     fields['type'] = cand['type']
                 if (cand.get('manufacturer') or '').strip():
@@ -1061,10 +1079,10 @@ class MainWindow(QMainWindow):
         if db_ops is not None and updates_by_db_id:
             db_ops.save_cells_batch(updates_by_db_id)
 
-        # Dissiper les indicateurs appliqués + rafraîchir la bannière.
+        # Dissiper les indicateurs appliqués + rafraîchir le compteur.
         for db_id, _ in decisions:
             model.clear_suggestion(db_id)
-        self.table_controller._update_similarity_banner()
+        self.table_controller._update_similarity_indicator()
         if progress is not None:
             progress.close()
         return len(decisions)
@@ -1084,7 +1102,7 @@ class MainWindow(QMainWindow):
         # en base ; ceux qui ont disparu sont retirés, d'où le rafraîchissement.
         snapshot = model.suggestions_snapshot(
             lire_hors_page=self.db_manager.lire_appareils_par_id)
-        self.table_controller._update_similarity_banner()
+        self.table_controller._update_similarity_indicator()
         if not snapshot:
             self.user_interaction_service.add_to_history(
                 "Validation des suggestions : aucune suggestion en attente.")
@@ -1111,9 +1129,22 @@ class MainWindow(QMainWindow):
             )
 
         self._suggestion_validation_dialog = SuggestionValidationDialog(
-            self, snapshot, on_validate=_on_validate, value_picker=_pick_value
+            self, snapshot, on_validate=_on_validate, value_picker=_pick_value,
+            on_refuse=self._refuser_suggestions,
+            preuves=lambda entree: self.db_manager.voter_par_pieces(entree['db_id']),
         )
         self._suggestion_validation_dialog.show()
+
+    def _rafraichir_bouton_suggestions(self):
+        """Compteur et visibilité du bouton « Suggestions à valider (N) », d'après
+        les suggestions en attente du modèle (aucune lecture en base)."""
+        bouton = getattr(self, 'suggestions_btn', None)
+        if bouton is None:
+            return
+        model = getattr(getattr(self, 'table_controller', None), 'model', None)
+        n = model.pending_suggestions_count if model is not None else 0
+        bouton.setText(f"Suggestions à valider ({n})")
+        bouton.setVisible(n > 0)
 
     def _rafraichir_bouton_autocompletes(self):
         """Compteur du bouton « Auto-complétés à vérifier (N) » et italique des
@@ -1216,6 +1247,30 @@ class MainWindow(QMainWindow):
         self._confirmation_tout_valider = boite   # garder une référence (show non bloquant)
         boite.show()
 
+    def _refuser_autocompletions(self, refus):
+        """Refus dans « Auto-complétés à vérifier » (v3.94.0) : les champs
+        auto-complétés sont vidés (même chemin batché, annulable et historisé que
+        les corrections) et le refus est mémorisé, pour que l'import ne les
+        réécrive pas. Le déclencheur SQL retire alors les traces.
+
+        refus : [(appareil_id, {champ: valeur auto-complétée})].
+        """
+        if not refus:
+            return 0
+        self.db_manager.enregistrer_refus(
+            (appareil_id, champ, valeur)
+            for appareil_id, champs in refus for champ, valeur in champs.items())
+        decisions = [(appareil_id, {'vider': list(champs),
+                                    'provenance': "refus d'auto-complétion"})
+                     for appareil_id, champs in refus]
+        self._apply_suggestion_decisions(decisions)
+        self._rafraichir_bouton_autocompletes()
+        n = len(refus)
+        self.user_interaction_service.add_to_history(
+            f"Auto-complétés refusés : {pluralize(n, 'appareil')} — champ{'s' if n > 1 else ''} "
+            f"vidé{'s' if n > 1 else ''}, l'import ne les réécrira plus.")
+        return n
+
     def _marquer_lignes_verifiees(self, appareil_ids, origine="depuis le tableau"):
         """Retire les traces des appareils donnés, sans toucher à leurs valeurs
         (clic droit « Marquer comme vérifié », bouton « Tout valider »)."""
@@ -1257,7 +1312,9 @@ class MainWindow(QMainWindow):
                 db_field, current_value, suggestions=candidates)
 
         self._autocompletion_review_dialog = AutocompletionReviewDialog(
-            self, entrees, on_validate=_on_validate, value_picker=_pick_value)
+            self, entrees, on_validate=_on_validate, value_picker=_pick_value,
+            on_refuse=self._refuser_autocompletions,
+            preuves=lambda entree: self.db_manager.voter_par_pieces(entree['id']))
         self._autocompletion_review_dialog.show()
 
     @staticmethod
@@ -1293,6 +1350,21 @@ class MainWindow(QMainWindow):
                 self.grouped_history_service.add_modification(
                     db_id, self._get_column_display_name(col), old_value, champs[champ],
                     source=source, reference=reference)
+
+    def _vider_champs(self, candidate, model, db_id):
+        """Vide les champs listés dans candidate['vider'] (refus d'une
+        auto-complétion, v3.94.0), par le même tronc commun que les écritures :
+        annulation et historique compris."""
+        champs = candidate.get('vider') or ()
+        row = model.find_row_by_db_id(db_id) if champs else None
+        if row is None:
+            return
+        self._suggestion_provenance = self._provenance_suggestion(candidate)
+        try:
+            for champ in champs:
+                model.set_field_value(row, 0 if champ == 'type' else 1, '')
+        finally:
+            self._suggestion_provenance = None
 
     def _apply_suggestion_with_provenance(self, candidate, model, db_id):
         """Applique un candidat en marquant la provenance pour l'historique groupé
@@ -2256,7 +2328,8 @@ class MainWindow(QMainWindow):
             # l'import (indicateur + bannière conditionnelle). Stockées par db_id :
             # s'affichent dès que les lignes concernées deviennent visibles.
             if hasattr(self.table_controller, 'set_similarity_suggestions'):
-                self.table_controller.set_similarity_suggestions(results.get('similarity_suggestions'))
+                self.table_controller.set_similarity_suggestions(
+                    self._filtrer_suggestions_refusees(results.get('similarity_suggestions') or {}))
 
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
@@ -3125,7 +3198,7 @@ class MainWindow(QMainWindow):
         found = self._compute_similarity_suggestions(incomplete, prefixes)
         if found:
             model.add_pending_suggestions(found)
-            self.table_controller._update_similarity_banner()
+            self.table_controller._update_similarity_indicator()
             self.user_interaction_service.add_to_history(
                 f"Suggestions similarité : {pluralize(len(found), 'proposition')} sur "
                 f"{pluralize(len(incomplete), 'ligne incomplète sélectionnée', 'lignes incomplètes sélectionnées')}"
@@ -3187,12 +3260,70 @@ class MainWindow(QMainWindow):
             fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
             enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
             enforce_shape_compatibility=Config.SIMILARITY_ENFORCE_SHAPE,
+            enforce_code_group=Config.SIMILARITY_GROUPE_CODE,
         )
         found = {}
         for db_id, ref_modele, commercial_ref in incomplete:
             cands = svc.find_candidates(ref_modele, commercial_ref, index, exclude_db_id=db_id)
             if cands:
                 found[db_id] = [c.to_dict() for c in cands]
+        found = self._ajouter_suggestions_type_piece(found, [i for i, _, _ in incomplete])
+        return self._filtrer_suggestions_refusees(found)
+
+    def _filtrer_suggestions_refusees(self, found):
+        """Retire les paires Type/Marque que l'utilisateur a refusées pour chaque
+        appareil (v3.94.0). Lecture échouée : rien n'est retiré."""
+        if not found:
+            return found
+        from ..services.reference_similarity_service import retirer_candidats_refuses
+        refus = self.db_manager.lire_refus(list(found))
+        return retirer_candidats_refuses(found, refus) if isinstance(refus, set) else found
+
+    def _refuser_suggestions(self, refusees):
+        """Mémorise les suggestions refusées dans la fenêtre de validation : aucune
+        écriture sur l'appareil, ses paires ne seront plus proposées.
+
+        refusees : [(db_id, [candidat_dict, ...])] — toutes les paires de la ligne.
+        """
+        from ..services.reference_similarity_service import CHAMP_PAIRE, cle_paire
+        if not refusees:
+            return 0
+        self.db_manager.enregistrer_refus(
+            (db_id, CHAMP_PAIRE, cle_paire(c)) for db_id, cands in refusees for c in cands)
+        for db_id, _ in refusees:
+            self.table_controller.clear_similarity_suggestion(db_id)
+        self.table_controller._update_similarity_indicator()
+        n = len(refusees)
+        self.user_interaction_service.add_to_history(
+            f"Suggestions refusées : {pluralize(n, 'appareil')} — "
+            f"{'elles ne seront' if n > 1 else 'elle ne sera'} plus proposée{'s' if n > 1 else ''}.")
+        return n
+
+    def _ajouter_suggestions_type_piece(self, found, db_ids):
+        """Palier « type de la pièce » hors import (v3.93.0) : pour chaque appareil
+        sans type, le type que portent les appareils partageant ses pièces (mêmes
+        seuils et même fusion que l'import, cf. fusionner_type_piece). Ne fait
+        jamais échouer le calcul des suggestions."""
+        if not Config.ENABLE_TYPE_PIECE_SUGGESTION or not db_ids:
+            return found
+        try:
+            from ..services.reference_similarity_service import fusionner_type_piece
+            lus = self.db_manager.lire_appareils_par_id(db_ids) or {}
+            sans_type = [i for i in db_ids if i in lus and not (lus[i][0] or '').strip()]
+            refs_par_appareil = self.db_manager.lire_refs_pieces_par_appareil(sans_type)
+            if not refs_par_appareil:
+                return found
+            types_par_ref = self.db_manager.compter_types_par_piece(
+                r for refs in refs_par_appareil.values() for r in refs)
+            for db_id, refs in refs_par_appareil.items():
+                fusion = fusionner_type_piece(
+                    found.get(db_id, []), refs, types_par_ref,
+                    Config.TYPE_PIECE_PART_MIN, Config.TYPE_PIECE_APPAREILS_MIN)
+                if fusion is not None:
+                    found[db_id] = fusion
+        except Exception as e:
+            from ..core.logger import app_logger
+            app_logger.error(f"Suggestions « type de la pièce » hors import échouées (non bloquant) : {e}")
         return found
 
     def _scan_all_for_suggestions(self):
@@ -3221,7 +3352,7 @@ class MainWindow(QMainWindow):
 
         if found:
             model.add_pending_suggestions(found)
-            self.table_controller._update_similarity_banner()
+            self.table_controller._update_similarity_indicator()
             self.user_interaction_service.add_to_history(
                 f"Suggestions similarité (scan global) : {pluralize(len(found), 'proposition')} sur "
                 f"{pluralize(len(incomplete), 'ligne incomplète', 'lignes incomplètes')} — cellules surlignées.")

@@ -20,8 +20,9 @@ from src.core.config import Config
 from src.core.constants import UIConfig
 from src.data.database_manager import DatabaseManager
 from src.ui.autocompletion_review_dialog import (
-    AutocompletionReviewDialog, regrouper_traces, confiance, COL_CHECK, COL_TYPE,
+    AutocompletionReviewDialog, regrouper_traces, confiance, categorie, COL_TYPE, COL_MFR,
 )
+from src.ui.fenetre_revue import VALIDE, REFUSE, ATTENTE, entree
 from src.ui.main_refactored import MainWindow
 
 TS = '2026-10-16 08:00:00'
@@ -120,36 +121,90 @@ def test_tri_une_source_avant_unanimite():
     assert ordre == [3, 2, 1]
 
 
+def _fenetre(entrees, **kw):
+    """Fenêtre à plat (sans regroupement) : l'ordre d'ouverture se lit directement."""
+    fenetre = AutocompletionReviewDialog(None, entrees, **kw)
+    fenetre._combo_groupe.setCurrentIndex(3)
+    return fenetre
+
+
+def _item(fenetre, appareil_id):
+    return next(it for it in fenetre._feuilles if entree(it)['id'] == appareil_id)
+
+
 def test_decisions_remises_au_callback(qapp, db):
     recus = []
     choix = iter(['Cuisinière'])
-    fenetre = AutocompletionReviewDialog(
-        None, _entrees(db), on_validate=lambda v, c: recus.append((v, c)),
-        value_picker=lambda champ, actuel, cands: next(choix))
-    item_four = fenetre._items[1]
-    fenetre._on_item_double_clicked(item_four, COL_TYPE)   # corrige et coche
-    assert item_four.checkState(COL_CHECK) == Qt.Checked
-    assert fenetre._items[0].checkState(COL_CHECK) == Qt.Checked  # coché d'office
-    fenetre._on_validate_clicked()
+    fenetre = _fenetre(_entrees(db), on_validate=lambda v, c: recus.append((v, c)),
+                       value_picker=lambda champ, actuel, cands: next(choix))
+    item_four = _item(fenetre, 1)
+    fenetre._on_double_clic(item_four, COL_TYPE)       # corrige et valide
+    assert fenetre.etat(item_four) == VALIDE
+    assert fenetre.etat(_item(fenetre, 2)) == VALIDE    # validé d'office
+    fenetre._on_appliquer()
     assert recus == [([2, 1], [(1, {'type': 'Cuisinière'})])]
 
 
-def test_tout_coche_par_defaut(qapp, db):
-    """Une auto-complétion est présumée juste : tout est coché à l'ouverture."""
+def test_tout_valide_par_defaut(qapp, db):
+    """Une auto-complétion est présumée juste : tout est validé à l'ouverture."""
     recus = []
-    fenetre = AutocompletionReviewDialog(None, _entrees(db), on_validate=lambda v, c: recus.append((v, c)))
-    assert all(it.checkState(COL_CHECK) == Qt.Checked for it in fenetre._items)
-    assert fenetre._validate_btn.text() == "Marquer comme vérifiés (2)"
-    fenetre._on_validate_clicked()
+    fenetre = _fenetre(_entrees(db), on_validate=lambda v, c: recus.append((v, c)))
+    assert all(fenetre.etat(it) == VALIDE for it in fenetre._feuilles)
+    assert fenetre._btn_appliquer.text() == "Appliquer (2)"
+    fenetre._on_appliquer()
     assert recus == [([2, 1], [])]
 
 
-def test_rien_coche_rien_remis(qapp, db):
+def test_rien_decide_rien_remis(qapp, db):
     recus = []
-    fenetre = AutocompletionReviewDialog(None, _entrees(db), on_validate=lambda v, c: recus.append(1))
-    fenetre._set_all_checked(False)
-    fenetre._on_validate_clicked()
+    fenetre = _fenetre(_entrees(db), on_validate=lambda v, c: recus.append(1),
+                       on_refuse=lambda r: recus.append(2))
+    fenetre.decider(ATTENTE, list(fenetre._feuilles))
+    fenetre._on_appliquer()
     assert recus == []
+
+
+def test_refus_remis_avec_les_valeurs_auto_completees(qapp, db):
+    """Refuser = vider les champs que l'import a écrits (ceux qui ont encore sa valeur)."""
+    recus = {}
+    fenetre = _fenetre(_entrees(db), on_validate=lambda v, c: recus.setdefault('v', (v, c)),
+                       on_refuse=lambda r: recus.setdefault('r', r))
+    fenetre.decider(REFUSE, [_item(fenetre, 1)])
+    fenetre._on_appliquer()
+    assert recus['v'] == ([2], [])
+    assert recus['r'] == [(1, {'type': 'Four', 'manufacturer': 'Bosch'})]
+
+
+def test_refus_ignore_un_champ_deja_modifie():
+    lignes = [(1, 'R1', '', 'Hotte', 'Bosch', 'type', 'Four', 'S', 1, 1, TS),
+              (1, 'R1', '', 'Hotte', 'Bosch', 'manufacturer', 'Bosch', 'S', 1, 1, TS)]
+    fenetre = _fenetre(regrouper_traces(lignes), on_validate=None)
+    assert fenetre.collecter_refus(fenetre._feuilles) == [(1, {'manufacturer': 'Bosch'})]
+
+
+def test_regroupement_par_import_et_puces(qapp):
+    def ligne(i, accord, total, ts):
+        return (i, f'R{i}', '', 'Four', 'Bosch', 'type', 'Four', 'S', accord, total, ts)
+    entrees = regrouper_traces([ligne(1, 3, 3, '2026-10-16 08:00:00'),
+                                ligne(2, 1, 1, '2026-10-22 11:00:00'),
+                                ligne(3, None, None, '2026-10-22 11:00:00')])
+    assert [categorie(e) for e in entrees] == ['inconnue', 'unique', 'unanime']
+    fenetre = AutocompletionReviewDialog(None, entrees, on_validate=None)
+    racine = fenetre._arbre.invisibleRootItem()
+    assert [racine.child(i).text(0) for i in range(racine.childCount())] == [
+        "Import du 22/10/2026 11:00 — 2", "Import du 16/10/2026 08:00 — 1"]
+    assert fenetre._boutons_puces['unique'].text() == "Source unique  1"
+    fenetre._choisir_puce('inconnue')
+    assert [entree(it)['id'] for it in fenetre._feuilles if not it.isHidden()] == [3]
+
+
+def test_detail_confronte_la_valeur_aux_pieces(qapp, db):
+    fenetre = _fenetre(_entrees(db), on_validate=None, preuves=lambda e: {
+        'nb_pieces': 4, 'paires': [('Four', 'Siemens', 9), ('Four', 'Bosch', 1)]})
+    fenetre._arbre.setCurrentItem(_item(fenetre, 1))
+    texte = fenetre._detail.toPlainText()
+    assert "Confirment le type" in texte and "Contredisent la marque" in texte
+    assert "d'après S1" in texte
 
 
 # ─── Historique d'import ─────────────────────────────────────────────────────
@@ -222,7 +277,8 @@ def test_tri_par_colonne_fenetre_autocompletes(qapp):
     fenetre = AutocompletionReviewDialog(None, regrouper_traces([
         ligne(1, 'B', 12, 12, '2026-10-01 10:00:00'), ligne(2, 'A', 1, 2, '2026-10-16 08:00:00'),
         ligne(3, 'C', 1, 1, '2026-10-10 09:00:00')]), on_validate=None)
-    arbre = fenetre._tree
+    fenetre._combo_groupe.setCurrentIndex(3)             # à plat
+    arbre = fenetre._arbre
     assert _ordre(arbre, 1) == ['A', 'C', 'B']           # ordre d'ouverture conservé
     arbre.sortByColumn(1, Qt.DescendingOrder)
     assert _ordre(arbre, 1) == ['C', 'B', 'A']
@@ -233,19 +289,20 @@ def test_tri_par_colonne_fenetre_autocompletes(qapp):
 
 
 def test_tri_par_colonne_fenetre_suggestions(qapp):
-    from src.ui.suggestion_validation_dialog import SuggestionValidationDialog, COL_SCORE, COL_REF
-    def entree(i, ref, score):
+    from src.ui.suggestion_validation_dialog import SuggestionValidationDialog, COL_PREUVE, COL_REF
+    def entree_(i, ref, score):
         return {'db_id': i, 'ref_modele': ref, 'commercial_ref': '', 'candidates': [
             {'type': 'Four', 'manufacturer': 'Bosch', 'score': score, 'ref': 'X',
              'confidence_tier': 'B_fuzzy_alpha'}]}
     fenetre = SuggestionValidationDialog(
-        None, [entree(1, 'R1', 0.92), entree(2, 'R2', 1.0), entree(3, 'R3', 0.87)], on_validate=None)
-    arbre = fenetre._tree
-    arbre.sortByColumn(COL_SCORE, Qt.DescendingOrder)    # « 100 % » avant « 92 % »
+        None, [entree_(1, 'R1', 0.92), entree_(2, 'R2', 1.0), entree_(3, 'R3', 0.87)], on_validate=None)
+    fenetre._combo_groupe.setCurrentIndex(3)             # à plat
+    arbre = fenetre._arbre
+    arbre.sortByColumn(COL_PREUVE, Qt.AscendingOrder)    # preuve la plus forte d'abord
     assert _ordre(arbre, COL_REF) == ['R2', 'R1', 'R3']
-    fenetre._group_combo.setCurrentIndex(2)              # regrouper : le tri survit
-    fenetre._group_combo.setCurrentIndex(0)
-    assert arbre.sortColumn() == COL_SCORE
+    fenetre._combo_groupe.setCurrentIndex(1)             # regrouper : le tri survit
+    fenetre._combo_groupe.setCurrentIndex(3)
+    assert arbre.sortColumn() == COL_PREUVE
 
 
 # ─── « Tout valider » (v3.89.2) ─────────────────────────────────────────────

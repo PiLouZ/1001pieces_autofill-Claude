@@ -3407,47 +3407,23 @@ class ImportManager:
         if not refs_par_ligne:
             return suggestions
         try:
-            from ..services.reference_similarity_service import (
-                candidat_type_piece, type_majoritaire)
+            from ..services.reference_similarity_service import fusionner_type_piece
             lignes = [d for d in getattr(self, '_pending_similarity_candidates', [])
                       if d.get('id') and not (d.get('type') or '').strip()
                       and id(d) in refs_par_ligne]
             if not lignes:
                 return suggestions
-            toutes_refs = sorted({r for d in lignes for r in refs_par_ligne[id(d)]})
-            types_par_ref: Dict[str, Dict[str, int]] = {}
-            for i in range(0, len(toutes_refs), 500):
-                paquet = toutes_refs[i:i + 500]
-                placeholders = ','.join('?' * len(paquet))
-                rows = self.db_manager.execute_query(
-                    f"""SELECT p.ref_piece, TRIM(a.type), COUNT(*)
-                        FROM pieces p
-                        JOIN piece_associations pa ON pa.piece_id = p.id
-                        JOIN appareils a ON a.id = pa.appareil_id
-                        WHERE p.ref_piece IN ({placeholders})
-                          AND COALESCE(TRIM(a.type), '') <> ''
-                        GROUP BY p.ref_piece, TRIM(a.type)""", paquet) or []
-                for ref, type_app, n in rows:
-                    types_par_ref.setdefault(ref, {})[type_app] = n
+            types_par_ref = self.db_manager.compter_types_par_piece(
+                r for d in lignes for r in refs_par_ligne[id(d)])
 
             ajoutees = 0
             for d in lignes:
-                refs = refs_par_ligne[id(d)]
-                compte: Dict[str, int] = {}
-                for ref in refs:
-                    for type_app, n in types_par_ref.get(ref, {}).items():
-                        compte[type_app] = compte.get(type_app, 0) + n
-                dominant = type_majoritaire(compte, Config.TYPE_PIECE_PART_MIN,
-                                            Config.TYPE_PIECE_APPAREILS_MIN)
-                if dominant is None:
-                    continue
-                type_piece, part, total = dominant
-                existants = suggestions.get(d['id'], [])
-                if any((c.get('type') or '').strip().lower() == type_piece.lower()
-                       for c in existants):
-                    continue          # la similarité propose déjà ce type
-                suggestions[d['id']] = existants + [
-                    candidat_type_piece(type_piece, refs, part, total)]
+                fusion = fusionner_type_piece(
+                    suggestions.get(d['id'], []), refs_par_ligne[id(d)], types_par_ref,
+                    Config.TYPE_PIECE_PART_MIN, Config.TYPE_PIECE_APPAREILS_MIN)
+                if fusion is None:
+                    continue          # pas de type dominant, ou déjà proposé
+                suggestions[d['id']] = fusion
                 ajoutees += 1
             app_logger.info(f"Suggestions « type de la pièce » : {ajoutees} appareil(s) "
                             f"sur {len(lignes)} ligne(s) sans type")
@@ -3503,6 +3479,7 @@ class ImportManager:
                 fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
                 enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
                 enforce_shape_compatibility=Config.SIMILARITY_ENFORCE_SHAPE,
+                enforce_code_group=Config.SIMILARITY_GROUPE_CODE,
             )
             suggestions_by_db_id: Dict[int, list] = {}
             total_pending = len(self._pending_similarity_candidates)
@@ -3693,6 +3670,27 @@ class ImportManager:
             if traces is not None:
                 traces.update(ligne[0] for ligne in lignes)
 
+    def _sans_autocompletions_refusees(self, completions):
+        """Retire des complétions les champs AUTO-COMPLÉTÉS que l'utilisateur a
+        refusés pour cet appareil (fenêtre « Auto-complétés à vérifier », v3.94.0).
+        Une valeur lue dans le fichier lui-même reste écrite : le refus vise
+        l'auto-complétion, pas la donnée du fournisseur."""
+        lire = getattr(self.db_manager, 'lire_refus', None)
+        if lire is None:
+            return completions
+        refus = lire([device_id for device_id, _, _ in completions])
+        if not isinstance(refus, set) or not refus:   # lecture échouée (None) : rien à filtrer
+            return completions
+        filtrees = []
+        for device_id, device_data, champs in completions:
+            auto = device_data.get(self.CLE_AUTOCOMPLETION) or {}
+            gardes = {champ: valeur for champ, valeur in champs.items()
+                      if not (champ in auto and
+                              (device_id, champ, valeur.strip().lower()) in refus)}
+            if gardes:
+                filtrees.append((device_id, device_data, gardes))
+        return filtrees
+
     def _completer_appareils_existants(
             self, completions: List[Tuple[int, Dict[str, Any], Dict[str, str]]]) -> int:
         """Écrire les champs vides des appareils existants, commun aux deux chemins.
@@ -3711,6 +3709,10 @@ class ImportManager:
         from .config import Config
         requetes = {'type': Config.QUERIES['complete_device_type'],
                     'manufacturer': Config.QUERIES['complete_device_manufacturer']}
+
+        completions = self._sans_autocompletions_refusees(completions)
+        if not completions:
+            return 0
 
         faits = []
         conn = self.db_manager.get_connection()

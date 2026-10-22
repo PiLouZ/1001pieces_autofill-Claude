@@ -151,6 +151,15 @@ class StyleManager:
         " border-left: 1px solid white; }"
     )
 
+    # « Suggestions à valider (N) » (v3.92.0) : même géométrie que le cluster, en
+    # ambre (couleur historique de l'ancien bandeau) — distinct de l'orange des
+    # incomplètes. Texte foncé : le blanc sur ambre serait illisible.
+    SUGGESTIONS_BTN = (
+        "QPushButton { background-color: #ffc107; color: #4e342e; font-weight: bold;"
+        " border: 2px solid #e0a800; border-radius: 4px; padding: 3px 9px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #e0a800; }"
+    )
+
     # Flèches ▲/▼ qui encadrent « Lignes à traiter » : même bordure 2px et même
     # rayon que les boutons du cluster → même hauteur, alignées sans retouche.
     HEALTH_NAV_BTN = (

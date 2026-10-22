@@ -1,36 +1,33 @@
-"""Fenêtre « Auto-complétés à vérifier » (v3.89.0).
+"""Fenêtre « Auto-complétés à vérifier » (refonte v3.94.0).
 
 Liste les appareils dont un Type ou un Fabricant a été écrit par l'auto-complétion
-d'un import, du moins sûr au plus sûr : valeur, appareil source, accord des
-sources (« 1/2 »), date de l'import. Construite sur le modèle de « Valider les
-suggestions » (suggestion_validation_dialog.py) pour garder le même geste :
-cocher = vérifié, double-clic sur Type/Marque = corriger via la fenêtre Cmd+D.
+d'un import. Gabarit commun `FenetreRevue` : état ✓/✗/· par appareil (✓ d'office :
+une auto-complétion est présumée juste), lignes regroupées par import, appareil
+source ou confiance, puces à compteur, panneau de détail (valeur écrite et sa
+source, ce que disent les pièces de l'appareil), raccourcis V/R/U.
 
-La validation remet au callback `on_validate(verifies, corrections)` :
-    verifies    : ids des appareils cochés (leurs traces seront retirées) ;
-    corrections : [(id, {champ: valeur})] des seuls champs modifiés.
+Décisions remises à la fenêtre principale :
+    on_validate(verifies, corrections) : ids vérifiés (traces retirées) et
+        [(id, {champ: valeur})] des seuls champs corrigés ;
+    on_refuse(refus) : [(id, {champ: valeur auto-complétée})] — champs à vider,
+        refus mémorisé pour que l'import ne les réécrive pas.
 
-Non bloquant : ouvert via show() + callback (jamais exec_(), cf. conventions projet).
+Non bloquant : ouvert via show() + callbacks (jamais exec_(), cf. conventions projet).
 """
 
 from datetime import datetime
 
-from .style_manager import StyleManager
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QBrush, QFont, QKeySequence
-from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTreeWidget, QFrame, QHeaderView, QMenu, QShortcut,
-    QApplication, QAbstractItemView,
-)
-import qtawesome as qta
+from PyQt5.QtGui import QColor, QBrush, QFont
 
 from src.core.config import pluralize
-from .tri_colonnes import ItemTriable, ROLE_TRI, activer_tri, TriSuspendu
-from .espace_coche import activer_espace_coche
+from .fenetre_revue import (
+    FenetreRevue, VALIDE, COL_ETAT, entree as entree_de, ROLE_MODIFIEE, html, verdict_pieces,
+    lignes_vote, phrase_abstention,
+)
+from .tri_colonnes import ROLE_TRI
 
 # ── Colonnes ────────────────────────────────────────────────────────────────
-COL_CHECK = 0
 COL_REF = 1
 COL_TYPE = 2
 COL_MFR = 3
@@ -38,12 +35,11 @@ COL_CONFIANCE = 4
 COL_SOURCE = 5
 COL_IMPORT = 6
 
-_HEADERS = ["", "Référence", "Type", "Marque", "Confiance", "Source", "Import"]
 _CHAMP_PAR_COLONNE = {COL_TYPE: 'type', COL_MFR: 'manufacturer'}
+_NOM_CHAMP = {'type': "Type", 'manufacturer': "Marque"}
+_LE_CHAMP = {'type': "le type", 'manufacturer': "la marque"}
 
-_ROLE_ID = Qt.UserRole
-_ROLE_REF = Qt.UserRole + 1
-_ROLE_ORIGINAL = Qt.UserRole + 2   # {champ: valeur actuelle en base}
+_ROLE_ORIGINAL = Qt.UserRole + 40   # {champ: valeur actuelle en base}
 
 
 def regrouper_traces(lignes):
@@ -91,6 +87,24 @@ def cle_de_tri(entree):
     return (1, accord / total, total, recence)
 
 
+# Catégories de confiance : (clé, libellé de puce, libellé de groupe), du moins
+# sûr au plus sûr
+_CATEGORIES = (('inconnue', "Inconnue", "Confiance inconnue"),
+               ('partagee', "Partagées", "Sources partagées"),
+               ('unique', "Source unique", "Une seule source"),
+               ('unanime', "Unanimes", "Sources unanimes (2 ou plus)"))
+
+
+def categorie(entree):
+    """Clé de catégorie de confiance de l'appareil (cf. _CATEGORIES)."""
+    accord, total = confiance(entree)
+    if accord is None:
+        return 'inconnue'
+    if accord < total:
+        return 'partagee'
+    return 'unique' if total == 1 else 'unanime'
+
+
 def couleur_confiance(accord, total):
     """Vert : unanimité sur au moins 2 sources. Ambre : une seule source, ou
     majorité nette. Rouge : sources partagées ou confiance inconnue."""
@@ -116,250 +130,205 @@ def date_lisible(import_ts):
         return import_ts or ''
 
 
-class AutocompletionReviewDialog(QDialog):
-    def __init__(self, parent, entrees, on_validate, value_picker=None):
-        """value_picker(db_field, current_value, candidates) -> str|dict|None :
-        fenêtre Cmd+D. Optionnel (correction désactivée si absent, pour les tests)."""
-        super().__init__(parent)
-        self._entrees = entrees or []
+class AutocompletionReviewDialog(FenetreRevue):
+    TITRE = "Auto-complétés à vérifier"
+    ENTETES = ["Référence", "Type", "Marque", "Confiance", "Source", "Import"]
+    COL_ETIREE = COL_REF
+    MODES_GROUPE = [('import', "Import"), ('source', "Appareil source"),
+                    ('confiance', "Confiance"), ('aucun', "Aucun")]
+    LIBELLE_APPLIQUER = "Appliquer"
+    NOM_LIGNE = 'appareil'
+
+    def __init__(self, parent, entrees, on_validate, value_picker=None,
+                 on_refuse=None, preuves=None):
+        """value_picker(db_field, current_value, candidates) -> str|dict|None : la
+        fenêtre Cmd+D. preuves(entrée) -> {'nb_pieces', 'paires'} : vote des
+        pièces de l'appareil. Tous deux optionnels (tests sans service)."""
         self._on_validate = on_validate
+        self._on_refuse = on_refuse
         self._value_picker = value_picker
-        self._suppress = False
-        self._items = []
+        super().__init__(parent, entrees, preuves=preuves)
+        largeur_date = self._arbre.fontMetrics().horizontalAdvance("00/00/0000 00:00") + 24
+        for col, largeur in ((COL_TYPE, 125), (COL_MFR, 105), (COL_CONFIANCE, 86),
+                             (COL_SOURCE, 100), (COL_IMPORT, largeur_date)):
+            self._arbre.setColumnWidth(col, largeur)
 
-        self.setWindowTitle("Auto-complétés à vérifier")
-        self.resize(1060, 600)
-        self.setMinimumSize(720, 400)
+    # ── Spécialisation du gabarit ────────────────────────────────────────────
+    def _etat_initial(self, entree):
+        # Une auto-complétion est présumée juste (demande utilisateur, v3.89.1)
+        return VALIDE
 
-        self._build_ui()
-        self._populate()
-        self._update_count()
-
-    # ── Construction UI ──────────────────────────────────────────────────────
-    def _build_ui(self):
-        root = QVBoxLayout(self)
-
-        banner = QFrame()
-        banner.setStyleSheet(
-            "QFrame { background: #FFF8E1; border: 1px solid #f39c12; border-radius: 3px; }"
-        )
-        b_lay = QVBoxLayout(banner)
-        title_row = QHBoxLayout()
-        icon = QLabel()
-        icon.setPixmap(qta.icon('fa5s.magic', color='#f39c12').pixmap(18, 18))
-        title_row.addWidget(icon)
-        self._title_label = QLabel()
-        self._title_label.setStyleSheet("border: none; font-weight: bold;")
-        title_row.addWidget(self._title_label)
-        title_row.addStretch()
-        b_lay.addLayout(title_row)
-        help_label = QLabel(
-            "Valeurs en italique : écrites par l'auto-complétion d'un import. Tout est coché "
-            "(présumé juste) : décochez ce qui reste à revoir (Espace sur la ligne courante), "
-            "double-cliquez une valeur Type ou Marque pour la corriger. "
-            "Confiance : appareils sources d'accord / appareils sources trouvés."
-        )
-        help_label.setStyleSheet("border: none; color: #666; font-size: 11px;")
-        help_label.setWordWrap(True)
-        b_lay.addWidget(help_label)
-        root.addWidget(banner)
-
-        tools = QHBoxLayout()
-        self._filter = QLineEdit()
-        self._filter.setPlaceholderText("Filtrer par référence, type, marque ou source…")
-        self._filter.addAction(qta.icon('fa5s.search', color='#888'), QLineEdit.LeadingPosition)
-        self._filter.textChanged.connect(self._on_filter)
-        tools.addWidget(self._filter, 1)
-        self._count_label = QLabel()
-        self._count_label.setStyleSheet("color: #444;")
-        tools.addWidget(self._count_label)
-        root.addLayout(tools)
-
-        self._tree = QTreeWidget()
-        self._tree.setColumnCount(len(_HEADERS))
-        self._tree.setHeaderLabels(_HEADERS)
-        self._tree.setRootIsDecorated(False)
-        self._tree.setAlternatingRowColors(True)
-        self._tree.setUniformRowHeights(True)
-        self._tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self._tree.itemChanged.connect(self._on_item_changed)
-        self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
-        self._tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._tree.customContextMenuRequested.connect(self._on_context_menu)
-        copy_sc = QShortcut(QKeySequence.Copy, self._tree)
-        copy_sc.setContext(Qt.WidgetShortcut)
-        copy_sc.activated.connect(self._copy_selected_refs)
-        header = self._tree.header()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(COL_REF, QHeaderView.Stretch)
-        self._tree.setColumnWidth(COL_CHECK, 34)
-        self._tree.setColumnWidth(COL_TYPE, 140)
-        self._tree.setColumnWidth(COL_MFR, 120)
-        self._tree.setColumnWidth(COL_CONFIANCE, 88)
-        self._tree.setColumnWidth(COL_SOURCE, 120)
-        # Calée sur la date affichée : à 118 px, l'heure était tronquée
-        self._tree.setColumnWidth(
-            COL_IMPORT, self._tree.fontMetrics().horizontalAdvance("00/00/0000 00:00") + 24)
-        activer_tri(self._tree)
-        activer_espace_coche(self._tree)
-        root.addWidget(self._tree, 1)
-
-        actions = QHBoxLayout()
-        uncheck_btn = QPushButton("Tout décocher")
-        uncheck_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
-        uncheck_btn.setAutoDefault(False)
-        uncheck_btn.clicked.connect(lambda: self._set_all_checked(False))
-        actions.addWidget(uncheck_btn)
-        check_btn = QPushButton("Tout cocher")
-        check_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
-        check_btn.setAutoDefault(False)
-        check_btn.clicked.connect(lambda: self._set_all_checked(True))
-        actions.addWidget(check_btn)
-        actions.addStretch()
-        close_btn = QPushButton("Fermer")
-        close_btn.setAutoDefault(False)
-        close_btn.clicked.connect(self.reject)
-        actions.addWidget(close_btn)
-        self._validate_btn = QPushButton()
-        self._validate_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
-        self._validate_btn.setDefault(True)
-        self._validate_btn.clicked.connect(self._on_validate_clicked)
-        actions.addWidget(self._validate_btn)
-        root.addLayout(actions)
-
-    # ── Remplissage ──────────────────────────────────────────────────────────
-    def _populate(self):
-        with TriSuspendu(self._tree):
-            self._remplir()
-
-    def _remplir(self):
-        self._suppress = True
+    def _remplir_feuille(self, item, entree):
         italique = QFont()
         italique.setItalic(True)
-        for entree in self._entrees:
-            item = ItemTriable(self._tree)
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            # Cochée par défaut : une auto-complétion est présumée juste, on ne
-            # décoche que celles à revoir (demande utilisateur, v3.89.1)
-            item.setCheckState(COL_CHECK, Qt.Checked)
-            refs = " - ".join(r for r in (entree['ref_modele'], entree['commercial_ref']) if r)
-            item.setText(COL_REF, refs or f"#{entree['id']}")
-            item.setData(COL_CHECK, _ROLE_ID, entree['id'])
-            item.setData(COL_CHECK, _ROLE_REF, entree['ref_modele'] or entree['commercial_ref'])
-            item.setData(COL_CHECK, _ROLE_ORIGINAL,
-                         {'type': entree['type'], 'manufacturer': entree['manufacturer']})
-            for col, champ in _CHAMP_PAR_COLONNE.items():
-                item.setText(col, entree[champ])
-                prov = entree['champs'].get(champ)
-                if prov:
-                    item.setFont(col, italique)
-                    item.setToolTip(col, (
-                        f"Auto-complété d'après {prov['source'] or '?'} "
-                        f"({libelle_confiance(prov['accord'], prov['total'])})"))
-                else:
-                    item.setForeground(col, QBrush(QColor("#9e9e9e")))
-            accord, total = confiance(entree)
-            item.setText(COL_CONFIANCE, libelle_confiance(accord, total))
-            # Même ordre que l'ouverture : inconnue, puis accord et nb de sources croissants
-            item.setData(COL_CONFIANCE, ROLE_TRI, cle_de_tri(entree)[:3])
-            item.setForeground(COL_CONFIANCE, QBrush(couleur_confiance(accord, total)))
-            item.setTextAlignment(COL_CONFIANCE, Qt.AlignCenter)
-            if accord is None:
-                item.setToolTip(COL_CONFIANCE, "Une seule source connue, représentativité inconnue")
+        refs = " - ".join(r for r in (entree['ref_modele'], entree['commercial_ref']) if r)
+        item.setText(COL_REF, refs or f"#{entree['id']}")
+        item.setData(COL_ETAT, _ROLE_ORIGINAL,
+                     {'type': entree['type'], 'manufacturer': entree['manufacturer']})
+        for col, champ in _CHAMP_PAR_COLONNE.items():
+            item.setText(col, entree[champ])
+            prov = entree['champs'].get(champ)
+            if prov:
+                item.setFont(col, italique)
+                item.setToolTip(col, (
+                    f"Auto-complété d'après {prov['source'] or '?'} "
+                    f"({libelle_confiance(prov['accord'], prov['total'])})"))
+            else:
+                item.setForeground(col, QBrush(QColor("#9e9e9e")))
+        accord, total = confiance(entree)
+        item.setText(COL_CONFIANCE, libelle_confiance(accord, total))
+        item.setData(COL_CONFIANCE, ROLE_TRI, cle_de_tri(entree)[:3])
+        item.setForeground(COL_CONFIANCE, QBrush(couleur_confiance(accord, total)))
+        item.setTextAlignment(COL_CONFIANCE, Qt.AlignCenter)
+        if accord is None:
+            item.setToolTip(COL_CONFIANCE, "Une seule source connue, représentativité inconnue")
+        sources = sorted({p['source'] for p in entree['champs'].values() if p['source']})
+        item.setText(COL_SOURCE, ", ".join(sources))
+        item.setText(COL_IMPORT, date_lisible(entree.get('import_ts')))
+        item.setData(COL_IMPORT, ROLE_TRI, entree.get('import_ts') or '')
+
+    def _memoriser_correction(self, item):
+        return {col: item.text(col) for col in _CHAMP_PAR_COLONNE}
+
+    def _reprendre_correction(self, memo, item):
+        for col, valeur in memo.items():
+            if valeur != item.text(col):
+                self._poser_valeur(item, col, valeur)
+
+    def _cle_groupe(self, entree, mode):
+        if mode == 'import':
+            ts = entree.get('import_ts') or ''
+            return (tuple(-ord(c) for c in ts), f"Import du {date_lisible(ts)}" if ts else "Import inconnu")
+        if mode == 'source':
             sources = sorted({p['source'] for p in entree['champs'].values() if p['source']})
-            item.setText(COL_SOURCE, ", ".join(sources))
-            item.setText(COL_IMPORT, date_lisible(entree.get('import_ts')))
-            item.setData(COL_IMPORT, ROLE_TRI, entree.get('import_ts') or '')
-            self._items.append(item)
-        self._suppress = False
+            return (0, ", ".join(sources) or "Source inconnue")
+        if mode == 'confiance':
+            cle = categorie(entree)
+            ordre = [c[0] for c in _CATEGORIES].index(cle)
+            return (ordre, _CATEGORIES[ordre][2])
+        return None
 
-    # ── Interactions ─────────────────────────────────────────────────────────
-    def _on_item_double_clicked(self, item, column):
-        """Correction d'une valeur via la fenêtre Cmd+D ; la ligne est cochée."""
-        champ = _CHAMP_PAR_COLONNE.get(column)
+    def _puces(self):
+        return [(cle, libelle, (lambda c: lambda e: categorie(e) == c)(cle))
+                for cle, libelle, _ in _CATEGORIES]
+
+    def _reference(self, item):
+        entree = entree_de(item) or {}
+        return entree.get('ref_modele') or entree.get('commercial_ref') or ''
+
+    def _cle_preuves(self, entree):
+        return entree.get('id')
+
+    # ── Panneau de détail ────────────────────────────────────────────────────
+    def _html_detail(self, item, preuves):
+        entree = entree_de(item) or {}
+        refs = " · ".join(r for r in (entree.get('ref_modele'), entree.get('commercial_ref')) if r)
+        parties = [f"<h3 style='margin:0'>{html(refs)}</h3>"]
+        parties.append("<p style='margin:6px 0 0 0'><b>Valeurs écrites par l'import</b></p>"
+                       "<ul style='margin:2px 0 8px 0'>")
+        for champ in ('type', 'manufacturer'):
+            prov = entree.get('champs', {}).get(champ)
+            if not prov:
+                continue
+            accord, total = prov['accord'], prov['total']
+            confiance_txt = ("représentativité inconnue" if accord is None else
+                             f"{accord} source{'s' if accord > 1 else ''} d'accord sur {total}")
+            parties.append(f"<li>{_NOM_CHAMP[champ]} : <i>{html(prov['valeur'])}</i> "
+                           f"(le champ était vide) — d'après <b>{html(prov['source']) or '?'}</b>, "
+                           f"{confiance_txt}.</li>")
+        parties.append("</ul>")
+        parties.append("<p style='margin:0'><b>Pièces de l'appareil</b></p><p style='margin:2px 0 8px 0'>")
+        parties.append(self._phrase_pieces(item, preuves))
+        parties.append("</p>")
+        if categorie(entree) != 'unanime':
+            parties.append("<p style='margin:0;color:#b45309'><b>⚠ À regarder</b> : "
+                           f"{dict((c[0], c[2]) for c in _CATEGORIES)[categorie(entree)].lower()}.</p>")
+        parties.append("<p style='color:#6c757d;margin-top:8px'>Refuser vide les champs "
+                       "auto-complétés ; l'import ne les réécrira plus pour cet appareil.</p>")
+        return "".join(parties)
+
+    def _phrase_pieces(self, item, preuves):
+        if preuves is None:
+            return "<span style='color:#6c757d'>Non lues.</span>"
+        if not preuves.get('nb_pieces'):
+            return "<span style='color:#6c757d'>Aucune pièce associée : pas de contre-preuve.</span>"
+        lignes = [f"{pluralize(preuves['nb_pieces'], 'pièce')}."]
+        for col, champ in _CHAMP_PAR_COLONNE.items():
+            verdict, top, part, total = verdict_pieces(item.text(col), preuves, champ)
+            if not total:
+                continue
+            nom = _LE_CHAMP[champ]
+            if verdict == 'confirme':
+                lignes.append(f"<span style='color:#198754'>Confirment {nom} "
+                              f"({round(part * 100)} % « {html(top)} »).</span>")
+            elif verdict == 'contredit':
+                lignes.append(f"<span style='color:#dc3545'>Contredisent {nom} : "
+                              f"{round(part * 100)} % sont « {html(top)} ».</span>")
+            else:
+                lignes.append(f"<span style='color:#6c757d'>{_NOM_CHAMP[champ]} : "
+                              f"{phrase_abstention(part, total)}.</span>")
+        vote = lignes_vote(preuves)
+        if vote:
+            lignes.append(f"<span style='color:#6c757d'>{vote}</span>")
+        return "<br>".join(lignes)
+
+    # ── Correction (fenêtre Cmd+D) ───────────────────────────────────────────
+    def _corriger(self, item, colonne=None):
+        colonne = COL_TYPE if colonne is None else colonne
+        champ = _CHAMP_PAR_COLONNE.get(colonne)
         if self._value_picker is None or champ is None:
-            return
-        result = self._value_picker(champ, item.text(column), [])
-        if result is None:
-            return
-        if isinstance(result, dict):
-            result = result.get(champ) or ''
-        result = (result or '').strip()
-        if not result:
-            return
-        self._suppress = True
-        item.setText(column, result)
-        original = (item.data(COL_CHECK, _ROLE_ORIGINAL) or {}).get(champ, '')
-        item.setBackground(column, QBrush(QColor("#E3F2FD") if result != original else Qt.transparent))
-        item.setCheckState(COL_CHECK, Qt.Checked)
-        self._suppress = False
-        self._update_count()
+            return False
+        resultat = self._value_picker(champ, item.text(colonne), [])
+        if isinstance(resultat, dict):
+            resultat = resultat.get(champ) or ''
+        resultat = (resultat or '').strip()
+        if not resultat:
+            return False
+        self._poser_valeur(item, colonne, resultat)
+        return True
 
-    def _on_item_changed(self, item, column):
-        if not self._suppress and column == COL_CHECK:
-            self._update_count()
+    def _poser_valeur(self, item, colonne, valeur):
+        champ = _CHAMP_PAR_COLONNE[colonne]
+        item.setText(colonne, valeur)
+        original = (item.data(COL_ETAT, _ROLE_ORIGINAL) or {}).get(champ, '')
+        item.setBackground(colonne, QBrush(QColor("#E3F2FD")) if valeur != original else QBrush())
+        if valeur != original:
+            item.setData(COL_ETAT, ROLE_MODIFIEE, True)
 
-    def _on_context_menu(self, pos):
-        refs = self._selected_refs()
-        if not refs:
-            return
-        menu = QMenu(self)
-        action = menu.addAction(f"Copier {pluralize(len(refs), 'référence')}")
-        action.triggered.connect(self._copy_selected_refs)
-        menu.exec_(self._tree.viewport().mapToGlobal(pos))
-
-    def _selected_refs(self):
-        return [r for r in (it.data(COL_CHECK, _ROLE_REF) for it in self._tree.selectedItems()) if r]
-
-    def _copy_selected_refs(self):
-        refs = self._selected_refs()
-        if refs:
-            QApplication.clipboard().setText("\n".join(refs))
-
-    def _on_filter(self, text):
-        text = (text or '').strip().lower()
-        for item in self._items:
-            hay = " ".join(item.text(c) for c in (COL_REF, COL_TYPE, COL_MFR, COL_SOURCE)).lower()
-            item.setHidden(bool(text) and text not in hay)
-
-    def _set_all_checked(self, checked):
-        state = Qt.Checked if checked else Qt.Unchecked
-        self._suppress = True
-        for item in self._items:
-            if not item.isHidden():
-                item.setCheckState(COL_CHECK, state)
-        self._suppress = False
-        self._update_count()
-
-    def _checked_items(self):
-        return [it for it in self._items if it.checkState(COL_CHECK) == Qt.Checked]
-
-    def _update_count(self):
-        total = len(self._items)
-        sel = len(self._checked_items())
-        self._title_label.setText(f"{pluralize(total, 'appareil')} auto-complété"
-                                  f"{'s' if total > 1 else ''} à vérifier")
-        self._count_label.setText(f"{pluralize(sel, 'coché')} sur {total}")
-        self._validate_btn.setText(f"Marquer comme vérifiés ({sel})")
-        self._validate_btn.setEnabled(sel > 0)
-
-    # ── Validation ───────────────────────────────────────────────────────────
-    def collecter_decisions(self):
-        """(verifies, corrections) des lignes cochées — cf. docstring du module."""
+    # ── Décisions ────────────────────────────────────────────────────────────
+    def collecter_decisions(self, items=None):
+        """(verifies, corrections) des lignes validées — cf. docstring du module."""
+        items = [it for it in self._feuilles if self.etat(it) == VALIDE] if items is None else items
         verifies, corrections = [], []
-        for item in self._checked_items():
-            appareil_id = item.data(COL_CHECK, _ROLE_ID)
-            original = item.data(COL_CHECK, _ROLE_ORIGINAL) or {}
-            verifies.append(appareil_id)
+        for item in items:
+            entree = entree_de(item) or {}
+            original = item.data(COL_ETAT, _ROLE_ORIGINAL) or {}
+            verifies.append(entree['id'])
             champs = {champ: item.text(col).strip()
                       for col, champ in _CHAMP_PAR_COLONNE.items()
                       if item.text(col).strip() and item.text(col).strip() != original.get(champ, '')}
             if champs:
-                corrections.append((appareil_id, champs))
+                corrections.append((entree['id'], champs))
         return verifies, corrections
 
-    def _on_validate_clicked(self):
-        verifies, corrections = self.collecter_decisions()
+    @staticmethod
+    def collecter_refus(items):
+        """[(id, {champ: valeur auto-complétée})] : les champs encore égaux à la
+        valeur écrite par l'import (un champ déjà modifié n'est plus le sien)."""
+        refus = []
+        for item in items:
+            entree = entree_de(item) or {}
+            champs = {champ: prov['valeur'] for champ, prov in entree.get('champs', {}).items()
+                      if (entree.get(champ) or '').strip().lower()
+                      == (prov['valeur'] or '').strip().lower()}
+            if champs:
+                refus.append((entree['id'], champs))
+        return refus
+
+    def _appliquer(self, valides, refuses):
+        verifies, corrections = self.collecter_decisions(valides)
         if verifies and callable(self._on_validate):
             self._on_validate(verifies, corrections)
-        self.accept()
+        refus = self.collecter_refus(refuses)
+        if refus and callable(self._on_refuse):
+            self._on_refuse(refus)

@@ -1,47 +1,44 @@
-"""Fenêtre de validation polyvalente des suggestions Type/Marque par similarité.
+"""Fenêtre « Valider les suggestions » Type/Marque (refonte v3.94.0).
 
-Synthétise TOUTES les suggestions en attente (y compris celles à plusieurs candidats
-concurrents) dans un arbre regroupable : une case à cocher par appareil, valeurs Type/
-Marque éditables via la MÊME fenêtre que Cmd+D du tableau principal (valeurs existantes
-+ suggestions), score de ressemblance et niveau de fiabilité lisible. La validation
-applique les seules lignes cochées via le callback `on_validate` fourni par la fenêtre
-principale (chemin batché + historisé existant).
+Gabarit commun `FenetreRevue` : état ✓/✗/· par appareil, lignes regroupées par
+preuve (même référence, référence voisine, type de la pièce, famille de préfixe),
+puces à compteur, panneau de détail (preuve, vote des pièces de l'appareil, autres
+candidats à « prendre », risques), raccourcis V/R/U.
 
-Non bloquant : ouvert via show() + callback (jamais exec_(), cf. conventions projet).
+Décisions remises à la fenêtre principale :
+    on_validate(decisions) : [(db_id, candidat retenu)] — chemin batché et historisé ;
+    on_refuse(refusees)    : [(db_id, [candidats])] — mémorisées, plus proposées.
+
+Les suggestions sûres (candidat unique, preuve forte) arrivent déjà validées ;
+toutes les autres en attente.
+
+Non bloquant : ouvert via show() + callbacks (jamais exec_(), cf. conventions projet).
 """
 
-from .style_manager import StyleManager
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QBrush, QKeySequence
-from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QFrame, QHeaderView, QMenu, QShortcut,
-    QApplication, QAbstractItemView,
-)
-import qtawesome as qta
+from PyQt5.QtGui import QColor, QBrush
 
 from src.core.config import pluralize
-from .tri_colonnes import ItemTriable, ROLE_TRI, activer_tri, TriSuspendu
-from .espace_coche import activer_espace_coche
+from src.services.reference_similarity_service import (
+    LIBELLE_PREUVE, ORDRE_PREUVE, est_type_piece, pourcent, risques_suggestion, texte_preuve,
+)
+from .fenetre_revue import (
+    FenetreRevue, VALIDE, ATTENTE, COL_ETAT, entree as entree_de, html,
+    lignes_vote, phrase_abstention, verdict_pieces as verdict_pieces_champ,
+)
+from .tri_colonnes import ROLE_TRI
 
 # ── Colonnes ────────────────────────────────────────────────────────────────
-COL_CHECK = 0      # case à cocher (étroite ; le libellé de groupe va sur COL_REF)
-COL_REF = 1        # référence de l'appareil (+ libellé de groupe sur les parents)
-COL_NEW_TYPE = 2   # Type retenu (double-clic → fenêtre Cmd+D)
-COL_NEW_MFR = 3    # Marque retenue (double-clic → fenêtre Cmd+D)
-COL_SCORE = 4      # ressemblance (%)
-COL_TIER = 5       # fiabilité (badge lisible)
+COL_REF = 1
+COL_NEW_TYPE = 2
+COL_NEW_MFR = 3
+COL_PREUVE = 4
+COL_RISQUE = 5
 
-_HEADERS = ["", "Référence", "Type", "Marque", "Score", "Fiabilité"]
+_ROLE_CAND = Qt.UserRole + 40      # candidat retenu (dict)
+_ROLE_EDITED = Qt.UserRole + 41    # valeur saisie à la main
 
-# Rôles personnalisés stockés sur la colonne 0 des feuilles
-_ROLE_DBID = Qt.UserRole
-_ROLE_CANDS = Qt.UserRole + 1
-_ROLE_EDITED = Qt.UserRole + 2
-_ROLE_IS_LEAF = Qt.UserRole + 3
-_ROLE_REF = Qt.UserRole + 4      # ref_modele brute, pour la copie
-
-# Palier technique → libellé humain + ordre de tri
+# Palier technique → libellé de fiabilité (conservé pour l'historique et les tests)
 _TIER_LABEL = {
     'A_suffix_variant': "Quasi-certain",
     'B_fuzzy_alpha': "Probable",
@@ -49,8 +46,6 @@ _TIER_LABEL = {
     'C_prefix_consensus': "À vérifier",
     'P_type_piece': "Type de la pièce",
 }
-_TIER_ORDER = {'A_suffix_variant': 0, 'B_fuzzy_alpha': 1, 'B_fuzzy_numeric': 1,
-               'P_type_piece': 1, 'C_prefix_consensus': 2}
 
 
 def tier_label(tier):
@@ -67,18 +62,16 @@ def score_color(score):
 
 
 def fiability_colors(score):
-    """(fond, texte) du badge Fiabilité, liés au score — ROUGE quand le score est
-    faible (≤ 0,85, p. ex. consensus de préfixe « À vérifier ») plutôt que gris."""
+    """(fond, texte) liés au score — ROUGE quand le score est faible."""
     if score >= 0.90:
-        return ("#E8F5E9", "#2e7d32")   # vert
+        return ("#E8F5E9", "#2e7d32")
     if score >= 0.86:
-        return ("#FFF8E1", "#b06a00")   # ambre
-    return ("#FDECEA", "#c0392b")       # rouge
+        return ("#FFF8E1", "#b06a00")
+    return ("#FDECEA", "#c0392b")
 
 
 def is_safe_default(entry):
-    """Pré-cochage : candidat unique ET (palier A OU score ≥ 0,90). Reproduit
-    fonctionnellement l'ancien « sans concurrence »."""
+    """Arrive validée : candidat unique ET (palier A OU score ≥ 0,90)."""
     cands = entry.get('candidates') or []
     if len(cands) != 1:
         return False
@@ -86,421 +79,281 @@ def is_safe_default(entry):
     return c.get('confidence_tier') == 'A_suffix_variant' or float(c.get('score', 0)) >= 0.90
 
 
-class SuggestionValidationDialog(QDialog):
-    def __init__(self, parent, snapshot, on_validate, value_picker=None):
-        """value_picker(db_field, current_value, candidates) -> str|dict|None :
-        ouvre la fenêtre Cmd+D pour éditer une valeur. Optionnel (édition désactivée
-        si absent — utile pour les tests sans service)."""
-        super().__init__(parent)
-        self._snapshot = snapshot or []
+def _tier(entry):
+    cands = entry.get('candidates') or []
+    return cands[0].get('confidence_tier') if cands else None
+
+
+def verdict_pieces(proposition, preuves):
+    """Verdict des pièces de l'appareil sur le Type proposé (cf. fenetre_revue)."""
+    return verdict_pieces_champ(proposition.get('type'), preuves, 'type')
+
+
+class SuggestionValidationDialog(FenetreRevue):
+    TITRE = "Valider les suggestions Type / Marque"
+    ENTETES = ["Référence", "Type", "Marque", "Preuve", "⚠"]
+    LARGEURS = {COL_NEW_TYPE: 150, COL_NEW_MFR: 130, COL_PREUVE: 104, COL_RISQUE: 30}
+    COL_ETIREE = COL_REF
+    MODES_GROUPE = [('preuve', "Preuve"), ('marque', "Marque proposée"),
+                    ('voisin', "Appareil voisin"), ('aucun', "Aucun")]
+    LIBELLE_APPLIQUER = "Appliquer"
+    NOM_LIGNE = 'suggestion'
+
+    def __init__(self, parent, snapshot, on_validate, value_picker=None,
+                 on_refuse=None, preuves=None):
+        """value_picker(db_field, current_value, candidates) -> str|dict|None : la
+        fenêtre Cmd+D. preuves(entrée) -> {'nb_pieces', 'paires'} : vote des pièces
+        de l'appareil, lu à la consultation de la ligne. Tous deux optionnels."""
         self._on_validate = on_validate
+        self._on_refuse = on_refuse
         self._value_picker = value_picker
-        self._suppress = False     # garde anti-récursion sur itemChanged
-        self._leaves = []          # toutes les feuilles (appareils)
+        super().__init__(parent, snapshot, preuves=preuves)
 
-        self.setWindowTitle("Valider les suggestions Type / Marque")
-        self.resize(820, 600)
-        self.setMinimumSize(680, 400)
+    # ── Spécialisation du gabarit ────────────────────────────────────────────
+    def _etat_initial(self, entree):
+        return VALIDE if is_safe_default(entree) else ATTENTE
 
-        self._build_ui()
-        self._populate('none')
-        self._update_count()
-
-    # ── Construction UI ──────────────────────────────────────────────────────
-    def _build_ui(self):
-        root = QVBoxLayout(self)
-
-        # Zone A — bannière ambre
-        banner = QFrame()
-        banner.setStyleSheet(
-            "QFrame { background: #FFF8E1; border: 1px solid #f39c12; border-radius: 3px; }"
-        )
-        b_lay = QVBoxLayout(banner)
-        title_row = QHBoxLayout()
-        icon = QLabel()
-        icon.setPixmap(qta.icon('fa5s.lightbulb', color='#f39c12').pixmap(18, 18))
-        title_row.addWidget(icon)
-        self._title_label = QLabel()
-        self._title_label.setStyleSheet("border: none; font-weight: bold;")
-        title_row.addWidget(self._title_label)
-        title_row.addStretch()
-        b_lay.addLayout(title_row)
-        help_label = QLabel(
-            "Cochez les suggestions à appliquer. Double-cliquez une valeur Type ou Marque "
-            "pour la choisir parmi les suggestions et les valeurs existantes."
-        )
-        help_label.setStyleSheet("border: none; color: #666; font-size: 11px;")
-        help_label.setWordWrap(True)
-        b_lay.addWidget(help_label)
-        root.addWidget(banner)
-
-        # Zone B — barre d'outils
-        tools = QHBoxLayout()
-        self._filter = QLineEdit()
-        self._filter.setPlaceholderText("Filtrer par référence, type ou marque…")
-        self._filter.addAction(qta.icon('fa5s.search', color='#888'), QLineEdit.LeadingPosition)
-        self._filter.textChanged.connect(self._on_filter)
-        tools.addWidget(self._filter, 1)
-        tools.addWidget(QLabel("Regrouper par"))
-        self._group_combo = QComboBox()
-        self._group_combo.addItem("Aucun", 'none')
-        self._group_combo.addItem("Fiabilité", 'tier')
-        self._group_combo.addItem("Marque", 'manufacturer')
-        self._group_combo.currentIndexChanged.connect(self._on_group_changed)
-        tools.addWidget(self._group_combo)
-        self._count_label = QLabel()
-        self._count_label.setStyleSheet("color: #444;")
-        tools.addWidget(self._count_label)
-        root.addLayout(tools)
-
-        # Zone C — arbre
-        self._tree = QTreeWidget()
-        self._tree.setColumnCount(len(_HEADERS))
-        self._tree.setHeaderLabels(_HEADERS)
-        self._tree.setRootIsDecorated(True)
-        self._tree.setAlternatingRowColors(True)
-        self._tree.setUniformRowHeights(True)
-        self._tree.setIndentation(14)
-        # Sélection multiple pour pouvoir copier plusieurs références d'un coup
-        self._tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self._tree.itemChanged.connect(self._on_item_changed)
-        self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
-        # Copie des références : clic droit + Cmd/Ctrl+C
-        self._tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._tree.customContextMenuRequested.connect(self._on_context_menu)
-        copy_sc = QShortcut(QKeySequence.Copy, self._tree)
-        copy_sc.setContext(Qt.WidgetShortcut)
-        copy_sc.activated.connect(self._copy_selected_refs)
-        header = self._tree.header()
-        header.setStretchLastSection(False)
-        # Référence (colonne la plus importante, longueur variable) absorbe l'espace ;
-        # Score et Fiabilité au plus juste pour leur contenu.
-        header.setSectionResizeMode(COL_REF, QHeaderView.Stretch)
-        # Case à peine plus large que la coche elle-même
-        self._tree.setColumnWidth(COL_CHECK, 34)
-        self._tree.setColumnWidth(COL_NEW_TYPE, 160)
-        self._tree.setColumnWidth(COL_NEW_MFR, 160)
-        self._tree.setColumnWidth(COL_SCORE, 78)
-        # Calée sur le plus long libellé (« Type de la pièce ») : à 104 px, même
-        # « Quasi-certain » était tronqué.
-        largeur_tier = max(self._tree.fontMetrics().horizontalAdvance(l)
-                           for l in _TIER_LABEL.values()) + 24
-        self._tree.setColumnWidth(COL_TIER, max(104, largeur_tier))
-        activer_tri(self._tree)
-        activer_espace_coche(self._tree)
-        root.addWidget(self._tree, 1)
-
-        # Zone D — barre d'actions bas. Convention de l'appli : Annuler neutre à
-        # gauche, action principale verte à droite (Annuler était en rouge plein,
-        # comme une action destructive).
-        actions = QHBoxLayout()
-        uncheck_btn = QPushButton("Tout décocher")
-        uncheck_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
-        uncheck_btn.setAutoDefault(False)
-        uncheck_btn.clicked.connect(lambda: self._set_all_checked(False))
-        actions.addWidget(uncheck_btn)
-        check_btn = QPushButton("Tout cocher")
-        check_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
-        check_btn.setAutoDefault(False)
-        check_btn.clicked.connect(lambda: self._set_all_checked(True))
-        actions.addWidget(check_btn)
-        actions.addStretch()
-        cancel_btn = QPushButton("Annuler")
-        cancel_btn.setAutoDefault(False)
-        cancel_btn.clicked.connect(self.reject)
-        actions.addWidget(cancel_btn)
-        self._validate_btn = QPushButton()
-        self._validate_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
-        self._validate_btn.setDefault(True)
-        self._validate_btn.clicked.connect(self._on_validate_clicked)
-        actions.addWidget(self._validate_btn)
-        root.addLayout(actions)
-
-    # ── Remplissage ──────────────────────────────────────────────────────────
-    def _populate(self, group_by):
-        with TriSuspendu(self._tree):
-            self._remplir(group_by)
-
-    def _remplir(self, group_by):
-        self._suppress = True
-        self._tree.clear()
-        self._leaves = []
-
-        if group_by == 'none':
-            for entry in self._sorted_entries(self._snapshot):
-                self._add_leaf(self._tree.invisibleRootItem(), entry)
-        else:
-            groups = {}
-            for entry in self._snapshot:
-                key = self._group_key(entry, group_by)
-                groups.setdefault(key, []).append(entry)
-            for key in self._sorted_group_keys(groups.keys(), group_by):
-                entries = groups[key]
-                # Libellé de groupe sur COL_REF pour garder COL_CHECK étroite
-                parent = ItemTriable(self._tree)
-                parent.setText(COL_REF, f"{key} ({len(entries)})")
-                parent.setData(COL_CHECK, _ROLE_IS_LEAF, False)
-                f = parent.font(COL_REF)
-                f.setBold(True)
-                parent.setFont(COL_REF, f)
-                parent.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsAutoTristate)
-                parent.setCheckState(COL_CHECK, Qt.Unchecked)
-                for entry in self._sorted_entries(entries):
-                    self._add_leaf(parent, entry)
-                parent.setExpanded(True)
-        self._suppress = False
-        self._refresh_parent_states()
-
-    def _sorted_entries(self, entries):
-        def keyf(e):
-            cands = e.get('candidates') or []
-            best = cands[0] if cands else {}
-            tier_o = _TIER_ORDER.get(best.get('confidence_tier'), 1)
-            return (tier_o, -float(best.get('score', 0)))
-        return sorted(entries, key=keyf)
-
-    def _group_key(self, entry, group_by):
-        cands = entry.get('candidates') or []
-        best = cands[0] if cands else {}
-        if group_by == 'tier':
-            return tier_label(best.get('confidence_tier'))
-        return best.get('manufacturer') or "(marque inconnue)"
-
-    def _sorted_group_keys(self, keys, group_by):
-        if group_by == 'tier':
-            order = {"Quasi-certain": 0, "Probable": 1, "À vérifier": 2}
-            return sorted(keys, key=lambda k: order.get(k, 1))
-        return sorted(keys)
-
-    def _add_leaf(self, parent, entry):
-        cands = entry.get('candidates') or []
-        ref = entry.get('ref_modele') or ''
-        comm = entry.get('commercial_ref') or ''
-        ref_text = ref if not comm else f"{ref}  ·  {comm}"
-
-        leaf = ItemTriable(parent)
-        leaf.setData(COL_CHECK, _ROLE_IS_LEAF, True)
-        leaf.setData(COL_CHECK, _ROLE_DBID, entry.get('db_id'))
-        leaf.setData(COL_CHECK, _ROLE_CANDS, cands)
-        leaf.setData(COL_CHECK, _ROLE_EDITED, False)
-        # Pas d'édition inline : l'édition passe par la fenêtre Cmd+D (double-clic)
-        leaf.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-
-        leaf.setText(COL_REF, ref_text)
-        leaf.setToolTip(COL_REF, ref_text)
-        leaf.setData(COL_CHECK, _ROLE_REF, ref)   # ref_modele brute pour la copie
-
-        # Valeurs retenues + score/fiabilité depuis le 1er candidat
+    def _remplir_feuille(self, item, entree):
+        ref = entree.get('ref_modele') or ''
+        comm = entree.get('commercial_ref') or ''
+        texte = ref if not comm else f"{ref}  ·  {comm}"
+        item.setText(COL_REF, texte)
+        item.setToolTip(COL_REF, texte)
+        cands = entree.get('candidates') or []
         if cands:
-            self._apply_candidate_to_leaf(leaf, cands[0])
+            self._poser_candidat(item, cands[0])
+        risques = risques_suggestion(cands)
+        item.setText(COL_RISQUE, "⚠" if risques else "")
+        item.setForeground(COL_RISQUE, QBrush(QColor("#fd7e14")))
+        item.setTextAlignment(COL_RISQUE, Qt.AlignCenter)
+        item.setToolTip(COL_RISQUE, "\n".join(risques))
+        item.setData(COL_RISQUE, ROLE_TRI, len(risques))
 
-        leaf.setCheckState(COL_CHECK, Qt.Checked if is_safe_default(entry) else Qt.Unchecked)
-        self._leaves.append(leaf)
+    def _poser_candidat(self, item, cand):
+        item.setData(COL_ETAT, _ROLE_CAND, cand)
+        item.setData(COL_ETAT, _ROLE_EDITED, False)
+        for col, champ in ((COL_NEW_TYPE, 'type'), (COL_NEW_MFR, 'manufacturer')):
+            item.setText(col, cand.get(champ, '') or '')
+            item.setBackground(col, QBrush())
+        if not (cand.get('manufacturer') or '').strip():
+            item.setText(COL_NEW_MFR, "")
+            item.setToolTip(COL_NEW_MFR, "Type seul : la marque reste à saisir")
+        item.setText(COL_PREUVE, texte_preuve(cand))
+        item.setData(COL_PREUVE, ROLE_TRI, (ORDRE_PREUVE.get(cand.get('confidence_tier'), 1),
+                                            -float(cand.get('score', 0) or 0)))
+        tier = cand.get('confidence_tier')
+        couleur = "#2e7d32" if tier == 'A_suffix_variant' else (
+            "#b06a00" if tier == 'C_prefix_consensus' else "#343a40")
+        item.setForeground(COL_PREUVE, QBrush(QColor(couleur)))
 
-    def _apply_candidate_to_leaf(self, leaf, cand):
-        """Reporte un candidat dans les colonnes retenues + score + fiabilité."""
-        leaf.setText(COL_NEW_TYPE, cand.get('type', '') or '')
-        leaf.setText(COL_NEW_MFR, cand.get('manufacturer', '') or '')
-        leaf.setData(COL_CHECK, _ROLE_EDITED, False)
-        leaf.setForeground(COL_NEW_TYPE, QBrush(QColor("#212121")))
-        leaf.setForeground(COL_NEW_MFR, QBrush(QColor("#212121")))
-        leaf.setBackground(COL_NEW_TYPE, QBrush())
-        leaf.setBackground(COL_NEW_MFR, QBrush())
-        score = float(cand.get('score', 0))
-        leaf.setText(COL_SCORE, f"{int(score * 100)} %")
-        leaf.setData(COL_SCORE, ROLE_TRI, score)
-        leaf.setForeground(COL_SCORE, QBrush(score_color(score)))
-        leaf.setText(COL_TIER, tier_label(cand.get('confidence_tier')))
-        leaf.setData(COL_TIER, ROLE_TRI, _TIER_ORDER.get(cand.get('confidence_tier'), 1))
-        # « Type de la pièce » : le % n'est pas une ressemblance de référence mais
-        # la part des appareils de la pièce qui portent ce type — le dire au survol.
-        from ..services.reference_similarity_service import est_type_piece
-        aide = (f"{score:.0%} des {cand.get('nb_appareils', 0)} appareils typés de la pièce "
-                f"{cand.get('ref', '')} sont de type « {cand.get('type', '')} »"
-                if est_type_piece(cand) else "")
-        leaf.setToolTip(COL_SCORE, aide)
-        leaf.setToolTip(COL_TIER, aide)
-        bg, fg = fiability_colors(score)   # couleur liée au score (rouge si faible)
-        leaf.setBackground(COL_TIER, QBrush(QColor(bg)))
-        leaf.setForeground(COL_TIER, QBrush(QColor(fg)))
+    def _memoriser_correction(self, item):
+        return (item.data(COL_ETAT, _ROLE_CAND), bool(item.data(COL_ETAT, _ROLE_EDITED)),
+                item.text(COL_NEW_TYPE), item.text(COL_NEW_MFR))
 
-    # ── Événements ───────────────────────────────────────────────────────────
-    def _on_group_changed(self):
-        self._populate(self._group_combo.currentData())
-        self._on_filter(self._filter.text())
-        self._update_count()
+    def _reprendre_correction(self, memo, item):
+        cand, edite, type_v, marque_v = memo
+        if cand is not None:
+            self._poser_candidat(item, cand)
+        if edite:
+            item.setText(COL_NEW_TYPE, type_v)
+            item.setText(COL_NEW_MFR, marque_v)
+            self._marquer_modifiee(item)
 
-    def _on_item_double_clicked(self, item, column):
-        """Édition d'une valeur Type/Marque via la fenêtre Cmd+D (valeurs existantes
-        + suggestions). Choisir un candidat (dict) remplit Type ET Marque ; saisir/
-        choisir une valeur libre (str) ne touche que la colonne éditée."""
-        if self._value_picker is None:
-            return
-        if not item.data(COL_CHECK, _ROLE_IS_LEAF):
-            return
-        if column not in (COL_NEW_TYPE, COL_NEW_MFR):
-            return
-        db_field = 'type' if column == COL_NEW_TYPE else 'manufacturer'
-        current = item.text(column)
-        cands = item.data(COL_CHECK, _ROLE_CANDS) or []
-        result = self._value_picker(db_field, current, cands)
-        if result is None:
-            return
-        self._suppress = True
-        if isinstance(result, dict):
-            # Candidat choisi → paire Type+Marque + score/fiabilité du candidat
-            self._apply_candidate_to_leaf(item, result)
-        else:
-            # Valeur libre → seule la colonne éditée ; score neutralisé
-            item.setText(column, result)
-            self._mark_edited(item)
-        item.setCheckState(COL_CHECK, Qt.Checked)
-        self._suppress = False
-        self._refresh_parent_states()
-        self._update_count()
+    def _cle_groupe(self, entree, mode):
+        cands = entree.get('candidates') or []
+        meilleur = cands[0] if cands else {}
+        if mode == 'preuve':
+            tier = meilleur.get('confidence_tier')
+            return (ORDRE_PREUVE.get(tier, 1), LIBELLE_PREUVE.get(tier, "Autre"))
+        if mode == 'marque':
+            return (0, meilleur.get('manufacturer') or "(type seul, sans marque)")
+        if mode == 'voisin':
+            if est_type_piece(meilleur):
+                return (1, f"Pièce {meilleur.get('ref', '')}")
+            return (0, meilleur.get('ref') or "—")
+        return None
 
-    def _on_context_menu(self, pos):
-        """Menu clic droit : copier la/les référence(s) des lignes sélectionnées."""
-        refs = self._selected_refs()
-        if not refs:
-            return
-        menu = QMenu(self)   # pas d'icône (rendu macOS non propre)
-        action = menu.addAction(f"Copier {pluralize(len(refs), 'référence')}")
-        action.triggered.connect(self._copy_selected_refs)
-        menu.exec_(self._tree.viewport().mapToGlobal(pos))
-
-    def _selected_refs(self):
-        """Références (ref_modele) des feuilles sélectionnées, dans l'ordre d'affichage."""
-        refs = []
-        for item in self._tree.selectedItems():
-            if item.data(COL_CHECK, _ROLE_IS_LEAF):
-                ref = item.data(COL_CHECK, _ROLE_REF)
-                if ref:
-                    refs.append(ref)
-        return refs
-
-    def _copy_selected_refs(self):
-        """Copie les références sélectionnées dans le presse-papiers (une par ligne)."""
-        refs = self._selected_refs()
-        if refs:
-            QApplication.clipboard().setText("\n".join(refs))
-
-    def _mark_edited(self, leaf):
-        leaf.setData(COL_CHECK, _ROLE_EDITED, True)
-        leaf.setText(COL_SCORE, "— (modifié)")
-        leaf.setData(COL_SCORE, ROLE_TRI, -1.0)
-        leaf.setForeground(COL_SCORE, QBrush(QColor("#9e9e9e")))
-        leaf.setBackground(COL_NEW_TYPE, QBrush(QColor("#E3F2FD")))
-        leaf.setBackground(COL_NEW_MFR, QBrush(QColor("#E3F2FD")))
-
-    def _on_item_changed(self, item, column):
-        if self._suppress:
-            return
-        is_leaf = bool(item.data(COL_CHECK, _ROLE_IS_LEAF))
-
-        # Propagation case parent → enfants
-        if not is_leaf and column == COL_CHECK:
-            state = item.checkState(COL_CHECK)
-            if state != Qt.PartiallyChecked:
-                self._suppress = True
-                for i in range(item.childCount()):
-                    item.child(i).setCheckState(COL_CHECK, state)
-                self._suppress = False
-            self._update_count()
-            return
-
-        if is_leaf and column == COL_CHECK:
-            self._refresh_parent_states()
-            self._update_count()
-
-    def _refresh_parent_states(self):
-        """Recalcule l'état tri-state de chaque nœud-groupe d'après ses enfants."""
-        self._suppress = True
-        root = self._tree.invisibleRootItem()
-        for i in range(root.childCount()):
-            parent = root.child(i)
-            if parent.data(COL_CHECK, _ROLE_IS_LEAF):
-                continue
-            n = parent.childCount()
-            checked = sum(1 for j in range(n)
-                          if parent.child(j).checkState(COL_CHECK) == Qt.Checked)
-            if checked == 0:
-                parent.setCheckState(COL_CHECK, Qt.Unchecked)
-            elif checked == n:
-                parent.setCheckState(COL_CHECK, Qt.Checked)
+    def _puces(self):
+        puces = []
+        for tier, libelle in (('A_suffix_variant', "Même réf."), ('B', "Réf. voisine"),
+                              ('P_type_piece', "Pièce"), ('C_prefix_consensus', "Préfixe")):
+            if tier == 'B':
+                pred = lambda e: (_tier(e) or '').startswith('B_')
             else:
-                parent.setCheckState(COL_CHECK, Qt.PartiallyChecked)
-        self._suppress = False
+                pred = (lambda t: lambda e: _tier(e) == t)(tier)
+            puces.append((tier, libelle, pred))
+        puces.append(('risque', "⚠ À risque",
+                      lambda e: bool(risques_suggestion(e.get('candidates') or []))))
+        return puces
 
-    def _on_filter(self, text):
-        text = (text or '').strip().lower()
-        for leaf in self._leaves:
-            hay = " ".join([
-                leaf.text(COL_REF), leaf.text(COL_NEW_TYPE), leaf.text(COL_NEW_MFR),
-            ]).lower()
-            leaf.setHidden(bool(text) and text not in hay)
-        root = self._tree.invisibleRootItem()
-        for i in range(root.childCount()):
-            parent = root.child(i)
-            if parent.data(COL_CHECK, _ROLE_IS_LEAF):
-                continue
-            any_visible = any(not parent.child(j).isHidden()
-                              for j in range(parent.childCount()))
-            parent.setHidden(not any_visible)
+    def _texte_recherche(self, item):
+        cand = item.data(COL_ETAT, _ROLE_CAND) or {}
+        return " ".join([item.text(COL_REF), item.text(COL_NEW_TYPE), item.text(COL_NEW_MFR),
+                         cand.get('ref', '') or ''])
 
-    def _set_all_checked(self, checked):
-        state = Qt.Checked if checked else Qt.Unchecked
-        self._suppress = True
-        for leaf in self._leaves:
-            if not leaf.isHidden():
-                leaf.setCheckState(COL_CHECK, state)
-        self._suppress = False
-        self._refresh_parent_states()
-        self._update_count()
+    def _reference(self, item):
+        entree = entree_de(item)
+        return (entree or {}).get('ref_modele') or (entree or {}).get('commercial_ref') or ''
 
-    def _checked_leaves(self):
-        return [lf for lf in self._leaves if lf.checkState(COL_CHECK) == Qt.Checked]
+    def _cle_preuves(self, entree):
+        return entree.get('db_id')
 
-    def _update_count(self):
-        total = len(self._leaves)
-        sel = len(self._checked_leaves())
-        self._title_label.setText(f"{pluralize(total, 'suggestion')} à valider")
-        self._count_label.setText(f"{pluralize(sel, 'sélectionnée')} sur {total}")
-        self._validate_btn.setText(f"Valider la sélection ({sel})")
-        self._validate_btn.setEnabled(sel > 0)
+    # ── Panneau de détail ────────────────────────────────────────────────────
+    def _html_detail(self, item, preuves):
+        entree = entree_de(item) or {}
+        cands = entree.get('candidates') or []
+        retenu = item.data(COL_ETAT, _ROLE_CAND) or (cands[0] if cands else {})
+        refs = " · ".join(r for r in (entree.get('ref_modele'), entree.get('commercial_ref')) if r)
+        propose = " / ".join(v for v in (item.text(COL_NEW_TYPE), item.text(COL_NEW_MFR)) if v)
+        parties = [f"<h3 style='margin:0'>{html(refs)}</h3>",
+                   f"<p style='margin:4px 0 8px 0'>Proposé : <b>{html(propose) or '—'}</b>"]
+        if item.data(COL_ETAT, _ROLE_EDITED):
+            parties.append(" <span style='color:#0d6efd'>(corrigé à la main)</span>")
+        actuel = " / ".join(v for v in (entree.get('current_type'), entree.get('current_manufacturer')) if v)
+        if actuel:
+            parties.append(f"<br><span style='color:#6c757d'>Déjà en base : {html(actuel)}</span>")
+        parties.append("</p>")
 
-    # ── Validation ───────────────────────────────────────────────────────────
-    def _collect_decisions(self):
+        parties.append("<p style='margin:0'><b>Preuve</b></p><p style='margin:2px 0 8px 0'>")
+        parties.append(self._phrase_preuve(retenu))
+        parties.append("</p>")
+
+        parties.append("<p style='margin:0'><b>Pièces de l'appareil</b></p><p style='margin:2px 0 8px 0'>")
+        parties.append(self._phrase_pieces(retenu, preuves))
+        parties.append("</p>")
+
+        autres = [(i, c) for i, c in enumerate(cands) if c != retenu]
+        if autres:
+            parties.append("<p style='margin:0'><b>Autres candidats</b></p><ul style='margin:2px 0 8px 0'>")
+            for i, c in autres:
+                libelle = " / ".join(v for v in (c.get('type'), c.get('manufacturer')) if v)
+                parties.append(f"<li>{html(libelle)} <span style='color:#6c757d'>"
+                               f"({html(texte_preuve(c))})</span> — "
+                               f"<a href='prendre:{i}'>Prendre</a></li>")
+            parties.append("</ul>")
+
+        risques = risques_suggestion(cands)
+        verdict = verdict_pieces(retenu, preuves)[0]
+        if verdict == 'contredit':
+            risques = risques + ["les pièces de l'appareil désignent un autre type"]
+        if risques:
+            parties.append("<p style='margin:0;color:#b45309'><b>⚠ À regarder</b></p>"
+                           "<ul style='margin:2px 0 0 0;color:#b45309'>")
+            parties.extend(f"<li>{html(r)}</li>" for r in risques)
+            parties.append("</ul>")
+        return "".join(parties)
+
+    @staticmethod
+    def _phrase_preuve(cand):
+        tier = cand.get('confidence_tier')
+        ref = html(cand.get('ref', ''))
+        score = float(cand.get('score', 0) or 0)
+        if tier == 'A_suffix_variant':
+            return f"Même appareil que <b>{ref}</b>, à un suffixe de variante près."
+        if tier == 'C_prefix_consensus':
+            if cand.get('nb_famille'):
+                return (f"Famille de références <b>{html(cand.get('prefixe', ''))}…</b> : "
+                        f"{cand['nb_accord']} appareils sur {cand['nb_famille']} sont "
+                        f"« {html(cand.get('type'))} / {html(cand.get('manufacturer'))} » "
+                        f"(ex. {ref}). Aucun appareil identique.")
+            return f"Famille de préfixe dominée par cette marque (ex. {ref})."
+        if est_type_piece(cand):
+            n = int(cand.get('nb_appareils') or 0)
+            return (f"{round(score * n)} des {n} appareils typés de la pièce <b>{ref}</b> "
+                    f"sont de type « {html(cand.get('type'))} ». Marque à saisir.")
+        return f"Référence voisine <b>{ref}</b> — ressemblance {pourcent(score)}."
+
+    @staticmethod
+    def _phrase_pieces(cand, preuves):
+        if preuves is None:
+            return "<span style='color:#6c757d'>Non lues.</span>"
+        if not preuves.get('nb_pieces'):
+            return "<span style='color:#6c757d'>Aucune pièce associée : pas de contre-preuve.</span>"
+        verdict, type_top, part, total = verdict_pieces(cand, preuves)
+        debut = f"{pluralize(preuves['nb_pieces'], 'pièce')}. "
+        if not total:
+            return debut + "<span style='color:#6c757d'>Aucun autre appareil typé ne les partage.</span>"
+        lignes = lignes_vote(preuves)
+        if verdict == 'confirme':
+            constat = f"<span style='color:#198754'>Confirment le type ({pourcent(part)} « {html(type_top)} »).</span>"
+        elif verdict == 'contredit':
+            constat = (f"<span style='color:#dc3545'>Contredisent : {pourcent(part)} des appareils "
+                       f"qui les partagent sont « {html(type_top)} ».</span>")
+        else:
+            constat = (f"<span style='color:#6c757d'>"
+                       f"{phrase_abstention(part, total).capitalize()}.</span>")
+        return f"{debut}{constat}<br><span style='color:#6c757d'>{lignes}</span>"
+
+    def _on_lien(self, cible, item):
+        if not cible.startswith('prendre:') or item is None:
+            return
+        entree = entree_de(item) or {}
+        cands = entree.get('candidates') or []
+        try:
+            cand = cands[int(cible.split(':', 1)[1])]
+        except (ValueError, IndexError):
+            return
+        self._poser_candidat(item, cand)
+        self._apres_correction(item)
+
+    # ── Correction (fenêtre Cmd+D) ───────────────────────────────────────────
+    def _corriger(self, item, colonne=None):
+        """Choisir un candidat (dict) remplit Type ET Marque ; une valeur libre (str)
+        ne touche que la colonne corrigée (Type par défaut, au clavier)."""
+        if self._value_picker is None:
+            return False
+        colonne = colonne if colonne in (COL_NEW_TYPE, COL_NEW_MFR) else (
+            COL_NEW_TYPE if colonne is None else None)
+        if colonne is None:
+            return False
+        champ = 'type' if colonne == COL_NEW_TYPE else 'manufacturer'
+        cands = (entree_de(item) or {}).get('candidates') or []
+        resultat = self._value_picker(champ, item.text(colonne), cands)
+        if resultat is None:
+            return False
+        if isinstance(resultat, dict):
+            self._poser_candidat(item, resultat)
+        else:
+            item.setText(colonne, resultat)
+            self._marquer_modifiee(item)
+        return True
+
+    def _marquer_modifiee(self, item):
+        item.setData(COL_ETAT, _ROLE_EDITED, True)
+        item.setText(COL_PREUVE, "corrigé")
+        item.setForeground(COL_PREUVE, QBrush(QColor("#0d6efd")))
+        item.setBackground(COL_NEW_TYPE, QBrush(QColor("#E3F2FD")))
+        item.setBackground(COL_NEW_MFR, QBrush(QColor("#E3F2FD")))
+
+    # ── Décisions ────────────────────────────────────────────────────────────
+    def collecter_decisions(self, items):
+        """[(db_id, candidat retenu)] des lignes validées ayant une valeur à écrire."""
         decisions = []
-        for leaf in self._checked_leaves():
-            db_id = leaf.data(COL_CHECK, _ROLE_DBID)
-            if db_id is None:
+        for item in items:
+            entree = entree_de(item) or {}
+            db_id = entree.get('db_id')
+            type_v = (item.text(COL_NEW_TYPE) or '').strip()
+            mfr_v = (item.text(COL_NEW_MFR) or '').strip()
+            if db_id is None or (not type_v and not mfr_v):
                 continue
-            type_v = (leaf.text(COL_NEW_TYPE) or '').strip()
-            mfr_v = (leaf.text(COL_NEW_MFR) or '').strip()
-            if not type_v and not mfr_v:
-                continue  # rien à écrire
-            cands = leaf.data(COL_CHECK, _ROLE_CANDS) or []
-            ref = score = None
-            edited = bool(leaf.data(COL_CHECK, _ROLE_EDITED))
-            for c in cands:
-                if c.get('type', '') == type_v and c.get('manufacturer', '') == mfr_v:
-                    ref, score = c.get('ref', ''), c.get('score', 0)
-                    break
-            if ref is None and cands:
-                ref, score = cands[0].get('ref', ''), cands[0].get('score', 0)
-            cand = {'type': type_v, 'manufacturer': mfr_v, 'ref': ref or '',
-                    'score': score or 0}
-            if edited:
+            retenu = item.data(COL_ETAT, _ROLE_CAND) or {}
+            cand = {'type': type_v, 'manufacturer': mfr_v, 'ref': retenu.get('ref', '') or '',
+                    'score': retenu.get('score', 0) or 0}
+            if est_type_piece(retenu):
+                cand.update(confidence_tier=retenu['confidence_tier'],
+                            nb_appareils=retenu.get('nb_appareils'))
+            if item.data(COL_ETAT, _ROLE_EDITED):
                 cand['ref'] = (cand['ref'] + " · ajusté").strip(' ·')
             decisions.append((db_id, cand))
         return decisions
 
-    def _on_validate_clicked(self):
-        decisions = self._collect_decisions()
-        if not decisions:
-            self.reject()
-            return
-        if callable(self._on_validate):
+    def _appliquer(self, valides, refuses):
+        decisions = self.collecter_decisions(valides)
+        if decisions and callable(self._on_validate):
             self._on_validate(decisions)
-        self.accept()
+        refusees = [((entree_de(it) or {}).get('db_id'),
+                     (entree_de(it) or {}).get('candidates') or [])
+                    for it in refuses]
+        refusees = [(db_id, cands) for db_id, cands in refusees if db_id is not None]
+        if refusees and callable(self._on_refuse):
+            self._on_refuse(refusees)

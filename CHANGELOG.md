@@ -4,6 +4,110 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.94.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
+
+### Fenêtres de revue refondues + refus mémorisés
+
+Refonte de « Valider les suggestions » et « Auto-complétés à vérifier », jugées
+pauvres en information. Préparée par deux agents en lecture seule (audit UX du code,
+inventaire des données disponibles et de leur coût sur la vraie base).
+
+- **Gabarit commun** `src/ui/fenetre_revue.py` :
+  - état à trois valeurs par ligne — ✓ validée, ✗ refusée, · en attente — au lieu
+    d'une case qui confondait « non » et « pas encore regardé » ;
+  - regroupement (suggestions : par preuve par défaut, marque proposée, appareil
+    voisin ; auto-complétés : par import par défaut, source, confiance) ; une décision
+    sur une ligne de groupe vaut pour tout le groupe affiché ; titres de groupe sur
+    toute la largeur ;
+  - puces à compteur (paliers, ⚠ à risque ; catégories de confiance) + filtre texte
+    (étendu à la référence voisine) ;
+  - panneau de détail : la preuve en clair (« 18 appareils sur 19 » pour une famille de
+    préfixe — effectif jusqu'ici jeté par le service), le vote des pièces de l'appareil
+    (confirment / contredisent, abstention sous 5 appareils typés), les autres
+    candidats avec un lien « Prendre », les risques ;
+  - raccourcis V / R / U / Espace / Entrée / ⌘ Entrée, passage automatique à la ligne
+    en attente suivante ; « Appliquer » ne ferme plus la fenêtre (traitement en
+    plusieurs passes), fermer avec des décisions en cours demande confirmation ;
+  - colonne « Preuve » avec son unité (« même réf. », « réf. 92 % », « préfixe 18/19 »,
+    « pièce 12/12 ») à la place d'un score sans unité ; colonne ⚠.
+- **Vote des pièces** (`DatabaseManager.voter_par_pieces`), lu à la consultation de la
+  ligne puis mis en cache. Les pièces portées par plus de 2 000 appareils ne votent pas
+  (génériques, et lecture ×10 plus rapide : pire cas 868 → 93 ms sur la vraie base).
+- **Refus mémorisés** (table `refus_completions`, déclencheur de suppression avec
+  l'appareil) :
+  - une suggestion refusée (toutes les paires de la ligne) n'est plus proposée — import,
+    clic droit, scan global ;
+  - un auto-complété refusé est **vidé** (même chemin batché, annulable et historisé que
+    les corrections ; la trace disparaît par déclencheur) et l'import ne le réécrit plus
+    sur cet appareil — sauf si le fichier lui-même porte la valeur.
+- **Performance** (2 000 lignes, hors écran) : ouverture 0,26 s, décision 16 ms,
+  regroupement 0,16 s, filtre 28 ms.
+- **Tests** : `test_suggestion_validation_dialog.py` réécrit (31 tests, comportements
+  d'avant transposés aux 3 états), `test_refus_completions.py` (12), fenêtre des
+  auto-complétés et Espace adaptés. Mutation : sans la garde de l'import, le test du
+  refus échoue. Scénario offscreen de la vraie fenêtre principale (base temporaire) :
+  validation, refus, nouveau scan sans la paire refusée, auto-complété vidé en base et
+  dans le tableau, trace retirée, boutons masqués. Suite complète : 1498 passed, 1 skipped.
+
+---
+
+## [3.93.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
+
+### Suggestions plus pertinentes : groupe du code numérique + type des pièces partout
+
+Mesures sur la base réelle (appareils dont Type/Marque masqués, hors correspondance
+exacte, configuration de l'application), pour décider avant d'activer :
+
+- **Garde « groupe du code numérique »** (`Config.SIMILARITY_GROUPE_CODE`, retour
+  arrière = False). Un long code numérique de fabricant (PNC Electrolux 911…, code
+  Whirlpool 85x… à 12 chiffres, code Beko 77…) ne désigne pas une marque — seuls 17 %
+  des 210 812 appareils à code numérique tombent dans une famille mono-marque, ce qui
+  justifie l'exclusion existante — mais bien un **groupe industriel**. Signature =
+  (longueur, 3 premiers chiffres) ; un candidat dont la marque n'a jamais été vue sur
+  la famille (≥ 20 appareils) est écarté. Ex. Beko `7786187805` / `FSS63010DW` ne
+  reçoit plus « AEG » via le préfixe FSS. Sur 4 000 tests : **10 erreurs évitées pour
+  2 bonnes suggestions perdues**, fausses suggestions à candidat unique 39 → 32.
+- **Palier « type de la pièce » au clic droit et au scan global** (il n'existait qu'à
+  l'import) : pour un appareil sans type, le type que portent ≥ 95 % d'au moins 5
+  appareils partageant ses pièces, en concurrent si la similarité propose un autre type.
+  Sur 2 000 tests : couverture **87,8 % → 94,8 %** (140 suggestions « type seul »,
+  toutes justes), fausses suggestions pré-cochées inchangées (2 sur 1 235).
+- **Factorisation sans changement de comportement** : la requête et la règle de fusion
+  de l'import passent par `DatabaseManager.compter_types_par_piece` et
+  `fusionner_type_piece` (communes aux trois chemins) ; `lire_refs_pieces_par_appareil`
+  ajoutée. Les 18 tests existants du palier (import réel, chemins standard et batch)
+  passent inchangés.
+- **Tests** : `tests/unit/test_pertinence_suggestions.py` (17 tests). Suite complète :
+  1467 passed, 1 skipped.
+
+---
+
+## [3.92.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
+
+### Suggestions Type/Marque : un bouton dans la barre d'actions au lieu d'un bandeau
+
+- **Avant** : bandeau ambre au-dessus de la recherche (« N appareils avec une
+  suggestion Type/Marque en attente… » + bouton « Examiner N suggestions… »).
+- **Après** : bouton ambre **« Suggestions à valider (N) »** dans la barre d'état,
+  entre « ▲ incomplètes ▼ » et « Auto-complétés à vérifier | Tout valider ».
+  Même compteur, masqué à 0, clic = même fenêtre de validation. Le texte d'aide
+  du bandeau passe dans l'infobulle. Pas de « Tout valider » : une suggestion
+  n'est jamais écrite sans regard humain (≈ 2 % d'erreurs mesurées, cf. ci-dessous).
+- **Code** : `TableController._update_similarity_banner` → `_update_similarity_indicator`,
+  qui relaie à `MainWindow._rafraichir_bouton_suggestions` ; bandeau et
+  `_on_validate_all_safe` retirés ; style `StyleManager.SUGGESTIONS_BTN`.
+- **Mesure de pertinence** (base réelle, 1 000 appareils dont Type/Marque masqués,
+  hors correspondance exacte, configuration de l'application — seuil de similarité
+  0,80) : base à 10 / 25 / 50 / 100 % → suggestion pour 78,8 / 85,2 / 87,7 / 88,5 %
+  des appareils, 1ᵉʳ candidat juste à 98,0 / 98,6 / 98,6 / 98,2 %. Plus de données =
+  un peu plus de suggestions (plafond ≈ 88 %), pas plus justes. (Une première mesure,
+  au seuil 0,90 du module par erreur, donnait 70 → 81 % : chiffres corrigés.)
+- **Tests** : `tests/unit/test_bouton_suggestions_barre_etat.py` (5 tests) + scénario
+  offscreen sur une copie de la base (ordre dans la barre, hauteur 26 px commune,
+  compteur 3 → 2 → masqué, clic ouvre la fenêtre). Suite complète : 1450 passed, 1 skipped.
+
+---
+
 ## [3.91.3] - 2026-10-16 (branche `fix/historique-libelle-hors-affichage`)
 
 ### Historique : l'id de l'appareil au lieu de ses références
