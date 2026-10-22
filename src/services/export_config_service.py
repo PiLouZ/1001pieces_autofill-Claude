@@ -43,6 +43,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "brands": {
             "link_template": "<a href=\"#{marque}\">{marque}</a>",
             "separator":     " ",
+            # Code englobant la liste complète des liens ; {liens} = les liens
+            # joints. '{liens}' seul = liens nus (comportement historique).
+            "wrapper_template": "{liens}",
             "char_limit":    195000
         },
         "details": {

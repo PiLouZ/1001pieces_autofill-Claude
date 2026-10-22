@@ -419,6 +419,20 @@ class ExportConfigDialog(QDialog):
         self.html_brands_sep.setMaximumWidth(80)
         left_layout.addWidget(self.html_brands_sep)
 
+        left_layout.addWidget(QLabel("Code englobant les marques :"))
+        self.html_brands_wrapper = QLineEdit()
+        self.html_brands_wrapper.setPlaceholderText('{liens}')
+        self.html_brands_wrapper.setToolTip(
+            "Code placé autour de la liste complète des liens.\n"
+            "Ex. : <div class=\"compat\">Compatible avec {liens}</div>\n"
+            "Sans {liens}, les liens sont exportés seuls."
+        )
+        left_layout.addWidget(self.html_brands_wrapper)
+        left_layout.addWidget(VariableChipsBar(
+            [("liens", "Liste des liens de marques")],
+            targets=[self.html_brands_wrapper],
+        ))
+
         # Séparateur
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
@@ -568,6 +582,7 @@ class ExportConfigDialog(QDialog):
         brands_cfg = config.get('html', {}).get('brands', {})
         self.html_link_tpl.setText(brands_cfg.get('link_template', ''))
         self.html_brands_sep.setText(brands_cfg.get('separator', ' '))
+        self.html_brands_wrapper.setText(brands_cfg.get('wrapper_template', '{liens}'))
 
         # Profils HTML Détails : copie de travail en mémoire jusqu'à Enregistrer
         self._profiles = self.export_config_service.get_details_profiles()
@@ -761,8 +776,10 @@ class ExportConfigDialog(QDialog):
                 })
 
         # Preview Marques
-        brand_links = brands_sep.join(
-            render(link_tpl, {'marque': b}) for b in sorted(brands_data)
+        from src.services.html_export_service import HtmlExportService
+        brand_links = HtmlExportService.wrap_brand_links(
+            brands_sep.join(render(link_tpl, {'marque': b}) for b in sorted(brands_data)),
+            self.html_brands_wrapper.text(),
         )
 
         # Preview Détails
@@ -821,6 +838,7 @@ class ExportConfigDialog(QDialog):
                 "brands": {
                     "link_template": self.html_link_tpl.text(),
                     "separator":     self.html_brands_sep.text(),
+                    "wrapper_template": self.html_brands_wrapper.text() or '{liens}',
                     "char_limit":    self.export_config_service.get_html_brands_config().get('char_limit', 195000)
                 },
                 # 'details' (miroir du profil par défaut) est resynchronisé par

@@ -186,6 +186,45 @@ class TestHtmlRendering:
         assert ' - ' not in html_mod
 
 
+class TestHtmlBrandsWrapper:
+    """Code englobant la liste des liens de marques ({liens})"""
+
+    _data = [('Appl', 'Ignis', 'M1', ''), ('Appl', 'Bauknecht', 'M2', ''),
+             ('Appl', 'Scholtès', 'M3', '')]
+    _liens = ('<a href="#Bauknecht">Bauknecht</a> <a href="#Ignis">Ignis</a> '
+              '<a href="#Scholtès">Scholtès</a>')
+
+    def _set_wrapper(self, config_service, wrapper):
+        cfg = config_service.get_config()
+        cfg['html']['brands']['wrapper_template'] = wrapper
+        config_service.save_config(cfg)
+
+    def test_defaut_liens_nus(self):
+        """Défaut '{liens}' : sortie identique à l'historique"""
+        assert HtmlExportService.generate_html_brands(self._data) == self._liens
+
+    def test_enveloppe(self, config_service):
+        self._set_wrapper(config_service,
+                          '<div class="class_perso2">Compatible avec {liens}</div>')
+        assert HtmlExportService.generate_html_brands(self._data) == (
+            f'<div class="class_perso2">Compatible avec {self._liens}</div>')
+
+    def test_sans_marque_pas_d_enveloppe(self, config_service):
+        self._set_wrapper(config_service, '<div>Compatible avec {liens}</div>')
+        assert HtmlExportService.generate_html_brands([]) == ''
+
+    def test_gabarit_sans_variable_ignore(self, config_service):
+        """Un gabarit oubliant {liens} ne doit pas faire disparaître les liens"""
+        self._set_wrapper(config_service, '<div>Compatible avec</div>')
+        assert HtmlExportService.generate_html_brands(self._data) == self._liens
+
+    def test_config_ancienne_sans_cle(self, config_service):
+        """Config enregistrée avant l'option : la clé est complétée par le défaut"""
+        merged = config_service._merge_with_defaults(
+            {'html': {'brands': {'link_template': '<a>{marque}</a>', 'separator': ' '}}})
+        assert merged['html']['brands']['wrapper_template'] == '{liens}'
+
+
 # ─── Tests limite de caractères HTML ─────────────────────────────────────────
 
 class TestHtmlCharLimit:
