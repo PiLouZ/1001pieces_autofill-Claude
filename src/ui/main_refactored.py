@@ -3215,12 +3215,40 @@ class MainWindow(QMainWindow):
             fuzzy_threshold=Config.SIMILARITY_FUZZY_THRESHOLD,
             enable_prefix_consensus=Config.SIMILARITY_PREFIX_CONSENSUS,
             enforce_shape_compatibility=Config.SIMILARITY_ENFORCE_SHAPE,
+            enforce_code_group=Config.SIMILARITY_GROUPE_CODE,
         )
         found = {}
         for db_id, ref_modele, commercial_ref in incomplete:
             cands = svc.find_candidates(ref_modele, commercial_ref, index, exclude_db_id=db_id)
             if cands:
                 found[db_id] = [c.to_dict() for c in cands]
+        return self._ajouter_suggestions_type_piece(found, [i for i, _, _ in incomplete])
+
+    def _ajouter_suggestions_type_piece(self, found, db_ids):
+        """Palier « type de la pièce » hors import (v3.93.0) : pour chaque appareil
+        sans type, le type que portent les appareils partageant ses pièces (mêmes
+        seuils et même fusion que l'import, cf. fusionner_type_piece). Ne fait
+        jamais échouer le calcul des suggestions."""
+        if not Config.ENABLE_TYPE_PIECE_SUGGESTION or not db_ids:
+            return found
+        try:
+            from ..services.reference_similarity_service import fusionner_type_piece
+            lus = self.db_manager.lire_appareils_par_id(db_ids) or {}
+            sans_type = [i for i in db_ids if i in lus and not (lus[i][0] or '').strip()]
+            refs_par_appareil = self.db_manager.lire_refs_pieces_par_appareil(sans_type)
+            if not refs_par_appareil:
+                return found
+            types_par_ref = self.db_manager.compter_types_par_piece(
+                r for refs in refs_par_appareil.values() for r in refs)
+            for db_id, refs in refs_par_appareil.items():
+                fusion = fusionner_type_piece(
+                    found.get(db_id, []), refs, types_par_ref,
+                    Config.TYPE_PIECE_PART_MIN, Config.TYPE_PIECE_APPAREILS_MIN)
+                if fusion is not None:
+                    found[db_id] = fusion
+        except Exception as e:
+            from ..core.logger import app_logger
+            app_logger.error(f"Suggestions « type de la pièce » hors import échouées (non bloquant) : {e}")
         return found
 
     def _scan_all_for_suggestions(self):

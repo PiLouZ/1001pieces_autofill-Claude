@@ -4,6 +4,37 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.93.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
+
+### Suggestions plus pertinentes : groupe du code numérique + type des pièces partout
+
+Mesures sur la base réelle (appareils dont Type/Marque masqués, hors correspondance
+exacte, configuration de l'application), pour décider avant d'activer :
+
+- **Garde « groupe du code numérique »** (`Config.SIMILARITY_GROUPE_CODE`, retour
+  arrière = False). Un long code numérique de fabricant (PNC Electrolux 911…, code
+  Whirlpool 85x… à 12 chiffres, code Beko 77…) ne désigne pas une marque — seuls 17 %
+  des 210 812 appareils à code numérique tombent dans une famille mono-marque, ce qui
+  justifie l'exclusion existante — mais bien un **groupe industriel**. Signature =
+  (longueur, 3 premiers chiffres) ; un candidat dont la marque n'a jamais été vue sur
+  la famille (≥ 20 appareils) est écarté. Ex. Beko `7786187805` / `FSS63010DW` ne
+  reçoit plus « AEG » via le préfixe FSS. Sur 4 000 tests : **10 erreurs évitées pour
+  2 bonnes suggestions perdues**, fausses suggestions à candidat unique 39 → 32.
+- **Palier « type de la pièce » au clic droit et au scan global** (il n'existait qu'à
+  l'import) : pour un appareil sans type, le type que portent ≥ 95 % d'au moins 5
+  appareils partageant ses pièces, en concurrent si la similarité propose un autre type.
+  Sur 2 000 tests : couverture **87,8 % → 94,8 %** (140 suggestions « type seul »,
+  toutes justes), fausses suggestions pré-cochées inchangées (2 sur 1 235).
+- **Factorisation sans changement de comportement** : la requête et la règle de fusion
+  de l'import passent par `DatabaseManager.compter_types_par_piece` et
+  `fusionner_type_piece` (communes aux trois chemins) ; `lire_refs_pieces_par_appareil`
+  ajoutée. Les 18 tests existants du palier (import réel, chemins standard et batch)
+  passent inchangés.
+- **Tests** : `tests/unit/test_pertinence_suggestions.py` (17 tests). Suite complète :
+  1467 passed, 1 skipped.
+
+---
+
 ## [3.92.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
 
 ### Suggestions Type/Marque : un bouton dans la barre d'actions au lieu d'un bandeau
@@ -19,9 +50,11 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
   qui relaie à `MainWindow._rafraichir_bouton_suggestions` ; bandeau et
   `_on_validate_all_safe` retirés ; style `StyleManager.SUGGESTIONS_BTN`.
 - **Mesure de pertinence** (base réelle, 1 000 appareils dont Type/Marque masqués,
-  hors correspondance exacte) : base à 10 / 25 / 50 / 100 % → suggestion pour
-  70 / 76 / 80 / 81 % des appareils, 1ᵉʳ candidat juste à 99,4 / 98,3 / 98,2 / 98,0 %.
-  Plus de données = un peu plus de suggestions (plafond ≈ 81 %), pas plus justes.
+  hors correspondance exacte, configuration de l'application — seuil de similarité
+  0,80) : base à 10 / 25 / 50 / 100 % → suggestion pour 78,8 / 85,2 / 87,7 / 88,5 %
+  des appareils, 1ᵉʳ candidat juste à 98,0 / 98,6 / 98,6 / 98,2 %. Plus de données =
+  un peu plus de suggestions (plafond ≈ 88 %), pas plus justes. (Une première mesure,
+  au seuil 0,90 du module par erreur, donnait 70 → 81 % : chiffres corrigés.)
 - **Tests** : `tests/unit/test_bouton_suggestions_barre_etat.py` (5 tests) + scénario
   offscreen sur une copie de la base (ordre dans la barre, hauteur 26 px commune,
   compteur 3 → 2 → masqué, clic ouvre la fenêtre). Suite complète : 1450 passed, 1 skipped.

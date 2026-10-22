@@ -33,6 +33,17 @@ FUZZY_THRESHOLD = 0.90
 ALLOW_NUMERIC_FUZZY_BY_DEFAULT = False
 PREFIX_CONSENSUS_BY_DEFAULT = True
 ENFORCE_SHAPE_BY_DEFAULT = True
+GROUPE_CODE_BY_DEFAULT = False
+
+# Garde « groupe du code numérique » : un long code numérique de fabricant (PNC
+# Electrolux 911…, code 12 chiffres Whirlpool 85x…, code Beko 77…) ne désigne pas
+# une marque (rebadging à l'intérieur du groupe) mais bien un GROUPE industriel.
+# Signature = (longueur, 3 premiers chiffres). Un candidat dont la marque n'a
+# jamais été vue sur cette signature, alors que la famille compte au moins
+# _GROUPE_CODE_MIN appareils, est écarté (ex. Beko 7786187805 / FSS63010DW ne
+# reçoit plus « AEG » via le préfixe FSS partagé).
+_GROUPE_CODE_LONGUEUR_MIN = 8
+_GROUPE_CODE_MIN = 20
 
 # Palier C — consensus de préfixe : une famille de préfixe dominée à >= ratio par
 # une seule (type, marque) sur >= N appareils est considérée mono-marque fiable.
@@ -101,6 +112,15 @@ def within_one_edit(a: str, b: str) -> bool:
             skipped = True
             j += 1
     return True
+
+
+def signature_code_numerique(ref: str) -> Optional[Tuple[int, str]]:
+    """(longueur, 3 premiers chiffres) d'une référence entièrement numérique d'au
+    moins _GROUPE_CODE_LONGUEUR_MIN chiffres, sinon None."""
+    ref = (ref or '').strip()
+    if len(ref) >= _GROUPE_CODE_LONGUEUR_MIN and ref.isdigit():
+        return (len(ref), ref[:3])
+    return None
 
 
 def detect_prefix_kind(ref: str) -> str:
@@ -201,6 +221,30 @@ def type_majoritaire(compte_par_type: Dict[str, int], part_min: float,
     return (type_top, part, total) if part >= part_min else None
 
 
+def fusionner_type_piece(existants: List[dict], refs_pieces: List[str],
+                         types_par_ref: Dict[str, Dict[str, int]], part_min: float,
+                         appareils_min: int) -> Optional[List[dict]]:
+    """Candidats d'un appareil après ajout du type voté par ses pièces, ou None
+    s'il n'y a rien à ajouter.
+
+    Le vote additionne, pour chaque pièce, les appareils typés qui la portent. Si
+    un candidat propose déjà le type dominant, rien n'est ajouté ; sinon le
+    candidat « pièce » s'ajoute en concurrent (la fenêtre de validation ne
+    pré-coche alors plus la ligne).
+    """
+    compte: Dict[str, int] = {}
+    for ref in refs_pieces:
+        for type_app, n in types_par_ref.get(ref, {}).items():
+            compte[type_app] = compte.get(type_app, 0) + n
+    dominant = type_majoritaire(compte, part_min, appareils_min)
+    if dominant is None:
+        return None
+    type_piece, part, total = dominant
+    if any((c.get('type') or '').strip().lower() == type_piece.lower() for c in existants):
+        return None
+    return list(existants) + [candidat_type_piece(type_piece, refs_pieces, part, total)]
+
+
 def decrire_candidat(candidat: dict) -> str:
     """Libellé d'un candidat pour les listes (fenêtre Cmd+D)."""
     if est_type_piece(candidat):
@@ -270,6 +314,8 @@ class ReferenceIndex:
     """
     by_ref: Dict[str, List[dict]] = field(default_factory=dict)
     by_prefix: Dict[str, List[str]] = field(default_factory=dict)
+    # Signature de code numérique -> nombre d'appareils par marque (minuscules)
+    marques_par_code: Dict[Tuple[int, str], Counter] = field(default_factory=dict)
 
 
 class ReferenceSimilarityService:
@@ -278,7 +324,8 @@ class ReferenceSimilarityService:
     def __init__(self, allow_numeric_fuzzy: bool = ALLOW_NUMERIC_FUZZY_BY_DEFAULT,
                  fuzzy_threshold: float = FUZZY_THRESHOLD,
                  enable_prefix_consensus: bool = PREFIX_CONSENSUS_BY_DEFAULT,
-                 enforce_shape_compatibility: bool = ENFORCE_SHAPE_BY_DEFAULT):
+                 enforce_shape_compatibility: bool = ENFORCE_SHAPE_BY_DEFAULT,
+                 enforce_code_group: bool = GROUPE_CODE_BY_DEFAULT):
         self.allow_numeric_fuzzy = allow_numeric_fuzzy
         self.fuzzy_threshold = fuzzy_threshold
         self.enable_prefix_consensus = enable_prefix_consensus
@@ -286,6 +333,8 @@ class ReferenceSimilarityService:
         # le consensus de préfixe (Palier C) ne regroupe que des références du même
         # système de nommage. Désactivable pour rollback (ZERO REGRESSION).
         self.enforce_shape_compatibility = enforce_shape_compatibility
+        # Garde « groupe du code numérique » (cf. _GROUPE_CODE_MIN).
+        self.enforce_code_group = enforce_code_group
 
     # ── Construction de l'index (une seule fois par session) ────────────────
     @staticmethod
@@ -319,6 +368,10 @@ class ReferenceSimilarityService:
             ):
                 if not raw_ref:
                     continue
+
+                signature = signature_code_numerique(raw_ref)
+                if signature is not None and manufacturer:
+                    index.marques_par_code.setdefault(signature, Counter())[manufacturer.lower()] += 1
 
                 raw_key = raw_ref.lower()
                 base_key = strip_variant_suffix(raw_ref).lower()
@@ -373,7 +426,23 @@ class ReferenceSimilarityService:
                 best_by_pair[pair] = cand
 
         ordered = sorted(best_by_pair.values(), key=lambda c: c.score, reverse=True)
+        if self.enforce_code_group:
+            ordered = self._filtrer_groupe_code(ordered, (ref_modele, commercial_ref),
+                                                reference_index)
         return ordered[:max_candidates]
+
+    @staticmethod
+    def _filtrer_groupe_code(candidats: List[SimilarityCandidate], refs_interrogees,
+                             index: ReferenceIndex) -> List[SimilarityCandidate]:
+        """Écarte les candidats dont la marque n'a jamais été vue sur la famille du
+        code numérique de l'appareil (famille d'au moins _GROUPE_CODE_MIN appareils)."""
+        for qref in refs_interrogees:
+            signature = signature_code_numerique(qref)
+            famille = index.marques_par_code.get(signature) if signature else None
+            if famille and sum(famille.values()) >= _GROUPE_CODE_MIN:
+                candidats = [c for c in candidats
+                             if not c.manufacturer or famille.get(c.manufacturer.lower(), 0) > 0]
+        return candidats
 
     def _match_one_query_ref(self, qref: str, index: ReferenceIndex,
                              exclude_db_id: Optional[int]) -> List[SimilarityCandidate]:

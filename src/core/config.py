@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.92.0"
+    VERSION = "3.93.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -117,6 +117,7 @@ class Config:
     SIMILARITY_ALLOW_NUMERIC_FUZZY = False   # Palier B exclu par défaut sur préfixe numérique (risque rebadging)
     SIMILARITY_PREFIX_CONSENSUS = True       # Palier C : consensus de préfixe (familles mono-marque)
     SIMILARITY_ENFORCE_SHAPE = True          # Garde de structure : consensus restreint au même système de nommage (anti « HMG 280 X » -> Bosch)
+    SIMILARITY_GROUPE_CODE = True            # Écarte une marque jamais vue sur la famille du code numérique de l'appareil (groupe industriel, v3.93.0)
 
     # Rotation des fichiers de log (v3.66.0)
     # Sans rotation, detailed.log grossissait indéfiniment : 2,3 Go / ~19 M lignes

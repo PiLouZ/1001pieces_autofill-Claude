@@ -1687,6 +1687,49 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 out[row[0]] = tuple(row[1:])
         return out
 
+    def compter_types_par_piece(self, refs_pieces) -> Dict[str, Dict[str, int]]:
+        """Nombre d'appareils typés par type, pour chaque référence de pièce.
+
+        Returns:
+            {ref_piece: {type: nombre d'appareils}} — les pièces sans appareil
+            typé sont absentes. {} si la lecture échoue (execute_query l'avale).
+        """
+        refs = sorted(set(refs_pieces))
+        out: Dict[str, Dict[str, int]] = {}
+        for debut in range(0, len(refs), 500):
+            lot = refs[debut:debut + 500]
+            marqueurs = ','.join('?' * len(lot))
+            rows = self.execute_query(
+                f"""SELECT p.ref_piece, TRIM(a.type), COUNT(*)
+                    FROM pieces p
+                    JOIN piece_associations pa ON pa.piece_id = p.id
+                    JOIN appareils a ON a.id = pa.appareil_id
+                    WHERE p.ref_piece IN ({marqueurs})
+                      AND COALESCE(TRIM(a.type), '') <> ''
+                    GROUP BY p.ref_piece, TRIM(a.type)""", lot) or []
+            for ref, type_app, n in rows:
+                out.setdefault(ref, {})[type_app] = n
+        return out
+
+    def lire_refs_pieces_par_appareil(self, db_ids) -> Dict[int, List[str]]:
+        """Références des pièces associées à chaque appareil.
+
+        Returns:
+            {appareil_id: [ref_piece, …]} — les appareils sans pièce sont absents.
+        """
+        ids = list(dict.fromkeys(db_ids))
+        out: Dict[int, List[str]] = {}
+        for debut in range(0, len(ids), self._TAILLE_LOT_IDS):
+            lot = ids[debut:debut + self._TAILLE_LOT_IDS]
+            marqueurs = ",".join("?" * len(lot))
+            rows = self.execute_query(
+                "SELECT pa.appareil_id, p.ref_piece FROM piece_associations pa "
+                "JOIN pieces p ON p.id = pa.piece_id "
+                f"WHERE pa.appareil_id IN ({marqueurs}) ORDER BY p.ref_piece", lot) or []
+            for appareil_id, ref in rows:
+                out.setdefault(appareil_id, []).append(ref)
+        return out
+
     # Méthodes pour gérer les décisions sur les doublons de références
     def save_reference_decision(self, ref_modele: str, decision: str, notes: str = None) -> bool:
         """Sauvegarder une décision sur un doublon de référence"""
