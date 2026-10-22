@@ -63,17 +63,28 @@ class HtmlExportService:
                                     brands_cfg.get('wrapper_template', '{liens}'))
 
     @staticmethod
-    def wrap_brand_links(links: str, wrapper_template: str) -> str:
-        """Placer les liens de marques dans le code englobant ({liens}).
+    def wrap_content(content: str, wrapper_template: str, variable: str) -> str:
+        """Placer un contenu HTML déjà rendu dans un code englobant ({variable}).
 
-        Pas d'enveloppe sans marque (évite un « Compatible avec » vide), ni si
-        le gabarit oublie {liens} (les liens seraient perdus en silence).
-        Remplacement direct, sans échappement : les liens sont déjà du HTML
-        dont les noms de marques ont été échappés.
+        Pas d'enveloppe sans contenu (évite un « Compatible avec » vide), ni si
+        le gabarit oublie la variable (le contenu serait perdu en silence).
+        Remplacement direct, sans échappement : le contenu est déjà du HTML
+        dont les valeurs ont été échappées.
         """
-        if not links or not wrapper_template or '{liens}' not in wrapper_template:
-            return links
-        return wrapper_template.replace('{liens}', links)
+        placeholder = '{' + variable + '}'
+        if not content or not wrapper_template or placeholder not in wrapper_template:
+            return content
+        return wrapper_template.replace(placeholder, content)
+
+    @classmethod
+    def wrap_brand_links(cls, links: str, wrapper_template: str) -> str:
+        """Placer les liens de marques dans le code englobant ({liens})."""
+        return cls.wrap_content(links, wrapper_template, 'liens')
+
+    @classmethod
+    def wrap_details(cls, details: str, wrapper_template: str) -> str:
+        """Placer la liste des appareils dans le code englobant ({appareils})."""
+        return cls.wrap_content(details, wrapper_template, 'appareils')
     
     @classmethod
     def generate_html_details(cls, data: List[Tuple], profile_name: str = None) -> str:
@@ -114,6 +125,9 @@ class HtmlExportService:
             html_content = HtmlExportService._generate_html_content_with_strategy(
                 brands_data, strategy, details_cfg if cfg else {}
             )
+            # Enveloppe appliquée avant le comptage : son texte est exporté aussi
+            html_content = cls.wrap_details(
+                html_content, details_cfg.get('wrapper_template', '{appareils}'))
             char_count = HtmlExportService.count_non_html_chars(html_content)
             if char_count <= char_limit:
                 cls.last_strategy_used = strategy

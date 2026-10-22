@@ -225,6 +225,56 @@ class TestHtmlBrandsWrapper:
         assert merged['html']['brands']['wrapper_template'] == '{liens}'
 
 
+class TestHtmlDetailsWrapper:
+    """Code englobant la liste des appareils ({appareils}), propre au profil"""
+
+    _data = [('Appl', 'Ignis', 'M1', 'C1'), ('Appl', 'Bauknecht', 'M2', '')]
+    _attendu = ('<div id="Bauknecht"><b><u>Bauknecht</u></b></div><div>M2</div>'
+                '<div>&nbsp;</div>'
+                '<div id="Ignis"><b><u>Ignis</u></b></div><div>M1 - C1</div>')
+
+    def test_defaut_liste_nue(self):
+        """Défaut '{appareils}' : sortie identique à l'historique"""
+        assert HtmlExportService.generate_html_details(self._data) == self._attendu
+
+    def test_enveloppe(self, config_service):
+        _set_details(config_service, wrapper_template='<div class="compat">{appareils}</div>')
+        assert HtmlExportService.generate_html_details(self._data) == (
+            f'<div class="compat">{self._attendu}</div>')
+
+    def test_sans_appareil_pas_d_enveloppe(self, config_service):
+        _set_details(config_service, wrapper_template='<div>Compatible : {appareils}</div>')
+        assert HtmlExportService.generate_html_details([]) == ''
+
+    def test_gabarit_sans_variable_ignore(self, config_service):
+        _set_details(config_service, wrapper_template='<div>Compatible</div>')
+        assert HtmlExportService.generate_html_details(self._data) == self._attendu
+
+    def test_enveloppe_comptee_dans_la_limite(self, config_service):
+        """Le texte de l'enveloppe est exporté : il compte dans la limite"""
+        texte = HtmlExportService.count_non_html_chars(self._attendu)
+        _set_details(config_service, char_limit=texte,
+                     wrapper_template='<div>Compatible : {appareils}</div>')
+        HtmlExportService.generate_html_details(self._data)
+        assert HtmlExportService.last_strategy_used != 'full'
+
+    def test_par_profil(self, config_service):
+        """Chaque profil garde son propre code englobant"""
+        cfg = config_service.get_config()
+        autre = dict(cfg['html']['details_profiles'][0], name='Autre',
+                     wrapper_template='<section>{appareils}</section>')
+        cfg['html']['details_profiles'].append(autre)
+        config_service.save_config(cfg)
+        assert HtmlExportService.generate_html_details(self._data) == self._attendu
+        assert HtmlExportService.generate_html_details(self._data, profile_name='Autre') == (
+            f'<section>{self._attendu}</section>')
+
+    def test_profil_ancien_sans_cle(self, config_service):
+        merged = config_service._merge_with_defaults(
+            {'html': {'details_profiles': [{'name': 'Vieux', 'group_separator': ''}]}})
+        assert merged['html']['details_profiles'][0]['wrapper_template'] == '{appareils}'
+
+
 # ─── Tests limite de caractères HTML ─────────────────────────────────────────
 
 class TestHtmlCharLimit:
