@@ -52,6 +52,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "brand_header_template": "<div id=\"{marque}\"><b><u>{marque}</u></b></div>",
             "model_line_template":   "<div>{modele_complet}</div>",
             "group_separator":       "<div>&nbsp;</div>",
+            # Code englobant toute la liste ; {appareils} = la liste rendue
+            "wrapper_template":      "{appareils}",
             "char_limit":            195000
         },
         # Profils multiples d'export HTML Détails (v3.40.0).
@@ -63,6 +65,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "brand_header_template": "<div id=\"{marque}\"><b><u>{marque}</u></b></div>",
                 "model_line_template":   "<div>{modele_complet}</div>",
                 "group_separator":       "<div>&nbsp;</div>",
+                "wrapper_template":      "{appareils}",
                 "char_limit":            195000
             }
         ],
@@ -72,7 +75,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 # Clés éditables d'un profil HTML Détails (hors 'name')
 DETAILS_PROFILE_KEYS = (
-    "brand_header_template", "model_line_template", "group_separator", "char_limit"
+    "brand_header_template", "model_line_template", "group_separator",
+    "wrapper_template", "char_limit"
 )
 
 # Variables disponibles dans les sources de colonnes et templates

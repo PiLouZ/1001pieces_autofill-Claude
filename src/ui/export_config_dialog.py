@@ -491,6 +491,20 @@ class ExportConfigDialog(QDialog):
         self.html_group_sep = QLineEdit()
         left_layout.addWidget(self.html_group_sep)
 
+        left_layout.addWidget(QLabel("Code englobant les appareils :"))
+        self.html_details_wrapper = QLineEdit()
+        self.html_details_wrapper.setPlaceholderText('{appareils}')
+        self.html_details_wrapper.setToolTip(
+            "Code placé autour de la liste complète des appareils (propre au profil).\n"
+            "Ex. : <div class=\"compat\">{appareils}</div>\n"
+            "Sans {appareils}, la liste est exportée seule."
+        )
+        left_layout.addWidget(self.html_details_wrapper)
+        left_layout.addWidget(VariableChipsBar(
+            [("appareils", "Liste des appareils (en-têtes de marque + lignes modèle)")],
+            targets=[self.html_details_wrapper],
+        ))
+
         # Limite de caractères HTML détails
         char_limit_layout = QHBoxLayout()
         char_limit_layout.addWidget(QLabel("Limite de caractères :"))
@@ -618,12 +632,14 @@ class ExportConfigDialog(QDialog):
         profile['brand_header_template'] = self.html_brand_header_tpl.text()
         profile['model_line_template']   = self.html_model_line_tpl.text()
         profile['group_separator']       = self.html_group_sep.text()
+        profile['wrapper_template']      = self.html_details_wrapper.text() or '{appareils}'
         profile['char_limit']            = self.html_char_limit_spin.value()
 
     def _load_profile_fields(self, profile):
         self.html_brand_header_tpl.setText(profile.get('brand_header_template', ''))
         self.html_model_line_tpl.setText(profile.get('model_line_template', ''))
         self.html_group_sep.setText(profile.get('group_separator', ''))
+        self.html_details_wrapper.setText(profile.get('wrapper_template', '{appareils}'))
         self.html_char_limit_spin.setValue(profile.get('char_limit', 195000))
         self._update_html_preview()
 
@@ -800,7 +816,8 @@ class ExportConfigDialog(QDialog):
                     'modele_complet':  modele_complet,
                     'separateur':      separateur,
                 }))
-        detail_html = ''.join(detail_parts)
+        detail_html = HtmlExportService.wrap_details(
+            ''.join(detail_parts), self.html_details_wrapper.text())
 
         preview_html = f"""
         <html><body style="font-family: monospace; font-size: 12px; padding: 8px;">
