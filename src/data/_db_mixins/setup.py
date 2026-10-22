@@ -132,6 +132,8 @@ class DatabaseSetupMixin:
 
         # Trace des auto-complétions à vérifier (v3.89.0)
         self._setup_autocompletion_trace_table()
+        # Refus mémorisés : suggestions écartées, auto-complétions vidées (v3.94.0)
+        self._setup_refus_completions_table()
 
         self.conn.commit()
 

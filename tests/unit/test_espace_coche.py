@@ -90,27 +90,30 @@ def test_vue_sans_cases_touche_non_consommee(qapp):
 
 
 def test_fenetre_suggestions(qapp):
-    from src.ui.suggestion_validation_dialog import SuggestionValidationDialog, COL_CHECK, COL_REF
+    """Fenêtres de revue (v3.94.0) : Espace bascule l'état ✓ / · de la ligne
+    courante, quelle que soit la colonne courante."""
+    from src.ui.fenetre_revue import VALIDE, ATTENTE
+    from src.ui.suggestion_validation_dialog import SuggestionValidationDialog, COL_REF
     entree = {'db_id': 1, 'ref_modele': 'R1', 'commercial_ref': '', 'candidates': [
         {'type': 'Four', 'manufacturer': 'Bosch', 'score': 0.87, 'ref': 'X',
          'confidence_tier': 'B_fuzzy_alpha'}]}
     fenetre = SuggestionValidationDialog(None, [entree], on_validate=None)
-    feuille = fenetre._leaves[0]
-    avant = feuille.checkState(COL_CHECK)
-    fenetre._tree.setCurrentItem(feuille, COL_REF)
-    QTest.keyClick(fenetre._tree, Qt.Key_Space)
-    assert feuille.checkState(COL_CHECK) != avant
-    assert fenetre._validate_btn.text().endswith(
-        f"({1 if feuille.checkState(COL_CHECK) == Qt.Checked else 0})")
+    feuille = fenetre._feuilles[0]
+    assert fenetre.etat(feuille) == ATTENTE
+    fenetre._arbre.setCurrentItem(feuille, COL_REF)
+    QTest.keyClick(fenetre._arbre, Qt.Key_Space)
+    assert fenetre.etat(feuille) == VALIDE
+    assert fenetre._btn_appliquer.text() == "Appliquer (1)"
 
 
 def test_fenetre_autocompletes(qapp):
+    from src.ui.fenetre_revue import ATTENTE
     from src.ui.autocompletion_review_dialog import (
-        AutocompletionReviewDialog, regrouper_traces, COL_CHECK, COL_REF)
+        AutocompletionReviewDialog, regrouper_traces, COL_REF)
     lignes = [(1, 'R1', '', 'Four', 'Bosch', 'type', 'Four', 'S', 1, 1, '2026-10-16 08:00:00')]
     fenetre = AutocompletionReviewDialog(None, regrouper_traces(lignes), on_validate=None)
-    item = fenetre._items[0]
-    fenetre._tree.setCurrentItem(item, COL_REF)
-    QTest.keyClick(fenetre._tree, Qt.Key_Space)        # coché d'office → décoché
-    assert item.checkState(COL_CHECK) == Qt.Unchecked
-    assert fenetre._validate_btn.text() == "Marquer comme vérifiés (0)"
+    item = fenetre._feuilles[0]
+    fenetre._arbre.setCurrentItem(item, COL_REF)
+    QTest.keyClick(fenetre._arbre, Qt.Key_Space)        # validé d'office → en attente
+    assert fenetre.etat(item) == ATTENTE
+    assert fenetre._btn_appliquer.text() == "Appliquer (0)"

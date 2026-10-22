@@ -3670,6 +3670,27 @@ class ImportManager:
             if traces is not None:
                 traces.update(ligne[0] for ligne in lignes)
 
+    def _sans_autocompletions_refusees(self, completions):
+        """Retire des complétions les champs AUTO-COMPLÉTÉS que l'utilisateur a
+        refusés pour cet appareil (fenêtre « Auto-complétés à vérifier », v3.94.0).
+        Une valeur lue dans le fichier lui-même reste écrite : le refus vise
+        l'auto-complétion, pas la donnée du fournisseur."""
+        lire = getattr(self.db_manager, 'lire_refus', None)
+        if lire is None:
+            return completions
+        refus = lire([device_id for device_id, _, _ in completions])
+        if not isinstance(refus, set) or not refus:   # lecture échouée (None) : rien à filtrer
+            return completions
+        filtrees = []
+        for device_id, device_data, champs in completions:
+            auto = device_data.get(self.CLE_AUTOCOMPLETION) or {}
+            gardes = {champ: valeur for champ, valeur in champs.items()
+                      if not (champ in auto and
+                              (device_id, champ, valeur.strip().lower()) in refus)}
+            if gardes:
+                filtrees.append((device_id, device_data, gardes))
+        return filtrees
+
     def _completer_appareils_existants(
             self, completions: List[Tuple[int, Dict[str, Any], Dict[str, str]]]) -> int:
         """Écrire les champs vides des appareils existants, commun aux deux chemins.
@@ -3688,6 +3709,10 @@ class ImportManager:
         from .config import Config
         requetes = {'type': Config.QUERIES['complete_device_type'],
                     'manufacturer': Config.QUERIES['complete_device_manufacturer']}
+
+        completions = self._sans_autocompletions_refusees(completions)
+        if not completions:
+            return 0
 
         faits = []
         conn = self.db_manager.get_connection()

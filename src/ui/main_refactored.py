@@ -1051,7 +1051,8 @@ class MainWindow(QMainWindow):
                     hors_page[db_id] = cand
                 else:
                     self._apply_suggestion_with_provenance(cand, model, db_id)
-                fields = {}
+                    self._vider_champs(cand, model, db_id)
+                fields = {champ: '' for champ in cand.get('vider', ())}
                 if (cand.get('type') or '').strip():
                     fields['type'] = cand['type']
                 if (cand.get('manufacturer') or '').strip():
@@ -1128,7 +1129,9 @@ class MainWindow(QMainWindow):
             )
 
         self._suggestion_validation_dialog = SuggestionValidationDialog(
-            self, snapshot, on_validate=_on_validate, value_picker=_pick_value
+            self, snapshot, on_validate=_on_validate, value_picker=_pick_value,
+            on_refuse=self._refuser_suggestions,
+            preuves=lambda entree: self.db_manager.voter_par_pieces(entree['db_id']),
         )
         self._suggestion_validation_dialog.show()
 
@@ -1244,6 +1247,30 @@ class MainWindow(QMainWindow):
         self._confirmation_tout_valider = boite   # garder une référence (show non bloquant)
         boite.show()
 
+    def _refuser_autocompletions(self, refus):
+        """Refus dans « Auto-complétés à vérifier » (v3.94.0) : les champs
+        auto-complétés sont vidés (même chemin batché, annulable et historisé que
+        les corrections) et le refus est mémorisé, pour que l'import ne les
+        réécrive pas. Le déclencheur SQL retire alors les traces.
+
+        refus : [(appareil_id, {champ: valeur auto-complétée})].
+        """
+        if not refus:
+            return 0
+        self.db_manager.enregistrer_refus(
+            (appareil_id, champ, valeur)
+            for appareil_id, champs in refus for champ, valeur in champs.items())
+        decisions = [(appareil_id, {'vider': list(champs),
+                                    'provenance': "refus d'auto-complétion"})
+                     for appareil_id, champs in refus]
+        self._apply_suggestion_decisions(decisions)
+        self._rafraichir_bouton_autocompletes()
+        n = len(refus)
+        self.user_interaction_service.add_to_history(
+            f"Auto-complétés refusés : {pluralize(n, 'appareil')} — champ{'s' if n > 1 else ''} "
+            f"vidé{'s' if n > 1 else ''}, l'import ne les réécrira plus.")
+        return n
+
     def _marquer_lignes_verifiees(self, appareil_ids, origine="depuis le tableau"):
         """Retire les traces des appareils donnés, sans toucher à leurs valeurs
         (clic droit « Marquer comme vérifié », bouton « Tout valider »)."""
@@ -1285,7 +1312,9 @@ class MainWindow(QMainWindow):
                 db_field, current_value, suggestions=candidates)
 
         self._autocompletion_review_dialog = AutocompletionReviewDialog(
-            self, entrees, on_validate=_on_validate, value_picker=_pick_value)
+            self, entrees, on_validate=_on_validate, value_picker=_pick_value,
+            on_refuse=self._refuser_autocompletions,
+            preuves=lambda entree: self.db_manager.voter_par_pieces(entree['id']))
         self._autocompletion_review_dialog.show()
 
     @staticmethod
@@ -1321,6 +1350,21 @@ class MainWindow(QMainWindow):
                 self.grouped_history_service.add_modification(
                     db_id, self._get_column_display_name(col), old_value, champs[champ],
                     source=source, reference=reference)
+
+    def _vider_champs(self, candidate, model, db_id):
+        """Vide les champs listés dans candidate['vider'] (refus d'une
+        auto-complétion, v3.94.0), par le même tronc commun que les écritures :
+        annulation et historique compris."""
+        champs = candidate.get('vider') or ()
+        row = model.find_row_by_db_id(db_id) if champs else None
+        if row is None:
+            return
+        self._suggestion_provenance = self._provenance_suggestion(candidate)
+        try:
+            for champ in champs:
+                model.set_field_value(row, 0 if champ == 'type' else 1, '')
+        finally:
+            self._suggestion_provenance = None
 
     def _apply_suggestion_with_provenance(self, candidate, model, db_id):
         """Applique un candidat en marquant la provenance pour l'historique groupé
@@ -2284,7 +2328,8 @@ class MainWindow(QMainWindow):
             # l'import (indicateur + bannière conditionnelle). Stockées par db_id :
             # s'affichent dès que les lignes concernées deviennent visibles.
             if hasattr(self.table_controller, 'set_similarity_suggestions'):
-                self.table_controller.set_similarity_suggestions(results.get('similarity_suggestions'))
+                self.table_controller.set_similarity_suggestions(
+                    self._filtrer_suggestions_refusees(results.get('similarity_suggestions') or {}))
 
     def _show_import_results_new(self, results):
         """Traiter les résultats d'import du nouveau système ImportManager - SEULEMENT dans l'historique"""
@@ -3222,7 +3267,37 @@ class MainWindow(QMainWindow):
             cands = svc.find_candidates(ref_modele, commercial_ref, index, exclude_db_id=db_id)
             if cands:
                 found[db_id] = [c.to_dict() for c in cands]
-        return self._ajouter_suggestions_type_piece(found, [i for i, _, _ in incomplete])
+        found = self._ajouter_suggestions_type_piece(found, [i for i, _, _ in incomplete])
+        return self._filtrer_suggestions_refusees(found)
+
+    def _filtrer_suggestions_refusees(self, found):
+        """Retire les paires Type/Marque que l'utilisateur a refusées pour chaque
+        appareil (v3.94.0). Lecture échouée : rien n'est retiré."""
+        if not found:
+            return found
+        from ..services.reference_similarity_service import retirer_candidats_refuses
+        refus = self.db_manager.lire_refus(list(found))
+        return retirer_candidats_refuses(found, refus) if isinstance(refus, set) else found
+
+    def _refuser_suggestions(self, refusees):
+        """Mémorise les suggestions refusées dans la fenêtre de validation : aucune
+        écriture sur l'appareil, ses paires ne seront plus proposées.
+
+        refusees : [(db_id, [candidat_dict, ...])] — toutes les paires de la ligne.
+        """
+        from ..services.reference_similarity_service import CHAMP_PAIRE, cle_paire
+        if not refusees:
+            return 0
+        self.db_manager.enregistrer_refus(
+            (db_id, CHAMP_PAIRE, cle_paire(c)) for db_id, cands in refusees for c in cands)
+        for db_id, _ in refusees:
+            self.table_controller.clear_similarity_suggestion(db_id)
+        self.table_controller._update_similarity_indicator()
+        n = len(refusees)
+        self.user_interaction_service.add_to_history(
+            f"Suggestions refusées : {pluralize(n, 'appareil')} — "
+            f"{'elles ne seront' if n > 1 else 'elle ne sera'} plus proposée{'s' if n > 1 else ''}.")
+        return n
 
     def _ajouter_suggestions_type_piece(self, found, db_ids):
         """Palier « type de la pièce » hors import (v3.93.0) : pour chaque appareil

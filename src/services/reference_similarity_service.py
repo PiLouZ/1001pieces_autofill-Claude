@@ -245,6 +245,86 @@ def fusionner_type_piece(existants: List[dict], refs_pieces: List[str],
     return list(existants) + [candidat_type_piece(type_piece, refs_pieces, part, total)]
 
 
+# ── Refus mémorisés (v3.94.0) ──────────────────────────────────────────────
+CHAMP_PAIRE = 'paire'
+
+
+def cle_paire(candidat: dict) -> str:
+    """Valeur rangée dans refus_completions pour une paire Type/Marque refusée."""
+    return (f"{(candidat.get('type') or '').strip().lower()}|"
+            f"{(candidat.get('manufacturer') or '').strip().lower()}")
+
+
+def retirer_candidats_refuses(suggestions: Dict[int, list], refus) -> Dict[int, list]:
+    """Suggestions privées des paires refusées pour chaque appareil ; un appareil
+    sans candidat restant disparaît. refus : {(appareil_id, champ, valeur)}."""
+    if not refus:
+        return suggestions
+    out = {}
+    for db_id, cands in suggestions.items():
+        gardes = [c for c in cands if (db_id, CHAMP_PAIRE, cle_paire(c)) not in refus]
+        if gardes:
+            out[db_id] = gardes
+    return out
+
+
+# ── Preuve et risques, pour la fenêtre de validation (v3.94.0) ─────────────
+# Libellé court de la preuve par palier (colonne « Preuve » et regroupement)
+LIBELLE_PREUVE = {
+    'A_suffix_variant': "Même référence à un suffixe près",
+    'B_fuzzy_alpha': "Référence voisine",
+    'B_fuzzy_numeric': "Référence voisine",
+    'C_prefix_consensus': "Famille de préfixe",
+    TIER_TYPE_PIECE: "Type de la pièce",
+}
+ORDRE_PREUVE = {'A_suffix_variant': 0, 'B_fuzzy_alpha': 1, 'B_fuzzy_numeric': 1,
+                TIER_TYPE_PIECE: 2, 'C_prefix_consensus': 3}
+
+
+def pourcent(part: float) -> str:
+    """« 92 % » (espace insécable avant le signe, typographie française)."""
+    return f"{round(float(part or 0) * 100)}\u00a0%"
+
+
+def texte_preuve(candidat: dict) -> str:
+    """La preuve en quelques caractères, avec son unité : « même réf. »,
+    « réf. 92 % », « préfixe 18/19 », « pièce 12/12 »."""
+    tier = (candidat or {}).get('confidence_tier')
+    score = float((candidat or {}).get('score', 0) or 0)
+    if tier == 'A_suffix_variant':
+        return "même réf."
+    if tier == 'C_prefix_consensus':
+        if candidat.get('nb_famille'):
+            return f"préfixe {candidat['nb_accord']}/{candidat['nb_famille']}"
+        return f"préfixe {pourcent(score)}"
+    if tier == TIER_TYPE_PIECE:
+        n = int(candidat.get('nb_appareils') or 0)
+        return f"pièce {round(score * n)}/{n}" if n else f"pièce {pourcent(score)}"
+    return f"réf. {pourcent(score)}"
+
+
+def risques_suggestion(candidats: List[dict]) -> List[str]:
+    """Raisons de regarder une suggestion de plus près (vide = rien à signaler).
+    Calculées sur les seuls candidats : aucune lecture en base."""
+    risques = []
+    if not candidats:
+        return risques
+    if len(candidats) > 1:
+        types = {(c.get('type') or '').strip().lower() for c in candidats} - {''}
+        marques = {(c.get('manufacturer') or '').strip().lower() for c in candidats} - {''}
+        nature = [n for n, ens in (("types", types), ("marques", marques)) if len(ens) > 1]
+        risques.append(f"{len(candidats)} candidats concurrents"
+                       + (f" ({' et '.join(nature)} différents)" if nature else ""))
+    meilleur = candidats[0]
+    tier = meilleur.get('confidence_tier')
+    if tier == 'C_prefix_consensus':
+        risques.append("marque déduite d'une famille de références, sans appareil identique")
+    elif tier != TIER_TYPE_PIECE and tier != 'A_suffix_variant' \
+            and float(meilleur.get('score', 0) or 0) < 0.86:
+        risques.append("ressemblance de référence faible")
+    return risques
+
+
 def decrire_candidat(candidat: dict) -> str:
     """Libellé d'un candidat pour les listes (fenêtre Cmd+D)."""
     if est_type_piece(candidat):
@@ -284,9 +364,14 @@ class SimilarityCandidate:
     source: str                 # 'ref_modele' | 'commercial_ref' (champ du candidat qui a matché)
     confidence_tier: str        # 'A_suffix_variant' | 'B_fuzzy_alpha' | 'B_fuzzy_numeric'
     db_id: int                  # id de l'appareil candidat en base
+    # Palier C seulement : effectif du consensus (appareils d'accord / famille) et
+    # préfixe retenu — la preuve affichée dans la fenêtre de validation (v3.94.0).
+    nb_accord: int = 0
+    nb_famille: int = 0
+    prefixe: str = ''
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             'ref': self.ref,
             'type': self.type,
             'manufacturer': self.manufacturer,
@@ -295,6 +380,9 @@ class SimilarityCandidate:
             'confidence_tier': self.confidence_tier,
             'db_id': self.db_id,
         }
+        if self.nb_famille:
+            d.update(nb_accord=self.nb_accord, nb_famille=self.nb_famille, prefixe=self.prefixe)
+        return d
 
 
 @dataclass
@@ -579,5 +667,6 @@ class ReferenceSimilarityService:
                 return SimilarityCandidate(
                     ref=ref, type=t, manufacturer=m, score=score,
                     source=src, confidence_tier='C_prefix_consensus', db_id=db_id,
+                    nb_accord=top_n, nb_famille=len(seen), prefixe=prefix.upper(),
                 )
         return None

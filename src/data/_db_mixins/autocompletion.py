@@ -14,6 +14,12 @@ La ligne disparaît d'elle-même, par déclencheur SQL, quand le champ change
 chemin d'écriture de l'application n'a besoin de s'en soucier. Une simple
 réécriture de casse (« DELTA » → « Delta ») ne compte pas comme une vérification.
 
+Refus (v3.94.0) : `refus_completions` mémorise ce que l'utilisateur a écarté pour
+un appareil — une paire Type/Marque suggérée (champ 'paire', valeur « type|marque »)
+ou un champ auto-complété qu'il a fait vider (champ 'type' ou 'manufacturer').
+Les suggestions refusées ne sont plus proposées, et l'import ne réécrit plus une
+auto-complétion refusée sur un appareil existant.
+
 Dépendances attendues sur self (fournies par DatabaseManager.__init__) :
     self.cursor, self.conn, self._query_lock
 """
@@ -63,6 +69,77 @@ class DatabaseAutocompletionMixin:
             """)
         except Exception as e:
             app_logger.error(f"Erreur création table appareils_autocompletes: {e}")
+
+    def _setup_refus_completions_table(self):
+        """Créer la table des refus et son déclencheur de suppression (idempotent)."""
+        try:
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS refus_completions (
+                    appareil_id  INTEGER NOT NULL,
+                    champ        TEXT    NOT NULL,
+                    valeur       TEXT    NOT NULL,
+                    refuse_le    TEXT    NOT NULL,
+                    PRIMARY KEY (appareil_id, champ, valeur)
+                )
+            """)
+            self.cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_refus_appareil_supprime
+                AFTER DELETE ON appareils
+                BEGIN
+                    DELETE FROM refus_completions WHERE appareil_id = OLD.id;
+                END
+            """)
+        except Exception as e:
+            app_logger.error(f"Erreur création table refus_completions: {e}")
+
+    @with_query_lock
+    def enregistrer_refus(self, lignes) -> int:
+        """Mémoriser des refus.
+
+        Args:
+            lignes: (appareil_id, champ, valeur). La valeur est rangée en minuscules :
+                un refus ne dépend pas de la casse.
+        Returns:
+            Nombre de refus enregistrés (0 en cas d'échec, journalisé).
+        """
+        from datetime import datetime
+        horodatage = datetime.now().isoformat(sep=' ', timespec='seconds')
+        lignes = [(a, c, (v or '').strip().lower(), horodatage) for a, c, v in lignes
+                  if (v or '').strip()]
+        if not lignes:
+            return 0
+        try:
+            self.cursor.executemany(
+                "INSERT OR REPLACE INTO refus_completions "
+                "(appareil_id, champ, valeur, refuse_le) VALUES (?, ?, ?, ?)", lignes)
+            self.conn.commit()
+            return len(lignes)
+        except Exception as e:
+            self.conn.rollback()
+            app_logger.error(f"Enregistrement des refus échoué : {e}")
+            return 0
+
+    @with_query_lock
+    def lire_refus(self, appareil_ids):
+        """Refus des appareils donnés.
+
+        Returns:
+            Ensemble de (appareil_id, champ, valeur en minuscules), ou None si la
+            lecture a échoué (l'appelant ne filtre alors rien).
+        """
+        ids = list(dict.fromkeys(appareil_ids))
+        refus = set()
+        try:
+            for debut in range(0, len(ids), 900):
+                lot = ids[debut:debut + 900]
+                self.cursor.execute(
+                    "SELECT appareil_id, champ, valeur FROM refus_completions "
+                    f"WHERE appareil_id IN ({','.join('?' * len(lot))})", lot)
+                refus.update(tuple(r) for r in self.cursor.fetchall())
+            return refus
+        except Exception as e:
+            app_logger.error(f"Lecture des refus échouée : {e}")
+            return None
 
     @with_query_lock
     def enregistrer_autocompletions(self, lignes) -> int:

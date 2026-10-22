@@ -4,6 +4,53 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.94.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
+
+### Fenêtres de revue refondues + refus mémorisés
+
+Refonte de « Valider les suggestions » et « Auto-complétés à vérifier », jugées
+pauvres en information. Préparée par deux agents en lecture seule (audit UX du code,
+inventaire des données disponibles et de leur coût sur la vraie base).
+
+- **Gabarit commun** `src/ui/fenetre_revue.py` :
+  - état à trois valeurs par ligne — ✓ validée, ✗ refusée, · en attente — au lieu
+    d'une case qui confondait « non » et « pas encore regardé » ;
+  - regroupement (suggestions : par preuve par défaut, marque proposée, appareil
+    voisin ; auto-complétés : par import par défaut, source, confiance) ; une décision
+    sur une ligne de groupe vaut pour tout le groupe affiché ; titres de groupe sur
+    toute la largeur ;
+  - puces à compteur (paliers, ⚠ à risque ; catégories de confiance) + filtre texte
+    (étendu à la référence voisine) ;
+  - panneau de détail : la preuve en clair (« 18 appareils sur 19 » pour une famille de
+    préfixe — effectif jusqu'ici jeté par le service), le vote des pièces de l'appareil
+    (confirment / contredisent, abstention sous 5 appareils typés), les autres
+    candidats avec un lien « Prendre », les risques ;
+  - raccourcis V / R / U / Espace / Entrée / ⌘ Entrée, passage automatique à la ligne
+    en attente suivante ; « Appliquer » ne ferme plus la fenêtre (traitement en
+    plusieurs passes), fermer avec des décisions en cours demande confirmation ;
+  - colonne « Preuve » avec son unité (« même réf. », « réf. 92 % », « préfixe 18/19 »,
+    « pièce 12/12 ») à la place d'un score sans unité ; colonne ⚠.
+- **Vote des pièces** (`DatabaseManager.voter_par_pieces`), lu à la consultation de la
+  ligne puis mis en cache. Les pièces portées par plus de 2 000 appareils ne votent pas
+  (génériques, et lecture ×10 plus rapide : pire cas 868 → 93 ms sur la vraie base).
+- **Refus mémorisés** (table `refus_completions`, déclencheur de suppression avec
+  l'appareil) :
+  - une suggestion refusée (toutes les paires de la ligne) n'est plus proposée — import,
+    clic droit, scan global ;
+  - un auto-complété refusé est **vidé** (même chemin batché, annulable et historisé que
+    les corrections ; la trace disparaît par déclencheur) et l'import ne le réécrit plus
+    sur cet appareil — sauf si le fichier lui-même porte la valeur.
+- **Performance** (2 000 lignes, hors écran) : ouverture 0,26 s, décision 16 ms,
+  regroupement 0,16 s, filtre 28 ms.
+- **Tests** : `test_suggestion_validation_dialog.py` réécrit (31 tests, comportements
+  d'avant transposés aux 3 états), `test_refus_completions.py` (12), fenêtre des
+  auto-complétés et Espace adaptés. Mutation : sans la garde de l'import, le test du
+  refus échoue. Scénario offscreen de la vraie fenêtre principale (base temporaire) :
+  validation, refus, nouveau scan sans la paire refusée, auto-complété vidé en base et
+  dans le tableau, trace retirée, boutons masqués. Suite complète : 1498 passed, 1 skipped.
+
+---
+
 ## [3.93.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
 
 ### Suggestions plus pertinentes : groupe du code numérique + type des pièces partout

@@ -120,12 +120,16 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h3>Valider les suggestions</h3>
 <ul>
   <li>Les cellules avec une suggestion sont teintées ; un clic montre les candidats.</li>
-  <li>Le bouton ambre <b>« Suggestions à valider (N) »</b>, sous le tableau à côté des lignes incomplètes, ouvre la fenêtre de validation : cochez celles à appliquer (<b>Espace</b> coche/décoche la ligne), double-clic sur Type ou Marque pour corriger. Clic sur un en-tête pour trier.</li>
+  <li>Le bouton ambre <b>« Suggestions à valider (N) »</b>, sous le tableau à côté des lignes incomplètes, ouvre la fenêtre de validation.</li>
+  <li>Chaque ligne a un état : <b>✓ validée</b>, <b>✗ refusée</b> ou <b>· en attente</b>. Les suggestions sûres arrivent validées. Raccourcis : <b>V</b> valider, <b>R</b> refuser, <b>U</b> remettre en attente, <b>Espace</b> bascule ✓ / ·, <b>Entrée</b> ou double-clic pour corriger. Sur une ligne de groupe, la décision vaut pour tout le groupe.</li>
+  <li>Les lignes sont regroupées par preuve (même référence, référence voisine, type de la pièce, famille de préfixe) ; les puces du haut filtrent, dont <b>⚠ À risque</b>. Le panneau de droite détaille la preuve, ce que disent les pièces de l'appareil et les autres candidats (lien <b>Prendre</b>).</li>
+  <li><b>Appliquer</b> (⌘ Entrée) enregistre sans fermer : on peut traiter une longue liste en plusieurs fois. Une suggestion <b>refusée</b> n'est plus jamais proposée pour cet appareil.</li>
 </ul>
 
 <h3>Vérifier les auto-complétés</h3>
 <ul>
-  <li>Bouton bleu <b>« Auto-complétés à vérifier (N) »</b> : ouvre la liste, du moins sûr au plus sûr. Tout est coché d'office ; décochez ce qui est douteux, corrigez par double-clic, puis <b>Marquer comme vérifiés</b>.</li>
+  <li>Bouton bleu <b>« Auto-complétés à vérifier (N) »</b> : ouvre la liste, regroupée par import. Tout est validé d'office ; mettez en attente ce qui est douteux, corrigez par double-clic, puis <b>Appliquer</b>. Mêmes raccourcis que pour les suggestions ; le panneau de droite confronte la valeur écrite aux pièces de l'appareil.</li>
+  <li><b>Refuser</b> une ligne vide les champs auto-complétés de l'appareil, et l'import ne les réécrira plus (sauf si le fichier lui-même porte la valeur).</li>
   <li>Bouton vert <b>« Tout valider »</b> : valide tout d'un coup, après une confirmation qui rappelle la confiance des sources. Une validation en masse ne s'annule pas.</li>
   <li>Dans le tableau : <b>clic droit → Marquer comme vérifié</b> sur les lignes sélectionnées. Corriger une valeur en italique la vérifie aussi.</li>
 </ul>
