@@ -59,7 +59,21 @@ class HtmlExportService:
             else:
                 html_links.append(link_template.replace('{marque}', html.escape(brand, quote=True)))
 
-        return separator.join(html_links)
+        return cls.wrap_brand_links(separator.join(html_links),
+                                    brands_cfg.get('wrapper_template', '{liens}'))
+
+    @staticmethod
+    def wrap_brand_links(links: str, wrapper_template: str) -> str:
+        """Placer les liens de marques dans le code englobant ({liens}).
+
+        Pas d'enveloppe sans marque (évite un « Compatible avec » vide), ni si
+        le gabarit oublie {liens} (les liens seraient perdus en silence).
+        Remplacement direct, sans échappement : les liens sont déjà du HTML
+        dont les noms de marques ont été échappés.
+        """
+        if not links or not wrapper_template or '{liens}' not in wrapper_template:
+            return links
+        return wrapper_template.replace('{liens}', links)
     
     @classmethod
     def generate_html_details(cls, data: List[Tuple], profile_name: str = None) -> str:
