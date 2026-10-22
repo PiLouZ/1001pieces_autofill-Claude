@@ -608,40 +608,9 @@ class TableController:
         equiv_banner_layout.addWidget(self.equivalence_expand_btn)
         _sc_layout.addWidget(self.equivalence_banner)
 
-        # Bandeau « suggestions par similarité » (caché par défaut, fond ambre doux).
-        # Visible UNIQUEMENT s'il existe au moins une suggestion Type/Marque en attente.
-        self.similarity_banner = QWidget()
-        self.similarity_banner.setVisible(False)
-        self.similarity_banner.setStyleSheet(
-            "QWidget { background-color: #FFF8E1; border: 1px solid #f39c12; border-radius: 3px; }"
-        )
-        sim_banner_layout = QHBoxLayout(self.similarity_banner)
-        sim_banner_layout.setContentsMargins(8, 3, 8, 3)
-        sim_banner_layout.setSpacing(8)
-        self.similarity_banner_label = QLabel()
-        self.similarity_banner_label.setStyleSheet(
-            "color: #795548; font-size: 12px; border: none; background: transparent;"
-        )
-        sim_banner_layout.addWidget(self.similarity_banner_label)
-        sim_banner_layout.addStretch()
-        # Bouton « tout valider » : applique uniquement les suggestions sûres (Palier A unique).
-        self.similarity_validate_all_btn = QPushButton()
-        self.similarity_validate_all_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #795548;
-                border: 1px solid #f39c12;
-                border-radius: 3px;
-                font-size: 11px;
-                padding: 1px 6px;
-            }
-            QPushButton:hover { background-color: #f39c12; color: white; }
-        """)
-        self.similarity_validate_all_btn.setCursor(Qt.PointingHandCursor)
-        self.similarity_validate_all_btn.setVisible(False)
-        self.similarity_validate_all_btn.clicked.connect(self._on_validate_all_safe)
-        sim_banner_layout.addWidget(self.similarity_validate_all_btn)
-        _sc_layout.addWidget(self.similarity_banner)
+        # Les suggestions Type/Marque n'ont plus de bandeau ici (v3.92.0) : elles
+        # sont signalées par le bouton « Suggestions à valider (N) » de la barre
+        # d'état (cf. MainWindow._rafraichir_bouton_suggestions).
 
         # Position par défaut (sous le tableau) : bannières puis recherche,
         # la recherche restant juste au-dessus de la navigation
@@ -1710,16 +1679,16 @@ class TableController:
     # ── Suggestions Type/Marque par similarité ──────────────────────────────
     def set_similarity_suggestions(self, suggestions_by_db_id):
         """Installe les suggestions calculées (après import) dans le modèle et
-        met à jour la bannière. {db_id: [candidat_dict, ...]}."""
+        met à jour le compteur. {db_id: [candidat_dict, ...]}."""
         if self.model is not None and hasattr(self.model, 'set_pending_suggestions'):
             self.model.set_pending_suggestions(suggestions_by_db_id or {})
-            self._update_similarity_banner()
+            self._update_similarity_indicator()
 
     def clear_similarity_suggestion(self, db_id):
-        """Dissipe l'indicateur d'une ligne (acceptée / ignorée) et rafraîchit la bannière."""
+        """Dissipe l'indicateur d'une ligne (acceptée / ignorée) et rafraîchit le compteur."""
         if self.model is not None and hasattr(self.model, 'clear_suggestion'):
             self.model.clear_suggestion(db_id)
-            self._update_similarity_banner()
+            self._update_similarity_indicator()
 
     def _on_suggestion_icon_clicked(self, index, suggestions):
         """Relais du clic sur l'icône de suggestion (depuis SuggestionCellDelegate)
@@ -1727,31 +1696,12 @@ class TableController:
         if hasattr(self.parent_window, '_resolve_suggestion_inline'):
             self.parent_window._resolve_suggestion_inline(index, suggestions)
 
-    def _on_validate_all_safe(self):
-        """Relais du bouton de bannière : ouvre la fenêtre de validation polyvalente
-        (tableau de synthèse, cases à cocher, choix du candidat, édition à la volée)."""
-        if hasattr(self.parent_window, '_open_suggestion_validation_dialog'):
-            self.parent_window._open_suggestion_validation_dialog()
-
-    def _update_similarity_banner(self):
-        """Affiche la bannière uniquement s'il reste des suggestions en attente.
-        Le bouton « tout valider » n'apparaît que s'il existe des suggestions sûres."""
-        if not hasattr(self, 'similarity_banner'):
-            return
-        count = self.model.pending_suggestions_count if self.model is not None else 0
-        if count > 0:
-            self.similarity_banner_label.setText(
-                f"{pluralize(count, 'appareil')} avec une suggestion Type/Marque en attente — "
-                f"cliquez la cellule surlignée, ou examinez-les toutes."
-            )
-            # Le bouton ouvre désormais la fenêtre de validation polyvalente (toutes
-            # les suggestions, y compris à plusieurs candidats), il apparaît donc dès
-            # qu'il existe au moins une suggestion.
-            self.similarity_validate_all_btn.setText(f"Examiner {pluralize(count, 'suggestion')}…")
-            self.similarity_validate_all_btn.setVisible(True)
-            self.similarity_banner.setVisible(True)
-        else:
-            self.similarity_banner.setVisible(False)
+    def _update_similarity_indicator(self):
+        """Relaie le nombre de suggestions en attente au bouton « Suggestions à
+        valider (N) » de la barre d'état (absent tant qu'elle n'est pas créée)."""
+        rafraichir = getattr(self.parent_window, '_rafraichir_bouton_suggestions', None)
+        if rafraichir is not None:
+            rafraichir()
 
     def _on_supersession_ref_clicked(self, ref: str):
         """Déclencher une nouvelle recherche en cliquant sur une référence dans la bannière."""

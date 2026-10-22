@@ -4,6 +4,30 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.92.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
+
+### Suggestions Type/Marque : un bouton dans la barre d'actions au lieu d'un bandeau
+
+- **Avant** : bandeau ambre au-dessus de la recherche (« N appareils avec une
+  suggestion Type/Marque en attente… » + bouton « Examiner N suggestions… »).
+- **Après** : bouton ambre **« Suggestions à valider (N) »** dans la barre d'état,
+  entre « ▲ incomplètes ▼ » et « Auto-complétés à vérifier | Tout valider ».
+  Même compteur, masqué à 0, clic = même fenêtre de validation. Le texte d'aide
+  du bandeau passe dans l'infobulle. Pas de « Tout valider » : une suggestion
+  n'est jamais écrite sans regard humain (≈ 2 % d'erreurs mesurées, cf. ci-dessous).
+- **Code** : `TableController._update_similarity_banner` → `_update_similarity_indicator`,
+  qui relaie à `MainWindow._rafraichir_bouton_suggestions` ; bandeau et
+  `_on_validate_all_safe` retirés ; style `StyleManager.SUGGESTIONS_BTN`.
+- **Mesure de pertinence** (base réelle, 1 000 appareils dont Type/Marque masqués,
+  hors correspondance exacte) : base à 10 / 25 / 50 / 100 % → suggestion pour
+  70 / 76 / 80 / 81 % des appareils, 1ᵉʳ candidat juste à 99,4 / 98,3 / 98,2 / 98,0 %.
+  Plus de données = un peu plus de suggestions (plafond ≈ 81 %), pas plus justes.
+- **Tests** : `tests/unit/test_bouton_suggestions_barre_etat.py` (5 tests) + scénario
+  offscreen sur une copie de la base (ordre dans la barre, hauteur 26 px commune,
+  compteur 3 → 2 → masqué, clic ouvre la fenêtre). Suite complète : 1450 passed, 1 skipped.
+
+---
+
 ## [3.91.3] - 2026-10-16 (branche `fix/historique-libelle-hors-affichage`)
 
 ### Historique : l'id de l'appareil au lieu de ses références

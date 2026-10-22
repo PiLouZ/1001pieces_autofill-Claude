@@ -699,10 +699,27 @@ class MainWindow(QMainWindow):
         self.statusbar.setFixedHeight(self.incomplete_nav_widget.content_height() + 6)
         self._wire_incomplete_nav()
 
-        # « Auto-complétés à vérifier (N) | Tout valider » juste après, deux moitiés
-        # accolées dans un même conteneur, masqué tant que N = 0
         from .qt_imports import QPushButton, QWidget, QHBoxLayout
         import qtawesome as qta
+
+        # « Suggestions à valider (N) » juste après (remplace le bandeau au-dessus
+        # de la recherche, v3.92.0) : ouvre la fenêtre de validation, masqué tant
+        # que N = 0. Pas de « Tout valider » : une suggestion n'est jamais écrite
+        # sans regard humain, à la différence d'un auto-complété déjà en base.
+        self.suggestions_btn = QPushButton()
+        self.suggestions_btn.setIcon(qta.icon('fa5s.lightbulb', color='#4e342e'))
+        self.suggestions_btn.setStyleSheet(StyleManager.SUGGESTIONS_BTN)
+        self.suggestions_btn.setToolTip(
+            "Type ou Fabricant proposés d'après des références voisines, pas encore "
+            "écrits.\nClic : fenêtre de validation. Une cellule surlignée se valide "
+            "aussi seule, d'un clic.")
+        self.suggestions_btn.clicked.connect(self._open_suggestion_validation_dialog)
+        self.suggestions_btn.setVisible(False)
+        self.statusbar.insertWidget(1, self.suggestions_btn)
+        self._rafraichir_bouton_suggestions()
+
+        # « Auto-complétés à vérifier (N) | Tout valider » ensuite, deux moitiés
+        # accolées dans un même conteneur, masqué tant que N = 0
         self.autocompletes_groupe = QWidget()
         groupe = QHBoxLayout(self.autocompletes_groupe)
         groupe.setContentsMargins(0, 0, 0, 0)
@@ -720,7 +737,7 @@ class MainWindow(QMainWindow):
         self.autocompletes_valider_btn.clicked.connect(self._confirmer_tout_valider_autocompletes)
         groupe.addWidget(self.autocompletes_valider_btn)
         self.autocompletes_groupe.setVisible(False)
-        self.statusbar.insertWidget(1, self.autocompletes_groupe)
+        self.statusbar.insertWidget(2, self.autocompletes_groupe)
         self._rafraichir_bouton_autocompletes()
         
         self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
@@ -993,8 +1010,8 @@ class MainWindow(QMainWindow):
         """Cœur batché partagé : applique une liste de décisions [(db_id, candidat)]
         en UNE seule transaction (collecteur `_bulk_edit_collector` →
         `save_cells_batch_immediate`), dissipe les indicateurs appliqués et rafraîchit
-        la bannière. Utilisé par le bouton « sans concurrence » ET par la fenêtre de
-        validation (un seul chemin d'écriture = pas de divergence).
+        le compteur de la barre d'état. Utilisé par le bouton « sans concurrence » ET
+        par la fenêtre de validation (un seul chemin d'écriture = pas de divergence).
 
         `candidat` porte au minimum 'type'/'manufacturer' (valeurs retenues, possiblement
         éditées) et idéalement 'ref'/'score' pour la provenance dans l'historique groupé.
@@ -1061,10 +1078,10 @@ class MainWindow(QMainWindow):
         if db_ops is not None and updates_by_db_id:
             db_ops.save_cells_batch(updates_by_db_id)
 
-        # Dissiper les indicateurs appliqués + rafraîchir la bannière.
+        # Dissiper les indicateurs appliqués + rafraîchir le compteur.
         for db_id, _ in decisions:
             model.clear_suggestion(db_id)
-        self.table_controller._update_similarity_banner()
+        self.table_controller._update_similarity_indicator()
         if progress is not None:
             progress.close()
         return len(decisions)
@@ -1084,7 +1101,7 @@ class MainWindow(QMainWindow):
         # en base ; ceux qui ont disparu sont retirés, d'où le rafraîchissement.
         snapshot = model.suggestions_snapshot(
             lire_hors_page=self.db_manager.lire_appareils_par_id)
-        self.table_controller._update_similarity_banner()
+        self.table_controller._update_similarity_indicator()
         if not snapshot:
             self.user_interaction_service.add_to_history(
                 "Validation des suggestions : aucune suggestion en attente.")
@@ -1114,6 +1131,17 @@ class MainWindow(QMainWindow):
             self, snapshot, on_validate=_on_validate, value_picker=_pick_value
         )
         self._suggestion_validation_dialog.show()
+
+    def _rafraichir_bouton_suggestions(self):
+        """Compteur et visibilité du bouton « Suggestions à valider (N) », d'après
+        les suggestions en attente du modèle (aucune lecture en base)."""
+        bouton = getattr(self, 'suggestions_btn', None)
+        if bouton is None:
+            return
+        model = getattr(getattr(self, 'table_controller', None), 'model', None)
+        n = model.pending_suggestions_count if model is not None else 0
+        bouton.setText(f"Suggestions à valider ({n})")
+        bouton.setVisible(n > 0)
 
     def _rafraichir_bouton_autocompletes(self):
         """Compteur du bouton « Auto-complétés à vérifier (N) » et italique des
@@ -3125,7 +3153,7 @@ class MainWindow(QMainWindow):
         found = self._compute_similarity_suggestions(incomplete, prefixes)
         if found:
             model.add_pending_suggestions(found)
-            self.table_controller._update_similarity_banner()
+            self.table_controller._update_similarity_indicator()
             self.user_interaction_service.add_to_history(
                 f"Suggestions similarité : {pluralize(len(found), 'proposition')} sur "
                 f"{pluralize(len(incomplete), 'ligne incomplète sélectionnée', 'lignes incomplètes sélectionnées')}"
@@ -3221,7 +3249,7 @@ class MainWindow(QMainWindow):
 
         if found:
             model.add_pending_suggestions(found)
-            self.table_controller._update_similarity_banner()
+            self.table_controller._update_similarity_indicator()
             self.user_interaction_service.add_to_history(
                 f"Suggestions similarité (scan global) : {pluralize(len(found), 'proposition')} sur "
                 f"{pluralize(len(incomplete), 'ligne incomplète', 'lignes incomplètes')} — cellules surlignées.")
