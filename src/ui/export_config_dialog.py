@@ -15,7 +15,7 @@ from .qt_imports import (
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QMessageBox, QInputDialog, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox,
-    QEvent, QFileDialog
+    QEvent, QFileDialog, QScrollArea, QGridLayout
 )
 from src.core.logger import app_logger
 from .style_manager import StyleManager
@@ -146,7 +146,9 @@ class ExportConfigDialog(QDialog):
         self._original_config = export_config_service.get_config()
 
         self.setWindowTitle("Configuration des exports")
-        self.setMinimumSize(720, 520)
+        # Largeur mini : réglages et aperçu côte à côte sans se chevaucher
+        self.setMinimumSize(900, 540)
+        self.resize(1020, 720)
         self.setModal(False)
 
         self._build_ui()
@@ -396,30 +398,123 @@ class ExportConfigDialog(QDialog):
     def _build_html_tab(self) -> QWidget:
         tab = QWidget()
         layout = QHBoxLayout(tab)
+        layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(12)
 
-        # ── Panneau gauche : champs de config ────────────────────────────────
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setSpacing(6)
+        # ── Panneau gauche : réglages, dans une zone qui défile ──────────────
+        # Une QVBoxLayout à court de hauteur rétrécit ses champs sous leur
+        # taille utile (champs « pincés ») : la zone de défilement l'évite.
+        reglages = QWidget()
+        reglages_layout = QVBoxLayout(reglages)
+        reglages_layout.setContentsMargins(0, 0, 6, 0)
+        reglages_layout.setSpacing(10)
+        reglages_layout.addWidget(self._build_brands_card())
+        reglages_layout.addWidget(self._build_details_card())
+        reglages_layout.addStretch()
 
-        # Section Marques
-        left_layout.addWidget(self._section_label("Marques"))
+        scroll = QScrollArea()
+        scroll.setWidget(reglages)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Sans défilement horizontal, la zone doit réserver la largeur utile
+        # des cartes : c'est l'aperçu qui cède quand la fenêtre est étroite.
+        scroll.setMinimumWidth(reglages.minimumSizeHint().width()
+                               + scroll.verticalScrollBar().sizeHint().width())
+        layout.addWidget(scroll, 2)
 
-        left_layout.addWidget(QLabel("Template lien :"))
+        # ── Panneau droit : aperçu ────────────────────────────────────────────
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(4)
+
+        preview_header = QHBoxLayout()
+        preview_header.addWidget(self._section_label("Aperçu (données fictives)"))
+        preview_header.addStretch()
+        preview_btn = QPushButton("Prévisualiser")
+        preview_btn.setIcon(qta.icon('fa5s.eye', color='#495057'))
+        preview_btn.setIconSize(QSize(11, 11))
+        preview_btn.setToolTip("L'aperçu se met à jour pendant la saisie ; ce bouton le force")
+        preview_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+        preview_btn.clicked.connect(self._update_html_preview)
+        preview_header.addWidget(preview_btn)
+        right_layout.addLayout(preview_header)
+
+        self.html_preview = QTextBrowser()
+        self.html_preview.setStyleSheet("background: white; border: 1px solid #dee2e6;")
+        right_layout.addWidget(self.html_preview)
+        layout.addWidget(right, 1)
+
+        # Aperçu en direct : données fictives, rendu instantané
+        for champ in (self.html_link_tpl, self.html_brands_sep, self.html_brands_wrapper,
+                      self.html_brand_header_tpl, self.html_model_line_tpl,
+                      self.html_group_sep, self.html_details_wrapper):
+            champ.textChanged.connect(self._update_html_preview)
+
+        return tab
+
+    def _build_card(self, titre: str, aide: str):
+        """Carte de réglages : titre + phrase d'aide, puis une grille
+        « étiquette | champ » (étiquettes à gauche : moitié moins de hauteur
+        que des étiquettes au-dessus des champs)."""
+        card = QFrame()
+        card.setObjectName("carteExport")
+        card.setStyleSheet(
+            "QFrame#carteExport { background: #f8f9fa; border: 1px solid #e3e6ea;"
+            " border-radius: 6px; }"
+        )
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(12, 10, 12, 12)
+        card_layout.setSpacing(8)
+
+        card_layout.addWidget(self._section_label(titre))
+        aide_lbl = QLabel(aide)
+        aide_lbl.setWordWrap(True)
+        aide_lbl.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
+        card_layout.addWidget(aide_lbl)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
+        grid.setColumnStretch(1, 1)
+        card_layout.addLayout(grid)
+        return card, grid
+
+    @staticmethod
+    def _add_grid_row(grid, libelle: str, champ, puces=None):
+        """Ajouter « libellé | champ » (+ puces de variables sous le champ)."""
+        row = grid.rowCount()
+        lbl = QLabel(libelle)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        grid.addWidget(lbl, row, 0)
+        if isinstance(champ, QHBoxLayout):
+            grid.addLayout(champ, row, 1)
+        else:
+            grid.addWidget(champ, row, 1)
+        if puces is not None:
+            grid.addWidget(puces, row + 1, 1)
+
+    def _build_brands_card(self) -> QFrame:
+        card, grid = self._build_card(
+            "Liste des marques",
+            "Bouton HTML Marques : un lien par marque, joints par le séparateur.",
+        )
+
         self.html_link_tpl = QLineEdit()
-        left_layout.addWidget(self.html_link_tpl)
-        left_layout.addWidget(VariableChipsBar(
+        self._add_grid_row(grid, "Lien de chaque marque :", self.html_link_tpl, VariableChipsBar(
             [("marque", "Nom de la marque")],
             targets=[self.html_link_tpl],
         ))
 
-        left_layout.addWidget(QLabel("Séparateur entre marques :"))
         self.html_brands_sep = QLineEdit()
         self.html_brands_sep.setMaximumWidth(80)
-        left_layout.addWidget(self.html_brands_sep)
+        self.html_brands_sep.setToolTip("Texte placé entre deux liens (une espace par défaut)")
+        sep_row = QHBoxLayout()
+        sep_row.addWidget(self.html_brands_sep)
+        sep_row.addStretch()
+        self._add_grid_row(grid, "Séparateur :", sep_row)
 
-        left_layout.addWidget(QLabel("Code englobant les marques :"))
         self.html_brands_wrapper = QLineEdit()
         self.html_brands_wrapper.setPlaceholderText('{liens}')
         self.html_brands_wrapper.setToolTip(
@@ -427,54 +522,50 @@ class ExportConfigDialog(QDialog):
             "Ex. : <div class=\"compat\">Compatible avec {liens}</div>\n"
             "Sans {liens}, les liens sont exportés seuls."
         )
-        left_layout.addWidget(self.html_brands_wrapper)
-        left_layout.addWidget(VariableChipsBar(
+        self._add_grid_row(grid, "Code englobant :", self.html_brands_wrapper, VariableChipsBar(
             [("liens", "Liste des liens de marques")],
             targets=[self.html_brands_wrapper],
         ))
+        return card
 
-        # Séparateur
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: #dee2e6;")
-        left_layout.addWidget(sep)
+    def _build_details_card(self) -> QFrame:
+        card, grid = self._build_card(
+            "Liste des appareils",
+            "Bouton HTML Détails : les modèles groupés par marque. "
+            "Chaque profil mémorise ses propres réglages.",
+        )
 
-        # Section Détails
-        left_layout.addWidget(self._section_label("Détails"))
-
-        # Barre de profils : plusieurs formats d'export HTML Détails mémorisables
+        # Profils : liste déroulante + actions en icônes (infobulles)
         profile_bar = QHBoxLayout()
         profile_bar.setSpacing(4)
-        profile_bar.addWidget(QLabel("Profil :"))
-
         self.profile_combo = QComboBox()
         self.profile_combo.setMinimumWidth(160)
+        self.profile_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         profile_bar.addWidget(self.profile_combo, stretch=1)
 
-        for label, tooltip, slot in (
-            ("Ajouter",   "Créer un nouveau profil (valeurs par défaut)",  self._add_profile),
-            ("Dupliquer", "Copier le profil sélectionné",                  self._duplicate_profile),
-            ("Renommer",  "Renommer le profil sélectionné",                self._rename_profile),
-            ("Supprimer", "Supprimer le profil sélectionné",               self._delete_profile),
-            ("Par défaut", "Utiliser ce profil pour le bouton HTML Détails", self._set_default_profile),
+        for icone, tooltip, slot, style in (
+            ('fa5s.plus',      "Ajouter un profil (valeurs par défaut)",          self._add_profile,         StyleManager.SECONDARY_COMPACT_BUTTON),
+            ('fa5s.copy',      "Dupliquer le profil sélectionné",                 self._duplicate_profile,   StyleManager.SECONDARY_COMPACT_BUTTON),
+            ('fa5s.pen',       "Renommer le profil sélectionné",                  self._rename_profile,      StyleManager.SECONDARY_COMPACT_BUTTON),
+            ('fa5s.star',      "Par défaut : utiliser ce profil pour le bouton HTML Détails", self._set_default_profile, StyleManager.SECONDARY_COMPACT_BUTTON),
+            ('fa5s.trash-alt', "Supprimer le profil sélectionné",                 self._delete_profile,      StyleManager.DANGER_COMPACT_BUTTON),
         ):
-            btn = QPushButton(label)
+            btn = QPushButton()
+            btn.setIcon(qta.icon(icone, color='#c0392b' if 'trash' in icone else '#495057'))
+            btn.setIconSize(QSize(11, 11))
+            btn.setFixedSize(28, 26)
             btn.setToolTip(tooltip)
+            btn.setStyleSheet(style)
             btn.clicked.connect(slot)
             profile_bar.addWidget(btn)
+        self._add_grid_row(grid, "Profil :", profile_bar)
 
-        left_layout.addLayout(profile_bar)
-
-        left_layout.addWidget(QLabel("En-tête de marque :"))
         self.html_brand_header_tpl = QLineEdit()
-        left_layout.addWidget(self.html_brand_header_tpl)
+        self._add_grid_row(grid, "En-tête de marque :", self.html_brand_header_tpl)
 
-        left_layout.addWidget(QLabel("Ligne modèle :"))
         self.html_model_line_tpl = QLineEdit()
-        left_layout.addWidget(self.html_model_line_tpl)
-
-        detail_chips = VariableChipsBar(
+        self._add_grid_row(grid, "Ligne modèle :", self.html_model_line_tpl, VariableChipsBar(
             [
                 ("marque",          "Nom de la marque"),
                 ("modele_complet",  "Référence modèle + commerciale fusionnées (tiret retiré si l'une est vide)"),
@@ -484,14 +575,11 @@ class ExportConfigDialog(QDialog):
                 ("separateur",      "\" - \" si les deux références sont présentes, \"\" sinon"),
             ],
             targets=[self.html_brand_header_tpl, self.html_model_line_tpl],
-        )
-        left_layout.addWidget(detail_chips)
+        ))
 
-        left_layout.addWidget(QLabel("Séparateur entre groupes :"))
         self.html_group_sep = QLineEdit()
-        left_layout.addWidget(self.html_group_sep)
+        self._add_grid_row(grid, "Séparateur entre marques :", self.html_group_sep)
 
-        left_layout.addWidget(QLabel("Code englobant les appareils :"))
         self.html_details_wrapper = QLineEdit()
         self.html_details_wrapper.setPlaceholderText('{appareils}')
         self.html_details_wrapper.setToolTip(
@@ -499,19 +587,16 @@ class ExportConfigDialog(QDialog):
             "Ex. : <div class=\"compat\">{appareils}</div>\n"
             "Sans {appareils}, la liste est exportée seule."
         )
-        left_layout.addWidget(self.html_details_wrapper)
-        left_layout.addWidget(VariableChipsBar(
+        self._add_grid_row(grid, "Code englobant :", self.html_details_wrapper, VariableChipsBar(
             [("appareils", "Liste des appareils (en-têtes de marque + lignes modèle)")],
             targets=[self.html_details_wrapper],
         ))
 
-        # Limite de caractères HTML détails
-        char_limit_layout = QHBoxLayout()
-        char_limit_layout.addWidget(QLabel("Limite de caractères :"))
         self.html_char_limit_spin = QSpinBox()
         self.html_char_limit_spin.setRange(10000, 2000000)
         self.html_char_limit_spin.setSingleStep(5000)
         self.html_char_limit_spin.setSuffix(" car.")
+        self.html_char_limit_spin.setMinimumWidth(120)
         self.html_char_limit_spin.setToolTip(
             "Nombre maximum de caractères visibles dans l'export HTML Détails.\n"
             "Si dépassé, les données sont réduites progressivement :\n"
@@ -519,32 +604,11 @@ class ExportConfigDialog(QDialog):
             "  2. Référence modèle uniquement\n"
             "  3. Référence commerciale uniquement"
         )
-        char_limit_layout.addWidget(self.html_char_limit_spin)
-        char_limit_layout.addStretch()
-        left_layout.addLayout(char_limit_layout)
-
-        preview_btn = QPushButton("Prévisualiser")
-        preview_btn.setIcon(qta.icon('fa5s.eye', color='#495057'))
-        preview_btn.setIconSize(QSize(11, 11))
-        preview_btn.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
-        preview_btn.clicked.connect(self._update_html_preview)
-        left_layout.addWidget(preview_btn)
-
-        left_layout.addStretch()
-        layout.addWidget(left, 1)
-
-        # ── Panneau droit : preview ───────────────────────────────────────────
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.setSpacing(4)
-
-        right_layout.addWidget(self._section_label("Aperçu (données fictives)"))
-        self.html_preview = QTextBrowser()
-        self.html_preview.setStyleSheet("background: white; border: 1px solid #dee2e6;")
-        right_layout.addWidget(self.html_preview)
-        layout.addWidget(right, 1)
-
-        return tab
+        limite_row = QHBoxLayout()
+        limite_row.addWidget(self.html_char_limit_spin)
+        limite_row.addStretch()
+        self._add_grid_row(grid, "Limite de caractères :", limite_row)
+        return card
 
     def _build_footer(self) -> QHBoxLayout:
         footer = QHBoxLayout()
