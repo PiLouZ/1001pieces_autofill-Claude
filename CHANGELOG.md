@@ -4,6 +4,37 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.98.0] - 2026-10-23 (branche `claude/autre-reference-suggestions-60e934`)
+
+### Suggestion du Type d'après la colonne « Autre référence »
+
+La colonne « Autre référence » porte souvent la désignation du fichier fournisseur
+(« Lave-vaisselle tout-intégrable », « Side by side », « LV60 TT INT 14CVTS… »).
+Nouveau palier `P_autre_ref` : pour une ligne sans type, propose le Type que portent
+au moins 95 % des appareils (≥ 5) au même texte exact.
+
+- **Mesure sur la vraie base** (copie, types effacés des 25 331 appareils créés depuis
+  le 2026-09-01, vrai code) : 12 703 suggestions sur 24 090 lignes avec texte (53 %),
+  justes à **99,6 %**, en 0,3 s. Ignorer casse et ponctuation n'apporte rien (52,9 %
+  contre 52,8 %) : comparaison exacte par l'index `idx_appareils_other_ref`.
+- **Indice, pas une certitude** : « Hotte encastrable » figure sur 49 lave-linge,
+  sèche-linge et réfrigérateurs d'un fichier mal étiqueté (83 %) — sous le seuil,
+  rien n'est proposé.
+- **Type seul** : la marque déduite du texte n'est juste qu'à 84 % (« Cooktop », « Far »
+  sont aussi des marques) et ne couvre que 13 % des lignes.
+- **En concurrent** des autres paliers (même fusion que le type de la pièce, tronc
+  commun `_ajouter_type_vote`) : même type déjà proposé → rien n'est ajouté ; type
+  différent → deux candidats, la ligne n'est plus validée d'office.
+- Branché à l'import (`_ajouter_suggestions_autre_ref`) et au bouton Suggestions /
+  clic droit (`MainWindow._ajouter_suggestions_autre_ref`). Fenêtre de validation :
+  preuve « autre réf. 12/12 », puce « Autre réf. », regroupement, phrase de détail,
+  provenance dans l'historique.
+- Interrupteur `Config.ENABLE_AUTRE_REF_SUGGESTION`, seuils `AUTRE_REF_PART_MIN` /
+  `AUTRE_REF_APPAREILS_MIN`.
+- Tests : `tests/unit/test_suggestion_autre_ref.py` (23).
+
+---
+
 ## [3.94.0] - 2026-10-22 (branche `claude/suggestions-placement-pertinence-25ff93`)
 
 ### Fenêtres de revue refondues + refus mémorisés

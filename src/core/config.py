@@ -30,7 +30,7 @@ class Config:
     """Configuration et constantes de l'application"""
     
     # Version de l'application
-    VERSION = "3.97.3"
+    VERSION = "3.98.0"
     
     # Base de données
     DB_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'appareils.db')
@@ -113,6 +113,14 @@ class Config:
     ENABLE_TYPE_PIECE_SUGGESTION = True
     TYPE_PIECE_PART_MIN = 0.95
     TYPE_PIECE_APPAREILS_MIN = 5
+    # Suggestion « Autre référence » (v3.98.0) : propose le Type que portent déjà les
+    # appareils au même texte « Autre référence » (désignation fournisseur). Mesuré
+    # le 2026-10-23 en apprenant avant le 2026-09-01 et en vérifiant sur les 24 069
+    # appareils importés depuis : 53 % couverts, justes à 99,6 %. Jamais appliquée
+    # sans validation ; Type seul (la marque n'y est juste qu'à 84 %).
+    ENABLE_AUTRE_REF_SUGGESTION = True
+    AUTRE_REF_PART_MIN = 0.95
+    AUTRE_REF_APPAREILS_MIN = 5
     SIMILARITY_FUZZY_THRESHOLD = 0.80        # Seuil Palier B (difflib SequenceMatcher) — abaissé à 0.80 pour capturer les variantes simples
     SIMILARITY_ALLOW_NUMERIC_FUZZY = False   # Palier B exclu par défaut sur préfixe numérique (risque rebadging)
     SIMILARITY_PREFIX_CONSENSUS = True       # Palier C : consensus de préfixe (familles mono-marque)
