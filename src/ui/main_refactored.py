@@ -64,6 +64,7 @@ from .user_interaction_service import UserInteractionService
 from .log_viewer import LogViewer
 from .piece_management_service import PieceManagementService
 from .seo_service import SEOService
+from .titre_produit_service import TitreProduitService
 from .pieces_list_service import PiecesListService
 from ..services.grouped_history_service import GroupedHistoryService
 from ..services.history_service import HistoryService
@@ -247,6 +248,7 @@ class MainWindow(QMainWindow):
         self.history_service = HistoryService(self)
         self.piece_management_service = PieceManagementService(self)
         self.seo_service = SEOService(self)
+        self.titre_produit_service = TitreProduitService(self)
         self.pieces_list_service = PiecesListService(self)
 
         # Service de sauvegarde événementielle (Phase 4 - Factorisation)
@@ -2636,7 +2638,7 @@ class MainWindow(QMainWindow):
         """Ouvrir le dialogue de configuration des exports CSV + HTML"""
         from .export_config_dialog import ExportConfigDialog
         dialog = ExportConfigDialog(self.export_config_service, parent=self)
-        dialog.finished.connect(lambda _: self.ui_component_service._refresh_html_details_menu())
+        dialog.finished.connect(lambda _: self.ui_component_service.refresh_profile_menus())
         dialog.show()
 
     def _open_history_view(self):
@@ -3633,6 +3635,10 @@ class MainWindow(QMainWindow):
     def _generate_meta_description(self):
         """Générer et copier une méta description SEO - Phase 2.15: Délégation vers SEOService"""
         self.seo_service.generate_meta_description()
+
+    def _generer_titre(self, profile_name: str = None):
+        """Copier le titre de fiche produit (bouton "Titre") — délégation vers TitreProduitService"""
+        self.titre_produit_service.generer_titre(profile_name)
     
     def _is_piece_reference_search(self) -> bool:
         """Vérifier si la recherche actuelle est une référence de pièce - Support multi-références"""

@@ -1,5 +1,5 @@
 """
-Service de configuration des exports - Export configurable CSV + HTML
+Service de configuration des exports - Export configurable CSV + HTML + Titre
 Gère la lecture/écriture de data/export_config.json
 
 Responsabilités:
@@ -70,6 +70,23 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             }
         ],
         "details_default_profile": "Format standard"
+    },
+    # Titres de fiches produits (v3.99.0) : un ou plusieurs gabarits nommés.
+    # Les marques puis les types sont retirés en partant de la fin pour tenir
+    # dans max_caracteres (0 = sans limite) ; le libellé et la référence jamais.
+    "titre": {
+        "profiles": [
+            {
+                "name":               "Format standard",
+                "template":           "{libelle} pour {type} {marques} - {reference}",
+                "max_marques":        4,
+                "max_types":          3,
+                "max_caracteres":     120,
+                "separateur":         ", ",
+                "dernier_separateur": " et "
+            }
+        ],
+        "default_profile": "Format standard"
     }
 }
 
@@ -78,6 +95,13 @@ DETAILS_PROFILE_KEYS = (
     "brand_header_template", "model_line_template", "group_separator",
     "wrapper_template", "char_limit"
 )
+
+# Clés éditables d'un profil Titre (hors 'name') et celles qui sont des entiers
+TITRE_PROFILE_KEYS = (
+    "template", "max_marques", "max_types", "max_caracteres",
+    "separateur", "dernier_separateur"
+)
+TITRE_PROFILE_INT_KEYS = ("max_marques", "max_types", "max_caracteres")
 
 # Variables disponibles dans les sources de colonnes et templates
 AVAILABLE_VARIABLES = [
@@ -180,7 +204,34 @@ class ExportConfigService(BaseService):
             merged['html']['details'] = {
                 k: v for k, v in default_profile.items() if k != 'name'
             }
+        if isinstance(loaded.get('titre'), dict):
+            merged['titre'] = self._merge_titre(loaded['titre'])
         return merged
+
+    @staticmethod
+    def _merge_titre(loaded: Dict) -> Dict:
+        """Profils Titre valides, complétés par les défauts ; au moins un profil."""
+        defaut = DEFAULT_CONFIG['titre']['profiles'][0]
+        profiles = []
+        for p in loaded.get('profiles') or []:
+            if not (isinstance(p, dict) and p.get('name')):
+                continue
+            profile = copy.deepcopy(defaut)
+            profile.update({k: p[k] for k in TITRE_PROFILE_KEYS if k in p})
+            for k in TITRE_PROFILE_INT_KEYS:
+                try:
+                    profile[k] = max(0, int(profile[k]))
+                except (TypeError, ValueError):
+                    profile[k] = defaut[k]
+            profile['name'] = str(p['name'])
+            if str(p['name']) not in [q['name'] for q in profiles]:
+                profiles.append(profile)
+        if not profiles:
+            profiles = copy.deepcopy(DEFAULT_CONFIG['titre']['profiles'])
+        names = [p['name'] for p in profiles]
+        default = loaded.get('default_profile')
+        return {'profiles': profiles,
+                'default_profile': default if default in names else names[0]}
 
     def _write(self) -> None:
         """Écrire la config sur le disque"""
@@ -298,6 +349,24 @@ class ExportConfigService(BaseService):
 
     def get_default_details_profile_name(self) -> str:
         return self._config['html'].get('details_default_profile', 'Format standard')
+
+    # ─── Accesseurs Titre ────────────────────────────────────────────────────
+
+    def get_titre_profile_names(self) -> List[str]:
+        return [p['name'] for p in self._config['titre']['profiles']]
+
+    def get_default_titre_profile_name(self) -> str:
+        return self._config['titre']['default_profile']
+
+    def get_titre_profile(self, profile_name: str = None) -> Dict:
+        """Profil Titre demandé (copie) ; nom inconnu ou absent : le profil par défaut."""
+        profiles = self._config['titre']['profiles']
+        name = profile_name or self.get_default_titre_profile_name()
+        for p in profiles:
+            if p['name'] == name:
+                return copy.deepcopy(p)
+        defaut = self.get_default_titre_profile_name()
+        return copy.deepcopy(next((p for p in profiles if p['name'] == defaut), profiles[0]))
 
     # ─── Rendu CSV ───────────────────────────────────────────────────────────
 

@@ -45,37 +45,10 @@ class SEOService:
     def generate_meta_title(self) -> None:
         """Générer et copier un méta titre SEO optimisé (Maj+clic : autre formulation)"""
         autre_formulation = self._maj_enfoncee()
-        multi_terms = self._get_multi_reference_terms()
-        if multi_terms:
-            selected_reference = self._show_reference_selection_dialog(
-                "Référence pour Méta Title",
-                f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                f"Choisissez la référence à utiliser pour la génération SEO :",
-                multi_terms[0]
-            )
-            if not selected_reference:
-                return
-            search_data = self._get_current_search_data_for_reference(selected_reference)
-        else:
-            search_data = self._get_current_search_data()
-
-        if not search_data:
-            self._signaler_absence_de_donnees("title")
+        preparees = self.preparer_donnees_fiche("title", "Référence pour Méta Title")
+        if not preparees:
             return
-
-        required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
-        if not all(key in search_data for key in required_keys):
-            self._signaler_refus("title", self.main_window.search_input.text().strip(),
-                                 "Données incomplètes pour générer le méta titre")
-            return
-
-        # Résoudre la chaîne de supersession si nécessaire
-        ref_obsolete = self._resolve_supersession(search_data)
-        if ref_obsolete:
-            search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
-        if self._libelle_manquant(search_data, "title"):
-            return
-        self._completer_avec_equivalentes(search_data)
+        search_data, ref_obsolete = preparees
 
         result = self.seo_generator.generate_meta_title(
             reference=search_data['reference'],
@@ -118,37 +91,10 @@ class SEOService:
     def generate_meta_description(self) -> None:
         """Générer et copier une méta description SEO (Maj+clic : autre formulation)"""
         autre_formulation = self._maj_enfoncee()
-        multi_terms = self._get_multi_reference_terms()
-        if multi_terms:
-            selected_reference = self._show_reference_selection_dialog(
-                "Référence pour Méta Description",
-                f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                f"Choisissez la référence à utiliser pour la génération SEO :",
-                multi_terms[0]
-            )
-            if not selected_reference:
-                return
-            search_data = self._get_current_search_data_for_reference(selected_reference)
-        else:
-            search_data = self._get_current_search_data()
-
-        if not search_data:
-            self._signaler_absence_de_donnees("description")
+        preparees = self.preparer_donnees_fiche("description", "Référence pour Méta Description")
+        if not preparees:
             return
-
-        required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
-        if not all(key in search_data for key in required_keys):
-            self._signaler_refus("description", self.main_window.search_input.text().strip(),
-                                 "Données incomplètes pour générer la méta description")
-            return
-
-        # Résoudre la chaîne de supersession si nécessaire
-        ref_obsolete = self._resolve_supersession(search_data)
-        if ref_obsolete:
-            search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
-        if self._libelle_manquant(search_data, "description"):
-            return
-        self._completer_avec_equivalentes(search_data)
+        search_data, ref_obsolete = preparees
 
         # Compter les modèles compatibles (ref courante + prédécesseurs + groupe
         # d'équivalence : une équivalente équipe les mêmes besoins, décision client
@@ -203,6 +149,65 @@ class SEOService:
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 5000)
     
+    def preparer_donnees_fiche(self, genre: str, titre_dialogue: str
+                               ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
+        """
+        Données d'une fiche pour une génération (méta title, méta description,
+        titre de fiche) : (données, ancienne référence tapée ou None), ou None si
+        la génération est refusée (refus déjà signalé).
+
+        Recherche multi-références : choix de la référence. Puis référence
+        courante de la chaîne de supersession, type et marques recalculés sur
+        toute la lignée, libellé obligatoire, marques des équivalentes en
+        complément.
+        """
+        multi_terms = self._get_multi_reference_terms()
+        if multi_terms:
+            selected_reference = self._show_reference_selection_dialog(
+                titre_dialogue,
+                f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
+                f"Choisissez la référence à utiliser pour la génération SEO :",
+                multi_terms[0]
+            )
+            if not selected_reference:
+                return None
+            search_data = self._get_current_search_data_for_reference(selected_reference)
+        else:
+            search_data = self._get_current_search_data()
+
+        if not search_data:
+            self._signaler_absence_de_donnees(genre)
+            return None
+
+        required_keys = ['reference', 'description', 'type_appareil', 'fabricants']
+        if not all(key in search_data for key in required_keys):
+            self._signaler_refus(genre, self.main_window.search_input.text().strip(),
+                                 f"Données incomplètes pour générer {self._QUOI[genre]}")
+            return None
+
+        # Résoudre la chaîne de supersession si nécessaire
+        ref_obsolete = self._resolve_supersession(search_data)
+        if ref_obsolete:
+            search_data = self._enrich_with_supersession_data(search_data, ref_obsolete)
+        if self._libelle_manquant(search_data, genre):
+            return None
+        self._completer_avec_equivalentes(search_data)
+        return search_data, ref_obsolete
+
+    def poids_types_fiche(self, search_data: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Nombre de modèles par type d'appareil sur toute la famille de la fiche
+        (lignée + références agrégées). Sans appareil associé ou si la base
+        échoue : le seul type retenu pour la fiche (équivalentes ou défaut).
+        """
+        refs = list(search_data.get('refs_agregees') or [search_data['reference']])
+        try:
+            poids_types, _ = self._compter_appareils(refs)
+        except Exception as e:
+            app_logger.warning(f"Titre: types indisponibles pour {refs}: {e}")
+            poids_types = {}
+        return poids_types or {search_data['type_appareil']: 1}
+
     @staticmethod
     def _maj_enfoncee() -> bool:
         """Touche Maj enfoncée au moment du clic (lue avant tout dialogue modal)."""
@@ -410,7 +415,8 @@ class SEOService:
         from src.core.constants import UIConfig
         ref = search_data['reference']
         self._signaler_refus(
-            genre, ref, f"Libellé manquant pour {ref} : complétez-le avant de générer la méta",
+            genre, ref, f"Libellé manquant pour {ref} : complétez-le avant de générer "
+                        f"{'le titre' if genre == 'titre' else 'la méta'}",
             lien=(UIConfig.LIEN_HISTORIQUE_LIBELLE + quote(ref, safe=""),
                   f"Compléter le libellé de {ref}  (⌘⇧L)"))
         return True
@@ -423,8 +429,10 @@ class SEOService:
             message = f"Aucune recherche active pour générer {self._QUOI[genre]}"
         self._signaler_refus(genre, terme, message)
 
-    _QUOI = {'title': "le méta titre", 'description': "la méta description"}
-    _NON_GENERE = {'title': "Méta titre non généré", 'description': "Méta description non générée"}
+    _QUOI = {'title': "le méta titre", 'description': "la méta description",
+             'titre': "le titre de fiche"}
+    _NON_GENERE = {'title': "Méta titre non généré", 'description': "Méta description non générée",
+                   'titre': "Titre de fiche non généré"}
 
     def _signaler_refus(self, genre: str, reference: str, raison: str,
                         lien: Optional[Tuple[str, str]] = None) -> None:
@@ -438,7 +446,8 @@ class SEOService:
         self.main_window.statusbar.showMessage(raison, 8000)
         pour = f" pour '{reference}'" if reference else ""
         self.main_window.user_interaction_service.add_to_history(
-            f"SEO: {self._NON_GENERE[genre]}{pour}\n==> {raison}", lien=lien)
+            f"{'Titre' if genre == 'titre' else 'SEO'}: {self._NON_GENERE[genre]}{pour}\n==> {raison}",
+            lien=lien)
 
     @handle_seo_data_errors()
     def _get_multi_reference_terms(self) -> List[str]:
@@ -514,6 +523,9 @@ class SEOService:
             self.main_window.meta_title_btn.setEnabled(is_piece_search)
         if hasattr(self.main_window, 'meta_desc_btn'):
             self.main_window.meta_desc_btn.setEnabled(is_piece_search)
+        # Le titre de fiche repose sur les mêmes données que les métas
+        if hasattr(self.main_window, 'titre_btn'):
+            self.main_window.titre_btn.setEnabled(is_piece_search)
     
     @handle_seo_generation_errors()
     def cleanup(self) -> None:

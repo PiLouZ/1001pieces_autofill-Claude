@@ -53,5 +53,19 @@
       }
     ],
     "details_default_profile": "Format standard"
+  },
+  "titre": {
+    "profiles": [
+      {
+        "name": "Format standard",
+        "template": "{libelle} pour {type} {marques} - {reference}",
+        "max_marques": 4,
+        "max_types": 3,
+        "max_caracteres": 120,
+        "separateur": ", ",
+        "dernier_separateur": " et "
+      }
+    ],
+    "default_profile": "Format standard"
   }
 }
