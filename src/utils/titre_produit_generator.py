@@ -66,12 +66,12 @@ class TitreProduitGenerator:
 
     def _rendre(self, profil: Dict[str, Any], libelle: str, types: List[str],
                 marques: List[str], reference: str) -> str:
-        sep = profil.get('separateur', ", ")
-        dernier = profil.get('dernier_separateur', " et ")
         valeurs = {
             '{libelle}': libelle,
-            '{type}': self.joindre(types, sep, dernier),
-            '{marques}': self.joindre(marques, sep, dernier),
+            '{type}': self.joindre(types, profil.get('separateur_types', ", "),
+                                   profil.get('dernier_separateur_types', " et ")),
+            '{marques}': self.joindre(marques, profil.get('separateur_marques', ", "),
+                                      profil.get('dernier_separateur_marques', " et ")),
             '{reference}': reference,
         }
         titre = profil.get('template', "")

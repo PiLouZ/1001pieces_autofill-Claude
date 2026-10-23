@@ -16,7 +16,7 @@ from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QToolButton, QWi
                              Qt, QTimer, QFont, QMenu, QPoint)
 
 from ..core.constants import ExportFormat
-from .style_manager import StyleManager
+from .style_manager import StyleManager, icon_png_path
 from src.core.logger import app_logger
 
 class UIComponentService:
@@ -93,7 +93,7 @@ class UIComponentService:
         # Texte seul, comme "HTML Détails" : un QToolButton élargi aligne
         # icône + texte à gauche au lieu de les centrer
         self.main_window.titre_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.main_window.titre_btn.setStyleSheet(self._get_split_button_style())
+        self.main_window.titre_btn.setStyleSheet(self._get_titre_button_style())
         self.main_window.titre_btn.setToolTip(
             "Copier le titre de la fiche produit : libellé, types, marques et référence la plus récente\n"
             "Gabarits réglables dans la configuration des exports, onglet « Titre »")
@@ -179,6 +179,40 @@ class UIComponentService:
         svc = getattr(self.main_window, 'export_config_service', None)
         default_name = svc.get_default_details_profile_name() if svc else None
         self.main_window._export_data(ExportFormat.HTML_DETAILS, profile_name=default_name)
+
+    def _get_titre_button_style(self) -> str:
+        """Style du bouton split "Titre" : violet plein, comme les boutons colorés
+        de la ligne des métas ; flèche de menu blanche (la noire par défaut ne se
+        lit pas sur le violet)."""
+        fleche = icon_png_path('fa5s.caret-down', 'white', 10)
+        regle_fleche = f"image: url({fleche}); width: 10px; height: 10px;" if fleche else ""
+        return f"""
+            QToolButton {{
+                background-color: #6f42c1;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 12px;
+            }}
+            QToolButton:hover {{
+                background-color: #5e37a6;
+            }}
+            QToolButton:pressed {{
+                background-color: #512f8f;
+            }}
+            QToolButton:disabled {{
+                {StyleManager.EXPORT_BTN_DISABLED_RULES}
+            }}
+            QToolButton::menu-button {{
+                border: none;
+                border-left: 1px solid rgba(255, 255, 255, 0.35);
+                width: 30px;
+            }}
+            QToolButton::menu-arrow {{
+                {regle_fleche}
+            }}
+        """
 
     def _get_split_button_style(self) -> str:
         """Style du bouton split "HTML Détails" — aligné sur le QPushButton global."""

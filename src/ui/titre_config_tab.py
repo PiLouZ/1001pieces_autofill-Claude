@@ -104,15 +104,11 @@ class TitreConfigTab(QWidget):
         self.max_car_spin.setSpecialValueText("Sans limite")
         add_row(grid, "Longueur maximale :", self._seul(self.max_car_spin))
 
-        self.sep_input = QLineEdit()
-        self.sep_input.setMaximumWidth(80)
-        self.sep_input.setToolTip("Texte entre deux marques ou deux types (« , » par défaut)")
-        add_row(grid, "Séparateur :", self._seul(self.sep_input))
-
-        self.dernier_sep_input = QLineEdit()
-        self.dernier_sep_input.setMaximumWidth(80)
-        self.dernier_sep_input.setToolTip("Texte avant la dernière marque ou le dernier type (« et » par défaut)")
-        add_row(grid, "Avant le dernier :", self._seul(self.dernier_sep_input))
+        # Séparateurs propres aux marques et aux types : « entre » | « avant le dernier »
+        self.sep_marques_input, self.dernier_sep_marques_input = self._paire_separateurs(
+            add_row, grid, "Séparateurs des marques :", "deux marques", "la dernière marque")
+        self.sep_types_input, self.dernier_sep_types_input = self._paire_separateurs(
+            add_row, grid, "Séparateurs des types :", "deux types", "le dernier type")
 
         reglages = QWidget()
         reglages_layout = QVBoxLayout(reglages)
@@ -139,10 +135,29 @@ class TitreConfigTab(QWidget):
         right_layout.addWidget(self.preview)
         layout.addWidget(right, 1)
 
-        for champ in (self.template_input, self.sep_input, self.dernier_sep_input):
+        for champ in (self.template_input, self.sep_marques_input, self.dernier_sep_marques_input,
+                      self.sep_types_input, self.dernier_sep_types_input):
             champ.textChanged.connect(self._update_preview)
         for spin in (self.max_marques_spin, self.max_types_spin, self.max_car_spin):
             spin.valueChanged.connect(self._update_preview)
+
+    @staticmethod
+    def _paire_separateurs(add_row, grid, libelle, entre_quoi, avant_quoi):
+        """Deux champs sur une ligne : entre deux éléments, avant le dernier."""
+        entre, dernier = QLineEdit(), QLineEdit()
+        for champ in (entre, dernier):
+            champ.setMaximumWidth(80)
+        entre.setToolTip(f"Texte entre {entre_quoi} (« , » par défaut)")
+        dernier.setToolTip(f"Texte avant {avant_quoi} (« et » par défaut)")
+        row = QHBoxLayout()
+        row.addWidget(QLabel("entre"))
+        row.addWidget(entre)
+        row.addSpacing(8)
+        row.addWidget(QLabel("avant le dernier"))
+        row.addWidget(dernier)
+        row.addStretch()
+        add_row(grid, libelle, row)
+        return entre, dernier
 
     @staticmethod
     def _spin(minimum, maximum, tooltip):
@@ -195,17 +210,28 @@ class TitreConfigTab(QWidget):
         profile['max_marques'] = self.max_marques_spin.value()
         profile['max_types'] = self.max_types_spin.value()
         profile['max_caracteres'] = self.max_car_spin.value()
-        profile['separateur'] = self.sep_input.text()
-        profile['dernier_separateur'] = self.dernier_sep_input.text()
+        profile.update(self._separateurs())
+        profile.pop('separateur', None)
+        profile.pop('dernier_separateur', None)
 
     def _load_fields(self, profile):
         self.template_input.setText(profile.get('template', ''))
         self.max_marques_spin.setValue(profile.get('max_marques', 4))
         self.max_types_spin.setValue(profile.get('max_types', 3))
         self.max_car_spin.setValue(profile.get('max_caracteres', 120))
-        self.sep_input.setText(profile.get('separateur', ', '))
-        self.dernier_sep_input.setText(profile.get('dernier_separateur', ' et '))
+        self.sep_marques_input.setText(profile.get('separateur_marques', ', '))
+        self.dernier_sep_marques_input.setText(profile.get('dernier_separateur_marques', ' et '))
+        self.sep_types_input.setText(profile.get('separateur_types', ', '))
+        self.dernier_sep_types_input.setText(profile.get('dernier_separateur_types', ' et '))
         self._update_preview()
+
+    def _separateurs(self) -> dict:
+        return {
+            'separateur_marques': self.sep_marques_input.text(),
+            'dernier_separateur_marques': self.dernier_sep_marques_input.text(),
+            'separateur_types': self.sep_types_input.text(),
+            'dernier_separateur_types': self.dernier_sep_types_input.text(),
+        }
 
     # ─── Gabarits ────────────────────────────────────────────────────────────
 
@@ -295,8 +321,7 @@ class TitreConfigTab(QWidget):
             'max_marques': self.max_marques_spin.value(),
             'max_types': self.max_types_spin.value(),
             'max_caracteres': self.max_car_spin.value(),
-            'separateur': self.sep_input.text(),
-            'dernier_separateur': self.dernier_sep_input.text(),
+            **self._separateurs(),
         }
         lignes = []
         for libelle, poids_types, marques, reference in _APERCU_TITRE:

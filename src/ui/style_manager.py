@@ -26,6 +26,24 @@ def _generate_combo_arrow() -> str:
     return _combo_arrow_path
 
 
+_spin_arrow_paths: dict = {}
+
+
+def _generate_spin_arrow(sens: str) -> str:
+    """Petit chevron haut/bas (qtawesome) des champs numériques ; chemin du PNG, ou ""."""
+    if sens in _spin_arrow_paths:
+        return _spin_arrow_paths[sens]
+    try:
+        import qtawesome as qta
+        pixmap = qta.icon(f'fa5s.chevron-{sens}', color='#6c757d').pixmap(8, 8)
+        path = os.path.join(tempfile.gettempdir(), f'1001pieces_spin_{sens}.png')
+        pixmap.save(path)
+        _spin_arrow_paths[sens] = path
+    except Exception:
+        _spin_arrow_paths[sens] = ""
+    return _spin_arrow_paths[sens]
+
+
 _check_mark_path: str = ""
 
 
@@ -48,13 +66,10 @@ def _generate_check_mark() -> str:
 _inline_icon_paths: dict = {}
 
 
-def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
-    """Icône qtawesome insérable dans le texte riche d'un QLabel (`<img>`).
-
-    Remplace les glyphes (⚠, ✓…) dans les libellés : l'icône est rendue en PNG
-    une seule fois par (nom, couleur, taille), comme le chevron des listes
-    déroulantes. Chaîne vide si qtawesome échoue (le texte reste lisible).
-    """
+def icon_png_path(icon_name: str, color: str, size: int = 11) -> str:
+    """Chemin d'un PNG 2× de l'icône qtawesome (rendu une fois par nom, couleur,
+    taille), pour un `<img>` ou un `image: url(...)` de feuille de style ; "" si
+    qtawesome échoue."""
     key = (icon_name, color, size)
     path = _inline_icon_paths.get(key)
     if path is None:
@@ -67,6 +82,16 @@ def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
         except Exception:
             path = ""
         _inline_icon_paths[key] = path
+    return path
+
+
+def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
+    """Icône qtawesome insérable dans le texte riche d'un QLabel (`<img>`).
+
+    Remplace les glyphes (⚠, ✓…) dans les libellés, comme le chevron des listes
+    déroulantes. Chaîne vide si qtawesome échoue (le texte reste lisible).
+    """
+    path = icon_png_path(icon_name, color, size)
     if not path:
         return ""
     # Image 2× affichée à `size` : nette sur écran Retina
@@ -465,6 +490,43 @@ class StyleManager:
 
         QDateEdit::down-arrow {
             %%ARROW_RULE%%
+        }
+
+        /* Champs numériques : le cadre stylé plus haut fait dessiner les
+           boutons ▲▼ par la feuille de style, sans flèche ni séparation si
+           on ne les décrit pas (traits isolés sur macOS). */
+        QSpinBox {
+            padding-right: 20px;
+        }
+
+        QSpinBox::up-button, QSpinBox::down-button {
+            subcontrol-origin: border;
+            width: 18px;
+            border: none;
+            border-left: 1px solid #e3e6ea;
+            background: transparent;
+        }
+
+        QSpinBox::up-button {
+            subcontrol-position: top right;
+            border-top-right-radius: 4px;
+        }
+
+        QSpinBox::down-button {
+            subcontrol-position: bottom right;
+            border-bottom-right-radius: 4px;
+        }
+
+        QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+            background: #f1f3f5;
+        }
+
+        QSpinBox::up-arrow {
+            %%SPIN_UP_RULE%%
+        }
+
+        QSpinBox::down-arrow {
+            %%SPIN_DOWN_RULE%%
         }
         
         QComboBox QAbstractItemView {
@@ -893,6 +955,11 @@ class StyleManager:
         # par Qt → case cochée = carré bleu plein, sans coche. PNG qtawesome à la place.
         check_path = _generate_check_mark()
         check_rule = f"image: url({check_path});" if check_path else ""
+        def spin_rule(sens):
+            path = _generate_spin_arrow(sens)
+            return f"image: url({path}); width: 8px; height: 8px;" if path else "width: 8px; height: 8px;"
         return (style.replace('%%ARROW_RULE%%', arrow_rule)
                      .replace('%%MENU_ARROW_RULE%%', menu_arrow_rule)
+                     .replace('%%SPIN_UP_RULE%%', spin_rule('up'))
+                     .replace('%%SPIN_DOWN_RULE%%', spin_rule('down'))
                      .replace('%%CHECK_RULE%%', check_rule))

@@ -62,8 +62,10 @@
         "max_marques": 4,
         "max_types": 3,
         "max_caracteres": 120,
-        "separateur": ", ",
-        "dernier_separateur": " et "
+        "separateur_marques": ", ",
+        "dernier_separateur_marques": " et ",
+        "separateur_types": ", ",
+        "dernier_separateur_types": " et "
       }
     ],
     "default_profile": "Format standard"

@@ -74,9 +74,18 @@ def test_sans_limite(gen):
 
 
 def test_separateurs_et_gabarit_libres(gen):
-    r = _titre(gen, marques=["Bosch", "Siemens", "Neff"], separateur=" / ",
-               dernier_separateur=" / ", template="{reference} | {libelle} {marques} ({type})")
+    r = _titre(gen, marques=["Bosch", "Siemens", "Neff"], separateur_marques=" / ",
+               dernier_separateur_marques=" / ", template="{reference} | {libelle} {marques} ({type})")
     assert r['titre'] == "00145787 | Pompe de vidange Bosch / Siemens / Neff (lave-linge)"
+
+
+def test_separateurs_distincts_marques_et_types(gen):
+    r = _titre(gen, types=["lave-linge", "sèche-linge", "lave-vaisselle"],
+               marques=["Bosch", "Siemens", "Neff"],
+               separateur_types=" / ", dernier_separateur_types=" / ",
+               separateur_marques=", ", dernier_separateur_marques=" et ")
+    assert r['titre'] == ("Pompe de vidange pour lave-linge / sèche-linge / lave-vaisselle "
+                          "Bosch, Siemens et Neff - 00145787")
 
 
 def test_champs_vides_et_multi_marques(gen):
@@ -140,6 +149,19 @@ def test_config_profils_valides_et_completes(tmp_path):
     assert svc.get_titre_profile("Court")['template'] == PROFIL['template']
     assert svc.get_titre_profile("Long")['max_caracteres'] == PROFIL['max_caracteres']
     assert svc.get_titre_profile("Inconnu")['name'] == "Long"
+
+
+def test_config_anciens_separateurs_communs_repris(tmp_path):
+    """Un gabarit enregistré en 3.99.0 (séparateurs communs) garde ses réglages
+    pour les marques ET les types ; un séparateur propre l'emporte."""
+    svc = _service(tmp_path, {'titre': {'profiles': [
+        {'name': "A", 'separateur': " / ", 'dernier_separateur': " ou "},
+        {'name': "B", 'separateur': " / ", 'separateur_types': " + "}]}})
+    a, b = svc.get_titre_profile("A"), svc.get_titre_profile("B")
+    assert (a['separateur_marques'], a['dernier_separateur_marques']) == (" / ", " ou ")
+    assert (a['separateur_types'], a['dernier_separateur_types']) == (" / ", " ou ")
+    assert (b['separateur_marques'], b['separateur_types']) == (" / ", " + ")
+    assert 'separateur' not in a and 'dernier_separateur' not in a
 
 
 def test_config_defaut_inconnu(tmp_path):
