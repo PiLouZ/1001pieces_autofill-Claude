@@ -82,22 +82,34 @@ class StatusLabel(QWidget):
     Widget drop-in remplaçant QLabel dans la statusbar.
     Expose setText/setStyleSheet identiques à QLabel pour compatibilité totale.
     Affiche une icône qtawesome colorée à gauche du texte.
+
+    `icone_seule` (v3.97.3) : seule l'icône est affichée, le texte passe dans
+    l'infobulle (texte vide → infobulle d'origine). La couleur de l'icône suit
+    toujours l'état (vert / orange).
     """
 
-    def __init__(self, icon_name: str, text: str, color: str = 'green', parent=None):
+    def __init__(self, icon_name: str, text: str, color: str = 'green', parent=None,
+                 icone_seule: bool = False):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
         layout.setSpacing(4)
         self._icon_name = icon_name
+        self._icone_seule = icone_seule
+        self._texte_initial = text
         self._icon_label = QLabel()
         self._text_label = QLabel(text)
         layout.addWidget(self._icon_label)
         layout.addWidget(self._text_label)
+        if icone_seule:
+            self._text_label.setVisible(False)
+            self.setToolTip(text)
         self._update_icon(color)
 
     def setText(self, text: str) -> None:
         self._text_label.setText(text)
+        if self._icone_seule:
+            self.setToolTip(text or self._texte_initial)
 
     def setStyleSheet(self, style: str) -> None:
         self._text_label.setStyleSheet(style)
@@ -740,15 +752,23 @@ class MainWindow(QMainWindow):
         self.statusbar.insertWidget(2, self.autocompletes_groupe)
         self._rafraichir_bouton_autocompletes()
         
-        self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green')
+        self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green',
+                                          icone_seule=True)
         self.statusbar.addPermanentWidget(self.save_indicator)
 
         # Connecter l'indicateur au service de sauvegarde événementielle (créé avant la statusbar)
         if hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
             self.event_driven_save_service.save_indicator = self.save_indicator
 
-        self.connection_indicator = StatusLabel('fa5s.circle', Config.get_message('connected'), color='green')
+        self.connection_indicator = StatusLabel('fa5s.circle', Config.get_message('connected'), color='green',
+                                                icone_seule=True)
         self.statusbar.addPermanentWidget(self.connection_indicator)
+
+        # Version en clair, en gris : une information, pas un état (v3.97.3)
+        self.version_label = QLabel(f"v{Config.VERSION}")
+        self.version_label.setStyleSheet("color: #90a4ae; font-size: 11px; padding: 0 6px 0 2px;")
+        self.version_label.setToolTip(f"Version de l'application : {Config.VERSION}")
+        self.statusbar.addPermanentWidget(self.version_label)
 
     def _wire_incomplete_nav(self):
         """Exposer « Lignes à traiter » et le câbler au service de visibilité/
