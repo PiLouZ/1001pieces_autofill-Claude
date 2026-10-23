@@ -40,10 +40,12 @@ class UIComponentService:
         Args:
             layout: Layout parent où ajouter les boutons
         """
-        # Ligne 1: Boutons d'export — ordre affiché : HTML Marques, HTML Détails, Exporter CSV
+        # Ligne 1 : HTML Marques, HTML Détails, Titre.
+        # Ligne 2 : Méta Title, Méta Desc, Exporter CSV (v3.99.0).
+        # Trois colonnes égales sur les deux lignes (stretch 1 partout).
         export_layout = QHBoxLayout()
         
-        # Bouton Export CSV
+        # Bouton Export CSV (placé en fin de ligne 2, cf. _add_seo_buttons)
         self.main_window.export_csv_btn = QPushButton("Exporter CSV")
         self.main_window.export_csv_btn.clicked.connect(
             lambda: self.main_window._export_data(ExportFormat.CSV)
@@ -63,7 +65,7 @@ class UIComponentService:
             "QPushButton { padding: 8px 12px; font-weight: 500; }"
             f"QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}"
         )
-        export_layout.addWidget(self.main_window.export_html_brands_btn)
+        export_layout.addWidget(self.main_window.export_html_brands_btn, 1)
         
         # Bouton HTML Détails — split button compact (clic = export profil par
         # défaut, flèche superposée = menu des autres profils configurés)
@@ -81,43 +83,91 @@ class UIComponentService:
         self.main_window.export_html_details_btn.setSizePolicy(
             self.main_window.export_html_brands_btn.sizePolicy()
         )
-        export_layout.addWidget(self.main_window.export_html_details_btn)
+        export_layout.addWidget(self.main_window.export_html_details_btn, 1)
         self._refresh_html_details_menu()
 
-        # Exporter CSV en dernier (créé en premier, placé après les HTML)
-        export_layout.addWidget(self.main_window.export_csv_btn)
+        # Bouton Titre de fiche produit — split button comme "HTML Détails"
+        # (clic = gabarit par défaut, flèche = autres gabarits configurés)
+        self.main_window.titre_btn = QToolButton()
+        self.main_window.titre_btn.setText("Titre")
+        # Texte seul, comme "HTML Détails" : un QToolButton élargi aligne
+        # icône + texte à gauche au lieu de les centrer
+        self.main_window.titre_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.main_window.titre_btn.setStyleSheet(self._get_split_button_style())
+        self.main_window.titre_btn.setToolTip(
+            "Copier le titre de la fiche produit : libellé, types, marques et référence la plus récente\n"
+            "Gabarits réglables dans la configuration des exports, onglet « Titre »")
+        self.main_window.titre_btn.clicked.connect(self._on_titre_clicked)
+        self.main_window.titre_btn.setEnabled(False)
+        self.main_window.titre_btn.setSizePolicy(
+            self.main_window.export_html_brands_btn.sizePolicy()
+        )
+        export_layout.addWidget(self.main_window.titre_btn, 1)
+        self._refresh_titre_menu()
 
         layout.addLayout(export_layout)
 
-        # Ligne 2: Boutons SEO métadonnées
+        # Ligne 2: Boutons SEO métadonnées, puis Exporter CSV
         self._add_seo_buttons(layout)
 
-    def _refresh_html_details_menu(self) -> None:
-        """Reconstruire le menu déroulant du bouton "HTML Détails".
+        # Colonnes de même largeur sur les deux lignes : sans politique
+        # extensible, un QToolButton à menu (« Titre ») restait à sa largeur utile
+        for btn in (self.main_window.export_html_brands_btn, self.main_window.export_html_details_btn,
+                    self.main_window.titre_btn, self.main_window.meta_title_btn,
+                    self.main_window.meta_desc_btn, self.main_window.export_csv_btn):
+            btn.setSizePolicy(QSizePolicy.Expanding, btn.sizePolicy().verticalPolicy())
 
-        Un seul profil configuré : pas de menu, pas de flèche — clic = export direct.
+    def refresh_profile_menus(self) -> None:
+        """Menus des boutons à gabarits, après modification de la configuration."""
+        self._refresh_html_details_menu()
+        self._refresh_titre_menu()
+
+    @staticmethod
+    def _refresh_split_menu(btn, names, default_name, slot) -> None:
+        """Reconstruire le menu déroulant d'un split button à profils.
+
+        Un seul profil configuré : pas de menu, pas de flèche — clic = action directe.
         Plusieurs profils : la flèche superposée ouvre un menu listant les profils
-        AUTRES que celui par défaut (le clic principal exporte déjà ce dernier).
+        AUTRES que celui par défaut (le clic principal utilise déjà ce dernier).
         """
-        btn = self.main_window.export_html_details_btn
-        svc = getattr(self.main_window, 'export_config_service', None)
-        names = svc.get_details_profile_names() if svc else []
-
         if len(names) <= 1:
             btn.setMenu(None)
             btn.setPopupMode(QToolButton.DelayedPopup)
             return
 
-        default_name = svc.get_default_details_profile_name()
         menu = QMenu(btn)
         for name in names:
             if name == default_name:
                 continue
             action = menu.addAction(name)
             action.setData(name)
-        menu.triggered.connect(self._on_html_details_profile_chosen)
+        menu.triggered.connect(slot)
         btn.setMenu(menu)
         btn.setPopupMode(QToolButton.MenuButtonPopup)
+
+    def _refresh_html_details_menu(self) -> None:
+        """Reconstruire le menu déroulant du bouton "HTML Détails"."""
+        svc = getattr(self.main_window, 'export_config_service', None)
+        names = svc.get_details_profile_names() if svc else []
+        default_name = svc.get_default_details_profile_name() if svc else None
+        self._refresh_split_menu(self.main_window.export_html_details_btn, names,
+                                 default_name, self._on_html_details_profile_chosen)
+
+    def _refresh_titre_menu(self) -> None:
+        """Reconstruire le menu déroulant du bouton "Titre"."""
+        svc = getattr(self.main_window, 'export_config_service', None)
+        names = svc.get_titre_profile_names() if svc else []
+        default_name = svc.get_default_titre_profile_name() if svc else None
+        self._refresh_split_menu(self.main_window.titre_btn, names,
+                                 default_name, self._on_titre_profile_chosen)
+
+    def _on_titre_clicked(self) -> None:
+        """Clic sur "Titre" : gabarit par défaut."""
+        self.main_window._generer_titre()
+
+    def _on_titre_profile_chosen(self, action) -> None:
+        """Titre avec le gabarit choisi dans le menu déroulant."""
+        self.main_window._generer_titre(profile_name=action.data())
 
     def _on_html_details_profile_chosen(self, action) -> None:
         """Export HTML Détails avec le profil choisi dans le menu déroulant."""
@@ -166,21 +216,24 @@ class UIComponentService:
         """Ajouter les boutons SEO métadonnées"""
         seo_layout = QHBoxLayout()
         
-        # Bouton Méta Title - 50% de la largeur
+        # Bouton Méta Title — un tiers de la largeur
         self.main_window.meta_title_btn = QPushButton(qta.icon('fa5s.heading', color='#555555'), "Méta Title")
         self.main_window.meta_title_btn.clicked.connect(self.main_window._generate_meta_title)
         self.main_window.meta_title_btn.setEnabled(False)
         self.main_window.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (largeur affichée par Google sur ordinateur)\nMaj+clic : autre formulation")
         self.main_window.meta_title_btn.setStyleSheet(self._get_seo_title_button_style())
-        seo_layout.addWidget(self.main_window.meta_title_btn, 1)  # stretch factor 1 = 50%
+        seo_layout.addWidget(self.main_window.meta_title_btn, 1)
         
-        # Bouton Méta Description - 50% de la largeur
+        # Bouton Méta Description — un tiers de la largeur
         self.main_window.meta_desc_btn = QPushButton(qta.icon('fa5s.align-left', color='#555555'), "Méta Desc")
         self.main_window.meta_desc_btn.clicked.connect(self.main_window._generate_meta_description)
         self.main_window.meta_desc_btn.setEnabled(False)
         self.main_window.meta_desc_btn.setToolTip("Générer une méta description SEO (largeur affichée par Google sur ordinateur)\nMaj+clic : autre formulation")
         self.main_window.meta_desc_btn.setStyleSheet(self._get_seo_desc_button_style())
-        seo_layout.addWidget(self.main_window.meta_desc_btn, 1)  # stretch factor 1 = 50%
+        seo_layout.addWidget(self.main_window.meta_desc_btn, 1)
+
+        # Exporter CSV en fin de ligne 2 (v3.99.0 : laisse sa place à "Titre")
+        seo_layout.addWidget(self.main_window.export_csv_btn, 1)
         
         layout.addLayout(seo_layout)
 
