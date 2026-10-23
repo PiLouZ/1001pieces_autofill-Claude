@@ -13,9 +13,10 @@ Les pastilles reprennent le style des réfs de l'import multi-fichiers
 (`_RefList` : badge blanc arrondi).
 """
 
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize, QRect, QPoint
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize, QRect, QPoint, QMimeData
+from PyQt5.QtGui import QDrag
 from PyQt5.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QToolButton, QSizePolicy,
+    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QToolButton, QSizePolicy,
 )
 
 from ..utils.text_utils import decouper_refs
@@ -88,12 +89,20 @@ class RefSaisieLineEdit(QLineEdit):
 
 
 class _PastilleRef(QFrame):
-    """Une référence saisie : texte + bouton ✕."""
+    """Une référence saisie : texte + bouton ✕.
+
+    `deplacable` : la pastille peut être glissée (texte = la réf, copie) vers un
+    autre champ ou un cadre de relations — sans être retirée d'ici."""
     retrait_demande = pyqtSignal(str)
 
-    def __init__(self, ref, parent=None):
+    def __init__(self, ref, parent=None, deplacable=False):
         super().__init__(parent)
         self.ref = ref
+        self._deplacable = deplacable
+        self._depart_glisser = None
+        if deplacable:
+            self.setCursor(Qt.OpenHandCursor)
+            self.setToolTip(f"Glisser {ref} vers une lignée, un groupe ou un autre champ")
         self.setObjectName("pastilleRef")
         self.setStyleSheet(_STYLE_PASTILLE)
         lay = QHBoxLayout(self)
@@ -113,6 +122,30 @@ class _PastilleRef(QFrame):
         btn.clicked.connect(lambda: self.retrait_demande.emit(self.ref))
         lay.addWidget(btn)
 
+    def mousePressEvent(self, event):
+        if self._deplacable and event.button() == Qt.LeftButton:
+            self._depart_glisser = event.pos()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (self._depart_glisser is None
+                or (event.pos() - self._depart_glisser).manhattanLength()
+                < QApplication.startDragDistance()):
+            return super().mouseMoveEvent(event)
+        self._depart_glisser = None
+        mime = QMimeData()
+        mime.setText(self.ref)
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.setPixmap(self.grab())
+        drag.exec_(Qt.CopyAction)
+
+    def mouseReleaseEvent(self, event):
+        self._depart_glisser = None
+        super().mouseReleaseEvent(event)
+
 
 class RefChipsInput(QFrame):
     """Champ de saisie de références multiples, affichées en pastilles.
@@ -128,6 +161,9 @@ class RefChipsInput(QFrame):
         placeholder: texte d'aide du champ (affiché tant qu'aucune réf n'est saisie).
         max_refs: nombre maximal de réfs (None = illimité). Atteint, le champ se
             masque ; retirer une pastille le fait réapparaître.
+        accepte_depot: accepter le dépôt d'une réf glissée (pastille d'un cadre
+            de relations, d'un autre champ) et rendre ses pastilles glissables
+            (v3.97.1). Champ plein à 1 réf : la réf déposée remplace l'ancienne.
     """
     changed = pyqtSignal()
 
@@ -136,8 +172,9 @@ class RefChipsInput(QFrame):
     _HAUTEUR_SAISIE = 22
     _LARGEUR_MIN_SAISIE = 140
 
-    def __init__(self, placeholder="", max_refs=None, parent=None):
+    def __init__(self, placeholder="", max_refs=None, parent=None, accepte_depot=False):
         super().__init__(parent)
+        self._accepte_depot = accepte_depot
         self._refs = []
         self._pastilles = []
         self._max = max_refs
@@ -160,6 +197,12 @@ class RefChipsInput(QFrame):
 
         # Clic dans le cadre (hors champ) → focus dans le champ
         self.setCursor(Qt.IBeamCursor)
+
+        if accepte_depot:
+            self.setAcceptDrops(True)
+            # Le dépôt est traité par le cadre (découpe en réfs), pas inséré
+            # comme du texte brut dans le champ de saisie.
+            self.line_edit.setAcceptDrops(False)
 
     # ── API ─────────────────────────────────────────────────────────────────
 
@@ -257,6 +300,43 @@ class RefChipsInput(QFrame):
                     max(droite - x, 10), self._HAUTEUR_SAISIE))
         return y + h_ligne + self._MARGE_V + cadre
 
+    def _refs_deposees(self, event):
+        md = event.mimeData()
+        if not self._accepte_depot or not md.hasText():
+            return []
+        source = event.source()
+        if isinstance(source, _PastilleRef) and source.parent() is self:
+            return []          # pastille reposée sur son propre champ
+        return decouper_refs(md.text())
+
+    def dragEnterEvent(self, event):
+        if self._refs_deposees(event):
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if self._refs_deposees(event):
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        refs = self._refs_deposees(event)
+        if not refs:
+            return super().dropEvent(event)
+        event.setDropAction(Qt.CopyAction)   # ne pas vider la liste source
+        event.accept()
+        if self._max == 1:
+            if refs[0] not in self._refs:
+                self._refs = []
+                self.line_edit.clear()
+                self.add_refs(refs[:1])
+        else:
+            self.add_refs(refs)
+
     def mousePressEvent(self, event):
         if self._saisie_affichee():
             self.line_edit.setFocus()
@@ -272,7 +352,7 @@ class RefChipsInput(QFrame):
             p.deleteLater()
         self._pastilles = []
         for r in self._refs:
-            p = _PastilleRef(r, self)
+            p = _PastilleRef(r, self, deplacable=self._accepte_depot)
             p.retrait_demande.connect(self.remove_ref)
             p.show()
             self._pastilles.append(p)

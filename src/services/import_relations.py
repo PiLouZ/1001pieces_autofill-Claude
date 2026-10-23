@@ -80,19 +80,99 @@ def cross_anchors(groups: List[Group]) -> List[str]:
     return [a for i, a in enumerate(anchors) if a not in anchors[:i]]
 
 
+def remplacantes_des_cartes(cards: List[CardData]) -> Dict[str, str]:
+    """{réf : remplaçante directe} saisies sur les cartes (« Remplacée par »)."""
+    return {c.ref: c.replaced_by for c in cards
+            if c.ref and c.replaced_by and c.replaced_by != c.ref}
+
+
+def fin_de_chaine(ref: str, remplacantes: Dict[str, str], arret: Optional[str] = None) -> Optional[str]:
+    """Dernière réf atteinte en suivant les « Remplacée par » des cartes depuis
+    `ref` (arrêt sur `arret` s'il est rencontré). None en cas de boucle."""
+    vues, cur = {ref}, ref
+    while cur in remplacantes and cur != arret:
+        cur = remplacantes[cur]
+        if cur in vues:
+            return None
+        vues.add(cur)
+    return cur
+
+
+def raccords_lignee(g: Group, remplacantes: Dict[str, str]) -> Dict[str, str]:
+    """Membres d'une lignée qui ont déjà une remplaçante sur leur carte :
+    {membre : fin de sa chaîne}. C'est cette fin, et non le membre, qui est
+    reliée à la courante (v3.97.1) : glisser un fichier dans la lignée suffit,
+    sans ressaisir sa remplaçante. Fin = courante → déjà raccordé (« direct »)."""
+    out = {}
+    if g.kind != KIND_SUCCESSION or not g.courante:
+        return out
+    for m in g.members:
+        if m and m != g.courante and m in remplacantes:
+            fin = fin_de_chaine(m, remplacantes, arret=g.courante)
+            if fin is not None:
+                out[m] = fin
+    return out
+
+
+def liens_lignee(g: Group, remplacantes: Dict[str, str]) -> List[Tuple[str, str]]:
+    """Liens (ancienne → courante) créés par une lignée, sans doublon.
+
+    Membre sans remplaçante sur sa carte : membre → courante (comportement
+    historique). Membre qui en a une : sa chaîne est raccordée par sa fin
+    (fin → courante), le lien membre → remplaçante venant de la carte. Une
+    chaîne qui boucle n'est pas raccordée (la boucle est signalée à part)."""
+    if g.kind != KIND_SUCCESSION or not g.courante:
+        return []
+    raccords = raccords_lignee(g, remplacantes)
+    liens: List[Tuple[str, str]] = []
+    for m in g.members:
+        if not m or m == g.courante:
+            continue
+        if m in remplacantes:
+            fin = raccords.get(m)
+            if fin is None or fin == g.courante:
+                continue
+            lien = (fin, g.courante)
+        else:
+            lien = (m, g.courante)
+        if lien not in liens:
+            liens.append(lien)
+    return liens
+
+
 def successions_prevues(groups: List[Group], cards: List[CardData]) -> List[Tuple[str, str]]:
     """Liens (ancienne, nouvelle) déclarés, dans l'ordre et sans doublon exact :
-    membres de lignée → courante, « remplace » base → carte, carte → « remplacée par »."""
+    lignées (cf. `liens_lignee`), « remplace » base → carte, carte → « remplacée par »."""
+    remplacantes = remplacantes_des_cartes(cards)
     liens: List[Tuple[str, str]] = []
     for g in groups:
-        if g.kind == KIND_SUCCESSION and g.courante:
-            liens += [(m, g.courante) for m in g.members if m and m != g.courante]
+        liens += liens_lignee(g, remplacantes)
     for c in cards:
         if c.base_replaces and c.base_replaces != c.ref:
             liens.append((c.base_replaces, c.ref))
         if c.replaced_by and c.replaced_by != c.ref:
             liens.append((c.ref, c.replaced_by))
     return [l for i, l in enumerate(liens) if l not in liens[:i]]
+
+
+def arbre_remplacements(groups: List[Group], cards: List[CardData]) -> List[Tuple[str, list]]:
+    """Forêt des remplacements déclarés, pour l'aperçu : [(racine, enfants)] où
+    chaque enfant est lui-même (réf, enfants). Racine = réf qui remplace sans
+    être remplacée (la courante finale). Une réf déclarée avec deux remplaçantes
+    apparaît sous chacune (le conflit est signalé à part) ; une boucle, sans
+    racine, n'apparaît pas."""
+    liens = successions_prevues(groups, cards)
+    enfants: Dict[str, List[str]] = {}
+    anciennes = set()
+    for old, new in liens:
+        enfants.setdefault(new, []).append(old)
+        anciennes.add(old)
+    racines = [n for n in dict.fromkeys(new for _, new in liens) if n not in anciennes]
+
+    def _noeud(ref, chemin):
+        return (ref, [_noeud(e, chemin | {e}) for e in enfants.get(ref, []) if e not in chemin])
+
+    return [_noeud(r, {r}) for r in racines]
 
 
 def conflits_remplacement(groups: List[Group], cards: List[CardData]) -> List[str]:
@@ -160,6 +240,8 @@ def derive(groups: List[Group], cards: List[CardData],
                     out.obsoletes.add(m)
                 if not g.courante:
                     out.warnings.append((m, "Lignée sans courante définie."))
+            for old, _ in liens_lignee(g, remplacantes_des_cartes(cards)):
+                out.obsoletes.add(old)          # fins de chaîne raccordées
         else:  # équivalence
             for m in g.members:
                 out.equiv_group_of[m] = gi
@@ -197,12 +279,12 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
     counts = {'successions': 0, 'equivalences': 0, 'obsoletes': 0}
     obsoletes: Set[str] = set()
 
+    remplacantes = remplacantes_des_cartes(cards)
     for g in groups:
         if g.kind == KIND_SUCCESSION and g.courante:
-            for m in g.members:
-                if m and m != g.courante:
-                    counts['successions'] += 1
-                    obsoletes.add(m)
+            for old, _ in liens_lignee(g, remplacantes):
+                counts['successions'] += 1
+                obsoletes.add(old)
         elif g.kind == KIND_EQUIVALENCE:
             members = [m for i, m in enumerate(g.members) if m and m not in g.members[:i]]
             if g.courante and g.courante not in members:
@@ -302,13 +384,13 @@ def apply_relations(groups: List[Group], cards: List[CardData], db,
             counts['errors'] += 1
 
     obsoletes: Set[str] = set()
+    remplacantes = remplacantes_des_cartes(cards)
 
     for g in groups:
         if g.kind == KIND_SUCCESSION and g.courante:
-            for m in g.members:
-                if m != g.courante:
-                    _superse(m, g.courante)
-                    obsoletes.add(m)
+            for old, new in liens_lignee(g, remplacantes):
+                _superse(old, new)
+                obsoletes.add(old)
         elif g.kind == KIND_EQUIVALENCE:
             members = [m for i, m in enumerate(g.members) if m not in g.members[:i]]
             if g.courante and g.courante not in members:

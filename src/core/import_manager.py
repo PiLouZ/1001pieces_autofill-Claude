@@ -1390,12 +1390,14 @@ class ImportDialog(QDialog):
         lbl.setStyleSheet("font-size: 11px; color: #495057; background: transparent; border: none;")
         lbl.setFixedWidth(100)
         row.addWidget(lbl)
-        chips = RefChipsInput("Remplaçante directe (lot, base ou nouvelle)", max_refs=1)
+        chips = RefChipsInput("Remplaçante directe (saisir ou glisser une réf)", max_refs=1,
+                               accepte_depot=True)
         chips.setToolTip(
             "Nouvelle réf. qui remplace directement celle de ce fichier.\n"
             "Une seule : une pièce n'est remplacée que par une autre.\n"
-            "Si cette remplaçante est elle-même remplacée, placez-la comme\n"
-            "ancienne version d'une lignée (« + ajouter des réfs hors lot »).")
+            "Glissez ici une tuile (réf du lot, de la base ou fantôme).\n"
+            "Glissez ensuite ce fichier dans une lignée : sa remplaçante y sera\n"
+            "raccordée à la courante, sans la ressaisir.")
         if getattr(self, '_remplacee_par_model', None) is None:
             lot = [f.suggested_reference for f in self.import_config.files
                    if getattr(f, 'suggested_reference', '')]

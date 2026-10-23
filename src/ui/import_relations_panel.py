@@ -14,17 +14,20 @@ Widget autonome (testable offscreen).
 """
 
 from PyQt5.QtCore import Qt, pyqtSignal, QStringListModel, QSize
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QScrollArea, QCompleter, QSplitter, QSizePolicy,
-    QListWidget, QListWidgetItem, QAbstractItemView,
+    QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget, QTreeWidgetItem,
 )
 import qtawesome as qta
 
 from ..services.import_relations import (
     Group, CardData, derive, count_planned_relations, cross_anchors, cross_anchor,
-    conflits_remplacement, KIND_SUCCESSION, KIND_EQUIVALENCE,
+    conflits_remplacement, arbre_remplacements, raccords_lignee, remplacantes_des_cartes,
+    KIND_SUCCESSION, KIND_EQUIVALENCE,
 )
+from ..utils.text_utils import decouper_refs
 from ..core.config import pluralize
 from .style_manager import StyleManager
 from .ref_chips_input import RefSaisieLineEdit
@@ -198,9 +201,13 @@ class RefCard(QFrame):
 
 class _RefList(QListWidget):
     dropped = pyqtSignal()
+    # Réfs déposées depuis HORS des listes (pastille d'un champ « Remplacée
+    # par », v3.97.1) : traitées comme une saisie (cf. GroupsZone.ajouter_refs).
+    refs_deposees = pyqtSignal(list)
 
     def __init__(self, parent=None, expanding=False):
         super().__init__(parent)
+        self._accepte_texte_externe = expanding   # cadres oui, réservoir non
         self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -226,7 +233,33 @@ class _RefList(QListWidget):
             "QListWidget::item:selected { background: #e3f2fd;"
             " border: 1px solid #64b5f6; color: #0d47a1; }")
 
+    def _refs_externes(self, event):
+        if (not self._accepte_texte_externe or isinstance(event.source(), QListWidget)
+                or not event.mimeData().hasText()):
+            return []
+        return decouper_refs(event.mimeData().text())
+
+    def dragEnterEvent(self, event):
+        if self._refs_externes(event):
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if self._refs_externes(event):
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            super().dragMoveEvent(event)
+
     def dropEvent(self, event):
+        refs = self._refs_externes(event)
+        if refs:
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+            self.refs_deposees.emit(refs)
+            return
         super().dropEvent(event)
         self.dropped.emit()
 
@@ -368,6 +401,7 @@ class GroupBox(QFrame):
 
         self.members = _RefList(expanding=True)
         self.members.dropped.connect(self.changed)
+        self.members.refs_deposees.connect(lambda refs: self.refs_saisies.emit(self, refs))
         if is_succ:
             # Double-clic sur une réf → la renseigne comme courante (visible dans
             # le champ). La réf RESTE dans la zone (l'app ne la traite pas comme
@@ -512,6 +546,26 @@ class GroupsZone(QWidget):
 
         lay.addLayout(cols, 1)
         lay.addWidget(self.all_equiv_check)
+
+        # Arbre des remplacements (v3.97.1) : ce que les lignées ET les
+        # « Remplacée par » des cartes produiront, racine = courante finale.
+        self.arbre_titre = _lbl("Arbre des remplacements", bold=True, color=_SUCC_COLORS[1])
+        lay.addWidget(self.arbre_titre)
+        self.arbre = QTreeWidget()
+        self.arbre.setColumnCount(2)
+        self.arbre.setHeaderHidden(True)
+        self.arbre.setRootIsDecorated(True)
+        self.arbre.setSelectionMode(QAbstractItemView.NoSelection)
+        self.arbre.setFocusPolicy(Qt.NoFocus)
+        # Hauteur ajustée au contenu (cf. _maj_arbre) : les cadres des lignées et
+        # groupes gardent la priorité sur la hauteur disponible.
+        self.arbre.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.arbre.setStyleSheet(
+            "QTreeWidget { background: #ffffff; border: 1px solid #dee2e6;"
+            " border-radius: 4px; font-size: 11px; color: #263238; }")
+        lay.addWidget(self.arbre)
+        self.arbre_titre.setVisible(False)
+        self.arbre.setVisible(False)
 
         # Récap en direct : ce qui SERA réellement appliqué à l'import (successions /
         # équivalences / non groupées) + avertissements sur les déclarations sans effet
@@ -741,6 +795,74 @@ class GroupsZone(QWidget):
                         "ne sera créée par cette case.")
         return msgs
 
+    _ARBRE_LIGNES_MAX = 8      # au-delà, l'arbre défile
+
+    def _maj_arbre(self):
+        """Reconstruire l'arbre des remplacements (masqué s'il n'y a aucun lien)."""
+        if not hasattr(self, 'arbre'):
+            return
+        foret = arbre_remplacements(self.groups(), self._cards)
+        lot = set(self._all_refs)
+        self.arbre.clear()
+
+        def _item(parent, ref, enfants, racine=False):
+            note = "courante" if racine else ""
+            if ref not in lot:
+                note = (note + " · " if note else "") + "hors lot"
+            it = QTreeWidgetItem(parent, [ref, note])
+            if racine:
+                f = it.font(0)
+                f.setBold(True)
+                it.setFont(0, f)
+                it.setForeground(0, Qt.darkBlue)
+            it.setForeground(1, Qt.gray)
+            for e, sous in enfants:
+                _item(it, e, sous)
+            return it
+
+        for ref, enfants in foret:
+            _item(self.arbre, ref, enfants, racine=True)
+        self.arbre.expandAll()
+        self.arbre.resizeColumnToContents(0)
+        n_lignes, it = 0, self.arbre.topLevelItem(0)
+        while it is not None:
+            n_lignes += 1
+            it = self.arbre.itemBelow(it)
+        h_ligne = self.arbre.sizeHintForRow(0) if n_lignes else 0
+        self.arbre.setFixedHeight(min(self._ARBRE_LIGNES_MAX, n_lignes) * max(h_ligne, 1)
+                                  + 2 * self.arbre.frameWidth() + 4)
+        visible = bool(foret)
+        self.arbre_titre.setVisible(visible)
+        self.arbre.setVisible(visible)
+
+    def _marquer_raccords(self):
+        """Dans les lignées, signaler les réfs déjà remplacées sur leur carte :
+        leur chaîne est raccordée à la courante par sa fin (icône + infobulle)."""
+        remplacantes = remplacantes_des_cartes(self._cards)
+        for b in self._succ_boxes:
+            g = b.to_group()
+            raccords = raccords_lignee(g, remplacantes)
+            for i in range(b.members.count()):
+                it = b.members.item(i)
+                if _est_hors_lot(it):
+                    continue
+                ref = it.text()
+                if ref in raccords:
+                    chaine, cur = [ref], ref
+                    while cur in remplacantes and cur != raccords[ref]:
+                        cur = remplacantes[cur]
+                        chaine.append(cur)
+                    if raccords[ref] != g.courante:
+                        chaine.append(g.courante)
+                    via = (f"direct ({ref} → {g.courante})" if len(chaine) == 2
+                           else "via " + " → ".join(chaine[1:-1]))
+                    it.setIcon(qta.icon('fa5s.link', color='#1565C0'))
+                    it.setToolTip("Remplacée sur sa carte — raccordée à la courante "
+                                  f"{via}.\n" + " → ".join(chaine))
+                else:
+                    it.setIcon(QIcon())
+                    it.setToolTip("")
+
     def _cross_warning(self, cross):
         """Alerte « équivalence croisée sans effet », qui nomme la cause réelle.
 
@@ -819,6 +941,9 @@ class GroupsZone(QWidget):
         msgs = self.warnings()
         self.warnings_label.setText("\n".join(f"• {m}" for m in msgs))
         self.warnings_label.setVisible(bool(msgs))
+
+        self._maj_arbre()
+        self._marquer_raccords()
 
         # Case « Toutes les lignées équivalentes » : sans effet sous 2 lignées avec
         # courante → grisée (mais jamais verrouillée cochée : décochable en tout temps).
