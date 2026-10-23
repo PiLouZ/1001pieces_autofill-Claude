@@ -23,7 +23,7 @@ import qtawesome as qta
 
 from ..services.import_relations import (
     Group, CardData, derive, count_planned_relations, cross_anchors, cross_anchor,
-    KIND_SUCCESSION, KIND_EQUIVALENCE,
+    conflits_remplacement, KIND_SUCCESSION, KIND_EQUIVALENCE,
 )
 from ..core.config import pluralize
 from .style_manager import StyleManager
@@ -449,7 +449,19 @@ class GroupsZone(QWidget):
         self._ref_model = ref_model
         self._succ_boxes = []
         self._equiv_boxes = []
+        # Cartes des fichiers (Obsolète, « Remplacée par ») : tenues par le
+        # dialogue d'import, transmises par set_cards pour le récap et les alertes.
+        self._cards = []
         self._build()
+
+    def set_cards(self, cards):
+        """Données des cartes de fichiers (List[CardData]) ; rafraîchit le récap."""
+        self._cards = list(cards or [])
+        self.changed.emit()
+
+    def conflits(self):
+        """Remplacements contradictoires (bloquants à la validation)."""
+        return conflits_remplacement(self.groups(), self._cards)
 
     def _build(self):
         lay = QVBoxLayout(self)
@@ -697,11 +709,12 @@ class GroupsZone(QWidget):
 
     def planned_counts(self):
         """Relations qui seront réellement appliquées à l'import (état courant)."""
-        return count_planned_relations(self.groups(), [])
+        return count_planned_relations(self.groups(), self._cards)
 
     def warnings(self):
-        """Déclarations actuellement sans effet (liste de messages, vide si tout va bien)."""
-        msgs = []
+        """Déclarations actuellement sans effet ou contradictoires (liste de
+        messages, vide si tout va bien). Les contradictions viennent en tête."""
+        msgs = list(self.conflits())
         groups = self.groups()
         n_courantes = sum(1 for g in groups if g.kind == KIND_SUCCESSION and g.courante)
         cross = set(cross_anchors(groups))

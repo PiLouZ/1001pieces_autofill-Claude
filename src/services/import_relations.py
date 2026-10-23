@@ -16,8 +16,10 @@ marque », ou « ces réfs interchangeables équivalent à cette lignée »). L'
 la courante d'une lignée, ou la repère / le 1er membre d'un groupe d'équivalence
 (cf. `cross_anchor`).
 
-En plus des groupes, chaque réf isolée peut être marquée obsolète et/ou « remplace
-une réf en base » (carte). Pur Python ; `apply_relations` écrit via un db_manager
+En plus des groupes, chaque réf isolée peut être marquée obsolète, « remplace
+une réf en base », et/ou « remplacée par » une réf (carte, v3.97.0 : remplaçante
+DIRECTE, qui peut elle-même être l'ancienne version d'une lignée — c'est ainsi
+qu'on chaîne A → B → C sans perdre l'étape B). Pur Python ; `apply_relations` écrit via un db_manager
 (`add_supersession`, `add_equivalence`, `mark_obsolete`, et `propagate_description`
 si le db l'expose — cf. `_propager_libelle`).
 """
@@ -43,6 +45,7 @@ class CardData:
     ref: str
     is_obsolete: bool = False
     base_replaces: Optional[str] = None              # réf base que cette réf remplace (base → ref)
+    replaced_by: Optional[str] = None                # remplaçante directe (ref → replaced_by), v3.97.0
 
 
 @dataclass
@@ -77,6 +80,61 @@ def cross_anchors(groups: List[Group]) -> List[str]:
     return [a for i, a in enumerate(anchors) if a not in anchors[:i]]
 
 
+def successions_prevues(groups: List[Group], cards: List[CardData]) -> List[Tuple[str, str]]:
+    """Liens (ancienne, nouvelle) déclarés, dans l'ordre et sans doublon exact :
+    membres de lignée → courante, « remplace » base → carte, carte → « remplacée par »."""
+    liens: List[Tuple[str, str]] = []
+    for g in groups:
+        if g.kind == KIND_SUCCESSION and g.courante:
+            liens += [(m, g.courante) for m in g.members if m and m != g.courante]
+    for c in cards:
+        if c.base_replaces and c.base_replaces != c.ref:
+            liens.append((c.base_replaces, c.ref))
+        if c.replaced_by and c.replaced_by != c.ref:
+            liens.append((c.ref, c.replaced_by))
+    return [l for i, l in enumerate(liens) if l not in liens[:i]]
+
+
+def conflits_remplacement(groups: List[Group], cards: List[CardData]) -> List[str]:
+    """Déclarations de remplacement impossibles à enregistrer telles quelles.
+
+    - Une réf ne peut avoir qu'UNE remplaçante (clé primaire `ref_old` de
+      `piece_supersessions`) : deux remplaçantes différentes, et la dernière
+      écrite effacerait l'autre sans rien dire (INSERT OR REPLACE).
+    - Une boucle (A → B → A) serait refusée par la base, lien par lien.
+    Ce sont des erreurs de saisie, pas des « sans effet » : la validation bloque.
+    """
+    succ: Dict[str, List[str]] = {}
+    for old, new in successions_prevues(groups, cards):
+        succ.setdefault(old, [])
+        if new not in succ[old]:
+            succ[old].append(new)
+
+    msgs = []
+    for old, news in succ.items():
+        if len(news) > 1:
+            msgs.append(f"{old} est déclarée remplacée par {' et par '.join(news)} : "
+                        "une réf n'a qu'une seule remplaçante. Si elles sont "
+                        "interchangeables, déclarez-les équivalentes entre elles.")
+
+    # Boucles : suivies uniquement par les liens sans ambiguïté
+    unique = {o: n[0] for o, n in succ.items() if len(n) == 1}
+    deja = set()
+    for depart in unique:
+        chemin, ref = [], depart
+        while ref in unique and ref not in chemin:
+            chemin.append(ref)
+            ref = unique[ref]
+        if ref in chemin:
+            boucle = chemin[chemin.index(ref):]
+            cle = frozenset(boucle)
+            if cle not in deja:
+                deja.add(cle)
+                msgs.append("Boucle de remplacement : "
+                            + " → ".join(boucle + [ref]) + ".")
+    return msgs
+
+
 def derive(groups: List[Group], cards: List[CardData],
            lot_refs: Set[str], base_refs: Set[str]) -> DerivedModel:
     """Dérive les états visuels et de cohérence. Pur, sans effet."""
@@ -108,12 +166,19 @@ def derive(groups: List[Group], cards: List[CardData],
             if g.courante and g.courante not in lot_refs and g.courante not in base_refs:
                 cited_external.add(g.courante)
 
-    # Réfs isolées obsolètes (carte) + liens « remplace » base
+    # Réfs isolées obsolètes (carte) + liens « remplace » base + « remplacée par »
     for c in cards:
         if c.is_obsolete:
             out.obsoletes.add(c.ref)
         if c.base_replaces and c.base_replaces not in lot_refs and c.base_replaces not in base_refs:
             cited_external.add(c.base_replaces)
+        if c.replaced_by and c.replaced_by != c.ref:
+            out.obsoletes.add(c.ref)
+            if c.replaced_by not in lot_refs and c.replaced_by not in base_refs:
+                cited_external.add(c.replaced_by)
+
+    for msg in conflits_remplacement(groups, cards):
+        out.warnings.append(("", msg))
 
     # Checkbox « équivalente entre groupes » : courantes des groupes cochés
     out.cross_courantes = [a for a in (cross_anchor(g) for g in groups if g.cross_equivalent) if a]
@@ -149,6 +214,9 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
             obsoletes.add(c.ref)
         if c.base_replaces and c.base_replaces != c.ref:
             counts['successions'] += 1
+        if c.replaced_by and c.replaced_by != c.ref:
+            counts['successions'] += 1
+            obsoletes.add(c.ref)
 
     cross = cross_anchors(groups)
     counts['equivalences'] += max(0, len(cross) - 1)
@@ -157,9 +225,12 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
     return counts
 
 
-def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str, int]:
+def apply_relations(groups: List[Group], cards: List[CardData], db,
+                    journal: Optional[List[str]] = None) -> Dict[str, int]:
     """Applique le modèle en base via `db`. Retourne un récap de comptes.
-    Ne lève jamais (les primitives renvoient (ok, msg) ou bool)."""
+    Ne lève jamais (les primitives renvoient (ok, msg) ou bool).
+    `journal` (facultatif) reçoit chaque lien créé (« A → B », « A ≡ B ») et
+    chaque refus (« A → B refusé : … »), pour le log de l'import."""
     counts = {'successions': 0, 'equivalences': 0, 'obsoletes': 0, 'errors': 0}
 
     def _ok(res):
@@ -185,15 +256,27 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
         except Exception:
             pass
 
+    def _noter(lien, res, ok):
+        if journal is None:
+            return
+        if ok:
+            journal.append(lien)
+        else:
+            motif = res[1] if isinstance(res, (tuple, list)) and len(res) > 1 else ""
+            journal.append(f"{lien} refusé" + (f" : {motif}" if motif else ""))
+
     def _superse(old, new):
         if not old or not new or old == new:
             return
         try:
-            ok = _ok(db.add_supersession(old, new))
-        except Exception:
+            res = db.add_supersession(old, new)
+            ok = _ok(res)
+        except Exception as e:
             counts['errors'] += 1
+            _noter(f"{old} → {new}", (False, str(e)), False)
             return
         counts['successions' if ok else 'errors'] += 1
+        _noter(f"{old} → {new}", res, ok)
         if ok:
             _propager_libelle(old, new)
 
@@ -201,11 +284,14 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
         if not a or not b or a == b:
             return
         try:
-            ok = _ok(db.add_equivalence(a, b))
-        except Exception:
+            res = db.add_equivalence(a, b)
+            ok = _ok(res)
+        except Exception as e:
             counts['errors'] += 1
+            _noter(f"{a} ≡ {b}", (False, str(e)), False)
             return
         counts['equivalences' if ok else 'errors'] += 1
+        _noter(f"{a} ≡ {b}", res, ok)
         if ok:
             _propager_libelle(a, b)
 
@@ -230,12 +316,15 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
             for m in members[1:]:
                 _equiv(members[0], m)
 
-    # Réfs isolées obsolètes + « remplace » base (carte)
+    # Réfs isolées obsolètes + « remplace » base + « remplacée par » (carte)
     for c in cards:
         if c.is_obsolete:
             obsoletes.add(c.ref)
         if c.base_replaces:
             _superse(c.base_replaces, c.ref)
+        if c.replaced_by and c.replaced_by != c.ref:
+            _superse(c.ref, c.replaced_by)
+            obsoletes.add(c.ref)
 
     for ref in obsoletes:
         _obsolete(ref)
