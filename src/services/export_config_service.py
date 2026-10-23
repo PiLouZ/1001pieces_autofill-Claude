@@ -82,8 +82,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "max_marques":        4,
                 "max_types":          3,
                 "max_caracteres":     120,
-                "separateur":         ", ",
-                "dernier_separateur": " et "
+                "separateur_marques":         ", ",
+                "dernier_separateur_marques": " et ",
+                "separateur_types":           ", ",
+                "dernier_separateur_types":   " et "
             }
         ],
         "default_profile": "Format standard"
@@ -99,8 +101,14 @@ DETAILS_PROFILE_KEYS = (
 # Clés éditables d'un profil Titre (hors 'name') et celles qui sont des entiers
 TITRE_PROFILE_KEYS = (
     "template", "max_marques", "max_types", "max_caracteres",
-    "separateur", "dernier_separateur"
+    "separateur_marques", "dernier_separateur_marques",
+    "separateur_types", "dernier_separateur_types"
 )
+# Séparateurs communs d'avant la 3.99.1 → repris pour les marques ET les types
+TITRE_ANCIENS_SEPARATEURS = {
+    "separateur": ("separateur_marques", "separateur_types"),
+    "dernier_separateur": ("dernier_separateur_marques", "dernier_separateur_types"),
+}
 TITRE_PROFILE_INT_KEYS = ("max_marques", "max_types", "max_caracteres")
 
 # Variables disponibles dans les sources de colonnes et templates
@@ -217,6 +225,9 @@ class ExportConfigService(BaseService):
             if not (isinstance(p, dict) and p.get('name')):
                 continue
             profile = copy.deepcopy(defaut)
+            for ancien, nouveaux in TITRE_ANCIENS_SEPARATEURS.items():
+                if ancien in p:
+                    profile.update({k: p[ancien] for k in nouveaux})
             profile.update({k: p[k] for k in TITRE_PROFILE_KEYS if k in p})
             for k in TITRE_PROFILE_INT_KEYS:
                 try:

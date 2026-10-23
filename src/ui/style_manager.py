@@ -66,13 +66,10 @@ def _generate_check_mark() -> str:
 _inline_icon_paths: dict = {}
 
 
-def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
-    """Icône qtawesome insérable dans le texte riche d'un QLabel (`<img>`).
-
-    Remplace les glyphes (⚠, ✓…) dans les libellés : l'icône est rendue en PNG
-    une seule fois par (nom, couleur, taille), comme le chevron des listes
-    déroulantes. Chaîne vide si qtawesome échoue (le texte reste lisible).
-    """
+def icon_png_path(icon_name: str, color: str, size: int = 11) -> str:
+    """Chemin d'un PNG 2× de l'icône qtawesome (rendu une fois par nom, couleur,
+    taille), pour un `<img>` ou un `image: url(...)` de feuille de style ; "" si
+    qtawesome échoue."""
     key = (icon_name, color, size)
     path = _inline_icon_paths.get(key)
     if path is None:
@@ -85,6 +82,16 @@ def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
         except Exception:
             path = ""
         _inline_icon_paths[key] = path
+    return path
+
+
+def inline_icon_html(icon_name: str, color: str, size: int = 11) -> str:
+    """Icône qtawesome insérable dans le texte riche d'un QLabel (`<img>`).
+
+    Remplace les glyphes (⚠, ✓…) dans les libellés, comme le chevron des listes
+    déroulantes. Chaîne vide si qtawesome échoue (le texte reste lisible).
+    """
+    path = icon_png_path(icon_name, color, size)
     if not path:
         return ""
     # Image 2× affichée à `size` : nette sur écran Retina
