@@ -1379,6 +1379,15 @@ class ImportDialog(QDialog):
             obs_check.setToolTip("Marquer cette référence comme obsolète (plus fabriquée)")
         self._pousser_cartes_relations()
 
+    def _remplacante_comme_courante(self, file, ref):
+        """Double-clic sur la pastille « Remplacée par » : la réf devient la
+        courante de la lignée du fichier (évite de la saisir une 2ᵉ fois)."""
+        zone = getattr(self, '_relations_groups_zone', None)
+        if zone is None:
+            return
+        auto = self.auto_file_references_checkbox.isChecked()
+        zone.definir_courante(self._ref_du_fichier(file, auto), ref)
+
     def _ligne_remplacee_par(self, file, obs_check):
         """Ligne « ↳ Remplacée par » d'une carte multi-fichiers (v3.97.0) :
         remplaçante DIRECTE de la réf du fichier (1 réf : lot, base ou nouvelle,
@@ -1396,6 +1405,7 @@ class ImportDialog(QDialog):
             "Nouvelle réf. qui remplace directement celle de ce fichier.\n"
             "Une seule : une pièce n'est remplacée que par une autre.\n"
             "Glissez ici une tuile (réf du lot, de la base ou fantôme).\n"
+            "Double-clic sur la réf saisie : elle devient la courante de la lignée.\n"
             "Glissez ensuite ce fichier dans une lignée : sa remplaçante y sera\n"
             "raccordée à la courante, sans la ressaisir.")
         if getattr(self, '_remplacee_par_model', None) is None:
@@ -1412,6 +1422,8 @@ class ImportDialog(QDialog):
         completer.setFilterMode(Qt.MatchContains)
         chips.setCompleter(completer)
         chips.changed.connect(lambda: self._sur_remplacee_par_change(chips, obs_check))
+        chips.pastille_double_cliquee.connect(
+            lambda ref, f=file: self._remplacante_comme_courante(f, ref))
         self._remplacee_par_inputs.append((chips, file))
         row.addWidget(chips, 1)
         return row

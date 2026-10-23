@@ -94,6 +94,7 @@ class _PastilleRef(QFrame):
     `deplacable` : la pastille peut être glissée (texte = la réf, copie) vers un
     autre champ ou un cadre de relations — sans être retirée d'ici."""
     retrait_demande = pyqtSignal(str)
+    double_clic = pyqtSignal(str)
 
     def __init__(self, ref, parent=None, deplacable=False):
         super().__init__(parent)
@@ -102,7 +103,8 @@ class _PastilleRef(QFrame):
         self._depart_glisser = None
         if deplacable:
             self.setCursor(Qt.OpenHandCursor)
-            self.setToolTip(f"Glisser {ref} vers une lignée, un groupe ou un autre champ")
+            self.setToolTip(f"Glisser {ref} vers une lignée, un groupe ou un autre champ.\n"
+                            "Double-clic : en faire la courante de la lignée.")
         self.setObjectName("pastilleRef")
         self.setStyleSheet(_STYLE_PASTILLE)
         lay = QHBoxLayout(self)
@@ -146,6 +148,14 @@ class _PastilleRef(QFrame):
         self._depart_glisser = None
         super().mouseReleaseEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        if self._deplacable:
+            self._depart_glisser = None
+            self.double_clic.emit(self.ref)
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
 
 class RefChipsInput(QFrame):
     """Champ de saisie de références multiples, affichées en pastilles.
@@ -166,6 +176,7 @@ class RefChipsInput(QFrame):
             (v3.97.1). Champ plein à 1 réf : la réf déposée remplace l'ancienne.
     """
     changed = pyqtSignal()
+    pastille_double_cliquee = pyqtSignal(str)   # avec accepte_depot uniquement
 
     _MARGE_H, _MARGE_V = 4, 3
     _ESPACE = 4
@@ -354,6 +365,7 @@ class RefChipsInput(QFrame):
         for r in self._refs:
             p = _PastilleRef(r, self, deplacable=self._accepte_depot)
             p.retrait_demande.connect(self.remove_ref)
+            p.double_clic.connect(self.pastille_double_cliquee)
             p.show()
             self._pastilles.append(p)
         self.line_edit.setVisible(self._saisie_affichee())

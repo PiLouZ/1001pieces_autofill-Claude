@@ -469,3 +469,61 @@ class TestDialogueRaccord(_AideDialogue):
         """Non-régression : les champs du fichier unique n'acceptent pas le dépôt."""
         from src.ui.ref_chips_input import RefChipsInput
         assert not RefChipsInput("x", max_refs=1).acceptDrops()
+
+
+# ── v3.97.2 : double-clic, courante refusée, réservoir réduit ─────────────────
+
+class TestDialogueV3972(_AideDialogue):
+
+    def test_double_clic_pastille_devient_courante(self, qapp, test_db_manager):
+        dlg = self._dialog(test_db_manager)
+        z = dlg._relations_groups_zone
+        box = z._succ_boxes[0]
+        z.ajouter_refs(box, list(LOT))
+        chips = self._champ(dlg, "2808540300")
+        chips.add_refs(["C00904134"])
+        chips.pastille_double_cliquee.emit("C00904134")
+        assert box.courante_input.text() == "C00904134"
+
+    def test_double_clic_vraie_pastille(self, qapp, test_db_manager):
+        """Le signal part bien de la pastille (et pas seulement du champ)."""
+        from PyQt5.QtCore import QPoint, Qt, QEvent
+        from PyQt5.QtGui import QMouseEvent
+        dlg = self._dialog(test_db_manager)
+        chips = self._champ(dlg, "2808540300")
+        chips.add_refs(["C00904134"])
+        pastille = chips._pastilles[0]
+        ev = QMouseEvent(QEvent.MouseButtonDblClick, QPoint(3, 3), Qt.LeftButton,
+                         Qt.LeftButton, Qt.NoModifier)
+        pastille.mouseDoubleClickEvent(ev)
+        assert dlg._relations_groups_zone._succ_boxes[0].courante_input.text() == "C00904134"
+
+    def test_double_clic_hors_lignee_premiere_sans_courante(self, qapp, test_db_manager):
+        dlg = self._dialog(test_db_manager)
+        z = dlg._relations_groups_zone
+        assert z.definir_courante("2808540300", "C00904134") is z._succ_boxes[0]
+        assert z._succ_boxes[0].courante_input.text() == "C00904134"
+
+    def test_double_clic_sans_lignee_disponible(self, qapp, test_db_manager):
+        dlg = self._dialog(test_db_manager)
+        z = dlg._relations_groups_zone
+        z._succ_boxes[0].courante_input.setText("AUTRE")
+        assert z.definir_courante("2808540300", "C00904134") is None
+        assert z._succ_boxes[0].courante_input.text() == "AUTRE"
+
+    def test_courante_refusee_comme_ancienne_version(self, qapp, test_db_manager):
+        dlg = self._dialog(test_db_manager)
+        z = dlg._relations_groups_zone
+        box = z._succ_boxes[0]
+        box.courante_input.setText("C00904134")
+        z.ajouter_refs(box, ["C00904134", "C00904139"])
+        assert box.members.refs() == ["C00904139"]
+
+    def test_reservoir_reduit_quand_vide(self, qapp, test_db_manager):
+        dlg = self._dialog(test_db_manager)
+        z = dlg._relations_groups_zone
+        assert z.reservoir.maximumHeight() == z._RESERVOIR_H_MAX
+        z.ajouter_refs(z._succ_boxes[0], list(LOT))
+        assert z.reservoir.maximumHeight() == z._RESERVOIR_H_VIDE
+        z._empty_box(z._succ_boxes[0])
+        assert z.reservoir.maximumHeight() == z._RESERVOIR_H_MAX

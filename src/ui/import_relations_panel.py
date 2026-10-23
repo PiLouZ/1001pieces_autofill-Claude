@@ -488,6 +488,25 @@ class GroupsZone(QWidget):
         self._cards = []
         self._build()
 
+    _RESERVOIR_H_VIDE, _RESERVOIR_H_MAX = 30, 80
+
+    def _ajuster_reservoir(self, *_):
+        self.reservoir.setMaximumHeight(
+            self._RESERVOIR_H_MAX if self.reservoir.count() else self._RESERVOIR_H_VIDE)
+
+    def definir_courante(self, ref_fichier, courante):
+        """Double-clic sur la remplaçante d'une carte (v3.97.2) : elle devient la
+        courante de la lignée qui contient le fichier, à défaut de la première
+        lignée sans courante. Rien si aucune ne convient. Renvoie la boîte."""
+        cible = next((b for b in self._succ_boxes if ref_fichier in b.members.refs()), None)
+        if cible is None:
+            cible = next((b for b in self._succ_boxes
+                          if not b.courante_input.text().strip()), None)
+        if cible is None:
+            return None
+        cible.courante_input.setText(courante)
+        return cible
+
     def set_cards(self, cards):
         """Données des cartes de fichiers (List[CardData]) ; rafraîchit le récap."""
         self._cards = list(cards or [])
@@ -508,7 +527,13 @@ class GroupsZone(QWidget):
         lay.addWidget(self._filter)
 
         # Réservoir « Non groupées » en ligne, pleine largeur, en haut
-        lay.addWidget(_lbl("Non groupées", bold=True))
+        tete_reservoir = QHBoxLayout()
+        tete_reservoir.setContentsMargins(0, 0, 0, 0)
+        tete_reservoir.addWidget(_lbl("Non groupées", bold=True))
+        tete_reservoir.addWidget(_lbl("⌘ ou Maj + clic : plusieurs réfs, glissées ensemble",
+                                      size=10, color="#90a4ae"))
+        tete_reservoir.addStretch(1)
+        lay.addLayout(tete_reservoir)
         self.reservoir = _RefList()
         for r in self._all_refs:
             self.reservoir.addItem(QListWidgetItem(r))
@@ -516,6 +541,9 @@ class GroupsZone(QWidget):
         self.reservoir.dropped.connect(self._purger_hors_lot_reservoir)
         self.reservoir.dropped.connect(self.changed)
         lay.addWidget(self.reservoir)
+        # Vide, le réservoir se réduit à une bande de dépôt : la hauteur revient
+        # aux cadres des lignées (rognés sur un écran de portable, v3.97.2).
+        self.changed.connect(self._ajuster_reservoir)
 
         # Deux colonnes côte à côte : succession (gauche) | équivalence (droite),
         # chacune avec son propre ascenseur vertical.
@@ -689,9 +717,13 @@ class GroupsZone(QWidget):
         """
         lot = set(self._all_refs)
         listes = [self.reservoir] + [b.members for b in self.all_boxes()]
+        courante = (box.courante_input.text().strip()
+                    if box.courante_input is not None else "")
         for ref in refs:
             if ref in box.members.refs():
                 continue
+            if ref == courante and ref not in lot:
+                continue   # la courante n'est pas sa propre ancienne version
             for lst in listes:
                 if lst is box.members:
                     continue
