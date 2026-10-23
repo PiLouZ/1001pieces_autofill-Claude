@@ -3287,7 +3287,9 @@ class MainWindow(QMainWindow):
             cands = svc.find_candidates(ref_modele, commercial_ref, index, exclude_db_id=db_id)
             if cands:
                 found[db_id] = [c.to_dict() for c in cands]
-        found = self._ajouter_suggestions_type_piece(found, [i for i, _, _ in incomplete])
+        db_ids = [i for i, _, _ in incomplete]
+        found = self._ajouter_suggestions_type_piece(found, db_ids)
+        found = self._ajouter_suggestions_autre_ref(found, db_ids)
         return self._filtrer_suggestions_refusees(found)
 
     def _filtrer_suggestions_refusees(self, found):
@@ -3344,6 +3346,32 @@ class MainWindow(QMainWindow):
         except Exception as e:
             from ..core.logger import app_logger
             app_logger.error(f"Suggestions « type de la pièce » hors import échouées (non bloquant) : {e}")
+        return found
+
+    def _ajouter_suggestions_autre_ref(self, found, db_ids):
+        """Palier « Autre référence » hors import (v3.98.0) : pour chaque appareil
+        sans type, le type que portent les appareils au même texte « Autre
+        référence » (mêmes seuils et même fusion que l'import, cf.
+        fusionner_autre_ref). Ne fait jamais échouer le calcul des suggestions."""
+        if not Config.ENABLE_AUTRE_REF_SUGGESTION or not db_ids:
+            return found
+        try:
+            from ..services.reference_similarity_service import fusionner_autre_ref
+            lus = self.db_manager.lire_appareils_par_id(db_ids) or {}
+            sans_type = [i for i in db_ids if i in lus and not (lus[i][0] or '').strip()]
+            textes = self.db_manager.lire_autres_refs_par_id(sans_type) if sans_type else {}
+            if not textes:
+                return found
+            types_par_texte = self.db_manager.compter_types_par_autre_ref(textes.values())
+            for db_id, texte in textes.items():
+                fusion = fusionner_autre_ref(
+                    found.get(db_id, []), texte, types_par_texte,
+                    Config.AUTRE_REF_PART_MIN, Config.AUTRE_REF_APPAREILS_MIN)
+                if fusion is not None:
+                    found[db_id] = fusion
+        except Exception as e:
+            from ..core.logger import app_logger
+            app_logger.error(f"Suggestions « Autre référence » hors import échouées (non bloquant) : {e}")
         return found
 
     def _scan_all_for_suggestions(self):

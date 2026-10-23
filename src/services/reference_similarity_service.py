@@ -236,13 +236,69 @@ def fusionner_type_piece(existants: List[dict], refs_pieces: List[str],
     for ref in refs_pieces:
         for type_app, n in types_par_ref.get(ref, {}).items():
             compte[type_app] = compte.get(type_app, 0) + n
+    return _ajouter_type_vote(
+        existants, compte, part_min, appareils_min,
+        lambda type_vote, part, total: candidat_type_piece(type_vote, refs_pieces, part, total))
+
+
+def _ajouter_type_vote(existants: List[dict], compte: Dict[str, int], part_min: float,
+                       appareils_min: int, fabrique) -> Optional[List[dict]]:
+    """Tronc commun des paliers « type seul » : ajoute le candidat du type
+    dominant, sauf s'il n'y en a pas ou qu'un candidat le propose déjà (None)."""
     dominant = type_majoritaire(compte, part_min, appareils_min)
     if dominant is None:
         return None
-    type_piece, part, total = dominant
-    if any((c.get('type') or '').strip().lower() == type_piece.lower() for c in existants):
+    type_vote, part, total = dominant
+    if any((c.get('type') or '').strip().lower() == type_vote.lower() for c in existants):
         return None
-    return list(existants) + [candidat_type_piece(type_piece, refs_pieces, part, total)]
+    return list(existants) + [fabrique(type_vote, part, total)]
+
+
+# Palier « Autre référence » (v3.98.0) : candidat Type seul, voté par les appareils
+# typés qui portent EXACTEMENT le même texte « Autre référence » (souvent la
+# désignation du fichier fournisseur : « Lave-vaisselle tout-intégrable »). Un
+# indice, pas une certitude : un fichier peut être mal étiqueté (« Hotte
+# encastrable » sur des lave-linge) — le seuil de part l'écarte alors de lui-même.
+# 'ref' porte le texte, 'score' la part du type.
+TIER_AUTRE_REF = 'P_autre_ref'
+# Paliers qui ne proposent qu'un Type (marque à saisir)
+TIERS_TYPE_SEUL = (TIER_TYPE_PIECE, TIER_AUTRE_REF)
+
+
+def est_autre_ref(candidat: dict) -> bool:
+    return (candidat or {}).get('confidence_tier') == TIER_AUTRE_REF
+
+
+def est_type_seul(candidat: dict) -> bool:
+    return (candidat or {}).get('confidence_tier') in TIERS_TYPE_SEUL
+
+
+def candidat_autre_ref(type_vote: str, texte: str, part: float, nb_appareils: int) -> dict:
+    """Candidat au même format que SimilarityCandidate.to_dict()."""
+    return {
+        'ref': texte,
+        'type': type_vote,
+        'manufacturer': '',
+        'score': part,
+        'source': 'other_ref',
+        'confidence_tier': TIER_AUTRE_REF,
+        'db_id': None,
+        'nb_appareils': nb_appareils,
+    }
+
+
+def fusionner_autre_ref(existants: List[dict], texte: str,
+                        types_par_texte: Dict[str, Dict[str, int]], part_min: float,
+                        appareils_min: int) -> Optional[List[dict]]:
+    """Candidats d'un appareil après ajout du type voté par son texte « Autre
+    référence », ou None s'il n'y a rien à ajouter (même règle que
+    fusionner_type_piece : en concurrent, jamais en double)."""
+    texte = (texte or '').strip()
+    if not texte:
+        return None
+    return _ajouter_type_vote(
+        existants, dict(types_par_texte.get(texte, {})), part_min, appareils_min,
+        lambda type_vote, part, total: candidat_autre_ref(type_vote, texte, part, total))
 
 
 # ── Refus mémorisés (v3.94.0) ──────────────────────────────────────────────
@@ -276,9 +332,10 @@ LIBELLE_PREUVE = {
     'B_fuzzy_numeric': "Référence voisine",
     'C_prefix_consensus': "Famille de préfixe",
     TIER_TYPE_PIECE: "Type de la pièce",
+    TIER_AUTRE_REF: "Autre référence",
 }
 ORDRE_PREUVE = {'A_suffix_variant': 0, 'B_fuzzy_alpha': 1, 'B_fuzzy_numeric': 1,
-                TIER_TYPE_PIECE: 2, 'C_prefix_consensus': 3}
+                TIER_TYPE_PIECE: 2, TIER_AUTRE_REF: 2, 'C_prefix_consensus': 3}
 
 
 def pourcent(part: float) -> str:
@@ -288,7 +345,7 @@ def pourcent(part: float) -> str:
 
 def texte_preuve(candidat: dict) -> str:
     """La preuve en quelques caractères, avec son unité : « même réf. »,
-    « réf. 92 % », « préfixe 18/19 », « pièce 12/12 »."""
+    « réf. 92 % », « préfixe 18/19 », « pièce 12/12 », « autre réf. 12/12 »."""
     tier = (candidat or {}).get('confidence_tier')
     score = float((candidat or {}).get('score', 0) or 0)
     if tier == 'A_suffix_variant':
@@ -300,6 +357,9 @@ def texte_preuve(candidat: dict) -> str:
     if tier == TIER_TYPE_PIECE:
         n = int(candidat.get('nb_appareils') or 0)
         return f"pièce {round(score * n)}/{n}" if n else f"pièce {pourcent(score)}"
+    if tier == TIER_AUTRE_REF:
+        n = int(candidat.get('nb_appareils') or 0)
+        return f"autre réf. {round(score * n)}/{n}" if n else f"autre réf. {pourcent(score)}"
     return f"réf. {pourcent(score)}"
 
 
@@ -319,7 +379,7 @@ def risques_suggestion(candidats: List[dict]) -> List[str]:
     tier = meilleur.get('confidence_tier')
     if tier == 'C_prefix_consensus':
         risques.append("marque déduite d'une famille de références, sans appareil identique")
-    elif tier != TIER_TYPE_PIECE and tier != 'A_suffix_variant' \
+    elif tier not in TIERS_TYPE_SEUL and tier != 'A_suffix_variant' \
             and float(meilleur.get('score', 0) or 0) < 0.86:
         risques.append("ressemblance de référence faible")
     return risques
@@ -329,6 +389,9 @@ def decrire_candidat(candidat: dict) -> str:
     """Libellé d'un candidat pour les listes (fenêtre Cmd+D)."""
     if est_type_piece(candidat):
         return (f"{candidat.get('type', '')}  (type de la pièce {candidat.get('ref', '')}, "
+                f"{candidat.get('score', 0):.0%})")
+    if est_autre_ref(candidat):
+        return (f"{candidat.get('type', '')}  (autre réf. « {candidat.get('ref', '')} », "
                 f"{candidat.get('score', 0):.0%})")
     return (f"{candidat.get('type', '')} / {candidat.get('manufacturer', '')}  "
             f"(score {candidat.get('score', 0):.0%}, réf. {candidat.get('ref', '')})")
@@ -341,6 +404,8 @@ def provenance_candidat(candidat: dict) -> str:
         return candidat['provenance']
     if est_type_piece(candidat):
         return f"type de la pièce {candidat.get('ref', '')} ({candidat.get('score', 0):.0%})"
+    if est_autre_ref(candidat):
+        return f"autre réf. « {candidat.get('ref', '')} » ({candidat.get('score', 0):.0%})"
     return f"suggestion réf. {candidat.get('ref', '')} (score {candidat.get('score', 0):.0%})"
 
 
@@ -350,6 +415,11 @@ def infobulle_candidat(candidat: dict) -> str:
         return (f"Suggestion : {candidat.get('type', '')} — type de "
                 f"{candidat.get('score', 0):.0%} des {candidat.get('nb_appareils', 0)} appareils "
                 f"de la pièce {candidat.get('ref', '')} — clic pour voir les candidats")
+    if est_autre_ref(candidat):
+        return (f"Suggestion : {candidat.get('type', '')} — type de "
+                f"{candidat.get('score', 0):.0%} des {candidat.get('nb_appareils', 0)} appareils "
+                f"dont l'autre réf. est « {candidat.get('ref', '')} » (indice, pas une "
+                f"certitude) — clic pour voir les candidats")
     return (f"Suggestion : {candidat.get('type', '')} / {candidat.get('manufacturer', '')} "
             f"(score {candidat.get('score', 0):.0%}) — clic pour voir les candidats")
 

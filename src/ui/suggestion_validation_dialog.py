@@ -20,7 +20,8 @@ from PyQt5.QtGui import QColor, QBrush
 
 from src.core.config import pluralize
 from src.services.reference_similarity_service import (
-    LIBELLE_PREUVE, ORDRE_PREUVE, est_type_piece, pourcent, risques_suggestion, texte_preuve,
+    LIBELLE_PREUVE, ORDRE_PREUVE, est_autre_ref, est_type_piece, est_type_seul, pourcent,
+    risques_suggestion, texte_preuve,
 )
 from .fenetre_revue import (
     FenetreRevue, VALIDE, ATTENTE, COL_ETAT, entree as entree_de, html,
@@ -45,6 +46,7 @@ _TIER_LABEL = {
     'B_fuzzy_numeric': "Probable",
     'C_prefix_consensus': "À vérifier",
     'P_type_piece': "Type de la pièce",
+    'P_autre_ref': "Autre référence",
 }
 
 
@@ -170,13 +172,16 @@ class SuggestionValidationDialog(FenetreRevue):
         if mode == 'voisin':
             if est_type_piece(meilleur):
                 return (1, f"Pièce {meilleur.get('ref', '')}")
+            if est_autre_ref(meilleur):
+                return (1, f"Autre réf. « {meilleur.get('ref', '')} »")
             return (0, meilleur.get('ref') or "—")
         return None
 
     def _puces(self):
         puces = []
         for tier, libelle in (('A_suffix_variant', "Même réf."), ('B', "Réf. voisine"),
-                              ('P_type_piece', "Pièce"), ('C_prefix_consensus', "Préfixe")):
+                              ('P_type_piece', "Pièce"), ('P_autre_ref', "Autre réf."),
+                              ('C_prefix_consensus', "Préfixe")):
             if tier == 'B':
                 pred = lambda e: (_tier(e) or '').startswith('B_')
             else:
@@ -261,6 +266,11 @@ class SuggestionValidationDialog(FenetreRevue):
             n = int(cand.get('nb_appareils') or 0)
             return (f"{round(score * n)} des {n} appareils typés de la pièce <b>{ref}</b> "
                     f"sont de type « {html(cand.get('type'))} ». Marque à saisir.")
+        if est_autre_ref(cand):
+            n = int(cand.get('nb_appareils') or 0)
+            return (f"{round(score * n)} des {n} appareils typés dont l'autre référence est "
+                    f"« <b>{ref}</b> » sont de type « {html(cand.get('type'))} ». "
+                    f"Indice du fichier fournisseur, pas une certitude. Marque à saisir.")
         return f"Référence voisine <b>{ref}</b> — ressemblance {pourcent(score)}."
 
     @staticmethod
@@ -339,7 +349,7 @@ class SuggestionValidationDialog(FenetreRevue):
             retenu = item.data(COL_ETAT, _ROLE_CAND) or {}
             cand = {'type': type_v, 'manufacturer': mfr_v, 'ref': retenu.get('ref', '') or '',
                     'score': retenu.get('score', 0) or 0}
-            if est_type_piece(retenu):
+            if est_type_seul(retenu):
                 cand.update(confidence_tier=retenu['confidence_tier'],
                             nb_appareils=retenu.get('nb_appareils'))
             if item.data(COL_ETAT, _ROLE_EDITED):
