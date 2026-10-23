@@ -138,12 +138,23 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h2>Relations entre références</h2>
 
+<h3>À l'import d'un seul fichier</h3>
+<ul>
+  <li>Section <b>Succession</b> : « Cette réf. remplace », « est remplacée par » et « est équivalente à ». Plusieurs références sont possibles (séparées par un espace), sauf pour « remplacée par » : <b>une pièce n'a qu'une seule remplaçante</b>.</li>
+</ul>
+
 <h3>À l'import de plusieurs fichiers</h3>
 <ul>
-  <li><b>Lignées de succession</b> (bleu) : glissez les anciennes références dans une lignée et indiquez sa <b>courante</b> (double-clic sur une réf pour la promouvoir). Les anciennes deviennent obsolètes.</li>
-  <li><b>Groupes d'équivalence</b> (violet) : glissez les références interchangeables dans un même groupe.</li>
+  <li><b>Remplacée par</b>, sur chaque carte de fichier : la remplaçante <b>directe</b> de ce fichier (une seule réf ; du lot, de la base, ou nouvelle — elle est alors créée en fantôme). La case <b>Obsolète</b> se coche d'office.</li>
+  <li><b>Lignées de succession</b> (bleu) : glissez les anciennes références dans une lignée et indiquez sa <b>courante</b>, la réf la plus récente. Les anciennes deviennent obsolètes. Double-clic sur une réf de la lignée pour en faire la courante.</li>
+  <li><b>Raccord automatique</b> : un fichier qui a déjà une remplaçante sur sa carte peut être glissé tel quel dans la lignée. C'est sa remplaçante qui est reliée à la courante, et l'étape intermédiaire est conservée (ex. <code>2808540500 → C00904139 → C00904134</code>). Ces tuiles portent une icône de lien ; l'infobulle indique « via … » ou « direct ».</li>
+  <li><b>Double-clic sur la pastille « Remplacée par »</b> d'une carte : la réf devient la courante de la lignée qui contient ce fichier (à défaut, de la première lignée sans courante). Rien n'est écrasé si toutes les lignées ont déjà une courante.</li>
+  <li><b>Glisser-déposer</b> : une tuile se dépose sur un champ « Remplacée par » (elle y est copiée, et remplace la réf déjà saisie) ; une pastille de ce champ se glisse vers une lignée ou un groupe. Dans « Non groupées », <b>⌘ ou Maj + clic</b> sélectionne plusieurs tuiles à glisser ensemble.</li>
+  <li><b>Réfs hors lot</b> : « + ajouter des réfs hors lot… » au bas d'un cadre, pour une réf sans fichier (déjà en base ou nouvelle). Elle apparaît en italique avec un « + ».</li>
+  <li><b>Groupes d'équivalence</b> (violet) : glissez les références interchangeables dans un même groupe. Remplacement et équivalence restent distincts : une réf <b>remplacée</b> devient obsolète, une réf <b>équivalente</b> reste valide.</li>
   <li><b>Équivalence entre zones</b> : cochez « Équivalente » sur plusieurs lignées ou groupes ; une référence de chaque zone cochée (la courante d'une lignée, la première réf d'un groupe) est déclarée équivalente aux autres. Il faut au moins deux zones cochées <b>portant une référence</b>.</li>
-  <li>Le récapitulatif en bas indique ce qui sera réellement créé ; une alerte orange signale une déclaration sans effet et sa cause.</li>
+  <li><b>Arbre des remplacements</b> : sous les cadres, il montre en direct ce qui sera enregistré, avec la courante en racine ; « hors lot » signale les réfs sans fichier.</li>
+  <li>Le récapitulatif en bas indique ce qui sera réellement créé. Une alerte orange signale une déclaration sans effet, ou une <b>contradiction qui bloque l'import</b> : une réf qui aurait deux remplaçantes, ou une boucle (A → B → A).</li>
 </ul>
 
 <h3>Dans le gestionnaire de pièces</h3>
@@ -198,6 +209,10 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h2>Nouveautés depuis la version 3.78</h2>
 <ul>
+  <li><b>3.97</b> — Import de plusieurs fichiers : « Remplacée par » sur chaque carte, raccord automatique dans la lignée, arbre des remplacements, glisser-déposer des tuiles, double-clic pour désigner la courante.</li>
+  <li><b>3.95 – 3.96</b> — Exports HTML : « Code englobant » autour de la liste des marques et de la liste des appareils ; onglet HTML de la configuration des exports réorganisé.</li>
+  <li><b>3.92 – 3.94</b> — Bouton « Suggestions à valider (N) » ; fenêtres de revue à 3 états (validée, refusée, en attente), refus mémorisés.</li>
+  <li><b>3.91</b> — Plusieurs références dans les relations déclarées à l'import, et réfs hors lot dans les cadres.</li>
   <li><b>3.90</b> — Export de l'application pour <b>Windows</b> (portable, rien à installer), archive bien plus légère.</li>
   <li><b>3.89</b> — Auto-complétions en italique, fenêtre « Auto-complétés à vérifier », bouton « Tout valider », Espace coche/décoche partout.</li>
   <li><b>3.88</b> — Pièces communes par lignée ; l'import complète les appareils existants vides ; la fenêtre de suggestions les montre toutes.</li>

@@ -16,8 +16,10 @@ marque », ou « ces réfs interchangeables équivalent à cette lignée »). L'
 la courante d'une lignée, ou la repère / le 1er membre d'un groupe d'équivalence
 (cf. `cross_anchor`).
 
-En plus des groupes, chaque réf isolée peut être marquée obsolète et/ou « remplace
-une réf en base » (carte). Pur Python ; `apply_relations` écrit via un db_manager
+En plus des groupes, chaque réf isolée peut être marquée obsolète, « remplace
+une réf en base », et/ou « remplacée par » une réf (carte, v3.97.0 : remplaçante
+DIRECTE, qui peut elle-même être l'ancienne version d'une lignée — c'est ainsi
+qu'on chaîne A → B → C sans perdre l'étape B). Pur Python ; `apply_relations` écrit via un db_manager
 (`add_supersession`, `add_equivalence`, `mark_obsolete`, et `propagate_description`
 si le db l'expose — cf. `_propager_libelle`).
 """
@@ -43,6 +45,7 @@ class CardData:
     ref: str
     is_obsolete: bool = False
     base_replaces: Optional[str] = None              # réf base que cette réf remplace (base → ref)
+    replaced_by: Optional[str] = None                # remplaçante directe (ref → replaced_by), v3.97.0
 
 
 @dataclass
@@ -77,6 +80,141 @@ def cross_anchors(groups: List[Group]) -> List[str]:
     return [a for i, a in enumerate(anchors) if a not in anchors[:i]]
 
 
+def remplacantes_des_cartes(cards: List[CardData]) -> Dict[str, str]:
+    """{réf : remplaçante directe} saisies sur les cartes (« Remplacée par »)."""
+    return {c.ref: c.replaced_by for c in cards
+            if c.ref and c.replaced_by and c.replaced_by != c.ref}
+
+
+def fin_de_chaine(ref: str, remplacantes: Dict[str, str], arret: Optional[str] = None) -> Optional[str]:
+    """Dernière réf atteinte en suivant les « Remplacée par » des cartes depuis
+    `ref` (arrêt sur `arret` s'il est rencontré). None en cas de boucle."""
+    vues, cur = {ref}, ref
+    while cur in remplacantes and cur != arret:
+        cur = remplacantes[cur]
+        if cur in vues:
+            return None
+        vues.add(cur)
+    return cur
+
+
+def raccords_lignee(g: Group, remplacantes: Dict[str, str]) -> Dict[str, str]:
+    """Membres d'une lignée qui ont déjà une remplaçante sur leur carte :
+    {membre : fin de sa chaîne}. C'est cette fin, et non le membre, qui est
+    reliée à la courante (v3.97.1) : glisser un fichier dans la lignée suffit,
+    sans ressaisir sa remplaçante. Fin = courante → déjà raccordé (« direct »)."""
+    out = {}
+    if g.kind != KIND_SUCCESSION or not g.courante:
+        return out
+    for m in g.members:
+        if m and m != g.courante and m in remplacantes:
+            fin = fin_de_chaine(m, remplacantes, arret=g.courante)
+            if fin is not None:
+                out[m] = fin
+    return out
+
+
+def liens_lignee(g: Group, remplacantes: Dict[str, str]) -> List[Tuple[str, str]]:
+    """Liens (ancienne → courante) créés par une lignée, sans doublon.
+
+    Membre sans remplaçante sur sa carte : membre → courante (comportement
+    historique). Membre qui en a une : sa chaîne est raccordée par sa fin
+    (fin → courante), le lien membre → remplaçante venant de la carte. Une
+    chaîne qui boucle n'est pas raccordée (la boucle est signalée à part)."""
+    if g.kind != KIND_SUCCESSION or not g.courante:
+        return []
+    raccords = raccords_lignee(g, remplacantes)
+    liens: List[Tuple[str, str]] = []
+    for m in g.members:
+        if not m or m == g.courante:
+            continue
+        if m in remplacantes:
+            fin = raccords.get(m)
+            if fin is None or fin == g.courante:
+                continue
+            lien = (fin, g.courante)
+        else:
+            lien = (m, g.courante)
+        if lien not in liens:
+            liens.append(lien)
+    return liens
+
+
+def successions_prevues(groups: List[Group], cards: List[CardData]) -> List[Tuple[str, str]]:
+    """Liens (ancienne, nouvelle) déclarés, dans l'ordre et sans doublon exact :
+    lignées (cf. `liens_lignee`), « remplace » base → carte, carte → « remplacée par »."""
+    remplacantes = remplacantes_des_cartes(cards)
+    liens: List[Tuple[str, str]] = []
+    for g in groups:
+        liens += liens_lignee(g, remplacantes)
+    for c in cards:
+        if c.base_replaces and c.base_replaces != c.ref:
+            liens.append((c.base_replaces, c.ref))
+        if c.replaced_by and c.replaced_by != c.ref:
+            liens.append((c.ref, c.replaced_by))
+    return [l for i, l in enumerate(liens) if l not in liens[:i]]
+
+
+def arbre_remplacements(groups: List[Group], cards: List[CardData]) -> List[Tuple[str, list]]:
+    """Forêt des remplacements déclarés, pour l'aperçu : [(racine, enfants)] où
+    chaque enfant est lui-même (réf, enfants). Racine = réf qui remplace sans
+    être remplacée (la courante finale). Une réf déclarée avec deux remplaçantes
+    apparaît sous chacune (le conflit est signalé à part) ; une boucle, sans
+    racine, n'apparaît pas."""
+    liens = successions_prevues(groups, cards)
+    enfants: Dict[str, List[str]] = {}
+    anciennes = set()
+    for old, new in liens:
+        enfants.setdefault(new, []).append(old)
+        anciennes.add(old)
+    racines = [n for n in dict.fromkeys(new for _, new in liens) if n not in anciennes]
+
+    def _noeud(ref, chemin):
+        return (ref, [_noeud(e, chemin | {e}) for e in enfants.get(ref, []) if e not in chemin])
+
+    return [_noeud(r, {r}) for r in racines]
+
+
+def conflits_remplacement(groups: List[Group], cards: List[CardData]) -> List[str]:
+    """Déclarations de remplacement impossibles à enregistrer telles quelles.
+
+    - Une réf ne peut avoir qu'UNE remplaçante (clé primaire `ref_old` de
+      `piece_supersessions`) : deux remplaçantes différentes, et la dernière
+      écrite effacerait l'autre sans rien dire (INSERT OR REPLACE).
+    - Une boucle (A → B → A) serait refusée par la base, lien par lien.
+    Ce sont des erreurs de saisie, pas des « sans effet » : la validation bloque.
+    """
+    succ: Dict[str, List[str]] = {}
+    for old, new in successions_prevues(groups, cards):
+        succ.setdefault(old, [])
+        if new not in succ[old]:
+            succ[old].append(new)
+
+    msgs = []
+    for old, news in succ.items():
+        if len(news) > 1:
+            msgs.append(f"{old} est déclarée remplacée par {' et par '.join(news)} : "
+                        "une réf n'a qu'une seule remplaçante. Si elles sont "
+                        "interchangeables, déclarez-les équivalentes entre elles.")
+
+    # Boucles : suivies uniquement par les liens sans ambiguïté
+    unique = {o: n[0] for o, n in succ.items() if len(n) == 1}
+    deja = set()
+    for depart in unique:
+        chemin, ref = [], depart
+        while ref in unique and ref not in chemin:
+            chemin.append(ref)
+            ref = unique[ref]
+        if ref in chemin:
+            boucle = chemin[chemin.index(ref):]
+            cle = frozenset(boucle)
+            if cle not in deja:
+                deja.add(cle)
+                msgs.append("Boucle de remplacement : "
+                            + " → ".join(boucle + [ref]) + ".")
+    return msgs
+
+
 def derive(groups: List[Group], cards: List[CardData],
            lot_refs: Set[str], base_refs: Set[str]) -> DerivedModel:
     """Dérive les états visuels et de cohérence. Pur, sans effet."""
@@ -102,18 +240,27 @@ def derive(groups: List[Group], cards: List[CardData],
                     out.obsoletes.add(m)
                 if not g.courante:
                     out.warnings.append((m, "Lignée sans courante définie."))
+            for old, _ in liens_lignee(g, remplacantes_des_cartes(cards)):
+                out.obsoletes.add(old)          # fins de chaîne raccordées
         else:  # équivalence
             for m in g.members:
                 out.equiv_group_of[m] = gi
             if g.courante and g.courante not in lot_refs and g.courante not in base_refs:
                 cited_external.add(g.courante)
 
-    # Réfs isolées obsolètes (carte) + liens « remplace » base
+    # Réfs isolées obsolètes (carte) + liens « remplace » base + « remplacée par »
     for c in cards:
         if c.is_obsolete:
             out.obsoletes.add(c.ref)
         if c.base_replaces and c.base_replaces not in lot_refs and c.base_replaces not in base_refs:
             cited_external.add(c.base_replaces)
+        if c.replaced_by and c.replaced_by != c.ref:
+            out.obsoletes.add(c.ref)
+            if c.replaced_by not in lot_refs and c.replaced_by not in base_refs:
+                cited_external.add(c.replaced_by)
+
+    for msg in conflits_remplacement(groups, cards):
+        out.warnings.append(("", msg))
 
     # Checkbox « équivalente entre groupes » : courantes des groupes cochés
     out.cross_courantes = [a for a in (cross_anchor(g) for g in groups if g.cross_equivalent) if a]
@@ -132,12 +279,12 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
     counts = {'successions': 0, 'equivalences': 0, 'obsoletes': 0}
     obsoletes: Set[str] = set()
 
+    remplacantes = remplacantes_des_cartes(cards)
     for g in groups:
         if g.kind == KIND_SUCCESSION and g.courante:
-            for m in g.members:
-                if m and m != g.courante:
-                    counts['successions'] += 1
-                    obsoletes.add(m)
+            for old, _ in liens_lignee(g, remplacantes):
+                counts['successions'] += 1
+                obsoletes.add(old)
         elif g.kind == KIND_EQUIVALENCE:
             members = [m for i, m in enumerate(g.members) if m and m not in g.members[:i]]
             if g.courante and g.courante not in members:
@@ -149,6 +296,9 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
             obsoletes.add(c.ref)
         if c.base_replaces and c.base_replaces != c.ref:
             counts['successions'] += 1
+        if c.replaced_by and c.replaced_by != c.ref:
+            counts['successions'] += 1
+            obsoletes.add(c.ref)
 
     cross = cross_anchors(groups)
     counts['equivalences'] += max(0, len(cross) - 1)
@@ -157,9 +307,12 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
     return counts
 
 
-def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str, int]:
+def apply_relations(groups: List[Group], cards: List[CardData], db,
+                    journal: Optional[List[str]] = None) -> Dict[str, int]:
     """Applique le modèle en base via `db`. Retourne un récap de comptes.
-    Ne lève jamais (les primitives renvoient (ok, msg) ou bool)."""
+    Ne lève jamais (les primitives renvoient (ok, msg) ou bool).
+    `journal` (facultatif) reçoit chaque lien créé (« A → B », « A ≡ B ») et
+    chaque refus (« A → B refusé : … »), pour le log de l'import."""
     counts = {'successions': 0, 'equivalences': 0, 'obsoletes': 0, 'errors': 0}
 
     def _ok(res):
@@ -185,15 +338,27 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
         except Exception:
             pass
 
+    def _noter(lien, res, ok):
+        if journal is None:
+            return
+        if ok:
+            journal.append(lien)
+        else:
+            motif = res[1] if isinstance(res, (tuple, list)) and len(res) > 1 else ""
+            journal.append(f"{lien} refusé" + (f" : {motif}" if motif else ""))
+
     def _superse(old, new):
         if not old or not new or old == new:
             return
         try:
-            ok = _ok(db.add_supersession(old, new))
-        except Exception:
+            res = db.add_supersession(old, new)
+            ok = _ok(res)
+        except Exception as e:
             counts['errors'] += 1
+            _noter(f"{old} → {new}", (False, str(e)), False)
             return
         counts['successions' if ok else 'errors'] += 1
+        _noter(f"{old} → {new}", res, ok)
         if ok:
             _propager_libelle(old, new)
 
@@ -201,11 +366,14 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
         if not a or not b or a == b:
             return
         try:
-            ok = _ok(db.add_equivalence(a, b))
-        except Exception:
+            res = db.add_equivalence(a, b)
+            ok = _ok(res)
+        except Exception as e:
             counts['errors'] += 1
+            _noter(f"{a} ≡ {b}", (False, str(e)), False)
             return
         counts['equivalences' if ok else 'errors'] += 1
+        _noter(f"{a} ≡ {b}", res, ok)
         if ok:
             _propager_libelle(a, b)
 
@@ -216,13 +384,13 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
             counts['errors'] += 1
 
     obsoletes: Set[str] = set()
+    remplacantes = remplacantes_des_cartes(cards)
 
     for g in groups:
         if g.kind == KIND_SUCCESSION and g.courante:
-            for m in g.members:
-                if m != g.courante:
-                    _superse(m, g.courante)
-                    obsoletes.add(m)
+            for old, new in liens_lignee(g, remplacantes):
+                _superse(old, new)
+                obsoletes.add(old)
         elif g.kind == KIND_EQUIVALENCE:
             members = [m for i, m in enumerate(g.members) if m not in g.members[:i]]
             if g.courante and g.courante not in members:
@@ -230,12 +398,15 @@ def apply_relations(groups: List[Group], cards: List[CardData], db) -> Dict[str,
             for m in members[1:]:
                 _equiv(members[0], m)
 
-    # Réfs isolées obsolètes + « remplace » base (carte)
+    # Réfs isolées obsolètes + « remplace » base + « remplacée par » (carte)
     for c in cards:
         if c.is_obsolete:
             obsoletes.add(c.ref)
         if c.base_replaces:
             _superse(c.base_replaces, c.ref)
+        if c.replaced_by and c.replaced_by != c.ref:
+            _superse(c.ref, c.replaced_by)
+            obsoletes.add(c.ref)
 
     for ref in obsoletes:
         _obsolete(ref)

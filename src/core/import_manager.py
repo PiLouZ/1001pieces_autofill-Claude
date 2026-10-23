@@ -681,6 +681,7 @@ class ImportDialog(QDialog):
             self._succ_radio_files = []
             self._equiv_checkboxes = []
             self._obsolete_checkboxes = []
+            self._remplacee_par_inputs = []
 
             succ_container = QWidget()
             succ_container_layout = QVBoxLayout(succ_container)
@@ -762,6 +763,7 @@ class ImportDialog(QDialog):
             self._equiv_checkboxes = []
             self._obsolete_checkbox = None
             self._obsolete_checkboxes = []
+            self._remplacee_par_inputs = []
 
             individual_group = QGroupBox("Références individuelles par fichier")
             individual_layout = QVBoxLayout()
@@ -937,6 +939,7 @@ class ImportDialog(QDialog):
                 ref_input_edit = QLineEdit()
                 ref_input_edit.setPlaceholderText("Référence pièce (ex: AS6015830)")
                 ref_input_edit.setObjectName(f"ref_input_{file.path}")
+                ref_input_edit.textChanged.connect(self._pousser_cartes_relations)
                 ref_input_edit.setFixedWidth(200)
                 ref_input_edit.setStyleSheet(
                     "padding: 3px 6px; border: 2px solid #0066cc; border-radius: 4px; background: white;"
@@ -993,9 +996,12 @@ class ImportDialog(QDialog):
                 obs_check.setToolTip("Marquer cette référence comme obsolète (plus fabriquée)")
                 obs_check.setStyleSheet("font-size: 11px; color: #c0392b; background: transparent; border: none;")
                 self._obsolete_checkboxes.append((obs_check, file))
+                obs_check.stateChanged.connect(self._pousser_cartes_relations)
                 row2.addWidget(obs_check)
 
             card_layout.addLayout(row2)
+            if self.import_config.import_type == ImportType.MULTI_FILE:
+                card_layout.addLayout(self._ligne_remplacee_par(file, obs_check))
             self.individual_refs_widget.addWidget(file_container)
 
         # Initialiser l'affichage des références selon l'état par défaut de la case à cocher
@@ -1003,6 +1009,7 @@ class ImportDialog(QDialog):
 
         # Autocomplétion pour les champs de succession (fichier unique)
         self._setup_succession_autocomplete()
+        self._pousser_cartes_relations()
     
     def _build_relations_zone(self):
         """Construit la zone de relations « par groupes » (lignées de succession +
@@ -1190,6 +1197,7 @@ class ImportDialog(QDialog):
         """Gère le changement d'état de la case 'Références automatiques'"""
         # Mettre à jour l'affichage des références selon l'état de la case
         self._update_references_display()
+        self._pousser_cartes_relations()
     
     def _update_references_display(self):
         """Met à jour l'affichage des références selon l'état de la case à cocher"""
@@ -1218,6 +1226,14 @@ class ImportDialog(QDialog):
         self._collecter_options_format(config)
         self._collecter_relations(config)
         self._collecter_mapping_colonnes(config)
+
+        # Blocage : remplacements contradictoires (deux remplaçantes pour une réf,
+        # boucle). Rien de sensé à « importer quand même » : la base garderait la
+        # dernière remplaçante écrite, ou refuserait la boucle en silence.
+        conflits = self._conflits_remplacement(config)
+        if conflits:
+            self._signaler_conflits_remplacement(conflits)
+            return
 
         # Garde-fou : une option d'équivalence est cochée mais l'état déclaré ne
         # produira AUCUNE équivalence → avertir avant de lancer l'import (sinon
@@ -1252,20 +1268,23 @@ class ImportDialog(QDialog):
         auto_references_enabled = self.auto_file_references_checkbox.isChecked()
 
         for file in config.files:
-            # Référence — champ éditable pour le clipboard, sinon basé sur le fichier
-            if file.type == FileType.CLIPBOARD:
-                ref_input_edit = self.findChild(QLineEdit, f"ref_input_{file.path}")
-                config.individual_references[file.path] = ref_input_edit.text().strip() if ref_input_edit else ""
-            elif auto_references_enabled:
-                config.individual_references[file.path] = file.suggested_reference
-            else:
-                config.individual_references[file.path] = ""
+            config.individual_references[file.path] = self._ref_du_fichier(file, auto_references_enabled)
 
             # Libellé = ce que tape l'utilisateur (peut être vide)
             desc_input = self.findChild(QLineEdit, f"desc_{file.path}")
             if desc_input:
                 user_label = desc_input.text().strip()
                 config.individual_labels[file.path] = user_label if user_label else ""
+
+    def _ref_du_fichier(self, file, auto_references_enabled):
+        """Référence de pièce d'un fichier : champ éditable pour le collage, sinon
+        déduite du nom de fichier (si l'option automatique est cochée)."""
+        if file.type == FileType.CLIPBOARD:
+            ref_input_edit = self.findChild(QLineEdit, f"ref_input_{file.path}")
+            return ref_input_edit.text().strip() if ref_input_edit else ""
+        if auto_references_enabled:
+            return file.suggested_reference
+        return ""
 
     # Libellé du menu « 3ᵉ colonne » → valeur de ImportConfiguration.third_column_choice
     _CHOIX_TROISIEME_COLONNE = {
@@ -1302,19 +1321,8 @@ class ImportDialog(QDialog):
         # _apply_relations_from_config. Porte aussi l'obsolescence multi-fichiers.
         if (config.import_type == ImportType.MULTI_FILE
                 and getattr(self, '_relations_groups_zone', None) is not None):
-            from ..services.import_relations import CardData
             config.relations_groups = self._relations_groups_zone.groups()
-            obs_by_ref = {}
-            for obs_check, file in (self._obsolete_checkboxes or []):
-                ref = config.individual_references.get(file.path, '') or ''
-                if ref:
-                    obs_by_ref[ref] = obs_check.isChecked()
-            seen, cards = set(), []
-            for ref in config.individual_references.values():
-                if ref and ref not in seen:
-                    seen.add(ref)
-                    cards.append(CardData(ref=ref, is_obsolete=obs_by_ref.get(ref, False)))
-            config.relations_cards = cards
+            config.relations_cards = self._cartes_relations(config.individual_references)
 
         # Obsolète — fichier unique
         if self._obsolete_checkbox is not None and self._obsolete_checkbox.isChecked():
@@ -1323,6 +1331,102 @@ class ImportDialog(QDialog):
             )
             if ref:
                 config.obsolete_refs.append(ref)
+
+    def _cartes_relations(self, refs_par_fichier):
+        """Données des cartes de fichiers (multi-fichiers) : Obsolète et
+        « Remplacée par », une CardData par réf (sans doublon, ordre des fichiers).
+        Source unique du récap en direct et de la configuration d'import."""
+        from ..services.import_relations import CardData
+        obs_by_ref, rempl_by_ref = {}, {}
+        for obs_check, file in (getattr(self, '_obsolete_checkboxes', None) or []):
+            ref = refs_par_fichier.get(file.path, '') or ''
+            if ref:
+                obs_by_ref[ref] = obs_check.isChecked()
+        for chips, file in (getattr(self, '_remplacee_par_inputs', None) or []):
+            ref = refs_par_fichier.get(file.path, '') or ''
+            nouvelle = next(iter(chips.refs()), None)
+            if ref and nouvelle:
+                rempl_by_ref[ref] = nouvelle
+        seen, cards = set(), []
+        for ref in refs_par_fichier.values():
+            if ref and ref not in seen:
+                seen.add(ref)
+                cards.append(CardData(ref=ref, is_obsolete=obs_by_ref.get(ref, False),
+                                      replaced_by=rempl_by_ref.get(ref)))
+        return cards
+
+    def _pousser_cartes_relations(self, *_):
+        """Transmettre l'état des cartes à la zone de relations (récap + alertes)."""
+        zone = getattr(self, '_relations_groups_zone', None)
+        if zone is None:
+            return
+        auto = self.auto_file_references_checkbox.isChecked()
+        refs = {f.path: self._ref_du_fichier(f, auto) for f in self.import_config.files}
+        zone.set_cards(self._cartes_relations(refs))
+
+    def _sur_remplacee_par_change(self, chips, obs_check):
+        """Une réf remplacée devient obsolète : la case est cochée et verrouillée
+        tant qu'une remplaçante est saisie, puis rendue dans son état d'avant."""
+        if chips.refs():
+            if obs_check.isEnabled():
+                obs_check.setProperty("etat_avant_remplacement", obs_check.isChecked())
+                obs_check.setChecked(True)
+                obs_check.setEnabled(False)
+                obs_check.setToolTip("Obsolète d'office : cette réf est remplacée.")
+        elif not obs_check.isEnabled():
+            obs_check.setEnabled(True)
+            obs_check.setChecked(bool(obs_check.property("etat_avant_remplacement")))
+            obs_check.setToolTip("Marquer cette référence comme obsolète (plus fabriquée)")
+        self._pousser_cartes_relations()
+
+    def _remplacante_comme_courante(self, file, ref):
+        """Double-clic sur la pastille « Remplacée par » : la réf devient la
+        courante de la lignée du fichier (évite de la saisir une 2ᵉ fois)."""
+        zone = getattr(self, '_relations_groups_zone', None)
+        if zone is None:
+            return
+        auto = self.auto_file_references_checkbox.isChecked()
+        zone.definir_courante(self._ref_du_fichier(file, auto), ref)
+
+    def _ligne_remplacee_par(self, file, obs_check):
+        """Ligne « ↳ Remplacée par » d'une carte multi-fichiers (v3.97.0) :
+        remplaçante DIRECTE de la réf du fichier (1 réf : lot, base ou nouvelle,
+        créée alors en fantôme). Elle peut elle-même être l'ancienne version
+        d'une lignée : c'est ce qui permet A → B → C sans perdre B."""
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        lbl = QLabel("↳ Remplacée par :")
+        lbl.setStyleSheet("font-size: 11px; color: #495057; background: transparent; border: none;")
+        lbl.setFixedWidth(100)
+        row.addWidget(lbl)
+        chips = RefChipsInput("Remplaçante directe (saisir ou glisser une réf)", max_refs=1,
+                               accepte_depot=True)
+        chips.setToolTip(
+            "Nouvelle réf. qui remplace directement celle de ce fichier.\n"
+            "Une seule : une pièce n'est remplacée que par une autre.\n"
+            "Glissez ici une tuile (réf du lot, de la base ou fantôme).\n"
+            "Double-clic sur la réf saisie : elle devient la courante de la lignée.\n"
+            "Glissez ensuite ce fichier dans une lignée : sa remplaçante y sera\n"
+            "raccordée à la courante, sans la ressaisir.")
+        if getattr(self, '_remplacee_par_model', None) is None:
+            lot = [f.suggested_reference for f in self.import_config.files
+                   if getattr(f, 'suggested_reference', '')]
+            base = (self._relations_base_model.stringList()
+                    if getattr(self, '_relations_base_model', None) is not None else [])
+            vus = set()
+            refs = [r for r in lot + base if r and not (r in vus or vus.add(r))]
+            # Référence persistante sur le modèle (piège GC du QCompleter)
+            self._remplacee_par_model = QStringListModel(refs, self)
+        completer = QCompleter(self._remplacee_par_model, chips)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        chips.setCompleter(completer)
+        chips.changed.connect(lambda: self._sur_remplacee_par_change(chips, obs_check))
+        chips.pastille_double_cliquee.connect(
+            lambda ref, f=file: self._remplacante_comme_courante(f, ref))
+        self._remplacee_par_inputs.append((chips, file))
+        row.addWidget(chips, 1)
+        return row
 
     def _collecter_mapping_colonnes(self, config: ImportConfiguration):
         """Mapping de colonnes personnalisé (v3.30.0)."""
@@ -1363,6 +1467,28 @@ class ImportDialog(QDialog):
             msg += "\n\n" + "\n".join(f"• {d}" for d in details)
         msg += "\n\nImporter quand même (sans équivalence) ?"
         return msg
+
+    def _conflits_remplacement(self, config) -> List[str]:
+        """Remplacements contradictoires déclarés (multi-fichiers), vide sinon."""
+        if config.relations_groups is None and config.relations_cards is None:
+            return []
+        from ..services.import_relations import conflits_remplacement
+        return conflits_remplacement(config.relations_groups or [],
+                                     config.relations_cards or [])
+
+    def _signaler_conflits_remplacement(self, conflits: List[str]):
+        """Message bloquant (show, jamais exec_) : retour au dialogue pour corriger."""
+        from PyQt5.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Remplacements contradictoires")
+        box.setText("Ces remplacements ne peuvent pas être enregistrés tels quels :\n\n"
+                    + "\n".join(f"• {c}" for c in conflits)
+                    + "\n\nCorrigez-les avant d'importer.")
+        box.setStandardButtons(QMessageBox.Ok)
+        box.setWindowModality(Qt.WindowModal)
+        box.finished.connect(lambda *_: box.deleteLater())
+        box.show()
 
     def _reference_manquante_warning_message(self, config) -> Optional[str]:
         """Message d'avertissement si un collage va être importé SANS référence de
@@ -2706,7 +2832,13 @@ class ImportManager:
             from ..services.import_relations import apply_relations
             groups = config.relations_groups or []
             cards = config.relations_cards or []
-            counts = apply_relations(groups, cards, self.db_manager)
+            journal = []
+            counts = apply_relations(groups, cards, self.db_manager, journal=journal)
+            for lien in journal:
+                if "refusé" in lien:
+                    app_logger.warning(f"Relation import : {lien}")
+                else:
+                    app_logger.info(f"Relation import : {lien}")
             results['succession_created'] = results.get('succession_created', 0) + counts.get('successions', 0)
             results['equivalences_created'] = results.get('equivalences_created', 0) + counts.get('equivalences', 0)
             results['obsoletes_marked'] = results.get('obsoletes_marked', 0) + counts.get('obsoletes', 0)
