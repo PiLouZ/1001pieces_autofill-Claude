@@ -1711,6 +1711,47 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 out.setdefault(ref, {})[type_app] = n
         return out
 
+    def compter_types_par_autre_ref(self, textes) -> Dict[str, Dict[str, int]]:
+        """Nombre d'appareils typés par type, pour chaque texte « Autre référence »
+        (v3.98.0). Comparaison exacte, par l'index idx_appareils_other_ref : la
+        mesure du 2026-10-23 n'a rien gagné à ignorer casse et ponctuation.
+
+        Returns:
+            {texte: {type: nombre d'appareils}} — les textes sans appareil typé
+            sont absents. {} si la lecture échoue (execute_query l'avale).
+        """
+        textes_tries = sorted({(t or '').strip() for t in textes} - {''})
+        out: Dict[str, Dict[str, int]] = {}
+        for debut in range(0, len(textes_tries), 500):
+            lot = textes_tries[debut:debut + 500]
+            marqueurs = ','.join('?' * len(lot))
+            rows = self.execute_query(
+                f"""SELECT other_ref, TRIM(type), COUNT(*)
+                    FROM appareils
+                    WHERE other_ref IN ({marqueurs})
+                      AND COALESCE(TRIM(type), '') <> ''
+                    GROUP BY other_ref, TRIM(type)""", lot) or []
+            for texte, type_app, n in rows:
+                out.setdefault(texte, {})[type_app] = n
+        return out
+
+    @_with_query_lock
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur lecture autres réf. par id")
+    def lire_autres_refs_par_id(self, db_ids) -> Optional[Dict[int, str]]:
+        """{id: texte « Autre référence »} des appareils désignés qui en ont un.
+        None si la lecture a échoué."""
+        ids = list(dict.fromkeys(db_ids))
+        out = {}
+        for debut in range(0, len(ids), self._TAILLE_LOT_IDS):
+            lot = ids[debut:debut + self._TAILLE_LOT_IDS]
+            marqueurs = ",".join("?" * len(lot))
+            self.cursor.execute(
+                f"SELECT id, other_ref FROM appareils WHERE id IN ({marqueurs}) "
+                "AND COALESCE(TRIM(other_ref), '') <> ''", lot)
+            for db_id, texte in self.cursor.fetchall():
+                out[db_id] = texte.strip()
+        return out
+
     # Une pièce portée par plus d'appareils que cela (joint, courroie…) va sur tous
     # les types : elle ne vote pas. Mesure 2026-10-22 : lecture ×10 plus rapide
     # (90ᵉ centile 522 → 18 ms, pire cas 868 → 93 ms).

@@ -3521,7 +3521,43 @@ class ImportManager:
         référence, complétée par le type de la pièce importée. Jamais d'écriture,
         jamais d'échec d'import (chaque étape attrape ses erreurs)."""
         suggestions = self._suggestions_par_similarite(progress_cb=progress_cb)
-        return self._ajouter_suggestions_type_piece(suggestions)
+        suggestions = self._ajouter_suggestions_type_piece(suggestions)
+        return self._ajouter_suggestions_autre_ref(suggestions)
+
+    def _ajouter_suggestions_autre_ref(self, suggestions: Dict[int, list]) -> Dict[int, list]:
+        """Ajoute, pour chaque ligne SANS type, le type que portent déjà au moins
+        AUTRE_REF_PART_MIN des appareils au même texte « Autre référence » (au
+        moins AUTRE_REF_APPAREILS_MIN appareils typés). Même fusion que le type
+        de la pièce : en concurrent, jamais en double.
+        """
+        from .config import Config
+        if not Config.ENABLE_AUTRE_REF_SUGGESTION:
+            return suggestions
+        try:
+            from ..services.reference_similarity_service import fusionner_autre_ref
+            lignes = [d for d in getattr(self, '_pending_similarity_candidates', [])
+                      if d.get('id') and not (d.get('type') or '').strip()
+                      and (d.get('other_ref') or '').strip()]
+            if not lignes:
+                return suggestions
+            types_par_texte = self.db_manager.compter_types_par_autre_ref(
+                d['other_ref'] for d in lignes)
+
+            ajoutees = 0
+            for d in lignes:
+                fusion = fusionner_autre_ref(
+                    suggestions.get(d['id'], []), d['other_ref'], types_par_texte,
+                    Config.AUTRE_REF_PART_MIN, Config.AUTRE_REF_APPAREILS_MIN)
+                if fusion is None:
+                    continue          # texte inconnu, partagé, ou type déjà proposé
+                suggestions[d['id']] = fusion
+                ajoutees += 1
+            app_logger.info(f"Suggestions « Autre référence » : {ajoutees} appareil(s) "
+                            f"sur {len(lignes)} ligne(s) sans type")
+            return suggestions
+        except Exception as e:
+            app_logger.error(f"Suggestions « Autre référence » échouées (non bloquant) : {e}")
+            return suggestions
 
     def _ajouter_suggestions_type_piece(self, suggestions: Dict[int, list]) -> Dict[int, list]:
         """Ajoute, pour chaque ligne SANS type, le type que portent déjà au moins
