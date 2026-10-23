@@ -16,6 +16,7 @@
 - Les dialogues utilisent `show()` + callbacks — jamais `exec_()` (évite le freeze macOS)
 - La sauvegarde passe toujours par `EventDrivenSaveService`, jamais directement sur le DB manager
 - Les constantes sont centralisées dans `src/core/constants.py`
+- Toute évolution visible complète le Guide `docs/guide_utilisation.html` dans la même PR (section concernée + ligne « Nouveautés »)
 
 ## Flags de configuration clés (`src/core/config.py`)
 - `Config.USE_FTS5 = True` — index FTS5 trigram actif
