@@ -7,7 +7,7 @@ Module centralisé des imports PyQt5
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QDialog,
     QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
-    QLabel, QPushButton, QLineEdit, QTextEdit, QTextBrowser,
+    QLabel, QPushButton, QLineEdit, QTextEdit, QPlainTextEdit, QTextBrowser,
     QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QHeaderView,
     QAbstractItemView, QListWidget, QListWidgetItem, QTreeWidget, QTreeWidgetItem, QComboBox, QCheckBox,
     QInputDialog, QMessageBox, QFileDialog, QProgressDialog, QDialogButtonBox,
@@ -28,7 +28,8 @@ from PyQt5.QtCore import (
 # GUI et graphiques
 from PyQt5.QtGui import (
     QKeySequence, QPainter, QPen, QColor, QBrush, QKeyEvent,
-    QFont, QPixmap, QIcon, QImage, QPalette, QCursor, QTextCursor
+    QFont, QPixmap, QIcon, QImage, QPalette, QCursor, QTextCursor,
+    QFontDatabase, QTextOption
 )
 
 # Types d'événements Qt couramment utilisés
@@ -41,7 +42,7 @@ __all__ = [
     # Widgets
     'QApplication', 'QMainWindow', 'QWidget', 'QDialog',
     'QVBoxLayout', 'QHBoxLayout', 'QGridLayout', 'QFormLayout',
-    'QLabel', 'QPushButton', 'QLineEdit', 'QTextEdit', 'QTextBrowser',
+    'QLabel', 'QPushButton', 'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QTextBrowser',
     'QTableWidget', 'QTableWidgetItem', 'QTableWidgetSelectionRange', 'QHeaderView',
     'QAbstractItemView', 'QListWidget', 'QListWidgetItem', 'QTreeWidget', 'QTreeWidgetItem', 'QComboBox', 'QCheckBox',
     'QInputDialog', 'QMessageBox', 'QFileDialog', 'QProgressDialog', 'QDialogButtonBox',
@@ -56,6 +57,7 @@ __all__ = [
     # GUI
     'QKeySequence', 'QPainter', 'QPen', 'QColor', 'QBrush', 'QKeyEvent',
     'QFont', 'QPixmap', 'QIcon', 'QImage', 'QPalette', 'QCursor', 'QTextCursor',
+    'QFontDatabase', 'QTextOption',
     
     # Aliases
     'QtEvent', 'QEventType'

@@ -20,6 +20,7 @@ from .qt_imports import (
 )
 from src.core.logger import app_logger
 from .style_manager import StyleManager
+from .champ_modele_html import ChampModeleHtml
 
 
 def _make_icon_toggle(btn, icon_name, icon_color):
@@ -491,7 +492,12 @@ class ExportConfigDialog(QDialog):
         """Ajouter « libellé | champ » (+ puces de variables sous le champ)."""
         row = grid.rowCount()
         lbl = QLabel(libelle)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        if isinstance(champ, ChampModeleHtml):
+            # Zone sur plusieurs lignes : étiquette en face de la 1ʳᵉ ligne
+            lbl.setAlignment(Qt.AlignRight | Qt.AlignTop)
+            lbl.setContentsMargins(0, 6, 0, 0)
+        else:
+            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         grid.addWidget(lbl, row, 0)
         if isinstance(champ, QHBoxLayout):
             grid.addLayout(champ, row, 1)
@@ -506,7 +512,7 @@ class ExportConfigDialog(QDialog):
             "Bouton HTML Marques : un lien par marque, joints par le séparateur.",
         )
 
-        self.html_link_tpl = QLineEdit()
+        self.html_link_tpl = ChampModeleHtml()
         self._add_grid_row(grid, "Lien de chaque marque :", self.html_link_tpl, VariableChipsBar(
             [("marque", "Nom de la marque")],
             targets=[self.html_link_tpl],
@@ -520,7 +526,7 @@ class ExportConfigDialog(QDialog):
         sep_row.addStretch()
         self._add_grid_row(grid, "Séparateur :", sep_row)
 
-        self.html_brands_wrapper = QLineEdit()
+        self.html_brands_wrapper = ChampModeleHtml()
         self.html_brands_wrapper.setPlaceholderText('{liens}')
         self.html_brands_wrapper.setToolTip(
             "Code placé autour de la liste complète des liens.\n"
@@ -566,10 +572,10 @@ class ExportConfigDialog(QDialog):
             profile_bar.addWidget(btn)
         self._add_grid_row(grid, "Profil :", profile_bar)
 
-        self.html_brand_header_tpl = QLineEdit()
+        self.html_brand_header_tpl = ChampModeleHtml()
         self._add_grid_row(grid, "En-tête de marque :", self.html_brand_header_tpl)
 
-        self.html_model_line_tpl = QLineEdit()
+        self.html_model_line_tpl = ChampModeleHtml()
         self._add_grid_row(grid, "Ligne modèle :", self.html_model_line_tpl, VariableChipsBar(
             [
                 ("marque",          "Nom de la marque"),
@@ -582,10 +588,10 @@ class ExportConfigDialog(QDialog):
             targets=[self.html_brand_header_tpl, self.html_model_line_tpl],
         ))
 
-        self.html_group_sep = QLineEdit()
+        self.html_group_sep = ChampModeleHtml()
         self._add_grid_row(grid, "Séparateur entre marques :", self.html_group_sep)
 
-        self.html_details_wrapper = QLineEdit()
+        self.html_details_wrapper = ChampModeleHtml()
         self.html_details_wrapper.setPlaceholderText('{appareils}')
         self.html_details_wrapper.setToolTip(
             "Code placé autour de la liste complète des appareils (propre au profil).\n"
