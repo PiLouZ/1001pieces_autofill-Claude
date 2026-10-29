@@ -102,7 +102,8 @@ class AppExportService(BaseService):
             "archive .zip.<br><br>"
             "<b>Windows</b> : version portable, Python inclus — dézipper puis "
             "double-cliquer, rien à installer.<br>"
-            "<b>macOS</b> : nécessite Python 3.10+ sur le Mac cible.")
+            f"<b>macOS</b> : nécessite Python {sys.version_info.major}."
+            f"{sys.version_info.minor} (la version de ce poste) sur le Mac cible.")
         windows = boite.addButton("Windows", QMessageBox.AcceptRole)
         macos = boite.addButton("macOS", QMessageBox.ActionRole)
         boite.addButton("Annuler", QMessageBox.RejectRole)
@@ -156,9 +157,11 @@ class AppExportService(BaseService):
                     etapes = ("  1. Dézipper l'archive (clic droit → Extraire tout…)\n"
                               "  2. Double-clic sur 1001pieces_autofill.bat")
                 else:
+                    version = f"{sys.version_info.major}.{sys.version_info.minor}"
                     etapes = ("  1. Dézipper l'archive\n"
-                              "  2. Double-clic sur install.command   (une seule fois)\n"
-                              "  3. Double-clic sur 1001pieces_autofill.app")
+                              f"  2. Installer Python {version} s'il est absent\n"
+                              "  3. Double-clic sur install.command   (une seule fois)\n"
+                              "  4. Double-clic sur 1001pieces_autofill.app")
                 MessageHelper.show_info(
                     parent,
                     f"Export terminé avec succès !\n\n"

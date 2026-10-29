@@ -8,7 +8,8 @@ poste, au choix :
   les dépendances sont inclus ; sur le poste cible, on dézippe puis on
   double-clique sur 1001pieces_autofill.bat. Rien à installer.
 - **macOS** : code + dépendances (wheels) ; install.command crée un
-  environnement virtuel avec le Python du poste cible.
+  environnement virtuel avec le Python du poste cible, de la même version
+  (et architecture) que le Python qui exporte, seul compatible avec les wheels.
 
 N'est copié que le nécessaire pour faire tourner l'application (liste blanche) :
 code, icône, guide d'utilisation, réglages d'export et UNE base de données, la
@@ -241,41 +242,124 @@ def _download_wheels(frozen_req: Path, wheels_dir: Path, progress_callback=None)
     return True
 
 
+def _python_requis() -> tuple:
+    """(version « 3.13 », architecture « arm64 ») du Python qui exporte.
+
+    Les wheels sont téléchargés par ce Python : ils ne s'installent qu'avec la
+    même version mineure et la même architecture sur le Mac cible.
+    """
+    import platform
+    return f"{sys.version_info.major}.{sys.version_info.minor}", platform.machine()
+
+
 def _write_install_script(dest: Path):
-    """Crée install.sh sur la machine cible."""
+    """Crée install.command sur la machine cible.
+
+    Cherche le Python de la version des wheels (pas le premier python3 venu),
+    lève la quarantaine macOS du dossier (sinon le lanceur .app téléchargé est
+    bloqué) et recrée le venv à chaque passage (un essai raté ne gêne pas).
+    """
+    version, arch = _python_requis()
     content = """\
 #!/usr/bin/env bash
-# install.sh — Installation de 1001pieces_autofill sur cette machine
-set -e
+# install.command — Installation de 1001pieces_autofill sur cette machine
 cd "$(dirname "$0")"
 
-echo "==> Vérification de Python 3…"
-if ! command -v python3 &>/dev/null; then
-    echo "ERREUR : Python 3 n'est pas installé. Installez-le via https://python.org ou brew."
-    exit 1
+PY_REQUIS="@VERSION@"
+ARCH_REQUISE="@ARCH@"
+
+pause_et_quitter() {
+    echo ""
+    read -n 1 -s -r -p "Appuyez sur une touche pour fermer cette fenêtre…"
+    echo ""
+    exit "$1"
+}
+
+echo "==> Déblocage du dossier (quarantaine macOS)…"
+xattr -dr com.apple.quarantine . 2>/dev/null || true
+
+echo "==> Recherche de Python $PY_REQUIS ($ARCH_REQUISE)…"
+PYTHON=""
+for candidat in "python$PY_REQUIS" \\
+                "/opt/homebrew/bin/python$PY_REQUIS" \\
+                "/usr/local/bin/python$PY_REQUIS" \\
+                "/Library/Frameworks/Python.framework/Versions/$PY_REQUIS/bin/python$PY_REQUIS" \\
+                python3; do
+    chemin=$(command -v "$candidat" 2>/dev/null) || continue
+    infos=$("$chemin" -c 'import sys, platform; print("%d.%d %s" % (sys.version_info[0], sys.version_info[1], platform.machine()))' 2>/dev/null) || continue
+    if [ "$infos" = "$PY_REQUIS $ARCH_REQUISE" ]; then
+        PYTHON="$chemin"
+        break
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo ""
+    if [ "$(uname -m)" != "$ARCH_REQUISE" ]; then
+        echo "ERREUR : cet export est prévu pour un Mac $ARCH_REQUISE, ce Mac est $(uname -m)."
+        echo "         Demandez un export fait depuis un Mac du même type."
+    else
+        echo "ERREUR : Python $PY_REQUIS est introuvable sur ce Mac."
+        echo "         Les dépendances fournies (dossier wheels) ne fonctionnent qu'avec cette version."
+        echo ""
+        echo "   Pour l'installer, au choix :"
+        echo "     • Homebrew : brew install python@$PY_REQUIS"
+        echo "     • python.org : https://www.python.org/downloads/ (dernière version $PY_REQUIS.x)"
+        echo ""
+        echo "   Puis double-cliquez à nouveau sur install.command."
+    fi
+    pause_et_quitter 1
 fi
-PY_VER=$(python3 -c 'import sys; print(sys.version_info.minor)')
-if [ "$PY_VER" -lt 10 ]; then
-    echo "ERREUR : Python 3.10+ requis (version détectée : 3.$PY_VER)."
-    exit 1
-fi
+echo "    Python trouvé : $PYTHON"
 
 echo "==> Création de l'environnement virtuel…"
-python3 -m venv venv
+rm -rf venv
+if ! "$PYTHON" -m venv venv; then
+    echo "ERREUR : impossible de créer l'environnement virtuel (dossier venv)."
+    pause_et_quitter 1
+fi
 
 echo "==> Installation des dépendances (hors réseau)…"
-venv/bin/pip install --quiet --no-index --find-links=wheels -r requirements_frozen.txt
+if ! venv/bin/python -m pip install --quiet --no-index --find-links=wheels -r requirements_frozen.txt; then
+    echo ""
+    echo "ERREUR : l'installation des dépendances a échoué (détail ci-dessus)."
+    pause_et_quitter 1
+fi
 
 echo ""
 echo "✅ Installation terminée."
 echo "   Pour lancer l'application : double-cliquez sur 1001pieces_autofill.app"
-echo ""
+pause_et_quitter 0
+""".replace('@VERSION@', version).replace('@ARCH@', arch)
+    script = dest / 'install.command'
+    script.write_text(content, encoding='utf-8')
+    script.chmod(0o755)
+
+
+def _write_console_launcher(dest: Path):
+    """Crée 1001pieces_autofill_console.command : lancement avec console.
+
+    Recours quand le lanceur .app ne s'ouvre pas : la fenêtre Terminal
+    affiche le message d'erreur de l'application.
+    """
+    content = """\
+#!/usr/bin/env bash
+# Lance 1001pieces_autofill avec une console (messages d'erreur visibles)
+cd "$(dirname "$0")"
+if [ ! -x venv/bin/python ]; then
+    echo "L'installation n'est pas faite : double-cliquez d'abord sur install.command."
+else
+    echo "=== 1001pieces_autofill — console ==="
+    venv/bin/python run.py
+    echo ""
+    echo "=== Application terminée ==="
+fi
 read -n 1 -s -r -p "Appuyez sur une touche pour fermer cette fenêtre…"
+echo ""
 """
-    for name in ('install.command',):
-        script = dest / name
-        script.write_text(content, encoding='utf-8')
-        script.chmod(0o755)
+    script = dest / '1001pieces_autofill_console.command'
+    script.write_text(content, encoding='utf-8')
+    script.chmod(0o755)
 
 
 def _inject_icon(app_path: Path, icon_png: Path) -> bool:
@@ -348,9 +432,22 @@ def _compile_app_launcher(dest: Path, use_venv: bool) -> bool:
     import tempfile
 
     if use_venv:
-        launch_cmd = "source venv/bin/activate && nohup python3 run.py > /dev/null 2>&1"
+        # Python du venv appelé directement : pas de dépendance au python3
+        # du PATH, qui peut être une autre version que celle des wheels.
+        launch_cmd = "nohup ./venv/bin/python run.py > /dev/null 2>&1"
+        # Sans venv (install.command pas encore lancé), dire quoi faire
+        # plutôt que de ne rien ouvrir.
+        garde_venv = """\
+try
+    do shell script "test -x " & quoted form of (appFolder & "/venv/bin/python")
+on error
+    display dialog "L'installation n'est pas faite." & return & return & "Double-cliquez d'abord sur install.command (une seule fois), puis relancez l'application." buttons {"OK"} default button "OK" with icon caution with title "1001pieces_autofill"
+    return
+end try
+"""
     else:
         launch_cmd = "nohup python3 run.py > /dev/null 2>&1"
+        garde_venv = ""
 
     # Le script est écrit dans un fichier temporaire pour éviter les problèmes
     # d'échappement des guillemets avec les chemins contenant des espaces.
@@ -370,7 +467,7 @@ def _compile_app_launcher(dest: Path, use_venv: bool) -> bool:
     applescript = f"""\
 set appPath to POSIX path of (path to me)
 set appFolder to do shell script "dirname " & quoted form of appPath
-do shell script "/bin/bash -l -c \\"cd " & quoted form of appFolder & " && {launch_cmd}\\" > /dev/null 2>&1 &"
+{garde_venv}do shell script "/bin/bash -l -c \\"cd " & quoted form of appFolder & " && {launch_cmd}\\" > /dev/null 2>&1 &"
 """
     app_path = dest / '1001pieces_autofill.app'
 
@@ -390,9 +487,29 @@ do shell script "/bin/bash -l -c \\"cd " & quoted form of appFolder & " && {laun
         icon_png = dest / 'app_icon.png' if use_venv else _ICON_PNG
         if icon_png.exists():
             _inject_icon(app_path, icon_png)
-        return True
+        return _signer_bundle(app_path)
     finally:
         os.unlink(tmp_path)
+
+
+def _signer_bundle(app_path: Path) -> bool:
+    """Re-signe le bundle (signature ad hoc) puis vérifie son sceau.
+
+    osacompile signe le bundle ; remplacer l'icône ensuite casse ce sceau.
+    Sur le poste source rien ne se voit, mais sur un Mac où l'archive arrive
+    téléchargée (quarantaine), macOS déclare l'application « endommagée ».
+    """
+    signe = subprocess.run(['codesign', '--force', '--deep', '--sign', '-', str(app_path)],
+                           capture_output=True, text=True)
+    if signe.returncode != 0:
+        print(f"[WARN] codesign : {signe.stderr.strip()}", file=sys.stderr)
+        return False
+    verifie = subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app_path)],
+                             capture_output=True, text=True)
+    if verifie.returncode != 0:
+        print(f"[WARN] codesign --verify : {verifie.stderr.strip()}", file=sys.stderr)
+        return False
+    return True
 
 
 def create_source_launcher(project_root: Path | str | None = None) -> bool:
@@ -409,6 +526,8 @@ def create_source_launcher(project_root: Path | str | None = None) -> bool:
 
 def _write_readme(dest: Path, export_date: str):
     """Crée README_INSTALL.md dans le dossier d'export (cible macOS)."""
+    version, arch = _python_requis()
+    type_mac = 'Apple Silicon' if arch == 'arm64' else 'Intel'
     content = f"""\
 # 1001pieces_autofill — Guide d'installation (macOS)
 
@@ -419,8 +538,10 @@ Export généré le : **{export_date}**
 ## Prérequis
 
 - macOS 12 (Monterey) ou supérieur
-- **Python 3.10+** — vérifiez avec `python3 --version`
-  - Si absent : <https://www.python.org/downloads/> ou `brew install python`
+- Un Mac **{arch}** ({type_mac})
+- **Python {version}** exactement (les dépendances fournies sont prévues pour cette version)
+  - Si absent : `brew install python@{version}` ou <https://www.python.org/downloads/> (dernière {version}.x)
+  - `install.command` le cherche tout seul et indique quoi faire s'il ne le trouve pas
 
 ---
 
@@ -428,7 +549,8 @@ Export généré le : **{export_date}**
 
 **Double-cliquez sur `install.command`** dans le Finder.
 
-Une fenêtre Terminal s'ouvre, installe les dépendances et se ferme automatiquement.
+Une fenêtre Terminal s'ouvre, débloque le dossier (quarantaine macOS) et installe
+les dépendances ; appuyez sur une touche pour la fermer.
 Aucune connexion internet nécessaire (les fichiers `.whl` sont inclus dans `wheels/`).
 
 ---
@@ -451,13 +573,15 @@ Aucune connexion internet nécessaire (les fichiers `.whl` sont inclus dans `whe
 | `requirements_frozen.txt` | Versions exactes des dépendances |
 | `install.command` | Installation (double-clic, une seule fois) |
 | `1001pieces_autofill.app` | Lancement (double-clic, sans Terminal) |
+| `1001pieces_autofill_console.command` | Lancement avec console (messages d'erreur visibles) |
 
 ---
 
 ## Dépannage
 
-- **"venv absent"** → double-cliquez à nouveau sur `install.command`
-- **Erreur PyQt5** → assurez-vous d'utiliser Python 3.10+
+- **« L'installation n'est pas faite »** → double-cliquez sur `install.command`
+- **« Python {version} est introuvable »** → installez-le (voir Prérequis), puis relancez `install.command`
+- **L'application ne s'ouvre pas** → double-cliquez sur `1001pieces_autofill_console.command` pour voir le message d'erreur
 - **Base de données absente** → vérifiez que `data/appareils.db` est présent
 """
     (dest / 'README_INSTALL.md').write_text(content, encoding='utf-8')
@@ -725,7 +849,10 @@ def create_export(output_dir: Path | str | None = None,
             _notifier(progress_callback,
                       "Génération du script install.command et du lanceur .app…")
             _write_install_script(dest)
-            _compile_app_launcher(dest, use_venv=True)
+            _write_console_launcher(dest)
+            if not _compile_app_launcher(dest, use_venv=True):
+                raise RuntimeError("Le lanceur 1001pieces_autofill.app n'a pas pu être "
+                                   "créé ou signé (osacompile / codesign).")
             _write_readme(dest, date_lisible)
 
         # ── 4. Archive .zip ─────────────────────────────────────────────────
@@ -794,8 +921,9 @@ def main():
             print(f"     2. Double-clic sur 1001pieces_autofill.bat\n")
         else:
             print(f"     1. Dézipper l'archive")
-            print(f"     2. Double-clic sur install.command   (une seule fois)")
-            print(f"     3. Double-clic sur 1001pieces_autofill.app\n")
+            print(f"     2. Installer Python {_python_requis()[0]} s'il est absent")
+            print(f"     3. Double-clic sur install.command   (une seule fois)")
+            print(f"     4. Double-clic sur 1001pieces_autofill.app\n")
     else:
         print(f"\n❌ Échec : {result['error']}\n")
         sys.exit(1)
