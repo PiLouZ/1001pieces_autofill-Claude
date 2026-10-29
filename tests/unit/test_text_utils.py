@@ -47,3 +47,22 @@ class TestFiltrageInsensibleAuxAccents:
 
     def test_non_correspondance(self):
         assert self._match("Bo", "Jünker") is False
+
+
+class TestCleTriNaturel:
+    """Tri alphanumérique des menus de gabarits (v3.99.3)."""
+
+    def test_nombres_par_valeur(self):
+        from src.utils.text_utils import cle_tri_naturel
+        assert sorted(['Profil 10', 'Profil 2', 'Profil 1'], key=cle_tri_naturel) == \
+            ['Profil 1', 'Profil 2', 'Profil 10']
+
+    def test_casse_et_accents_ignores(self):
+        from src.utils.text_utils import cle_tri_naturel
+        assert sorted(['zeta', 'Étendu', 'beta', 'Alpha'], key=cle_tri_naturel) == \
+            ['Alpha', 'beta', 'Étendu', 'zeta']
+
+    def test_vide_et_none(self):
+        from src.utils.text_utils import cle_tri_naturel
+        assert cle_tri_naturel(None) == ()
+        assert cle_tri_naturel('') == ()

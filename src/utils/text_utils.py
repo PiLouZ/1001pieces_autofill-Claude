@@ -30,6 +30,24 @@ def strip_accents(text):
     return ''.join(c for c in nfkd if not unicodedata.combining(c))
 
 
+def cle_tri_naturel(texte):
+    """
+    Clé de tri alphanumérique « naturel » : insensible à la casse et aux
+    accents, les nombres comparés par leur valeur.
+
+    Ex: sorted(['Profil 10', 'profil 2', 'Équipe'], key=cle_tri_naturel)
+        -> ['Équipe', 'profil 2', 'Profil 10'].
+
+    Args:
+        texte: Le texte à trier (str ou None).
+
+    Returns:
+        tuple: Morceaux alternés (0, nombre) / (1, texte) comparables entre eux.
+    """
+    morceaux = re.split(r'(\d+)', strip_accents(texte).casefold())
+    return tuple((0, int(m)) if m.isdigit() else (1, m) for m in morceaux if m)
+
+
 def decouper_refs(texte):
     """
     Découpe une saisie de références de pièces en liste, sans doublon ni vide.

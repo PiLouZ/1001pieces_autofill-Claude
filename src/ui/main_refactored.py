@@ -665,7 +665,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(pieces_splitter)
 
         # Boutons d'export en bas de la colonne de droite (sous l'historique).
-        # Disposition inchangée (CSV/HTML Marques/HTML Détails, puis Méta Title/Desc) ;
+        # Disposition : Titre/HTML Marques/HTML Détails, puis Méta Title/Desc/CSV ;
         # seul l'emplacement change, pour dégager totalement le bas du tableau.
         if hasattr(self, 'ui_component_service') and self.ui_component_service:
             self.ui_component_service.add_export_buttons(layout)
