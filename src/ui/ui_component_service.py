@@ -18,6 +18,7 @@ from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QToolButton, QWi
 from ..core.constants import ExportFormat
 from .style_manager import StyleManager, icon_png_path
 from src.core.logger import app_logger
+from src.utils.text_utils import cle_tri_naturel
 
 class UIComponentService:
     """
@@ -40,7 +41,7 @@ class UIComponentService:
         Args:
             layout: Layout parent où ajouter les boutons
         """
-        # Ligne 1 : HTML Marques, HTML Détails, Titre.
+        # Ligne 1 : Titre, HTML Marques, HTML Détails (v3.99.3).
         # Ligne 2 : Méta Title, Méta Desc, Exporter CSV (v3.99.0).
         # Trois colonnes égales sur les deux lignes (stretch 1 partout).
         export_layout = QHBoxLayout()
@@ -65,7 +66,6 @@ class UIComponentService:
             "QPushButton { padding: 8px 12px; font-weight: 500; }"
             f"QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}"
         )
-        export_layout.addWidget(self.main_window.export_html_brands_btn, 1)
         
         # Bouton HTML Détails — split button compact (clic = export profil par
         # défaut, flèche superposée = menu des autres profils configurés)
@@ -83,7 +83,6 @@ class UIComponentService:
         self.main_window.export_html_details_btn.setSizePolicy(
             self.main_window.export_html_brands_btn.sizePolicy()
         )
-        export_layout.addWidget(self.main_window.export_html_details_btn, 1)
         self._refresh_html_details_menu()
 
         # Bouton Titre de fiche produit — split button comme "HTML Détails"
@@ -102,8 +101,14 @@ class UIComponentService:
         self.main_window.titre_btn.setSizePolicy(
             self.main_window.export_html_brands_btn.sizePolicy()
         )
-        export_layout.addWidget(self.main_window.titre_btn, 1)
         self._refresh_titre_menu()
+
+        # Ordre d'affichage (v3.99.3) : Titre, HTML Marques, HTML Détails.
+        # Création dans un autre ordre : Titre et HTML Détails reprennent la
+        # politique de taille de HTML Marques, qui doit donc exister avant.
+        for btn in (self.main_window.titre_btn, self.main_window.export_html_brands_btn,
+                    self.main_window.export_html_details_btn):
+            export_layout.addWidget(btn, 1)
 
         layout.addLayout(export_layout)
 
@@ -128,7 +133,8 @@ class UIComponentService:
 
         Un seul profil configuré : pas de menu, pas de flèche — clic = action directe.
         Plusieurs profils : la flèche superposée ouvre un menu listant les profils
-        AUTRES que celui par défaut (le clic principal utilise déjà ce dernier).
+        AUTRES que celui par défaut (le clic principal utilise déjà ce dernier),
+        triés par ordre alphanumérique naturel (v3.99.3).
         """
         if len(names) <= 1:
             btn.setMenu(None)
@@ -136,7 +142,7 @@ class UIComponentService:
             return
 
         menu = QMenu(btn)
-        for name in names:
+        for name in sorted(names, key=cle_tri_naturel):
             if name == default_name:
                 continue
             action = menu.addAction(name)
