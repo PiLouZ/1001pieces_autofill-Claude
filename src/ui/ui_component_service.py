@@ -18,7 +18,7 @@ from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QToolButton, QWi
 from ..core.constants import ExportFormat
 from .style_manager import StyleManager, icon_png_path
 from src.core.logger import app_logger
-from src.utils.text_utils import cle_tri_naturel
+from .menu_gabarits import MenuGabarits
 
 class UIComponentService:
     """
@@ -127,26 +127,22 @@ class UIComponentService:
         self._refresh_html_details_menu()
         self._refresh_titre_menu()
 
-    @staticmethod
-    def _refresh_split_menu(btn, names, default_name, slot) -> None:
+    def _refresh_split_menu(self, btn, names, default_name, slot, cle_recents) -> None:
         """Reconstruire le menu déroulant d'un split button à profils.
 
         Un seul profil configuré : pas de menu, pas de flèche — clic = action directe.
         Plusieurs profils : la flèche superposée ouvre un menu listant les profils
         AUTRES que celui par défaut (le clic principal utilise déjà ce dernier),
-        triés par ordre alphanumérique naturel (v3.99.3).
+        triés par ordre alphanumérique naturel, avec filtre et récents au-delà
+        de quelques gabarits (MenuGabarits, v3.99.4).
         """
         if len(names) <= 1:
             btn.setMenu(None)
             btn.setPopupMode(QToolButton.DelayedPopup)
             return
 
-        menu = QMenu(btn)
-        for name in sorted(names, key=cle_tri_naturel):
-            if name == default_name:
-                continue
-            action = menu.addAction(name)
-            action.setData(name)
+        menu = MenuGabarits(btn, names, default_name,
+                            lambda: getattr(self.main_window, 'settings', None), cle_recents)
         menu.triggered.connect(slot)
         btn.setMenu(menu)
         btn.setPopupMode(QToolButton.MenuButtonPopup)
@@ -157,7 +153,8 @@ class UIComponentService:
         names = svc.get_details_profile_names() if svc else []
         default_name = svc.get_default_details_profile_name() if svc else None
         self._refresh_split_menu(self.main_window.export_html_details_btn, names,
-                                 default_name, self._on_html_details_profile_chosen)
+                                 default_name, self._on_html_details_profile_chosen,
+                                 "exports/recents/html_details")
 
     def _refresh_titre_menu(self) -> None:
         """Reconstruire le menu déroulant du bouton "Titre"."""
@@ -165,7 +162,8 @@ class UIComponentService:
         names = svc.get_titre_profile_names() if svc else []
         default_name = svc.get_default_titre_profile_name() if svc else None
         self._refresh_split_menu(self.main_window.titre_btn, names,
-                                 default_name, self._on_titre_profile_chosen)
+                                 default_name, self._on_titre_profile_chosen,
+                                 "exports/recents/titre")
 
     def _on_titre_clicked(self) -> None:
         """Clic sur "Titre" : gabarit par défaut."""

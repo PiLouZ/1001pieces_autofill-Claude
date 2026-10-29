@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QToolBar, QToolButton, QAction, QActionGroup, QStatusBar, QSplitter, QTabWidget,
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
-    QProgressBar, QSizePolicy, QStackedWidget
+    QProgressBar, QSizePolicy, QStackedWidget, QWidgetAction
 )
 
 # Core Qt
@@ -47,7 +47,7 @@ __all__ = [
     'QAbstractItemView', 'QListWidget', 'QListWidgetItem', 'QTreeWidget', 'QTreeWidgetItem', 'QComboBox', 'QCheckBox',
     'QInputDialog', 'QMessageBox', 'QFileDialog', 'QProgressDialog', 'QDialogButtonBox',
     'QToolBar', 'QToolButton', 'QAction', 'QActionGroup', 'QStatusBar', 'QSplitter', 'QTabWidget',
-    'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy', 'QStackedWidget',
+    'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy', 'QStackedWidget', 'QWidgetAction',
     
     # Core
     'Qt', 'QTimer', 'QSettings', 'QEvent', 'QSize', 'QRect', 'QPoint',
