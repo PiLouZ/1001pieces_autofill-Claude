@@ -52,10 +52,30 @@ class FlecheGabarits(QObject):
         # Rien d'autre que le gabarit par défaut : pas de menu vide
         if not [a for a in menu.actions() if a.data()]:
             return
+        # Menu ouvert, il capte la souris : un clic sur la flèche le fermerait
+        # sans atteindre le bouton (macOS). Il est donc repris côté menu.
+        menu.installEventFilter(self)
         self._bouton.showMenu()
+
+    def _clic_fleche_menu_ouvert(self, menu, evenement) -> bool:
+        if evenement.button() != Qt.LeftButton:
+            return False
+        pos = self._bouton.mapFromGlobal(evenement.globalPos())
+        if not (self._bouton.rect().contains(pos) and self._sur_fleche(pos)):
+            return False
+        menu.close()
+        # Après la sortie de la boucle du menu (showMenu est bloquant)
+        QTimer.singleShot(0, self._ouvrir_apercu)
+        return True
 
     def eventFilter(self, objet, evenement):
         type_ = evenement.type()
+        if objet is not self._bouton:
+            if (type_ in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick)
+                    and objet is self._bouton.menu()
+                    and self._clic_fleche_menu_ouvert(objet, evenement)):
+                return True
+            return super().eventFilter(objet, evenement)
         if type_ in (QEvent.HoverEnter, QEvent.HoverMove):
             if self._sur_fleche(evenement.pos()):
                 if not self._minuterie.isActive():

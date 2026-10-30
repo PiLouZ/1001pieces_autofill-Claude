@@ -282,6 +282,41 @@ def test_fleche_clic_ouvre_l_apercu_sans_lancer_l_export(app):
     bouton.close()
 
 
+def test_fleche_clic_avec_menu_ouvert_au_survol(app):
+    """Le survol a ouvert le menu : il capte la souris, le clic sur la flèche
+    lui arrive et doit quand même ouvrir l'aperçu (sans exporter)."""
+    from PyQt5.QtCore import QEvent, QPoint
+    from PyQt5.QtGui import QMouseEvent
+    from PyQt5.QtWidgets import QMenu, QToolButton
+    from src.ui.ui_component_service import FlecheGabarits
+    bouton = QToolButton()
+    bouton.setStyleSheet("QToolButton::menu-button { width: 30px; }")
+    menu = QMenu(bouton)
+    menu.addAction("Autre").setData("Autre")
+    bouton.setMenu(menu)
+    bouton.setPopupMode(QToolButton.MenuButtonPopup)
+    bouton.resize(300, 34)
+    bouton.show()
+    apercus, exports = [], []
+    fleche = FlecheGabarits(bouton, lambda: apercus.append(1))
+    bouton.clicked.connect(lambda: exports.append(1))
+    menu.installEventFilter(fleche)   # comme _ouvrir_menu avant showMenu()
+
+    def clic_global(x):
+        globale = bouton.mapToGlobal(QPoint(x, 17))
+        return QMouseEvent(QEvent.MouseButtonPress, menu.mapFromGlobal(globale), globale,
+                           Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+
+    assert fleche.eventFilter(menu, clic_global(290)) is True
+    app.processEvents()
+    assert apercus == [1] and exports == []
+    # Clic sur la partie principale, menu ouvert : laissé au menu (le ferme)
+    assert fleche.eventFilter(menu, clic_global(40)) is False
+    app.processEvents()
+    assert apercus == [1] and exports == []
+    bouton.close()
+
+
 # ─── Préparation silencieuse (aperçu mis à jour pendant la saisie) ──────────
 
 def test_refus_silencieux_sans_historique():
