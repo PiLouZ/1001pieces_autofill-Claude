@@ -282,39 +282,70 @@ def test_fleche_clic_ouvre_l_apercu_sans_lancer_l_export(app):
     bouton.close()
 
 
-def test_fleche_clic_avec_menu_ouvert_au_survol(app):
-    """Le survol a ouvert le menu : il capte la souris, le clic sur la flèche
-    lui arrive et doit quand même ouvrir l'aperçu (sans exporter)."""
-    from PyQt5.QtCore import QEvent, QPoint
-    from PyQt5.QtGui import QMouseEvent
-    from PyQt5.QtWidgets import QMenu, QToolButton
+def _bouton_a_fleche(app):
+    from PyQt5.QtWidgets import QMenu, QToolButton, QWidget
     from src.ui.ui_component_service import FlecheGabarits
-    bouton = QToolButton()
+    fenetre = QWidget()
+    fenetre.resize(400, 100)
+    bouton = QToolButton(fenetre)
     bouton.setStyleSheet("QToolButton::menu-button { width: 30px; }")
     menu = QMenu(bouton)
     menu.addAction("Autre").setData("Autre")
     bouton.setMenu(menu)
     bouton.setPopupMode(QToolButton.MenuButtonPopup)
-    bouton.resize(300, 34)
-    bouton.show()
+    bouton.setGeometry(10, 10, 300, 34)
+    fenetre.show()
     apercus, exports = [], []
     fleche = FlecheGabarits(bouton, lambda: apercus.append(1))
     bouton.clicked.connect(lambda: exports.append(1))
-    menu.installEventFilter(fleche)   # comme _ouvrir_menu avant showMenu()
+    return fenetre, bouton, menu, fleche, apercus, exports
 
-    def clic_global(x):
-        globale = bouton.mapToGlobal(QPoint(x, 17))
-        return QMouseEvent(QEvent.MouseButtonPress, menu.mapFromGlobal(globale), globale,
-                           Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
 
-    assert fleche.eventFilter(menu, clic_global(290)) is True
-    app.processEvents()
+def _pendant_le_menu(app, fleche, menu, action):
+    """Ouvre le menu comme le survol (curseur sur la flèche) et joue `action` dedans."""
+    from PyQt5.QtCore import QTimer
+    from unittest import mock
+    vu = []
+
+    def dans_le_menu():
+        vu.append(menu.isVisible())
+        action()
+    QTimer.singleShot(50, dans_le_menu)
+    with mock.patch.object(fleche._bouton, 'underMouse', return_value=True), \
+            mock.patch.object(type(fleche), '_curseur_sur_fleche', return_value=True):
+        fleche._ouvrir_menu()
+        app.processEvents()
+    return vu
+
+
+def test_fleche_menu_ferme_par_clic_sur_la_fleche_ouvre_l_apercu(app):
+    """macOS consomme le clic qui ferme le menu : fermeture sans choix, souris
+    sur la flèche = clic sur la flèche → aperçu, sans export."""
+    fenetre, bouton, menu, fleche, apercus, exports = _bouton_a_fleche(app)
+    assert _pendant_le_menu(app, fleche, menu, menu.close) == [True]
     assert apercus == [1] and exports == []
-    # Clic sur la partie principale, menu ouvert : laissé au menu (le ferme)
-    assert fleche.eventFilter(menu, clic_global(40)) is False
-    app.processEvents()
+    fenetre.close()
+
+
+def test_fleche_menu_choix_d_un_gabarit_ou_echap_sans_apercu(app):
+    from PyQt5.QtCore import Qt
+    fenetre, bouton, menu, fleche, apercus, exports = _bouton_a_fleche(app)
+    _pendant_le_menu(app, fleche, menu, lambda: menu.actions()[0].trigger() or menu.close())
+    assert apercus == []
+    _pendant_le_menu(app, fleche, menu, lambda: QTest.keyClick(menu, Qt.Key_Escape))
+    assert apercus == [] and exports == []
+    fenetre.close()
+
+
+def test_fleche_double_clic_un_seul_apercu(app):
+    from PyQt5.QtCore import QPoint
+    fenetre, bouton, menu, fleche, apercus, exports = _bouton_a_fleche(app)
+    QTest.mouseClick(bouton, Qt.LeftButton, pos=QPoint(290, 17))
+    QTest.mouseClick(bouton, Qt.LeftButton, pos=QPoint(290, 17))
     assert apercus == [1] and exports == []
-    bouton.close()
+    # Après l'aperçu, le survol ne rouvre pas le menu tant qu'on reste sur la flèche
+    assert fleche._attendre_sortie
+    fenetre.close()
 
 
 # ─── Préparation silencieuse (aperçu mis à jour pendant la saisie) ──────────

@@ -9,6 +9,7 @@ Responsabilités:
 - Interface standardisée pour la gestion des composants UI dynamiques
 """
 
+import time
 from typing import Optional, Dict, Any
 import qtawesome as qta
 from .qt_imports import (QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QToolButton, QWidget,
@@ -23,15 +24,24 @@ from .menu_gabarits import MenuGabarits
 class FlecheGabarits(QObject):
     """Flèche d'un bouton à gabarits : survol = menu des autres gabarits,
     clic = fenêtre d'aperçu d'export. Le reste du bouton garde son clic
-    (export avec le gabarit par défaut)."""
+    (export avec le gabarit par défaut).
+
+    Menu ouvert au survol, le clic sur la flèche n'arrive à personne : macOS le
+    consomme pour fermer le menu. On le reconnaît à la fermeture du menu :
+    aucun gabarit choisi, pas d'Échap, souris sur la flèche → aperçu."""
 
     LARGEUR_FLECHE = 32   # zone ::menu-button des styles (30 px) + bordure
     DELAI_SURVOL_MS = 250
+    ANTI_REBOND_S = 0.5   # 2e clic d'un double-clic : pas de 2e chargement
 
     def __init__(self, bouton, ouvrir_apercu):
         super().__init__(bouton)
         self._bouton = bouton
         self._ouvrir_apercu = ouvrir_apercu
+        self._dernier_apercu = 0.0
+        # Après l'aperçu, pas de menu tant que la souris n'a pas quitté la flèche
+        self._attendre_sortie = False
+        self._echap = False
         self._minuterie = QTimer(self)
         self._minuterie.setSingleShot(True)
         self._minuterie.setInterval(self.DELAI_SURVOL_MS)
@@ -43,51 +53,57 @@ class FlecheGabarits(QObject):
         return (self._bouton.popupMode() == QToolButton.MenuButtonPopup
                 and pos.x() >= self._bouton.width() - self.LARGEUR_FLECHE)
 
+    def _curseur_sur_fleche(self) -> bool:
+        pos = self._bouton.mapFromGlobal(QCursor.pos())
+        return self._bouton.rect().contains(pos) and self._sur_fleche(pos)
+
+    def _apercu(self):
+        self._minuterie.stop()
+        self._attendre_sortie = True
+        if time.monotonic() - self._dernier_apercu < self.ANTI_REBOND_S:
+            return
+        self._dernier_apercu = time.monotonic()
+        self._ouvrir_apercu()
+
     def _ouvrir_menu(self):
         menu = self._bouton.menu()
-        pos = self._bouton.mapFromGlobal(QCursor.pos())
         if (menu is None or not self._bouton.isEnabled() or not self._bouton.underMouse()
-                or not self._sur_fleche(pos)):
+                or not self._curseur_sur_fleche()):
             return
         # Rien d'autre que le gabarit par défaut : pas de menu vide
         if not [a for a in menu.actions() if a.data()]:
             return
-        # Menu ouvert, il capte la souris : un clic sur la flèche le fermerait
-        # sans atteindre le bouton (macOS). Il est donc repris côté menu.
-        menu.installEventFilter(self)
-        self._bouton.showMenu()
-
-    def _clic_fleche_menu_ouvert(self, menu, evenement) -> bool:
-        if evenement.button() != Qt.LeftButton:
-            return False
-        pos = self._bouton.mapFromGlobal(evenement.globalPos())
-        if not (self._bouton.rect().contains(pos) and self._sur_fleche(pos)):
-            return False
-        menu.close()
-        # Après la sortie de la boucle du menu (showMenu est bloquant)
-        QTimer.singleShot(0, self._ouvrir_apercu)
-        return True
+        choix = []
+        self._echap = False
+        menu.installEventFilter(self)   # Échap
+        menu.triggered.connect(choix.append)
+        try:
+            self._bouton.showMenu()     # bloquant jusqu'à la fermeture du menu
+        finally:
+            menu.triggered.disconnect(choix.append)
+            menu.removeEventFilter(self)
+        if not choix and not self._echap and self._curseur_sur_fleche():
+            # Après la sortie de la boucle du menu
+            QTimer.singleShot(0, self._apercu)
 
     def eventFilter(self, objet, evenement):
         type_ = evenement.type()
         if objet is not self._bouton:
-            if (type_ in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick)
-                    and objet is self._bouton.menu()
-                    and self._clic_fleche_menu_ouvert(objet, evenement)):
-                return True
+            if type_ == QEvent.KeyPress and evenement.key() == Qt.Key_Escape:
+                self._echap = True
             return super().eventFilter(objet, evenement)
         if type_ in (QEvent.HoverEnter, QEvent.HoverMove):
-            if self._sur_fleche(evenement.pos()):
-                if not self._minuterie.isActive():
-                    self._minuterie.start()
-            else:
+            if not self._sur_fleche(evenement.pos()):
+                self._attendre_sortie = False
                 self._minuterie.stop()
+            elif not self._attendre_sortie and not self._minuterie.isActive():
+                self._minuterie.start()
         elif type_ == QEvent.HoverLeave:
+            self._attendre_sortie = False
             self._minuterie.stop()
         elif (type_ in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick)
               and evenement.button() == Qt.LeftButton and self._sur_fleche(evenement.pos())):
-            self._minuterie.stop()
-            self._ouvrir_apercu()
+            self._apercu()
             return True
         elif (type_ == QEvent.MouseButtonRelease and evenement.button() == Qt.LeftButton
               and self._sur_fleche(evenement.pos())):
