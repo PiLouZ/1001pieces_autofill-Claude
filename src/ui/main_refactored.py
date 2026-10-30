@@ -65,6 +65,7 @@ from .log_viewer import LogViewer
 from .piece_management_service import PieceManagementService
 from .seo_service import SEOService
 from .titre_produit_service import TitreProduitService
+from .fiche_produit_service import FicheProduitService
 from .pieces_list_service import PiecesListService
 from ..services.grouped_history_service import GroupedHistoryService
 from ..services.history_service import HistoryService
@@ -249,6 +250,7 @@ class MainWindow(QMainWindow):
         self.piece_management_service = PieceManagementService(self)
         self.seo_service = SEOService(self)
         self.titre_produit_service = TitreProduitService(self)
+        self.fiche_produit_service = FicheProduitService(self)
         self.pieces_list_service = PiecesListService(self)
 
         # Service de sauvegarde événementielle (Phase 4 - Factorisation)
@@ -3639,6 +3641,10 @@ class MainWindow(QMainWindow):
     def _generer_titre(self, profile_name: str = None):
         """Copier le titre de fiche produit (bouton "Titre") — délégation vers TitreProduitService"""
         self.titre_produit_service.generer_titre(profile_name)
+
+    def _generer_fiche(self, profile_name: str = None):
+        """Copier la fiche produit complète (bouton "Fiche complète") — délégation vers FicheProduitService"""
+        self.fiche_produit_service.generer_fiche(profile_name)
     
     def _is_piece_reference_search(self) -> bool:
         """Vérifier si la recherche actuelle est une référence de pièce - Support multi-références"""

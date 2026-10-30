@@ -416,7 +416,7 @@ class SEOService:
         ref = search_data['reference']
         self._signaler_refus(
             genre, ref, f"Libellé manquant pour {ref} : complétez-le avant de générer "
-                        f"{'le titre' if genre == 'titre' else 'la méta'}",
+                        f"{self._OBJET_LIBELLE.get(genre, 'la méta')}",
             lien=(UIConfig.LIEN_HISTORIQUE_LIBELLE + quote(ref, safe=""),
                   f"Compléter le libellé de {ref}  (⌘⇧L)"))
         return True
@@ -430,9 +430,12 @@ class SEOService:
         self._signaler_refus(genre, terme, message)
 
     _QUOI = {'title': "le méta titre", 'description': "la méta description",
-             'titre': "le titre de fiche"}
+             'titre': "le titre de fiche", 'fiche': "la fiche complète"}
     _NON_GENERE = {'title': "Méta titre non généré", 'description': "Méta description non générée",
-                   'titre': "Titre de fiche non généré"}
+                   'titre': "Titre de fiche non généré", 'fiche': "Fiche complète non générée"}
+    # Préfixe de l'historique et objet du message « libellé manquant » ; SEO / la méta sinon
+    _PREFIXE = {'titre': "Titre", 'fiche': "Fiche"}
+    _OBJET_LIBELLE = {'titre': "le titre", 'fiche': "la fiche"}
 
     def _signaler_refus(self, genre: str, reference: str, raison: str,
                         lien: Optional[Tuple[str, str]] = None) -> None:
@@ -446,7 +449,7 @@ class SEOService:
         self.main_window.statusbar.showMessage(raison, 8000)
         pour = f" pour '{reference}'" if reference else ""
         self.main_window.user_interaction_service.add_to_history(
-            f"{'Titre' if genre == 'titre' else 'SEO'}: {self._NON_GENERE[genre]}{pour}\n==> {raison}",
+            f"{self._PREFIXE.get(genre, 'SEO')}: {self._NON_GENERE[genre]}{pour}\n==> {raison}",
             lien=lien)
 
     @handle_seo_data_errors()
@@ -526,6 +529,8 @@ class SEOService:
         # Le titre de fiche repose sur les mêmes données que les métas
         if hasattr(self.main_window, 'titre_btn'):
             self.main_window.titre_btn.setEnabled(is_piece_search)
+        if hasattr(self.main_window, 'fiche_btn'):
+            self.main_window.fiche_btn.setEnabled(is_piece_search)
     
     @handle_seo_generation_errors()
     def cleanup(self) -> None:

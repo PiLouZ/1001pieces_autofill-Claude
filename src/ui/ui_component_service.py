@@ -43,6 +43,7 @@ class UIComponentService:
         """
         # Ligne 1 : Titre, HTML Marques, HTML Détails (v3.99.3).
         # Ligne 2 : Méta Title, Méta Desc, Exporter CSV (v3.99.0).
+        # Ligne 3 : Fiche complète, pleine largeur.
         # Trois colonnes égales sur les deux lignes (stretch 1 partout).
         export_layout = QHBoxLayout()
         
@@ -115,17 +116,35 @@ class UIComponentService:
         # Ligne 2: Boutons SEO métadonnées, puis Exporter CSV
         self._add_seo_buttons(layout)
 
+        # Ligne 3 : Fiche complète, pleine largeur (split button comme "Titre")
+        self.main_window.fiche_btn = QToolButton()
+        self.main_window.fiche_btn.setText("Fiche complète")
+        self.main_window.fiche_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.main_window.fiche_btn.setStyleSheet(self._get_fiche_button_style())
+        self.main_window.fiche_btn.setToolTip(
+            "Copier le code HTML complet de la fiche produit : titre, marques, code produit,\n"
+            "références remplacées et équivalentes, appareils affichés dans le tableau\n"
+            "Variantes réglables dans la configuration des exports, onglet « Fiche »")
+        self.main_window.fiche_btn.clicked.connect(self._on_fiche_clicked)
+        self.main_window.fiche_btn.setEnabled(False)
+        self._refresh_fiche_menu()
+        fiche_layout = QHBoxLayout()
+        fiche_layout.addWidget(self.main_window.fiche_btn, 1)
+        layout.addLayout(fiche_layout)
+
         # Colonnes de même largeur sur les deux lignes : sans politique
         # extensible, un QToolButton à menu (« Titre ») restait à sa largeur utile
         for btn in (self.main_window.export_html_brands_btn, self.main_window.export_html_details_btn,
                     self.main_window.titre_btn, self.main_window.meta_title_btn,
-                    self.main_window.meta_desc_btn, self.main_window.export_csv_btn):
+                    self.main_window.meta_desc_btn, self.main_window.export_csv_btn,
+                    self.main_window.fiche_btn):
             btn.setSizePolicy(QSizePolicy.Expanding, btn.sizePolicy().verticalPolicy())
 
     def refresh_profile_menus(self) -> None:
         """Menus des boutons à gabarits, après modification de la configuration."""
         self._refresh_html_details_menu()
         self._refresh_titre_menu()
+        self._refresh_fiche_menu()
 
     def _refresh_split_menu(self, btn, names, default_name, slot, cle_recents) -> None:
         """Reconstruire le menu déroulant d'un split button à profils.
@@ -165,6 +184,23 @@ class UIComponentService:
                                  default_name, self._on_titre_profile_chosen,
                                  "exports/recents/titre")
 
+    def _refresh_fiche_menu(self) -> None:
+        """Reconstruire le menu déroulant du bouton "Fiche complète"."""
+        svc = getattr(self.main_window, 'export_config_service', None)
+        names = svc.get_fiche_profile_names() if svc else []
+        default_name = svc.get_default_fiche_profile_name() if svc else None
+        self._refresh_split_menu(self.main_window.fiche_btn, names,
+                                 default_name, self._on_fiche_profile_chosen,
+                                 "exports/recents/fiche")
+
+    def _on_fiche_clicked(self) -> None:
+        """Clic sur "Fiche complète" : variante par défaut."""
+        self.main_window._generer_fiche()
+
+    def _on_fiche_profile_chosen(self, action) -> None:
+        """Fiche complète avec la variante choisie dans le menu déroulant."""
+        self.main_window._generer_fiche(profile_name=action.data())
+
     def _on_titre_clicked(self) -> None:
         """Clic sur "Titre" : gabarit par défaut."""
         self.main_window._generer_titre()
@@ -188,11 +224,20 @@ class UIComponentService:
         """Style du bouton split "Titre" : violet plein, comme les boutons colorés
         de la ligne des métas ; flèche de menu blanche (la noire par défaut ne se
         lit pas sur le violet)."""
+        return self._get_split_couleur_style("#6f42c1", "#5e37a6", "#512f8f")
+
+    def _get_fiche_button_style(self) -> str:
+        """Style du bouton split "Fiche complète" : bleu plein, même gabarit que "Titre"."""
+        return self._get_split_couleur_style("#0b5ed7", "#0a53be", "#094ba8")
+
+    @staticmethod
+    def _get_split_couleur_style(fond: str, survol: str, appui: str) -> str:
+        """Split button à fond coloré plein et flèche de menu blanche."""
         fleche = icon_png_path('fa5s.caret-down', 'white', 10)
         regle_fleche = f"image: url({fleche}); width: 10px; height: 10px;" if fleche else ""
         return f"""
             QToolButton {{
-                background-color: #6f42c1;
+                background-color: {fond};
                 color: white;
                 font-weight: bold;
                 border: none;
@@ -200,10 +245,10 @@ class UIComponentService:
                 padding: 8px 12px;
             }}
             QToolButton:hover {{
-                background-color: #5e37a6;
+                background-color: {survol};
             }}
             QToolButton:pressed {{
-                background-color: #512f8f;
+                background-color: {appui};
             }}
             QToolButton:disabled {{
                 {StyleManager.EXPORT_BTN_DISABLED_RULES}

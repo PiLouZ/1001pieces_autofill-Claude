@@ -1,5 +1,5 @@
 """
-Service de configuration des exports - Export configurable CSV + HTML + Titre
+Service de configuration des exports - Export configurable CSV + HTML + Titre + Fiche
 Gère la lecture/écriture de data/export_config.json
 
 Responsabilités:
@@ -89,8 +89,50 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             }
         ],
         "default_profile": "Format standard"
+    },
+    # Fiche produit complète (bouton « Fiche complète ») : assemblage du titre,
+    # des marques (HTML Marques), des lignes de références, du bloc Informations
+    # facultatif et de la liste des appareils (profil HTML Détails).
+    # titre_profile / details_profile vides = gabarit par défaut de chacun.
+    # max_caracteres : caractères visibles de la fiche ENTIÈRE ; au-delà, la
+    # liste des appareils est réduite comme pour HTML Détails.
+    "fiche": {
+        "profiles": [
+            {
+                "name":                  "Fiche standard",
+                "titre_profile":         "",
+                "details_profile":       "",
+                "inclure_informations":  False,
+                "code_produit_template": "<div class=\"class_perso3\">Code produit : {reference}</div>",
+                "remplace_template":     "<div class=\"class_perso3 class_perso6\">Remplace les références : {references}</div>",
+                "equivalentes_template": "<div class=\"class_perso3 class_perso6\">Références équivalentes : {references}</div>",
+                "informations_template": "<div>&nbsp;</div><div class=\"alert alert-info\"><h3 class=\"alert-heading\">Informations :</h3><div>&nbsp;</div></div>",
+                "separateur_references": " ",
+                "max_caracteres":        200000
+            },
+            {
+                "name":                  "Fiche avec informations",
+                "titre_profile":         "",
+                "details_profile":       "",
+                "inclure_informations":  True,
+                "code_produit_template": "<div class=\"class_perso3\">Code produit : {reference}</div>",
+                "remplace_template":     "<div class=\"class_perso3 class_perso6\">Remplace les références : {references}</div>",
+                "equivalentes_template": "<div class=\"class_perso3 class_perso6\">Références équivalentes : {references}</div>",
+                "informations_template": "<div>&nbsp;</div><div class=\"alert alert-info\"><h3 class=\"alert-heading\">Informations :</h3><div>&nbsp;</div></div>",
+                "separateur_references": " ",
+                "max_caracteres":        200000
+            }
+        ],
+        "default_profile": "Fiche standard"
     }
 }
+
+# Clés éditables d'un profil Fiche (hors 'name')
+FICHE_PROFILE_KEYS = (
+    "titre_profile", "details_profile", "inclure_informations",
+    "code_produit_template", "remplace_template", "equivalentes_template",
+    "informations_template", "separateur_references", "max_caracteres"
+)
 
 # Clés éditables d'un profil HTML Détails (hors 'name')
 DETAILS_PROFILE_KEYS = (
@@ -214,7 +256,37 @@ class ExportConfigService(BaseService):
             }
         if isinstance(loaded.get('titre'), dict):
             merged['titre'] = self._merge_titre(loaded['titre'])
+        if isinstance(loaded.get('fiche'), dict):
+            merged['fiche'] = self._merge_fiche(loaded['fiche'])
         return merged
+
+    @staticmethod
+    def _merge_fiche(loaded: Dict) -> Dict:
+        """Profils Fiche valides, complétés par les défauts ; au moins un profil."""
+        defaut = DEFAULT_CONFIG['fiche']['profiles'][0]
+        profiles = []
+        for p in loaded.get('profiles') or []:
+            if not (isinstance(p, dict) and p.get('name')):
+                continue
+            if str(p['name']) in [q['name'] for q in profiles]:
+                continue
+            profile = copy.deepcopy(defaut)
+            profile.update({k: p[k] for k in FICHE_PROFILE_KEYS if k in p})
+            try:
+                profile['max_caracteres'] = max(0, int(profile['max_caracteres']))
+            except (TypeError, ValueError):
+                profile['max_caracteres'] = defaut['max_caracteres']
+            profile['inclure_informations'] = bool(profile['inclure_informations'])
+            for k in ('titre_profile', 'details_profile'):
+                profile[k] = str(profile[k] or '')
+            profile['name'] = str(p['name'])
+            profiles.append(profile)
+        if not profiles:
+            profiles = copy.deepcopy(DEFAULT_CONFIG['fiche']['profiles'])
+        names = [p['name'] for p in profiles]
+        default = loaded.get('default_profile')
+        return {'profiles': profiles,
+                'default_profile': default if default in names else names[0]}
 
     @staticmethod
     def _merge_titre(loaded: Dict) -> Dict:
@@ -377,6 +449,24 @@ class ExportConfigService(BaseService):
             if p['name'] == name:
                 return copy.deepcopy(p)
         defaut = self.get_default_titre_profile_name()
+        return copy.deepcopy(next((p for p in profiles if p['name'] == defaut), profiles[0]))
+
+    # ─── Accesseurs Fiche complète ───────────────────────────────────────────
+
+    def get_fiche_profile_names(self) -> List[str]:
+        return [p['name'] for p in self._config['fiche']['profiles']]
+
+    def get_default_fiche_profile_name(self) -> str:
+        return self._config['fiche']['default_profile']
+
+    def get_fiche_profile(self, profile_name: str = None) -> Dict:
+        """Profil Fiche demandé (copie) ; nom inconnu ou absent : le profil par défaut."""
+        profiles = self._config['fiche']['profiles']
+        name = profile_name or self.get_default_fiche_profile_name()
+        for p in profiles:
+            if p['name'] == name:
+                return copy.deepcopy(p)
+        defaut = self.get_default_fiche_profile_name()
         return copy.deepcopy(next((p for p in profiles if p['name'] == defaut), profiles[0]))
 
     # ─── Rendu CSV ───────────────────────────────────────────────────────────

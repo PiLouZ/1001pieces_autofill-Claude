@@ -11,7 +11,7 @@ modèles, équivalentes en complément, libellé obligatoire). Seuls les types
 diffèrent : tous ceux qui pèsent à peu près autant que le premier sont cités.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 
 from .qt_imports import QApplication
 
@@ -34,13 +34,12 @@ class TitreProduitService:
             app_logger.error(f"Titre: génération échouée : {e}", exc_info=True)
             self.main_window.statusbar.showMessage(f"Titre de fiche non généré : {e}", 8000)
 
-    def _generer_titre(self, profile_name: Optional[str]) -> None:
-        seo = self.main_window.seo_service
-        preparees = seo.preparer_donnees_fiche("titre", "Référence pour le titre de fiche")
-        if not preparees:
-            return
-        donnees, ref_obsolete = preparees
+    def calculer_titre(self, donnees: Dict[str, Any], profile_name: Optional[str]
+                       ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """(résultat, profil) du titre des données préparées, selon le profil demandé.
 
+        Partagé avec la fiche complète : même titre au caractère près.
+        """
         config = getattr(self.main_window, 'export_config_service', None)
         if config is None:
             from src.services.export_config_service import DEFAULT_CONFIG
@@ -48,10 +47,20 @@ class TitreProduitService:
         else:
             profil = config.get_titre_profile(profile_name)
 
-        types = self.generateur.types_proches(seo.poids_types_fiche(donnees),
+        types = self.generateur.types_proches(self.main_window.seo_service.poids_types_fiche(donnees),
                                               profil.get('max_types', 3))
         resultat = self.generateur.generer(profil, donnees['description'], types,
                                            donnees['fabricants'], donnees['reference'])
+        return resultat, profil
+
+    def _generer_titre(self, profile_name: Optional[str]) -> None:
+        seo = self.main_window.seo_service
+        preparees = seo.preparer_donnees_fiche("titre", "Référence pour le titre de fiche")
+        if not preparees:
+            return
+        donnees, ref_obsolete = preparees
+
+        resultat, profil = self.calculer_titre(donnees, profile_name)
         titre = resultat['titre']
         info = resultat['info']
         QApplication.clipboard().setText(titre)

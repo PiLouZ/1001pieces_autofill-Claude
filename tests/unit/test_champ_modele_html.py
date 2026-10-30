@@ -2,8 +2,9 @@
 Tests — Zones des modèles HTML (configuration des exports, v3.99.2)
 
 Le code englobant (143 caractères chez l'utilisateur) était à moitié caché dans
-un champ d'une ligne. Zone multi-ligne qui s'agrandit (4 lignes au plus), mais
-le modèle reste sur UNE ligne logique : les exports ne changent pas.
+un champ d'une ligne. Zone multi-ligne qui s'agrandit (MAX_LIGNES au plus), mais
+le modèle reste sur UNE ligne logique : les exports ne changent pas. Coloration
+et indentation à l'écran : voir test_fiche_produit.py.
 """
 
 import pytest
@@ -54,19 +55,19 @@ def test_sauts_de_ligne_remplaces_par_des_espaces(champ):
     assert "\n" not in champ.text()
 
 
-def test_hauteur_suit_le_contenu_jusqu_a_4_lignes(app, champ):
+def test_hauteur_suit_le_contenu_jusqu_au_maximum(app, champ):
     champ.setText("<div>")
     app.processEvents()
     une_ligne = champ.height()
     champ.setText('<div>&nbsp;</div><div class="class_perso4">Appareils compatibles :</div>'
                   '<div>&nbsp;</div><div class="class_perso5"><div>{appareils}</div></div>')
     app.processEvents()
-    assert 1 < champ._nb_lignes_affichees() <= 4
+    assert 1 < champ._nb_lignes_affichees() <= ChampModeleHtml.MAX_LIGNES
     assert champ.height() > une_ligne
-    champ.setText("x" * 2000)
-    app.processEvents()
-    assert champ._nb_lignes_affichees() > 4
-    quatre = champ.height()
     champ.setText("x" * 4000)
     app.processEvents()
-    assert champ.height() == quatre
+    assert champ._nb_lignes_affichees() > ChampModeleHtml.MAX_LIGNES
+    maximum = champ.height()
+    champ.setText("x" * 8000)
+    app.processEvents()
+    assert champ.height() == maximum

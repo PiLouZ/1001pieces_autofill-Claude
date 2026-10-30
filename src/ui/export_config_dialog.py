@@ -5,6 +5,7 @@ Accessible via Outils → "Configuration des exports…"
 Onglet CSV  : colonnes (en-tête + source/assemblage), séparateur, encodage, pattern nom fichier
 Onglet HTML : templates marques et détails avec preview en temps réel
 Onglet Titre : gabarits du titre de fiche produit (cf. titre_config_tab.py)
+Onglet Fiche : variantes de la fiche produit complète (cf. fiche_config_tab.py)
 """
 
 import os
@@ -177,6 +178,7 @@ class ExportConfigDialog(QDialog):
             ("CSV",  'fa5s.table', '#2980b9'),
             ("HTML", 'fa5s.code',  '#e67e22'),
             ("Titre", 'fa5s.tag',  '#6f42c1'),
+            ("Fiche", 'fa5s.file-alt', '#0b5ed7'),
         ]
         for i, (label, icon_name, icon_color) in enumerate(_nav_defs):
             btn = QPushButton(label)
@@ -204,6 +206,9 @@ class ExportConfigDialog(QDialog):
         from .titre_config_tab import TitreConfigTab
         self.titre_tab = TitreConfigTab(self)
         self._nav_stack.addWidget(self.titre_tab)
+        from .fiche_config_tab import FicheConfigTab
+        self.fiche_tab = FicheConfigTab(self)
+        self._nav_stack.addWidget(self.fiche_tab)
         layout.addWidget(self._nav_stack)
 
         # Boutons du bas
@@ -683,6 +688,10 @@ class ExportConfigDialog(QDialog):
         # Gabarits du bouton Titre
         self.titre_tab.load(config['titre'])
 
+        # Variantes du bouton Fiche complète (après Titre et HTML Détails :
+        # elles listent leurs gabarits)
+        self.fiche_tab.load(config['fiche'])
+
     # ─── Gestion des profils HTML Détails ────────────────────────────────────
 
     def _find_profile(self, name):
@@ -941,7 +950,8 @@ class ExportConfigDialog(QDialog):
                 "details_profiles":        self._collect_profiles(),
                 "details_default_profile": self._default_profile
             },
-            "titre": self.titre_tab.collect()
+            "titre": self.titre_tab.collect(),
+            "fiche": self.fiche_tab.collect()
         }
 
     def _collect_profiles(self) -> list:

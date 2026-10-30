@@ -485,6 +485,14 @@ class ExportManagerService:
             return self.main_window._get_multi_reference_terms()
         return None
     
+    def donnees_tableau(self) -> List:
+        """Lignes de la recherche courante, au périmètre du tableau (bandeaux et
+        filtres de colonnes) : celles des boutons HTML Marques / Détails."""
+        search_term = self._get_search_term()
+        if not search_term:
+            return []
+        return self._get_export_data(self._parse_search_term(search_term))
+
     def _get_export_data(self, search_data_term: Union[str, Dict]) -> List:
         """Récupérer les données d'export en respectant les filtres colonnes actifs."""
         column_filters = self._get_active_column_filters()
