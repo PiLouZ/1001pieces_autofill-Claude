@@ -245,3 +245,119 @@ def test_indentation_refaite_en_quittant_la_zone(app, champ):
     app.processEvents()
     assert champ.toPlainText() == '<p>a</p>\n<p>b</p>'
     assert champ.text() == '<p>a</p><p>b</p>'
+
+
+# ─── Gabarit par défaut depuis l'aperçu ─────────────────────────────────────
+
+def test_definir_profil_par_defaut(service):
+    cls, _ = service
+    svc = cls()
+    assert svc.definir_profil_par_defaut('fiche', "Fiche avec informations")
+    assert svc.definir_profil_par_defaut('html_details', "Format standard")
+    assert cls().get_default_fiche_profile_name() == "Fiche avec informations"
+    assert svc.definir_profil_par_defaut('fiche', "inconnue")  # repli sur le 1er
+    assert cls().get_default_fiche_profile_name() == "Fiche standard"
+
+
+# ─── Flèche des boutons à gabarits : clic = aperçu, ailleurs = export ───────
+
+def test_fleche_clic_ouvre_l_apercu_sans_lancer_l_export(app):
+    from PyQt5.QtCore import QPoint
+    from PyQt5.QtWidgets import QMenu, QToolButton
+    from src.ui.ui_component_service import FlecheGabarits
+    bouton = QToolButton()
+    bouton.setText("Fiche complète")
+    bouton.setStyleSheet("QToolButton::menu-button { width: 30px; }")
+    bouton.setMenu(QMenu(bouton))
+    bouton.setPopupMode(QToolButton.MenuButtonPopup)
+    bouton.resize(300, 34)
+    bouton.show()
+    apercus, exports = [], []
+    FlecheGabarits(bouton, lambda: apercus.append(1))
+    bouton.clicked.connect(lambda: exports.append(1))
+    QTest.mouseClick(bouton, Qt.LeftButton, pos=QPoint(290, 17))
+    assert apercus == [1] and exports == []
+    QTest.mouseClick(bouton, Qt.LeftButton, pos=QPoint(40, 17))
+    assert apercus == [1] and exports == [1]
+    bouton.close()
+
+
+# ─── Préparation silencieuse (aperçu mis à jour pendant la saisie) ──────────
+
+def test_refus_silencieux_sans_historique():
+    from src.ui.seo_service import SEOService
+    historique = []
+    fenetre = SimpleNamespace(
+        statusbar=SimpleNamespace(showMessage=lambda *a: historique.append(a)),
+        user_interaction_service=SimpleNamespace(add_to_history=lambda *a, **k: historique.append(a)))
+    seo = SEOService.__new__(SEOService)
+    seo.main_window = fenetre
+    seo._refus_silencieux, seo.raison_refus = True, None
+    seo._signaler_refus("fiche", "X", "Libellé manquant")
+    assert historique == [] and seo.raison_refus == "Libellé manquant"
+    seo._refus_silencieux = False
+    seo._signaler_refus("fiche", "X", "Libellé manquant")
+    assert len(historique) == 2
+
+
+# ─── Fenêtre d'aperçu ───────────────────────────────────────────────────────
+
+class _SourceFactice:
+    genre, libelle = 'fiche', "Fiche complète"
+
+    def __init__(self):
+        self.par_defaut, self.copies = "B", []
+
+    def noms(self):
+        return ["Profil 10", "B", "Profil 2"]
+
+    def defaut(self):
+        return self.par_defaut
+
+    def contexte(self, interactif):
+        return {'reference': "201050694"}
+
+    def rendre(self, contexte, nom):
+        return {'html': f"<div><b>{nom}</b></div>", 'resume': f"résumé {nom}"}
+
+    def copier(self, contexte, nom):
+        self.copies.append(nom)
+
+
+def _fenetre_apercu(app, monkeypatch):
+    from PyQt5.QtWidgets import QLineEdit
+    import src.ui.apercu_export_dialog as module
+    source = _SourceFactice()
+    monkeypatch.setitem(module.SOURCES, 'fiche', lambda mw: source)
+    mw = SimpleNamespace(search_input=QLineEdit("201050694"),
+                         seo_service=SimpleNamespace(raison_refus=None))
+    return module.ApercuExportDialog(mw, 'fiche', parent=None), source, mw
+
+
+def test_apercu_liste_rendu_et_copie(app, monkeypatch):
+    d, source, _ = _fenetre_apercu(app, monkeypatch)
+    noms = [d.liste.item(i).text() for i in range(d.liste.count())]
+    assert noms == ["★ B", "Profil 2", "Profil 10"]
+    assert d.nom_courant() == "B"
+    assert d.onglets.currentIndex() == 0  # Rendu
+    assert d.code.toPlainText() == "<div>\n  <b>B</b>\n</div>"  # code indenté
+    assert d.resume_label.text() == "résumé B"
+    assert "201050694" in d.titre_label.text()
+    d.liste.setCurrentRow(2)
+    assert d.resume_label.text() == "résumé Profil 10"
+    d._copier(fermer=False)
+    assert source.copies == ["Profil 10"]
+    d.filtre.setText("profil 2")
+    assert d.nom_courant() == "Profil 2"
+    d.close()
+
+
+def test_apercu_mis_a_jour_a_la_recherche(app, monkeypatch):
+    d, source, mw = _fenetre_apercu(app, monkeypatch)
+    vus = []
+    source.contexte = lambda interactif: vus.append(interactif) or {'reference': mw.search_input.text()}
+    mw.search_input.setText("00627364")
+    d._minuterie.timeout.emit()
+    assert vus == [False]
+    assert "00627364" in d.titre_label.text()
+    d.close()

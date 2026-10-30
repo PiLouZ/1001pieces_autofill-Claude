@@ -53,22 +53,38 @@ class TitreProduitService:
                                            donnees['fabricants'], donnees['reference'])
         return resultat, profil
 
-    def _generer_titre(self, profile_name: Optional[str]) -> None:
-        seo = self.main_window.seo_service
-        preparees = seo.preparer_donnees_fiche("titre", "Référence pour le titre de fiche")
+    # ─── Contexte / rendu / copie (bouton et aperçu d'export) ───────────────
+
+    def contexte(self, interactif: bool = True) -> Optional[Dict[str, Any]]:
+        """Données de la fiche recherchée, préparées une fois pour tous les gabarits."""
+        preparees = self.main_window.seo_service.preparer_donnees_fiche(
+            "titre", "Référence pour le titre de fiche", interactif=interactif)
         if not preparees:
-            return
+            return None
         donnees, ref_obsolete = preparees
+        return {'donnees': donnees, 'ref_obsolete': ref_obsolete,
+                'reference': donnees['reference']}
 
-        resultat, profil = self.calculer_titre(donnees, profile_name)
-        titre = resultat['titre']
+    def rendre(self, contexte: Dict[str, Any], profile_name: Optional[str]) -> Dict[str, Any]:
+        """Titre selon le gabarit : {'html', 'resume', 'resultat', 'profil'}."""
+        resultat, profil = self.calculer_titre(contexte['donnees'], profile_name)
         info = resultat['info']
-        QApplication.clipboard().setText(titre)
-
         nb_marques = len(info['marques_retenues'])
         marques = f"{nb_marques} marque{'s' if nb_marques > 1 else ''}"
         if info['nb_marques_disponibles'] > nb_marques:
             marques += f" sur {info['nb_marques_disponibles']}"
+        return {'html': resultat['titre'], 'resume': f"{resultat['longueur']} car., {marques}",
+                'marques': marques, 'resultat': resultat, 'profil': profil}
+
+    def copier(self, contexte: Dict[str, Any], profile_name: Optional[str]) -> None:
+        """Copier le titre et le signaler (barre d'état + historique)."""
+        rendu = self.rendre(contexte, profile_name)
+        donnees, ref_obsolete = contexte['donnees'], contexte['ref_obsolete']
+        resultat, profil, marques = rendu['resultat'], rendu['profil'], rendu['marques']
+        titre = resultat['titre']
+        info = resultat['info']
+        QApplication.clipboard().setText(titre)
+
         status = f"Titre copié ({resultat['longueur']} car., {marques})"
         if ref_obsolete:
             status += f" [Supersédée → {donnees['reference']}]"
@@ -84,3 +100,8 @@ class TitreProduitService:
 
         self.main_window.user_interaction_service.add_to_history(detail)
         self.main_window.statusbar.showMessage(status, 4000)
+
+    def _generer_titre(self, profile_name: Optional[str]) -> None:
+        contexte = self.contexte()
+        if contexte:
+            self.copier(contexte, profile_name)

@@ -40,7 +40,10 @@ class SEOService:
         # Dernière formulation proposée par (genre, référence) : 0 = la méta fixe de
         # la référence, Maj+clic passe à la suivante.
         self._variantes: Dict[Tuple[str, str], int] = {}
-    
+        # Aperçu d'export : refus non signalés, raison gardée ici
+        self._refus_silencieux = False
+        self.raison_refus: Optional[str] = None
+
     @handle_seo_generation_errors()
     def generate_meta_title(self) -> None:
         """Générer et copier un méta titre SEO optimisé (Maj+clic : autre formulation)"""
@@ -149,7 +152,7 @@ class SEOService:
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 5000)
     
-    def preparer_donnees_fiche(self, genre: str, titre_dialogue: str
+    def preparer_donnees_fiche(self, genre: str, titre_dialogue: str, interactif: bool = True
                                ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
         """
         Données d'une fiche pour une génération (méta title, méta description,
@@ -160,8 +163,25 @@ class SEOService:
         courante de la chaîne de supersession, type et marques recalculés sur
         toute la lignée, libellé obligatoire, marques des équivalentes en
         complément.
+
+        interactif=False (aperçu d'export mis à jour pendant la saisie) : aucune
+        boîte de choix ni entrée d'historique ; la raison d'un refus est
+        gardée dans raison_refus.
         """
+        self.raison_refus = None
+        self._refus_silencieux = not interactif
+        try:
+            return self._preparer_donnees_fiche(genre, titre_dialogue, interactif)
+        finally:
+            self._refus_silencieux = False
+
+    def _preparer_donnees_fiche(self, genre: str, titre_dialogue: str, interactif: bool
+                                ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
         multi_terms = self._get_multi_reference_terms()
+        if multi_terms and not interactif:
+            self.raison_refus = (f"Plusieurs références détectées ({', '.join(multi_terms)}) : "
+                                 f"cliquez sur Actualiser pour choisir.")
+            return None
         if multi_terms:
             selected_reference = self._show_reference_selection_dialog(
                 titre_dialogue,
@@ -446,6 +466,9 @@ class SEOService:
         boutons, le message passait inaperçu (« les boutons ne font rien »).
         `lien` : action cliquable ajoutée sous l'entrée (ex. compléter le libellé).
         """
+        self.raison_refus = raison
+        if self._refus_silencieux:
+            return
         self.main_window.statusbar.showMessage(raison, 8000)
         pour = f" pour '{reference}'" if reference else ""
         self.main_window.user_interaction_service.add_to_history(

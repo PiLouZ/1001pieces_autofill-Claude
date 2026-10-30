@@ -451,6 +451,17 @@ class ExportConfigService(BaseService):
         defaut = self.get_default_titre_profile_name()
         return copy.deepcopy(next((p for p in profiles if p['name'] == defaut), profiles[0]))
 
+    # ─── Gabarit par défaut d'un bouton (aperçu d'export) ────────────────────
+
+    def definir_profil_par_defaut(self, genre: str, nom: str) -> bool:
+        """Gabarit du clic principal : genre 'titre', 'fiche' ou 'html_details'."""
+        config = self.get_config()
+        if genre == 'html_details':
+            config['html']['details_default_profile'] = nom
+        else:
+            config[genre]['default_profile'] = nom
+        return self.save_config(config)
+
     # ─── Accesseurs Fiche complète ───────────────────────────────────────────
 
     def get_fiche_profile_names(self) -> List[str]:

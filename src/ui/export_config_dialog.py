@@ -217,6 +217,21 @@ class ExportConfigDialog(QDialog):
         # Activer le premier onglet
         self._nav_group.button(0).setChecked(True)
 
+    # Onglets ouvrables depuis l'aperçu d'export : genre → (index, liste des gabarits)
+    _ONGLETS = {'html_details': 1, 'titre': 2, 'fiche': 3}
+
+    def ouvrir_sur(self, genre: str, profil: str = None) -> None:
+        """Afficher l'onglet du genre ('titre', 'fiche', 'html_details'), gabarit sélectionné."""
+        index = self._ONGLETS.get(genre)
+        if index is None:
+            return
+        self._nav_group.button(index).setChecked(True)
+        combo = {'html_details': self.profile_combo, 'titre': self.titre_tab.profile_combo,
+                 'fiche': self.fiche_tab.profile_combo}[genre]
+        position = combo.findData(profil) if profil else -1
+        if position >= 0:
+            combo.setCurrentIndex(position)
+
     def _build_output_dir_bar(self) -> QHBoxLayout:
         """Bandeau du dossier de destination des exports fichier.
 

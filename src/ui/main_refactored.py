@@ -2636,11 +2636,14 @@ class MainWindow(QMainWindow):
         """Afficher un guide d'utilisation local en cas d'erreur"""
         self._safe_show_local_guide()
 
-    def _open_export_config(self):
-        """Ouvrir le dialogue de configuration des exports CSV + HTML"""
+    def _open_export_config(self, genre: str = None, profil: str = None):
+        """Ouvrir le dialogue de configuration des exports CSV + HTML (éventuellement
+        sur l'onglet d'un bouton à gabarits, gabarit sélectionné : aperçu d'export)"""
         from .export_config_dialog import ExportConfigDialog
         dialog = ExportConfigDialog(self.export_config_service, parent=self)
         dialog.finished.connect(lambda _: self.ui_component_service.refresh_profile_menus())
+        if genre:
+            dialog.ouvrir_sur(genre, profil)
         dialog.show()
 
     def _open_history_view(self):
