@@ -378,13 +378,16 @@ def test_apercu_liste_rendu_et_copie(app, monkeypatch):
     assert d.code.toPlainText() == "<div>\n  <b>B</b>\n</div>"  # code indenté
     assert d.resume_label.text() == "résumé B"
     assert "201050694" in d.titre_label.text()
-    d.liste.setCurrentRow(2)
-    assert d.resume_label.text() == "résumé Profil 10"
-    d._copier(fermer=False)
-    assert source.copies == ["Profil 10"]
     d.filtre.setText("profil 2")
     assert d.nom_courant() == "Profil 2"
-    d.close()
+    d.filtre.setText("")
+    d.liste.setCurrentRow(2)
+    assert d.resume_label.text() == "résumé Profil 10"
+    d.show()
+    d.copier_btn.click()
+    # Copier ferme l'aperçu : retour sur la fenêtre principale
+    assert source.copies == ["Profil 10"]
+    assert not d.isVisible()
 
 
 def test_apercu_mis_a_jour_a_la_recherche(app, monkeypatch):

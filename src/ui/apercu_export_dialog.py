@@ -5,7 +5,7 @@ Fenêtre d'aperçu d'export (clic sur la flèche de Titre, Fiche complète, HTML
 à droite l'export du gabarit sélectionné sur la VRAIE recherche en cours :
 onglet Rendu (tel qu'affiché sur le site) et onglet Code (coloré, indenté).
 Copier (ou double-clic) copie exactement ce qui est affiché, avec l'historique
-habituel du bouton.
+habituel du bouton, puis ferme la fenêtre et rend la main à la fenêtre principale.
 
 Les données de la recherche sont préparées une fois (contexte), puis chaque
 gabarit est rendu à la demande. La fenêtre ne bloque pas l'application : une
@@ -171,7 +171,7 @@ class ApercuExportDialog(QDialog):
         gauche_layout.addWidget(self.filtre)
         self.liste = QListWidget()
         self.liste.currentItemChanged.connect(lambda *_: self._afficher())
-        self.liste.itemDoubleClicked.connect(lambda *_: self._copier(fermer=True))
+        self.liste.itemDoubleClicked.connect(lambda *_: self._copier())
         gauche_layout.addWidget(self.liste)
         separateur.addWidget(gauche)
 
@@ -209,7 +209,7 @@ class ApercuExportDialog(QDialog):
         self.copier_btn = QPushButton("Copier")
         self.copier_btn.setDefault(True)
         self.copier_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
-        self.copier_btn.clicked.connect(lambda: self._copier(fermer=False))
+        self.copier_btn.clicked.connect(lambda: self._copier())
         fermer = QPushButton("Fermer")
         fermer.clicked.connect(self.close)
         for bouton in (self.modifier_btn, self.defaut_btn, self.copier_btn, fermer):
@@ -306,13 +306,17 @@ class ApercuExportDialog(QDialog):
 
     # ─── Actions ─────────────────────────────────────────────────────────
 
-    def _copier(self, fermer: bool):
+    def _copier(self):
+        """Copier puis revenir sur la fenêtre principale (le code va être collé ailleurs)."""
         nom = self.nom_courant()
         if nom is None or self._contexte is None:
             return
         self.source.copier(self._contexte, nom)
-        if fermer:
-            self.close()
+        self.close()
+        principale = self.mw
+        if hasattr(principale, 'activateWindow'):
+            principale.raise_()
+            principale.activateWindow()
 
     def _definir_defaut(self):
         nom = self.nom_courant()
