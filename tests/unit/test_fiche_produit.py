@@ -146,13 +146,15 @@ def test_lignees_classees_par_nombre_d_appareils():
     svc = _service({"00627364": 227, "481236068708": 15, "C00301514": 5, "X": 20})
     remplace, lignees = svc.references_liees("201050694")
     assert remplace == ["201050689"]
-    assert lignees == [["00627364"], ["481236068708", "C00301514"], ["X"]]
+    # X (20) et 481236068708 + C00301514 (15 + 5) à égalité : lettre d'abord
+    assert lignees == [["00627364"], ["X"], ["481236068708", "C00301514"]]
 
 
-def test_egalite_par_ordre_alphabetique():
+def test_egalite_lettres_d_abord_puis_ordre_alphabetique():
+    # Décision client du 2026-11-02 : C00967903 avant 5743780600 à égalité
     svc = _service({})
     _, lignees = svc.references_liees("201050694")
-    assert [l[0] for l in lignees] == ["00627364", "481236068708", "X"]
+    assert [l[0] for l in lignees] == ["X", "00627364", "481236068708"]
 
 
 def test_reference_sans_lien():

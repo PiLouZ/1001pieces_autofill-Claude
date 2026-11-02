@@ -112,8 +112,9 @@ class FicheProduitService:
 
         Une lignée équivalente = [équivalente, ses anciennes références…] ; une
         ancienne version dont la remplaçante est hors du groupe a donc sa propre
-        lignée. Lignées classées par nombre d'appareils décroissant, à égalité
-        par ordre alphabétique. Chaque référence n'apparaît qu'une fois.
+        lignée. Lignées classées par nombre d'appareils décroissant ; à égalité,
+        celles qui commencent par une lettre d'abord, puis par ordre alphabétique.
+        Chaque référence n'apparaît qu'une fois.
         """
         db = self.main_window.db_manager
         try:
@@ -139,7 +140,7 @@ class FicheProduitService:
         # Même décompte que les métas (appareils distincts de toute la lignée)
         seo = self.main_window.seo_service
         nb = {lignee[0]: seo._count_compatible_models(lignee) for lignee in lignees}
-        lignees.sort(key=lambda l: (-nb[l[0]], l[0]))
+        lignees.sort(key=lambda l: (-nb[l[0]], l[0][:1].isdigit(), l[0]))
         return remplace, lignees
 
     # ─── Compte rendu ────────────────────────────────────────────────────────
