@@ -10,9 +10,9 @@ des exports, et le copie dans le presse-papiers.
 - Code produit : la référence tapée ; si elle est remplacée, la plus récente
   de sa lignée (comme le Titre).
 - « Remplace les références » : toutes ses anciennes références.
-- « Références équivalentes » : une ligne par équivalente hors lignée, suivie
-  de ses propres anciennes références, de la plus fournie en appareils à la
-  moins fournie.
+- « Références équivalentes » : une seule ligne ; chaque équivalente hors
+  lignée y est suivie de ses propres anciennes références, de la plus fournie
+  en appareils à la moins fournie.
 - Marques et appareils : ce qu'affiche le tableau (bandeaux et filtres de
   colonnes), comme les boutons HTML Marques / Détails.
 """
@@ -176,8 +176,8 @@ class FicheProduitService:
         detail += f"\n==> {resume} ; {resultat['longueur']} car."
         if remplace:
             detail += f"\n==> Remplace : {' '.join(remplace)}"
-        for lignee in equivalentes:
-            detail += f"\n==> Équivalente : {' '.join(lignee)}"
+        if equivalentes:
+            detail += f"\n==> Équivalentes : {' '.join(r for lignee in equivalentes for r in lignee)}"
         reduction = self._reduction(resultat['html'], strategie)
         if reduction:
             detail += f"\n==> {'[!] ' if 'dépassée' in reduction else ''}{reduction[0].upper()}{reduction[1:]}"

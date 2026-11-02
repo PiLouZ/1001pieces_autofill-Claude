@@ -2,8 +2,8 @@
 Assemblage d'une fiche produit complète (bouton « Fiche complète »)
 
 Ordre des blocs : titre, marques, code produit, « Remplace les références »,
-une ligne par référence équivalente, bloc Informations (facultatif), liste
-des appareils. Les lignes de références sans référence ne sont pas écrites.
+« Références équivalentes » (toutes les lignées sur une seule ligne), bloc
+Informations (facultatif), liste des appareils. Les lignes de références sans référence ne sont pas écrites.
 
 Sans Qt ni base : les blocs déjà rendus (titre, marques) et la liste des
 appareils (fonction de la limite restante) sont fournis par l'appelant.
@@ -31,15 +31,17 @@ class FicheProduitGenerator:
                remplace: List[str], equivalentes: List[List[str]]) -> str:
         """Tout ce qui précède la liste des appareils."""
         separateur = profil.get('separateur_references', " ")
+        # Toutes les lignées équivalentes à la suite, dans leur ordre, sur une ligne
+        toutes_equivalentes = [ref for lignee in equivalentes for ref in lignee]
         blocs = [
             titre or "",
             marques_html or "",
             (profil.get('code_produit_template', "")
              .replace('{reference}', html.escape(reference or "", quote=True))),
             self.ligne_references(profil.get('remplace_template', ""), remplace, separateur),
+            self.ligne_references(profil.get('equivalentes_template', ""), toutes_equivalentes,
+                                  separateur),
         ]
-        blocs += [self.ligne_references(profil.get('equivalentes_template', ""), lignee, separateur)
-                  for lignee in equivalentes]
         if profil.get('inclure_informations'):
             blocs.append(profil.get('informations_template', ""))
         return "".join(blocs)

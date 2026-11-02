@@ -3,9 +3,9 @@ Tests — Fiche produit complète (bouton « Fiche complète ») et modèles HTM
 colorés / indentés de la configuration des exports
 
 Décisions client du 2026-10-30 : code produit = référence tapée (la plus récente
-si elle est remplacée) ; « Remplace » = toute sa lignée ; une ligne par
-équivalente avec ses anciennes références, de la plus fournie à la moins
-fournie ; lignes vides non écrites ; bloc Informations facultatif ; limite de
+si elle est remplacée) ; « Remplace » = toute sa lignée ; les
+équivalentes avec leurs anciennes références, de la plus fournie à la moins
+fournie, sur une seule ligne (2026-11-02) ; lignes vides non écrites ; bloc Informations facultatif ; limite de
 caractères sur la fiche entière. Indentation des modèles à l'écran seulement.
 """
 
@@ -49,8 +49,8 @@ def test_ordre_des_blocs_comme_la_fiche_type():
         '<h2>Titre</h2><div>Marques</div>'
         '<div class="class_perso3">Code produit : 201050694</div>'
         '<div class="class_perso3 class_perso6">Remplace les références : 201050689</div>'
-        '<div class="class_perso3 class_perso6">Références équivalentes : 00627364</div>'
-        '<div class="class_perso3 class_perso6">Références équivalentes : 481236068708 C00301514</div>'
+        '<div class="class_perso3 class_perso6">Références équivalentes : '
+        '00627364 481236068708 C00301514</div>'
         '<div>&nbsp;</div><div class="alert alert-info"><h3 class="alert-heading">Informations :</h3>'
         '<div>&nbsp;</div></div>'
         '<div>A</div>')
