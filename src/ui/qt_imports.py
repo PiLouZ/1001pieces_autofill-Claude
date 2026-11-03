@@ -14,7 +14,8 @@ from PyQt5.QtWidgets import (
     QToolBar, QToolButton, QAction, QActionGroup, QStatusBar, QSplitter, QTabWidget,
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
-    QProgressBar, QSizePolicy, QStackedWidget, QWidgetAction
+    QProgressBar, QSizePolicy, QStackedWidget, QWidgetAction,
+    QStyledItemDelegate, QStyleOptionViewItem
 )
 
 # Core Qt
@@ -48,6 +49,7 @@ __all__ = [
     'QInputDialog', 'QMessageBox', 'QFileDialog', 'QProgressDialog', 'QDialogButtonBox',
     'QToolBar', 'QToolButton', 'QAction', 'QActionGroup', 'QStatusBar', 'QSplitter', 'QTabWidget',
     'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy', 'QStackedWidget', 'QWidgetAction',
+    'QStyledItemDelegate', 'QStyleOptionViewItem',
     
     # Core
     'Qt', 'QTimer', 'QSettings', 'QEvent', 'QSize', 'QRect', 'QPoint',

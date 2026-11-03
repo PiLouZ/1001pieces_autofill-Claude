@@ -432,3 +432,25 @@ def test_apercu_mis_a_jour_a_la_recherche(app, monkeypatch):
     assert vus == [False]
     assert "00627364" in d.titre_label.text()
     d.close()
+
+
+def test_apercu_gabarits_a_droite_et_noms_longs_sur_plusieurs_lignes(app, monkeypatch):
+    from PyQt5.QtCore import Qt
+    d, source, _ = _fenetre_apercu(app, monkeypatch)
+    long = "Fiche avec informations (photos non contractuelles, livraison rapide)"
+    source.noms = lambda: ["B", long]
+    d._remplir_liste()
+    d.resize(1000, 680)
+    d.show()
+    app.processEvents()
+    # Liste des gabarits à droite de l'aperçu (près de Copier)
+    assert d.liste.mapTo(d, d.liste.rect().topLeft()).x() > \
+        d.onglets.mapTo(d, d.onglets.rect().topLeft()).x()
+    # Nom long : retour à la ligne, jamais tronqué ni défilement horizontal
+    assert d.liste.wordWrap() and d.liste.textElideMode() == Qt.ElideNone
+    assert d.liste.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    court = d.liste.visualItemRect(d.liste.item(0)).height()
+    haut = d.liste.visualItemRect(d.liste.item(1)).height()
+    assert haut > court * 1.5
+    assert d.liste.visualItemRect(d.liste.item(1)).right() <= d.liste.viewport().width()
+    d.close()

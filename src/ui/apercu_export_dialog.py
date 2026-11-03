@@ -1,9 +1,10 @@
 """
 Fenêtre d'aperçu d'export (clic sur la flèche de Titre, Fiche complète, HTML Détails)
 
-À gauche les gabarits du bouton (filtre, gabarit par défaut en tête, marqué ★),
-à droite l'export du gabarit sélectionné sur la VRAIE recherche en cours :
-onglet Rendu (tel qu'affiché sur le site) et onglet Code (coloré, indenté).
+À gauche l'export du gabarit sélectionné sur la VRAIE recherche en cours :
+onglet Rendu (tel qu'affiché sur le site) et onglet Code (coloré, indenté) ;
+à droite, près des boutons, les gabarits du bouton (filtre, gabarit par défaut
+en tête, marqué ★ ; noms longs sur plusieurs lignes, jamais tronqués).
 Copier (ou double-clic) copie exactement ce qui est affiché, avec l'historique
 habituel du bouton, puis ferme la fenêtre et rend la main à la fenêtre principale.
 
@@ -19,7 +20,7 @@ from typing import Any, Dict, List, Optional
 from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget,
     QListWidgetItem, QTabWidget, QTextBrowser, QPlainTextEdit, QSplitter, QWidget,
-    QTimer, QEvent, Qt, QFont, QFontDatabase
+    QTimer, QEvent, Qt, QFont, QFontDatabase, QRect, QStyledItemDelegate, QStyleOptionViewItem
 )
 from src.core.constants import ExportFormat
 from src.core.logger import app_logger
@@ -110,6 +111,20 @@ class SourceHtmlDetails(SourceTitre):
 SOURCES = {'titre': SourceTitre, 'fiche': SourceFiche, 'html_details': SourceHtmlDetails}
 
 
+class DelegueNomsReplies(QStyledItemDelegate):
+    """Hauteur des noms repliés calculée sur la largeur réelle de la liste.
+
+    Sans cela, Qt estime le retour à la ligne sur une autre largeur que celle
+    du dessin : lignes vides en trop sous les noms longs.
+    """
+
+    def sizeHint(self, option, index):
+        vue = self.parent()
+        repli = QStyleOptionViewItem(option)
+        repli.rect = QRect(0, 0, max(vue.viewport().width() - 2 * vue.spacing(), 1), 1)
+        return super().sizeHint(repli, index)
+
+
 # ─── Fenêtre ─────────────────────────────────────────────────────────────────
 
 class ApercuExportDialog(QDialog):
@@ -160,20 +175,26 @@ class ApercuExportDialog(QDialog):
         entete.addWidget(actualiser)
         layout.addLayout(entete)
 
+        # Aperçu à gauche, gabarits à droite : près de Copier, moins de trajet souris
         separateur = QSplitter(Qt.Horizontal)
-        gauche = QWidget()
-        gauche_layout = QVBoxLayout(gauche)
-        gauche_layout.setContentsMargins(0, 0, 0, 0)
+        gabarits = QWidget()
+        gabarits_layout = QVBoxLayout(gabarits)
+        gabarits_layout.setContentsMargins(0, 0, 0, 0)
         self.filtre = QLineEdit()
         self.filtre.setPlaceholderText("Filtrer…")
         self.filtre.setClearButtonEnabled(True)
         self.filtre.textChanged.connect(self._filtrer)
-        gauche_layout.addWidget(self.filtre)
+        gabarits_layout.addWidget(self.filtre)
         self.liste = QListWidget()
+        # Noms longs : retour à la ligne, jamais tronqués (pas de défilement horizontal)
+        self.liste.setWordWrap(True)
+        self.liste.setTextElideMode(Qt.ElideNone)
+        self.liste.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.liste.setResizeMode(QListWidget.Adjust)
+        self.liste.setItemDelegate(DelegueNomsReplies(self.liste))
         self.liste.currentItemChanged.connect(lambda *_: self._afficher())
         self.liste.itemDoubleClicked.connect(lambda *_: self._copier())
-        gauche_layout.addWidget(self.liste)
-        separateur.addWidget(gauche)
+        gabarits_layout.addWidget(self.liste)
 
         self.onglets = QTabWidget()
         self.rendu = QTextBrowser()
@@ -188,9 +209,10 @@ class ApercuExportDialog(QDialog):
         self.onglets.addTab(self.rendu, "Rendu")
         self.onglets.addTab(self.code, "Code")
         separateur.addWidget(self.onglets)
-        separateur.setStretchFactor(0, 0)
-        separateur.setStretchFactor(1, 1)
-        separateur.setSizes([230, 770])
+        separateur.addWidget(gabarits)
+        separateur.setStretchFactor(0, 1)
+        separateur.setStretchFactor(1, 0)
+        separateur.setSizes([770, 230])
         layout.addWidget(separateur, 1)
 
         self.resume_label = QLabel()
