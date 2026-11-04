@@ -3,19 +3,16 @@ Onglet « Titre » de la configuration des exports (v3.99.0)
 
 Gabarits nommés du bouton « Titre » (titre de fiche produit) : gabarit avec
 variables, nombre de marques et de types, longueur maximale, séparateurs.
-Aperçu en direct sur des données fictives. Les profils sont une copie de
-travail jusqu'à « Enregistrer » (cf. ExportConfigDialog._collect_config).
+Aperçu en direct sur des données fictives. Les gabarits sont listés dans la
+colonne de gauche (ColonneVariantes), qui en garde la copie de travail jusqu'à
+« Enregistrer » (cf. ExportConfigDialog._collect_config).
 """
 
 import copy
 
-import qtawesome as qta
-from .qt_imports import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox,
-    QSpinBox, QTextBrowser, QMessageBox, QInputDialog, QScrollArea, QFrame, Qt, QSize
-)
-from .style_manager import StyleManager
+from .qt_imports import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox, QTextBrowser
 from .champ_modele_html import ChampModeleHtml
+from .colonne_variantes import ColonneVariantes
 from src.utils.titre_produit_generator import TitreProduitGenerator
 
 
@@ -35,19 +32,20 @@ class TitreConfigTab(QWidget):
         super().__init__(parent)
         self._dialog = dialog
         self._generateur = TitreProduitGenerator()
-        self._profiles = []
-        self._default_profile = ""
-        self._current_profile_name = ""
         self._build_ui()
 
     # ─── Construction ────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        from .export_config_dialog import VariableChipsBar
+        from .export_config_dialog import VariableChipsBar, BandeauRetour
+        from src.services.export_config_service import DEFAULT_CONFIG
 
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 4, 0, 0)
-        layout.setSpacing(12)
+
+        self.colonne = ColonneVariantes(
+            'titre', self._store_fields, self._load_fields,
+            lambda: copy.deepcopy(DEFAULT_CONFIG['titre']['profiles'][0]), "Titre")
 
         card, grid = self._dialog._build_card(
             "Titre de fiche produit",
@@ -57,30 +55,8 @@ class TitreConfigTab(QWidget):
         )
         add_row = self._dialog._add_grid_row
 
-        # Gabarits : liste déroulante + actions en icônes (comme HTML Détails)
-        bar = QHBoxLayout()
-        bar.setSpacing(4)
-        self.profile_combo = QComboBox()
-        self.profile_combo.setMinimumWidth(160)
-        self.profile_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
-        bar.addWidget(self.profile_combo, stretch=1)
-        for icone, tooltip, slot, style in (
-            ('fa5s.plus',      "Ajouter un gabarit (valeurs par défaut)", self._add_profile,         StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.copy',      "Dupliquer le gabarit sélectionné",        self._duplicate_profile,   StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.pen',       "Renommer le gabarit sélectionné",         self._rename_profile,      StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.star',      "Par défaut : utiliser ce gabarit au clic sur le bouton Titre", self._set_default_profile, StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.trash-alt', "Supprimer le gabarit sélectionné",        self._delete_profile,      StyleManager.DANGER_COMPACT_BUTTON),
-        ):
-            btn = QPushButton()
-            btn.setIcon(qta.icon(icone, color='#c0392b' if 'trash' in icone else '#495057'))
-            btn.setIconSize(QSize(11, 11))
-            btn.setFixedSize(28, 26)
-            btn.setToolTip(tooltip)
-            btn.setStyleSheet(style)
-            btn.clicked.connect(slot)
-            bar.addWidget(btn)
-        add_row(grid, "Gabarit :", bar)
+        # Gabarit sélectionné dans la colonne de gauche : nom + « Par défaut »
+        card.layout().insertWidget(card.layout().count() - 1, self.colonne.barre_nom())
 
         # Zone colorée : les gabarits H2 contiennent du HTML
         self.template_input = ChampModeleHtml()
@@ -115,16 +91,10 @@ class TitreConfigTab(QWidget):
         reglages = QWidget()
         reglages_layout = QVBoxLayout(reglages)
         reglages_layout.setContentsMargins(0, 0, 6, 0)
+        self.retour = BandeauRetour()
+        reglages_layout.addWidget(self.retour)
         reglages_layout.addWidget(card)
         reglages_layout.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidget(reglages)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setMinimumWidth(reglages.minimumSizeHint().width()
-                               + scroll.verticalScrollBar().sizeHint().width())
-        layout.addWidget(scroll, 2)
 
         # Aperçu
         right = QWidget()
@@ -135,7 +105,7 @@ class TitreConfigTab(QWidget):
         self.preview = QTextBrowser()
         self.preview.setStyleSheet("background: white; border: 1px solid #dee2e6;")
         right_layout.addWidget(self.preview)
-        layout.addWidget(right, 1)
+        layout.addWidget(self._dialog._trois_colonnes(self.colonne, reglages, right))
 
         for champ in (self.template_input, self.sep_marques_input, self.dernier_sep_marques_input,
                       self.sep_types_input, self.dernier_sep_types_input):
@@ -179,35 +149,14 @@ class TitreConfigTab(QWidget):
     # ─── Chargement / collecte ───────────────────────────────────────────────
 
     def load(self, titre_cfg: dict):
-        """Copie de travail des profils de la config chargée."""
-        self._profiles = copy.deepcopy(titre_cfg['profiles'])
-        self._default_profile = titre_cfg['default_profile']
-        self._current_profile_name = self._default_profile
-        self._refresh_combo(select_name=self._default_profile)
-        self._load_fields(self._find(self._current_profile_name))
+        """Copie de travail des gabarits de la config chargée."""
+        self.colonne.load(titre_cfg['profiles'], titre_cfg['default_profile'])
 
     def collect(self) -> dict:
-        self._store_fields()
-        return {'profiles': copy.deepcopy(self._profiles),
-                'default_profile': self._default_profile}
+        profiles, defaut = self.colonne.collect()
+        return {'profiles': profiles, 'default_profile': defaut}
 
-    def _find(self, name):
-        return next((p for p in self._profiles if p['name'] == name), self._profiles[0])
-
-    def _refresh_combo(self, select_name=None):
-        self.profile_combo.blockSignals(True)
-        self.profile_combo.clear()
-        for p in self._profiles:
-            display = p['name'] + ("  (défaut)" if p['name'] == self._default_profile else "")
-            self.profile_combo.addItem(display, p['name'])
-        if select_name:
-            idx = next((i for i in range(self.profile_combo.count())
-                        if self.profile_combo.itemData(i) == select_name), 0)
-            self.profile_combo.setCurrentIndex(idx)
-        self.profile_combo.blockSignals(False)
-
-    def _store_fields(self):
-        profile = self._find(self._current_profile_name)
+    def _store_fields(self, profile):
         profile['template'] = self.template_input.text()
         profile['max_marques'] = self.max_marques_spin.value()
         profile['max_types'] = self.max_types_spin.value()
@@ -234,85 +183,6 @@ class TitreConfigTab(QWidget):
             'separateur_types': self.sep_types_input.text(),
             'dernier_separateur_types': self.dernier_sep_types_input.text(),
         }
-
-    # ─── Gabarits ────────────────────────────────────────────────────────────
-
-    def _on_profile_changed(self, index):
-        if index < 0:
-            return
-        self._store_fields()
-        self._current_profile_name = self.profile_combo.itemData(index)
-        self._load_fields(self._find(self._current_profile_name))
-
-    def _unique_name(self, base):
-        names = {p['name'] for p in self._profiles}
-        if base not in names:
-            return base
-        i = 2
-        while f"{base} ({i})" in names:
-            i += 1
-        return f"{base} ({i})"
-
-    def _ask_name(self, title, default_text):
-        name, ok = QInputDialog.getText(self, title, "Nom du gabarit :", text=default_text)
-        name = name.strip()
-        return name if (ok and name) else None
-
-    def _select_new(self, profile):
-        self._profiles.append(profile)
-        self._current_profile_name = profile['name']
-        self._refresh_combo(select_name=profile['name'])
-        self._load_fields(profile)
-
-    def _add_profile(self):
-        name = self._ask_name("Nouveau gabarit", "Nouveau gabarit")
-        if not name:
-            return
-        from src.services.export_config_service import DEFAULT_CONFIG
-        self._store_fields()
-        profile = copy.deepcopy(DEFAULT_CONFIG['titre']['profiles'][0])
-        profile['name'] = self._unique_name(name)
-        self._select_new(profile)
-
-    def _duplicate_profile(self):
-        self._store_fields()
-        source = self._find(self._current_profile_name)
-        profile = copy.deepcopy(source)
-        profile['name'] = self._unique_name(f"{source['name']} (copie)")
-        self._select_new(profile)
-
-    def _rename_profile(self):
-        old_name = self._current_profile_name
-        name = self._ask_name("Renommer le gabarit", old_name)
-        if not name or name == old_name:
-            return
-        name = self._unique_name(name)
-        self._find(old_name)['name'] = name
-        if self._default_profile == old_name:
-            self._default_profile = name
-        self._current_profile_name = name
-        self._refresh_combo(select_name=name)
-
-    def _delete_profile(self):
-        if len(self._profiles) <= 1:
-            QMessageBox.warning(self, "Suppression impossible", "Au moins un gabarit doit exister.")
-            return
-        name = self._current_profile_name
-        if QMessageBox.question(
-            self, "Supprimer le gabarit", f"Supprimer le gabarit « {name} » ?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        ) != QMessageBox.Yes:
-            return
-        self._profiles = [p for p in self._profiles if p['name'] != name]
-        if self._default_profile == name:
-            self._default_profile = self._profiles[0]['name']
-        self._current_profile_name = self._profiles[0]['name']
-        self._refresh_combo(select_name=self._current_profile_name)
-        self._load_fields(self._find(self._current_profile_name))
-
-    def _set_default_profile(self):
-        self._default_profile = self._current_profile_name
-        self._refresh_combo(select_name=self._current_profile_name)
 
     # ─── Aperçu ──────────────────────────────────────────────────────────────
 

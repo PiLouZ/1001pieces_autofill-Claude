@@ -16,12 +16,13 @@ from .qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QInputDialog, QFrame, Qt, QFont, QSizePolicy, QSize, QSpinBox,
-    QEvent, QFileDialog, QScrollArea, QGridLayout
+    QMessageBox, QFrame, Qt, QFont, QSize, QSpinBox,
+    QEvent, QFileDialog, QScrollArea, QGridLayout, QSplitter, QSettings, QApplication
 )
 from src.core.logger import app_logger
 from .style_manager import StyleManager
 from .champ_modele_html import ChampModeleHtml
+from .colonne_variantes import ColonneVariantes
 
 
 def _make_icon_toggle(btn, icon_name, icon_color):
@@ -126,6 +127,49 @@ class VariableChipsBar(QWidget):
         table.editItem(item)
 
 
+class BandeauRetour(QFrame):
+    """Bandeau « ‹ Retour à la fiche « … » » en tête d'un onglet ouvert depuis
+    l'onglet Fiche (lien « Modifier ce gabarit › ») ; masqué sinon."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._rappel = None
+        self.setObjectName("bandeauRetour")
+        self.setStyleSheet(
+            "QFrame#bandeauRetour { background: #e7f1ff; border: 1px solid #b6d4fe; border-radius: 6px; }")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 4, 4)
+        self.retour_btn = QPushButton()
+        self.retour_btn.setIcon(qta.icon('fa5s.chevron-left', color='#0b5ed7'))
+        self.retour_btn.setIconSize(QSize(10, 10))
+        self.retour_btn.setCursor(Qt.PointingHandCursor)
+        self.retour_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; color: #0b5ed7;"
+            " font-size: 12px; text-align: left; padding: 2px; }"
+            "QPushButton:hover { text-decoration: underline; }")
+        self.retour_btn.clicked.connect(self._retour)
+        layout.addWidget(self.retour_btn, 1)
+        fermer = QPushButton()
+        fermer.setIcon(qta.icon('fa5s.times', color='#6c757d'))
+        fermer.setIconSize(QSize(10, 10))
+        fermer.setFixedSize(22, 22)
+        fermer.setToolTip("Masquer ce bandeau")
+        fermer.setStyleSheet(StyleManager.PANEL_ICON_BUTTON)
+        fermer.clicked.connect(self.hide)
+        layout.addWidget(fermer)
+        self.hide()
+
+    def afficher(self, texte: str, rappel):
+        self.retour_btn.setText(texte)
+        self._rappel = rappel
+        self.show()
+
+    def _retour(self):
+        self.hide()
+        if self._rappel:
+            self._rappel()
+
+
 # Données de prévisualisation HTML
 _PREVIEW_DATA = [
     ('Aspirateur', 'Samsung', 'SC4520', 'PowerBrush 20', '', 'AS6015830'),
@@ -149,13 +193,86 @@ class ExportConfigDialog(QDialog):
         self._original_config = export_config_service.get_config()
 
         self.setWindowTitle("Configuration des exports")
-        # Largeur mini : réglages et aperçu côte à côte sans se chevaucher
-        self.setMinimumSize(900, 540)
-        self.resize(1020, 720)
+        # Largeur mini : variantes, réglages et aperçu côte à côte sans se chevaucher
+        self.setMinimumSize(1000, 600)
         self.setModal(False)
+        # Séparateurs à trois colonnes des onglets HTML, Titre, Fiche : mêmes largeurs
+        self._separateurs = []
 
         self._build_ui()
+        self._restaurer_disposition()
         self._load_config_into_ui()
+
+    # ─── Taille de la fenêtre et largeur des colonnes (mémorisées par poste) ──
+
+    CLE_GEOMETRIE = "export_config/geometrie"
+    CLE_COLONNES = "export_config/colonnes"
+    TAILLE_DEFAUT = (1360, 860)
+
+    @staticmethod
+    def _reglages():
+        return QSettings("1001pieces", "autofill")
+
+    def _restaurer_disposition(self):
+        reglages = self._reglages()
+        geometrie = reglages.value(self.CLE_GEOMETRIE)
+        if not (geometrie and self.restoreGeometry(geometrie)):
+            largeur, hauteur = self.TAILLE_DEFAUT
+            ecran = QApplication.primaryScreen()
+            if ecran is not None:
+                dispo = ecran.availableGeometry()
+                largeur = min(largeur, dispo.width() - 40)
+                hauteur = min(hauteur, dispo.height() - 40)
+            self.resize(max(largeur, self.minimumWidth()), max(hauteur, self.minimumHeight()))
+        colonnes = reglages.value(self.CLE_COLONNES)
+        for separateur in self._separateurs:
+            if not (colonnes and separateur.restoreState(colonnes)):
+                separateur.setSizes([230, 620, 380])
+
+    def done(self, resultat):
+        # Fermeture par Annuler, Enregistrer, Échap ou la croix : toutes passent ici
+        reglages = self._reglages()
+        reglages.setValue(self.CLE_GEOMETRIE, self.saveGeometry())
+        if self._separateurs:
+            reglages.setValue(self.CLE_COLONNES, self._separateurs[0].saveState())
+        super().done(resultat)
+
+    def _trois_colonnes(self, colonne, reglages, apercu) -> QSplitter:
+        """Variantes | réglages (défilants) | aperçu, séparés par des poignées.
+
+        Les poignées déplacées dans un onglet le sont dans les deux autres :
+        changer d'onglet ne fait pas bouger les colonnes.
+        """
+        scroll = QScrollArea()
+        scroll.setWidget(reglages)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setMinimumWidth(420)
+        colonne.setMinimumWidth(170)
+        apercu.setMinimumWidth(240)
+
+        separateur = QSplitter(Qt.Horizontal)
+        separateur.setChildrenCollapsible(False)
+        separateur.setHandleWidth(9)
+        separateur.setStyleSheet(
+            "QSplitter::handle { background: transparent; }"
+            "QSplitter::handle:hover { background: #dee2e6; }")
+        for i, widget in enumerate((colonne, scroll, apercu)):
+            separateur.addWidget(widget)
+            separateur.setStretchFactor(i, 1 if i == 1 else 0)
+        separateur.splitterMoved.connect(lambda *_: self._aligner_colonnes(separateur))
+        self._separateurs.append(separateur)
+        return separateur
+
+    def _aligner_colonnes(self, source):
+        tailles = source.sizes()
+        for separateur in self._separateurs:
+            if separateur is not source:
+                separateur.setSizes(tailles)
+
+    def afficher_onglet(self, index: int):
+        self._nav_group.button(index).setChecked(True)
 
     # ─── Construction de l'interface ─────────────────────────────────────────
 
@@ -209,6 +326,11 @@ class ExportConfigDialog(QDialog):
         from .fiche_config_tab import FicheConfigTab
         self.fiche_tab = FicheConfigTab(self)
         self._nav_stack.addWidget(self.fiche_tab)
+        # Gabarit Titre ou profil HTML Détails renommé : les variantes Fiche suivent
+        self.titre_tab.colonne.renommages.append(
+            lambda ancien, nouveau: self.fiche_tab.renommer_gabarit('titre_profile', ancien, nouveau))
+        self.details_colonne.renommages.append(
+            lambda ancien, nouveau: self.fiche_tab.renommer_gabarit('details_profile', ancien, nouveau))
         layout.addWidget(self._nav_stack)
 
         # Boutons du bas
@@ -225,12 +347,14 @@ class ExportConfigDialog(QDialog):
         index = self._ONGLETS.get(genre)
         if index is None:
             return
-        self._nav_group.button(index).setChecked(True)
-        combo = {'html_details': self.profile_combo, 'titre': self.titre_tab.profile_combo,
-                 'fiche': self.fiche_tab.profile_combo}[genre]
-        position = combo.findData(profil) if profil else -1
-        if position >= 0:
-            combo.setCurrentIndex(position)
+        self.afficher_onglet(index)
+        if profil:
+            self.colonne(genre).selectionner(profil)
+
+    def colonne(self, genre: str) -> ColonneVariantes:
+        """Colonne des gabarits du genre ('titre', 'fiche', 'html_details')."""
+        return {'html_details': self.details_colonne, 'titre': self.titre_tab.colonne,
+                'fiche': self.fiche_tab.colonne}[genre]
 
     def _build_output_dir_bar(self) -> QHBoxLayout:
         """Bandeau du dossier de destination des exports fichier.
@@ -423,33 +547,29 @@ class ExportConfigDialog(QDialog):
 
     def _build_html_tab(self) -> QWidget:
         tab = QWidget()
-        layout = QHBoxLayout(tab)
+        layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 4, 0, 0)
-        layout.setSpacing(12)
 
-        # ── Panneau gauche : réglages, dans une zone qui défile ──────────────
+        # ── Gauche : profils HTML Détails (les marques n'ont pas de profils) ──
+        from src.services.export_config_service import DEFAULT_CONFIG
+        self.details_colonne = ColonneVariantes(
+            'html_details', self._store_fields_into_current, self._load_profile_fields,
+            lambda: dict(DEFAULT_CONFIG['html']['details']), "HTML Détails")
+
+        # ── Centre : réglages, dans une zone qui défile ──────────────────────
         # Une QVBoxLayout à court de hauteur rétrécit ses champs sous leur
         # taille utile (champs « pincés ») : la zone de défilement l'évite.
         reglages = QWidget()
         reglages_layout = QVBoxLayout(reglages)
         reglages_layout.setContentsMargins(0, 0, 6, 0)
         reglages_layout.setSpacing(10)
+        self.html_retour = BandeauRetour()
+        reglages_layout.addWidget(self.html_retour)
         reglages_layout.addWidget(self._build_brands_card())
         reglages_layout.addWidget(self._build_details_card())
         reglages_layout.addStretch()
 
-        scroll = QScrollArea()
-        scroll.setWidget(reglages)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # Sans défilement horizontal, la zone doit réserver la largeur utile
-        # des cartes : c'est l'aperçu qui cède quand la fenêtre est étroite.
-        scroll.setMinimumWidth(reglages.minimumSizeHint().width()
-                               + scroll.verticalScrollBar().sizeHint().width())
-        layout.addWidget(scroll, 2)
-
-        # ── Panneau droit : aperçu ────────────────────────────────────────────
+        # ── Droite : aperçu ───────────────────────────────────────────────────
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -470,7 +590,7 @@ class ExportConfigDialog(QDialog):
         self.html_preview = QTextBrowser()
         self.html_preview.setStyleSheet("background: white; border: 1px solid #dee2e6;")
         right_layout.addWidget(self.html_preview)
-        layout.addWidget(right, 1)
+        layout.addWidget(self._trois_colonnes(self.details_colonne, reglages, right))
 
         # Aperçu en direct : données fictives, rendu instantané
         for champ in (self.html_link_tpl, self.html_brands_sep, self.html_brands_wrapper,
@@ -480,10 +600,10 @@ class ExportConfigDialog(QDialog):
 
         return tab
 
-    def _build_card(self, titre: str, aide: str):
-        """Carte de réglages : titre + phrase d'aide, puis une grille
-        « étiquette | champ » (étiquettes à gauche : moitié moins de hauteur
-        que des étiquettes au-dessus des champs)."""
+    def _build_card(self, titre: str, aide: str = ""):
+        """Carte de réglages : titre + phrase d'aide (facultative), puis une
+        grille « étiquette | champ » (étiquettes à gauche : moitié moins de
+        hauteur que des étiquettes au-dessus des champs)."""
         card = QFrame()
         card.setObjectName("carteExport")
         card.setStyleSheet(
@@ -495,10 +615,11 @@ class ExportConfigDialog(QDialog):
         card_layout.setSpacing(8)
 
         card_layout.addWidget(self._section_label(titre))
-        aide_lbl = QLabel(aide)
-        aide_lbl.setWordWrap(True)
-        aide_lbl.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
-        card_layout.addWidget(aide_lbl)
+        if aide:
+            aide_lbl = QLabel(aide)
+            aide_lbl.setWordWrap(True)
+            aide_lbl.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
+            card_layout.addWidget(aide_lbl)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(10)
@@ -566,31 +687,8 @@ class ExportConfigDialog(QDialog):
             "Chaque profil mémorise ses propres réglages.",
         )
 
-        # Profils : liste déroulante + actions en icônes (infobulles)
-        profile_bar = QHBoxLayout()
-        profile_bar.setSpacing(4)
-        self.profile_combo = QComboBox()
-        self.profile_combo.setMinimumWidth(160)
-        self.profile_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
-        profile_bar.addWidget(self.profile_combo, stretch=1)
-
-        for icone, tooltip, slot, style in (
-            ('fa5s.plus',      "Ajouter un profil (valeurs par défaut)",          self._add_profile,         StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.copy',      "Dupliquer le profil sélectionné",                 self._duplicate_profile,   StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.pen',       "Renommer le profil sélectionné",                  self._rename_profile,      StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.star',      "Par défaut : utiliser ce profil pour le bouton HTML Détails", self._set_default_profile, StyleManager.SECONDARY_COMPACT_BUTTON),
-            ('fa5s.trash-alt', "Supprimer le profil sélectionné",                 self._delete_profile,      StyleManager.DANGER_COMPACT_BUTTON),
-        ):
-            btn = QPushButton()
-            btn.setIcon(qta.icon(icone, color='#c0392b' if 'trash' in icone else '#495057'))
-            btn.setIconSize(QSize(11, 11))
-            btn.setFixedSize(28, 26)
-            btn.setToolTip(tooltip)
-            btn.setStyleSheet(style)
-            btn.clicked.connect(slot)
-            profile_bar.addWidget(btn)
-        self._add_grid_row(grid, "Profil :", profile_bar)
+        # Profil sélectionné dans la colonne de gauche : nom + « Par défaut »
+        card.layout().insertWidget(card.layout().count() - 1, self.details_colonne.barre_nom())
 
         self.html_brand_header_tpl = ChampModeleHtml()
         self._add_grid_row(grid, "En-tête de marque :", self.html_brand_header_tpl)
@@ -694,11 +792,8 @@ class ExportConfigDialog(QDialog):
         self.html_brands_wrapper.setText(brands_cfg.get('wrapper_template', '{liens}'))
 
         # Profils HTML Détails : copie de travail en mémoire jusqu'à Enregistrer
-        self._profiles = self.export_config_service.get_details_profiles()
-        self._default_profile = self.export_config_service.get_default_details_profile_name()
-        self._current_profile_name = self._default_profile
-        self._refresh_profile_combo(select_name=self._default_profile)
-        self._load_profile_fields(self._find_profile(self._current_profile_name))
+        self.details_colonne.load(self.export_config_service.get_details_profiles(),
+                                  self.export_config_service.get_default_details_profile_name())
 
         # Gabarits du bouton Titre
         self.titre_tab.load(config['titre'])
@@ -707,30 +802,14 @@ class ExportConfigDialog(QDialog):
         # elles listent leurs gabarits)
         self.fiche_tab.load(config['fiche'])
 
-    # ─── Gestion des profils HTML Détails ────────────────────────────────────
+    # ─── Profils HTML Détails (copie de travail : self.details_colonne) ──────
 
-    def _find_profile(self, name):
-        for p in self._profiles:
-            if p['name'] == name:
-                return p
-        return self._profiles[0]
+    @property
+    def _default_profile(self) -> str:
+        return self.details_colonne.nom_defaut
 
-    def _refresh_profile_combo(self, select_name=None):
-        """Repeupler la combo (nom réel en itemData, suffixe visuel pour le défaut)"""
-        self.profile_combo.blockSignals(True)
-        self.profile_combo.clear()
-        for p in self._profiles:
-            display = p['name'] + ("  (défaut)" if p['name'] == self._default_profile else "")
-            self.profile_combo.addItem(display, p['name'])
-        if select_name:
-            idx = next((i for i in range(self.profile_combo.count())
-                        if self.profile_combo.itemData(i) == select_name), 0)
-            self.profile_combo.setCurrentIndex(idx)
-        self.profile_combo.blockSignals(False)
-
-    def _store_fields_into_current(self):
-        """Reporter les champs de l'éditeur dans le profil courant (en mémoire)"""
-        profile = self._find_profile(self._current_profile_name)
+    def _store_fields_into_current(self, profile):
+        """Reporter les champs de l'éditeur dans le profil (en mémoire)"""
         profile['brand_header_template'] = self.html_brand_header_tpl.text()
         profile['model_line_template']   = self.html_model_line_tpl.text()
         profile['group_separator']       = self.html_group_sep.text()
@@ -744,85 +823,6 @@ class ExportConfigDialog(QDialog):
         self.html_details_wrapper.setText(profile.get('wrapper_template', '{appareils}'))
         self.html_char_limit_spin.setValue(profile.get('char_limit', 195000))
         self._update_html_preview()
-
-    def _on_profile_changed(self, index):
-        if index < 0:
-            return
-        self._store_fields_into_current()
-        self._current_profile_name = self.profile_combo.itemData(index)
-        self._load_profile_fields(self._find_profile(self._current_profile_name))
-
-    def _unique_profile_name(self, base):
-        names = {p['name'] for p in self._profiles}
-        if base not in names:
-            return base
-        i = 2
-        while f"{base} ({i})" in names:
-            i += 1
-        return f"{base} ({i})"
-
-    def _ask_profile_name(self, title, default_text):
-        name, ok = QInputDialog.getText(self, title, "Nom du profil :", text=default_text)
-        name = name.strip()
-        return name if (ok and name) else None
-
-    def _add_profile(self):
-        name = self._ask_profile_name("Nouveau profil", "Nouveau profil")
-        if not name:
-            return
-        from src.services.export_config_service import DEFAULT_CONFIG
-        profile = dict(DEFAULT_CONFIG['html']['details'])
-        profile['name'] = self._unique_profile_name(name)
-        self._store_fields_into_current()
-        self._profiles.append(profile)
-        self._current_profile_name = profile['name']
-        self._refresh_profile_combo(select_name=profile['name'])
-        self._load_profile_fields(profile)
-
-    def _duplicate_profile(self):
-        self._store_fields_into_current()
-        source = self._find_profile(self._current_profile_name)
-        profile = dict(source)
-        profile['name'] = self._unique_profile_name(f"{source['name']} (copie)")
-        self._profiles.append(profile)
-        self._current_profile_name = profile['name']
-        self._refresh_profile_combo(select_name=profile['name'])
-        self._load_profile_fields(profile)
-
-    def _rename_profile(self):
-        old_name = self._current_profile_name
-        name = self._ask_profile_name("Renommer le profil", old_name)
-        if not name or name == old_name:
-            return
-        name = self._unique_profile_name(name)
-        self._find_profile(old_name)['name'] = name
-        if self._default_profile == old_name:
-            self._default_profile = name
-        self._current_profile_name = name
-        self._refresh_profile_combo(select_name=name)
-
-    def _delete_profile(self):
-        if len(self._profiles) <= 1:
-            QMessageBox.warning(self, "Suppression impossible",
-                                "Au moins un profil doit exister.")
-            return
-        name = self._current_profile_name
-        if QMessageBox.question(
-            self, "Supprimer le profil",
-            f"Supprimer le profil « {name} » ?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        ) != QMessageBox.Yes:
-            return
-        self._profiles = [p for p in self._profiles if p['name'] != name]
-        if self._default_profile == name:
-            self._default_profile = self._profiles[0]['name']
-        self._current_profile_name = self._profiles[0]['name']
-        self._refresh_profile_combo(select_name=self._current_profile_name)
-        self._load_profile_fields(self._find_profile(self._current_profile_name))
-
-    def _set_default_profile(self):
-        self._default_profile = self._current_profile_name
-        self._refresh_profile_combo(select_name=self._current_profile_name)
 
     def _populate_csv_table(self, columns):
         self.csv_table.setRowCount(0)
@@ -971,8 +971,7 @@ class ExportConfigDialog(QDialog):
 
     def _collect_profiles(self) -> list:
         """Reporter l'éditeur dans le profil courant et retourner tous les profils"""
-        self._store_fields_into_current()
-        return [dict(p) for p in self._profiles]
+        return self.details_colonne.profils()
 
     def _on_save(self):
         config = self._collect_config()
