@@ -5,6 +5,7 @@ Accessible via Outils → "Configuration des exports…"
 Onglet CSV  : colonnes (en-tête + source/assemblage), séparateur, encodage, pattern nom fichier
 Onglet HTML : templates marques et détails avec preview en temps réel
 Onglet Titre : gabarits du titre de fiche produit (cf. titre_config_tab.py)
+Onglet Fiche : variantes de la fiche produit complète (cf. fiche_config_tab.py)
 """
 
 import os
@@ -177,6 +178,7 @@ class ExportConfigDialog(QDialog):
             ("CSV",  'fa5s.table', '#2980b9'),
             ("HTML", 'fa5s.code',  '#e67e22'),
             ("Titre", 'fa5s.tag',  '#6f42c1'),
+            ("Fiche", 'fa5s.file-alt', '#0b5ed7'),
         ]
         for i, (label, icon_name, icon_color) in enumerate(_nav_defs):
             btn = QPushButton(label)
@@ -204,6 +206,9 @@ class ExportConfigDialog(QDialog):
         from .titre_config_tab import TitreConfigTab
         self.titre_tab = TitreConfigTab(self)
         self._nav_stack.addWidget(self.titre_tab)
+        from .fiche_config_tab import FicheConfigTab
+        self.fiche_tab = FicheConfigTab(self)
+        self._nav_stack.addWidget(self.fiche_tab)
         layout.addWidget(self._nav_stack)
 
         # Boutons du bas
@@ -211,6 +216,21 @@ class ExportConfigDialog(QDialog):
 
         # Activer le premier onglet
         self._nav_group.button(0).setChecked(True)
+
+    # Onglets ouvrables depuis l'aperçu d'export : genre → (index, liste des gabarits)
+    _ONGLETS = {'html_details': 1, 'titre': 2, 'fiche': 3}
+
+    def ouvrir_sur(self, genre: str, profil: str = None) -> None:
+        """Afficher l'onglet du genre ('titre', 'fiche', 'html_details'), gabarit sélectionné."""
+        index = self._ONGLETS.get(genre)
+        if index is None:
+            return
+        self._nav_group.button(index).setChecked(True)
+        combo = {'html_details': self.profile_combo, 'titre': self.titre_tab.profile_combo,
+                 'fiche': self.fiche_tab.profile_combo}[genre]
+        position = combo.findData(profil) if profil else -1
+        if position >= 0:
+            combo.setCurrentIndex(position)
 
     def _build_output_dir_bar(self) -> QHBoxLayout:
         """Bandeau du dossier de destination des exports fichier.
@@ -683,6 +703,10 @@ class ExportConfigDialog(QDialog):
         # Gabarits du bouton Titre
         self.titre_tab.load(config['titre'])
 
+        # Variantes du bouton Fiche complète (après Titre et HTML Détails :
+        # elles listent leurs gabarits)
+        self.fiche_tab.load(config['fiche'])
+
     # ─── Gestion des profils HTML Détails ────────────────────────────────────
 
     def _find_profile(self, name):
@@ -941,7 +965,8 @@ class ExportConfigDialog(QDialog):
                 "details_profiles":        self._collect_profiles(),
                 "details_default_profile": self._default_profile
             },
-            "titre": self.titre_tab.collect()
+            "titre": self.titre_tab.collect(),
+            "fiche": self.fiche_tab.collect()
         }
 
     def _collect_profiles(self) -> list:

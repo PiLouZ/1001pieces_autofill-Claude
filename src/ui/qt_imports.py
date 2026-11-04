@@ -14,7 +14,8 @@ from PyQt5.QtWidgets import (
     QToolBar, QToolButton, QAction, QActionGroup, QStatusBar, QSplitter, QTabWidget,
     QMenu, QMenuBar, QCompleter, QFrame, QScrollArea,
     QGroupBox, QButtonGroup, QRadioButton, QSpinBox,
-    QProgressBar, QSizePolicy, QStackedWidget, QWidgetAction
+    QProgressBar, QSizePolicy, QStackedWidget, QWidgetAction,
+    QStyledItemDelegate, QStyleOptionViewItem
 )
 
 # Core Qt
@@ -29,7 +30,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import (
     QKeySequence, QPainter, QPen, QColor, QBrush, QKeyEvent,
     QFont, QPixmap, QIcon, QImage, QPalette, QCursor, QTextCursor,
-    QFontDatabase, QTextOption
+    QFontDatabase, QTextOption, QSyntaxHighlighter, QTextCharFormat
 )
 
 # Types d'événements Qt couramment utilisés
@@ -48,6 +49,7 @@ __all__ = [
     'QInputDialog', 'QMessageBox', 'QFileDialog', 'QProgressDialog', 'QDialogButtonBox',
     'QToolBar', 'QToolButton', 'QAction', 'QActionGroup', 'QStatusBar', 'QSplitter', 'QTabWidget',
     'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy', 'QStackedWidget', 'QWidgetAction',
+    'QStyledItemDelegate', 'QStyleOptionViewItem',
     
     # Core
     'Qt', 'QTimer', 'QSettings', 'QEvent', 'QSize', 'QRect', 'QPoint',
@@ -57,7 +59,7 @@ __all__ = [
     # GUI
     'QKeySequence', 'QPainter', 'QPen', 'QColor', 'QBrush', 'QKeyEvent',
     'QFont', 'QPixmap', 'QIcon', 'QImage', 'QPalette', 'QCursor', 'QTextCursor',
-    'QFontDatabase', 'QTextOption',
+    'QFontDatabase', 'QTextOption', 'QSyntaxHighlighter', 'QTextCharFormat',
     
     # Aliases
     'QtEvent', 'QEventType'

@@ -15,6 +15,7 @@ from .qt_imports import (
     QSpinBox, QTextBrowser, QMessageBox, QInputDialog, QScrollArea, QFrame, Qt, QSize
 )
 from .style_manager import StyleManager
+from .champ_modele_html import ChampModeleHtml
 from src.utils.titre_produit_generator import TitreProduitGenerator
 
 
@@ -81,7 +82,8 @@ class TitreConfigTab(QWidget):
             bar.addWidget(btn)
         add_row(grid, "Gabarit :", bar)
 
-        self.template_input = QLineEdit()
+        # Zone colorée : les gabarits H2 contiennent du HTML
+        self.template_input = ChampModeleHtml()
         add_row(grid, "Titre :", self.template_input, VariableChipsBar(
             [
                 ("libelle",   "Libellé de la pièce (première lettre en majuscule)"),

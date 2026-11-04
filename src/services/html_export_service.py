@@ -87,12 +87,15 @@ class HtmlExportService:
         return cls.wrap_content(details, wrapper_template, 'appareils')
     
     @classmethod
-    def generate_html_details(cls, data: List[Tuple], profile_name: str = None) -> str:
+    def generate_html_details(cls, data: List[Tuple], profile_name: str = None,
+                              char_limit: int = None) -> str:
         """Générer HTML détaillé avec références par marque (anciennement dupliqué dans 2 services)
 
         Args:
             data: Données avec structure [product, manufacturer, ref_modele, commercial_ref, ...]
             profile_name: Profil d'export à utiliser (None = profil par défaut)
+            char_limit: Limite imposée par l'appelant (fiche complète : ce qui reste
+                après le reste de la fiche) ; None = limite du profil
 
         Returns:
             HTML détaillé avec sections par marque et gestion limite caractères
@@ -116,7 +119,8 @@ class HtmlExportService:
         # Limite de caractères depuis la config ou constante par défaut
         cfg = cls._config_service
         details_cfg = cfg.get_html_details_config(profile_name) if cfg else {}
-        char_limit = details_cfg.get('char_limit', cls.CHAR_LIMIT)
+        if char_limit is None:
+            char_limit = details_cfg.get('char_limit', cls.CHAR_LIMIT)
 
         # Générer le HTML avec stratégies de fallback pour respecter la limite
         strategies = ['full', 'ref_modele', 'commercial_ref']

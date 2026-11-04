@@ -9,16 +9,107 @@ Responsabilités:
 - Interface standardisée pour la gestion des composants UI dynamiques
 """
 
+import time
 from typing import Optional, Dict, Any
 import qtawesome as qta
-from .qt_imports import (QVBoxLayout, QHBoxLayout, QPushButton, QToolButton, QWidget,
+from .qt_imports import (QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QToolButton, QWidget,
                              QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
-                             Qt, QTimer, QFont, QMenu, QPoint)
+                             Qt, QTimer, QFont, QMenu, QPoint, QObject, QEvent, QCursor)
 
 from ..core.constants import ExportFormat
 from .style_manager import StyleManager, icon_png_path
 from src.core.logger import app_logger
 from .menu_gabarits import MenuGabarits
+
+class FlecheGabarits(QObject):
+    """Flèche d'un bouton à gabarits : survol = menu des autres gabarits,
+    clic = fenêtre d'aperçu d'export. Le reste du bouton garde son clic
+    (export avec le gabarit par défaut).
+
+    Menu ouvert au survol, le clic sur la flèche n'arrive à personne : macOS le
+    consomme pour fermer le menu. On le reconnaît à la fermeture du menu :
+    aucun gabarit choisi, pas d'Échap, souris sur la flèche → aperçu."""
+
+    LARGEUR_FLECHE = 32   # zone ::menu-button des styles (30 px) + bordure
+    DELAI_SURVOL_MS = 250
+    ANTI_REBOND_S = 0.5   # 2e clic d'un double-clic : pas de 2e chargement
+
+    def __init__(self, bouton, ouvrir_apercu):
+        super().__init__(bouton)
+        self._bouton = bouton
+        self._ouvrir_apercu = ouvrir_apercu
+        self._dernier_apercu = 0.0
+        # Après l'aperçu, pas de menu tant que la souris n'a pas quitté la flèche
+        self._attendre_sortie = False
+        self._echap = False
+        self._minuterie = QTimer(self)
+        self._minuterie.setSingleShot(True)
+        self._minuterie.setInterval(self.DELAI_SURVOL_MS)
+        self._minuterie.timeout.connect(self._ouvrir_menu)
+        bouton.setAttribute(Qt.WA_Hover, True)
+        bouton.installEventFilter(self)
+
+    def _sur_fleche(self, pos) -> bool:
+        return (self._bouton.popupMode() == QToolButton.MenuButtonPopup
+                and pos.x() >= self._bouton.width() - self.LARGEUR_FLECHE)
+
+    def _curseur_sur_fleche(self) -> bool:
+        pos = self._bouton.mapFromGlobal(QCursor.pos())
+        return self._bouton.rect().contains(pos) and self._sur_fleche(pos)
+
+    def _apercu(self):
+        self._minuterie.stop()
+        self._attendre_sortie = True
+        if time.monotonic() - self._dernier_apercu < self.ANTI_REBOND_S:
+            return
+        self._dernier_apercu = time.monotonic()
+        self._ouvrir_apercu()
+
+    def _ouvrir_menu(self):
+        menu = self._bouton.menu()
+        if (menu is None or not self._bouton.isEnabled() or not self._bouton.underMouse()
+                or not self._curseur_sur_fleche()):
+            return
+        # Rien d'autre que le gabarit par défaut : pas de menu vide
+        if not [a for a in menu.actions() if a.data()]:
+            return
+        choix = []
+        self._echap = False
+        menu.installEventFilter(self)   # Échap
+        menu.triggered.connect(choix.append)
+        try:
+            self._bouton.showMenu()     # bloquant jusqu'à la fermeture du menu
+        finally:
+            menu.triggered.disconnect(choix.append)
+            menu.removeEventFilter(self)
+        if not choix and not self._echap and self._curseur_sur_fleche():
+            # Après la sortie de la boucle du menu
+            QTimer.singleShot(0, self._apercu)
+
+    def eventFilter(self, objet, evenement):
+        type_ = evenement.type()
+        if objet is not self._bouton:
+            if type_ == QEvent.KeyPress and evenement.key() == Qt.Key_Escape:
+                self._echap = True
+            return super().eventFilter(objet, evenement)
+        if type_ in (QEvent.HoverEnter, QEvent.HoverMove):
+            if not self._sur_fleche(evenement.pos()):
+                self._attendre_sortie = False
+                self._minuterie.stop()
+            elif not self._attendre_sortie and not self._minuterie.isActive():
+                self._minuterie.start()
+        elif type_ == QEvent.HoverLeave:
+            self._attendre_sortie = False
+            self._minuterie.stop()
+        elif (type_ in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick)
+              and evenement.button() == Qt.LeftButton and self._sur_fleche(evenement.pos())):
+            self._apercu()
+            return True
+        elif (type_ == QEvent.MouseButtonRelease and evenement.button() == Qt.LeftButton
+              and self._sur_fleche(evenement.pos())):
+            return True
+        return super().eventFilter(objet, evenement)
+
 
 class UIComponentService:
     """
@@ -33,6 +124,7 @@ class UIComponentService:
     
     def __init__(self, main_window):
         self.main_window = main_window
+        self._apercus = {}   # genre → fenêtre d'aperçu d'export ouverte
         
     def add_export_buttons(self, layout: QVBoxLayout) -> None:
         """
@@ -41,12 +133,9 @@ class UIComponentService:
         Args:
             layout: Layout parent où ajouter les boutons
         """
-        # Ligne 1 : Titre, HTML Marques, HTML Détails (v3.99.3).
-        # Ligne 2 : Méta Title, Méta Desc, Exporter CSV (v3.99.0).
-        # Trois colonnes égales sur les deux lignes (stretch 1 partout).
-        export_layout = QHBoxLayout()
-        
-        # Bouton Export CSV (placé en fin de ligne 2, cf. _add_seo_buttons)
+        # Disposition : voir la grille en fin de méthode.
+
+        # Bouton Export CSV (fin de ligne 1)
         self.main_window.export_csv_btn = QPushButton("Exporter CSV")
         self.main_window.export_csv_btn.clicked.connect(
             lambda: self.main_window._export_data(ExportFormat.CSV)
@@ -76,6 +165,9 @@ class UIComponentService:
         self.main_window.export_html_details_btn.clicked.connect(
             self._on_export_html_details_clicked
         )
+        self.main_window.export_html_details_btn.setToolTip(
+            "Copier la liste des appareils groupés par marque\n"
+            "Flèche : survol = autres profils, clic = aperçu")
         self.main_window.export_html_details_btn.setEnabled(False)
         # QToolButton a une politique de taille horizontale "Fixed" par défaut
         # (contrairement à QPushButton, "Preferred") : aligner sur "HTML Marques"
@@ -95,7 +187,8 @@ class UIComponentService:
         self.main_window.titre_btn.setStyleSheet(self._get_titre_button_style())
         self.main_window.titre_btn.setToolTip(
             "Copier le titre de la fiche produit : libellé, types, marques et référence la plus récente\n"
-            "Gabarits réglables dans la configuration des exports, onglet « Titre »")
+            "Flèche : survol = autres gabarits, clic = aperçu ; réglages dans la\n"
+            "configuration des exports, onglet « Titre »")
         self.main_window.titre_btn.clicked.connect(self._on_titre_clicked)
         self.main_window.titre_btn.setEnabled(False)
         self.main_window.titre_btn.setSizePolicy(
@@ -103,40 +196,111 @@ class UIComponentService:
         )
         self._refresh_titre_menu()
 
-        # Ordre d'affichage (v3.99.3) : Titre, HTML Marques, HTML Détails.
-        # Création dans un autre ordre : Titre et HTML Détails reprennent la
-        # politique de taille de HTML Marques, qui doit donc exister avant.
-        for btn in (self.main_window.titre_btn, self.main_window.export_html_brands_btn,
-                    self.main_window.export_html_details_btn):
-            export_layout.addWidget(btn, 1)
+        # Fiche complète — split button comme "Titre"
+        self.main_window.fiche_btn = QToolButton()
+        self.main_window.fiche_btn.setText("Fiche complète")
+        self.main_window.fiche_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.main_window.fiche_btn.setStyleSheet(self._get_fiche_button_style())
+        self.main_window.fiche_btn.setToolTip(
+            "Copier le code HTML complet de la fiche produit : titre, marques, code produit,\n"
+            "références remplacées et équivalentes, appareils affichés dans le tableau\n"
+            "Flèche : survol = autres variantes, clic = aperçu ; réglages dans la\n"
+            "configuration des exports, onglet « Fiche »")
+        self.main_window.fiche_btn.clicked.connect(self._on_fiche_clicked)
+        self.main_window.fiche_btn.setEnabled(False)
+        self._refresh_fiche_menu()
 
-        layout.addLayout(export_layout)
+        # Flèches : survol = autres gabarits, clic = aperçu d'export
+        for btn, genre in ((self.main_window.titre_btn, 'titre'),
+                           (self.main_window.fiche_btn, 'fiche'),
+                           (self.main_window.export_html_details_btn, 'html_details')):
+            FlecheGabarits(btn, lambda g=genre: self.ouvrir_apercu(g))
 
-        # Ligne 2: Boutons SEO métadonnées, puis Exporter CSV
-        self._add_seo_buttons(layout)
+        # Méta Title, Méta Desc (Exporter CSV existe déjà)
+        self._creer_boutons_seo()
 
-        # Colonnes de même largeur sur les deux lignes : sans politique
-        # extensible, un QToolButton à menu (« Titre ») restait à sa largeur utile
-        for btn in (self.main_window.export_html_brands_btn, self.main_window.export_html_details_btn,
-                    self.main_window.titre_btn, self.main_window.meta_title_btn,
-                    self.main_window.meta_desc_btn, self.main_window.export_csv_btn):
-            btn.setSizePolicy(QSizePolicy.Expanding, btn.sizePolicy().verticalPolicy())
+        # Grille de 6 colonnes égales :
+        # ligne 1 : Méta Title | Méta Desc | Exporter CSV (un tiers chacun) ;
+        # ligne 2 : Titre (un tiers) | Fiche complète (deux tiers) ;
+        # ligne 3 : « Exports HTML » repliable → HTML Marques | HTML Détails.
+        grille = QGridLayout()
+        grille.setContentsMargins(0, 0, 0, 0)
+        grille.setHorizontalSpacing(6)
+        grille.setVerticalSpacing(6)
+        for col in range(6):
+            grille.setColumnStretch(col, 1)
+        mw = self.main_window
+        for ligne, boutons in ((0, ((mw.meta_title_btn, 2), (mw.meta_desc_btn, 2), (mw.export_csv_btn, 2))),
+                               (1, ((mw.titre_btn, 2), (mw.fiche_btn, 4))),
+                               (3, ((mw.export_html_brands_btn, 3), (mw.export_html_details_btn, 3)))):
+            col = 0
+            for btn, largeur in boutons:
+                # Largeur fixée par la grille, pas par le texte du bouton
+                btn.setSizePolicy(QSizePolicy.Ignored, btn.sizePolicy().verticalPolicy())
+                grille.addWidget(btn, ligne, col, 1, largeur)
+                col += largeur
+
+        self.main_window.exports_html_toggle = QToolButton()
+        self.main_window.exports_html_toggle.setText("Exports HTML")
+        self.main_window.exports_html_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.main_window.exports_html_toggle.setCheckable(True)
+        self.main_window.exports_html_toggle.setToolTip("Afficher ou masquer HTML Marques et HTML Détails")
+        self.main_window.exports_html_toggle.setStyleSheet(
+            "QToolButton { border: none; background: transparent; color: #6c757d;"
+            " font-size: 11px; padding: 0px 2px; }"
+            "QToolButton:hover { color: #343a40; }")
+        self.main_window.exports_html_toggle.toggled.connect(self._afficher_exports_html)
+        grille.addWidget(self.main_window.exports_html_toggle, 2, 0, 1, 6, Qt.AlignLeft)
+        layout.addLayout(grille)
+
+        settings = getattr(self.main_window, 'settings', None)
+        visible = str(settings.value(self.CLE_EXPORTS_HTML, "false")).lower() == "true" if settings else False
+        self.main_window.exports_html_toggle.setChecked(visible)
+        self._afficher_exports_html(visible)
+
+    # Ligne HTML Marques / HTML Détails dépliée ou non, mémorisé par poste
+    CLE_EXPORTS_HTML = "exports/html_visible"
+
+    def _afficher_exports_html(self, visible: bool) -> None:
+        """Déplier / replier la ligne HTML Marques | HTML Détails."""
+        self.main_window.exports_html_toggle.setArrowType(Qt.DownArrow if visible else Qt.RightArrow)
+        self.main_window.export_html_brands_btn.setVisible(visible)
+        self.main_window.export_html_details_btn.setVisible(visible)
+        settings = getattr(self.main_window, 'settings', None)
+        if settings is not None:
+            settings.setValue(self.CLE_EXPORTS_HTML, "true" if visible else "false")
+
+    def ouvrir_apercu(self, genre: str) -> None:
+        """Fenêtre d'aperçu d'export du bouton (une par bouton, ramenée devant si ouverte)."""
+        from .apercu_export_dialog import ApercuExportDialog
+        fenetre = self._apercus.get(genre)
+        if fenetre is None or not fenetre.isVisible():
+            fenetre = ApercuExportDialog(self.main_window, genre, parent=self.main_window)
+            fenetre.setAttribute(Qt.WA_DeleteOnClose, True)
+            fenetre.destroyed.connect(lambda *_, g=genre: self._apercus.pop(g, None))
+            self._apercus[genre] = fenetre
+            fenetre.show()
+        else:
+            fenetre.recharger(interactif=False)
+        fenetre.raise_()
+        fenetre.activateWindow()
 
     def refresh_profile_menus(self) -> None:
         """Menus des boutons à gabarits, après modification de la configuration."""
         self._refresh_html_details_menu()
         self._refresh_titre_menu()
+        self._refresh_fiche_menu()
 
     def _refresh_split_menu(self, btn, names, default_name, slot, cle_recents) -> None:
         """Reconstruire le menu déroulant d'un split button à profils.
 
-        Un seul profil configuré : pas de menu, pas de flèche — clic = action directe.
-        Plusieurs profils : la flèche superposée ouvre un menu listant les profils
-        AUTRES que celui par défaut (le clic principal utilise déjà ce dernier),
+        Aucun profil : pas de flèche. Sinon la flèche (cf. FlecheGabarits) :
+        survol = menu listant les profils AUTRES que celui par défaut (le clic
+        principal utilise déjà ce dernier ; rien ne s'ouvre s'il n'y en a pas),
         triés par ordre alphanumérique naturel, avec filtre et récents au-delà
-        de quelques gabarits (MenuGabarits, v3.99.4).
+        de quelques gabarits (MenuGabarits, v3.99.4) ; clic = aperçu d'export.
         """
-        if len(names) <= 1:
+        if not names:
             btn.setMenu(None)
             btn.setPopupMode(QToolButton.DelayedPopup)
             return
@@ -165,6 +329,23 @@ class UIComponentService:
                                  default_name, self._on_titre_profile_chosen,
                                  "exports/recents/titre")
 
+    def _refresh_fiche_menu(self) -> None:
+        """Reconstruire le menu déroulant du bouton "Fiche complète"."""
+        svc = getattr(self.main_window, 'export_config_service', None)
+        names = svc.get_fiche_profile_names() if svc else []
+        default_name = svc.get_default_fiche_profile_name() if svc else None
+        self._refresh_split_menu(self.main_window.fiche_btn, names,
+                                 default_name, self._on_fiche_profile_chosen,
+                                 "exports/recents/fiche")
+
+    def _on_fiche_clicked(self) -> None:
+        """Clic sur "Fiche complète" : variante par défaut."""
+        self.main_window._generer_fiche()
+
+    def _on_fiche_profile_chosen(self, action) -> None:
+        """Fiche complète avec la variante choisie dans le menu déroulant."""
+        self.main_window._generer_fiche(profile_name=action.data())
+
     def _on_titre_clicked(self) -> None:
         """Clic sur "Titre" : gabarit par défaut."""
         self.main_window._generer_titre()
@@ -188,11 +369,20 @@ class UIComponentService:
         """Style du bouton split "Titre" : violet plein, comme les boutons colorés
         de la ligne des métas ; flèche de menu blanche (la noire par défaut ne se
         lit pas sur le violet)."""
+        return self._get_split_couleur_style("#6f42c1", "#5e37a6", "#512f8f")
+
+    def _get_fiche_button_style(self) -> str:
+        """Style du bouton split "Fiche complète" : bleu plein, même gabarit que "Titre"."""
+        return self._get_split_couleur_style("#0b5ed7", "#0a53be", "#094ba8")
+
+    @staticmethod
+    def _get_split_couleur_style(fond: str, survol: str, appui: str) -> str:
+        """Split button à fond coloré plein et flèche de menu blanche."""
         fleche = icon_png_path('fa5s.caret-down', 'white', 10)
         regle_fleche = f"image: url({fleche}); width: 10px; height: 10px;" if fleche else ""
         return f"""
             QToolButton {{
-                background-color: #6f42c1;
+                background-color: {fond};
                 color: white;
                 font-weight: bold;
                 border: none;
@@ -200,10 +390,10 @@ class UIComponentService:
                 padding: 8px 12px;
             }}
             QToolButton:hover {{
-                background-color: #5e37a6;
+                background-color: {survol};
             }}
             QToolButton:pressed {{
-                background-color: #512f8f;
+                background-color: {appui};
             }}
             QToolButton:disabled {{
                 {StyleManager.EXPORT_BTN_DISABLED_RULES}
@@ -250,30 +440,21 @@ class UIComponentService:
             }}
         """
 
-    def _add_seo_buttons(self, layout: QVBoxLayout) -> None:
-        """Ajouter les boutons SEO métadonnées"""
-        seo_layout = QHBoxLayout()
-        
-        # Bouton Méta Title — un tiers de la largeur
+    def _creer_boutons_seo(self) -> None:
+        """Créer les boutons SEO métadonnées (placés par add_export_buttons)"""
+        # Bouton Méta Title
         self.main_window.meta_title_btn = QPushButton(qta.icon('fa5s.heading', color='#555555'), "Méta Title")
         self.main_window.meta_title_btn.clicked.connect(self.main_window._generate_meta_title)
         self.main_window.meta_title_btn.setEnabled(False)
         self.main_window.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (largeur affichée par Google sur ordinateur)\nMaj+clic : autre formulation")
         self.main_window.meta_title_btn.setStyleSheet(self._get_seo_title_button_style())
-        seo_layout.addWidget(self.main_window.meta_title_btn, 1)
         
-        # Bouton Méta Description — un tiers de la largeur
+        # Bouton Méta Description
         self.main_window.meta_desc_btn = QPushButton(qta.icon('fa5s.align-left', color='#555555'), "Méta Desc")
         self.main_window.meta_desc_btn.clicked.connect(self.main_window._generate_meta_description)
         self.main_window.meta_desc_btn.setEnabled(False)
         self.main_window.meta_desc_btn.setToolTip("Générer une méta description SEO (largeur affichée par Google sur ordinateur)\nMaj+clic : autre formulation")
         self.main_window.meta_desc_btn.setStyleSheet(self._get_seo_desc_button_style())
-        seo_layout.addWidget(self.main_window.meta_desc_btn, 1)
-
-        # Exporter CSV en fin de ligne 2 (v3.99.0 : laisse sa place à "Titre")
-        seo_layout.addWidget(self.main_window.export_csv_btn, 1)
-        
-        layout.addLayout(seo_layout)
 
     def update_export_buttons_state_by_search(self, is_piece_search: bool) -> None:
         """

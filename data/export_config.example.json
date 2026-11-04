@@ -69,5 +69,34 @@
       }
     ],
     "default_profile": "Format standard"
+  },
+  "fiche": {
+    "profiles": [
+      {
+        "name": "Fiche standard",
+        "titre_profile": "",
+        "details_profile": "",
+        "inclure_informations": false,
+        "code_produit_template": "<div class=\"class_perso3\">Code produit : {reference}</div>",
+        "remplace_template": "<div class=\"class_perso3 class_perso6\">Remplace les références : {references}</div>",
+        "equivalentes_template": "<div class=\"class_perso3 class_perso6\">Références équivalentes : {references}</div>",
+        "informations_template": "<div>&nbsp;</div><div class=\"alert alert-info\"><h3 class=\"alert-heading\">Informations :</h3><div>&nbsp;</div></div>",
+        "separateur_references": " ",
+        "max_caracteres": 200000
+      },
+      {
+        "name": "Fiche avec informations",
+        "titre_profile": "",
+        "details_profile": "",
+        "inclure_informations": true,
+        "code_produit_template": "<div class=\"class_perso3\">Code produit : {reference}</div>",
+        "remplace_template": "<div class=\"class_perso3 class_perso6\">Remplace les références : {references}</div>",
+        "equivalentes_template": "<div class=\"class_perso3 class_perso6\">Références équivalentes : {references}</div>",
+        "informations_template": "<div>&nbsp;</div><div class=\"alert alert-info\"><h3 class=\"alert-heading\">Informations :</h3><div>&nbsp;</div></div>",
+        "separateur_references": " ",
+        "max_caracteres": 200000
+      }
+    ],
+    "default_profile": "Fiche standard"
   }
 }
