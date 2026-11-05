@@ -88,6 +88,7 @@ from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
 from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
+from .ouverture_modale import ouvrir_modal
 
 class ActionButtonWidget(QWidget):
     """Widget contenant les boutons d'action (icônes sans fond) pour chaque ligne du tableau"""
@@ -1713,33 +1714,35 @@ class PiecesManagerWindow(QDialog):
             exclude_ref=exclude,
             title=f"Référence qui remplace {label}"
         )
-        if dlg.exec_() != QDialog.Accepted:
-            return
-        ref_new = dlg.selected_ref()
-        if not ref_new:
-            return
 
-        errors = []
-        details_lines = []
-        for ref_old in refs:
-            success, error = self.db_manager.add_supersession(ref_old, ref_new)
-            if success:
-                details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
-                # Le picker autorise la saisie d'une réf inexistante, créée en
-                # fantôme donc anonyme : lui faire hériter du libellé, comme à
-                # l'import. Sans écrasement si les deux sont déjà nommées.
-                self.db_manager.propagate_description(ref_old, ref_new)
-            else:
-                errors.append(f"{ref_old} : {error}")
+        def _sur_accepte():
+            ref_new = dlg.selected_ref()
+            if not ref_new:
+                return
 
-        if details_lines:
-            self._notify_history("Succession :\n" + "\n".join(details_lines))
-            self._refresh_succession_panel(self._current_ref_piece)
-            # Recharger depuis la DB : add_supersession peut créer des refs
-            # fantômes et modifier les statuts — le cache all_statuses est périmé
-            self._load_pieces_data()
-        if errors:
-            QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
+            errors = []
+            details_lines = []
+            for ref_old in refs:
+                success, error = self.db_manager.add_supersession(ref_old, ref_new)
+                if success:
+                    details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
+                    # Le picker autorise la saisie d'une réf inexistante, créée en
+                    # fantôme donc anonyme : lui faire hériter du libellé, comme à
+                    # l'import. Sans écrasement si les deux sont déjà nommées.
+                    self.db_manager.propagate_description(ref_old, ref_new)
+                else:
+                    errors.append(f"{ref_old} : {error}")
+
+            if details_lines:
+                self._notify_history("Succession :\n" + "\n".join(details_lines))
+                self._refresh_succession_panel(self._current_ref_piece)
+                # Recharger depuis la DB : add_supersession peut créer des refs
+                # fantômes et modifier les statuts — le cache all_statuses est périmé
+                self._load_pieces_data()
+            if errors:
+                QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
+
+        ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
 
     def _on_mark_replaces(self):
         """Déclarer qu'une autre référence est remplacée par la pièce courante (ou les pièces sélectionnées)."""
@@ -1754,29 +1757,31 @@ class PiecesManagerWindow(QDialog):
             title=f"Référence(s) remplacée(s) par {label}",
             multi_select=True
         )
-        if dlg.exec_() != QDialog.Accepted:
-            return
-        refs_old = dlg.selected_refs()
-        if not refs_old:
-            return
 
-        errors = []
-        details_lines = []
-        for ref_old in refs_old:
-            for ref_new in refs:
-                success, error = self.db_manager.add_supersession(ref_old, ref_new)
-                if success:
-                    details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
-                    self.db_manager.propagate_description(ref_old, ref_new)
-                else:
-                    errors.append(f"{ref_old} → {ref_new} : {error}")
+        def _sur_accepte():
+            refs_old = dlg.selected_refs()
+            if not refs_old:
+                return
 
-        if details_lines:
-            self._notify_history("Succession :\n" + "\n".join(details_lines))
-            self._refresh_succession_panel(self._current_ref_piece)
-            self._load_pieces_data()
-        if errors:
-            QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
+            errors = []
+            details_lines = []
+            for ref_old in refs_old:
+                for ref_new in refs:
+                    success, error = self.db_manager.add_supersession(ref_old, ref_new)
+                    if success:
+                        details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
+                        self.db_manager.propagate_description(ref_old, ref_new)
+                    else:
+                        errors.append(f"{ref_old} → {ref_new} : {error}")
+
+            if details_lines:
+                self._notify_history("Succession :\n" + "\n".join(details_lines))
+                self._refresh_succession_panel(self._current_ref_piece)
+                self._load_pieces_data()
+            if errors:
+                QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
+
+        ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
 
     def _show_relations_popup(self):
         """Afficher la popup de synthèse des relations pour la pièce courante."""
@@ -2051,29 +2056,31 @@ class PiecesManagerWindow(QDialog):
             title=f"Référence(s) équivalente(s) à '{ref_piece}'",
             multi_select=True
         )
-        if dlg.exec_() != QDialog.Accepted:
-            return
-        refs_b = dlg.selected_refs()
-        if not refs_b:
-            return
-        errors = []
-        details_lines = []
-        for ref_b in refs_b:
-            # add_equivalence renvoie (ok, message) : sans déballage, `success`
-            # valait le tuple — toujours vrai — et les échecs passaient pour des
-            # succès. Le déballage est nécessaire pour ne propager qu'après succès.
-            success, error_msg = self.db_manager.add_equivalence(ref_piece, ref_b)
-            if success:
-                details_lines.append(f"==> '{ref_piece}' ≡ '{ref_b}'")
-                self.db_manager.propagate_description(ref_piece, ref_b)
-            else:
-                errors.append(f"Impossible de créer l'équivalence pour {ref_b} : {error_msg}")
-        if details_lines:
-            self._notify_history("Équivalence :\n" + "\n".join(details_lines))
-            self._refresh_equivalence_panel(ref_piece)
-            self._load_pieces_data()
-        if errors:
-            QMessageBox.warning(self, "Erreur", "\n".join(errors))
+
+        def _sur_accepte():
+            refs_b = dlg.selected_refs()
+            if not refs_b:
+                return
+            errors = []
+            details_lines = []
+            for ref_b in refs_b:
+                # add_equivalence renvoie (ok, message) : sans déballage, `success`
+                # valait le tuple — toujours vrai — et les échecs passaient pour des
+                # succès. Le déballage est nécessaire pour ne propager qu'après succès.
+                success, error_msg = self.db_manager.add_equivalence(ref_piece, ref_b)
+                if success:
+                    details_lines.append(f"==> '{ref_piece}' ≡ '{ref_b}'")
+                    self.db_manager.propagate_description(ref_piece, ref_b)
+                else:
+                    errors.append(f"Impossible de créer l'équivalence pour {ref_b} : {error_msg}")
+            if details_lines:
+                self._notify_history("Équivalence :\n" + "\n".join(details_lines))
+                self._refresh_equivalence_panel(ref_piece)
+                self._load_pieces_data()
+            if errors:
+                QMessageBox.warning(self, "Erreur", "\n".join(errors))
+
+        ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
 
     def _on_unlink_equiv(self):
         """Retirer la pièce courante de son groupe d'équivalence (multi-sélection)."""

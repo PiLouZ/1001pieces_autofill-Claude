@@ -9,15 +9,33 @@ from enum import Enum
 import os
 import time as _time
 import unicodedata
-import warnings
 from datetime import datetime
 
-from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                             QLineEdit, QPushButton, QComboBox, QCheckBox,
-                             QTextEdit, QGroupBox, QApplication,
-                             QScrollArea, QWidget, QGridLayout, Qt, QTimer, QThread,
-                             QCompleter, QStringListModel, QRadioButton, QButtonGroup,
-                             QSizePolicy, QSize, QSplitter, pyqtSignal)
+from ..utils.qt_imports import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QComboBox,
+    QCheckBox,
+    QTextEdit,
+    QGroupBox,
+    QApplication,
+    QScrollArea,
+    QWidget,
+    QGridLayout,
+    Qt,
+    QTimer,
+    QThread,
+    QCompleter,
+    QStringListModel,
+    QSizePolicy,
+    QSize,
+    QSplitter,
+    pyqtSignal
+)
 
 from PyQt5.QtWidgets import QLayout
 from ..ui.style_manager import StyleManager
@@ -2192,12 +2210,8 @@ class ImportManager:
             callback: Fonction appelée avec les résultats (pour mode non-bloquant)
 
         Returns:
-            Résultats d'import ou None si annulé
-            PHASE 2.2: Retourne None immédiatement si callback fourni (mode non-bloquant)
-
-        Notes:
-            PHASE 2.2 OPTIMISATION: Si callback fourni, le dialogue est non-bloquant
-            et les résultats sont passés au callback au lieu d'être retournés.
+            Avec show_dialog : None immédiatement — le dialogue est non bloquant et
+            les résultats sont passés au callback. Sans dialogue : les résultats.
         """
         # PHASE 2.1 OPTIMISATION: Lazy loading - NE PAS charger les données ici
         # Les données seront chargées en différé dans le dialogue
@@ -2232,21 +2246,11 @@ class ImportManager:
             # PHASE 2.1: Passer import_manager pour lazy loading
             dialog = ImportDialog(self.parent_widget, config, import_manager=self)
 
-            # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
-            if callback:
-                # Mode non-bloquant: show() au lieu de exec_()
-                dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'import'))
-                dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
-                dialog.show()
-                return None  # Retour immédiat, résultat via callback
-            else:
-                # Mode bloquant classique (compatibilité)
-                if dialog.exec_() != QDialog.Accepted:
-                    return None
-
-                config = dialog.get_configuration()
-                if not config:
-                    return None
+            # Non bloquant (show, jamais exec_) : résultat via callback
+            dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'import'))
+            dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
+            dialog.show()
+            return None
 
         # PHASE 1: Décision intelligente Async vs Sync avec fallback automatique
         return self._execute_import(config)
@@ -2272,15 +2276,10 @@ class ImportManager:
             import_type=ImportType.SINGLE_FILE
         )
         dialog = ImportDialog(self.parent_widget, config, import_manager=self)
-        if callback:
-            dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'import'))
-            dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
-            dialog.show()
-        else:
-            if dialog.exec_() == QDialog.Accepted:
-                config = dialog.get_configuration()
-                if config:
-                    return self._execute_import(config)
+        # Non bloquant (show, jamais exec_) : résultat via callback
+        dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'import'))
+        dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
+        dialog.show()
 
     def _launch_real_import(self, config, callback, t0, dialog=None, source='import'):
         """Lance le vrai _ImportWorker après confirmation (ou directement si pas de preview)."""
@@ -2476,42 +2475,12 @@ class ImportManager:
         # Titre spécialisé pour drag&drop
         dialog.setWindowTitle("Import par Glisser-Déposer")
 
-        # PHASE 2.2 OPTIMISATION: Dialogue non-bloquant si callback fourni
-        if callback:
-            # Mode non-bloquant pour drag&drop
-            dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'drag_drop'))
-            dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
-            dialog.show()
-            return None  # Retour immédiat, résultat via callback
-        else:
-            # Mode bloquant classique (compatibilité)
-            if dialog.exec_() != QDialog.Accepted:
-                return None
+        # Non bloquant (show, jamais exec_) : résultat via callback
+        dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'drag_drop'))
+        dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
+        dialog.show()
+        return None
 
-            config = dialog.get_configuration()
-            if not config:
-                return None
-
-            # Effectuer l'import avec la même logique de fallback
-            results = self._execute_import(config)
-
-            # Marquer les résultats comme provenant du drag&drop
-            if results:
-                results['import_source'] = 'drag_drop'
-                results['source_files'] = [f.path for f in import_files]
-
-                # Format d'historique spécialisé
-                if len(import_files) == 1:
-                    file_name = os.path.basename(import_files[0].path)
-                    file_ext = import_files[0].type.value.upper()
-                    results['history_label'] = f"{file_ext} (Glisser-Déposer - {file_name})"
-                else:
-                    results['history_label'] = f"PDF Multi-fichiers ({len(import_files)} fichiers)"
-
-            return results
-
-
-    
     def _on_dialog_accepted(self, dialog, callback, source):
         """
         Callback appelé quand un dialogue d'import est accepté (mode non-bloquant).
@@ -4338,17 +4307,3 @@ class ImportManager:
         if hasattr(self.main_window, 'duplicate_indicator_service') and self.main_window.duplicate_indicator_service:
             self.main_window.duplicate_indicator_service.invalidate_cache("import")
             app_logger.debug("Cache doublons invalidé après import")
-
-
-# Fonctions utilitaires pour l'intégration
-def create_import_manager(db_manager, parent_widget=None) -> ImportManager:
-    """Créer une instance du gestionnaire d'import"""
-    return ImportManager(db_manager, parent_widget)
-
-
-
-
-def import_from_drag_drop(file_paths: List[str], db_manager, parent_widget=None) -> Optional[Dict[str, Any]]:
-    """Fonction utilitaire pour import drag&drop"""
-    manager = create_import_manager(db_manager, parent_widget)
-    return manager.import_from_drag_drop(file_paths)

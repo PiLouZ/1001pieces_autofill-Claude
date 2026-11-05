@@ -35,6 +35,7 @@ from pathlib import Path
 
 # Helpers et utilitaires refactorisés
 from .message_helper import MessageHelper
+from .ouverture_modale import ouvrir_modal
 from ..utils.error_handler import (
     handle_database_errors,
     handle_ui_errors,
@@ -2587,7 +2588,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         dialog.setLayout(layout)
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
 
     def _show_local_guide(self):
         """Afficher un guide d'utilisation local en cas d'erreur"""
@@ -2712,7 +2713,7 @@ class MainWindow(QMainWindow):
 
         restore_btn.clicked.connect(do_restore)
 
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
 
     def _open_fts5_manager(self):
         """Ouvrir le gestionnaire d'index FTS5"""
@@ -2822,7 +2823,7 @@ class MainWindow(QMainWindow):
         # (Ancienne note « définir USE_FTS5 = True dans config.py » retirée : le
         # réglage est déjà actif ; seule SEARCH_PIECES_ONLY décide de l'usage.)
 
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
 
     def _export_application(self):
         """Lancer l'export portable de l'application — délégué à AppExportService."""
@@ -2891,7 +2892,7 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(button_layout)
 
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
     
     def _reset_column_defaults(self, checkboxes):
         """Réinitialiser les colonnes aux valeurs par défaut"""

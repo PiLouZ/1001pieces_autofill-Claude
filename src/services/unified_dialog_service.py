@@ -16,10 +16,21 @@ ARCHITECTURE :
 
 from typing import Optional, Dict, Any, List
 from ..utils.qt_imports import (
-    QInputDialog, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-    QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit, 
-    QListWidget, QListWidgetItem, QMessageBox, QDialogButtonBox,
-    QWidget, QFrame, QSize
+    QInputDialog,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QComboBox,
+    QCheckBox,
+    QTextEdit,
+    QMessageBox,
+    QDialogButtonBox,
+    QWidget,
+    QFrame,
+    QSize
 )
 from ..utils.qt_imports import Qt
 from ..utils.qt_imports import QFont
@@ -401,81 +412,6 @@ class ComplexDialogs:
 
         return bloc, maj_nom_fichier
     
-    @_handle_dialog_errors(default_return=None, context="popup autocomplétion")
-    def show_autocompletion_popup(self, suggestions: List[str],
-                                current_value: str = "") -> Optional[str]:
-        """
-        Popup d'autocomplétion avec liste de suggestions
-
-        Args:
-            suggestions: Liste des suggestions
-            current_value: Valeur actuelle
-
-        Returns:
-            Valeur sélectionnée ou None si annulé
-        """
-        if not suggestions:
-            return None
-
-        dialog = QDialog(self.main_window)
-        dialog.setWindowTitle("Autocomplétion")
-        dialog.setModal(True)
-        dialog.setMinimumWidth(400)
-        dialog.setMinimumHeight(300)
-
-        layout = QVBoxLayout()
-
-        # Champ de saisie
-        input_layout = QHBoxLayout()
-        input_layout.addWidget(QLabel("Valeur :"))
-        value_input = QLineEdit(current_value)
-        input_layout.addWidget(value_input)
-        layout.addLayout(input_layout)
-
-        # Liste des suggestions
-        suggestions_label = QLabel(f"Suggestions ({len(suggestions)}) :")
-        suggestions_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(suggestions_label)
-
-        suggestions_list = QListWidget()
-        for suggestion in suggestions:
-            item = QListWidgetItem(suggestion)
-            suggestions_list.addItem(item)
-
-        # Sélectionner la suggestion qui correspond à la valeur actuelle
-        if current_value:
-            for i in range(suggestions_list.count()):
-                if suggestions_list.item(i).text() == current_value:
-                    suggestions_list.setCurrentRow(i)
-                    break
-
-        suggestions_list.itemDoubleClicked.connect(dialog.accept)
-        layout.addWidget(suggestions_list)
-
-        # Connecter la sélection dans la liste au champ de saisie
-        def on_suggestion_selected():
-            current_item = suggestions_list.currentItem()
-            if current_item:
-                value_input.setText(current_item.text())
-
-        suggestions_list.itemSelectionChanged.connect(on_suggestion_selected)
-
-        # Boutons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        layout.addWidget(button_box)
-
-        dialog.setLayout(layout)
-        value_input.setFocus()
-
-        if dialog.exec_() == QDialog.Accepted:
-            value = value_input.text().strip()
-            app_logger.debug(f"Valeur d'autocomplétion sélectionnée: {value}")
-            return value
-
-        return None
-
 class UnifiedDialogService:
     """
     Service de dialogues unifié - Interface principale
@@ -532,11 +468,6 @@ class UnifiedDialogService:
         return self.complex.show_reference_selection_dialog(
             title, message, default_reference, destination, bouton_valider
         )
-    
-    def show_autocompletion_popup(self, suggestions: List[str], 
-                                current_value: str = "") -> Optional[str]:
-        """Popup d'autocomplétion"""
-        return self.complex.show_autocompletion_popup(suggestions, current_value)
     
     # Factory methods pour compatibilité avec l'ancien code
 

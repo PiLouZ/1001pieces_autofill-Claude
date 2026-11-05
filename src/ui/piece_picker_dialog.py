@@ -224,8 +224,8 @@ class PiecePickerDialog(QDialog):
 
     Usage :
         dlg = PiecePickerDialog(db_manager, parent=self, exclude_ref='AS001')
-        if dlg.exec_() == QDialog.Accepted:
-            ref = dlg.selected_ref()
+        ouvrir_modal(dlg, sur_accepte=lambda: traiter(dlg.selected_ref()))
+        # (ouverture_modale.ouvrir_modal : show() + callbacks, jamais exec_)
     """
 
     def __init__(self, db_manager, parent=None, exclude_ref: Optional[str] = None,

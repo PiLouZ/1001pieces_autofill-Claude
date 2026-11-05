@@ -383,12 +383,15 @@ class ToolbarService:
         
         # Afficher le dialogue
         dialog = PasteConfigDialog(self.main_window)
-        if dialog.exec_() == QDialog.Accepted:
+
+        def _appliquer():
             config = dialog.get_config()
-            
-            # Appliquer la configuration
             self.main_window.paste_cleanup_service.configure_defaults(
                 config['default_replacement'],
                 config['ask_confirmation'],
                 config['remember_choice']
             )
+
+        # Modal sans boucle imbriquée (jamais exec_)
+        from .ouverture_modale import ouvrir_modal
+        ouvrir_modal(dialog, sur_accepte=_appliquer)
