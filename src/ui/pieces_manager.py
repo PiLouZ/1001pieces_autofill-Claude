@@ -2,7 +2,7 @@
 Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 """
 
-from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
+from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                            QTableWidgetItem, QTableWidgetSelectionRange, QLabel,
                            QPushButton, QLineEdit,
                            QHeaderView, QMessageBox, QSplitter, QTextEdit,
@@ -2154,7 +2154,7 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur export pièces", show_message=True)
     def _export_pieces(self, checked=False):
         """Exporter la liste des pièces"""
-        from .qt_imports import QFileDialog
+        from ..utils.qt_imports import QFileDialog
 
         filename, _ = QFileDialog.getSaveFileName(
             self, "Exporter les pièces",
@@ -2169,7 +2169,7 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur export sélection pièces", show_message=True)
     def _export_selected_pieces(self, checked=False):
         """Exporter uniquement les pièces sélectionnées"""
-        from .qt_imports import QFileDialog
+        from ..utils.qt_imports import QFileDialog
 
         selected_refs = set(self._get_selected_refs())
         if not selected_refs:

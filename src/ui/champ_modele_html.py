@@ -24,7 +24,7 @@ setText(), insert() (puces de variables), textChanged, setPlaceholderText().
 
 import re
 
-from .qt_imports import (QPlainTextEdit, QFrame, QFontDatabase, QTextOption, QSizePolicy, Qt,
+from ..utils.qt_imports import (QPlainTextEdit, QFrame, QFontDatabase, QTextOption, QSizePolicy, Qt,
                          QSyntaxHighlighter, QTextCharFormat, QColor, QFont)
 
 

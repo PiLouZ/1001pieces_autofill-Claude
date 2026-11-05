@@ -4,7 +4,7 @@
 """
 
 from typing import Optional, Union
-from .qt_imports import QMessageBox, QWidget
+from ..utils.qt_imports import QMessageBox, QWidget
 
 class MessageType:
     """Types de messages standardisés"""

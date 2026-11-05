@@ -12,7 +12,7 @@ import os
 
 import qtawesome as qta
 from .flow_layout import FlowLayout
-from .qt_imports import (
+from ..utils.qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
     QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
     QTableWidget, QTableWidgetItem, QHeaderView,

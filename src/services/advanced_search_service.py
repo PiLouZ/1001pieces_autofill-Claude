@@ -5,9 +5,9 @@ Centralise toute la logique de recherche avancée avec opérateurs && et ||
 
 import re
 from typing import Optional, Dict, Any, Callable, List
-from ..ui.qt_imports import QTimer, QObject, pyqtSignal
-from ..ui.qt_imports import QTableWidgetItem
-from ..ui.qt_imports import QColor
+from ..utils.qt_imports import QTimer, QObject, pyqtSignal
+from ..utils.qt_imports import QTableWidgetItem
+from ..utils.qt_imports import QColor
 
 from .search_service import SearchService
 from ..core.logger import app_logger

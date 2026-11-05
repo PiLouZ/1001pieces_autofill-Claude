@@ -3,7 +3,7 @@ Service de navigation et pagination
 Centralise toute la logique de navigation entre pages et gestion de la pagination
 """
 
-from ..ui.qt_imports import QLabel, QPushButton, QComboBox, QObject, pyqtSignal
+from ..utils.qt_imports import QLabel, QPushButton, QComboBox, QObject, pyqtSignal
 
 from ..core.logger import app_logger
 from ..core.constants import UIConfig

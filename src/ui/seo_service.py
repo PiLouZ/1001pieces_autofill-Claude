@@ -11,8 +11,8 @@ Responsabilités:
 """
 
 from typing import Optional, Dict, Any, List, Tuple
-from .qt_imports import QInputDialog, QApplication
-from .qt_imports import QTimer, Qt
+from ..utils.qt_imports import QInputDialog, QApplication
+from ..utils.qt_imports import QTimer, Qt
 
 from src.core.config import Config
 from src.core.logger import app_logger

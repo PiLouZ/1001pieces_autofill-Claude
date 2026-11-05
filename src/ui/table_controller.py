@@ -5,7 +5,7 @@ Gestion centralisée du tableau, filtres, pagination et tri
 import html as _html
 
 from typing import List, Optional
-from .qt_imports import (
+from ..utils.qt_imports import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,

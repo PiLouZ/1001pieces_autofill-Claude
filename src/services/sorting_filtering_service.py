@@ -6,7 +6,7 @@ Le tri (clic sur un en-tête, flèches) est géré par TableController ; l'ancie
 version de ce service, qui le dupliquait, a été retirée.
 """
 
-from ..ui.qt_imports import pyqtSignal, QTableWidget
+from ..utils.qt_imports import pyqtSignal, QTableWidget
 
 from .base_service import BaseService, service_operation
 

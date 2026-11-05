@@ -10,7 +10,7 @@ Responsabilités:
 """
 
 import sys
-from ..ui.qt_imports import pyqtSignal, Qt, QKeySequence, QKeyEvent
+from ..utils.qt_imports import pyqtSignal, Qt, QKeySequence, QKeyEvent
 
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation, safe_operation

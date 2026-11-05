@@ -6,7 +6,7 @@ Architecture modulaire avec séparation des responsabilités
 import sys
 from typing import Dict, Any
 
-from .qt_imports import (
+from ..utils.qt_imports import (
     QApplication,
     QMainWindow,
     QVBoxLayout,
@@ -694,7 +694,7 @@ class MainWindow(QMainWindow):
         self.statusbar.setFixedHeight(self.incomplete_nav_widget.content_height() + 6)
         self._wire_incomplete_nav()
 
-        from .qt_imports import QPushButton, QWidget, QHBoxLayout
+        from ..utils.qt_imports import QPushButton, QWidget, QHBoxLayout
         import qtawesome as qta
 
         # « Suggestions à valider (N) » juste après (remplace le bandeau au-dessus
@@ -781,8 +781,8 @@ class MainWindow(QMainWindow):
     
     def _setup_paste_cleanup_for_search_input(self):
         """Configure l'interception du collage pour le champ de recherche"""
-        from .qt_imports import QLineEdit
-        from .qt_imports import QEvent
+        from ..utils.qt_imports import QLineEdit
+        from ..utils.qt_imports import QEvent
 
         class PasteInterceptor(QLineEdit):
             def __init__(self, parent_window, paste_service):
@@ -811,7 +811,7 @@ class MainWindow(QMainWindow):
                     
                     if cleaned_text != original_text:
                         # Créer un nouveau MimeData avec le texte nettoyé
-                        from .qt_imports import QMimeData
+                        from ..utils.qt_imports import QMimeData
                         clean_mime = QMimeData()
                         clean_mime.setText(cleaned_text)
                         super().insertFromMimeData(clean_mime)
@@ -821,7 +821,7 @@ class MainWindow(QMainWindow):
                 
             def _handle_paste_event(self):
                 """Gère l'événement de collage avec nettoyage"""
-                from .qt_imports import QApplication
+                from ..utils.qt_imports import QApplication
                 clipboard = QApplication.clipboard()
                 original_text = clipboard.text()
                 
@@ -1201,7 +1201,7 @@ class MainWindow(QMainWindow):
         """« Tout valider » : confirmation non bloquante (show() + callback), qui
         rappelle la confiance des sources — une validation en masse ne s'annule pas."""
         from .autocompletion_review_dialog import regrouper_traces
-        from .qt_imports import QMessageBox
+        from ..utils.qt_imports import QMessageBox
         entrees = regrouper_traces(self.db_manager.lire_autocompletions_a_verifier())
         if not entrees:
             self._rafraichir_bouton_autocompletes()
@@ -1775,7 +1775,7 @@ class MainWindow(QMainWindow):
 
     def _handle_history_link(self, url):
         """Gérer les clics sur les liens dans l'historique"""
-        from .qt_imports import QUrl
+        from ..utils.qt_imports import QUrl
         # FullyEncoded : la référence reste encodée telle qu'écrite dans le lien
         # (« / », « # », espaces…) et n'est décodée qu'une fois, par le gestionnaire.
         url_str = url.toString(QUrl.FullyEncoded) if isinstance(url, QUrl) else str(url)
@@ -1786,7 +1786,7 @@ class MainWindow(QMainWindow):
         le texte sélectionné (ou, à défaut, le mot sous le curseur) dans le champ
         Recherche par pièce — sans dupliquer le menu standard (copier, tout
         sélectionner...) fourni nativement par QTextBrowser."""
-        from .qt_imports import QTextCursor
+        from ..utils.qt_imports import QTextCursor
 
         cursor = self.history_list.textCursor()
         term = cursor.selectedText().strip()
@@ -2558,7 +2558,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage guide local")
     def _safe_show_local_guide(self):
         """Afficher un guide d'utilisation local (version protégée)"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Guide d'utilisation - 1001pieces.com")
@@ -2629,7 +2629,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur dialogue de restauration")
     def _safe_open_restore_backup_dialog(self):
         """Dialogue de sélection et restauration d'une sauvegarde de la base"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget
 
         from ..services.restore_service import RestoreService
         if not hasattr(self, 'restore_service'):
@@ -2721,7 +2721,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur gestionnaire FTS5")
     def _safe_open_fts5_manager(self):
         """Dialogue de gestion de l'index de recherche FTS5"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressDialog
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressDialog
         from ..core.config import Config
 
         dialog = QDialog(self)
@@ -2844,7 +2844,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur configuration colonnes")
     def _safe_configure_columns(self):
         """Helper sécurisé pour configurer les colonnes"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel, QSize
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel, QSize
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Configuration des colonnes")

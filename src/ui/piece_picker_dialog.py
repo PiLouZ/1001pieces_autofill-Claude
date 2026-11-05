@@ -5,7 +5,7 @@ RefTagList        : widget de liste de références supprimables (chips).
 
 import qtawesome as qta
 from typing import Optional, List
-from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
+from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
                           QLabel, QPushButton, QLineEdit, QTableWidget,
                           QTableWidgetItem, QHeaderView, Qt, QFrame, QScrollArea,
                           QSize, pyqtSignal, QColor, QFont)
@@ -133,7 +133,7 @@ class RefTagList(QWidget):
 
     def enable_full_height_mode(self):
         """Mode hauteur libre : le widget remplit l'espace disponible (panneau latéral)."""
-        from .qt_imports import QSizePolicy
+        from ..utils.qt_imports import QSizePolicy
         self._full_height_mode = True
         self.setVisible(True)
         self._scroll.setMaximumHeight(16777215)

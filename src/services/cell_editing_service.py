@@ -7,7 +7,7 @@ validation, lots, création de ligne) a été retirée : l'édition passe par le
 modèle du tableau et EventDrivenSaveService.
 """
 
-from ..ui.qt_imports import QTableWidget, QObject
+from ..utils.qt_imports import QTableWidget, QObject
 
 from ..data.database_manager import DatabaseManager
 from ..data.data_validator import DataValidator

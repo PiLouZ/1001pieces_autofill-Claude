@@ -11,7 +11,7 @@ Groupe « ▲ [n incomplètes] ▼ » de la barre d'état, sous le tableau.
 
 import qtawesome as qta
 
-from .qt_imports import QWidget, QHBoxLayout, QPushButton, QToolButton, QAction, QKeySequence, Qt
+from ..utils.qt_imports import QWidget, QHBoxLayout, QPushButton, QToolButton, QAction, QKeySequence, Qt
 from .style_manager import StyleManager
 
 

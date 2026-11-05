@@ -17,7 +17,7 @@ nouvelle recherche met l'aperçu à jour (sans boîte de choix pendant la saisie
 import html
 from typing import Any, Dict, List, Optional
 
-from .qt_imports import (
+from ..utils.qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget,
     QListWidgetItem, QTabWidget, QTextBrowser, QPlainTextEdit, QSplitter, QWidget,
     QTimer, QEvent, Qt, QFont, QFontDatabase, QRect, QStyledItemDelegate, QStyleOptionViewItem

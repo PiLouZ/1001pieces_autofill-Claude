@@ -10,7 +10,7 @@ colonne de gauche (ColonneVariantes), qui en garde la copie de travail jusqu'à
 
 import copy
 
-from .qt_imports import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox, QTextBrowser
+from ..utils.qt_imports import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox, QTextBrowser
 from .champ_modele_html import ChampModeleHtml
 from .colonne_variantes import ColonneVariantes
 from src.utils.titre_produit_generator import TitreProduitGenerator

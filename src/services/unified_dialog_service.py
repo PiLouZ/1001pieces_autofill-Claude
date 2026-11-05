@@ -15,14 +15,14 @@ ARCHITECTURE :
 """
 
 from typing import Optional, Dict, Any, List
-from ..ui.qt_imports import (
+from ..utils.qt_imports import (
     QInputDialog, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit, 
     QListWidget, QListWidgetItem, QMessageBox, QDialogButtonBox,
     QWidget, QFrame, QSize
 )
-from ..ui.qt_imports import Qt
-from ..ui.qt_imports import QFont
+from ..utils.qt_imports import Qt
+from ..utils.qt_imports import QFont
 
 from ..core.logger import app_logger
 from functools import wraps

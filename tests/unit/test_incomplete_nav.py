@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from src.services.incomplete_button_service import IncompleteButtonService
-from src.ui.qt_imports import QPushButton, QToolButton
+from src.utils.qt_imports import QPushButton, QToolButton
 from src.ui.table_controller import TableController
 
 
@@ -89,7 +89,7 @@ class _ControleurPagine:
         tc.visited = []
         tc.current_search_term = None
         tc.current_sort_column = 0
-        from src.ui.qt_imports import Qt
+        from src.utils.qt_imports import Qt
         tc.current_sort_order = Qt.AscendingOrder
         tc.parent_window = Mock(sorting_filtering_service=None, show_incomplete_only=False)
         tc.filter_widgets = {}

@@ -13,7 +13,7 @@ diffèrent : tous ceux qui pèsent à peu près autant que le premier sont cité
 
 from typing import Any, Dict, Optional, Tuple
 
-from .qt_imports import QApplication
+from ..utils.qt_imports import QApplication
 
 from src.core.logger import app_logger
 from src.utils.titre_produit_generator import TitreProduitGenerator

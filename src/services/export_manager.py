@@ -18,7 +18,7 @@ Responsabilités consolidées :
 import csv
 import os
 from typing import Dict, Any, Optional, List, Union, Tuple
-from ..ui.qt_imports import QApplication
+from ..utils.qt_imports import QApplication
 from enum import Enum
 
 from ..core.logger import app_logger
@@ -191,7 +191,7 @@ class ExportManagerService:
             )
         else:
             # Fallback avec QInputDialog
-            from ..ui.qt_imports import QInputDialog
+            from ..utils.qt_imports import QInputDialog
             selected_reference, ok = QInputDialog.getText(
                 self.main_window, title, message, text=default_reference
             )
@@ -236,7 +236,7 @@ class ExportManagerService:
 
         def changer_dossier():
             """Ouvrir le sélecteur et mémoriser le choix dans la configuration."""
-            from ..ui.qt_imports import QFileDialog
+            from ..utils.qt_imports import QFileDialog
             choisi = QFileDialog.getExistingDirectory(
                 self.main_window,
                 "Choisir le dossier de destination des exports",
@@ -495,7 +495,7 @@ class ExportManagerService:
     
     def _get_active_column_filters(self) -> Dict[int, str]:
         """Récupérer les filtres de colonnes actifs"""
-        from ..ui.qt_imports import QComboBox
+        from ..utils.qt_imports import QComboBox
         
         column_filters = {}
         

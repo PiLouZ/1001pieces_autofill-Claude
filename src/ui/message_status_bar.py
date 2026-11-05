@@ -9,7 +9,7 @@ chaque saut. Ici, les messages sont écrits dans un libellé placé APRÈS les
 widgets de tête — les ~36 appels à showMessage() restent inchangés.
 """
 
-from .qt_imports import QStatusBar, QLabel, QTimer, QSizePolicy
+from ..utils.qt_imports import QStatusBar, QLabel, QTimer, QSizePolicy
 
 
 class MessageStatusBar(QStatusBar):

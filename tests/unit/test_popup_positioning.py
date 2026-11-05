@@ -13,7 +13,7 @@ d'écran qui ne sont visibles qu'en poussant le curseur dans les coins.
 import pytest
 from unittest.mock import patch
 
-from src.ui.qt_imports import QApplication, QDialog, QPoint, Qt
+from src.utils.qt_imports import QApplication, QDialog, QPoint, Qt
 from src.ui.popup_positioning import PopupAuCurseurMixin, MARGE_CURSEUR
 
 

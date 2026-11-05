@@ -21,7 +21,7 @@ import copy
 from typing import Callable, List, Optional
 
 import qtawesome as qta
-from .qt_imports import (
+from ..utils.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget,
     QListWidgetItem, QMenu, QMessageBox, QAbstractItemView, QStyledItemDelegate,
     QStyleOptionViewItem, QEvent, Qt, QSize, QRect, QFont

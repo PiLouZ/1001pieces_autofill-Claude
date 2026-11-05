@@ -3,11 +3,11 @@ Fenêtre de prévisualisation du nettoyage des doublons - Version refactorisée
 Utilise les services DuplicatesAnalysisService et CleanupUIService
 """
 
-from .qt_imports import (
+from ..utils.qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QStackedWidget, QButtonGroup, QFrame, QWidget, QMessageBox, QProgressBar, QSizePolicy, QSize
 )
-from .qt_imports import Qt, QTimer
+from ..utils.qt_imports import Qt, QTimer
 import qtawesome as qta
 
 from ..core.logger import app_logger
@@ -486,7 +486,7 @@ class CleanupPreviewDialog(QDialog):
         preview_text += "Assurez-vous d'avoir une sauvegarde de votre base de données."
 
         # Afficher dans une boîte de dialogue
-        from .qt_imports import QTextEdit
+        from ..utils.qt_imports import QTextEdit
         dialog = QDialog(self)
         dialog.setWindowTitle("Aperçu des changements")
         dialog.resize(600, 400)

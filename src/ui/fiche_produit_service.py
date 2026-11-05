@@ -19,7 +19,7 @@ des exports, et le copie dans le presse-papiers.
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .qt_imports import QApplication
+from ..utils.qt_imports import QApplication
 
 from src.core.logger import app_logger
 from src.services.html_export_service import HtmlExportService

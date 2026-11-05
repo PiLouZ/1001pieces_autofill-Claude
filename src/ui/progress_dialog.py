@@ -12,7 +12,7 @@ API publique identique à QProgressDialog pour minimiser les changements côté 
 import re
 import time
 
-from .qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QWidget,
+from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QWidget,
                           QPushButton, QProgressBar, QScrollArea, QFrame, QTimer,
                           Qt, QSize, QSizePolicy, pyqtSignal)
 import qtawesome as qta

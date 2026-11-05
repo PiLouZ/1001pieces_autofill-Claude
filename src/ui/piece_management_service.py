@@ -11,8 +11,8 @@ Responsabilités:
 """
 
 from typing import Optional, List, Dict, Any, Set
-from .qt_imports import QListWidgetItem, QMessageBox
-from .qt_imports import Qt
+from ..utils.qt_imports import QListWidgetItem, QMessageBox
+from ..utils.qt_imports import Qt
 
 from src.core.config import Config, pluralize
 from src.core.logger import app_logger

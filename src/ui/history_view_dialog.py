@@ -5,7 +5,7 @@ Dialogue de consultation de l'historique persistant des modifications.
 import json
 import re
 from datetime import datetime
-from .qt_imports import (
+from ..utils.qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
     Qt, QHeaderView, QSizePolicy, QMessageBox, QColor,

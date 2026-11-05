@@ -11,7 +11,7 @@ Responsabilités:
 """
 
 from typing import List, Callable, Any, Optional
-from ..ui.qt_imports import QObject, pyqtSignal, QTimer, QApplication
+from ..utils.qt_imports import QObject, pyqtSignal, QTimer, QApplication
 
 from ..core.logger import app_logger
 

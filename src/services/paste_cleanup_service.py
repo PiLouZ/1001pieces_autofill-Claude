@@ -5,7 +5,7 @@ Détecte et nettoie automatiquement les extensions de fichiers (.pdf, .csv, etc.
 
 import re
 from typing import Dict, List, Optional, Tuple
-from ..ui.qt_imports import QObject, pyqtSignal, QMessageBox
+from ..utils.qt_imports import QObject, pyqtSignal, QMessageBox
 
 from ..core.logger import app_logger
 
@@ -125,7 +125,7 @@ class PasteCleanupService(QObject):
     def _show_replacement_dialog(self, extensions_found: List[Tuple[str, int, int]], 
                                 source_widget=None) -> Optional[str]:
         """Affiche le dialogue de choix de remplacement"""
-        from ..ui.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox
         
         class ReplacementDialog(QDialog):
             def __init__(self, parent=None):

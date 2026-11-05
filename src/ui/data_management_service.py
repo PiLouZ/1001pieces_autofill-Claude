@@ -11,7 +11,7 @@ Responsabilités:
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass
-from .qt_imports import QDialog
+from ..utils.qt_imports import QDialog
 from src.core.logger import app_logger
 from src.utils.error_handler import handle_data_management_errors
 from src.services.proposition_type_fabricant import proposer_type_fabricant

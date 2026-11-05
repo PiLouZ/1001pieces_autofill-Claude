@@ -5,14 +5,14 @@ Centralise la logique d'affichage et d'interaction pour la prévisualisation de 
 
 from typing import Dict, List, Any, Optional
 import qtawesome as qta
-from ..ui.qt_imports import (
+from ..utils.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QGroupBox, QTabWidget,
     QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication, QMessageBox,
     QSize
 )
-from ..ui.qt_imports import Qt, QObject, pyqtSignal
-from ..ui.qt_imports import QFont, QKeyEvent, QPainter, QColor
+from ..utils.qt_imports import Qt, QObject, pyqtSignal
+from ..utils.qt_imports import QFont, QKeyEvent, QPainter, QColor
 from ..ui.style_manager import StyleManager
 
 from ..core.logger import app_logger
@@ -59,7 +59,7 @@ class KeyboardTreeWidget(QTreeWidget):
         if not item:
             return
 
-        from ..ui.qt_imports import QMenu, QAction
+        from ..utils.qt_imports import QMenu, QAction
 
         if item.parent() is not None:  # C'est un appareil (pas un groupe)
             menu = QMenu(self)
@@ -83,7 +83,7 @@ class KeyboardTreeWidget(QTreeWidget):
         if item and 0 <= column < item.columnCount():
             text = item.text(column)
             if text:
-                from ..ui.qt_imports import QApplication
+                from ..utils.qt_imports import QApplication
                 clipboard = QApplication.clipboard()
                 clipboard.setText(text)
                 app_logger.info(f"Valeur copiée: {text}")
@@ -1117,7 +1117,7 @@ class ActionHistoryWidget(QWidget):
 
     def _export_history(self):
         """Exporter l'historique en CSV"""
-        from ..ui.qt_imports import QFileDialog
+        from ..utils.qt_imports import QFileDialog
         import csv
         from datetime import datetime
 

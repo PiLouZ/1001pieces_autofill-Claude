@@ -12,7 +12,7 @@ Responsabilités:
 import time
 from typing import Optional, Dict, Any
 import qtawesome as qta
-from .qt_imports import (QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QToolButton, QWidget,
+from ..utils.qt_imports import (QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QToolButton, QWidget,
                              QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
                              Qt, QTimer, QFont, QMenu, QPoint, QObject, QEvent, QCursor)
 

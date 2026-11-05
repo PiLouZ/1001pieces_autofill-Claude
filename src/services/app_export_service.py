@@ -17,7 +17,7 @@ import sys
 
 from .base_service import BaseService
 from .export_config_service import ExportConfigService
-from ..ui.qt_imports import QThread, pyqtSignal, QFileDialog, QMessageBox, Qt
+from ..utils.qt_imports import QThread, pyqtSignal, QFileDialog, QMessageBox, Qt
 from ..ui.progress_dialog import ProgressDialog
 from ..ui.message_helper import MessageHelper
 from ..ui.style_manager import StyleManager

@@ -6,7 +6,7 @@ Extrait de main_refactored.py pour centraliser la logique d'import/export
 import os
 from typing import Optional, Dict, Any
 
-from ..ui.qt_imports import QFileDialog, pyqtSignal
+from ..utils.qt_imports import QFileDialog, pyqtSignal
 
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation, safe_operation

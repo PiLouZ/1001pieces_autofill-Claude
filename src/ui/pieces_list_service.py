@@ -9,7 +9,7 @@ Responsabilités:
 
 from typing import Optional
 import qtawesome as qta
-from .qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
+from ..utils.qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
                           QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
                           QTimer, QApplication, QPainter, QColor)
@@ -455,7 +455,7 @@ class PieceItemWidget(QWidget):
         """Injecter une ref dans la recherche principale (sans copie automatique).
         Utilise QTimer.singleShot pour éviter un use-after-free si ce widget est
         détruit lors du rafraîchissement déclenché par le setText."""
-        from .qt_imports import QTimer
+        from ..utils.qt_imports import QTimer
         mw = self._main_window()
         if mw and hasattr(mw, 'search_input'):
             QTimer.singleShot(0, lambda: mw.search_input.setText(ref))

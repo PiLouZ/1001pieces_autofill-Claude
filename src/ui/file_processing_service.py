@@ -11,7 +11,7 @@ Responsabilités:
 
 import os
 from typing import List, Optional, Dict, Any, Tuple
-from .qt_imports import QApplication, Qt
+from ..utils.qt_imports import QApplication, Qt
 from .progress_dialog import ProgressDialog
 from src.core.logger import app_logger
 

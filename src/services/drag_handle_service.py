@@ -14,7 +14,7 @@ import time
 from typing import Optional
 
 from PyQt5.QtCore import QItemSelection, QItemSelectionModel
-from ..ui.qt_imports import (QWidget, Qt, QTimer, QPainter, QPen, QColor)
+from ..utils.qt_imports import (QWidget, Qt, QTimer, QPainter, QPen, QColor)
 
 from ..core.config import Config
 from ..core.logger import app_logger

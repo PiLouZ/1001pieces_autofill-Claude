@@ -79,7 +79,7 @@ def handle_errors(
                 if args:
                     # Si c'est une méthode d'instance d'un QWidget, utiliser self comme parent
                     try:
-                        from ..ui.qt_imports import QWidget
+                        from .qt_imports import QWidget
                         if isinstance(args[0], QWidget):
                             parent = args[0]
                         else:
@@ -307,7 +307,7 @@ def _fenetre_erreur(prefixe: str):
         if not args:
             return
         try:
-            from ..ui.qt_imports import QWidget
+            from .qt_imports import QWidget
             from ..ui.message_helper import MessageHelper
             parent = args[0] if isinstance(args[0], QWidget) else None
             MessageHelper.show_error(parent, f"{prefixe}{e}")

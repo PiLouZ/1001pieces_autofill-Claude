@@ -14,7 +14,7 @@ Les récents sont mémorisés par poste (QSettings), pas dans
 data/export_config.json, suivi par git.
 """
 
-from .qt_imports import QMenu, QAction, QWidget, QHBoxLayout, QLineEdit, QWidgetAction, QFont, QTimer, QEvent, Qt
+from ..utils.qt_imports import QMenu, QAction, QWidget, QHBoxLayout, QLineEdit, QWidgetAction, QFont, QTimer, QEvent, Qt
 from src.utils.text_utils import cle_tri_naturel, strip_accents
 
 

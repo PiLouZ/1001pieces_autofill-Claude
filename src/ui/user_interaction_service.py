@@ -15,7 +15,7 @@ import re
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
-from .qt_imports import QMessageBox, QTimer
+from ..utils.qt_imports import QMessageBox, QTimer
 
 from src.core.config import Config
 from src.core.logger import app_logger

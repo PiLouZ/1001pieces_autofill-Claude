@@ -12,7 +12,7 @@ import unicodedata
 import warnings
 from datetime import datetime
 
-from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QComboBox, QCheckBox,
                              QTextEdit, QGroupBox, QApplication,
                              QScrollArea, QWidget, QGridLayout, Qt, QTimer, QThread,
@@ -4330,7 +4330,7 @@ class ImportManager:
 
         # Toujours déclencher la mise à jour du bouton "lignes à compléter"
         if hasattr(self.main_window, '_update_incomplete_button_visibility'):
-            from ..ui.qt_imports import QTimer
+            from ..utils.qt_imports import QTimer
             QTimer.singleShot(200, self.main_window._update_incomplete_button_visibility)
             app_logger.debug("Mise à jour bouton 'lignes à compléter' programmée")
 

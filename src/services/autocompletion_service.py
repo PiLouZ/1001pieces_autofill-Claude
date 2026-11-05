@@ -4,7 +4,7 @@ Gère les fenêtres d'autocomplétion et la récupération des valeurs
 """
 
 from typing import Dict, List, Optional, Union
-from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                             QPushButton, QListWidget, QListWidgetItem, QMessageBox, QWidget, Qt,
                             QTimer)
 from ..data.database_manager import DatabaseManager
