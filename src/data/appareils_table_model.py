@@ -24,6 +24,9 @@ _SUGGESTION_COLS = (0, 1)
 _SUGGESTION_BG = QColor('#FFF8E1')   # jaune pâle, distinct de l'alerte doublons
 # Champ de chaque colonne Type/Fabricant, pour les auto-complétions à vérifier
 _CHAMP_PAR_COLONNE = {0: 'type', 1: 'manufacturer'}
+# Auto-complétions à vérifier : fond lavande, distinct du jaune des suggestions
+# et assez soutenu pour ne pas se confondre avec la teinte d'une ligne sur deux.
+_AUTOCOMPLETE_BG = QColor('#DDE2F7')
 
 
 class AppareillsTableModel(QAbstractTableModel):
@@ -118,6 +121,9 @@ class AppareillsTableModel(QAbstractTableModel):
             # Suggestion Type/Marque en attente : teinte douce sur les cellules concernées.
             if col in _SUGGESTION_COLS and self._pending_suggestions.get(record[0]):
                 return QBrush(_SUGGESTION_BG)
+            # Auto-complétion à vérifier : teinte lavande sur la cellule concernée.
+            if self.autocompletion_de(record[0], col):
+                return QBrush(_AUTOCOMPLETE_BG)
             # Highlight de recherche : délégué au service (Phase 3+)
             return None
 
@@ -141,7 +147,8 @@ class AppareillsTableModel(QAbstractTableModel):
                     source, accord, total = prov
                     confiance = f"{accord}/{total}" if accord is not None else "confiance inconnue"
                     return (f"Auto-complété d'après {source or '?'} ({confiance}) — à vérifier : "
-                            f"clic droit « Marquer comme vérifié », ou corrigez la valeur")
+                            f"cliquez sur la coche (ou clic droit « Marquer comme vérifié »), "
+                            f"ou corrigez la valeur")
 
         return None
 
@@ -228,7 +235,18 @@ class AppareillsTableModel(QAbstractTableModel):
                 return str(section + 1)   # 1-indexé comme l'ancien setVerticalHeaderItem
         if role == Qt.ToolTipRole and is_pieces_col:
             return "Nombre de pièces associées"
+        # Repère « à vérifier » du numéro de ligne : dessiné par l'en-tête de
+        # CustomTableView (la feuille de style écraserait ForegroundRole/FontRole).
+        if (role == Qt.ToolTipRole and orientation == Qt.Vertical
+                and self.ligne_a_verifier(section)):
+            return "Ligne auto-complétée à vérifier"
         return None
+
+    def ligne_a_verifier(self, row) -> bool:
+        """True si la ligne affichée porte au moins une auto-complétion non vérifiée."""
+        if not (0 <= row < self._display_count):
+            return False
+        return bool(self._autocompletes.get(self._records[row][0]))
 
     # ── API custom ───────────────────────────────────────────────────────────
 
@@ -372,6 +390,7 @@ class AppareillsTableModel(QAbstractTableModel):
         affected = set(self._autocompletes) | set(par_appareil)
         self._autocompletes = {k: dict(v) for k, v in par_appareil.items()}
         self._emit_data_changed_for_db_ids(affected)
+        self._emit_header_changed_for_db_ids(affected)
 
     def autocompletion_de(self, db_id, col):
         """(source, accord, total) si la cellule porte une auto-complétion non
@@ -397,6 +416,7 @@ class AppareillsTableModel(QAbstractTableModel):
             del champs[champ]
             if not champs:
                 del self._autocompletes[db_id]
+                self._emit_header_changed_for_db_ids([db_id])
 
     def incomplete_records(self):
         """Retourne [(db_id, ref_modele, commercial_ref)] pour toutes les lignes
@@ -492,6 +512,14 @@ class AppareillsTableModel(QAbstractTableModel):
                     [Qt.BackgroundRole, Qt.DecorationRole, Qt.ToolTipRole, Qt.FontRole],
                 )
 
+    def _emit_header_changed_for_db_ids(self, db_ids):
+        """Rafraîchit le numéro de ligne (repère « à vérifier ») des lignes
+        affichées correspondant aux db_id fournis."""
+        for db_id in db_ids:
+            row = self.find_row_by_db_id(db_id)
+            if row is not None and row < self._display_count:
+                self.headerDataChanged.emit(Qt.Vertical, row, row)
+
     def set_search_term(self, term):
         """Met à jour le terme de recherche pour le highlight (Phase 3+).
 
@@ -582,12 +610,28 @@ class SuggestionCellDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.accept_handler = None      # callable(index, suggestions) -> None
+        self.verify_handler = None      # callable(index) -> None (coche « vérifié »)
         self._icon = None               # qta.icon, créé paresseusement
+        self._icon_verifier = None
 
     def _get_icon(self):
         if self._icon is None:
             self._icon = qta.icon('fa5s.magic', color='#f39c12')
         return self._icon
+
+    def _get_icon_verifier(self):
+        if self._icon_verifier is None:
+            self._icon_verifier = qta.icon('fa5s.check-circle', color='#5c6bc0')
+        return self._icon_verifier
+
+    @staticmethod
+    def _a_verifier(index):
+        """True si la cellule porte une auto-complétion non vérifiée."""
+        model = index.model()
+        if not (hasattr(model, 'autocompletion_de') and hasattr(model, 'get_db_id')):
+            return False
+        db_id = model.get_db_id(index.row())
+        return db_id is not None and bool(model.autocompletion_de(db_id, index.column()))
 
     def _icon_rect(self, rect):
         s = self._ICON_SIZE
@@ -612,6 +656,11 @@ class SuggestionCellDelegate(QStyledItemDelegate):
 
         cand = self._top_candidate(index)
         if cand is None:
+            # Pas de suggestion : coche « Marquer comme vérifié » si auto-complétée.
+            if self._a_verifier(index):
+                painter.save()
+                self._get_icon_verifier().paint(painter, self._icon_rect(option.rect))
+                painter.restore()
             return
 
         painter.save()
@@ -640,5 +689,13 @@ class SuggestionCellDelegate(QStyledItemDelegate):
                 db_id = model.get_db_id(index.row())
                 suggestions = model.get_suggestions_for_db_id(db_id)
                 self.accept_handler(index, suggestions)
+            return True
+        if (event.type() == QEvent.MouseButtonRelease
+                and event.button() == Qt.LeftButton
+                and self._top_candidate(index) is None
+                and self._a_verifier(index)
+                and self._icon_rect(option.rect).contains(event.pos())):
+            if callable(self.verify_handler):
+                self.verify_handler(index)
             return True
         return super().editorEvent(event, model, option, index)

@@ -381,6 +381,7 @@ class TableController:
         # Delegate des colonnes Type/Marque : suggestion en case + icône cliquable.
         self._suggestion_delegate = SuggestionCellDelegate(self.table)
         self._suggestion_delegate.accept_handler = self._on_suggestion_icon_clicked
+        self._suggestion_delegate.verify_handler = self._on_verify_icon_clicked
         self.table.setItemDelegateForColumn(0, self._suggestion_delegate)
         self.table.setItemDelegateForColumn(1, self._suggestion_delegate)
         # Headers gérés par model.headerData() — pas de setHorizontalHeaderLabels()
@@ -1695,6 +1696,13 @@ class TableController:
         vers la fenêtre principale : application directe si 1 candidat, chooser sinon."""
         if hasattr(self.parent_window, '_resolve_suggestion_inline'):
             self.parent_window._resolve_suggestion_inline(index, suggestions)
+
+    def _on_verify_icon_clicked(self, index):
+        """Relais du clic sur la coche d'une cellule auto-complétée : marque
+        l'appareil comme vérifié (même chemin que le clic droit)."""
+        db_id = self.model.get_db_id(index.row()) if self.model else None
+        if db_id is not None and hasattr(self.parent_window, '_marquer_lignes_verifiees'):
+            self.parent_window._marquer_lignes_verifiees([db_id], origine="clic sur la coche")
 
     def _update_similarity_indicator(self):
         """Relaie le nombre de suggestions en attente au bouton « Suggestions à
