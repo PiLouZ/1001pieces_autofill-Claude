@@ -3,7 +3,7 @@ Gestionnaire d'importation unifié pour l'application de gestion d'appareils
 Factorisation du code d'importation avec support des libellés hiérarchiques
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple, Callable, Union
 from enum import Enum
 import os
@@ -116,6 +116,20 @@ class ImportConfiguration:
             self.individual_labels = {}
         if self.obsolete_refs is None:
             self.obsolete_refs = []
+
+
+@dataclass
+class _LotBatch:
+    """État du classement d'un fichier (ÉTAPE 2 de l'import par lots), transmis à
+    l'écriture (ÉTAPE 3). first_occurrence_by_key et processed_line_index sont
+    locaux au fichier, contrairement à seen_device_refs partagé entre fichiers."""
+    new_devices_batch: List[Dict[str, Any]] = field(default_factory=list)
+    existing_updates: List[Tuple[int, Dict[str, Any]]] = field(default_factory=list)
+    completions: List[Tuple[int, Dict[str, Any], Dict[str, str]]] = field(default_factory=list)  # Type/Fabricant vides en base
+    associations_batch: List[Tuple] = field(default_factory=list)
+    processed_line_index: int = 0  # lignes réellement traitées (hors continue)
+    # 1ʳᵉ occurrence de chaque clé DANS CE FICHIER : {device_key: (data_index, existing_id)}
+    first_occurrence_by_key: Dict[Any, Tuple[int, Optional[int]]] = field(default_factory=dict)
 
 
 class _ImportWorker(QThread):
@@ -1344,8 +1358,13 @@ class ImportManager:
                                  shared_autocomplete_cache: Optional[Dict] = None,
                                  dry_run: bool = False) -> Dict[str, Any]:
         """Version optimisée avec batch processing pour les gros imports.
-        Si dry_run=True : classification uniquement, aucune écriture en base."""
-        
+        Si dry_run=True : classification uniquement, aucune écriture en base.
+
+        Trois étapes : caches (ÉTAPE 1), classement des lignes en mémoire
+        (ÉTAPE 2, _classer_lignes_batch), puis écriture en base
+        (ÉTAPE 3, _ecrire_lot_batch) — ou, en dry_run, comptage des associations
+        qui seraient créées (_compter_associations_simulees)."""
+
         results = {
             'total_imported': 0,
             'matches_found': 0,
@@ -1356,9 +1375,8 @@ class ImportManager:
             'duplicates_in_file': 0,
             'total_lines_extracted': 0
         }
-        
+
         # ÉTAPE 1: Utiliser le cache partagé si fourni, sinon pré-charger (import fichier unique)
-        cancel_check = getattr(self, '_import_cancel_check', None)
         if shared_devices_cache is not None:
             existing_devices_cache = shared_devices_cache
             autocomplete_cache = shared_autocomplete_cache or self._build_autocomplete_cache(existing_devices_cache)
@@ -1368,23 +1386,30 @@ class ImportManager:
             autocomplete_cache = self._build_autocomplete_cache(existing_devices_cache)
 
         # ÉTAPE 2: Traitement en mémoire de toutes les lignes
+        lot = self._classer_lignes_batch(data, references_and_labels, config, seen_device_refs,
+                                         results, existing_devices_cache, autocomplete_cache,
+                                         dry_run)
+
+        # ÉTAPE 3: Batch operations sur la base (ignorées en dry_run)
+        if not dry_run:
+            self._ecrire_lot_batch(lot, results)
+        else:
+            self._compter_associations_simulees(lot.associations_batch, results)
+
+        app_logger.debug(f"[OK] BATCH: Terminé — {results['total_imported']} lignes traitées")
+        return results
+
+    def _classer_lignes_batch(self, data, references_and_labels, config, seen_device_refs,
+                              results, existing_devices_cache, autocomplete_cache,
+                              dry_run) -> '_LotBatch':
+        """ÉTAPE 2 : classer chaque ligne (ignorée, doublon, appareil existant ou
+        nouveau) et préparer, sans aucun SQL, les écritures de l'ÉTAPE 3."""
+        cancel_check = getattr(self, '_import_cancel_check', None)
         app_logger.debug(f" BATCH: Analyse de {len(data)} lignes…")
-        
-        new_devices_batch = []
-        existing_updates = []
-        completions = []  # (id, device_data, champs) : Type/Fabricant vides en base
-        associations_batch = []
-        processed_line_index = 0  # Compteur pour les lignes réellement traitées (hors continue)
-        # 1ʳᵉ occurrence de chaque clé DANS CE FICHIER : {device_key: (data_index, existing_id)}.
-        # Local au fichier, contrairement à seen_device_refs qui est partagé entre
-        # fichiers — associations_batch et processed_line_index le sont aussi.
-        first_occurrence_by_key = {}
-        
-        # Configuration pour progress optimisé
-        from .config import Config
-        progress_frequency = Config.IMPORT_PROGRESS_FREQUENCY
+
+        lot = _LotBatch()
         total_rows = len(data)
-        
+
         for idx, row in enumerate(data):
             # Vérifier si annulation demandée tous les 10 éléments
             if idx > 0 and idx % 10 == 0:
@@ -1399,173 +1424,188 @@ class ImportManager:
                 continue
 
             if verdict == self.LIGNE_DOUBLON:
-                # Rattacher l'association à la 1ʳᵉ occurrence. Si elle vient du même
-                # fichier, on réutilise son (data_index, existing_id) : la mémoïsation
-                # de _batch_create_associations réattribue alors le bon id SANS
-                # consommer d'entrée de new_device_ids, y compris quand l'appareil
-                # est encore en attente d'insertion. Sinon (doublon inter-fichiers),
-                # on ne peut compter que sur un appareil déjà présent en base.
-                first_occurrence = first_occurrence_by_key.get(device_key)
-                if first_occurrence is not None:
-                    dup_index, dup_existing_id = first_occurrence
-                else:
-                    dup_index = processed_line_index
-                    dup_existing_id = self._find_in_cache(device_data, existing_devices_cache)
-                if first_occurrence is not None or dup_existing_id:
-                    for reference, label in references_and_labels:
-                        if reference:
-                            associations_batch.append((reference, label, dup_index, dup_existing_id))
+                self._rattacher_doublon_batch(lot, device_data, device_key,
+                                              references_and_labels, existing_devices_cache)
                 continue
 
-            # Ligne à traiter : la résolution passe par le cache, pas par SQL
-            # (le comptage de la ligne traitée est fait par _preparer_ligne)
-
-            # Utiliser cache auto-complétion pour améliorer les données (pas de SQL!)
-            self._apply_autocomplete_from_cache(device_data, autocomplete_cache)
-
-            # Vérifier si existe en cache (pas de requête SQL !)
-            existing_id = self._find_in_cache(device_data, existing_devices_cache)
-
-            # Mémoriser la résolution de cette ligne pour d'éventuels doublons suivants
-            if device_key:
-                first_occurrence_by_key.setdefault(device_key, (processed_line_index, existing_id))
-
-            if existing_id:
-                # Appareil existant
-                results['matches_found'] += 1
-                device_data['id'] = existing_id   # pour la collecte des suggestions (ci-dessous)
-                if self._needs_update(device_data):
-                    existing_updates.append((existing_id, device_data))
-                # Type/Fabricant vides en base : le cache filtre en amont, pour ne pas
-                # émettre un UPDATE par appareil retrouvé sur un import de 90 000 lignes
-                entree = existing_devices_cache.get(device_key) if device_key else None
-                champs = self._champs_a_completer(device_data, entree) if entree else {}
-                if champs:
-                    completions.append((existing_id, device_data, champs))
-                    if not dry_run:
-                        entree.update(champs)  # cache partagé : fichiers suivants du lot
-            else:
-                # Nouvel appareil à créer (l'id sera réinjecté après insertion batch)
-                results['new_entries'] += 1
-                if self._needs_manual_completion(device_data):
-                    results['manual_completion'] += 1
-                new_devices_batch.append(device_data)
-
-            self._collecter_candidat_similarite(
-                device_data, actif=not dry_run,
-                refs_pieces=[r for r, _ in references_and_labels])
-
-            # Préparer associations (sera traitée après insertion batch)
-            # CORRECTION: Utiliser processed_line_index pour avoir des indices consécutifs
-            associations_added_for_line = 0
-            for reference, label in references_and_labels:
-                if reference:
-                    # Utiliser processed_line_index pour avoir des indices consécutifs sans trous
-                    associations_batch.append((reference, label, processed_line_index, existing_id))
-                    associations_added_for_line += 1
-
-            if associations_added_for_line == 0:
-                app_logger.warning(f"Ligne {processed_line_index}: Aucune association créée pour cette ligne (pas de référence valide)")
-
-            # Incrémenter le compteur des lignes réellement traitées
-            processed_line_index += 1
+            self._ranger_ligne_batch(lot, device_data, device_key, references_and_labels,
+                                     results, existing_devices_cache, autocomplete_cache, dry_run)
 
             if idx > 0 and idx % 100 == 0:
                 app_logger.debug(f" BATCH: {idx}/{total_rows} lignes analysées")
 
-        # ÉTAPE 3: Batch operations sur la base (ignorées en dry_run)
-        if not dry_run:
-            app_logger.debug(f" BATCH: Insertion de {len(new_devices_batch)} nouveaux appareils…")
+        return lot
 
-            new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
-
-            if len(new_devices_batch) != len(new_device_ids):
-                app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
-
-            # Réinjecter l'id généré dans chaque device_data (additif) : nécessaire à la
-            # collecte des suggestions par similarité (et sans effet sur le reste du flux).
-            # new_device_ids est parallèle à new_devices_batch ; zip tronque si tailles diffèrent.
-            for _dev_data, _new_id in zip(new_devices_batch, new_device_ids):
-                _dev_data['id'] = _new_id
-            self._tracer_autocompletions(
-                (d['id'], d, None) for d in new_devices_batch[:len(new_device_ids)])
-
-            app_logger.debug(f" BATCH: Mise à jour de {len(existing_updates)} appareils existants…")
-            if existing_updates:
-                self._batch_update_devices(existing_updates)
-            self._completer_appareils_existants(completions)
-
-            app_logger.debug(f" BATCH: Création de {len(associations_batch)} associations…")
-
-            new_device_associations     = [a for a in associations_batch if not a[3]]
-            existing_device_associations = [a for a in associations_batch if a[3]]
-            unique_new      = set(a[2] for a in new_device_associations)
-            unique_existing = set(a[2] for a in existing_device_associations)
-            all_unique      = unique_new | unique_existing
-            app_logger.info(f"Associations: {len(associations_batch)} total ({len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants)")
-            # Diagnostic, pas une vérification : les deux termes portent sur des
-            # populations différentes. `total_imported` ne compte que les lignes
-            # NOUVELLES (_preparer_ligne l'incrémente après avoir écarté ignorées et
-            # doublons), tandis que `all_unique` recense les indices présents dans
-            # associations_batch, doublons compris — rattachés à l'indice de leur 1ʳᵉ
-            # occurrence, ou à `processed_line_index` si elle vient d'un autre fichier.
-            # Or ce compteur n'avance qu'après les `continue` : sur un fichier 100 %
-            # doublons il reste à 0, et la ligne affichait « 0 lignes traitées vs 1 »
-            # alors que tout était normal. Sortait 192 fois en INFO sur l'import du
-            # 2026-09-10, avec l'allure d'un échec — d'où le passage en debug.
-            #
-            # Le passage en debug l'a retirée de la console (handler INFO) mais pas de
-            # detailed.log, dont le handler accepte DEBUG : le volume y restait inchangé.
-            # D'où le garde LOG_VERBOSE_PER_DEVICE, déjà utilisé par _preparer_ligne pour
-            # ses logs par-appareil — même intention, même levier : muet par défaut,
-            # réactivable pour un diagnostic sans toucher au code.
-            if Config.LOG_VERBOSE_PER_DEVICE:
-                app_logger.debug(f" BATCH: {results['total_imported']} ligne(s) nouvelle(s), "
-                                 f"{len(all_unique)} indice(s) de ligne portant des associations")
-
-            if associations_batch:
-                batch_results = self._batch_create_associations(associations_batch, new_device_ids)
-                results['associations_created'] += batch_results.get('created', 0)
-                results['associations_existing'] += batch_results.get('existing', 0)
-
-            if hasattr(self.db_manager, 'cache_invalidation'):
-                self.db_manager.cache_invalidation.invalidate_after_import(results)
+    def _rattacher_doublon_batch(self, lot, device_data, device_key, references_and_labels,
+                                 existing_devices_cache) -> None:
+        """Ligne doublon : rattacher ses associations à la 1ʳᵉ occurrence."""
+        # Rattacher l'association à la 1ʳᵉ occurrence. Si elle vient du même
+        # fichier, on réutilise son (data_index, existing_id) : la mémoïsation
+        # de _batch_create_associations réattribue alors le bon id SANS
+        # consommer d'entrée de new_device_ids, y compris quand l'appareil
+        # est encore en attente d'insertion. Sinon (doublon inter-fichiers),
+        # on ne peut compter que sur un appareil déjà présent en base.
+        first_occurrence = lot.first_occurrence_by_key.get(device_key)
+        if first_occurrence is not None:
+            dup_index, dup_existing_id = first_occurrence
         else:
-            # Dry-run (F7) : compter exactement depuis associations_batch (construit en
-            # ÉTAPE 2 dans les deux modes), en répliquant la logique de
-            # _batch_create_associations en lecture seule. L'ancienne approximation
-            # (nouveaux appareils × refs valides) donnait des comptages faux.
-            existing_pairs_in_db = set()
-            existing_device_ids = list({a[3] for a in associations_batch if a[3]})
-            CHUNK = 500
-            for i in range(0, len(existing_device_ids), CHUNK):
-                chunk = existing_device_ids[i:i + CHUNK]
-                placeholders = ','.join('?' * len(chunk))
-                rows = self.db_manager.execute_query(
-                    f"SELECT p.ref_piece, pa.appareil_id "
-                    f"FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id "
-                    f"WHERE pa.appareil_id IN ({placeholders})",
-                    chunk
-                )
-                existing_pairs_in_db.update((r[0], r[1]) for r in rows or [])
+            dup_index = lot.processed_line_index
+            dup_existing_id = self._find_in_cache(device_data, existing_devices_cache)
+        if first_occurrence is not None or dup_existing_id:
+            for reference, label in references_and_labels:
+                if reference:
+                    lot.associations_batch.append((reference, label, dup_index, dup_existing_id))
 
-            created = existing = 0
-            seen_pairs = set(existing_pairs_in_db)
-            for reference, _label, data_index, existing_id in associations_batch:
-                # Même clé que le chemin réel : appareil existant = id DB,
-                # nouvel appareil = index de ligne (l'id n'existe pas encore)
-                pair = (reference, existing_id) if existing_id else (reference, f"new_{data_index}")
-                if pair in seen_pairs:
-                    existing += 1
-                else:
-                    created += 1
-                    seen_pairs.add(pair)
+    def _ranger_ligne_batch(self, lot, device_data, device_key, references_and_labels, results,
+                            existing_devices_cache, autocomplete_cache, dry_run) -> None:
+        """Ligne à traiter : appareil existant (mise à jour, complétion) ou nouvel
+        appareil, puis associations. La résolution passe par le cache, pas par SQL
+        (le comptage de la ligne traitée est fait par _preparer_ligne)."""
+        # Utiliser cache auto-complétion pour améliorer les données (pas de SQL!)
+        self._apply_autocomplete_from_cache(device_data, autocomplete_cache)
 
-            results['associations_created'] = created
-            results['associations_existing'] = existing
+        # Vérifier si existe en cache (pas de requête SQL !)
+        existing_id = self._find_in_cache(device_data, existing_devices_cache)
 
-        app_logger.debug(f"[OK] BATCH: Terminé — {results['total_imported']} lignes traitées")
-        return results
+        # Mémoriser la résolution de cette ligne pour d'éventuels doublons suivants
+        if device_key:
+            lot.first_occurrence_by_key.setdefault(device_key, (lot.processed_line_index, existing_id))
+
+        if existing_id:
+            # Appareil existant
+            results['matches_found'] += 1
+            device_data['id'] = existing_id   # pour la collecte des suggestions (ci-dessous)
+            if self._needs_update(device_data):
+                lot.existing_updates.append((existing_id, device_data))
+            # Type/Fabricant vides en base : le cache filtre en amont, pour ne pas
+            # émettre un UPDATE par appareil retrouvé sur un import de 90 000 lignes
+            entree = existing_devices_cache.get(device_key) if device_key else None
+            champs = self._champs_a_completer(device_data, entree) if entree else {}
+            if champs:
+                lot.completions.append((existing_id, device_data, champs))
+                if not dry_run:
+                    entree.update(champs)  # cache partagé : fichiers suivants du lot
+        else:
+            # Nouvel appareil à créer (l'id sera réinjecté après insertion batch)
+            results['new_entries'] += 1
+            if self._needs_manual_completion(device_data):
+                results['manual_completion'] += 1
+            lot.new_devices_batch.append(device_data)
+
+        self._collecter_candidat_similarite(
+            device_data, actif=not dry_run,
+            refs_pieces=[r for r, _ in references_and_labels])
+
+        # Préparer associations (sera traitée après insertion batch)
+        # CORRECTION: Utiliser processed_line_index pour avoir des indices consécutifs
+        associations_added_for_line = 0
+        for reference, label in references_and_labels:
+            if reference:
+                # Utiliser processed_line_index pour avoir des indices consécutifs sans trous
+                lot.associations_batch.append((reference, label, lot.processed_line_index, existing_id))
+                associations_added_for_line += 1
+
+        if associations_added_for_line == 0:
+            app_logger.warning(f"Ligne {lot.processed_line_index}: Aucune association créée pour cette ligne (pas de référence valide)")
+
+        # Incrémenter le compteur des lignes réellement traitées
+        lot.processed_line_index += 1
+
+    def _ecrire_lot_batch(self, lot, results) -> None:
+        """ÉTAPE 3 : insertions, mises à jour, complétions et associations en base."""
+        from .config import Config
+        new_devices_batch = lot.new_devices_batch
+        associations_batch = lot.associations_batch
+
+        app_logger.debug(f" BATCH: Insertion de {len(new_devices_batch)} nouveaux appareils…")
+        new_device_ids = self._batch_insert_devices(new_devices_batch) if new_devices_batch else []
+
+        if len(new_devices_batch) != len(new_device_ids):
+            app_logger.error(f"Erreur critique: {len(new_devices_batch)} nouveaux appareils -> {len(new_device_ids)} IDs obtenus")
+
+        # Réinjecter l'id généré dans chaque device_data (additif) : nécessaire à la
+        # collecte des suggestions par similarité (et sans effet sur le reste du flux).
+        # new_device_ids est parallèle à new_devices_batch ; zip tronque si tailles diffèrent.
+        for _dev_data, _new_id in zip(new_devices_batch, new_device_ids):
+            _dev_data['id'] = _new_id
+        self._tracer_autocompletions(
+            (d['id'], d, None) for d in new_devices_batch[:len(new_device_ids)])
+
+        app_logger.debug(f" BATCH: Mise à jour de {len(lot.existing_updates)} appareils existants…")
+        if lot.existing_updates:
+            self._batch_update_devices(lot.existing_updates)
+        self._completer_appareils_existants(lot.completions)
+
+        app_logger.debug(f" BATCH: Création de {len(associations_batch)} associations…")
+
+        new_device_associations     = [a for a in associations_batch if not a[3]]
+        existing_device_associations = [a for a in associations_batch if a[3]]
+        unique_new      = set(a[2] for a in new_device_associations)
+        unique_existing = set(a[2] for a in existing_device_associations)
+        all_unique      = unique_new | unique_existing
+        app_logger.info(f"Associations: {len(associations_batch)} total ({len(new_device_associations)} nouveaux + {len(existing_device_associations)} existants)")
+        # Diagnostic, pas une vérification : les deux termes portent sur des
+        # populations différentes. `total_imported` ne compte que les lignes
+        # NOUVELLES (_preparer_ligne l'incrémente après avoir écarté ignorées et
+        # doublons), tandis que `all_unique` recense les indices présents dans
+        # associations_batch, doublons compris — rattachés à l'indice de leur 1ʳᵉ
+        # occurrence, ou à `processed_line_index` si elle vient d'un autre fichier.
+        # Or ce compteur n'avance qu'après les `continue` : sur un fichier 100 %
+        # doublons il reste à 0, et la ligne affichait « 0 lignes traitées vs 1 »
+        # alors que tout était normal. Sortait 192 fois en INFO sur l'import du
+        # 2026-09-10, avec l'allure d'un échec — d'où le passage en debug.
+        #
+        # Le passage en debug l'a retirée de la console (handler INFO) mais pas de
+        # detailed.log, dont le handler accepte DEBUG : le volume y restait inchangé.
+        # D'où le garde LOG_VERBOSE_PER_DEVICE, déjà utilisé par _preparer_ligne pour
+        # ses logs par-appareil — même intention, même levier : muet par défaut,
+        # réactivable pour un diagnostic sans toucher au code.
+        if Config.LOG_VERBOSE_PER_DEVICE:
+            app_logger.debug(f" BATCH: {results['total_imported']} ligne(s) nouvelle(s), "
+                             f"{len(all_unique)} indice(s) de ligne portant des associations")
+
+        if associations_batch:
+            batch_results = self._batch_create_associations(associations_batch, new_device_ids)
+            results['associations_created'] += batch_results.get('created', 0)
+            results['associations_existing'] += batch_results.get('existing', 0)
+
+        if hasattr(self.db_manager, 'cache_invalidation'):
+            self.db_manager.cache_invalidation.invalidate_after_import(results)
+
+    def _compter_associations_simulees(self, associations_batch, results) -> None:
+        """Dry-run : associations qui seraient créées / déjà présentes, sans écrire."""
+        # Dry-run (F7) : compter exactement depuis associations_batch (construit en
+        # ÉTAPE 2 dans les deux modes), en répliquant la logique de
+        # _batch_create_associations en lecture seule. L'ancienne approximation
+        # (nouveaux appareils × refs valides) donnait des comptages faux.
+        existing_pairs_in_db = set()
+        existing_device_ids = list({a[3] for a in associations_batch if a[3]})
+        CHUNK = 500
+        for i in range(0, len(existing_device_ids), CHUNK):
+            chunk = existing_device_ids[i:i + CHUNK]
+            placeholders = ','.join('?' * len(chunk))
+            rows = self.db_manager.execute_query(
+                f"SELECT p.ref_piece, pa.appareil_id "
+                f"FROM piece_associations pa JOIN pieces p ON pa.piece_id = p.id "
+                f"WHERE pa.appareil_id IN ({placeholders})",
+                chunk
+            )
+            existing_pairs_in_db.update((r[0], r[1]) for r in rows or [])
+
+        created = existing = 0
+        seen_pairs = set(existing_pairs_in_db)
+        for reference, _label, data_index, existing_id in associations_batch:
+            # Même clé que le chemin réel : appareil existant = id DB,
+            # nouvel appareil = index de ligne (l'id n'existe pas encore)
+            pair = (reference, existing_id) if existing_id else (reference, f"new_{data_index}")
+            if pair in seen_pairs:
+                existing += 1
+            else:
+                created += 1
+                seen_pairs.add(pair)
+
+        results['associations_created'] = created
+        results['associations_existing'] = existing
     
     def _preload_existing_devices(self) -> Dict[str, Dict]:
         """Pré-charger tous les appareils existants pour éviter les requêtes répétées.

@@ -945,111 +945,127 @@ class PiecesManagerWindow(QDialog):
         self.pieces_table.setRowCount(len(filtered_data))
         statuses = getattr(self, 'all_statuses', {})
 
-        from src.core.config import pluralize
         _phantom_font = QFont()
         _phantom_font.setItalic(True)
         _phantom_color = QColor(170, 170, 170)
 
         for row_idx, row_data in enumerate(filtered_data):
-            ref_piece    = row_data[0]
-            description  = row_data[1]
-            nb_appareils = row_data[2]
-            types_appareils = row_data[3]
-            is_phantom   = row_data[4] if len(row_data) > 4 else 0
-
-            status_info = statuses.get(ref_piece or '', {'status': 'current', 'ref_new': None, 'refs_old': None})
-            status = status_info.get('status', 'current')
-            is_obsolete = status_info.get('is_obsolete', False)
-
-            # ── Colonne 0 : référence (plain, fantôme en gris italique) ────
-            ref_item = QTableWidgetItem(ref_piece or "")
-            ref_item.setData(Qt.UserRole, ref_piece or "")
-            if is_phantom:
-                ref_item.setForeground(_phantom_color)
-                ref_item.setFont(_phantom_font)
-                ref_item.setToolTip("Référence fantôme — créée automatiquement pour la succession")
-            self.pieces_table.setItem(row_idx, 0, ref_item)
-
-            # ── Colonne 1 : libellé ───────────────────────────────────────
-            desc_item = QTableWidgetItem(description or "")
-            desc_item.setToolTip(description or "Pas de libellé")
-            if is_phantom:
-                desc_item.setForeground(_phantom_color)
-                desc_item.setFont(_phantom_font)
-            if not (description or "").strip():
-                # Une cellule vide ne se voit pas : sans fond, la référence anonyme
-                # se confond avec les autres et personne ne la corrige jamais.
-                desc_item.setBackground(QColor(*Config.Colors.MISSING_LABEL))
-                desc_item.setToolTip("Aucun libellé — à compléter")
-            self.pieces_table.setItem(row_idx, 1, desc_item)
-
-            # ── Colonne 2 : nb appareils (fond coloré) ────────────────────
-            nb_item = QTableWidgetItem(str(nb_appareils))
-            nb_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if nb_appareils == 0:
-                nb_item.setBackground(QColor(*Config.Colors.ORPHAN_ROW))
-                nb_item.setToolTip("Pièce orpheline — aucun appareil associé")
-            elif nb_appareils == 1:
-                nb_item.setBackground(QColor(*Config.Colors.SINGLE_PIECE))
-                nb_item.setToolTip("Pièce associée à un seul appareil")
-            else:
-                nb_item.setBackground(QColor(*Config.Colors.MULTI_PIECES))
-                nb_item.setToolTip(f"Pièce associée à {pluralize(nb_appareils, 'appareil')}")
-            self.pieces_table.setItem(row_idx, 2, nb_item)
-
-            # ── Colonne 3 : statut (icône + texte court) ─────────────────
-            if is_phantom:
-                _icon = qta.icon('fa5s.ghost', color='#999999')
-                _status_text = "Fantôme"
-                _status_tip = "Référence fantôme — créée pour la succession"
-            elif is_obsolete:
-                ref_new = status_info.get('ref_new', '')
-                _icon = qta.icon('fa5s.ban', color='#c62828')
-                _status_text = "Obsolète"
-                _status_tip = f"Obsolète → {ref_new}" if ref_new else "Marquée obsolète"
-            elif status == 'superseded':
-                ref_new = status_info.get('ref_new', '')
-                _icon = qta.icon('fa5s.long-arrow-alt-right', color='#e67e22')
-                # L'icône est déjà une flèche : pas de « → » en plus dans le texte
-                _status_text = ref_new if ref_new else "Remplacée"
-                _status_tip = f"Remplacée par {ref_new}" if ref_new else "Remplacée"
-            elif status == 'replacing':
-                _raw = status_info.get('refs_old') or []
-                # refs_old peut être une chaîne CSV (ex. "REF1, REF2") ou une liste
-                if isinstance(_raw, str):
-                    refs_old = [r.strip() for r in _raw.split(',') if r.strip()]
-                else:
-                    refs_old = list(_raw)
-                _icon = qta.icon('fa5s.level-up-alt', color='#1565C0')
-                _n = len(refs_old)
-                _status_text = f"Remplace ({_n})" if _n > 1 else "Remplace"
-                _status_tip = "Remplace : " + ", ".join(refs_old) if refs_old else "Remplace d'anciennes réfs"
-            elif status_info.get('equivalents'):
-                _icon = qta.icon('fa5s.exchange-alt', color='#8e44ad')
-                _status_text = "Équivalent"
-                _status_tip = "Fait partie d'un groupe d'équivalents"
-            else:
-                _icon = qta.icon('fa5s.check-circle', color='#2e7d32')
-                _status_text = "OK"
-                _status_tip = "Référence courante, active"
-            status_item = QTableWidgetItem(_status_text)
-            status_item.setIcon(_icon)
-            status_item.setToolTip(_status_tip)
-            status_item.setFlags(status_item.flags() & ~Qt.ItemIsEditable)
-            self.pieces_table.setItem(row_idx, 3, status_item)
-
-            # ── Colonne 4 : types d'appareils — espace après les virgules ──
-            types_display = (types_appareils or "—").replace(",", ", ")
-            if len(types_display) > 55:
-                types_display = types_display[:52] + "…"
-            types_item = QTableWidgetItem(types_display)
-            types_item.setToolTip((types_appareils or "Aucun type").replace(",", ", "))
-            self.pieces_table.setItem(row_idx, 4, types_item)
-
-            # Colonne 5 : actions gérées par le widget flottant (_floating_actions)
+            self._remplir_ligne_piece(row_idx, row_data, statuses, _phantom_font, _phantom_color)
 
         self.pieces_table.blockSignals(False)
+        self._restaurer_selection_pieces()
 
+    def _remplir_ligne_piece(self, row_idx, row_data, statuses, _phantom_font, _phantom_color):
+        """Les 5 colonnes d'une ligne du tableau des pièces (signaux déjà bloqués)."""
+        from src.core.config import pluralize
+        ref_piece    = row_data[0]
+        description  = row_data[1]
+        nb_appareils = row_data[2]
+        types_appareils = row_data[3]
+        is_phantom   = row_data[4] if len(row_data) > 4 else 0
+
+        status_info = statuses.get(ref_piece or '', {'status': 'current', 'ref_new': None, 'refs_old': None})
+        status = status_info.get('status', 'current')
+        is_obsolete = status_info.get('is_obsolete', False)
+
+        # ── Colonne 0 : référence (plain, fantôme en gris italique) ────
+        ref_item = QTableWidgetItem(ref_piece or "")
+        ref_item.setData(Qt.UserRole, ref_piece or "")
+        if is_phantom:
+            ref_item.setForeground(_phantom_color)
+            ref_item.setFont(_phantom_font)
+            ref_item.setToolTip("Référence fantôme — créée automatiquement pour la succession")
+        self.pieces_table.setItem(row_idx, 0, ref_item)
+
+        # ── Colonne 1 : libellé ───────────────────────────────────────
+        desc_item = QTableWidgetItem(description or "")
+        desc_item.setToolTip(description or "Pas de libellé")
+        if is_phantom:
+            desc_item.setForeground(_phantom_color)
+            desc_item.setFont(_phantom_font)
+        if not (description or "").strip():
+            # Une cellule vide ne se voit pas : sans fond, la référence anonyme
+            # se confond avec les autres et personne ne la corrige jamais.
+            desc_item.setBackground(QColor(*Config.Colors.MISSING_LABEL))
+            desc_item.setToolTip("Aucun libellé — à compléter")
+        self.pieces_table.setItem(row_idx, 1, desc_item)
+
+        # ── Colonne 2 : nb appareils (fond coloré) ────────────────────
+        nb_item = QTableWidgetItem(str(nb_appareils))
+        nb_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if nb_appareils == 0:
+            nb_item.setBackground(QColor(*Config.Colors.ORPHAN_ROW))
+            nb_item.setToolTip("Pièce orpheline — aucun appareil associé")
+        elif nb_appareils == 1:
+            nb_item.setBackground(QColor(*Config.Colors.SINGLE_PIECE))
+            nb_item.setToolTip("Pièce associée à un seul appareil")
+        else:
+            nb_item.setBackground(QColor(*Config.Colors.MULTI_PIECES))
+            nb_item.setToolTip(f"Pièce associée à {pluralize(nb_appareils, 'appareil')}")
+        self.pieces_table.setItem(row_idx, 2, nb_item)
+
+        # ── Colonne 3 : statut (icône + texte court) ─────────────────
+        _icon, _status_text, _status_tip = self._statut_piece(
+            is_phantom, is_obsolete, status, status_info)
+        status_item = QTableWidgetItem(_status_text)
+        status_item.setIcon(_icon)
+        status_item.setToolTip(_status_tip)
+        status_item.setFlags(status_item.flags() & ~Qt.ItemIsEditable)
+        self.pieces_table.setItem(row_idx, 3, status_item)
+
+        # ── Colonne 4 : types d'appareils — espace après les virgules ──
+        types_display = (types_appareils or "—").replace(",", ", ")
+        if len(types_display) > 55:
+            types_display = types_display[:52] + "…"
+        types_item = QTableWidgetItem(types_display)
+        types_item.setToolTip((types_appareils or "Aucun type").replace(",", ", "))
+        self.pieces_table.setItem(row_idx, 4, types_item)
+
+        # Colonne 5 : actions gérées par le widget flottant (_floating_actions)
+
+    @staticmethod
+    def _statut_piece(is_phantom, is_obsolete, status, status_info):
+        """(icône, texte court, infobulle) de la colonne Statut, par ordre de
+        priorité : fantôme, obsolète, remplacée, remplace, équivalente, courante."""
+        if is_phantom:
+            _icon = qta.icon('fa5s.ghost', color='#999999')
+            _status_text = "Fantôme"
+            _status_tip = "Référence fantôme — créée pour la succession"
+        elif is_obsolete:
+            ref_new = status_info.get('ref_new', '')
+            _icon = qta.icon('fa5s.ban', color='#c62828')
+            _status_text = "Obsolète"
+            _status_tip = f"Obsolète → {ref_new}" if ref_new else "Marquée obsolète"
+        elif status == 'superseded':
+            ref_new = status_info.get('ref_new', '')
+            _icon = qta.icon('fa5s.long-arrow-alt-right', color='#e67e22')
+            # L'icône est déjà une flèche : pas de « → » en plus dans le texte
+            _status_text = ref_new if ref_new else "Remplacée"
+            _status_tip = f"Remplacée par {ref_new}" if ref_new else "Remplacée"
+        elif status == 'replacing':
+            _raw = status_info.get('refs_old') or []
+            # refs_old peut être une chaîne CSV (ex. "REF1, REF2") ou une liste
+            if isinstance(_raw, str):
+                refs_old = [r.strip() for r in _raw.split(',') if r.strip()]
+            else:
+                refs_old = list(_raw)
+            _icon = qta.icon('fa5s.level-up-alt', color='#1565C0')
+            _n = len(refs_old)
+            _status_text = f"Remplace ({_n})" if _n > 1 else "Remplace"
+            _status_tip = "Remplace : " + ", ".join(refs_old) if refs_old else "Remplace d'anciennes réfs"
+        elif status_info.get('equivalents'):
+            _icon = qta.icon('fa5s.exchange-alt', color='#8e44ad')
+            _status_text = "Équivalent"
+            _status_tip = "Fait partie d'un groupe d'équivalents"
+        else:
+            _icon = qta.icon('fa5s.check-circle', color='#2e7d32')
+            _status_text = "OK"
+            _status_tip = "Référence courante, active"
+        return _icon, _status_text, _status_tip
+
+    def _restaurer_selection_pieces(self):
+        """Après reconstruction du tableau : resélectionner les pièces mémorisées
+        (sticky) encore visibles et remettre les panneaux en cohérence."""
         # Restaurer la sélection persistante (sticky) et les panneaux.
         # selectionModel().select(..., Select | Rows) est utilisé (pas selectRow,
         # qui ne cumule PAS les lignes — chaque appel remplace la sélection
@@ -1102,56 +1118,53 @@ class PiecesManagerWindow(QDialog):
             self._refresh_succession_panel(None)
             self._refresh_equivalence_panel(None)
             
+    # Filtres de statut (boutons-filtres) : prédicat (ligne, statuts) -> bool.
+    # Ligne = (ref_piece, description, nb_appareils, types, is_phantom) ;
+    # statuts = {ref: {'status', 'is_obsolete', 'equivalents', 'labels_differ'}}.
+    # Un filtre absent de la table ('all') ne filtre rien.
+    _FILTRES_STATUT = {
+        'orphan':       lambda r, st: r[2] == 0,
+        'phantom':      lambda r, st: len(r) > 4 and r[4] == 1,
+        'unlabeled':    lambda r, st: not (r[1] or '').strip(),
+        'superseded':   lambda r, st: st.get(r[0] or '', {}).get('status') == 'superseded',
+        'obsolete':     lambda r, st: st.get(r[0] or '', {}).get('is_obsolete'),
+        'replacing':    lambda r, st: st.get(r[0] or '', {}).get('status') == 'replacing',
+        'equivalent':   lambda r, st: st.get(r[0] or '', {}).get('equivalents'),
+        'current':      lambda r, st: (st.get(r[0] or '', {}).get('status') == 'current'
+                                       and not st.get(r[0] or '', {}).get('is_obsolete')
+                                       and not (len(r) > 4 and r[4] == 1)),
+        'inconsistent': lambda r, st: st.get(r[0] or '', {}).get('labels_differ'),
+    }
+
+    @staticmethod
+    def _filtrer_par_texte(lignes, search_text: str):
+        """Filtre texte (référence + libellé, insensible à la casse) ; « ; »
+        sépare plusieurs termes, dont un seul suffit."""
+        if not search_text:
+            return lignes
+        if ';' in search_text:
+            parts = [p.strip() for p in search_text.split(';') if p.strip()]
+            return [r for r in lignes
+                    if any(p in (r[0] or "").lower() or p in (r[1] or "").lower()
+                           for p in parts)]
+        return [r for r in lignes
+                if search_text in (r[0] or "").lower()
+                or search_text in (r[1] or "").lower()]
+
     def _get_filtered_data(self):
         """Obtenir les données filtrées selon les critères"""
         if not hasattr(self, 'all_pieces_data'):
             return []
 
-        filtered = self.all_pieces_data
-
-        # Filtre texte (référence + libellé) — supporte && pour multi-refs
-        search_text = self.search_input.text().lower().strip()
-        if search_text:
-            if ';' in search_text:
-                parts = [p.strip() for p in search_text.split(';') if p.strip()]
-                filtered = [r for r in filtered
-                            if any(p in (r[0] or "").lower() or p in (r[1] or "").lower()
-                                   for p in parts)]
-            else:
-                filtered = [r for r in filtered
-                            if search_text in (r[0] or "").lower()
-                            or search_text in (r[1] or "").lower()]
+        # Filtre texte (référence + libellé) — supporte ; pour multi-refs
+        filtered = PiecesManagerWindow._filtrer_par_texte(self.all_pieces_data,
+                                                          self.search_input.text().lower().strip())
 
         # Filtre actif
-        active = getattr(self, '_active_filter', 'all')
-        statuses = getattr(self, 'all_statuses', {})
-
-        if active == 'orphan':
-            filtered = [r for r in filtered if r[2] == 0]
-        elif active == 'phantom':
-            filtered = [r for r in filtered if (len(r) > 4 and r[4] == 1)]
-        elif active == 'unlabeled':
-            filtered = [r for r in filtered if not (r[1] or '').strip()]
-        elif active == 'superseded':
-            filtered = [r for r in filtered
-                        if statuses.get(r[0] or '', {}).get('status') == 'superseded']
-        elif active == 'obsolete':
-            filtered = [r for r in filtered
-                        if statuses.get(r[0] or '', {}).get('is_obsolete')]
-        elif active == 'replacing':
-            filtered = [r for r in filtered
-                        if statuses.get(r[0] or '', {}).get('status') == 'replacing']
-        elif active == 'equivalent':
-            filtered = [r for r in filtered
-                        if statuses.get(r[0] or '', {}).get('equivalents')]
-        elif active == 'current':
-            filtered = [r for r in filtered
-                        if (statuses.get(r[0] or '', {}).get('status') == 'current'
-                            and not statuses.get(r[0] or '', {}).get('is_obsolete')
-                            and not (len(r) > 4 and r[4] == 1))]
-        elif active == 'inconsistent':
-            filtered = [r for r in filtered
-                        if statuses.get(r[0] or '', {}).get('labels_differ')]
+        predicat = PiecesManagerWindow._FILTRES_STATUT.get(getattr(self, '_active_filter', 'all'))
+        if predicat is not None:
+            statuses = getattr(self, 'all_statuses', {})
+            filtered = [r for r in filtered if predicat(r, statuses)]
 
         return filtered
         

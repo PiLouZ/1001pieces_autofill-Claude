@@ -216,32 +216,16 @@ class CustomTableView(QTableView):
             painter.restore()
 
     def keyPressEvent(self, event: QKeyEvent):
-        """Gestion des événements clavier — miroir de CustomTableWidget."""
+        """Gestion des événements clavier — miroir de CustomTableWidget.
+
+        Chaque raccourci est traité par une méthode dédiée ; l'ordre des tests
+        ci-dessous fixe les priorités (ex. Maj+Espace avant la frappe directe)."""
         key = event.key()
         model = self.model()
 
         # Delete / Backspace — efface les cellules sélectionnées éditables
         if key in (Qt.Key_Delete, Qt.Key_Backspace):
-            sel_indexes = self.selectionModel().selectedIndexes() if self.selectionModel() else []
-            if sel_indexes:
-                main_window = getattr(self, 'main_window', None)
-                save_service = getattr(main_window, 'event_driven_save_service', None)
-
-                # Regrouper les sauvegardes en une seule transaction : sur une
-                # sélection de plusieurs milliers de cellules, un commit SQLite
-                # par cellule gèle l'interface plusieurs secondes.
-                if save_service is not None:
-                    main_window._bulk_edit_collector = set()
-
-                for index in sel_indexes:
-                    if model and model.flags(index) & Qt.ItemIsEditable:
-                        model.setData(index, "", Qt.EditRole)
-
-                if save_service is not None:
-                    collector = main_window._bulk_edit_collector
-                    main_window._bulk_edit_collector = None
-                    if collector:
-                        save_service.save_cells_batch_immediate(collector)
+            self._effacer_selection(model)
             return
 
         # Cmd+D (macOS) / Ctrl+D (Windows/Linux) — popup auto-complétion
@@ -250,22 +234,14 @@ class CustomTableView(QTableView):
         if is_cmd and key == Qt.Key_D:
             if self.currentIndex().column() in {2, 3}:
                 return
-            parent = self.parent()
-            while parent:
-                if hasattr(parent, '_show_column_values_list'):
-                    parent._show_column_values_list()
-                    return
-                parent = parent.parent()
+            fenetre = self._fenetre_valeurs_colonne()
+            if fenetre is not None:
+                fenetre._show_column_values_list()
             return
 
         # Entrée / Return — passe à la ligne suivante (même colonne)
         if key in (Qt.Key_Return, Qt.Key_Enter):
-            idx = self.currentIndex()
-            if idx.isValid() and model:
-                next_row = idx.row() + 1
-                if next_row < model.rowCount():
-                    self.setCurrentIndex(model.index(next_row, idx.column()))
-                    self.setFocus()
+            self._aller_ligne_suivante(model)
             return
 
         # F2 — ouvre l'éditeur, curseur en fin de texte (contenu préservé)
@@ -301,28 +277,78 @@ class CustomTableView(QTableView):
             return
 
         # Frappe sur cellule vide → ouvre l'éditeur et insère le caractère
-        if (event.text() and event.text()[0].isprintable()
-                and not (event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))):
-            idx = self.currentIndex()
-            if idx.isValid() and model and model.flags(idx) & Qt.ItemIsEditable:
-                cell_value = model.data(idx, Qt.DisplayRole) or ""
-                if not cell_value:
-                    char = event.text()
-                    if idx.column() in {0, 1}:   # Type et Fabricant → popup Cmd+D pré-filtrée
-                        parent = self.parent()
-                        while parent:
-                            if hasattr(parent, '_show_column_values_list'):
-                                parent._show_column_values_list(prefill=char)
-                                return
-                            parent = parent.parent()
-                        return
-                    # Autres colonnes vides → éditeur direct
-                    self._pending_key_char = char
-                    self.edit(idx)
-                    QTimer.singleShot(0, self._init_editor_with_char)
-                    return
+        if self._frappe_sur_cellule_vide(event, model):
+            return
 
         super().keyPressEvent(event)
+
+    def _fenetre_valeurs_colonne(self):
+        """Premier parent capable d'ouvrir la liste des valeurs (Cmd+D), ou None."""
+        parent = self.parent()
+        while parent:
+            if hasattr(parent, '_show_column_values_list'):
+                return parent
+            parent = parent.parent()
+        return None
+
+    def _effacer_selection(self, model):
+        """Suppr / Retour arrière : vider les cellules sélectionnées éditables,
+        en une seule sauvegarde groupée."""
+        sel_indexes = self.selectionModel().selectedIndexes() if self.selectionModel() else []
+        if not sel_indexes:
+            return
+        main_window = getattr(self, 'main_window', None)
+        save_service = getattr(main_window, 'event_driven_save_service', None)
+
+        # Regrouper les sauvegardes en une seule transaction : sur une
+        # sélection de plusieurs milliers de cellules, un commit SQLite
+        # par cellule gèle l'interface plusieurs secondes.
+        if save_service is not None:
+            main_window._bulk_edit_collector = set()
+
+        for index in sel_indexes:
+            if model and model.flags(index) & Qt.ItemIsEditable:
+                model.setData(index, "", Qt.EditRole)
+
+        if save_service is not None:
+            collector = main_window._bulk_edit_collector
+            main_window._bulk_edit_collector = None
+            if collector:
+                save_service.save_cells_batch_immediate(collector)
+
+    def _aller_ligne_suivante(self, model):
+        """Entrée : même colonne, ligne suivante (si elle existe)."""
+        idx = self.currentIndex()
+        if idx.isValid() and model:
+            next_row = idx.row() + 1
+            if next_row < model.rowCount():
+                self.setCurrentIndex(model.index(next_row, idx.column()))
+                self.setFocus()
+
+    def _frappe_sur_cellule_vide(self, event: QKeyEvent, model) -> bool:
+        """Caractère imprimable sur une cellule éditable VIDE : Type / Fabricant →
+        liste des valeurs pré-filtrée ; autres colonnes → éditeur direct.
+        True si la touche a été prise en charge."""
+        if not (event.text() and event.text()[0].isprintable()
+                and not (event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))):
+            return False
+        idx = self.currentIndex()
+        if not (idx.isValid() and model and model.flags(idx) & Qt.ItemIsEditable):
+            return False
+        cell_value = model.data(idx, Qt.DisplayRole) or ""
+        if cell_value:
+            return False
+        char = event.text()
+        if idx.column() in {0, 1}:   # Type et Fabricant → popup Cmd+D pré-filtrée
+            fenetre = self._fenetre_valeurs_colonne()
+            if fenetre is not None:
+                fenetre._show_column_values_list(prefill=char)
+            return True
+        # Autres colonnes vides → éditeur direct
+        self._pending_key_char = char
+        self.edit(idx)
+        QTimer.singleShot(0, self._init_editor_with_char)
+        return True
 
     # ── Raccourcis tableur : copie / sélection / extension ───────────────────
 
