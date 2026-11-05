@@ -215,7 +215,7 @@ class FicheConfigTab(QWidget):
         right_layout.setSpacing(4)
         right_layout.addWidget(self._dialog._section_label("Aperçu (données fictives)"))
         self.preview = QTextBrowser()
-        self.preview.setStyleSheet("background: white; border: 1px solid #dee2e6;")
+        self.preview.setStyleSheet(StyleManager.CHAMP_BLANC_BORDE)
         right_layout.addWidget(self.preview)
         layout.addWidget(self._dialog._trois_colonnes(self.colonne, reglages, right))
 

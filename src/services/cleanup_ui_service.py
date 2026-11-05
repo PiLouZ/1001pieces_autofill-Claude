@@ -173,8 +173,7 @@ class DuplicateDevicesWidget(QWidget):
         )
         help_label.setWordWrap(True)
         help_label.setStyleSheet(
-            "font-size: 11px; padding: 6px 10px; color: #495057;"
-            " background-color: #e7f3ff; border-radius: 4px;"
+            StyleManager.BANDEAU_INFO
         )
         layout.addWidget(help_label)
 
@@ -751,8 +750,7 @@ class DistinctReferencesWidget(QWidget):
             "ces références ne seront plus proposées comme doublons potentiels."
         )
         header_label.setStyleSheet(
-            "font-size: 11px; padding: 6px 10px; color: #495057;"
-            " background-color: #e7f3ff; border-radius: 4px;"
+            StyleManager.BANDEAU_INFO
         )
         header_label.setWordWrap(True)
         layout.addWidget(header_label)
@@ -767,8 +765,7 @@ class DistinctReferencesWidget(QWidget):
         self.refresh_btn.setFlat(True)
         self.refresh_btn.setToolTip("Actualiser")
         self.refresh_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; }"
-            "QPushButton:hover { background: rgba(0,0,0,0.08); border-radius: 3px; }"
+            StyleManager.REFRESH_BUTTON
         )
 
         self.remove_btn = QPushButton("Retirer la sélection")

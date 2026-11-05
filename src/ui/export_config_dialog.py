@@ -337,7 +337,7 @@ class ExportConfigDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: #dee2e6;")
+        sep.setStyleSheet(StyleManager.TEXTE_SEPARATEUR)
         layout.addWidget(sep)
 
         self._nav_stack.addWidget(self._build_csv_tab())
@@ -524,7 +524,7 @@ class ExportConfigDialog(QDialog):
         # Séparateur visuel
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: #dee2e6;")
+        sep.setStyleSheet(StyleManager.TEXTE_SEPARATEUR)
         layout.addWidget(sep)
 
         # Options CSV (séparateur, encodage, pattern)
@@ -610,7 +610,7 @@ class ExportConfigDialog(QDialog):
         right_layout.addLayout(preview_header)
 
         self.html_preview = QTextBrowser()
-        self.html_preview.setStyleSheet("background: white; border: 1px solid #dee2e6;")
+        self.html_preview.setStyleSheet(StyleManager.CHAMP_BLANC_BORDE)
         right_layout.addWidget(self.html_preview)
         layout.addWidget(self._trois_colonnes(self.details_colonne, reglages, right))
 

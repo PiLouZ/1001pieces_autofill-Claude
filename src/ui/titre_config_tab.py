@@ -14,6 +14,7 @@ from ..utils.qt_imports import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineE
 from .champ_modele_html import ChampModeleHtml
 from .colonne_variantes import ColonneVariantes
 from src.utils.titre_produit_generator import TitreProduitGenerator
+from .style_manager import StyleManager
 
 
 # Données fictives de l'aperçu : (libellé, modèles par type, marques classées, référence)
@@ -103,7 +104,7 @@ class TitreConfigTab(QWidget):
         right_layout.setSpacing(4)
         right_layout.addWidget(self._dialog._section_label("Aperçu (données fictives)"))
         self.preview = QTextBrowser()
-        self.preview.setStyleSheet("background: white; border: 1px solid #dee2e6;")
+        self.preview.setStyleSheet(StyleManager.CHAMP_BLANC_BORDE)
         right_layout.addWidget(self.preview)
         layout.addWidget(self._dialog._trois_colonnes(self.colonne, reglages, right))
 

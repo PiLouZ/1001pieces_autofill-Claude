@@ -138,21 +138,12 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        self.setStyleSheet("""
-            QDialog {
-                background: white;
-                border: 1px solid #ced4da;
-                border-radius: 8px;
-            }
-        """)
+        self.setStyleSheet(StyleManager.POPUP_CADRE)
 
         # ── En-tête ────────────────────────────────────────────────────────
         header = QWidget()
         header.setStyleSheet(
-            "background: #f8f9fa;"
-            "border-bottom: 1px solid #e9ecef;"
-            "border-top-left-radius: 8px;"
-            "border-top-right-radius: 8px;"
+            StyleManager.POPUP_ENTETE
         )
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(12, 8, 12, 8)
@@ -179,10 +170,10 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setMaximumHeight(self.MAX_HEIGHT)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("background: white;")
+        scroll.setStyleSheet(StyleManager.FOND_BLANC)
 
         content = QWidget()
-        content.setStyleSheet("background: white;")
+        content.setStyleSheet(StyleManager.FOND_BLANC)
         c_layout = QVBoxLayout(content)
         c_layout.setContentsMargins(12, 10, 12, 12)
         c_layout.setSpacing(6)
@@ -230,7 +221,7 @@ class HistoryDetailPopup(PopupAuCurseurMixin, QDialog):
 
         if not details:
             lbl = QLabel("Aucun détail disponible.")
-            lbl.setStyleSheet("color: #6c757d; font-size: 11px; font-style: italic;")
+            lbl.setStyleSheet(StyleManager.TEXTE_SECONDAIRE_ITALIQUE)
             c_layout.addWidget(lbl)
 
         c_layout.addStretch()

@@ -526,7 +526,7 @@ class MainWindow(QMainWindow):
 
         self.pieces_count_label = QLabel("")
         self.pieces_count_label.setStyleSheet(
-            "color: #6c757d; font-size: 11px;"
+            StyleManager.TEXTE_SECONDAIRE
         )
         header_layout.addWidget(self.pieces_count_label)
 
@@ -2610,7 +2610,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         title_label = QLabel("<b>Restaurer la base depuis une sauvegarde</b>")
-        title_label.setStyleSheet("font-size: 14px; margin-bottom: 4px;")
+        title_label.setStyleSheet(StyleManager.TITRE_MOYEN)
         layout.addWidget(title_label)
 
         info_label = QLabel(
@@ -2700,7 +2700,7 @@ class MainWindow(QMainWindow):
 
         # Titre
         title_label = QLabel("<b>Index de recherche plein texte (FTS5)</b>")
-        title_label.setStyleSheet("font-size: 14px; margin-bottom: 4px;")
+        title_label.setStyleSheet(StyleManager.TITRE_MOYEN)
         layout.addWidget(title_label)
 
         # Explication — texte riche EXPLICITE : sans setTextFormat, Qt prenait ce

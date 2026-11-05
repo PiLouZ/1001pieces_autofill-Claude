@@ -9,6 +9,7 @@ from ..core.logger import app_logger
 from ..core.config import Config
 from .base_service import BaseService
 from ..utils.error_handler import handle_save_service_errors
+from ..ui.style_manager import StyleManager
 
 class EventDrivenSaveService(BaseService):
     """
@@ -204,14 +205,14 @@ class EventDrivenSaveService(BaseService):
         """Afficher 'Sauvegarde…' (orange) avant l'écriture en base"""
         if self.save_indicator:
             self.save_indicator.setText("Sauvegarde…")
-            self.save_indicator.setStyleSheet("color: orange;")
+            self.save_indicator.setStyleSheet(StyleManager.TEXTE_EN_COURS)
 
     @handle_save_service_errors()
     def _update_save_indicator_success(self):
         """Mettre à jour l'indicateur de sauvegarde en cas de succès"""
         if self.save_indicator:
             self.save_indicator.setText(Config.get_message('save_success'))
-            self.save_indicator.setStyleSheet("color: green;")
+            self.save_indicator.setStyleSheet(StyleManager.TEXTE_SUCCES)
 
             # Effacer l'indicateur après 2s (retour à l'état discret)
             QTimer.singleShot(2000, lambda: self._reset_save_indicator())
@@ -221,7 +222,7 @@ class EventDrivenSaveService(BaseService):
         """Effacer l'indicateur de sauvegarde (état discret)"""
         if self.save_indicator:
             self.save_indicator.setText("")
-            self.save_indicator.setStyleSheet("color: green;")
+            self.save_indicator.setStyleSheet(StyleManager.TEXTE_SUCCES)
 
     @handle_save_service_errors()
     def _update_incomplete_button_after_operation(self):
