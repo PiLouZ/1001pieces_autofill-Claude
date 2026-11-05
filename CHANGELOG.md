@@ -4,6 +4,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.100.2] - 2026-11-05 (PR #114, #115, #116, #117)
+
+Version corrective : deux écritures en base qui n'étaient pas définitives, et la suite
+de l'audit d'intégrité du code (placement, styles, SQL, fonctions complexes), sans
+nouvelle fonctionnalité.
+
+### Fenêtres de l'import sorties de core/ (PR #114)
+- `MappingGroupWidget`, `ImportDialog` et `ImportPreviewDialog` déplacées à l'identique
+  de `src/core/import_manager.py` vers `src/ui/fenetre_import.py` : le moteur d'import
+  ne contient plus d'interface (4 309 → 2 460 lignes).
+
+### Styles dupliqués rassemblés dans StyleManager (PR #115)
+- 29 styles QSS recopiés à 79 endroits remplacés par 28 constantes de `StyleManager`
+  (81 sites) ; rendus des fenêtres identiques au pixel.
+
+### Requêtes SQL rapatriées dans la couche données (PR #116)
+- 32 requêtes écrites dans 13 fenêtres et services déplacées dans `DatabaseManager`
+  (mixins `_db_mixins/pieces.py`, `appareils.py`, `historiques.py`) ; résultats
+  identiques sur la base réelle.
+- Correctif : **vider l'historique des modifications** n'était pas commité — l'historique
+  revenait au lancement suivant si rien d'autre n'écrivait entre-temps.
+- Correctif : à l'import (chemin standard), la **mise à jour d'un appareil existant**
+  (autre réf., notes depuis la 3ᵉ colonne) n'était pas commitée et pouvait être perdue
+  à la fermeture.
+
+### Trois fonctions complexes découpées (PR #117)
+- `ImportManager._process_data_import_batch`, le filtrage et l'affichage du
+  gestionnaire de pièces, et `CustomTableView.keyPressEvent` découpés en étapes
+  nommées, sans changement de comportement (3 120 combinaisons de touches, 36 640
+  lignes du tableau des pièces et import des PDF de test identiques à l'ancienne
+  version).
+
+---
+
 ## [3.100.1] - 2026-11-05 (PR #112)
 
 Version corrective : un correctif visible et un audit d'intégrité du code (doublons,
