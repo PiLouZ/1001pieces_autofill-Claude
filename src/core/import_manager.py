@@ -4298,75 +4298,27 @@ class ImportManager:
             bool: True si au moins un champ a été complété
         """
         from .config import Config
+        from ..services.proposition_type_fabricant import proposer_type_fabricant
 
-        type_empty = not appareil_data.get('type', '').strip()
-        manufacturer_empty = not appareil_data.get('manufacturer', '').strip()
-
-        if not type_empty and not manufacturer_empty:
+        # Règle commune avec le bouton « Données → Autocomplétion » : exclusion des
+        # auto-complétés non vérifiés comme source, confiance accord/total (v3.89.0).
+        propositions = proposer_type_fabricant(self.db_manager, appareil_data)
+        if not propositions:
             return False
 
-        # Construire la condition uniquement sur les références non vides
-        ref_modele = appareil_data.get('ref_modele', '').strip()
-        commercial_ref = appareil_data.get('commercial_ref', '').strip()
-
-        if not ref_modele and not commercial_ref:
-            return False
-
-        conditions = []
-        params = []
-        if ref_modele:
-            conditions.append('ref_modele = ?')
-            params.append(ref_modele)
-        if commercial_ref:
-            conditions.append('commercial_ref = ?')
-            params.append(commercial_ref)
-
-        where_clause = ' OR '.join(conditions)
-        # Toutes les combinaisons, et non plus la seule gagnante (LIMIT 1) : leur
-        # répartition donne l'indice de confiance tracé (v3.89.0). Le départage
-        # des ex aequo par valeur rend le choix reproductible.
-        # Un appareil auto-complété non encore vérifié ne sert pas de source : sa
-        # valeur n'est qu'une déduction, et le chemin standard, qui écrit au fil de
-        # l'eau, la recompterait aussitôt (confiance gonflée, « 3/3 » pour « 1/1 »).
-        query = f"""
-            SELECT type, manufacturer, COUNT(*) as freq,
-                   MIN(COALESCE(NULLIF(ref_modele, ''), commercial_ref)) AS exemple
-            FROM appareils
-            WHERE ({where_clause})
-              AND type IS NOT NULL AND type != ''
-              AND manufacturer IS NOT NULL AND manufacturer != ''
-              AND id NOT IN (SELECT appareil_id FROM appareils_autocompletes)
-            GROUP BY type, manufacturer
-            ORDER BY freq DESC, type, manufacturer
-        """
-
-        results = self.db_manager.execute_query(query, params)
-
-        if results:
-            found_type, found_manufacturer, _, exemple = results[0][:4]
-            total = sum(r[2] for r in results)
-            # Agrégé plutôt qu'unitaire (v3.66.0) : ces deux messages représentaient
-            # à eux seuls ~550 000 lignes de log, soit le premier poste de volume.
-            # Le total est journalisé une fois en fin d'import (_log_resume_import).
-            if type_empty:
-                appareil_data['type'] = found_type
-                self._noter_autocompletion(
-                    appareil_data, 'type', found_type, exemple,
-                    sum(r[2] for r in results if r[0] == found_type), total)
-                self._log_counters['autocomplete_type'] += 1
-                if Config.LOG_VERBOSE_PER_DEVICE:
-                    app_logger.debug(f"  [OK] Type complété: '' -> '{found_type}'")
-            if manufacturer_empty:
-                appareil_data['manufacturer'] = found_manufacturer
-                self._noter_autocompletion(
-                    appareil_data, 'manufacturer', found_manufacturer, exemple,
-                    sum(r[2] for r in results if r[1] == found_manufacturer), total)
-                self._log_counters['autocomplete_manufacturer'] += 1
-                if Config.LOG_VERBOSE_PER_DEVICE:
-                    app_logger.debug(f"  [OK] Fabricant complété: '' -> '{found_manufacturer}'")
-            return True
-
-        return False
+        # Agrégé plutôt qu'unitaire (v3.66.0) : ces deux messages représentaient
+        # à eux seuls ~550 000 lignes de log, soit le premier poste de volume.
+        # Le total est journalisé une fois en fin d'import (_log_resume_import).
+        libelles = {'type': 'Type', 'manufacturer': 'Fabricant'}
+        for champ, proposition in propositions.items():
+            appareil_data[champ] = proposition.valeur
+            self._noter_autocompletion(
+                appareil_data, champ, proposition.valeur, proposition.source,
+                proposition.accord, proposition.total)
+            self._log_counters[f'autocomplete_{champ}'] += 1
+            if Config.LOG_VERBOSE_PER_DEVICE:
+                app_logger.debug(f"  [OK] {libelles[champ]} complété: '' -> '{proposition.valeur}'")
+        return True
 
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur mises à jour post-import")
     def _trigger_post_import_updates(self):

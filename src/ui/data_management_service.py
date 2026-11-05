@@ -8,11 +8,13 @@ Responsabilités:
 - Logique de validation et de cohérence des données
 """
 
-from typing import Dict, Any, List, Optional
+from datetime import datetime
+from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass
 from .qt_imports import QDialog
 from src.core.logger import app_logger
 from src.utils.error_handler import handle_data_management_errors
+from src.services.proposition_type_fabricant import proposer_type_fabricant
 
 @dataclass
 class FieldCompletionResult:
@@ -36,6 +38,8 @@ class DataManagementService:
     - Maintenance de la qualité des données
     """
     
+    LIBELLES_CHAMPS = {'type': 'Type', 'manufacturer': 'Fabricant'}
+
     def __init__(self, db_manager, main_window=None):
         self.db_manager = db_manager
         self.main_window = main_window  # Pour accès aux méthodes UI existantes
@@ -59,8 +63,15 @@ class DataManagementService:
         
         app_logger.info(f"Auto-complétion: Traitement de {len(table_data)} lignes")
         
+        # Refus lus une fois pour le lot (et non ligne à ligne) ; None si la
+        # lecture échoue : rien n'est alors filtré, comme à l'import.
+        lire_refus = getattr(self.db_manager, 'lire_refus', None)
+        refus = lire_refus([r.get('id') for r in table_data if r.get('id')]) if lire_refus else None
+        if not isinstance(refus, set):
+            refus = None
+
         for row_data in table_data:
-            success = self._safe_process_device_row(row_data, result)
+            success = self._safe_process_device_row(row_data, result, refus)
             if success:
                 result.completed_count += 1
 
@@ -68,7 +79,8 @@ class DataManagementService:
         return result
 
     @handle_data_management_errors(return_value=False)
-    def _safe_process_device_row(self, row_data: Dict[str, Any], result: FieldCompletionResult) -> bool:
+    def _safe_process_device_row(self, row_data: Dict[str, Any], result: FieldCompletionResult,
+                                 refus: Optional[Set[Tuple[int, str, str]]] = None) -> bool:
         """Traiter une ligne d'appareil de manière sécurisée"""
         db_id = row_data.get('id')
         device_data = row_data.get('data', {})
@@ -83,82 +95,54 @@ class DataManagementService:
 
         if not current_type or not current_manufacturer:
             # Tentative d'auto-complétion
-            completed = self._try_auto_complete_device(db_id, device_data)
+            completed = self._try_auto_complete_device(db_id, device_data, refus)
             return completed is not None
 
         return False
     
     @handle_data_management_errors(return_value=None)
-    def _try_auto_complete_device(self, db_id: int, device_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _try_auto_complete_device(self, db_id: int, device_data: Dict[str, Any],
+                                  refus: Optional[Set[Tuple[int, str, str]]] = None
+                                  ) -> Optional[Dict[str, Any]]:
         """
         Tenter l'auto-complétion d'un appareil spécifique.
-        Correspondance exacte uniquement sur les références non vides.
-        Sélectionne la combinaison type+fabricant la plus fréquente en base.
+
+        Même règle que l'import (`proposer_type_fabricant`) : correspondance exacte
+        sur les références non vides, auto-complétés non vérifiés exclus des
+        sources, combinaison la plus fréquente. Une valeur que l'utilisateur a
+        refusée pour cet appareil (fenêtre « Auto-complétés à vérifier ») n'est pas
+        reproposée. Chaque champ écrit est tracé, donc revu comme ceux de l'import.
 
         Args:
             db_id: ID de l'appareil en base
             device_data: Données actuelles de l'appareil
+            refus: (appareil_id, champ, valeur en minuscules) refusés, lus une
+                fois pour tout le lot (None : rien à filtrer)
 
         Returns:
             Dict avec les champs complétés ou None si aucune complétion
         """
-        current_type = device_data.get('type', '').strip()
-        current_manufacturer = device_data.get('manufacturer', '').strip()
-
-        if current_type and current_manufacturer:
+        propositions = proposer_type_fabricant(self.db_manager, device_data)
+        if refus:
+            propositions = {champ: p for champ, p in propositions.items()
+                            if (db_id, champ, p.valeur.strip().lower()) not in refus}
+        if not propositions or not self.main_window:
             return None
 
-        ref_modele = device_data.get('ref_modele', '').strip()
-        commercial_ref = device_data.get('commercial_ref', '').strip()
-
-        if not ref_modele and not commercial_ref:
+        updates = {champ: p.valeur for champ, p in propositions.items()}
+        if not self.main_window._update_device_info(db_id, updates):
             return None
 
-        # Construire la condition uniquement sur les références non vides
-        conditions = []
-        params = []
-        if ref_modele:
-            conditions.append('ref_modele = ?')
-            params.append(ref_modele)
-        if commercial_ref:
-            conditions.append('commercial_ref = ?')
-            params.append(commercial_ref)
+        # Tracée APRÈS l'écriture (le déclencheur effacerait sinon la trace) et
+        # aussitôt : la ligne suivante ne doit pas prendre celle-ci pour source.
+        enregistrer = getattr(self.db_manager, 'enregistrer_autocompletions', None)
+        if enregistrer is not None:
+            horodatage = datetime.now().isoformat(sep=' ', timespec='seconds')
+            enregistrer([(db_id, champ, p.valeur, p.source, p.accord, p.total, horodatage)
+                         for champ, p in propositions.items()])
 
-        where_clause = ' OR '.join(conditions)
-        query = f"""
-            SELECT type, manufacturer, COUNT(*) as freq
-            FROM appareils
-            WHERE ({where_clause})
-              AND type IS NOT NULL AND type != ''
-              AND manufacturer IS NOT NULL AND manufacturer != ''
-            GROUP BY type, manufacturer
-            ORDER BY freq DESC
-            LIMIT 1
-        """
-
-        rows = self.db_manager.execute_query(query, params)
-        if not rows:
-            return None
-
-        found_type, found_manufacturer = rows[0][0], rows[0][1]
-
-        updates = {}
-        completed_fields = []
-
-        if not current_type and found_type:
-            updates['type'] = found_type
-            completed_fields.append('Type')
-
-        if not current_manufacturer and found_manufacturer:
-            updates['manufacturer'] = found_manufacturer
-            completed_fields.append('Fabricant')
-
-        if updates and self.main_window:
-            success = self.main_window._update_device_info(db_id, updates)
-            if success:
-                return {'fields': completed_fields, 'values': updates}
-
-        return None
+        return {'fields': [self.LIBELLES_CHAMPS[champ] for champ in propositions],
+                'values': updates}
     
     @handle_data_management_errors()
     def prepare_data_cleaning(self) -> Optional[Dict[str, Any]]:
