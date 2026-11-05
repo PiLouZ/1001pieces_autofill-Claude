@@ -136,7 +136,7 @@ class LogViewer(QDialog):
 
         nav_sep = QFrame()
         nav_sep.setFrameShape(QFrame.HLine)
-        nav_sep.setStyleSheet("color: #dee2e6;")
+        nav_sep.setStyleSheet(StyleManager.TEXTE_SEPARATEUR)
         layout.addWidget(nav_sep)
 
         # Page 0 : Logs bruts

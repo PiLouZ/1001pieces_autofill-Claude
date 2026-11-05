@@ -182,7 +182,7 @@ class ColonneVariantes(QWidget):
         ligne.addWidget(self.defaut_btn)
         layout.addLayout(ligne)
         self.erreur_nom = QLabel()
-        self.erreur_nom.setStyleSheet("color: #c0392b; font-size: 11px;")
+        self.erreur_nom.setStyleSheet(StyleManager.TEXTE_ERREUR_SOMBRE)
         self.erreur_nom.setVisible(False)
         layout.addWidget(self.erreur_nom)
 

@@ -150,7 +150,7 @@ class ProgressDialog(QDialog):
 
         self._title_label = QLabel(title)
         self._title_label.setStyleSheet(
-            "font-weight: bold; font-size: 13px; color: #212529;")
+            StyleManager.TITRE_SECTION)
         header.addWidget(self._title_label, 1)
         layout.addLayout(header)
 
@@ -159,10 +159,10 @@ class ProgressDialog(QDialog):
         self._journal_scroll.setWidgetResizable(True)
         self._journal_scroll.setFrameShape(QFrame.NoFrame)
         self._journal_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._journal_scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self._journal_scroll.setStyleSheet(StyleManager.ZONE_DEFILEMENT_TRANSPARENTE)
         self._journal_scroll.viewport().setAutoFillBackground(False)
         journal = QWidget()
-        journal.setStyleSheet("background: transparent;")
+        journal.setStyleSheet(StyleManager.FOND_TRANSPARENT)
         self._journal_layout = QVBoxLayout(journal)
         self._journal_layout.setContentsMargins(0, 0, 0, 0)
         self._journal_layout.setSpacing(4)
@@ -177,24 +177,14 @@ class ProgressDialog(QDialog):
         self._bar.setValue(minimum)
         self._bar.setTextVisible(False)
         self._bar.setFixedHeight(6)
-        self._bar.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 3px;
-                background: #e9ecef;
-            }
-            QProgressBar::chunk {
-                border-radius: 3px;
-                background: #495057;
-            }
-        """)
+        self._bar.setStyleSheet(StyleManager.BARRE_PROGRESSION_DISCRETE)
         layout.addWidget(self._bar)
 
         # ── Ligne compteur + bouton Annuler ──────────────────────────────────
         bottom = QHBoxLayout()
 
         self._counter_label = QLabel("")
-        self._counter_label.setStyleSheet("color: #adb5bd; font-size: 11px;")
+        self._counter_label.setStyleSheet(StyleManager.TEXTE_ESTOMPE)
         bottom.addWidget(self._counter_label)
         bottom.addStretch()
 
@@ -301,7 +291,7 @@ class ProgressDialog(QDialog):
                 libelle += f" · {_milliers(entree['pages'])} {'page' if entree['pages'] == 1 else 'pages'}"
             icone.setPixmap(qta.icon('fa5s.check', color='#198754').pixmap(11, 11))
             texte.setStyleSheet("color: #495057; font-size: 12px;")
-            droite.setStyleSheet("color: #adb5bd; font-size: 11px;")
+            droite.setStyleSheet(StyleManager.TEXTE_ESTOMPE)
             droite.setText(formater_duree(entree['fin'] - entree['debut']))
         else:
             icone.setPixmap(qta.icon('fa5s.circle', color='#0d6efd').pixmap(7, 7))

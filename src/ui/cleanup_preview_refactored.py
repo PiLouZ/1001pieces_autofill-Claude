@@ -97,14 +97,14 @@ class CleanupPreviewDialog(QDialog):
         spinner_btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT)
         spinner_row.addWidget(spinner_btn)
         title_lbl = QLabel("Analyse des doublons en cours…")
-        title_lbl.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")
+        title_lbl.setStyleSheet(StyleManager.TITRE_SECTION)
         spinner_row.addWidget(title_lbl)
         loading_layout.addLayout(spinner_row)
 
         # Étape courante
         self._loading_step_label = QLabel("Initialisation…")
         self._loading_step_label.setAlignment(Qt.AlignCenter)
-        self._loading_step_label.setStyleSheet("color: #6c757d; font-size: 11px;")
+        self._loading_step_label.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
         loading_layout.addWidget(self._loading_step_label)
 
         # Barre de progression fine
@@ -114,10 +114,7 @@ class CleanupPreviewDialog(QDialog):
         self._loading_bar.setTextVisible(False)
         self._loading_bar.setFixedHeight(6)
         self._loading_bar.setMaximumWidth(400)
-        self._loading_bar.setStyleSheet("""
-            QProgressBar { border: none; border-radius: 3px; background: #e9ecef; }
-            QProgressBar::chunk { border-radius: 3px; background: #495057; }
-        """)
+        self._loading_bar.setStyleSheet(StyleManager.BARRE_PROGRESSION_DISCRETE)
         loading_layout.addWidget(self._loading_bar, 0, Qt.AlignHCenter)
         layout.addWidget(self._loading_widget)
 
@@ -214,7 +211,7 @@ class CleanupPreviewDialog(QDialog):
         # Séparateur fin
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
-        separator.setStyleSheet("color: #dee2e6;")
+        separator.setStyleSheet(StyleManager.TEXTE_SEPARATEUR)
         main_layout.addWidget(separator)
 
         main_layout.addWidget(self._nav_stack)

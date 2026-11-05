@@ -47,7 +47,7 @@ class RefTagList(QWidget):
         self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         self._content = QWidget()
-        self._content.setStyleSheet("background: transparent;")
+        self._content.setStyleSheet(StyleManager.FOND_TRANSPARENT)
         self._layout = QVBoxLayout(self._content)
         self._layout.setContentsMargins(0, 2, 0, 2)
         self._layout.setSpacing(3)
@@ -57,7 +57,7 @@ class RefTagList(QWidget):
 
         # ── Chemin compact : QWidget plat sans QScrollArea ────────────────
         self._flat = QWidget()
-        self._flat.setStyleSheet("background: transparent;")
+        self._flat.setStyleSheet(StyleManager.FOND_TRANSPARENT)
         self._flat_layout = QVBoxLayout(self._flat)
         self._flat_layout.setContentsMargins(16, 0, 0, 0)
         self._flat_layout.setSpacing(0)
@@ -140,7 +140,7 @@ class RefTagList(QWidget):
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         # Fond du cadre parent plutôt que le gris par défaut de la zone défilante
         # (grands blocs gris vides dans le panneau du gestionnaire de pièces)
-        self._scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self._scroll.setStyleSheet(StyleManager.ZONE_DEFILEMENT_TRANSPARENTE)
         self._scroll.viewport().setAutoFillBackground(False)
 
     def set_empty_text(self, text: str):
@@ -289,7 +289,7 @@ class PiecePickerDialog(QDialog):
         # Hint fantôme (visible quand le texte saisi ne correspond à aucune ligne sélectionnée)
         self._phantom_hint = QLabel("")
         self._phantom_hint.setStyleSheet(
-            "color: #6c757d; font-size: 11px; font-style: italic;"
+            StyleManager.TEXTE_SECONDAIRE_ITALIQUE
         )
         self._phantom_hint.setVisible(False)
         layout.addWidget(self._phantom_hint)

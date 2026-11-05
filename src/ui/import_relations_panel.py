@@ -114,10 +114,10 @@ class RefCard(QFrame):
         else:
             row1.addStretch(1)
         self.head_badge = QLabel("")
-        self.head_badge.setStyleSheet("border: none;")
+        self.head_badge.setStyleSheet(StyleManager.SANS_BORDURE)
         row1.addWidget(self.head_badge)
         self.equiv_badge = QLabel("")
-        self.equiv_badge.setStyleSheet("border: none;")
+        self.equiv_badge.setStyleSheet(StyleManager.SANS_BORDURE)
         row1.addWidget(self.equiv_badge)
         lay.addLayout(row1)
 
@@ -639,10 +639,10 @@ class GroupsZone(QWidget):
         # Fond transparent + sans cadre : la zone d'ascenseur ne doit pas afficher
         # de rectangle gris bordé.
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.setStyleSheet(StyleManager.ZONE_DEFILEMENT_NUE)
         scroll.viewport().setAutoFillBackground(False)
         anchor = QWidget()
-        anchor.setStyleSheet("background: transparent;")
+        anchor.setStyleSheet(StyleManager.FOND_TRANSPARENT)
         anchor_lay = QVBoxLayout(anchor)
         anchor_lay.setContentsMargins(2, 2, 2, 2)
         anchor_lay.setSpacing(4)

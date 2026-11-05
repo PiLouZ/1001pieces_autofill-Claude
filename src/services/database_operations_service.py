@@ -12,6 +12,7 @@ from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 from ..utils.error_handler import handle_database_operation_errors
 from ..utils.boites import demander_oui_non
+from ..ui.style_manager import StyleManager
 
 class DatabaseOperationsService(BaseService):
     """Service centralisé pour les opérations CRUD de base de données"""
@@ -676,10 +677,10 @@ class DatabaseOperationsService(BaseService):
         """Version sécurisée de _update_save_indicators"""
         if hasattr(self.parent_window, 'save_indicator') and self.parent_window.save_indicator:
             if saved:
-                self.parent_window.save_indicator.setStyleSheet("color: green;")
+                self.parent_window.save_indicator.setStyleSheet(StyleManager.TEXTE_SUCCES)
                 self.parent_window.save_indicator.setText("Sauvegardé")
             else:
-                self.parent_window.save_indicator.setStyleSheet("color: orange;")
+                self.parent_window.save_indicator.setStyleSheet(StyleManager.TEXTE_EN_COURS)
                 self.parent_window.save_indicator.setText("● Non sauvegardé")
 
         if hasattr(self.parent_window, 'statusbar') and self.parent_window.statusbar:

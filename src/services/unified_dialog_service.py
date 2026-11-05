@@ -136,7 +136,7 @@ class ComplexDialogs:
         if message:
             aide = QLabel(message)
             aide.setWordWrap(True)
-            aide.setStyleSheet("color: #6c757d; font-size: 11px;")
+            aide.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
             layout.addWidget(aide)
 
         # ── Bloc destination (exports fichier uniquement) ────────────────────
@@ -175,7 +175,7 @@ class ComplexDialogs:
     def _separateur_horizontal() -> QFrame:
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: #dee2e6;")
+        sep.setStyleSheet(StyleManager.TEXTE_SEPARATEUR)
         return sep
 
     def _bloc_destination(self, destination: Dict[str, Any], ref_input: QLineEdit):
@@ -196,7 +196,7 @@ class ComplexDialogs:
 
         icone = QLabel()
         icone.setPixmap(qta.icon('fa5s.folder-open', color='#6c757d').pixmap(QSize(16, 16)))
-        icone.setStyleSheet("border: none;")
+        icone.setStyleSheet(StyleManager.SANS_BORDURE)
         icone.setAlignment(Qt.AlignTop)
         ligne.addWidget(icone)
 

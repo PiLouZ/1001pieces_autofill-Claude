@@ -273,8 +273,7 @@ class TableController:
         self.filters_toggle_btn.setIcon(_qta_f.icon('fa5s.filter', color='#555555'))
         self.filters_toggle_btn.setToolTip("Afficher / masquer les filtres par colonne")
         self.filters_toggle_btn.setStyleSheet(
-            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
-            "QToolButton:checked { background: #e7f1ff; border-color: #0d6efd; }"
+            StyleManager.BOUTON_OUTIL_BASCULE
         )
         self.filters_toggle_btn.toggled.connect(self._toggle_column_filters)
         filter_layout.addWidget(self.filters_toggle_btn, 0, Qt.AlignVCenter)
@@ -470,8 +469,7 @@ class TableController:
             "(par défaut, seule la référence exacte est recherchée)"
         )
         self.extend_search_btn.setStyleSheet(
-            "QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }"
-            "QToolButton:checked { background: #e7f1ff; border-color: #0d6efd; }"
+            StyleManager.BOUTON_OUTIL_BASCULE
         )
         self.extend_search_btn.toggled.connect(self._toggle_extend_search)
         search_layout2.addWidget(self.extend_search_btn, 0, Qt.AlignVCenter)

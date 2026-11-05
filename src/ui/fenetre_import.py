@@ -136,14 +136,14 @@ class MappingGroupWidget(QWidget):
             # Label de statut dynamique (rouge/orange selon état du mapping)
             self._status_label = QLabel()
             self._status_label.setStyleSheet(
-                "color: #dc3545; font-size: 11px; padding: 1px 0;"
+                StyleManager.TEXTE_ERREUR_PETIT
             )
             outer.addWidget(self._status_label)
 
         # Tableau de mapping
         self._mapping_widget = QWidget()
         self._mapping_widget.setStyleSheet(
-            "QWidget { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; }"
+            StyleManager.CADRE_GRIS_CLAIR
         )
         grid = QGridLayout(self._mapping_widget)
         grid.setContentsMargins(8, 6, 8, 6)
@@ -216,7 +216,7 @@ class MappingGroupWidget(QWidget):
             else:
                 self._status_label.setText("Réf. Modèle non assignée — import bloqué")
                 self._status_label.setStyleSheet(
-                    "color: #dc3545; font-size: 11px; padding: 1px 0;"
+                    StyleManager.TEXTE_ERREUR_PETIT
                 )
 
     # ── API publique ─────────────────────────────────────────────────────────
@@ -354,7 +354,7 @@ class ImportDialog(QDialog):
         format_layout.setSpacing(4)
         
         self.format_info_label = QLabel()
-        self.format_info_label.setStyleSheet("font-weight: bold;")
+        self.format_info_label.setStyleSheet(StyleManager.TEXTE_GRAS)
         format_layout.addWidget(self.format_info_label)
         
         self.format_desc_label = QLabel()
@@ -410,7 +410,7 @@ class ImportDialog(QDialog):
         third_col_layout.setSpacing(3)
 
         self.third_col_label = QLabel("Destination de la 3ᵉ colonne :")
-        self.third_col_label.setStyleSheet("font-weight: bold;")
+        self.third_col_label.setStyleSheet(StyleManager.TEXTE_GRAS)
         third_col_layout.addWidget(self.third_col_label)
         
         self.third_col_combo = QComboBox()
@@ -460,7 +460,7 @@ class ImportDialog(QDialog):
             row_ref = QHBoxLayout()
             row_ref.setSpacing(6)
             ref_lbl = QLabel("Référence :")
-            ref_lbl.setStyleSheet("font-weight: bold;")
+            ref_lbl.setStyleSheet(StyleManager.TEXTE_GRAS)
             ref_lbl.setFixedWidth(90)
             row_ref.addWidget(ref_lbl)
             self.common_ref_input = QLineEdit()
@@ -499,7 +499,7 @@ class ImportDialog(QDialog):
             row_desc = QHBoxLayout()
             row_desc.setSpacing(8)
             desc_lbl2 = QLabel("Description :")
-            desc_lbl2.setStyleSheet("font-weight: bold;")
+            desc_lbl2.setStyleSheet(StyleManager.TEXTE_GRAS)
             desc_lbl2.setFixedWidth(90)
             row_desc.addWidget(desc_lbl2)
             self.common_ref_description = QLineEdit()
@@ -533,7 +533,7 @@ class ImportDialog(QDialog):
             # Ligne : Réf.
             ref_row = QHBoxLayout()
             ref_row_lbl = QLabel("Réf. :")
-            ref_row_lbl.setStyleSheet("font-weight: bold;")
+            ref_row_lbl.setStyleSheet(StyleManager.TEXTE_GRAS)
             ref_row_lbl.setFixedWidth(70)
             ref_row.addWidget(ref_row_lbl)
             if file.type == FileType.CLIPBOARD:
@@ -555,7 +555,7 @@ class ImportDialog(QDialog):
             # Ligne : Libellé
             desc_row = QHBoxLayout()
             desc_row_lbl = QLabel("Libellé :")
-            desc_row_lbl.setStyleSheet("font-weight: bold;")
+            desc_row_lbl.setStyleSheet(StyleManager.TEXTE_GRAS)
             desc_row_lbl.setFixedWidth(70)
             desc_row.addWidget(desc_row_lbl)
             desc_input = QLineEdit()
@@ -571,7 +571,7 @@ class ImportDialog(QDialog):
                 "Cochez si cette pièce est obsolète (plus fabriquée).\n"
                 "Elle restera visible mais sera marquée Obsolète."
             )
-            self._obsolete_checkbox.setStyleSheet("color: #c0392b; font-size: 11px;")
+            self._obsolete_checkbox.setStyleSheet(StyleManager.TEXTE_ERREUR_SOMBRE)
             ref_group_layout.addWidget(self._obsolete_checkbox)
 
             ref_group.setLayout(ref_group_layout)
@@ -614,7 +614,7 @@ class ImportDialog(QDialog):
 
             self._succ_content = QWidget()
             self._succ_content.setStyleSheet(
-                "QWidget { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; }"
+                StyleManager.CADRE_GRIS_CLAIR
             )
             succ_layout = QVBoxLayout(self._succ_content)
             succ_layout.setContentsMargins(12, 8, 12, 8)
@@ -629,7 +629,7 @@ class ImportDialog(QDialog):
 
             row1 = QHBoxLayout()
             lbl1 = QLabel("Cette réf. remplace :")
-            lbl1.setStyleSheet("font-weight: bold; background: transparent; border: none;")
+            lbl1.setStyleSheet(StyleManager.TEXTE_GRAS_TRANSPARENT)
             lbl1.setFixedWidth(220)
             row1.addWidget(lbl1)
             self.succ_replaces_input = RefChipsInput("Anciennes réfs remplacées par cette réf, séparées par un espace (ex : REF123 REF124)", max_refs=None)
@@ -639,7 +639,7 @@ class ImportDialog(QDialog):
 
             row2 = QHBoxLayout()
             lbl2 = QLabel("Cette réf. est remplacée par :")
-            lbl2.setStyleSheet("font-weight: bold; background: transparent; border: none;")
+            lbl2.setStyleSheet(StyleManager.TEXTE_GRAS_TRANSPARENT)
             lbl2.setFixedWidth(220)
             row2.addWidget(lbl2)
             self.succ_replaced_by_input = RefChipsInput("Nouvelle réf. qui remplace cette réf. (ex : REF456)", max_refs=1)
@@ -653,7 +653,7 @@ class ImportDialog(QDialog):
 
             row3 = QHBoxLayout()
             lbl3 = QLabel("Cette réf. est équivalente à :")
-            lbl3.setStyleSheet("font-weight: bold; background: transparent; border: none;")
+            lbl3.setStyleSheet(StyleManager.TEXTE_GRAS_TRANSPARENT)
             lbl3.setFixedWidth(220)
             row3.addWidget(lbl3)
             self.equiv_input = RefChipsInput("Réfs équivalentes à cette réf, séparées par un espace (ex : REF789 REF790)", max_refs=None)
@@ -720,7 +720,7 @@ class ImportDialog(QDialog):
             scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             # Fond transparent + sans cadre (pas de rectangle gris bordé)
             scroll_area.setFrameShape(scroll_area.NoFrame)
-            scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+            scroll_area.setStyleSheet(StyleManager.ZONE_DEFILEMENT_NUE)
             scroll_area.viewport().setAutoFillBackground(False)
 
             scroll_area.setMinimumHeight(80)
@@ -882,7 +882,7 @@ class ImportDialog(QDialog):
 
             desc_lbl = QLabel("Libellé :")
             desc_lbl.setStyleSheet(
-                "font-size: 11px; color: #495057; background: transparent; border: none;"
+                StyleManager.LIBELLE_PETIT_TRANSPARENT
             )
             desc_lbl.setFixedWidth(50)
             row2.addWidget(desc_lbl)
@@ -1083,7 +1083,7 @@ class ImportDialog(QDialog):
         btn.setIconSize(QSize(13, 13))
         btn.setFixedSize(20, 20)
         btn.setFlat(True)
-        btn.setStyleSheet("QPushButton { border: none; background: transparent; }")
+        btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT_BUTTON)
         btn.setToolTip(tooltip)
         return btn
 
@@ -1309,7 +1309,7 @@ class ImportDialog(QDialog):
         row = QHBoxLayout()
         row.setSpacing(8)
         lbl = QLabel("↳ Remplacée par :")
-        lbl.setStyleSheet("font-size: 11px; color: #495057; background: transparent; border: none;")
+        lbl.setStyleSheet(StyleManager.LIBELLE_PETIT_TRANSPARENT)
         lbl.setFixedWidth(100)
         row.addWidget(lbl)
         chips = RefChipsInput("Remplaçante directe (saisir ou glisser une réf)", max_refs=1,
@@ -1776,7 +1776,7 @@ class ImportPreviewDialog(QDialog):
         # ── Tableau de comptages ──────────────────────────────────────────
         grid_widget = QWidget()
         grid_widget.setStyleSheet(
-            "background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;"
+            StyleManager.CARTE_GRIS_CLAIR
         )
         grid = QGridLayout(grid_widget)
         grid.setContentsMargins(12, 10, 12, 10)
@@ -1800,7 +1800,7 @@ class ImportPreviewDialog(QDialog):
 
         for i, (label, count, color) in enumerate(rows_data):
             lbl = QLabel(label)
-            lbl.setStyleSheet("font-size: 11px; color: #555; background: transparent; border: none;")
+            lbl.setStyleSheet(StyleManager.LIBELLE_PETIT_GRIS_TRANSPARENT)
             count_lbl = QLabel(f"<b>{count:,}</b>".replace(',', ' '))
             count_lbl.setStyleSheet(
                 f"font-size: 12px; color: {color}; background: transparent; border: none;"
@@ -1867,7 +1867,7 @@ class ImportPreviewDialog(QDialog):
             return None
         encadre = QWidget()
         encadre.setStyleSheet(
-            "background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;"
+            StyleManager.CARTE_GRIS_CLAIR
         )
         couche = QVBoxLayout(encadre)
         couche.setContentsMargins(12, 8, 12, 8)
@@ -1877,7 +1877,7 @@ class ImportPreviewDialog(QDialog):
         couche.addWidget(titre)
         for ligne in lignes:
             lbl = QLabel(ligne)
-            lbl.setStyleSheet("font-size: 11px; color: #555; background: transparent; border: none;")
+            lbl.setStyleSheet(StyleManager.LIBELLE_PETIT_GRIS_TRANSPARENT)
             couche.addWidget(lbl)
         return encadre
 

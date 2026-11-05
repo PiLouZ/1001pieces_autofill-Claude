@@ -344,7 +344,7 @@ class PiecesManagerWindow(QDialog):
             cluster_col.setSpacing(1)
 
             cluster_title = QLabel(cluster_label)
-            cluster_title.setStyleSheet("color: #adb5bd; font-size: 11px;")
+            cluster_title.setStyleSheet(StyleManager.TEXTE_ESTOMPE)
             cluster_col.addWidget(cluster_title)
 
             cluster_row = QHBoxLayout()
@@ -445,7 +445,7 @@ class PiecesManagerWindow(QDialog):
         spinner_btn.setStyleSheet(StyleManager.FLAT_TRANSPARENT)
         spinner_row.addWidget(spinner_btn)
         self._loading_label = QLabel("Chargement des pièces…")
-        self._loading_label.setStyleSheet("font-weight: bold; font-size: 13px; color: #212529;")
+        self._loading_label.setStyleSheet(StyleManager.TITRE_SECTION)
         spinner_row.addWidget(self._loading_label)
         loading_layout.addLayout(spinner_row)
 
@@ -455,10 +455,7 @@ class PiecesManagerWindow(QDialog):
         loading_bar.setTextVisible(False)
         loading_bar.setFixedHeight(6)
         loading_bar.setMaximumWidth(400)
-        loading_bar.setStyleSheet("""
-            QProgressBar { border: none; border-radius: 3px; background: #e9ecef; }
-            QProgressBar::chunk { border-radius: 3px; background: #495057; }
-        """)
+        loading_bar.setStyleSheet(StyleManager.BARRE_PROGRESSION_DISCRETE)
         loading_layout.addWidget(loading_bar, 0, Qt.AlignHCenter)
 
         self._table_stack.addWidget(loading_page)    # index 0 : chargement
@@ -486,7 +483,7 @@ class PiecesManagerWindow(QDialog):
 
         # Label statut (héritage : met à jour le statut succession)
         self.succession_status_label = QLabel("Sélectionnez une pièce pour voir son statut.")
-        self.succession_status_label.setStyleSheet("color: #555555; font-size: 11px;")
+        self.succession_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_PETIT)
         self.succession_status_label.setWordWrap(True)
         side_layout.addWidget(self.succession_status_label)
 
@@ -524,7 +521,7 @@ class PiecesManagerWindow(QDialog):
         eq_sec_layout.addLayout(equiv_hdr)
 
         self.equiv_status_label = QLabel("")
-        self.equiv_status_label.setStyleSheet("color: #555555; font-size: 11px;")
+        self.equiv_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_PETIT)
         self.equiv_status_label.setWordWrap(True)
         self.equiv_status_label.setVisible(False)  # caché jusqu'au premier rafraîchissement
         eq_sec_layout.addWidget(self.equiv_status_label)
@@ -1643,7 +1640,7 @@ class PiecesManagerWindow(QDialog):
 
         if not has_selection or ref_piece is None:
             self.succession_status_label.setText("Sélectionnez une pièce pour voir son statut.")
-            self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.succession_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_MOYEN)
             self.superseded_by_tag_list.set_refs([], '#e67e22')
             self.replaces_tag_list.set_refs([], '#2980b9')
             self.superseded_section.setVisible(True)
@@ -1659,7 +1656,7 @@ class PiecesManagerWindow(QDialog):
         if n > 1:
             self.succession_status_label.setText(
                 f"{n} pièces sélectionnées — les actions s'appliquent à toutes.")
-            self.succession_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.succession_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_MOYEN)
             # Sections visibles mais vidées : les chips n'ont pas de sens en
             # multi-sélection, les actions passent par les boutons batch.
             self.superseded_by_tag_list.set_refs([], '#e67e22')
@@ -2014,7 +2011,7 @@ class PiecesManagerWindow(QDialog):
         # ── Aucune sélection ──────────────────────────────────────────────
         if not has_selection or ref_piece is None:
             self.equiv_status_label.setText("Sélectionnez une pièce pour voir ses équivalences.")
-            self.equiv_status_label.setStyleSheet("color: #555555; font-size: 12px;")
+            self.equiv_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_MOYEN)
             self.equiv_status_label.setVisible(True)
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(False)

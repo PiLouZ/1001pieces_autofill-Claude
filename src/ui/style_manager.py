@@ -122,6 +122,76 @@ class StyleManager:
     # Même gabarit, en orange : ce qui va être écrasé ou perdu
     TEXTE_AVERTISSEMENT = "color: #b45309; font-size: 11px;"
 
+    # === Styles QSS partagés entre fenêtres (dédoublonnés, audit 2026-11-05) ===
+    # Chacun était recopié à l'identique dans plusieurs fichiers.
+
+    # Texte en gras, sans autre réglage
+    TEXTE_GRAS = 'font-weight: bold;'
+    # Séparateur discret entre éléments d'une ligne (« | », « · »)
+    TEXTE_SEPARATEUR = 'color: #dee2e6;'
+    # Fond transparent seul
+    FOND_TRANSPARENT = 'background: transparent;'
+    # Fond blanc seul
+    FOND_BLANC = 'background: white;'
+    # Aucune bordure
+    SANS_BORDURE = 'border: none;'
+    # Zone blanche bordée de gris clair (aperçus, champs)
+    CHAMP_BLANC_BORDE = 'background: white; border: 1px solid #dee2e6;'
+    # Libellé gras posé sur un fond (sans fond ni bordure propres)
+    TEXTE_GRAS_TRANSPARENT = 'font-weight: bold; background: transparent; border: none;'
+    # Titre de section ou de fenêtre (13 px, gras)
+    TITRE_SECTION = 'font-weight: bold; font-size: 13px; color: #212529;'
+    # Barre de progression fine et sobre (gris)
+    BARRE_PROGRESSION_DISCRETE = (
+        '\n            QProgressBar { border: none; border-radius: 3px; background: #e9ecef; }\n            QProgressBar::chunk { border-radius: 3px; background: #495057; }\n        '
+    )
+    # Texte d'appoint estompé (gris clair, petit)
+    TEXTE_ESTOMPE = 'color: #adb5bd; font-size: 11px;'
+    # Texte gris moyen (12 px)
+    TEXTE_GRIS_MOYEN = 'color: #555555; font-size: 12px;'
+    # Comme TEXTE_SECONDAIRE, en italique (indications, états vides)
+    TEXTE_SECONDAIRE_ITALIQUE = 'color: #6c757d; font-size: 11px; font-style: italic;'
+    # Indicateur de succès (vert)
+    TEXTE_SUCCES = 'color: green;'
+    # Zone de défilement sans fond ni bordure
+    ZONE_DEFILEMENT_NUE = 'QScrollArea { background: transparent; border: none; }'
+    # Cadre gris clair arrondi (4 px) autour d'un groupe
+    CADRE_GRIS_CLAIR = 'QWidget { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; }'
+    # Petit libellé gris foncé posé sur un cadre
+    LIBELLE_PETIT_TRANSPARENT = 'font-size: 11px; color: #495057; background: transparent; border: none;'
+    # Carte gris clair arrondie (6 px)
+    CARTE_GRIS_CLAIR = 'background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;'
+    # Message d'erreur sous un champ (rouge, petit)
+    TEXTE_ERREUR_PETIT = 'color: #dc3545; font-size: 11px; padding: 1px 0;'
+    # Message d'erreur rouge sombre, petit
+    TEXTE_ERREUR_SOMBRE = 'color: #c0392b; font-size: 11px;'
+    # Petit libellé gris moyen posé sur un cadre
+    LIBELLE_PETIT_GRIS_TRANSPARENT = 'font-size: 11px; color: #555; background: transparent; border: none;'
+    # Texte gris moyen, petit (11 px)
+    TEXTE_GRIS_PETIT = 'color: #555555; font-size: 11px;'
+    # Zone de défilement à fond transparent
+    ZONE_DEFILEMENT_TRANSPARENTE = 'QScrollArea { background: transparent; }'
+    # Petit bouton-outil à bascule (bleu quand coché)
+    BOUTON_OUTIL_BASCULE = (
+        'QToolButton { border: 1px solid #ced4da; border-radius: 4px; background: #f8f9fa; padding: 2px; }QToolButton:checked { background: #e7f1ff; border-color: #0d6efd; }'
+    )
+    # Fenêtre surgissante blanche arrondie (8 px)
+    POPUP_CADRE = (
+        '\n            QDialog {\n                background: white;\n                border: 1px solid #ced4da;\n                border-radius: 8px;\n            }\n        '
+    )
+    # En-tête d'une fenêtre surgissante (bandeau gris clair arrondi en haut)
+    POPUP_ENTETE = (
+        'background: #f8f9fa;border-bottom: 1px solid #e9ecef;border-top-left-radius: 8px;border-top-right-radius: 8px;'
+    )
+    # Titre moyen (14 px) avec petite marge basse
+    TITRE_MOYEN = 'font-size: 14px; margin-bottom: 4px;'
+    # Indicateur « en cours / en attente » (orange)
+    TEXTE_EN_COURS = 'color: orange;'
+    # Bandeau d'information bleu pâle
+    BANDEAU_INFO = (
+        'font-size: 11px; padding: 6px 10px; color: #495057; background-color: #e7f3ff; border-radius: 4px;'
+    )
+
     # Idem mais ciblé sur QPushButton
     FLAT_TRANSPARENT_BUTTON = "QPushButton { border: none; background: transparent; }"
 
