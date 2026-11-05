@@ -10,15 +10,22 @@ Responsabilités:
 """
 
 import time
-from typing import Optional, Dict, Any
 import qtawesome as qta
-from ..utils.qt_imports import (QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QToolButton, QWidget,
-                             QLabel, QSpinBox, QComboBox, QFrame, QSizePolicy,
-                             Qt, QTimer, QFont, QMenu, QPoint, QObject, QEvent, QCursor)
+from ..utils.qt_imports import (
+    QVBoxLayout,
+    QGridLayout,
+    QPushButton,
+    QToolButton,
+    QSizePolicy,
+    Qt,
+    QTimer,
+    QObject,
+    QEvent,
+    QCursor
+)
 
 from ..core.constants import ExportFormat
-from .style_manager import StyleManager, icon_png_path
-from src.core.logger import app_logger
+from .style_manager import StyleManager
 from .menu_gabarits import MenuGabarits
 
 class FlecheGabarits(QObject):
@@ -141,7 +148,8 @@ class UIComponentService:
             lambda: self.main_window._export_data(ExportFormat.CSV)
         )
         self.main_window.export_csv_btn.setEnabled(False)
-        self.main_window.export_csv_btn.setStyleSheet(self._get_csv_button_style())
+        self.main_window.export_csv_btn.setStyleSheet(
+            StyleManager.bouton_export_plein(*StyleManager.COULEURS_EXPORT_CSV))
         
         # Bouton HTML Marques
         self.main_window.export_html_brands_btn = QPushButton("HTML Marques")
@@ -149,19 +157,14 @@ class UIComponentService:
             lambda: self.main_window._export_data(ExportFormat.HTML_BRANDS)
         )
         self.main_window.export_html_brands_btn.setEnabled(False)
-        # Gabarit explicite, aligné sur CSV / Méta (8 × 12 px) : le style global
-        # des boutons est plus compact.
-        self.main_window.export_html_brands_btn.setStyleSheet(
-            "QPushButton { padding: 8px 12px; font-weight: 500; }"
-            f"QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}"
-        )
+        self.main_window.export_html_brands_btn.setStyleSheet(StyleManager.BOUTON_EXPORT_NEUTRE)
         
         # Bouton HTML Détails — split button compact (clic = export profil par
         # défaut, flèche superposée = menu des autres profils configurés)
         self.main_window.export_html_details_btn = QToolButton()
         self.main_window.export_html_details_btn.setText("HTML Détails")
         self.main_window.export_html_details_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.main_window.export_html_details_btn.setStyleSheet(self._get_split_button_style())
+        self.main_window.export_html_details_btn.setStyleSheet(StyleManager.BOUTON_SPLIT_NEUTRE)
         self.main_window.export_html_details_btn.clicked.connect(
             self._on_export_html_details_clicked
         )
@@ -184,7 +187,8 @@ class UIComponentService:
         # Texte seul, comme "HTML Détails" : un QToolButton élargi aligne
         # icône + texte à gauche au lieu de les centrer
         self.main_window.titre_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.main_window.titre_btn.setStyleSheet(self._get_titre_button_style())
+        self.main_window.titre_btn.setStyleSheet(
+            StyleManager.bouton_split_plein(*StyleManager.COULEURS_TITRE))
         self.main_window.titre_btn.setToolTip(
             "Copier le titre de la fiche produit : libellé, types, marques et référence la plus récente\n"
             "Flèche : survol = autres gabarits, clic = aperçu ; réglages dans la\n"
@@ -200,7 +204,8 @@ class UIComponentService:
         self.main_window.fiche_btn = QToolButton()
         self.main_window.fiche_btn.setText("Fiche complète")
         self.main_window.fiche_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.main_window.fiche_btn.setStyleSheet(self._get_fiche_button_style())
+        self.main_window.fiche_btn.setStyleSheet(
+            StyleManager.bouton_split_plein(*StyleManager.COULEURS_FICHE))
         self.main_window.fiche_btn.setToolTip(
             "Copier le code HTML complet de la fiche produit : titre, marques, code produit,\n"
             "références remplacées et équivalentes, appareils affichés dans le tableau\n"
@@ -365,81 +370,6 @@ class UIComponentService:
         default_name = svc.get_default_details_profile_name() if svc else None
         self.main_window._export_data(ExportFormat.HTML_DETAILS, profile_name=default_name)
 
-    def _get_titre_button_style(self) -> str:
-        """Style du bouton split "Titre" : violet plein, comme les boutons colorés
-        de la ligne des métas ; flèche de menu blanche (la noire par défaut ne se
-        lit pas sur le violet)."""
-        return self._get_split_couleur_style("#6f42c1", "#5e37a6", "#512f8f")
-
-    def _get_fiche_button_style(self) -> str:
-        """Style du bouton split "Fiche complète" : bleu plein, même gabarit que "Titre"."""
-        return self._get_split_couleur_style("#0b5ed7", "#0a53be", "#094ba8")
-
-    @staticmethod
-    def _get_split_couleur_style(fond: str, survol: str, appui: str) -> str:
-        """Split button à fond coloré plein et flèche de menu blanche."""
-        fleche = icon_png_path('fa5s.caret-down', 'white', 10)
-        regle_fleche = f"image: url({fleche}); width: 10px; height: 10px;" if fleche else ""
-        return f"""
-            QToolButton {{
-                background-color: {fond};
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 12px;
-            }}
-            QToolButton:hover {{
-                background-color: {survol};
-            }}
-            QToolButton:pressed {{
-                background-color: {appui};
-            }}
-            QToolButton:disabled {{
-                {StyleManager.EXPORT_BTN_DISABLED_RULES}
-            }}
-            QToolButton::menu-button {{
-                border: none;
-                border-left: 1px solid rgba(255, 255, 255, 0.35);
-                width: 30px;
-            }}
-            QToolButton::menu-arrow {{
-                {regle_fleche}
-            }}
-        """
-
-    def _get_split_button_style(self) -> str:
-        """Style du bouton split "HTML Détails" — aligné sur le QPushButton global."""
-        return f"""
-            QToolButton {{
-                background: white;
-                border: 1px solid #ced4da;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-weight: 500;
-                color: #343a40;
-            }}
-            QToolButton:hover {{
-                background: #f1f3f5;
-                border-color: #adb5bd;
-                color: #212529;
-            }}
-            QToolButton:pressed {{
-                background: #e9ecef;
-                border-color: #6c757d;
-            }}
-            QToolButton:disabled {{
-                {StyleManager.EXPORT_BTN_DISABLED_RULES}
-            }}
-            QToolButton::menu-button {{
-                /* Mode MenuButtonPopup : la flèche est centrée dans cette zone
-                   (::menu-indicator est ignoré dans ce mode). Élargir la zone
-                   éloigne la flèche du bord droit → aération. */
-                border: none;
-                width: 30px;
-            }}
-        """
-
     def _creer_boutons_seo(self) -> None:
         """Créer les boutons SEO métadonnées (placés par add_export_buttons)"""
         # Bouton Méta Title
@@ -447,14 +377,16 @@ class UIComponentService:
         self.main_window.meta_title_btn.clicked.connect(self.main_window._generate_meta_title)
         self.main_window.meta_title_btn.setEnabled(False)
         self.main_window.meta_title_btn.setToolTip("Générer un méta titre SEO optimisé (largeur affichée par Google sur ordinateur)\nMaj+clic : autre formulation")
-        self.main_window.meta_title_btn.setStyleSheet(self._get_seo_title_button_style())
+        self.main_window.meta_title_btn.setStyleSheet(
+            StyleManager.bouton_export_plein(*StyleManager.COULEURS_META_TITLE))
         
         # Bouton Méta Description
         self.main_window.meta_desc_btn = QPushButton(qta.icon('fa5s.align-left', color='#555555'), "Méta Desc")
         self.main_window.meta_desc_btn.clicked.connect(self.main_window._generate_meta_description)
         self.main_window.meta_desc_btn.setEnabled(False)
         self.main_window.meta_desc_btn.setToolTip("Générer une méta description SEO (largeur affichée par Google sur ordinateur)\nMaj+clic : autre formulation")
-        self.main_window.meta_desc_btn.setStyleSheet(self._get_seo_desc_button_style())
+        self.main_window.meta_desc_btn.setStyleSheet(
+            StyleManager.bouton_export_plein(*StyleManager.COULEURS_META_DESC))
 
     def update_export_buttons_state_by_search(self, is_piece_search: bool) -> None:
         """
@@ -474,55 +406,3 @@ class UIComponentService:
             self.main_window.copy_csv_btn.setEnabled(is_piece_search)
         if hasattr(self.main_window, 'copy_html_btn'):
             self.main_window.copy_html_btn.setEnabled(is_piece_search)
-
-    # Méthodes de styles pour les boutons
-    def _get_csv_button_style(self) -> str:
-        """Style pour le bouton CSV"""
-        return f"""
-            QPushButton {{ 
-                background-color: #134c4d; 
-                color: white; 
-                font-weight: bold; 
-                border: none; 
-                padding: 8px 12px; 
-                border-radius: 4px; 
-            }}
-            QPushButton:hover {{ 
-                background-color: #11403f; 
-            }}
-            QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}
-        """
-    
-    def _get_seo_title_button_style(self) -> str:
-        """Style pour le bouton méta title"""
-        return f"""
-            QPushButton {{ 
-                background-color: #fd7e14; 
-                color: white; 
-                font-weight: bold; 
-                border: none; 
-                padding: 8px 12px; 
-                border-radius: 4px; 
-            }}
-            QPushButton:hover {{ 
-                background-color: #e5711f; 
-            }}
-            QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}
-        """
-    
-    def _get_seo_desc_button_style(self) -> str:
-        """Style pour le bouton méta description"""
-        return f"""
-            QPushButton {{ 
-                background-color: #ffc107; 
-                color: white; 
-                font-weight: bold; 
-                border: none; 
-                padding: 8px 12px; 
-                border-radius: 4px; 
-            }}
-            QPushButton:hover {{ 
-                background-color: #e5a801; 
-            }}
-            QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}
-        """
