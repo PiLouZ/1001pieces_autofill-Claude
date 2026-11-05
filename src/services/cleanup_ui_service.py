@@ -804,20 +804,8 @@ class DistinctReferencesWidget(QWidget):
         if not self.db_manager:
             return
 
-        # Requête pour récupérer les références distinctes avec comptage des appareils
-        query = """
-            SELECT rd.ref_modele,
-                   COUNT(a.id) as nb_appareils,
-                   rd.created_at,
-                   rd.ref_modele as ref_key
-            FROM reference_decisions rd
-            LEFT JOIN appareils a ON a.ref_modele = rd.ref_modele
-            WHERE rd.decision = 'DISTINCT'
-            GROUP BY rd.ref_modele, rd.created_at
-            ORDER BY rd.created_at DESC
-        """
-
-        results = self.db_manager.execute_query(query)
+        # Références distinctes avec comptage des appareils
+        results = self.db_manager.references_distinctes()
         self.distinct_references = results or []
 
         # Peupler l'arbre
@@ -883,13 +871,10 @@ class DistinctReferencesWidget(QWidget):
         # Confirmation
         # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
         def _suite():
-            # Supprimer de la base de données
-            placeholders = ','.join(['?'] * len(selected_refs))
-            delete_query = f"DELETE FROM reference_decisions WHERE ref_modele IN ({placeholders})"
-
-            # execute_write commit : sans cela la suppression disparaissait au
-            # lancement suivant si rien d'autre n'écrivait entre-temps.
-            success = self.db_manager.execute_write(delete_query, selected_refs) >= 0
+            # Supprimer de la base de données — commité (execute_write) : sans cela
+            # la suppression disparaissait au lancement suivant si rien d'autre
+            # n'écrivait entre-temps.
+            success = self.db_manager.retirer_references_distinctes(selected_refs) >= 0
 
             if success:
                 self.load_distinct_references()
@@ -1014,18 +999,7 @@ class ActionHistoryWidget(QWidget):
 
     def _ensure_history_table(self):
         """Créer la table d'historique si elle n'existe pas"""
-        create_table_query = """
-            CREATE TABLE IF NOT EXISTS cleanup_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                action_type TEXT NOT NULL,
-                details TEXT,
-                result TEXT,
-                user TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """
-        self.db_manager.execute_custom_query(create_table_query)
+        self.db_manager.creer_table_historique_nettoyage()
 
     def load_history(self):
         """Charger l'historique des actions"""
@@ -1034,15 +1008,7 @@ class ActionHistoryWidget(QWidget):
 
         self._ensure_history_table()
 
-        # Requête pour récupérer l'historique
-        query = """
-            SELECT timestamp, action_type, details, result, user
-            FROM cleanup_history
-            ORDER BY timestamp DESC
-            LIMIT 100
-        """
-
-        results = self.db_manager.execute_query(query)
+        results = self.db_manager.historique_nettoyage()
         self.history_actions = results or []
 
         # Peupler l'arbre
@@ -1085,8 +1051,7 @@ class ActionHistoryWidget(QWidget):
         # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
         def _suite():
             # Supprimer de la base de données
-            delete_query = "DELETE FROM cleanup_history"
-            success = self.db_manager.execute_write(delete_query) >= 0
+            success = self.db_manager.vider_historique_nettoyage() >= 0
 
             if success:
                 self.load_history()

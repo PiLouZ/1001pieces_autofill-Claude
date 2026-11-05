@@ -18,10 +18,11 @@ import sqlite3
 import pytest
 
 from src.data._db_mixins.supersession import DatabaseSupersessionMixin
+from src.data._db_mixins.pieces import DatabasePiecesMixin
 from src.ui.seo_service import SEOService
 
 
-class _BaseMemoire(DatabaseSupersessionMixin):
+class _BaseMemoire(DatabaseSupersessionMixin, DatabasePiecesMixin):
     """Base SQLite en mémoire avec le schéma minimal utilisé par SEOService."""
 
     def __init__(self):

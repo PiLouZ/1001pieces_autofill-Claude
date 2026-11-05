@@ -1474,11 +1474,7 @@ class TableController:
         couvrant de la colonne (6 ms pour les types, ~40 ms pour les marques).
         """
         db_field = "type" if column == 0 else "manufacturer"
-        results = self.db_manager.execute_query(
-            f"SELECT DISTINCT [{db_field}] FROM appareils "
-            f"WHERE [{db_field}] IS NOT NULL AND [{db_field}] != '' "
-            f"ORDER BY [{db_field}] COLLATE NOCASE"
-        )
+        results = self.db_manager.valeurs_distinctes_colonne(db_field)
         return [row[0] for row in results if row[0]]
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage filtres colonnes")

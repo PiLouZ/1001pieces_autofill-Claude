@@ -2274,7 +2274,9 @@ class ImportManager:
             update_query = f"UPDATE appareils SET {', '.join(set_clauses)} WHERE id = ?"
             params = list(update_data.values()) + [device_id]
 
-            self.db_manager.execute_query(update_query, params)
+            # execute_write (commité) et non execute_query : sans commit, la mise
+            # à jour était perdue si elle était la dernière écriture avant la fermeture.
+            self.db_manager.execute_write(update_query, params)
             app_logger.debug(f" Appareil {device_id} mis à jour avec 3ème colonne: {update_data}")
     
     def _completer_existant(self, device_id: int, device_data: Dict[str, Any]) -> None:

@@ -174,23 +174,8 @@ class DuplicateIndicatorService(QObject):
     def _get_real_duplicates(self) -> List[Tuple[str, int]]:
         """Obtenir les vrais doublons en excluant les appareils marqués DISTINCT"""
         try:
-            # Requête modifiée qui exclut les ref_modele avec decision = 'DISTINCT'
-            query = """
-            WITH duplicate_refs AS (
-                SELECT ref_modele, COUNT(*) as total_count
-                FROM appareils
-                WHERE ref_modele IS NOT NULL AND ref_modele != ''
-                GROUP BY ref_modele
-                HAVING COUNT(*) > 1
-            )
-            SELECT dr.ref_modele, dr.total_count
-            FROM duplicate_refs dr
-            LEFT JOIN reference_decisions rd ON dr.ref_modele = rd.ref_modele
-            WHERE rd.decision IS NULL OR rd.decision != 'DISTINCT'
-            ORDER BY dr.total_count DESC
-            """
-
-            result = self.db_manager.execute_custom_query(query)
+            # Doublons hors ref_modele marquées DISTINCT
+            result = self.db_manager.compter_vrais_doublons()
             return result if result else []
 
         except Exception as e:

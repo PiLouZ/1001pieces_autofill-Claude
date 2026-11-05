@@ -18,11 +18,11 @@ les mêmes lignes que l'ancienne stratégie.
 import sqlite3
 import pytest
 
-from src.ui.main_refactored import MainWindow
+from src.data.database_manager import DatabaseManager
 
 
 def _requete(prefixes):
-    return MainWindow._requete_index_similarite(prefixes)
+    return DatabaseManager.requete_index_similarite(prefixes)
 
 
 def _requete_ancienne(prefixes):

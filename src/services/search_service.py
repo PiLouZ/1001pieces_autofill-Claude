@@ -222,8 +222,7 @@ class SearchService(BaseService):
         """Récupérer la description d'une pièce depuis sa référence"""
         try:
             # Rechercher la pièce par référence exacte
-            query = "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1"
-            result = self.db_manager.execute_query(query, [reference])
+            result = self.db_manager.lire_libelle_piece(reference)
             
             if result:
                 description = result[0][0]

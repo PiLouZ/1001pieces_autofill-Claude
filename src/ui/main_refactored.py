@@ -3158,42 +3158,6 @@ class MainWindow(QMainWindow):
                 f"Suggestions similarité : aucune proposition sur "
                 f"{pluralize(len(incomplete), 'ligne incomplète sélectionnée', 'lignes incomplètes sélectionnées')}.")
 
-    @staticmethod
-    def _requete_index_similarite(prefixes):
-        """Requête sélectionnant les références partageant l'un des préfixes de
-        3 caractères, parmi les appareils déjà renseignés.
-
-        La version d'origine enchaînait une paire de « OR … LIKE ? » par préfixe.
-        Deux défauts, tous deux mesurés (v3.71.1) :
-
-        - **coût super-linéaire** — l'évaluation de l'arbre de OR dominait tout le
-          reste : 8,9 s pour 300 préfixes, contre 0,5 s ici (×17) ;
-        - **échec silencieux** au-delà d'environ 500 préfixes — SQLite refusait la
-          requête (« Expression tree is too large », profondeur maximale 1000) et
-          `execute_query` avalait l'exception. L'utilisateur lisait « aucune
-          proposition » alors que 272 ou 586 l'attendaient.
-
-        Un `IN (…)` est un nœud d'expression unique : la limite de profondeur ne
-        s'applique plus. Résultat strictement identique, vérifié sur la base réelle
-        (52 136 lignes des deux côtés, 0 écart).
-
-        Effet de bord souhaitable : `LIKE 'k3_%'` traitait « _ » comme un joker,
-        ce que cette forme ne fait pas — les références « K3_TYP… » sont désormais
-        comparées à la lettre.
-
-        Returns:
-            (requête SQL, liste de paramètres)
-        """
-        prefixes = list(prefixes)
-        marqueurs = ",".join("?" * len(prefixes))
-        query = (
-            "SELECT id, ref_modele, commercial_ref, type, manufacturer FROM appareils "
-            "WHERE (type IS NOT NULL AND type != '' OR manufacturer IS NOT NULL AND manufacturer != '') "
-            f"AND (LOWER(SUBSTR(ref_modele, 1, 3)) IN ({marqueurs}) "
-            f"OR LOWER(SUBSTR(commercial_ref, 1, 3)) IN ({marqueurs}))"
-        )
-        return query, prefixes + prefixes
-
     def _compute_similarity_suggestions(self, incomplete, prefixes):
         """Cœur partagé (menu contextuel + scan global) : construit un index CIBLÉ
         par préfixe de référence puis calcule les candidats.
@@ -3202,8 +3166,7 @@ class MainWindow(QMainWindow):
         de 3 caractères (minuscules). Retourne {db_id: [candidat_dict, ...]}.
         """
         from ..services.reference_similarity_service import ReferenceSimilarityService
-        query, params = self._requete_index_similarite(prefixes)
-        rows = self.db_manager.execute_query(query, params) or []
+        rows = self.db_manager.lire_index_similarite(prefixes) or []
         index = ReferenceSimilarityService.build_reference_index(rows)
         svc = ReferenceSimilarityService(
             allow_numeric_fuzzy=Config.SIMILARITY_ALLOW_NUMERIC_FUZZY,

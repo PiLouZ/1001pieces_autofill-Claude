@@ -89,20 +89,7 @@ class DuplicatesAnalysisWorker(QThread):
         `piece_associations` (3,5 M lignes) à chaque appareil → ~12 min pour 1443
         appareils ; la version batch tient en ~0,5 s.
         """
-        query = """
-        SELECT ref_modele, COUNT(*) as count, GROUP_CONCAT(id) as ids
-        FROM appareils
-        WHERE ref_modele IS NOT NULL AND ref_modele != ''
-        AND ref_modele NOT IN (
-            SELECT ref_modele FROM reference_decisions
-            WHERE decision = 'DISTINCT'
-        )
-        GROUP BY ref_modele
-        HAVING count > 1
-        ORDER BY count DESC
-        """
-
-        results = self.db_manager.execute_query(query)
+        results = self.db_manager.groupes_doublons_ref_modele()
         if not results:
             return []
 
@@ -123,25 +110,10 @@ class DuplicatesAnalysisWorker(QThread):
         CHUNK = 900
         for start in range(0, len(all_ids), CHUNK):
             chunk_ids = all_ids[start:start + CHUNK]
-            placeholders = ",".join("?" * len(chunk_ids))
             # La sous-requête de comptage est filtrée sur les ids du lot (WHERE
             # appareil_id IN …) : elle n'agrège que les lignes utiles via l'index
             # sur piece_associations.appareil_id, au lieu de balayer les 3,5 M lignes.
-            detail_query = f"""
-            SELECT a.id, a.ref_modele, a.type, a.manufacturer,
-                   a.commercial_ref, a.other_ref, a.category, a.notes,
-                   COALESCE(pc.cnt, 0) as pieces_count
-            FROM appareils a
-            LEFT JOIN (
-                SELECT pa.appareil_id, COUNT(*) as cnt
-                FROM piece_associations pa
-                INNER JOIN pieces p ON pa.piece_id = p.id
-                WHERE pa.appareil_id IN ({placeholders})
-                GROUP BY pa.appareil_id
-            ) pc ON pc.appareil_id = a.id
-            WHERE a.id IN ({placeholders})
-            """
-            rows = self.db_manager.execute_query(detail_query, tuple(chunk_ids) + tuple(chunk_ids))
+            rows = self.db_manager.details_appareils_doublons(chunk_ids)
             for r in (rows or []):
                 by_id[r[0]] = {
                     'id': r[0],
@@ -169,17 +141,7 @@ class DuplicatesAnalysisWorker(QThread):
             
     def _find_duplicate_pieces(self) -> List[Dict[str, Any]]:
         """Trouver les pièces dupliquées basées sur ref_piece"""
-        query = """
-        SELECT ref_piece, COUNT(*) as count
-        FROM pieces
-        WHERE ref_piece IS NOT NULL AND ref_piece != ''
-        GROUP BY ref_piece
-        HAVING count > 1
-        ORDER BY count DESC
-        LIMIT 100
-        """
-
-        results = self.db_manager.execute_query(query)
+        results = self.db_manager.groupes_doublons_pieces()
         duplicates = []
 
         for row in results:

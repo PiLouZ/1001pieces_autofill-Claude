@@ -937,8 +937,7 @@ class ImportDialog(QDialog):
                 return None
             base_refs = []
             if self.import_manager and hasattr(self.import_manager, 'db_manager'):
-                rows = self.import_manager.db_manager.execute_query(
-                    "SELECT ref_piece FROM pieces ORDER BY ref_piece LIMIT 5000") or []
+                rows = self.import_manager.db_manager.lister_refs_pieces() or []
                 base_refs = [r[0] for r in rows]
             # Référence persistante sur le modèle (piège GC du QCompleter)
             self._relations_base_model = QStringListModel(sorted(base_refs), self)
@@ -954,9 +953,7 @@ class ImportDialog(QDialog):
         if not self.import_manager or not hasattr(self.import_manager, 'db_manager'):
             return
         try:
-            rows = self.import_manager.db_manager.execute_query(
-                "SELECT ref_piece FROM pieces ORDER BY ref_piece LIMIT 5000"
-            ) or []
+            rows = self.import_manager.db_manager.lister_refs_pieces() or []
             ref_list = [r[0] for r in rows]
             for field in [self.succ_replaces_input, self.succ_replaced_by_input, self.equiv_input]:
                 model = QStringListModel(ref_list, field)

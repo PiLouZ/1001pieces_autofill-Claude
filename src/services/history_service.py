@@ -121,16 +121,7 @@ class HistoryService(BaseService):
         """
         if not self.db_manager:
             return []
-        return self.db_manager.execute_query(
-            """
-            SELECT timestamp, action_type, title, details,
-                   device_ref, field_name, new_value
-            FROM modifications_history
-            ORDER BY timestamp DESC, id DESC
-            LIMIT ?
-            """,
-            [limit]
-        ) or []
+        return self.db_manager.historique_recent(limit) or []
 
     def get_entries(
         self,
@@ -150,44 +141,8 @@ class HistoryService(BaseService):
         if not self.db_manager:
             return []
 
-        conditions = []
-        params: List[Any] = []
-
-        if action_type and action_type != 'all':
-            conditions.append("action_type = ?")
-            params.append(action_type)
-
-        if date_from:
-            conditions.append("timestamp >= ?")
-            params.append(date_from)
-
-        if date_to:
-            # Inclure toute la journée de fin
-            conditions.append("timestamp <= ?")
-            params.append(date_to + ' 23:59:59')
-
-        if search and search.strip():
-            s = f"%{search.strip()}%"
-            conditions.append(
-                "(title LIKE ? OR device_ref LIKE ? OR field_name LIKE ? "
-                "OR old_value LIKE ? OR new_value LIKE ?)"
-            )
-            params.extend([s, s, s, s, s])
-
-        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        params.extend([limit, offset])
-
-        return self.db_manager.execute_query(
-            f"""
-            SELECT id, timestamp, action_type, title, details,
-                   device_ref, field_name, old_value, new_value
-            FROM modifications_history
-            {where}
-            ORDER BY timestamp DESC
-            LIMIT ? OFFSET ?
-            """,
-            params
-        ) or []
+        return self.db_manager.historique_entrees(
+            limit, offset, action_type, date_from, date_to, search) or []
 
     def get_total_count(
         self,
@@ -200,30 +155,7 @@ class HistoryService(BaseService):
         if not self.db_manager:
             return 0
 
-        conditions = []
-        params: List[Any] = []
-
-        if action_type and action_type != 'all':
-            conditions.append("action_type = ?")
-            params.append(action_type)
-        if date_from:
-            conditions.append("timestamp >= ?")
-            params.append(date_from)
-        if date_to:
-            conditions.append("timestamp <= ?")
-            params.append(date_to + ' 23:59:59')
-        if search and search.strip():
-            s = f"%{search.strip()}%"
-            conditions.append(
-                "(title LIKE ? OR device_ref LIKE ? OR field_name LIKE ? "
-                "OR old_value LIKE ? OR new_value LIKE ?)"
-            )
-            params.extend([s, s, s, s, s])
-
-        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        rows = self.db_manager.execute_query(
-            f"SELECT COUNT(*) FROM modifications_history {where}", params
-        )
+        rows = self.db_manager.historique_total(action_type, date_from, date_to, search)
         return rows[0][0] if rows else 0
 
     def clear_history(self) -> bool:
@@ -231,8 +163,9 @@ class HistoryService(BaseService):
         if not self.db_manager:
             return False
         try:
-            self.db_manager.execute_query("DELETE FROM modifications_history")
-            return True
+            # Commité (execute_write) : par execute_query, sans commit, la
+            # suppression revenait au lancement suivant si rien d'autre n'écrivait.
+            return self.db_manager.vider_historique() >= 0
         except Exception as e:
             app_logger.error(f"HistoryService.clear_history : {e}")
             return False

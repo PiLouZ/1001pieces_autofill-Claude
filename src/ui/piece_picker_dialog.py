@@ -315,13 +315,7 @@ class PiecePickerDialog(QDialog):
     def _load_pieces(self):
         """Charger toutes les pièces depuis la base."""
         try:
-            query = """
-                SELECT p.ref_piece, p.description,
-                       COALESCE(p.is_obsolete, 0), COALESCE(p.is_phantom, 0)
-                FROM pieces p
-                ORDER BY p.ref_piece ASC
-            """
-            rows = self.db_manager.execute_query(query)
+            rows = self.db_manager.lister_pieces_selecteur()
             self._all_rows = [r for r in (rows or [])
                               if r[0] and r[0] != self.exclude_ref]
             self._populate(self._all_rows)

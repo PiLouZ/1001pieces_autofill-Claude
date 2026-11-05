@@ -14,7 +14,7 @@ Règle :
 - la combinaison la plus fréquente l'emporte, ex aequo départagés par valeur
   (choix reproductible) ; l'accord / total donne l'indice de confiance tracé.
 
-Pur Python : lit via `db_manager.execute_query`, n'écrit rien.
+Pur Python : lit via `db_manager.combinaisons_type_fabricant`, n'écrit rien.
 """
 
 from dataclasses import dataclass
@@ -37,7 +37,7 @@ def proposer_type_fabricant(db_manager, appareil_data: Dict[str, Any]) -> Dict[s
     """Propositions pour les champs Type / Fabricant VIDES de l'appareil.
 
     Args:
-        db_manager: expose `execute_query(query, params)`.
+        db_manager: expose `combinaisons_type_fabricant(references)`.
         appareil_data: champs de l'appareil (au moins type, manufacturer,
             ref_modele, commercial_ref ; valeurs absentes ou None = vides).
     Returns:
@@ -50,28 +50,15 @@ def proposer_type_fabricant(db_manager, appareil_data: Dict[str, Any]) -> Dict[s
     if not vides:
         return {}
 
-    conditions = []
-    params = []
+    references = {}
     for colonne in ('ref_modele', 'commercial_ref'):
         valeur = str(appareil_data.get(colonne) or '').strip()
         if valeur:
-            conditions.append(f'{colonne} = ?')
-            params.append(valeur)
-    if not conditions:
+            references[colonne] = valeur
+    if not references:
         return {}
 
-    query = f"""
-        SELECT type, manufacturer, COUNT(*) as freq,
-               MIN(COALESCE(NULLIF(ref_modele, ''), commercial_ref)) AS exemple
-        FROM appareils
-        WHERE ({' OR '.join(conditions)})
-          AND type IS NOT NULL AND type != ''
-          AND manufacturer IS NOT NULL AND manufacturer != ''
-          AND id NOT IN (SELECT appareil_id FROM appareils_autocompletes)
-        GROUP BY type, manufacturer
-        ORDER BY freq DESC, type, manufacturer
-    """
-    resultats = db_manager.execute_query(query, params)
+    resultats = db_manager.combinaisons_type_fabricant(references)
     if not resultats:
         return {}
 
