@@ -4,6 +4,46 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.100.1] - 2026-11-05 (PR #112)
+
+Version corrective : un correctif visible et un audit d'intégrité du code (doublons,
+code mort, placement), sans nouvelle fonctionnalité.
+
+### Autocomplétion alignée sur l'import (PR #112)
+- Le bouton **Données → Autocomplétion** portait sa propre copie, restée d'avant la
+  v3.89.0, de la requête de l'import : il prenait des appareils auto-complétés non
+  vérifiés comme source, reproposait des valeurs refusées et ne traçait rien.
+- Règle unique `src/services/proposition_type_fabricant.py`, partagée par l'import
+  (comportement inchangé : 0 différence sur 12 000 cas de la base réelle) et le bouton
+  (refus filtrés, complétions tracées et à vérifier).
+
+### Affichage, comptage et export sur un seul calcul de filtres (PR #112)
+- `get_export_data` et `_count_data_core` passent par `_build_load_conditions` ; aucun
+  écart mesuré avant (1 680 cas), résultats identiques après (3 360 cas).
+
+### Code mort retiré (PR #112)
+- ≈ 2 600 lignes de `src` : modules `device_manager`, `ui_state_management_service`,
+  `import_service`, `paste_results_service`, `dialog_manager`,
+  `custom_reference_service` ; ancienne édition QTableWidget de `cell_editing_service`,
+  tri doublonnant `TableController`, classes et constantes inutilisées.
+- Repli d'import PDF « legacy » retiré : il appelait des méthodes disparues et plantait ;
+  un échec d'import PDF est désormais signalé par un message.
+- Question « modifications non sauvegardées » à la fermeture retirée : elle ne pouvait
+  plus apparaître (enregistrement immédiat par `EventDrivenSaveService`).
+
+### Factorisations et structure (PR #112)
+- `error_handler` : 30 décorateurs sur deux socles communs (564 → 391 lignes),
+  comportement figé par 62 cas.
+- `qt_imports` déplacé de `src/ui` vers `src/utils` (dépendances métier → interface 60 → 18).
+- Styles des boutons d'export rapatriés dans `StyleManager` (rendu identique au pixel).
+
+### Dialogues sans boucle d'événements imbriquée (PR #112)
+- `src/utils/ouverture_modale.ouvrir_modal` et `src/utils/boites.py` : dialogues modaux
+  non bloquants (convention « show() + callbacks, jamais exec_() »).
+- 19 `exec_()` sur 20 et 27 boîtes statiques (questions, sélecteurs de fichiers, saisies)
+  convertis. Restent bloquants, volontairement : la saisie de la référence d'export
+  (décision du 2026-09-04) et les notifications information / avertissement / erreur.
+
 ## [3.100.0] - 2026-11-05 (PR #106 à #110)
 
 Première livraison sous la règle « version changée seulement à la livraison » (PR #104) :
