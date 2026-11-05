@@ -17,10 +17,8 @@ from PyQt5.QtTest import QTest
 
 from src.utils.text_utils import decouper_refs
 from src.ui.ref_chips_input import RefChipsInput
-from src.core.import_manager import (
-    ImportManager, ImportDialog, ImportConfiguration, ImportFile, ImportType,
-    LabelConfiguration, FileType,
-)
+from src.core.import_manager import ImportManager, ImportConfiguration, ImportFile, ImportType, LabelConfiguration, FileType
+from src.ui.fenetre_import import ImportDialog
 from src.services.import_relations import (
     KIND_SUCCESSION, KIND_EQUIVALENCE, apply_relations, derive,
 )
