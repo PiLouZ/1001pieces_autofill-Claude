@@ -224,6 +224,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 </ul>
 <h3>Versions livrées</h3>
 <ul>
+  <li><b>En préparation</b> — Export pour Mac : <code>install.command</code> cherche lui-même le Python de la bonne version (celle du poste qui exporte, aujourd'hui 3.13) et explique comment l'installer s'il manque ; il débloque aussi le dossier téléchargé. Le lanceur <code>1001pieces_autofill.app</code> n'est plus déclaré « endommagé » par macOS, et un lanceur avec console est fourni pour voir les erreurs.</li>
   <li><b>3.99.4</b> — Menus de gabarits (Titre, HTML Détails) à partir de 6 gabarits : champ « Filtrer… » prêt à la saisie (majuscules et accents ignorés, plusieurs mots possibles, Entrée lance le premier résultat) et section « Récents » avec vos 3 derniers choix. Les récents sont propres à chaque poste.</li>
   <li><b>3.99.3</b> — Boutons d'export dans l'ordre Titre, HTML Marques, HTML Détails. Les menus des flèches (Titre, HTML Détails) sont triés par ordre alphabétique, sans tenir compte des majuscules ni des accents, et « Profil 2 » vient avant « Profil 10 ».</li>
   <li><b>3.99.2</b> — Configuration des exports, onglet HTML : les modèles s'affichent en entier, dans des zones qui s'agrandissent jusqu'à 4 lignes (police à chasse fixe). Entrée n'ajoute pas de saut de ligne : les exports ne changent pas.</li>
@@ -292,12 +293,18 @@ Si l'application ne s'ouvre pas, lancez <code>1001pieces_autofill_console.bat</c
 noire affiche le message d'erreur.</div>
 
 <h3>3. Sur un Mac</h3>
-<p><b>Prérequis</b> : Python 3.10 ou plus récent (<code>python3 --version</code> pour vérifier).</p>
+<p><b>Prérequis</b> : un Mac du même type que celui qui a fait l'export (Apple Silicon ou Intel)
+et <b>la même version de Python</b>, indiquée dans la fenêtre d'export et dans <code>README_INSTALL.md</code>
+(par exemple 3.13). Si elle manque : <code>brew install python@3.13</code> ou l'installeur de
+<a href="https://www.python.org/downloads/">python.org</a>.</p>
 <ol>
   <li>Double-clic sur le .zip pour l'extraire.</li>
-  <li><b>Double-cliquez sur <code>install.command</code></b> : installe les dépendances (une seule fois).</li>
+  <li><b>Double-cliquez sur <code>install.command</code></b> : trouve le bon Python, débloque le dossier et installe les dépendances (une seule fois).
+    S'il ne trouve pas le bon Python, il l'indique et dit comment l'installer ; relancez-le ensuite.</li>
   <li><b>Double-cliquez sur <code>1001pieces_autofill.app</code></b> : lance l'application.</li>
 </ol>
+<div class="note">Si l'application ne s'ouvre pas, lancez <code>1001pieces_autofill_console.command</code> :
+une fenêtre Terminal affiche le message d'erreur.</div>
 <div class="note">Aucune connexion internet n'est nécessaire sur le poste cible, ni sous Windows ni sous macOS.
 Chaque poste travaille ensuite sur <b>sa propre copie</b> de la base : les modifications ne se
 synchronisent pas entre postes.</div>

@@ -13,6 +13,7 @@ import json
 import os
 import sqlite3
 import stat
+import sys
 import zipfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -210,6 +211,141 @@ class TestPythonWindows:
         exp._write_readme_windows(tmp_path, '16/10/2026 12:00')
         texte = (tmp_path / 'LISEZMOI.txt').read_bytes().decode('utf-8')
         assert '1001pieces_autofill.bat' in texte and 'fichiers_test_import' in texte
+
+
+# ─── Cible macOS : install.command et lanceurs ───────────────────────────────
+
+def _lancer_install(dossier: Path, path_env: str):
+    """Exécute install.command (stdin fourni pour la pause de fin)."""
+    import subprocess
+    env = dict(os.environ, PATH=path_env)
+    return subprocess.run(['/bin/bash', str(dossier / 'install.command')],
+                          input='x', capture_output=True, text=True, env=env, timeout=300)
+
+
+class TestInstallMacos:
+
+    def test_version_et_architecture_imposees(self, exp, tmp_path):
+        with patch.object(exp, '_python_requis', return_value=('3.13', 'arm64')):
+            exp._write_install_script(tmp_path)
+        script = tmp_path / 'install.command'
+        texte = script.read_text(encoding='utf-8')
+        assert os.access(script, os.X_OK)
+        assert 'PY_REQUIS="3.13"' in texte and 'ARCH_REQUISE="arm64"' in texte
+        assert 'xattr -dr com.apple.quarantine' in texte
+        assert 'brew install python@$PY_REQUIS' in texte
+        # Plus de « python3 -m venv » : c'était le premier python3 venu
+        assert 'python3 -m venv' not in texte
+
+    def test_python_absent_message_explicite(self, exp, tmp_path):
+        """Aucun Python de la version demandée : erreur claire, pas de venv."""
+        _, arch = exp._python_requis()
+        with patch.object(exp, '_python_requis', return_value=('3.99', arch)):
+            exp._write_install_script(tmp_path)
+        res = _lancer_install(tmp_path, '/usr/bin:/bin')
+        assert res.returncode == 1
+        assert 'Python 3.99 est introuvable' in res.stdout
+        assert 'brew install python@3.99' in res.stdout
+        assert not (tmp_path / 'venv').exists()
+
+    def test_architecture_differente_message_explicite(self, exp, tmp_path):
+        with patch.object(exp, '_python_requis', return_value=('3.99', 'sparc')):
+            exp._write_install_script(tmp_path)
+        res = _lancer_install(tmp_path, '/usr/bin:/bin')
+        assert res.returncode == 1 and 'prévu pour un Mac sparc' in res.stdout
+
+    @pytest.mark.skipif(sys.platform != 'darwin', reason='install.command : macOS')
+    def test_bon_python_trouve_et_venv_cree(self, exp, tmp_path):
+        """Python de la bonne version trouvé par son nom python3.X, venv recréé."""
+        version, _ = exp._python_requis()
+        exp._write_install_script(tmp_path)
+        (tmp_path / 'wheels').mkdir()
+        (tmp_path / 'requirements_frozen.txt').write_text('', encoding='utf-8')
+        (tmp_path / 'venv').mkdir()
+        (tmp_path / 'venv' / 'reste_d_un_essai_rate').write_text('x')
+        bin_dir = tmp_path / 'bin'
+        bin_dir.mkdir()
+        (bin_dir / f'python{version}').symlink_to(sys.executable)
+        res = _lancer_install(tmp_path, f'{bin_dir}:/usr/bin:/bin')
+        assert f'Python trouvé : {bin_dir}/python{version}' in res.stdout, res.stdout + res.stderr
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert (tmp_path / 'venv' / 'bin' / 'python').exists()
+        assert not (tmp_path / 'venv' / 'reste_d_un_essai_rate').exists()
+
+    def test_lanceur_console(self, exp, tmp_path):
+        exp._write_console_launcher(tmp_path)
+        script = tmp_path / '1001pieces_autofill_console.command'
+        assert os.access(script, os.X_OK)
+        assert 'venv/bin/python run.py' in script.read_text(encoding='utf-8')
+        import subprocess
+        res = subprocess.run(['/bin/bash', str(script)], input='x',
+                             capture_output=True, text=True, timeout=30)
+        assert "install.command" in res.stdout
+
+    def test_lisezmoi_macos_version_exacte(self, exp, tmp_path):
+        with patch.object(exp, '_python_requis', return_value=('3.13', 'arm64')):
+            exp._write_readme(tmp_path, '29/10/2026 12:00')
+        texte = (tmp_path / 'README_INSTALL.md').read_text(encoding='utf-8')
+        assert 'Python 3.13** exactement' in texte and 'Apple Silicon' in texte
+        assert '3.10+' not in texte
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='osacompile / codesign : macOS')
+class TestLanceurAppMacos:
+
+    @staticmethod
+    def _script(app: Path) -> str:
+        import subprocess
+        return subprocess.run(['osadecompile', str(app / 'Contents/Resources/Scripts/main.scpt')],
+                              capture_output=True, text=True).stdout
+
+    def test_signature_valide_apres_icone(self, exp, tmp_path):
+        """L'icône injectée après osacompile ne doit plus casser le sceau."""
+        import subprocess
+        import shutil
+        shutil.copy2(RACINE / 'app_icon.png', tmp_path / 'app_icon.png')
+        assert exp._compile_app_launcher(tmp_path, use_venv=True)
+        app = tmp_path / '1001pieces_autofill.app'
+        verif = subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)],
+                               capture_output=True, text=True)
+        assert verif.returncode == 0, verif.stderr
+        script = self._script(app)
+        assert './venv/bin/python run.py' in script and 'source venv' not in script
+        assert "L'installation n'est pas faite" in script
+
+    def test_lanceur_source_sans_garde_venv(self, exp, tmp_path):
+        assert exp.create_source_launcher(tmp_path)
+        script = self._script(tmp_path / '1001pieces_autofill.app')
+        assert 'nohup python3 run.py' in script and 'venv' not in script
+
+    def test_signature_impossible_fait_echouer_l_export(self, exp, tmp_path):
+        def faux_snapshot(dest, progress_callback=None, db_path=None):
+            (dest / 'data').mkdir(parents=True, exist_ok=True)
+            (dest / 'data' / 'appareils.db').write_bytes(b'db')
+
+        with patch.object(exp, '_snapshot_database', side_effect=faux_snapshot), \
+                patch.object(exp, '_download_wheels', return_value=True), \
+                patch.object(exp, '_signer_bundle', return_value=False):
+            result = exp.create_export(tmp_path, cible='macos')
+        assert not result['success'] and 'signé' in result['error']
+        assert list(tmp_path.iterdir()) == []
+
+    def test_macos_de_bout_en_bout_sans_reseau(self, exp, tmp_path):
+        def faux_snapshot(dest, progress_callback=None, db_path=None):
+            (dest / 'data').mkdir(parents=True, exist_ok=True)
+            (dest / 'data' / 'appareils.db').write_bytes(b'db')
+
+        with patch.object(exp, '_snapshot_database', side_effect=faux_snapshot), \
+                patch.object(exp, '_download_wheels', return_value=True):
+            result = exp.create_export(tmp_path, cible='macos')
+        assert result['success'], result['error']
+        with zipfile.ZipFile(result['path']) as zf:
+            racines = {n.split('/')[1] for n in zf.namelist()}
+            for nom in ('install.command', '1001pieces_autofill_console.command'):
+                info = next(i for i in zf.infolist() if i.filename.endswith('/' + nom))
+                assert (info.external_attr >> 16) & stat.S_IXUSR
+        assert {'install.command', '1001pieces_autofill_console.command',
+                '1001pieces_autofill.app', 'README_INSTALL.md', 'run.py'} <= racines
 
 
 # ─── Archive et orchestration ────────────────────────────────────────────────
