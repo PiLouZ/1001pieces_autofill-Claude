@@ -5,13 +5,13 @@ Permet d'analyser les logs en temps réel et de diagnostiquer les problèmes
 
 import qtawesome as qta
 from .style_manager import StyleManager
-from .qt_imports import (
+from ..utils.qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QComboBox,
     QPushButton, QLabel, QSpinBox, QStackedWidget, QButtonGroup, QFrame, QWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
 )
-from .qt_imports import QTimer, Qt, QSize
-from .qt_imports import QFont, QColor
+from ..utils.qt_imports import QTimer, Qt, QSize
+from ..utils.qt_imports import QFont, QColor
 
 
 def _make_icon_toggle(btn, icon_name, icon_color):

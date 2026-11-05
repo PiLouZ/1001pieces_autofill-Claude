@@ -6,7 +6,7 @@ Groupe les modifications multiples d'un même appareil en une seule entrée
 from contextlib import nullcontext
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
-from ..ui.qt_imports import QTimer, QObject, pyqtSignal
+from ..utils.qt_imports import QTimer, QObject, pyqtSignal
 from ..core.logger import app_logger
 
 class GroupedHistoryService(QObject):

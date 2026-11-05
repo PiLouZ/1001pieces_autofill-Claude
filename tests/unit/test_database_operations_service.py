@@ -4,9 +4,8 @@ Validation des opérations CRUD sans régression
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-from PyQt5.QtWidgets import QMessageBox, QTableWidgetItem
-from PyQt5.QtCore import Qt
+from unittest.mock import Mock, patch
+from PyQt5.QtWidgets import QMessageBox
 
 from src.services.database_operations_service import DatabaseOperationsService
 
@@ -251,31 +250,6 @@ class TestDatabaseOperationsService:
         item.text.return_value = headers[col] if col < len(headers) else f'col_{col}'
         return item
 
-    def test_save_drag_changes_success(self, database_service):
-        """Test sauvegarde modifications drag & drop"""
-        drag_handle = Mock()
-        drag_handle.get_rows_to_save.return_value = [
-            {'id': 123, 'marque': 'Samsung', 'prix': '399.99'},
-            {'id': 124, 'stock': '10'}
-        ]
-
-        database_service.db_manager.update_multiple_cells_batch.return_value = True
-
-        success = database_service.save_drag_changes(drag_handle)
-
-        assert success
-        database_service.user_interaction_service.add_to_history.assert_called_once()
-
-    def test_save_drag_changes_invalid_handle(self, database_service):
-        """Test sauvegarde drag & drop avec handle invalide"""
-        success = database_service.save_drag_changes(None)
-        assert not success
-
-        invalid_handle = Mock()
-        del invalid_handle.get_rows_to_save  # Supprimer la méthode
-        success = database_service.save_drag_changes(invalid_handle)
-        assert not success
-
     def test_manual_save_cellules_modifiees_passe_par_le_batch(self, database_service):
         """Sauvegarde manuelle avec des cellules modifiées : délègue à save_cells_batch"""
         database_service.parent_window.modified_cells = {(0, 1)}
@@ -309,7 +283,7 @@ class TestDatabaseOperationsService:
         database_service.db_manager.delete_appareil.return_value = True
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
-            with patch.object(database_service, '_confirm_deletion', return_value=True):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: sur_oui()):
                 deleted_count = database_service.delete_selected_devices()
 
         # Vérifications
@@ -324,7 +298,7 @@ class TestDatabaseOperationsService:
         device_ids = [123, 124]
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
-            with patch.object(database_service, '_confirm_deletion', return_value=False):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: None):
                 deleted_count = database_service.delete_selected_devices()
 
         assert deleted_count == 0
@@ -346,7 +320,7 @@ class TestDatabaseOperationsService:
         database_service.db_manager.delete_appareil.side_effect = [True, False, True]
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
-            with patch.object(database_service, '_confirm_deletion', return_value=True):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: sur_oui()):
                 deleted_count = database_service.delete_selected_devices()
 
         assert deleted_count == 2  # 2 succès sur 3
@@ -378,44 +352,24 @@ class TestDatabaseOperationsService:
         return item
 
     def test_confirm_deletion_single(self, database_service):
-        """Test confirmation suppression simple"""
-        with patch('PyQt5.QtWidgets.QMessageBox.question', return_value=QMessageBox.Yes):
-            result = database_service._confirm_deletion(1)
-            assert result
-
-        with patch('PyQt5.QtWidgets.QMessageBox.question', return_value=QMessageBox.No):
-            result = database_service._confirm_deletion(1)
-            assert not result
+        """Confirmation simple : boîte Oui/Non non bloquante, sur_oui relayé"""
+        appels = []
+        with patch('src.services.database_operations_service.demander_oui_non',
+                   side_effect=lambda parent, titre, msg, sur_oui, defaut: appels.append((titre, msg, sur_oui))):
+            sur_oui = Mock()
+            assert database_service._confirm_deletion(1, sur_oui) is None   # rend la main
+        (titre, msg, relaye), = appels
+        assert titre == "Confirmer la suppression" and "cet appareil" in msg
+        assert relaye is sur_oui
 
     def test_confirm_deletion_multiple(self, database_service):
-        """Test confirmation suppression multiple"""
-        with patch('PyQt5.QtWidgets.QMessageBox.question', return_value=QMessageBox.Yes):
-            result = database_service._confirm_deletion(5)
-            assert result
-
-    def test_detect_data_inconsistencies(self, database_service):
-        """Test détection d'incohérences"""
-        # Mock des incohérences
-        database_service.db_manager.find_duplicate_references.return_value = ['REF001', 'REF002']
-        database_service.db_manager.find_invalid_prices.return_value = [123, 124]
-        database_service.db_manager.find_negative_stocks.return_value = [125]
-
-        inconsistencies = database_service.detect_data_inconsistencies()
-
-        assert len(inconsistencies) == 3
-        assert 'Références dupliquées' in inconsistencies[0]
-        assert 'Prix invalides' in inconsistencies[1]
-        assert 'Stocks négatifs' in inconsistencies[2]
-
-    def test_detect_data_inconsistencies_none(self, database_service):
-        """Test détection sans incohérences"""
-        database_service.db_manager.find_duplicate_references.return_value = []
-        database_service.db_manager.find_invalid_prices.return_value = []
-        database_service.db_manager.find_negative_stocks.return_value = []
-
-        inconsistencies = database_service.detect_data_inconsistencies()
-
-        assert len(inconsistencies) == 0
+        """Confirmation multiple : le nombre figure dans le message"""
+        appels = []
+        with patch('src.services.database_operations_service.demander_oui_non',
+                   side_effect=lambda parent, titre, msg, sur_oui, defaut: appels.append((titre, msg))):
+            database_service._confirm_deletion(5, Mock())
+        assert appels == [("Confirmer la suppression multiple",
+                           "Êtes-vous sûr de vouloir supprimer ces 5 appareils ?")]
 
     def test_update_save_indicators(self, database_service):
         """Test mise à jour indicateurs de sauvegarde"""
@@ -435,41 +389,6 @@ class TestDatabaseOperationsService:
 
         database_service.parent_window.save_indicator.setStyleSheet.assert_called_with("color: orange;")
         database_service.parent_window.save_indicator.setText.assert_called_with("● Non sauvegardé")
-
-    def test_execute_with_transaction_success(self, database_service):
-        """Test exécution avec transaction - succès"""
-        operations = [Mock(return_value=True), Mock(return_value=True), Mock(return_value=True)]
-
-        result = database_service.execute_with_transaction(operations)
-
-        assert result
-        for op in operations:
-            op.assert_called_once()
-        database_service.db_manager.begin_transaction.assert_called_once()
-        database_service.db_manager.commit_transaction.assert_called_once()
-
-    def test_execute_with_transaction_failure(self, database_service):
-        """Test exécution avec transaction - échec"""
-        operations = [Mock(return_value=True), Mock(return_value=False), Mock(return_value=True)]
-
-        result = database_service.execute_with_transaction(operations)
-
-        assert not result
-        database_service.db_manager.rollback_transaction.assert_called_once()
-        database_service.db_manager.commit_transaction.assert_not_called()
-
-    def test_execute_with_transaction_no_support(self, database_service):
-        """Test exécution sans support transactions"""
-        # Supprimer le support des transactions
-        del database_service.db_manager.begin_transaction
-
-        operations = [Mock(return_value=True), Mock(return_value=True)]
-
-        result = database_service.execute_with_transaction(operations)
-
-        assert result
-        for op in operations:
-            op.assert_called_once()
 
     def test_signal_emission(self, database_service):
         """Test émission des signaux"""
@@ -499,7 +418,7 @@ class TestDatabaseOperationsService:
         database_service.db_manager.delete_appareil.return_value = True
         database_service.db_manager.get_device_info.return_value = {'manufacturer': 'Test', 'type': 'Test'}
         with patch.object(database_service, '_get_selected_device_ids', return_value=[123]):
-            with patch.object(database_service, '_confirm_deletion', return_value=True):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: sur_oui()):
                 database_service.delete_selected_devices()
                 database_service.device_deleted.emit.assert_called_once_with([123])
 

@@ -17,7 +17,7 @@ nouvelle recherche met l'aperçu à jour (sans boîte de choix pendant la saisie
 import html
 from typing import Any, Dict, List, Optional
 
-from .qt_imports import (
+from ..utils.qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget,
     QListWidgetItem, QTabWidget, QTextBrowser, QPlainTextEdit, QSplitter, QWidget,
     QTimer, QEvent, Qt, QFont, QFontDatabase, QRect, QStyledItemDelegate, QStyleOptionViewItem
@@ -44,8 +44,8 @@ class SourceTitre:
     def defaut(self) -> str:
         return self.mw.export_config_service.get_default_titre_profile_name()
 
-    def contexte(self, interactif):
-        return self.mw.titre_produit_service.contexte(interactif=interactif)
+    def contexte(self, interactif, relancer=None):
+        return self.mw.titre_produit_service.contexte(interactif=interactif, relancer=relancer)
 
     def rendre(self, contexte, nom):
         return self.mw.titre_produit_service.rendre(contexte, nom)
@@ -63,8 +63,8 @@ class SourceFiche(SourceTitre):
     def defaut(self):
         return self.mw.export_config_service.get_default_fiche_profile_name()
 
-    def contexte(self, interactif):
-        return self.mw.fiche_produit_service.contexte(interactif=interactif)
+    def contexte(self, interactif, relancer=None):
+        return self.mw.fiche_produit_service.contexte(interactif=interactif, relancer=relancer)
 
     def rendre(self, contexte, nom):
         return self.mw.fiche_produit_service.rendre(contexte, nom)
@@ -82,7 +82,7 @@ class SourceHtmlDetails(SourceTitre):
     def defaut(self):
         return self.mw.export_config_service.get_default_details_profile_name()
 
-    def contexte(self, interactif):
+    def contexte(self, interactif, relancer=None):
         appareils = self.mw.export_manager.donnees_tableau()
         if not appareils:
             self.mw.seo_service.raison_refus = "Aucun appareil affiché dans le tableau"
@@ -283,7 +283,10 @@ class ApercuExportDialog(QDialog):
         """Relire la recherche en cours (contexte) et réafficher le gabarit choisi."""
         self.mw.seo_service.raison_refus = None
         try:
-            self._contexte = self.source.contexte(interactif)
+            # Choix de référence non bloquant : l'aperçu se recharge une fois choisie
+            relancer = (lambda: self.recharger(interactif=True)) if interactif else None
+            self._contexte = (self.source.contexte(interactif, relancer=relancer) if relancer
+                              else self.source.contexte(interactif))
         except Exception as e:
             app_logger.error(f"Aperçu d'export : lecture de la recherche échouée : {e}", exc_info=True)
             self._contexte = None

@@ -204,6 +204,104 @@ class StyleManager:
     # changerait de taille en s'activant.
     EXPORT_BTN_DISABLED_RULES = "background: #f1f3f5; color: #adb5bd;"
 
+    # ── Boutons d'export de la barre (CSV, Méta, HTML, Titre, Fiche) ──────────
+    # Couleurs (fond, survol[, appui]) des boutons à fond plein.
+    COULEURS_EXPORT_CSV = ("#134c4d", "#11403f")
+    COULEURS_META_TITLE = ("#fd7e14", "#e5711f")
+    COULEURS_META_DESC = ("#ffc107", "#e5a801")
+    COULEURS_TITRE = ("#6f42c1", "#5e37a6", "#512f8f")    # violet
+    COULEURS_FICHE = ("#0b5ed7", "#0a53be", "#094ba8")    # bleu
+
+    @staticmethod
+    def bouton_export_plein(fond: str, survol: str) -> str:
+        """QPushButton à fond coloré plein, texte blanc gras (CSV, Méta Title, Méta Desc)."""
+        return f"""
+            QPushButton {{
+                background-color: {fond};
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {survol};
+            }}
+            QPushButton:disabled {{ {StyleManager.EXPORT_BTN_DISABLED_RULES} }}
+        """
+
+    @staticmethod
+    def bouton_split_plein(fond: str, survol: str, appui: str) -> str:
+        """QToolButton à menu (MenuButtonPopup), fond coloré plein et flèche de menu
+        blanche — la noire par défaut ne se lit pas sur fond coloré (Titre, Fiche)."""
+        fleche = icon_png_path('fa5s.caret-down', 'white', 10)
+        regle_fleche = f"image: url({fleche}); width: 10px; height: 10px;" if fleche else ""
+        return f"""
+            QToolButton {{
+                background-color: {fond};
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 12px;
+            }}
+            QToolButton:hover {{
+                background-color: {survol};
+            }}
+            QToolButton:pressed {{
+                background-color: {appui};
+            }}
+            QToolButton:disabled {{
+                {StyleManager.EXPORT_BTN_DISABLED_RULES}
+            }}
+            QToolButton::menu-button {{
+                border: none;
+                border-left: 1px solid rgba(255, 255, 255, 0.35);
+                width: 30px;
+            }}
+            QToolButton::menu-arrow {{
+                {regle_fleche}
+            }}
+        """
+
+    # QToolButton à menu, fond blanc aligné sur le QPushButton global (HTML Détails).
+    BOUTON_SPLIT_NEUTRE = f"""
+            QToolButton {{
+                background: white;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-weight: 500;
+                color: #343a40;
+            }}
+            QToolButton:hover {{
+                background: #f1f3f5;
+                border-color: #adb5bd;
+                color: #212529;
+            }}
+            QToolButton:pressed {{
+                background: #e9ecef;
+                border-color: #6c757d;
+            }}
+            QToolButton:disabled {{
+                {EXPORT_BTN_DISABLED_RULES}
+            }}
+            QToolButton::menu-button {{
+                /* Mode MenuButtonPopup : la flèche est centrée dans cette zone
+                   (::menu-indicator est ignoré dans ce mode). Élargir la zone
+                   éloigne la flèche du bord droit → aération. */
+                border: none;
+                width: 30px;
+            }}
+        """
+
+    # Gabarit explicite, aligné sur CSV / Méta (8 × 12 px) : le style global des
+    # boutons est plus compact (HTML Marques).
+    BOUTON_EXPORT_NEUTRE = (
+        "QPushButton { padding: 8px 12px; font-weight: 500; }"
+        f"QPushButton:disabled {{ {EXPORT_BTN_DISABLED_RULES} }}"
+    )
+
     # Bouton « effacer les filtres » (icône ✕ qtawesome) : gris neutre au repos
     # (vider des champs n'est pas une action destructrice), rouge pâle au survol.
     CLEAR_FILTERS_BUTTON = (

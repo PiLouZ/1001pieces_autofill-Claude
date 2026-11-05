@@ -118,7 +118,7 @@ class TestChangerDossier:
         nouveau.mkdir()
         changer = manager._destination_export(ExportFormat.CSV)['changer']
 
-        with patch('src.ui.qt_imports.QFileDialog.getExistingDirectory',
+        with patch('src.utils.qt_imports.QFileDialog.getExistingDirectory',
                    return_value=str(nouveau)):
             retour = changer()
 
@@ -129,7 +129,7 @@ class TestChangerDossier:
         avant = config_service.get_output_dir()
         changer = manager._destination_export(ExportFormat.CSV)['changer']
 
-        with patch('src.ui.qt_imports.QFileDialog.getExistingDirectory', return_value=''):
+        with patch('src.utils.qt_imports.QFileDialog.getExistingDirectory', return_value=''):
             assert changer() is None
 
         assert config_service.get_output_dir() == avant

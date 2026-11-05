@@ -194,8 +194,9 @@ class FenetreRevue(QDialog):
         return None
 
     def _corriger(self, item, colonne=None):
-        """Correction de la ligne (Entrée, double-clic). Renvoie True si modifiée."""
-        return False
+        """Correction de la ligne (Entrée, double-clic). Ouvre un sélecteur non
+        bloquant ; la sous-classe appelle _apres_correction(item) une fois la
+        valeur posée (jamais de retour synchrone : pas d'exec_)."""
 
     def _appliquer(self, valides, refuses):
         """Remet les décisions à la fenêtre principale (listes d'items)."""
@@ -518,14 +519,12 @@ class FenetreRevue(QDialog):
 
     def _on_double_clic(self, item, colonne):
         if item.data(COL_ETAT, ROLE_FEUILLE) and colonne != COL_ETAT:
-            if self._corriger(item, colonne):
-                self._apres_correction(item)
+            self._corriger(item, colonne)
 
     def _corriger_courante(self):
         item = self._arbre.currentItem()
         if item is not None and item.data(COL_ETAT, ROLE_FEUILLE):
-            if self._corriger(item, None):
-                self._apres_correction(item)
+            self._corriger(item, None)
 
     def _apres_correction(self, item):
         """Une ligne corrigée est validée (le geste de correction vaut décision)."""

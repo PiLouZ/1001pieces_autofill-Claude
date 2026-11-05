@@ -21,7 +21,7 @@ import copy
 from typing import Callable, List, Optional
 
 import qtawesome as qta
-from .qt_imports import (
+from ..utils.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget,
     QListWidgetItem, QMenu, QMessageBox, QAbstractItemView, QStyledItemDelegate,
     QStyleOptionViewItem, QEvent, Qt, QSize, QRect, QFont
@@ -29,6 +29,7 @@ from .qt_imports import (
 from .style_manager import StyleManager
 from .apercu_export_dialog import DelegueNomsReplies
 from src.utils.text_utils import cle_tri_naturel, strip_accents
+from ..utils.boites import demander_oui_non
 
 
 # Mots des messages selon le genre de gabarit : (nom, titre de la liste, féminin)
@@ -447,17 +448,18 @@ class ColonneVariantes(QWidget):
                                 f"Au moins {'une' if self._feminin else 'un'} {self._nom} doit exister.")
             return
         nom = self._courant
-        if QMessageBox.question(
-            self, f"Supprimer {self._le()}", f"Supprimer {self._le()} « {nom} » ?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        ) != QMessageBox.Yes:
-            return
-        self._profiles = [p for p in self._profiles if p['name'] != nom]
-        if self._defaut == nom:
-            self._defaut = self._profiles[0]['name']
-        self._courant = self._defaut
-        self._remplir(self._courant)
-        self._afficher_courant()
+
+        def _supprimer():
+            # Rappel à la confirmation (boîte modale non bloquante)
+            self._profiles = [p for p in self._profiles if p['name'] != nom]
+            if self._defaut == nom:
+                self._defaut = self._profiles[0]['name']
+            self._courant = self._defaut
+            self._remplir(self._courant)
+            self._afficher_courant()
+
+        demander_oui_non(self, f"Supprimer {self._le()}", f"Supprimer {self._le()} « {nom} » ?",
+                         _supprimer, defaut=QMessageBox.No)
 
     def definir_defaut(self):
         self._defaut = self._courant

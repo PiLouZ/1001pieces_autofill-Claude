@@ -141,8 +141,9 @@ class AutocompletionReviewDialog(FenetreRevue):
 
     def __init__(self, parent, entrees, on_validate, value_picker=None,
                  on_refuse=None, preuves=None):
-        """value_picker(db_field, current_value, candidates) -> str|dict|None : la
-        fenêtre Cmd+D. preuves(entrée) -> {'nb_pieces', 'paires'} : vote des
+        """value_picker(db_field, current_value, candidates, sur_resultat) : ouvre la
+        fenêtre Cmd+D (non bloquante) et appelle sur_resultat(str|dict) à la
+        validation. preuves(entrée) -> {'nb_pieces', 'paires'} : vote des
         pièces de l'appareil. Tous deux optionnels (tests sans service)."""
         self._on_validate = on_validate
         self._on_refuse = on_refuse
@@ -277,15 +278,18 @@ class AutocompletionReviewDialog(FenetreRevue):
         colonne = COL_TYPE if colonne is None else colonne
         champ = _CHAMP_PAR_COLONNE.get(colonne)
         if self._value_picker is None or champ is None:
-            return False
-        resultat = self._value_picker(champ, item.text(colonne), [])
-        if isinstance(resultat, dict):
-            resultat = resultat.get(champ) or ''
-        resultat = (resultat or '').strip()
-        if not resultat:
-            return False
-        self._poser_valeur(item, colonne, resultat)
-        return True
+            return
+
+        def _sur_resultat(resultat):
+            if isinstance(resultat, dict):
+                resultat = resultat.get(champ) or ''
+            resultat = (resultat or '').strip()
+            if not resultat:
+                return
+            self._poser_valeur(item, colonne, resultat)
+            self._apres_correction(item)
+
+        self._value_picker(champ, item.text(colonne), [], _sur_resultat)
 
     def _poser_valeur(self, item, colonne, valeur):
         champ = _CHAMP_PAR_COLONNE[colonne]

@@ -13,7 +13,7 @@ diffèrent : tous ceux qui pèsent à peu près autant que le premier sont cité
 
 from typing import Any, Dict, Optional, Tuple
 
-from .qt_imports import QApplication
+from ..utils.qt_imports import QApplication
 
 from src.core.logger import app_logger
 from src.utils.titre_produit_generator import TitreProduitGenerator
@@ -55,10 +55,12 @@ class TitreProduitService:
 
     # ─── Contexte / rendu / copie (bouton et aperçu d'export) ───────────────
 
-    def contexte(self, interactif: bool = True) -> Optional[Dict[str, Any]]:
-        """Données de la fiche recherchée, préparées une fois pour tous les gabarits."""
+    def contexte(self, interactif: bool = True, relancer=None) -> Optional[Dict[str, Any]]:
+        """Données de la fiche recherchée, préparées une fois pour tous les gabarits.
+        relancer : rappelé une fois la référence choisie (recherche multi-références)."""
         preparees = self.main_window.seo_service.preparer_donnees_fiche(
-            "titre", "Référence pour le titre de fiche", interactif=interactif)
+            "titre", "Référence pour le titre de fiche", interactif=interactif,
+            relancer=relancer)
         if not preparees:
             return None
         donnees, ref_obsolete = preparees
@@ -102,6 +104,6 @@ class TitreProduitService:
         self.main_window.statusbar.showMessage(status, 4000)
 
     def _generer_titre(self, profile_name: Optional[str]) -> None:
-        contexte = self.contexte()
+        contexte = self.contexte(relancer=lambda: self.generer_titre(profile_name))
         if contexte:
             self.copier(contexte, profile_name)

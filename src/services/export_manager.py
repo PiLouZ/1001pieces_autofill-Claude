@@ -18,11 +18,10 @@ Responsabilités consolidées :
 import csv
 import os
 from typing import Dict, Any, Optional, List, Union, Tuple
-from ..ui.qt_imports import QApplication, QMessageBox
+from ..utils.qt_imports import QApplication
 from enum import Enum
 
 from ..core.logger import app_logger
-from ..core.config import Config
 # PHASE 6 CONSOLIDATION - Communication directe avec HtmlExportService
 from ..core.constants import ExportFormat
 from .html_export_service import HtmlExportService
@@ -53,7 +52,6 @@ class ExportManagerService:
     def __init__(self, main_window):
         self.main_window = main_window
         # PHASE 6 CONSOLIDATION - Service HTML direct, pas de couche intermédiaire
-        self._last_export_info = None  # Alimenté par l'export HTML, lu par _show_export_status()
     
         
     # ===== INTERFACE PUBLIQUE UNIFIÉE =====
@@ -193,7 +191,7 @@ class ExportManagerService:
             )
         else:
             # Fallback avec QInputDialog
-            from ..ui.qt_imports import QInputDialog
+            from ..utils.qt_imports import QInputDialog
             selected_reference, ok = QInputDialog.getText(
                 self.main_window, title, message, text=default_reference
             )
@@ -238,7 +236,7 @@ class ExportManagerService:
 
         def changer_dossier():
             """Ouvrir le sélecteur et mémoriser le choix dans la configuration."""
-            from ..ui.qt_imports import QFileDialog
+            from ..utils.qt_imports import QFileDialog
             choisi = QFileDialog.getExistingDirectory(
                 self.main_window,
                 "Choisir le dossier de destination des exports",
@@ -390,14 +388,6 @@ class ExportManagerService:
             result = HtmlExportService.generate_html_brands(data)
         elif export_format == ExportFormat.HTML_DETAILS:
             result = HtmlExportService.generate_html_details(data, profile_name=profile_name)
-            # Conserver les infos d'export pour compatibilité
-            char_count = HtmlExportService.count_non_html_chars(result)
-            self._last_export_info = {
-                'format_used': 'optimisé',
-                'char_count': char_count,
-                'char_limit': HtmlExportService.CHAR_LIMIT,
-                'description': 'Format optimisé automatiquement'
-            }
         else:
             raise ValueError(f"Format d'export HTML non supporté: {export_format}")
 
@@ -505,7 +495,7 @@ class ExportManagerService:
     
     def _get_active_column_filters(self) -> Dict[int, str]:
         """Récupérer les filtres de colonnes actifs"""
-        from ..ui.qt_imports import QComboBox
+        from ..utils.qt_imports import QComboBox
         
         column_filters = {}
         
@@ -523,27 +513,6 @@ class ExportManagerService:
                         column_filters[col_idx] = filter_text
         
         return column_filters
-    
-    def _show_export_status(self, export_format: ExportFormat, result: str) -> None:
-        """Afficher le statut d'export"""
-        if export_format == ExportFormat.HTML_DETAILS:
-            export_info = self._last_export_info
-            if export_info:
-                format_msg = (f"Export HTML copié ({export_info['description']}) - "
-                             f"{export_info['char_count']:,} caractères")
-                if export_info['format_used'] != 'complet':
-                    format_msg += f" (limite: {export_info['char_limit']:,})"
-                self.main_window.statusbar.showMessage(
-                    format_msg, Config.LONG_STATUS_MESSAGE_TIMEOUT * 2
-                )
-            else:
-                self.main_window.statusbar.showMessage(
-                    Config.get_message('data_copied'), Config.STATUS_MESSAGE_TIMEOUT
-                )
-        else:
-            self.main_window.statusbar.showMessage(
-                Config.get_message('data_copied'), Config.STATUS_MESSAGE_TIMEOUT
-            )
     
     def _add_to_history(self, message: str) -> None:
         """Ajouter un message à l'historique"""

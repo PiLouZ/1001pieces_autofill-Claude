@@ -3,14 +3,15 @@ Service centralisé pour les opérations de base de données CRUD
 Extrait de main_refactored.py pour centraliser la logique métier critique
 """
 
-from typing import Optional, Dict, List, Any, Tuple, Callable
-from ..ui.qt_imports import QMessageBox
-from ..ui.qt_imports import pyqtSignal, Qt
+from typing import Optional, Dict, List, Tuple
+from ..utils.qt_imports import QMessageBox
+from ..utils.qt_imports import pyqtSignal, Qt
 
-from ..core.config import Config, pluralize
+from ..core.config import pluralize
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 from ..utils.error_handler import handle_database_operation_errors
+from ..utils.boites import demander_oui_non
 
 class DatabaseOperationsService(BaseService):
     """Service centralisé pour les opérations CRUD de base de données"""
@@ -100,7 +101,7 @@ class DatabaseOperationsService(BaseService):
                 self.parent_window.duplicate_indicator_service.invalidate_cache("nouvel appareil ajouté")
 
             # Utiliser un appel différé pour éviter les problèmes de synchronisation
-            from ..ui.qt_imports import QTimer
+            from ..utils.qt_imports import QTimer
             def update_incomplete_button():
                 if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
                     self.parent_window._update_incomplete_button_visibility()
@@ -205,7 +206,7 @@ class DatabaseOperationsService(BaseService):
             self.data_saved.emit(cells_saved)
 
             # Mettre à jour le bouton lignes incomplètes après sauvegarde batch
-            from ..ui.qt_imports import QTimer
+            from ..utils.qt_imports import QTimer
             def update_incomplete_button_after_batch():
                 if hasattr(self.parent_window, 'incomplete_button_service'):
                     self.parent_window.incomplete_button_service.invalidate_cache("sauvegarde batch")
@@ -220,46 +221,6 @@ class DatabaseOperationsService(BaseService):
             if self.user_interaction_service:
                 self.user_interaction_service.show_error("Erreur lors de la sauvegarde")
             return False
-
-    def save_drag_changes(self, drag_handle) -> bool:
-        """Sauvegarder les modifications issues d'un drag & drop"""
-        return self._safe_save_drag_changes(drag_handle)
-
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur sauvegarde drag & drop")
-    def _safe_save_drag_changes(self, drag_handle) -> bool:
-        """Version sécurisée de save_drag_changes"""
-        if not drag_handle or not hasattr(drag_handle, 'get_rows_to_save'):
-            app_logger.warning("Drag handle invalide")
-            return False
-
-        # Récupérer les lignes à sauvegarder
-        rows_to_save = drag_handle.get_rows_to_save()
-        if not rows_to_save:
-            return True
-
-        # Préparer les mises à jour
-        updates_by_db_id = {}
-        for row_data in rows_to_save:
-            db_id = row_data.get('id')
-            if db_id:
-                updates_by_db_id[db_id] = {
-                    col: value for col, value in row_data.items()
-                    if col != 'id' and value is not None
-                }
-
-        # Utiliser la sauvegarde batch
-        success = self.save_cells_batch(updates_by_db_id)
-
-        if success:
-            app_logger.info(f"Modifications drag & drop sauvegardées: {len(rows_to_save)} lignes")
-
-            # Ajouter à l'historique
-            if self.user_interaction_service:
-                self.user_interaction_service.add_to_history(
-                    f"Modification par glisser-déposer: {len(rows_to_save)} appareils"
-                )
-
-        return success
 
     def manual_save(self) -> bool:
         """Effectuer une sauvegarde manuelle"""
@@ -429,10 +390,17 @@ class DatabaseOperationsService(BaseService):
         if not device_ids:
             return 0
 
-        # Demander confirmation
-        if not self._confirm_deletion(len(device_ids)):
-            return 0
+        # Confirmation non bloquante (jamais de boucle imbriquée) : la suppression
+        # se fait dans le rappel. Le nombre supprimé est renvoyé si la réponse est
+        # immédiate, 0 sinon (l'unique appelant, _delete_selected_rows, l'ignore).
+        resultat = []
+        self._confirm_deletion(len(device_ids),
+                               lambda: resultat.append(self._supprimer_appareils(device_ids)))
+        return resultat[0] if resultat else 0
 
+    @handle_database_operation_errors(return_value=0, log_prefix="Erreur suppression appareils")
+    def _supprimer_appareils(self, device_ids: List[int]) -> int:
+        """Supprimer les appareils (après confirmation) ; renvoie le nombre supprimé."""
         # Récupérer les infos avant suppression (pour historique)
         devices_info = []
         for device_id in device_ids:
@@ -466,7 +434,7 @@ class DatabaseOperationsService(BaseService):
                 self.parent_window.incomplete_button_service._cache_valid = False
 
             # Utiliser un appel différé pour éviter les problèmes de synchronisation
-            from ..ui.qt_imports import QTimer
+            from ..utils.qt_imports import QTimer
             def update_incomplete_button():
                 if hasattr(self.parent_window, '_update_incomplete_button_visibility'):
                     self.parent_window._update_incomplete_button_visibility()
@@ -583,38 +551,6 @@ class DatabaseOperationsService(BaseService):
                 return "Le stock ne peut pas dépasser 99 999"
         return None
 
-    def detect_data_inconsistencies(self) -> List[str]:
-        """Détecter les incohérences dans les données"""
-        return self._safe_detect_data_inconsistencies()
-
-    @handle_database_operation_errors(return_value=["Erreur de détection"], log_prefix="Erreur détection incohérences")
-    def _safe_detect_data_inconsistencies(self) -> List[str]:
-        """Version sécurisée de detect_data_inconsistencies"""
-        inconsistencies = []
-
-        if not self.db_manager:
-            return inconsistencies
-
-        # Vérifier les références dupliquées
-        duplicates = self.db_manager.find_duplicate_references()
-        if duplicates:
-            inconsistencies.append(f"Références dupliquées détectées: {len(duplicates)}")
-
-        # Vérifier les prix incohérents
-        invalid_prices = self.db_manager.find_invalid_prices()
-        if invalid_prices:
-            inconsistencies.append(f"Prix invalides détectés: {len(invalid_prices)}")
-
-        # Vérifier les stocks négatifs
-        negative_stocks = self.db_manager.find_negative_stocks()
-        if negative_stocks:
-            inconsistencies.append(f"Stocks négatifs détectés: {len(negative_stocks)}")
-
-        if inconsistencies:
-            app_logger.warning(f"Incohérences détectées: {inconsistencies}")
-
-        return inconsistencies
-
     # ================================
     # MÉTHODES PRIVÉES/UTILITAIRES
     # ================================
@@ -714,12 +650,13 @@ class DatabaseOperationsService(BaseService):
         # Utiliser la méthode existante qui connaît la structure de données
         return self.parent_window.table_fill_service.get_db_id_from_row(table, row)
 
-    def _confirm_deletion(self, count: int) -> bool:
-        """Demander confirmation pour la suppression"""
-        return self._safe_confirm_deletion(count)
+    def _confirm_deletion(self, count: int, sur_oui) -> None:
+        """Demander confirmation pour la suppression ; sur_oui est appelé si Oui
+        (boîte modale non bloquante)."""
+        return self._safe_confirm_deletion(count, sur_oui)
 
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur dialogue confirmation")
-    def _safe_confirm_deletion(self, count: int) -> bool:
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur dialogue confirmation")
+    def _safe_confirm_deletion(self, count: int, sur_oui) -> None:
         """Version sécurisée de _confirm_deletion"""
         if count == 1:
             message = "Êtes-vous sûr de vouloir supprimer cet appareil ?"
@@ -728,15 +665,7 @@ class DatabaseOperationsService(BaseService):
             message = f"Êtes-vous sûr de vouloir supprimer ces {count} appareils ?"
             title = "Confirmer la suppression multiple"
 
-        reply = QMessageBox.question(
-            self.parent_window,
-            title,
-            message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-
-        return reply == QMessageBox.Yes
+        demander_oui_non(self.parent_window, title, message, sur_oui, defaut=QMessageBox.No)
 
     def _update_save_indicators(self, saved: bool):
         """Mettre à jour les indicateurs de sauvegarde"""
@@ -762,37 +691,3 @@ class DatabaseOperationsService(BaseService):
     # ================================
     # TRANSACTIONS
     # ================================
-
-    def execute_with_transaction(self, operations: List[Callable]) -> bool:
-        """Exécuter plusieurs opérations dans une transaction"""
-        return self._safe_execute_with_transaction(operations)
-
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur gestion transaction")
-    def _safe_execute_with_transaction(self, operations: List[Callable]) -> bool:
-        """Version sécurisée de execute_with_transaction"""
-        if not self.db_manager or not hasattr(self.db_manager, 'begin_transaction'):
-            app_logger.warning("Transactions non supportées, exécution séquentielle")
-            # Fallback: exécution séquentielle sans transaction
-            for operation in operations:
-                if not operation():
-                    return False
-            return True
-
-        # Début de transaction
-        self.db_manager.begin_transaction()
-
-        # Exécuter les opérations avec gestion d'erreur séparée
-        return self._safe_execute_transaction_operations(operations)
-
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur exécution transaction")
-    def _safe_execute_transaction_operations(self, operations: List[Callable]) -> bool:
-        """Exécuter les opérations de transaction avec rollback automatique"""
-        # Exécuter toutes les opérations (le décorateur gère les exceptions)
-        for operation in operations:
-            if not operation():
-                self.db_manager.rollback_transaction()
-                return False
-
-        # Confirmer la transaction
-        self.db_manager.commit_transaction()
-        return True

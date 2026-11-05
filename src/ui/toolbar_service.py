@@ -9,9 +9,9 @@ Responsabilités:
 """
 
 import qtawesome as qta
-from .qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy, QHBoxLayout
-from .qt_imports import QSize, Qt
-from .qt_imports import QKeySequence
+from ..utils.qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy
+from ..utils.qt_imports import QSize, Qt
+from ..utils.qt_imports import QKeySequence
 from .style_manager import StyleManager
 
 class ToolbarService:
@@ -164,7 +164,7 @@ class ToolbarService:
         display_menu.addAction(search_top_action)
 
         # Hauteur des lignes du tableau — choix exclusif, mémorisé
-        from .qt_imports import QActionGroup
+        from ..utils.qt_imports import QActionGroup
         from ..core.constants import UIConfig
         row_height_menu = display_menu.addMenu("Hauteur des lignes")
         _key = UIConfig.DEFAULT_ROW_HEIGHT
@@ -266,7 +266,7 @@ class ToolbarService:
     
     def _configure_paste_cleanup(self):
         """Configurer le service de nettoyage du collage"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton, QSize
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton, QSize
         
         class PasteConfigDialog(QDialog):
             def __init__(self, parent=None):
@@ -364,7 +364,7 @@ class ToolbarService:
                 
             def clear_memory(self):
                 self.parent().paste_cleanup_service.clear_memory()
-                from .qt_imports import QMessageBox
+                from ..utils.qt_imports import QMessageBox
                 QMessageBox.information(self, "Mémoire effacée", "Tous les choix mémorisés ont été supprimés.")
                 
             def get_config(self):
@@ -383,12 +383,15 @@ class ToolbarService:
         
         # Afficher le dialogue
         dialog = PasteConfigDialog(self.main_window)
-        if dialog.exec_() == QDialog.Accepted:
+
+        def _appliquer():
             config = dialog.get_config()
-            
-            # Appliquer la configuration
             self.main_window.paste_cleanup_service.configure_defaults(
                 config['default_replacement'],
                 config['ask_confirmation'],
                 config['remember_choice']
             )
+
+        # Modal sans boucle imbriquée (jamais exec_)
+        from ..utils.ouverture_modale import ouvrir_modal
+        ouvrir_modal(dialog, sur_accepte=_appliquer)

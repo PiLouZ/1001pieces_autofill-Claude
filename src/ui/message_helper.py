@@ -3,8 +3,9 @@
 Élimine la duplication des 39 occurrences de QMessageBox dans le projet
 """
 
-from typing import Optional, Union
-from .qt_imports import QMessageBox, QWidget
+from typing import Optional
+from ..utils.qt_imports import QMessageBox, QWidget
+from ..utils.ouverture_modale import ouvrir_modal
 
 class MessageType:
     """Types de messages standardisés"""
@@ -41,32 +42,21 @@ class MessageHelper:
         QMessageBox.critical(parent, title, message)
     
     @staticmethod
-    def ask_question(parent: Optional[QWidget], message: str, title: str = MessageType.QUESTION) -> bool:
-        """
-        Poser une question oui/non
-        Returns: True si l'utilisateur clique sur Yes/Oui
-        """
-        reply = QMessageBox.question(
-            parent, title, message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        return reply == QMessageBox.Yes
-    
-    @staticmethod
     def show_detailed_error(
         parent: Optional[QWidget], 
         message: str, 
         details: str, 
         title: str = MessageType.ERROR
     ) -> None:
-        """Afficher une erreur avec détails techniques"""
+        """Afficher une erreur avec détails techniques — modale, mais non bloquante
+        pour l'appelant (jamais exec_) : handle_errors renvoie sa valeur de repli
+        sans attendre la fermeture, comme il le faisait déjà après exec_()."""
         msg_box = QMessageBox(parent)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.setDetailedText(details)
         msg_box.setIcon(QMessageBox.Critical)
-        msg_box.exec_()
+        ouvrir_modal(msg_box)
 
 class CommonMessages:
     """Messages couramment utilisés dans l'application"""
@@ -107,7 +97,3 @@ def show_error(parent: Optional[QWidget], message: str, details: str = None) -> 
         MessageHelper.show_detailed_error(parent, message, details)
     else:
         MessageHelper.show_error(parent, message)
-
-def ask_confirmation(parent: Optional[QWidget], message: str = CommonMessages.CONFIRM_DELETE) -> bool:
-    """Raccourci pour demander une confirmation"""
-    return MessageHelper.ask_question(parent, message)

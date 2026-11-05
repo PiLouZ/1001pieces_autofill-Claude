@@ -9,7 +9,7 @@ en mémoire, le bandeau n'étant caché qu'après le remplissage, sans relance.
 
 from unittest.mock import Mock
 
-from src.ui.qt_imports import Qt
+from src.utils.qt_imports import Qt
 from src.ui.table_controller import TableController
 
 

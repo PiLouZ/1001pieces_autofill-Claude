@@ -4,7 +4,6 @@
 """
 
 from pathlib import Path
-from typing import Dict, Any
 from enum import Enum
 
 class ExportFormat(Enum):
@@ -27,24 +26,6 @@ class ExportFormat(Enum):
     def lowercase(self) -> str:
         """Retourner la valeur en minuscules (compatibilité data_exporter)"""
         return self.value.lower()
-
-class ExportError(Exception):
-    """Exception pour les erreurs d'export - CENTRALISÉE"""
-    pass
-
-class FileExtensions:
-    """Extensions de fichiers standardisées"""
-    CSV_EXPORT = "_everyParts.csv"
-    CSV_SIMPLE = ".csv"
-    HTML_EXPORT = ".html"
-    EXCEL_EXPORT = ".xlsx"
-    JSON_EXPORT = ".json"
-    XML_EXPORT = ".xml"
-    PDF_EXPORT = ".pdf"
-    
-    # Extensions supportées pour l'import
-    IMPORT_EXTENSIONS = [CSV_SIMPLE, EXCEL_EXPORT, JSON_EXPORT]
-    EXPORT_EXTENSIONS = [CSV_EXPORT, HTML_EXPORT, EXCEL_EXPORT, JSON_EXPORT, XML_EXPORT]
 
 class DatabaseConfig:
     """Configuration de base de données"""
@@ -180,53 +161,6 @@ class Messages:
     PROCESSING = "Traitement en cours..."
     LOADING = "Chargement..."
     SEARCHING = "Recherche en cours..."
-
-class SearchConfig:
-    """Configuration des fonctionnalités de recherche"""
-    MAX_RESULTS = 1000
-    MIN_SEARCH_LENGTH = 2
-    SEARCH_DELAY_MS = 300  # Délai avant recherche automatique
-    
-    # Types de recherche
-    SEARCH_EXACT = "exact"
-    SEARCH_PARTIAL = "partial" 
-    SEARCH_REGEX = "regex"
-    SEARCH_FUZZY = "fuzzy"
-    
-    # Champs searchables
-    SEARCHABLE_FIELDS = [
-        DatabaseConfig.COLUMN_REFERENCE,
-        DatabaseConfig.COLUMN_DESIGNATION, 
-        DatabaseConfig.COLUMN_MARQUE,
-        DatabaseConfig.COLUMN_MODELE,
-        DatabaseConfig.COLUMN_CATEGORY,
-        DatabaseConfig.COLUMN_NOTES
-    ]
-
-class ValidationRules:
-    """Règles de validation des données"""
-    
-    # Longueurs maximales
-    MAX_REFERENCE_LENGTH = 50
-    MAX_DESIGNATION_LENGTH = 200
-    MAX_MARQUE_LENGTH = 100
-    MAX_MODELE_LENGTH = 100
-    MAX_CATEGORY_LENGTH = 50
-    MAX_NOTES_LENGTH = 1000
-    
-    # Règles de prix
-    MIN_PRICE = 0.01
-    MAX_PRICE = 999999.99
-    PRICE_DECIMAL_PLACES = 2
-    
-    # Règles de stock
-    MIN_STOCK = 0
-    MAX_STOCK = 99999
-    
-    # Expressions régulières
-    REGEX_REFERENCE = r"^[A-Z0-9_-]+$"
-    REGEX_EMAIL = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    REGEX_PHONE = r"^(\+33|0)[1-9](\d{8})$"
 
 class Paths:
     """Chemins et répertoires de l'application"""

@@ -3,21 +3,31 @@ Fenêtre de prévisualisation du nettoyage des doublons - Version refactorisée
 Utilise les services DuplicatesAnalysisService et CleanupUIService
 """
 
-from .qt_imports import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QStackedWidget, QButtonGroup, QFrame, QWidget, QMessageBox, QProgressBar, QSizePolicy, QSize
+from ..utils.qt_imports import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QButtonGroup,
+    QFrame,
+    QWidget,
+    QProgressBar,
+    QSizePolicy,
+    QSize
 )
-from .qt_imports import Qt, QTimer
+from ..utils.qt_imports import Qt, QTimer
 import qtawesome as qta
 
 from ..core.logger import app_logger
 from .style_manager import StyleManager
 from ..data.database_manager import DatabaseManager
-from ..data.data_validator import DataValidator
 from ..services.duplicates_analysis_service import DuplicatesAnalysisService
 from ..services.cleanup_ui_service import CleanupUIService
-from .message_helper import show_success, show_error, MessageHelper
+from .message_helper import show_error, MessageHelper
 from ..utils.error_handler import handle_cleanup_preview_errors
+from ..utils.boites import demander_oui_non
 
 class CleanupPreviewDialog(QDialog):
     """Fenêtre de prévisualisation du nettoyage des doublons - Version refactorisée"""
@@ -486,7 +496,7 @@ class CleanupPreviewDialog(QDialog):
         preview_text += "Assurez-vous d'avoir une sauvegarde de votre base de données."
 
         # Afficher dans une boîte de dialogue
-        from .qt_imports import QTextEdit
+        from ..utils.qt_imports import QTextEdit
         dialog = QDialog(self)
         dialog.setWindowTitle("Aperçu des changements")
         dialog.resize(600, 400)
@@ -512,63 +522,65 @@ class CleanupPreviewDialog(QDialog):
     @handle_cleanup_preview_errors()
     def _apply_cleanup(self, checked=False):
         """Appliquer le nettoyage sélectionné"""
-        # Confirmation
-        if not MessageHelper.ask_question(
+        # Confirmation (boîte modale non bloquante) ; même garde d'erreur que la méthode
+        @handle_cleanup_preview_errors()
+        def _appliquer(_fenetre):
+            # Copie de sécurité systématique avant cette opération destructive.
+            # En cas d'échec de la copie, l'opération continue (comportement historique).
+            backup_service = getattr(self.parent_window, 'backup_service', None)
+            if backup_service:
+                backup_service.create_backup(reason="nettoyage")
+
+            # Préparer les options de nettoyage
+            cleanup_options = {}
+
+            # Options pour les appareils
+            if self.devices_widget:
+                merge_groups = self.devices_widget.get_merge_groups()
+                if merge_groups:
+                    cleanup_options['device_merges'] = merge_groups
+
+            # Options pour les pièces
+            if self.pieces_widget:
+                selected_pieces = self.pieces_widget.get_selected_pieces()
+                if selected_pieces:
+                    cleanup_options['piece_deletions'] = selected_pieces
+
+            # Appliquer le nettoyage
+            if cleanup_options:
+                results = self.analysis_service.apply_cleanup_decisions(cleanup_options)
+
+                # Afficher les résultats
+                if results.get('errors'):
+                    error_text = "\n".join(results['errors'])
+                    show_error(self, "Erreurs lors du nettoyage", f"Certaines opérations ont échoué:\n{error_text}")
+                else:
+                    success_message = f"Nettoyage terminé avec succès!\n\n"
+                    success_message += f"• {results.get('devices_merged', 0)} appareils fusionnés\n"
+                    success_message += f"• {results.get('devices_deleted', 0)} doublons d'appareils supprimés\n"
+                    success_message += f"• {results.get('pieces_deleted', 0)} pièces dupliquées supprimées"
+
+                    MessageHelper.show_success(self, success_message, "Nettoyage terminé")
+
+                    # Enregistrer dans l'historique
+                    if self.history_widget:
+                        details = f"{results.get('devices_merged', 0)} appareils fusionnés, {results.get('devices_deleted', 0)} doublons supprimés, {results.get('pieces_deleted', 0)} pièces nettoyées"
+                        self.history_widget.add_action("Nettoyage automatique", details, "Succès")
+
+                    # Fermer la boîte de dialogue
+                    self.user_choice = 'applied'
+                    self.accept()
+            else:
+                show_error(self, "Aucune sélection", "Aucun élément sélectionné pour le nettoyage.")
+
+        demander_oui_non(
             self,
+            "Confirmation du nettoyage",
             "Êtes-vous sûr de vouloir appliquer ces changements?\n\n"
             "Cette opération est irréversible.\n"
             "Une copie de sécurité de la base sera créée automatiquement.",
-            "Confirmation du nettoyage"
-        ):
-            return
-
-        # Copie de sécurité systématique avant cette opération destructive.
-        # En cas d'échec de la copie, l'opération continue (comportement historique).
-        backup_service = getattr(self.parent_window, 'backup_service', None)
-        if backup_service:
-            backup_service.create_backup(reason="nettoyage")
-
-        # Préparer les options de nettoyage
-        cleanup_options = {}
-
-        # Options pour les appareils
-        if self.devices_widget:
-            merge_groups = self.devices_widget.get_merge_groups()
-            if merge_groups:
-                cleanup_options['device_merges'] = merge_groups
-
-        # Options pour les pièces
-        if self.pieces_widget:
-            selected_pieces = self.pieces_widget.get_selected_pieces()
-            if selected_pieces:
-                cleanup_options['piece_deletions'] = selected_pieces
-
-        # Appliquer le nettoyage
-        if cleanup_options:
-            results = self.analysis_service.apply_cleanup_decisions(cleanup_options)
-
-            # Afficher les résultats
-            if results.get('errors'):
-                error_text = "\n".join(results['errors'])
-                show_error(self, "Erreurs lors du nettoyage", f"Certaines opérations ont échoué:\n{error_text}")
-            else:
-                success_message = f"Nettoyage terminé avec succès!\n\n"
-                success_message += f"• {results.get('devices_merged', 0)} appareils fusionnés\n"
-                success_message += f"• {results.get('devices_deleted', 0)} doublons d'appareils supprimés\n"
-                success_message += f"• {results.get('pieces_deleted', 0)} pièces dupliquées supprimées"
-
-                MessageHelper.show_success(self, success_message, "Nettoyage terminé")
-
-                # Enregistrer dans l'historique
-                if self.history_widget:
-                    details = f"{results.get('devices_merged', 0)} appareils fusionnés, {results.get('devices_deleted', 0)} doublons supprimés, {results.get('pieces_deleted', 0)} pièces nettoyées"
-                    self.history_widget.add_action("Nettoyage automatique", details, "Succès")
-
-                # Fermer la boîte de dialogue
-                self.user_choice = 'applied'
-                self.accept()
-        else:
-            show_error(self, "Aucune sélection", "Aucun élément sélectionné pour le nettoyage.")
+            (lambda *a: _appliquer(self, *a))  # défaut : « Non »
+        )
             
     def get_user_choice(self):
         """Obtenir le choix de l'utilisateur"""
@@ -587,7 +599,10 @@ class CleanupPreviewDialog(QDialog):
         # Arrêter l'analyse si en cours
         if self.analysis_service:
             self.analysis_service.stop_analysis()
-        event.accept()
+        # Comportement standard de QDialog : la croix vaut reject(), donc émet
+        # finished — indispensable depuis que la fenêtre s'ouvre en show() et non
+        # exec_() (l'appelant réagit à finished : invalidation du cache doublons).
+        super().closeEvent(event)
         
     def reject(self):
         """Gérer l'annulation"""

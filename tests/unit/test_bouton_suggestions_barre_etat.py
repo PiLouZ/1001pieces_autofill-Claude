@@ -8,7 +8,7 @@ validation.
 import types
 
 from src.ui.main_refactored import MainWindow
-from src.ui.qt_imports import QPushButton
+from src.utils.qt_imports import QPushButton
 from src.ui.table_controller import TableController
 
 

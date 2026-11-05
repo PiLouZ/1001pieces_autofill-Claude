@@ -8,7 +8,7 @@ taille utile, ce qui coupait leur texte (« xport_ref », « anufactur »).
 """
 
 from PyQt5.QtWidgets import QLayout
-from .qt_imports import QRect, QSize, QPoint, Qt
+from ..utils.qt_imports import QRect, QSize, QPoint, Qt
 
 
 class FlowLayout(QLayout):

@@ -135,7 +135,7 @@ class TestDialog:
                         tier='B_fuzzy_alpha')
         snap = [_entry(2, [_cand(type_='Lave-vaisselle', mfr='Bosch', score=0.92, ref='A/41'),
                            siemens])]
-        dlg, _ = self._make(qapp, snap, value_picker=lambda f, cur, cands: siemens)
+        dlg, _ = self._make(qapp, snap, value_picker=lambda f, cur, cands, ok: ok(siemens))
         feuille = _feuille(dlg, 2)
         dlg._on_double_clic(feuille, COL_NEW_MFR)
         assert (feuille.text(COL_NEW_TYPE), feuille.text(COL_NEW_MFR)) == ("Lave-vaisselle", "Siemens")
@@ -143,7 +143,7 @@ class TestDialog:
 
     def test_valeur_libre_marque_corrige(self, qapp):
         snap = [_entry(3, [_cand(mfr='Balay', tier='C_prefix_consensus', score=0.85)])]
-        dlg, _ = self._make(qapp, snap, value_picker=lambda f, cur, cands: "Bosch")
+        dlg, _ = self._make(qapp, snap, value_picker=lambda f, cur, cands, ok: ok("Bosch"))
         feuille = _feuille(dlg, 3)
         dlg._on_double_clic(feuille, COL_NEW_MFR)
         assert feuille.text(COL_NEW_MFR) == "Bosch"
@@ -153,7 +153,7 @@ class TestDialog:
     def test_entree_corrige_le_type(self, qapp):
         champs = []
         snap = [_entry(1, [_cand(tier='B_fuzzy_alpha', score=0.92)])]
-        dlg, _ = self._make(qapp, snap, value_picker=lambda f, cur, c: champs.append(f) or "Hotte")
+        dlg, _ = self._make(qapp, snap, value_picker=lambda f, cur, c, ok: champs.append(f) or ok("Hotte"))
         dlg._arbre.setCurrentItem(_feuille(dlg, 1))
         _touche(dlg, Qt.Key_Return)
         assert champs == ['type'] and _feuille(dlg, 1).text(COL_NEW_TYPE) == "Hotte"
@@ -186,7 +186,7 @@ class TestDialog:
                         tier='B_fuzzy_alpha')
         snap = [_entry(2, [_cand(type_='Lave-vaisselle', mfr='Bosch', score=0.92, ref='A/41'),
                            siemens])]
-        dlg, recus = self._make(qapp, snap, value_picker=lambda f, cur, cands: siemens)
+        dlg, recus = self._make(qapp, snap, value_picker=lambda f, cur, cands, ok: ok(siemens))
         dlg._on_double_clic(_feuille(dlg, 2), COL_NEW_MFR)
         dlg._on_appliquer()
         (db, cand), = recus['valides']

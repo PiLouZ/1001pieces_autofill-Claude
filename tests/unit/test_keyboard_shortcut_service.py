@@ -5,10 +5,10 @@ Test de la gestion des raccourcis clavier
 
 import pytest
 import sys
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence, QKeyEvent
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLineEdit, QPushButton
+from PyQt5.QtWidgets import QApplication, QLineEdit
 
 # Assurer que le module src est dans le chemin
 sys.path.insert(0, '/Users/emg1/Desktop/1001 projects/1001pieces_autofill Claude')
@@ -269,55 +269,6 @@ class TestKeyboardShortcutService:
         result = shortcut_service.handle_key_press_event(event)
 
         assert result is False
-
-    def test_register_shortcut(self, shortcut_service):
-        """Test de l'enregistrement d'un nouveau raccourci"""
-        shortcut_service.register_shortcut(Qt.Key.Key_T, "test_action", "Action de test")
-
-        assert Qt.Key.Key_T in shortcut_service.shortcut_actions
-        assert shortcut_service.shortcut_actions[Qt.Key.Key_T] == ("test_action", "Action de test")
-
-    def test_register_function_key_shortcut(self, shortcut_service):
-        """Test de l'enregistrement d'un raccourci touche fonction"""
-        shortcut_service.register_shortcut(Qt.Key.Key_F3, "test_f3", "F3 test", with_modifier=False)
-
-        assert Qt.Key.Key_F3 in shortcut_service.function_key_shortcuts
-        assert shortcut_service.function_key_shortcuts[Qt.Key.Key_F3] == ("test_f3", "F3 test")
-
-    def test_unregister_shortcut(self, shortcut_service):
-        """Test de la suppression d'un raccourci"""
-        # Ajouter d'abord un raccourci
-        shortcut_service.register_shortcut(Qt.Key.Key_T, "test_action", "Action de test")
-        assert Qt.Key.Key_T in shortcut_service.shortcut_actions
-
-        # Le supprimer
-        shortcut_service.unregister_shortcut(Qt.Key.Key_T)
-        assert Qt.Key.Key_T not in shortcut_service.shortcut_actions
-
-    def test_get_registered_shortcuts(self, shortcut_service):
-        """Test de l'obtention des raccourcis enregistrés"""
-        shortcuts = shortcut_service.get_registered_shortcuts()
-
-        assert "modifier_shortcuts" in shortcuts
-        assert "standard_shortcuts" in shortcuts
-        assert "function_key_shortcuts" in shortcuts
-        assert isinstance(shortcuts["modifier_shortcuts"], dict)
-        assert Qt.Key.Key_N in shortcuts["modifier_shortcuts"]
-
-    def test_enable_focus_constraint(self, shortcut_service):
-        """Test de l'activation d'une contrainte de focus"""
-        test_key = Qt.Key.Key_T
-        shortcut_service.enable_focus_constraint(test_key)
-
-        assert test_key in shortcut_service.focus_dependent_shortcuts
-
-    def test_disable_focus_constraint(self, shortcut_service):
-        """Test de la désactivation d'une contrainte de focus"""
-        test_key = Qt.Key.Key_D
-        assert test_key in shortcut_service.focus_dependent_shortcuts
-
-        shortcut_service.disable_focus_constraint(test_key)
-        assert test_key not in shortcut_service.focus_dependent_shortcuts
 
     def test_signal_emission(self, shortcut_service, mock_key_event):
         """Test que les signaux sont émis correctement"""

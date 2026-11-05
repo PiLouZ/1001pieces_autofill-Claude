@@ -11,7 +11,7 @@ pour que la saisie ne soit pas perdue.
 """
 
 from PyQt5.QtWidgets import QShortcut
-from .qt_imports import (QFrame, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel,
+from ..utils.qt_imports import (QFrame, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel,
                          QPushButton, QSizePolicy, Qt, QKeySequence)
 from .style_manager import StyleManager
 from ..core.config import pluralize

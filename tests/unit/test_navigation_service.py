@@ -4,8 +4,7 @@ Validation de la pagination et navigation sans régression
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock
-from PyQt5.QtWidgets import QLabel, QPushButton, QComboBox
+from unittest.mock import Mock
 
 from src.services.navigation_service import NavigationService
 
@@ -237,62 +236,6 @@ class TestNavigationService:
         mock_widgets['prev_button'].setEnabled.assert_called_with(True)   # Activé
         mock_widgets['next_button'].setEnabled.assert_called_with(False)  # Désactivé
 
-    def test_get_current_page_info(self, navigation_service):
-        """Test récupération des informations de page"""
-        navigation_service.total_rows = 100
-        navigation_service.page_size = 20
-        navigation_service.current_page = 3
-
-        info = navigation_service.get_current_page_info()
-
-        expected = {
-            'current_page': 3,
-            'total_pages': 5,
-            'page_size': 20,
-            'total_rows': 100,
-            'start_row': 41,  # (3-1) * 20 + 1
-            'end_row': 60     # min(3 * 20, 100)
-        }
-
-        assert info == expected
-
-    def test_reset_pagination(self, navigation_service):
-        """Test réinitialisation de la pagination"""
-        navigation_service.current_page = 5
-        navigation_service.total_rows = 100
-
-        navigation_service.reset_pagination()
-
-        assert navigation_service.current_page == 1
-        assert navigation_service.total_rows == 0
-
-    def test_handle_navigation_shortcut(self, navigation_service, mock_table_controller):
-        """Test gestion des raccourcis de navigation"""
-        navigation_service.total_rows = 100
-        navigation_service.page_size = 20
-        navigation_service.current_page = 3
-
-        # Test raccourci page suivante
-        navigation_service.handle_navigation_shortcut("Ctrl+Right")
-        assert navigation_service.current_page == 4
-
-        # Test raccourci page précédente
-        navigation_service.handle_navigation_shortcut("Ctrl+Left")
-        assert navigation_service.current_page == 3
-
-        # Test raccourci première page
-        navigation_service.handle_navigation_shortcut("Ctrl+Home")
-        assert navigation_service.current_page == 1
-
-        # Test raccourci dernière page
-        navigation_service.handle_navigation_shortcut("Ctrl+End")
-        assert navigation_service.current_page == 5
-
-        # Test raccourci inconnu
-        old_page = navigation_service.current_page
-        navigation_service.handle_navigation_shortcut("Unknown")
-        assert navigation_service.current_page == old_page
-
     def test_signal_emission(self, navigation_service):
         """Test émission des signaux"""
         # Mock des signaux
@@ -330,14 +273,6 @@ class TestNavigationService:
         navigation_service.total_rows = -10
         assert navigation_service.get_total_pages() == 1
 
-        # Page actuelle plus grande que le total
-        navigation_service.total_rows = 20
-        navigation_service.page_size = 10
-        navigation_service.current_page = 5  # Devrait être max 2
-
-        info = navigation_service.get_current_page_info()
-        # La logique devrait gérer ce cas gracieusement
-
     def test_widgets_none_handling(self, mock_table_controller):
         """Test gestion des widgets None"""
         service = NavigationService(mock_table_controller, None)
@@ -356,7 +291,3 @@ class TestNavigationService:
         # Navigation au milieu
         navigation_service.go_to_page(5000)
         assert navigation_service.current_page == 5000
-
-        info = navigation_service.get_current_page_info()
-        assert info['start_row'] == 499901  # (5000-1) * 100 + 1
-        assert info['end_row'] == 500000    # 5000 * 100

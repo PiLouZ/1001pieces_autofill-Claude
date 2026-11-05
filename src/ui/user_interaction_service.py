@@ -13,9 +13,10 @@ Changements v2 :
 import json
 import re
 from contextlib import contextmanager
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Callable, Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
-from .qt_imports import QMessageBox, QTimer
+from ..utils.qt_imports import QMessageBox
+from ..utils.ouverture_modale import ouvrir_modal
 
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -360,8 +361,10 @@ class UserInteractionService:
         """Afficher une information"""
         QMessageBox.information(self.main_window, "Information", message)
 
-    def show_confirmation(self, title: str, message: str, default_yes: bool = False) -> bool:
-        """Afficher une confirmation avec support des raccourcis clavier (Entrée/Échap)"""
+    def demander_confirmation(self, title: str, message: str, sur_oui: Callable[[], None],
+                              default_yes: bool = False) -> None:
+        """Confirmation Oui/Non non bloquante (jamais exec_) : `sur_oui` est appelé
+        si l'utilisateur répond Oui. Raccourcis clavier : Entrée = Oui, Échap = Non."""
         msg_box = QMessageBox(self.main_window)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
@@ -380,34 +383,11 @@ class UserInteractionService:
         yes_btn.setShortcut("Return")
         no_btn.setShortcut("Escape")
 
-        msg_box.exec_()
-        return msg_box.clickedButton() == yes_btn
+        def _sur_fin(_code):
+            if msg_box.clickedButton() == yes_btn:
+                sur_oui()
 
-    def show_save_confirmation(self, title: str, message: str) -> str:
-        """Afficher une confirmation Oui/Non/Annuler avec raccourcis clavier"""
-        msg_box = QMessageBox(self.main_window)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setIcon(QMessageBox.Question)
-
-        yes_btn = msg_box.addButton("Oui", QMessageBox.YesRole)
-        no_btn = msg_box.addButton("Non", QMessageBox.NoRole)
-        cancel_btn = msg_box.addButton("Annuler", QMessageBox.RejectRole)
-
-        msg_box.setDefaultButton(yes_btn)
-        yes_btn.setDefault(True)
-        yes_btn.setShortcut("Return")
-        cancel_btn.setShortcut("Escape")
-        no_btn.setShortcut("N")
-
-        msg_box.exec_()
-        clicked = msg_box.clickedButton()
-
-        if clicked == yes_btn:
-            return "yes"
-        elif clicked == no_btn:
-            return "no"
-        return "cancel"
+        ouvrir_modal(msg_box, sur_fin=_sur_fin)
 
     # ── Compteur ───────────────────────────────────────────────────────────────
 

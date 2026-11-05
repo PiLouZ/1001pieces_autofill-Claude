@@ -382,7 +382,7 @@ class _SourceFactice:
     def defaut(self):
         return self.par_defaut
 
-    def contexte(self, interactif):
+    def contexte(self, interactif, relancer=None):
         return {'reference': "201050694"}
 
     def rendre(self, contexte, nom):

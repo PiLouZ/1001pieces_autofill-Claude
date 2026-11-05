@@ -4,7 +4,7 @@ Centralise toute la logique d'analyse et de détection des doublons
 """
 
 from typing import Dict, List, Any, Optional, Tuple, Set
-from ..ui.qt_imports import QObject, pyqtSignal, QThread, QTimer
+from ..utils.qt_imports import QObject, pyqtSignal, QThread, QTimer
 
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager

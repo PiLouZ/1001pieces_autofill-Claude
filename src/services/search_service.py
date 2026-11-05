@@ -143,32 +143,6 @@ class SearchService(BaseService):
             'original': text
         }
     
-    def _normalize_search_term(self, term):
-        """Normaliser le terme de recherche pour le cache et la DB"""
-        return self.format_search_term_for_processing(term)
-    
-    def format_search_term_for_processing(self, term):
-        """
-        Formater un terme de recherche pour traitement (cache, DB)
-        
-        MÉTHODE CONSOLIDÉE PRIORITÉ 2 - Remplace _normalize_search_term
-        """
-        if isinstance(term, str):
-            return term
-        elif isinstance(term, dict):
-            # Pour les recherches complexes, utiliser le terme original pour le cache
-            if 'original' in term:
-                return term['original']
-            elif 'terms' in term and isinstance(term['terms'], list):
-                # Pour les groupes OR/AND, joindre les termes
-                return ' '.join(term['terms'])
-            else:
-                # Fallback pour autres structures
-                return str(term).replace('{', '').replace('}', '').replace("'", '')[:50]
-        else:
-            # Pour tout autre type, convertir en string simple
-            return str(term)
-    
     def format_search_term_for_display(self, search_term) -> str:
         """
         Formater un terme de recherche pour affichage utilisateur

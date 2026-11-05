@@ -3,14 +3,24 @@ Service d'autocomplétion - Phase 2.4
 Gère les fenêtres d'autocomplétion et la récupération des valeurs
 """
 
-from typing import Dict, List, Optional, Union
-from ..ui.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                            QPushButton, QListWidget, QListWidgetItem, QMessageBox, QWidget, Qt,
-                            QTimer)
+from typing import Callable, List, Optional, Union
+from ..utils.qt_imports import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QListWidget,
+    QListWidgetItem,
+    QWidget,
+    Qt,
+    QTimer
+)
 from ..data.database_manager import DatabaseManager
-from ..core.logger import app_logger
 from ..core.config import Config
 from .base_service import BaseService
+from ..utils.ouverture_modale import ouvrir_modal
 from ..utils.error_handler import handle_autocompletion_errors
 from ..utils.text_utils import strip_accents
 
@@ -23,7 +33,8 @@ class AutoCompletionService(BaseService):
         self.parent_widget = parent_widget
     
     def show_column_values_dialog(self, table_widget, current_item, current_col, prefill: str = "",
-                                  suggestions: Optional[List[dict]] = None) -> Union[str, dict, None]:
+                                  suggestions: Optional[List[dict]] = None,
+                                  sur_resultat: Optional[Callable[[Union[str, dict]], None]] = None) -> None:
         """
         Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D)
 
@@ -34,10 +45,11 @@ class AutoCompletionService(BaseService):
             suggestions: candidats Type/Marque par similarité (optionnel). S'ils sont
                 fournis, une section « Suggestions » est ajoutée en tête de liste.
 
-        Returns:
-            - str  : valeur saisie/choisie (à écrire dans la colonne courante)
-            - dict : candidat de suggestion choisi (à appliquer en paire Type+Marque)
-            - None : annulé / colonne sans champ DB
+            sur_resultat: appelé à la validation (dialogue modal non bloquant,
+                jamais exec_) avec :
+                - str  : valeur saisie/choisie (à écrire dans la colonne courante)
+                - dict : candidat de suggestion choisi (à appliquer en paire Type+Marque)
+                Rien n'est appelé si l'utilisateur annule ou si la colonne n'a pas de champ DB.
         """
         db_field = self._get_db_field_name(current_col)
         if not db_field:
@@ -50,16 +62,19 @@ class AutoCompletionService(BaseService):
         # Pré-sélectionner le texte existant (Cmd+D normal), pas lors d'un préfixe de frappe
         select_all = not bool(prefill)
         return self._show_autocompletion_dialog(title, label, db_field, current_value,
-                                                select_all=select_all, suggestions=suggestions)
+                                                select_all=select_all, suggestions=suggestions,
+                                                sur_resultat=sur_resultat)
 
     def show_field_values_dialog(self, db_field: str, current_value: str = "",
-                                 suggestions: Optional[List[dict]] = None) -> Union[str, dict, None]:
+                                 suggestions: Optional[List[dict]] = None,
+                                 sur_resultat: Optional[Callable[[Union[str, dict]], None]] = None) -> None:
         """Variante de `show_column_values_dialog` SANS dépendance à un tableau : ouvre
         exactement la même fenêtre Cmd+D (valeurs existantes + section Suggestions) pour
         un champ donné. Utilisée par la fenêtre de validation des suggestions pour
         conserver une interaction identique au tableau principal.
 
-        Returns: str (valeur choisie/saisie), dict (candidat → paire Type+Marque), None.
+        sur_resultat : appelé à la validation avec str (valeur choisie/saisie) ou dict
+        (candidat → paire Type+Marque) ; rien à l'annulation.
         """
         labels = {'type': 'Type', 'manufacturer': 'Fabricant'}
         col_label = labels.get(db_field, db_field)
@@ -67,7 +82,8 @@ class AutoCompletionService(BaseService):
         label = f"Sélectionner ou saisir une valeur pour « {col_label} » :"
         return self._show_autocompletion_dialog(
             title, label, db_field, current_value,
-            select_all=bool(current_value), suggestions=suggestions
+            select_all=bool(current_value), suggestions=suggestions,
+            sur_resultat=sur_resultat
         )
 
     def apply_suggestion_pair(self, candidate: dict, model, db_id: int) -> bool:
@@ -124,7 +140,8 @@ class AutoCompletionService(BaseService):
     
     def _show_autocompletion_dialog(self, title: str, label: str, db_field: str, current_value: str = "",
                                     select_all: bool = True,
-                                    suggestions: Optional[List[dict]] = None) -> Union[str, dict, None]:
+                                    suggestions: Optional[List[dict]] = None,
+                                    sur_resultat=None) -> None:
         """Afficher une fenêtre d'auto-complétion dédiée avec navigation clavier"""
         dialog = QDialog(self.parent_widget)
         dialog.setWindowTitle(title)
@@ -147,9 +164,9 @@ class AutoCompletionService(BaseService):
         layout.addWidget(values_list)
         
         # Récupérer les valeurs de la base de données et configurer l'interface
-        return self._safe_configure_dialog_interface(dialog, layout, input_field, values_list, db_field, current_value, select_all=select_all, suggestions=suggestions)
+        return self._safe_configure_dialog_interface(dialog, layout, input_field, values_list, db_field, current_value, select_all=select_all, suggestions=suggestions, sur_resultat=sur_resultat)
 
-    def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value, select_all: bool = True, suggestions: Optional[List[dict]] = None):
+    def _safe_configure_dialog_interface(self, dialog, layout, input_field, values_list, db_field, current_value, select_all: bool = True, suggestions: Optional[List[dict]] = None, sur_resultat=None):
         """Configurer l'interface du dialogue de manière sécurisée"""
         from .reference_similarity_service import decrire_candidat
         # Récupérer les valeurs de la base de données
@@ -322,14 +339,17 @@ class AutoCompletionService(BaseService):
             QTimer.singleShot(0, lambda: (input_field.deselect(),
                                           input_field.setCursorPosition(len(input_field.text()))))
         
-        # Afficher le dialogue
-        if dialog.exec_() == QDialog.Accepted:
+        # Afficher le dialogue : modal sans boucle imbriquée (jamais exec_)
+        def _sur_accepte():
+            if sur_resultat is None:
+                return
             # Un candidat de suggestion choisi prime sur la saisie texte.
             if chosen['candidate'] is not None:
-                return chosen['candidate']
-            return input_field.text().strip()
-        else:
-            return None
+                sur_resultat(chosen['candidate'])
+            else:
+                sur_resultat(input_field.text().strip())
+
+        ouvrir_modal(dialog, sur_accepte=_sur_accepte)
     
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""

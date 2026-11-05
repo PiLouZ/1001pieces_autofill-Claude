@@ -8,7 +8,7 @@ PieceRelationsPopup ». Seule l'explication du QTimer.singleShot(0), présente
 dans une des deux copies, valait d'être conservée : elle l'est ici.
 """
 
-from .qt_imports import QApplication, QCursor, QTimer
+from ..utils.qt_imports import QApplication, QCursor, QTimer
 
 # Décalage entre le curseur et le coin du popup, en pixels
 MARGE_CURSEUR = 4

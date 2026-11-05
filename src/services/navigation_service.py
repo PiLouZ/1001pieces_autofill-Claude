@@ -3,8 +3,7 @@ Service de navigation et pagination
 Centralise toute la logique de navigation entre pages et gestion de la pagination
 """
 
-from typing import Optional, Callable, Dict, Any
-from ..ui.qt_imports import QWidget, QLabel, QPushButton, QComboBox, QObject, pyqtSignal
+from ..utils.qt_imports import QLabel, QPushButton, QComboBox, QObject, pyqtSignal
 
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
@@ -219,45 +218,3 @@ class NavigationService(QObject):
 
         app_logger.debug(f"Contrôles pagination mis à jour: {current_page}/{total_pages}")
             
-    def get_current_page_info(self) -> Dict[str, Any]:
-        """Obtenir les informations de la page courante"""
-        current_page = self.current_page
-        total_pages = self.get_total_pages()
-
-        # Protection pour les cas limites
-        if self.page_size <= 0:
-            start_row = 1
-            end_row = self.total_rows
-        else:
-            start_row = ((current_page - 1) * self.page_size) + 1
-            end_row = min(current_page * self.page_size, self.total_rows)
-
-        return {
-            'current_page': current_page,
-            'total_pages': total_pages,
-            'page_size': self.page_size,
-            'total_rows': self.total_rows,
-            'start_row': start_row,
-            'end_row': end_row
-        }
-        
-    def reset_pagination(self):
-        """Réinitialiser la pagination à l'état initial"""
-        self.current_page = 1
-        self.total_rows = 0
-        if hasattr(self.table_controller, 'current_page'):
-            self.table_controller.current_page = 1
-        
-    def handle_navigation_shortcut(self, key_combination: str):
-        """Gérer les raccourcis clavier de navigation"""
-        shortcuts_map = {
-            'Ctrl+Right': self.next_page,
-            'Ctrl+Left': self.previous_page,
-            'Ctrl+Home': self.go_to_first_page,
-            'Ctrl+End': self.go_to_last_page
-        }
-        
-        if key_combination in shortcuts_map:
-            shortcuts_map[key_combination]()
-            return True
-        return False

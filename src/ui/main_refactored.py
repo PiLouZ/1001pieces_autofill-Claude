@@ -4,40 +4,52 @@ Architecture modulaire avec séparation des responsabilités
 """
 
 import sys
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Dict, Any
 
-from .qt_imports import (
-    QApplication, QMainWindow, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
-    QMessageBox, QLineEdit,
-    QAction, QStatusBar, QSplitter, QTabWidget,
-    QListWidgetItem, QFileDialog, QComboBox,
-    QCheckBox, QMenu, QDialog, QTextEdit, QTextBrowser,
-    QColor, QIcon,
-    Qt, QSettings, QEvent, QMimeData, QUrl, QSizePolicy, QFrame, QSize
+from ..utils.qt_imports import (
+    QApplication,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+    QLabel,
+    QPushButton,
+    QHBoxLayout,
+    QMessageBox,
+    QAction,
+    QSplitter,
+    QListWidgetItem,
+    QMenu,
+    QTextBrowser,
+    QIcon,
+    Qt,
+    QSettings,
+    QEvent,
+    QSizePolicy,
+    QFrame,
+    QSize
 )
 
 # Imports Python standard consolidés
 import os
 from pathlib import Path
-from datetime import datetime
 
 # Helpers et utilitaires refactorisés
-from .message_helper import MessageHelper, CommonMessages, show_success, show_error, ask_confirmation
-from .dialog_manager import DialogManager
+from .message_helper import MessageHelper
+from ..utils.ouverture_modale import ouvrir_modal
 from ..utils.error_handler import (
-    handle_errors, handle_database_errors,
-    handle_ui_errors, handle_ui_column_errors,
-    handle_database_operation_errors, handle_ui_operation_errors,
-    handle_table_operations_errors, handle_navigation_errors,
-    handle_export_errors, handle_import_errors,
+    handle_database_errors,
+    handle_ui_errors,
+    handle_ui_column_errors,
+    handle_database_operation_errors,
+    handle_ui_operation_errors,
+    handle_navigation_errors,
     handle_log_viewer_errors,
-    handle_data_management_errors, handle_drag_operation_errors,
-    handle_event_handler_errors, handle_ui_update_errors
+    handle_drag_operation_errors,
+    handle_event_handler_errors
 )
-from ..core.constants import UIConfig, Messages, DatabaseConfig, Paths
+from ..core.constants import UIConfig, Messages, Paths
 
-from ..services import SearchService, ImportService
+from ..services import SearchService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..core.constants import ExportFormat
@@ -45,8 +57,6 @@ from ..services.navigation_service import NavigationService
 from ..services.cell_editing_service import CellEditingService
 # PHASE 4 : Remplacement par ExportManagerService unifié
 from ..services.export_manager import ExportManagerService, ExportType
-from ..services.device_manager import DeviceManager
-from ..services.paste_results_service import PasteResultsService
 
 # Imports des modules refactorisés
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -54,12 +64,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core.config import Config, pluralize
 from src.core.logger import app_logger
 from src.core.import_manager import ImportManager
-from src.data.database_manager import DatabaseManager, DatabaseError
-from src.data.data_validator import DataValidator, ValidationResult
+from src.data.database_manager import DatabaseManager
+from src.data.data_validator import DataValidator
 from .style_manager import StyleManager
 from .table_controller import TableController
 from .paste_data_processor import PasteDataProcessor
-from .data_management_service import DataManagementService, FieldCompletionResult
+from .data_management_service import DataManagementService
 from .user_interaction_service import UserInteractionService
 from .log_viewer import LogViewer
 from .piece_management_service import PieceManagementService
@@ -69,10 +79,9 @@ from .fiche_produit_service import FicheProduitService
 from .pieces_list_service import PiecesListService
 from ..services.grouped_history_service import GroupedHistoryService
 from ..services.history_service import HistoryService
-from ..services.drag_handle_service import DragHandle, DragHandleService
+from ..services.drag_handle_service import DragHandleService
 from ..services.undo_manager import UndoRedoManager
 from ..services.app_export_service import AppExportService
-# Supprimé: remplacé par DialogManager dans les imports centralisés
 from ..services.event_handlers_service import EventHandlersService
 from ..services.table_fill_service import TableFillService
 
@@ -175,8 +184,6 @@ class MainWindow(QMainWindow):
         self.export_config_service = ExportConfigService(self)
         _HtmlExportService.set_config_service(self.export_config_service)
 
-        self.device_manager = DeviceManager(self.db_manager)
-
         # Sauvegarde automatique avant opérations destructives (nettoyage, import)
         from ..services.backup_service import BackupService
         self.backup_service = BackupService(self)
@@ -202,9 +209,6 @@ class MainWindow(QMainWindow):
         # PHASE 4 : Nouveau service d'export unifié
         self.export_manager = ExportManagerService(self)
 
-        # Services d'import conservés
-        self.import_service = ImportService(self.db_manager)
-
         # import_manager et file_processing_service créés en premier
         # car les initialize_services() suivants en ont besoin via parent_window
         self.import_manager = ImportManager(self.db_manager, parent_widget=self)
@@ -223,11 +227,6 @@ class MainWindow(QMainWindow):
         self.database_operations_service = DatabaseOperationsService(self)
         self.database_operations_service.initialize_services()
 
-        # PHASE 3.4 : Service unifié de gestion de l'état UI
-        from ..services.ui_state_management_service import UIStateManagementService
-        self.ui_state_management_service = UIStateManagementService(self)
-        self.ui_state_management_service.initialize_services()
-
         # PHASE 3.5 : Service unifié des raccourcis clavier
         from ..services.keyboard_shortcut_service import KeyboardShortcutService
         self.keyboard_shortcut_service = KeyboardShortcutService(self)
@@ -235,7 +234,6 @@ class MainWindow(QMainWindow):
     
     def _init_business_services(self):
         """Initialiser les services métier"""
-        self.paste_results_service = PasteResultsService(self)
         self.event_handlers_service = EventHandlersService(self)
         self.table_fill_service = TableFillService(self)
         
@@ -263,8 +261,6 @@ class MainWindow(QMainWindow):
         self.toolbar_service = ToolbarService(self)
         self.app_export_service = AppExportService(self)
 
-        self.dialog_manager = DialogManager(self)
-
         from ..services.unified_dialog_service import UnifiedDialogService
         self.dialog_service = UnifiedDialogService(self)
 
@@ -275,9 +271,6 @@ class MainWindow(QMainWindow):
         # Service optimisé pour l'indication des doublons
         from ..services.duplicate_indicator_service import DuplicateIndicatorService
         self.duplicate_indicator_service = DuplicateIndicatorService(self.db_manager, self)
-
-        from .custom_reference_service import CustomReferenceService
-        self.custom_reference_service = CustomReferenceService(self)
 
         from ..services.paste_cleanup_service import PasteCleanupService
         self.paste_cleanup_service = PasteCleanupService(self)
@@ -406,10 +399,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'navigation_service'):
             self.navigation_service.page_changed.connect(self._on_navigation_page_changed)
             self.navigation_service.page_size_changed.connect(self._on_navigation_page_size_changed)
-            
-        if hasattr(self, 'cell_editing_service'):
-            self.cell_editing_service.cell_updated.connect(self._on_cell_editing_updated)
-            self.cell_editing_service.cell_validation_failed.connect(self._on_cell_validation_failed)
+
     
     # PHASE 5: Callbacks pour les événements des services centralisés
     def _on_navigation_page_changed(self, page: int):
@@ -424,16 +414,6 @@ class MainWindow(QMainWindow):
         # Mettre à jour les variables d'état locales si nécessaire
         self.page_size = new_size
         
-    def _on_cell_editing_updated(self, item, old_value: str, new_value: str):
-        """Callback pour mise à jour de cellule"""
-        # Gérer les actions spécifiques à l'interface principale
-        self._handle_successful_cell_update(item, old_value, new_value, False)
-        
-    def _on_cell_validation_failed(self, item, error_message: str):
-        """Callback pour échec de validation de cellule"""
-        from .message_helper import show_error
-        show_error(self, "Erreur de validation", error_message)
-    
     def _connect_advanced_search_signals(self):
         """PHASE 2.3: Connecter les signaux du service de recherche avancé"""
         if hasattr(self, 'advanced_search_service'):
@@ -715,7 +695,7 @@ class MainWindow(QMainWindow):
         self.statusbar.setFixedHeight(self.incomplete_nav_widget.content_height() + 6)
         self._wire_incomplete_nav()
 
-        from .qt_imports import QPushButton, QWidget, QHBoxLayout
+        from ..utils.qt_imports import QPushButton, QWidget, QHBoxLayout
         import qtawesome as qta
 
         # « Suggestions à valider (N) » juste après (remplace le bandeau au-dessus
@@ -802,8 +782,8 @@ class MainWindow(QMainWindow):
     
     def _setup_paste_cleanup_for_search_input(self):
         """Configure l'interception du collage pour le champ de recherche"""
-        from .qt_imports import QLineEdit
-        from .qt_imports import QEvent
+        from ..utils.qt_imports import QLineEdit
+        from ..utils.qt_imports import QEvent
 
         class PasteInterceptor(QLineEdit):
             def __init__(self, parent_window, paste_service):
@@ -822,49 +802,30 @@ class MainWindow(QMainWindow):
                     
                 super().keyPressEvent(event)
                 
-            def insertFromMimeData(self, source):
-                # Méthode alternative pour intercepter le collage
-                if source.hasText():
-                    original_text = source.text()
-                    cleaned_text = self.paste_service.process_paste_content(
-                        original_text, self.parent_window
-                    )
-                    
-                    if cleaned_text != original_text:
-                        # Créer un nouveau MimeData avec le texte nettoyé
-                        from .qt_imports import QMimeData
-                        clean_mime = QMimeData()
-                        clean_mime.setText(cleaned_text)
-                        super().insertFromMimeData(clean_mime)
-                        return
-                        
-                super().insertFromMimeData(source)
-                
+            # (QLineEdit n'a pas d'insertFromMimeData — c'est une méthode de QTextEdit :
+            # l'ancienne surcharge n'était jamais appelée et a été retirée.)
+
             def _handle_paste_event(self):
                 """Gère l'événement de collage avec nettoyage"""
-                from .qt_imports import QApplication
+                from ..utils.qt_imports import QApplication
                 clipboard = QApplication.clipboard()
                 original_text = clipboard.text()
-                
+
                 if original_text:
-                    cleaned_text = self.paste_service.process_paste_content(
-                        original_text, self.parent_window
-                    )
-                    
-                    if cleaned_text != original_text:
-                        # Remplacer le texte dans le champ
-                        cursor_pos = self.cursorPosition()
-                        selected_text = self.selectedText()
-                        
-                        if selected_text:
-                            # Remplacer le texte sélectionné
+                    def _inserer(cleaned_text):
+                        # Appelé tout de suite, ou à la fermeture du dialogue de choix
+                        # (modal non bloquant, jamais exec_)
+                        if cleaned_text != original_text:
+                            # insert() remplace la sélection éventuelle, sinon insère
+                            # à la position du curseur
                             self.insert(cleaned_text)
                         else:
-                            # Insérer à la position du curseur
-                            self.insert(cleaned_text)
-                    else:
-                        # Collage normal
-                        self.paste()
+                            # Collage normal
+                            self.paste()
+
+                    self.paste_service.process_paste_content(
+                        original_text, self.parent_window, sur_resultat=_inserer
+                    )
         
         # Remplacer le QLineEdit standard par notre interceptor
         if hasattr(self, 'search_input') and self.search_input:
@@ -1019,16 +980,19 @@ class MainWindow(QMainWindow):
         current_item = self.table.currentItem()
         current_col = self.table.currentColumn()
 
-        selected_value = self.autocompletion_service.show_column_values_dialog(
-            self.table, current_item, current_col, prefill=prefill
-        )
-
-        if selected_value is not None:
+        # Appelé à la validation du dialogue (modal non bloquant, jamais exec_) ;
+        # même garde d'erreur que la méthode, qui a rendu la main entre-temps.
+        @handle_ui_errors(log_prefix="Erreur affichage valeurs colonne", show_message=True)
+        def _ecrire(_fenetre, selected_value):
             # Écrire dans le modèle → cell_edited → pipeline complet (save, undo, etc.)
             row = self.table.currentRow()
             model = self.table_controller.model
             if model:
                 model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
+
+        self.autocompletion_service.show_column_values_dialog(
+            self.table, current_item, current_col, prefill=prefill, sur_resultat=(lambda *a: _ecrire(self, *a))
+        )
 
     def _apply_suggestion_decisions(self, decisions):
         """Cœur batché partagé : applique une liste de décisions [(db_id, candidat)]
@@ -1146,10 +1110,10 @@ class MainWindow(QMainWindow):
                     f"{pluralize(applied, 'appareil')} complété{'s' if applied > 1 else ''}"
                     f"{detail}.")
 
-        def _pick_value(db_field, current_value, candidates):
+        def _pick_value(db_field, current_value, candidates, sur_resultat):
             # Réutilise la fenêtre Cmd+D (valeurs existantes + suggestions) du tableau.
-            return self.autocompletion_service.show_field_values_dialog(
-                db_field, current_value, suggestions=candidates
+            self.autocompletion_service.show_field_values_dialog(
+                db_field, current_value, suggestions=candidates, sur_resultat=sur_resultat
             )
 
         self._suggestion_validation_dialog = SuggestionValidationDialog(
@@ -1222,7 +1186,7 @@ class MainWindow(QMainWindow):
         """« Tout valider » : confirmation non bloquante (show() + callback), qui
         rappelle la confiance des sources — une validation en masse ne s'annule pas."""
         from .autocompletion_review_dialog import regrouper_traces
-        from .qt_imports import QMessageBox
+        from ..utils.qt_imports import QMessageBox
         entrees = regrouper_traces(self.db_manager.lire_autocompletions_a_verifier())
         if not entrees:
             self._rafraichir_bouton_autocompletes()
@@ -1331,9 +1295,9 @@ class MainWindow(QMainWindow):
             self.user_interaction_service.add_to_history(
                 f"Auto-complétés vérifiés : {pluralize(len(verifies), 'appareil')}{detail}.")
 
-        def _pick_value(db_field, current_value, candidates):
-            return self.autocompletion_service.show_field_values_dialog(
-                db_field, current_value, suggestions=candidates)
+        def _pick_value(db_field, current_value, candidates, sur_resultat):
+            self.autocompletion_service.show_field_values_dialog(
+                db_field, current_value, suggestions=candidates, sur_resultat=sur_resultat)
 
         self._autocompletion_review_dialog = AutocompletionReviewDialog(
             self, entrees, on_validate=_on_validate, value_picker=_pick_value,
@@ -1428,21 +1392,23 @@ class MainWindow(QMainWindow):
         """
         col = index.column()
         current_item = self.table.currentItem() if hasattr(self.table, 'currentItem') else None
-        result = self.autocompletion_service.show_column_values_dialog(
-            self.table, current_item, col, suggestions=suggestions
+
+        def _appliquer(result):
+            # Appelé à la validation du dialogue (modal non bloquant, jamais exec_)
+            model = self.table_controller.model
+            if not model:
+                return
+            if isinstance(result, dict):
+                # Candidat choisi : appliquer Type + Marque, puis dissiper l'indicateur.
+                self._apply_suggestion_with_provenance(result, model, db_id)
+                self.table_controller.clear_similarity_suggestion(db_id)
+            else:
+                # Valeur libre : écrire uniquement la colonne cliquée (pipeline complet).
+                model.setData(model.index(index.row(), col), result, Qt.EditRole)
+
+        self.autocompletion_service.show_column_values_dialog(
+            self.table, current_item, col, suggestions=suggestions, sur_resultat=_appliquer
         )
-        if result is None:
-            return
-        model = self.table_controller.model
-        if not model:
-            return
-        if isinstance(result, dict):
-            # Candidat choisi : appliquer Type + Marque, puis dissiper l'indicateur.
-            self._apply_suggestion_with_provenance(result, model, db_id)
-            self.table_controller.clear_similarity_suggestion(db_id)
-        else:
-            # Valeur libre : écrire uniquement la colonne cliquée (pipeline complet).
-            model.setData(model.index(index.row(), col), result, Qt.EditRole)
 
     def _get_db_field_name(self, ui_column: int) -> str:
         """Mapper l'index de colonne UI vers le nom de champ DB"""
@@ -1635,7 +1601,7 @@ class MainWindow(QMainWindow):
                 self.grouped_history_service.add_modification(db_id, column_name, old_value, new_value, source=source)
             except Exception as e:
                 # Fallback vers historique normal en cas d'erreur
-                app_logger.warning(f"Erreur historique groupé dans _on_cell_editing_updated, fallback: {e}")
+                app_logger.warning(f"Erreur historique groupé, fallback: {e}")
                 self.user_interaction_service.add_to_history(f"Modification {column_name}: '{old_value}' → '{new_value}'")
 
     def _update_toolbar_states(self):
@@ -1720,28 +1686,6 @@ class MainWindow(QMainWindow):
 
 
     
-    def _handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
-        """Gérer les actions post mise à jour - PHASE 5: Appel délégué + actions spécifiques"""
-        return self._safe_handle_successful_cell_update(item, old_value, new_value, skip_history)
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur traitement mise à jour cellule")
-    def _safe_handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
-        """Helper sécurisé pour gérer les actions post mise à jour"""
-        row, col = item.row(), item.column()
-
-        # Actions spécifiques à l'interface principale
-        if old_value != new_value and not skip_history:
-            # NOUVEAU: Utiliser le service de groupement d'historique (helper factorisé)
-            self._safe_add_to_grouped_history(row, col, old_value, new_value)
-        
-        self.modified_cells.discard((row, col))
-        item.setBackground(QColor(255, 255, 255))  # Blanc
-        
-        # Mettre à jour l'indicateur de sauvegarde
-        if not self.modified_cells:
-            self.save_indicator.setText(Config.get_message('save_success'))
-            self.save_indicator.setStyleSheet("color: green;")
-
     def _save_drag_changes(self):
         """Sauvegarder les modifications du glisser-déposer"""
         return self._safe_save_drag_changes()
@@ -1818,7 +1762,7 @@ class MainWindow(QMainWindow):
 
     def _handle_history_link(self, url):
         """Gérer les clics sur les liens dans l'historique"""
-        from .qt_imports import QUrl
+        from ..utils.qt_imports import QUrl
         # FullyEncoded : la référence reste encodée telle qu'écrite dans le lien
         # (« / », « # », espaces…) et n'est décodée qu'une fois, par le gestionnaire.
         url_str = url.toString(QUrl.FullyEncoded) if isinstance(url, QUrl) else str(url)
@@ -1829,7 +1773,7 @@ class MainWindow(QMainWindow):
         le texte sélectionné (ou, à défaut, le mot sous le curseur) dans le champ
         Recherche par pièce — sans dupliquer le menu standard (copier, tout
         sélectionner...) fourni nativement par QTextBrowser."""
-        from .qt_imports import QTextCursor
+        from ..utils.qt_imports import QTextCursor
 
         cursor = self.history_list.textCursor()
         term = cursor.selectedText().strip()
@@ -2022,19 +1966,16 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage données")
     def _safe_clean_data(self):
         """Helper sécurisé pour nettoyer les données"""
+        # Appelé à la fermeture de la fenêtre si elle a été utilisée (rien si annulée)
+        @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage données")
+        def _apres_nettoyage(_fenetre, result):
+            if result.get('user_choice') == 'applied':
+                # Rafraîchir l'affichage après nettoyage
+                self._force_refresh_display()
+
         # Ouvrir la fenêtre de nettoyage refactorisée qui gère tout
-        result = self.data_management_service.prepare_data_cleaning()
-
-        if result is None:
-            # L'utilisateur a annulé ou il y a eu une erreur
-            return
-
-        # La fenêtre refactorisée gère tout le processus
-        # Si on arrive ici, le nettoyage a été effectué avec succès
-
-        if result.get('user_choice') == 'applied':
-            # Rafraîchir l'affichage après nettoyage
-            self._force_refresh_display()
+        # (modale non bloquante, jamais exec_)
+        self.data_management_service.prepare_data_cleaning(sur_resultat=(lambda *a: _apres_nettoyage(self, *a)))
     
     def _on_search_position_toggled(self, checked: bool):
         """Basculer la position de la barre de recherche pièce (haut/bas) et mémoriser."""
@@ -2065,14 +2006,17 @@ class MainWindow(QMainWindow):
     def _safe_manage_categories(self):
         """Helper sécurisé pour gérer les catégories"""
         current_categories = self.db_manager.get_categories()
-        new_categories = self.dialog_service.get_categories(self, current_categories)
 
-        if new_categories is not None:
+        # Appelé si l'utilisateur valide (saisie modale non bloquante)
+        @handle_database_operation_errors(return_value=None, log_prefix="Erreur gestion catégories")
+        def _enregistrer(_fenetre, new_categories):
             self.db_manager.update_categories(new_categories)
             self.statusbar.showMessage(
                 Config.get_message('categories_updated'),
                 Config.STATUS_MESSAGE_TIMEOUT
             )
+
+        self.dialog_service.get_categories(self, current_categories, (lambda *a: _enregistrer(self, *a)))
     
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""
@@ -2080,29 +2024,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'import_export_service') and self.import_export_service:
             self.import_export_service.import_file()
     
-    def _get_import_options_unified(self, detected_columns=None, default_ref_piece=None, import_method="CSV", sample_data=None):
-        """Dialogue unifié pour choisir les options d'import - Phase 2.6"""
-        # Déléguer au service DialogService
-        result = self.dialog_service.get_import_options_unified(
-            detected_columns=detected_columns,
-            default_ref_piece=default_ref_piece,
-            import_method=import_method,
-            sample_data=sample_data
-        )
-        
-        # Convertir le dictionnaire en tuple pour compatibilité avec le code existant
-        if result is None:
-            return None
-        
-        # Extraire les valeurs du dictionnaire et les retourner comme tuple
-        return (
-            result.get('mode', 0),  # import_type (mode d'import)
-            result.get('reference', ''),  # ref_piece
-            None,  # third_column_choice (pas utilisé dans cette version)
-            False,  # has_headers (pas utilisé dans cette version)  
-            ''  # libelle_piece (pas utilisé dans cette version)
-        )
-
     def _show_import_summary(self, results, ref_piece, method="CSV"):
         """Afficher la synthèse d'import avec le nouveau format unifié"""
         # Calculer le total traité
@@ -2601,7 +2522,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur affichage guide local")
     def _safe_show_local_guide(self):
         """Afficher un guide d'utilisation local (version protégée)"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Guide d'utilisation - 1001pieces.com")
@@ -2630,7 +2551,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         dialog.setLayout(layout)
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
 
     def _show_local_guide(self):
         """Afficher un guide d'utilisation local en cas d'erreur"""
@@ -2672,7 +2593,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur dialogue de restauration")
     def _safe_open_restore_backup_dialog(self):
         """Dialogue de sélection et restauration d'une sauvegarde de la base"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget
 
         from ..services.restore_service import RestoreService
         if not hasattr(self, 'restore_service'):
@@ -2736,26 +2657,28 @@ class MainWindow(QMainWindow):
             if row < 0 or row >= len(backups):
                 return
             backup_path, mtime, _ = backups[row]
-            confirmed = self.user_interaction_service.show_confirmation(
+
+            def _restaurer():
+                # Appelé si l'utilisateur confirme (boîte modale non bloquante, jamais exec_)
+                error = self.restore_service.restore_and_quit(backup_path)
+                if error:
+                    QMessageBox.critical(dialog, "Erreur de restauration",
+                                         f"La restauration a échoué :\n{error}")
+                else:
+                    dialog.accept()
+
+            self.user_interaction_service.demander_confirmation(
                 "Confirmer la restauration",
                 f"Restaurer la base depuis la sauvegarde du "
                 f"{mtime.strftime('%d/%m/%Y %H:%M:%S')} ?\n\n"
                 "Toutes les modifications effectuées depuis cette date seront perdues.\n"
-                "L'application va se fermer après la restauration."
+                "L'application va se fermer après la restauration.",
+                _restaurer
             )
-            if not confirmed:
-                return
-
-            error = self.restore_service.restore_and_quit(backup_path)
-            if error:
-                QMessageBox.critical(dialog, "Erreur de restauration",
-                                     f"La restauration a échoué :\n{error}")
-            else:
-                dialog.accept()
 
         restore_btn.clicked.connect(do_restore)
 
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
 
     def _open_fts5_manager(self):
         """Ouvrir le gestionnaire d'index FTS5"""
@@ -2764,7 +2687,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur gestionnaire FTS5")
     def _safe_open_fts5_manager(self):
         """Dialogue de gestion de l'index de recherche FTS5"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressDialog
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressDialog
         from ..core.config import Config
 
         dialog = QDialog(self)
@@ -2865,7 +2788,7 @@ class MainWindow(QMainWindow):
         # (Ancienne note « définir USE_FTS5 = True dans config.py » retirée : le
         # réglage est déjà actif ; seule SEARCH_PIECES_ONLY décide de l'usage.)
 
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
 
     def _export_application(self):
         """Lancer l'export portable de l'application — délégué à AppExportService."""
@@ -2887,7 +2810,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur configuration colonnes")
     def _safe_configure_columns(self):
         """Helper sécurisé pour configurer les colonnes"""
-        from .qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel, QSize
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QLabel, QSize
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Configuration des colonnes")
@@ -2934,7 +2857,7 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(button_layout)
 
-        dialog.exec_()
+        ouvrir_modal(dialog)  # modal sans boucle imbriquée (jamais exec_)
     
     def _reset_column_defaults(self, checkboxes):
         """Réinitialiser les colonnes aux valeurs par défaut"""
@@ -3568,20 +3491,12 @@ class MainWindow(QMainWindow):
         return True
 
     def closeEvent(self, event):
-        """Gestion de la fermeture"""
-        # Sauvegarder les modifications en attente
-        if self.modified_cells:
-            reply = self.user_interaction_service.show_save_confirmation(
-                "Modifications non sauvegardées", 
-                "Des modifications ne sont pas sauvegardées. Les sauvegarder avant de quitter ?"
-            )
-            
-            if reply == "cancel":
-                event.ignore()
-                return
-            elif reply == "yes":
-                self._auto_save()
-        
+        """Gestion de la fermeture.
+
+        Pas de question « modifications non sauvegardées » : chaque édition est
+        enregistrée aussitôt par EventDrivenSaveService (modified_cells n'est plus
+        jamais alimenté ; la question ne pouvait plus apparaître).
+        """
         # Sauvegarder les paramètres
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
@@ -3649,42 +3564,6 @@ class MainWindow(QMainWindow):
         """Copier la fiche produit complète (bouton "Fiche complète") — délégation vers FicheProduitService"""
         self.fiche_produit_service.generer_fiche(profile_name)
     
-    def _is_piece_reference_search(self) -> bool:
-        """Vérifier si la recherche actuelle est une référence de pièce - Support multi-références"""
-        return self._safe_is_piece_reference_search()
-
-    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur vérification référence pièce")
-    def _safe_is_piece_reference_search(self) -> bool:
-        """Helper sécurisé pour vérifier référence pièce"""
-        search_term = self.search_input.text().strip()
-        if not search_term:
-            return False
-
-        # Détecter les recherches multi-références avec || ou &&
-        if '||' in search_term or '&&' in search_term:
-            return self.advanced_search_service._are_all_terms_piece_references(search_term)
-
-        # Recherche simple - vérifier si c'est une référence de pièce
-        return self.advanced_search_service._get_piece_description_from_reference(search_term) is not None
-
-    # --- Méthodes de gestion des dispositifs pour le collage (délégation vers DeviceManager) ---
-    
-    
-    def _try_auto_complete(self, device_data: Dict[str, str]) -> bool:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.try_auto_complete(device_data)
-    
-    def _needs_manual_completion(self, device_data: Dict[str, str]) -> bool:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.needs_manual_completion(device_data)
-    
-    
-    def _update_device_info(self, device_id: int, updates: Dict[str, str]) -> bool:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.update_device_info(device_id, updates)
-
-    # Les méthodes _log_paste_results et _show_paste_summary ont été déplacées vers PasteResultsService
-
     @handle_ui_operation_errors(return_value=None)
     def _safe_disconnect_search_signals(self):
         """Déconnecter les signaux de search_input en toute sécurité"""

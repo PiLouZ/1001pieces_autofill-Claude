@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
-from enum import Enum
 
 from ..utils.error_handler import handle_logger_errors
 
@@ -23,17 +22,6 @@ from ..utils.error_handler import handle_logger_errors
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _DEFAULT_LOG_DIR = (os.environ.get('AUTOFILL_LOG_DIR')
                     or str(_PROJECT_ROOT / "data" / "logs"))
-
-class LogLevel(Enum):
-    """Niveaux de logging personnalisés"""
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    CRITICAL = "CRITICAL"
-    DATA_OPERATION = "DATA_OP"  # Opérations sur les données
-    AUTO_COMPLETE = "AUTO_COMPLETE"  # Complétion automatique
-    USER_ACTION = "USER_ACTION"  # Actions utilisateur
 
 class AppLogger:
     """Gestionnaire de logs avancé pour l'application"""

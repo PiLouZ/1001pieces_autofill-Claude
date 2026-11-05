@@ -19,7 +19,7 @@ import html
 import re
 
 import qtawesome as qta
-from .qt_imports import (
+from ..utils.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox,
     QSpinBox, QCheckBox, QTextBrowser, QSizePolicy, Qt, QSize
 )

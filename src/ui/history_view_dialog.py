@@ -5,11 +5,23 @@ Dialogue de consultation de l'historique persistant des modifications.
 import json
 import re
 from datetime import datetime
-from .qt_imports import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
-    Qt, QHeaderView, QSizePolicy, QMessageBox, QColor,
-    QScrollArea, QFrame, QWidget,
+from ..utils.qt_imports import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QComboBox,
+    QTableWidget,
+    QTableWidgetItem,
+    Qt,
+    QHeaderView,
+    QMessageBox,
+    QColor,
+    QScrollArea,
+    QFrame,
+    QWidget
 )
 from PyQt5.QtWidgets import QDateEdit
 from PyQt5.QtCore import QDate
@@ -17,6 +29,7 @@ import qtawesome as qta
 from .popup_positioning import PopupAuCurseurMixin
 from .style_manager import StyleManager
 from ..core.config import Config
+from ..utils.boites import demander_oui_non
 
 _PAGE_SIZE = 100
 
@@ -550,15 +563,10 @@ class HistoryViewDialog(QDialog):
             self._load()
 
     def _confirm_clear(self):
-        reply = QMessageBox.question(
-            self,
-            "Effacer l'historique",
-            "Supprimer définitivement tout l'historique des modifications ?\n"
-            "Cette action est irréversible.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply == QMessageBox.Yes:
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
             self.history_service.clear_history()
             self._current_page = 0
             self._load()
+
+        demander_oui_non(self, "Effacer l'historique", "Supprimer définitivement tout l'historique des modifications ?\nCette action est irréversible.", _suite, defaut=QMessageBox.No)

@@ -19,7 +19,7 @@ des exports, et le copie dans le presse-papiers.
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .qt_imports import QApplication
+from ..utils.qt_imports import QApplication
 
 from src.core.logger import app_logger
 from src.services.html_export_service import HtmlExportService
@@ -42,17 +42,18 @@ class FicheProduitService:
             self.main_window.statusbar.showMessage(f"Fiche complète non générée : {e}", 8000)
 
     def _generer_fiche(self, profile_name: Optional[str]) -> None:
-        contexte = self.contexte()
+        contexte = self.contexte(relancer=lambda: self.generer_fiche(profile_name))
         if contexte:
             self.copier(contexte, profile_name)
 
     # ─── Contexte / rendu / copie (bouton et aperçu d'export) ───────────────
 
-    def contexte(self, interactif: bool = True) -> Optional[Dict[str, Any]]:
-        """Données de la fiche recherchée, préparées une fois pour toutes les variantes."""
+    def contexte(self, interactif: bool = True, relancer=None) -> Optional[Dict[str, Any]]:
+        """Données de la fiche recherchée, préparées une fois pour toutes les variantes.
+        relancer : rappelé une fois la référence choisie (recherche multi-références)."""
         seo = self.main_window.seo_service
         preparees = seo.preparer_donnees_fiche("fiche", "Référence pour la fiche complète",
-                                               interactif=interactif)
+                                               interactif=interactif, relancer=relancer)
         if not preparees:
             return None
         donnees, ref_obsolete = preparees

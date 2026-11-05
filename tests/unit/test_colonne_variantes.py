@@ -107,7 +107,8 @@ def test_dupliquer(colonne):
 
 
 def test_definir_defaut_et_supprimer(colonne, monkeypatch):
-    monkeypatch.setattr(QMessageBox, 'question', lambda *a, **k: QMessageBox.Yes)
+    import src.ui.colonne_variantes as module
+    monkeypatch.setattr(module, 'demander_oui_non', lambda p, t, m, sur_oui, defaut=None: sur_oui())
     colonne.selectionner('Zèbre')
     colonne.definir_defaut()
     assert colonne.nom_defaut == 'Zèbre' and _affiches(colonne)[0] == 'Zèbre'

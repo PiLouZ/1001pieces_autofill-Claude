@@ -3,7 +3,7 @@ tête (« ▲ Lignes à traiter ▼ », sous le tableau) — avec QStatusBar sta
 disparaissaient pendant chaque « N lignes chargées »."""
 
 from src.ui.message_status_bar import MessageStatusBar
-from src.ui.qt_imports import QLabel, QStatusBar, QWidget
+from src.utils.qt_imports import QLabel, QStatusBar, QWidget
 
 
 def _barre(qapp):

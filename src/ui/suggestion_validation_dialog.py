@@ -103,8 +103,9 @@ class SuggestionValidationDialog(FenetreRevue):
 
     def __init__(self, parent, snapshot, on_validate, value_picker=None,
                  on_refuse=None, preuves=None):
-        """value_picker(db_field, current_value, candidates) -> str|dict|None : la
-        fenêtre Cmd+D. preuves(entrée) -> {'nb_pieces', 'paires'} : vote des pièces
+        """value_picker(db_field, current_value, candidates, sur_resultat) : ouvre la
+        fenêtre Cmd+D (non bloquante) et appelle sur_resultat(str|dict) à la
+        validation. preuves(entrée) -> {'nb_pieces', 'paires'} : vote des pièces
         de l'appareil, lu à la consultation de la ligne. Tous deux optionnels."""
         self._on_validate = on_validate
         self._on_refuse = on_refuse
@@ -311,22 +312,25 @@ class SuggestionValidationDialog(FenetreRevue):
         """Choisir un candidat (dict) remplit Type ET Marque ; une valeur libre (str)
         ne touche que la colonne corrigée (Type par défaut, au clavier)."""
         if self._value_picker is None:
-            return False
+            return
         colonne = colonne if colonne in (COL_NEW_TYPE, COL_NEW_MFR) else (
             COL_NEW_TYPE if colonne is None else None)
         if colonne is None:
-            return False
+            return
         champ = 'type' if colonne == COL_NEW_TYPE else 'manufacturer'
         cands = (entree_de(item) or {}).get('candidates') or []
-        resultat = self._value_picker(champ, item.text(colonne), cands)
-        if resultat is None:
-            return False
-        if isinstance(resultat, dict):
-            self._poser_candidat(item, resultat)
-        else:
-            item.setText(colonne, resultat)
-            self._marquer_modifiee(item)
-        return True
+
+        def _sur_resultat(resultat):
+            if resultat is None:
+                return
+            if isinstance(resultat, dict):
+                self._poser_candidat(item, resultat)
+            else:
+                item.setText(colonne, resultat)
+                self._marquer_modifiee(item)
+            self._apres_correction(item)
+
+        self._value_picker(champ, item.text(colonne), cands, _sur_resultat)
 
     def _marquer_modifiee(self, item):
         item.setData(COL_ETAT, _ROLE_EDITED, True)

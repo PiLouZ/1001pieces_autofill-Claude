@@ -10,9 +10,8 @@ Responsabilités:
 - Mise à jour des descriptions et références de pièces
 """
 
-from typing import Optional, List, Dict, Any, Set
-from .qt_imports import QListWidgetItem, QMessageBox
-from .qt_imports import Qt
+from ..utils.qt_imports import QListWidgetItem
+from ..utils.qt_imports import Qt
 
 from src.core.config import Config, pluralize
 from src.core.logger import app_logger
@@ -156,14 +155,10 @@ class PieceManagementService:
         if not ref_piece:
             return
 
-        # Demander confirmation avec raccourcis clavier
-        confirmed = self.main_window.user_interaction_service.show_confirmation(
-            "Confirmer la suppression",
-            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?",
-            default_yes=False
-        )
-
-        if confirmed:
+        # Appelé si l'utilisateur confirme (boîte modale non bloquante, jamais exec_) ;
+        # même garde d'erreur que la méthode, qui a rendu la main entre-temps.
+        @handle_ui_errors(log_prefix="Erreur suppression pièce", show_message=True)
+        def _supprimer(_fenetre):
             # Obtenir l'ID de l'appareil sélectionné
             current_row = self.main_window.table.currentRow()
             if current_row < 0:
@@ -188,6 +183,12 @@ class PieceManagementService:
             else:
                 self.main_window.user_interaction_service.show_error("Erreur lors de la suppression")
 
+        self.main_window.user_interaction_service.demander_confirmation(
+            "Confirmer la suppression",
+            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?",
+            (lambda *a: _supprimer(self, *a)), default_yes=False
+        )
+
     def delete_piece_from_selected(self, item: QListWidgetItem) -> None:
         """Supprimer une pièce des appareils sélectionnés"""
         ref_piece = item.data(Qt.UserRole)
@@ -211,15 +212,8 @@ class PieceManagementService:
             self.main_window.user_interaction_service.show_info("Aucune sélection")
             return
         
-        # Demander confirmation
-        confirmed = self.main_window.user_interaction_service.show_confirmation(
-            "Confirmer la suppression multiple",
-            f"Supprimer la pièce '{ref_piece}' de "
-            f"{pluralize(len(selected_rows), 'appareil sélectionné', 'appareils sélectionnés')} ?",
-            default_yes=False
-        )
-        
-        if confirmed:
+        # Appelé si l'utilisateur confirme (boîte modale non bloquante, jamais exec_)
+        def _supprimer():
             success_count = 0
             error_count = 0
             
@@ -252,6 +246,13 @@ class PieceManagementService:
                 self.main_window.user_interaction_service.show_status_message(message, Config.STATUS_MESSAGE_TIMEOUT)
             else:
                 self.main_window.user_interaction_service.show_error("Aucune suppression effectuée")
+
+        self.main_window.user_interaction_service.demander_confirmation(
+            "Confirmer la suppression multiple",
+            f"Supprimer la pièce '{ref_piece}' de "
+            f"{pluralize(len(selected_rows), 'appareil sélectionné', 'appareils sélectionnés')} ?",
+            _supprimer, default_yes=False
+        )
 
     @handle_ui_errors(log_prefix="Erreur ouverture gestionnaire pièces", show_message=True)
     def _gestionnaire(self):
