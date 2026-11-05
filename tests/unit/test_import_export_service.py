@@ -129,17 +129,6 @@ class TestImportExportService:
             # ImportManager ne doit pas être appelé
             import_export_service.import_manager.import_file.assert_not_called()
 
-    def test_import_csv_from_path_options_cancelled(self, import_export_service):
-        """Test import CSV avec options annulées"""
-        test_file = "/tmp/test.csv"
-
-        with patch('os.path.exists', return_value=True):
-            with patch.object(import_export_service, '_get_import_options_unified', return_value=None):
-                import_export_service.import_csv_from_path(test_file)
-
-                # ImportManager ne doit pas être appelé
-                import_export_service.import_manager.import_file.assert_not_called()
-
     def test_import_pdf_from_path(self, import_export_service):
         """Import PDF : délègue à FileProcessingService.import_pdf_files"""
         test_file = "/tmp/test.pdf"
@@ -240,18 +229,6 @@ class TestImportExportService:
         assert "Durée: 2.5s" in summary
         assert "test.csv" in summary
         assert "Avertissements: 2" in summary
-
-    def test_get_import_options_unified(self, import_export_service):
-        """Test obtention options import unifiées"""
-        options = import_export_service._get_import_options_unified()
-
-        # Vérifier les options par défaut
-        assert options is not None
-        assert options['has_headers'] is True
-        assert options['separator'] == ';'
-        assert options['encoding'] == 'utf-8'
-        assert options['skip_duplicates'] is True
-        assert options['create_backup'] is True
 
     def test_log_import_to_history(self, import_export_service):
         """Test enregistrement import dans historique"""

@@ -4,7 +4,7 @@ Extrait de main_refactored.py pour centraliser la logique d'import/export
 """
 
 import os
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from ..utils.qt_imports import QFileDialog, pyqtSignal
 
@@ -109,23 +109,6 @@ class ImportExportService(BaseService):
     # ================================
     # MÉTHODES DE SUPPORT
     # ================================
-
-    def _get_import_options_unified(self) -> Optional[Dict[str, Any]]:
-        """Dialogue unifié pour options d'import avec conversion tuple"""
-        return self._safe_get_import_options_unified()
-
-    @safe_operation("import_options_unified", default_return=None)
-    def _safe_get_import_options_unified(self) -> Optional[Dict[str, Any]]:
-        """Helper sécurisé pour options d'import"""
-        # Pour l'instant, retourner des options par défaut
-        # TODO: Implémenter le dialogue complet
-        return {
-            'has_headers': True,
-            'separator': ';',
-            'encoding': 'utf-8',
-            'skip_duplicates': True,
-            'create_backup': True
-        }
 
     def _process_import_file(self, file_path: str):
         """Traiter un fichier d'import selon son extension"""

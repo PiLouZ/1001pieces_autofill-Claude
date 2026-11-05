@@ -4,8 +4,9 @@ Détecte et nettoie automatiquement les extensions de fichiers (.pdf, .csv, etc.
 """
 
 import re
-from typing import Dict, List, Optional, Tuple
-from ..utils.qt_imports import QObject, pyqtSignal, QMessageBox
+from typing import Callable, List, Optional, Tuple
+from ..utils.qt_imports import QObject, pyqtSignal
+from ..utils.ouverture_modale import ouvrir_modal
 
 from ..core.logger import app_logger
 
@@ -36,41 +37,46 @@ class PasteCleanupService(QObject):
             'remove': ''
         }
         
-    def process_paste_content(self, text: str, source_widget=None) -> str:
+    def process_paste_content(self, text: str, source_widget=None,
+                              sur_resultat: Optional[Callable[[str], None]] = None) -> None:
         """
-        Traite le contenu collé et nettoie les extensions de fichiers
-        
+        Traite le contenu collé et nettoie les extensions de fichiers.
+
+        Non bloquant (jamais exec_) : `sur_resultat(texte)` reçoit le texte à
+        insérer — tout de suite s'il n'y a rien à demander, sinon à la fermeture
+        du dialogue de choix (texte d'origine si l'utilisateur annule).
+
         Args:
             text: Texte collé
-            source_widget: Widget source (pour les dialogues)
-            
-        Returns:
-            str: Texte nettoyé
+            source_widget: Widget source (parent du dialogue)
+            sur_resultat: reçoit le texte nettoyé (ou d'origine)
         """
+        def rendre(texte):
+            if sur_resultat is not None:
+                sur_resultat(texte)
+
         if not text or not self._contains_file_extensions(text):
-            return text
-            
+            return rendre(text)
+
         app_logger.debug(f"Détection d'extensions dans le texte collé: '{text[:50]}...'")
-        
+
         # Analyser les extensions présentes
         extensions_found = self._find_file_extensions(text)
         if not extensions_found:
-            return text
-            
+            return rendre(text)
+
+        def appliquer(replacement):
+            if replacement is None:
+                return rendre(text)  # Utilisateur a annulé
+            cleaned_text = self._clean_text(text, replacement)
+            if cleaned_text != text:
+                self.text_cleaned.emit(text, cleaned_text)
+                app_logger.info(f"Texte nettoyé: '{text}' → '{cleaned_text}'")
+            rendre(cleaned_text)
+
         # Décider du remplacement à appliquer
-        replacement = self._get_replacement_choice(extensions_found, source_widget)
-        if replacement is None:
-            return text  # Utilisateur a annulé
-            
-        # Appliquer le nettoyage
-        cleaned_text = self._clean_text(text, replacement)
-        
-        if cleaned_text != text:
-            self.text_cleaned.emit(text, cleaned_text)
-            app_logger.info(f"Texte nettoyé: '{text}' → '{cleaned_text}'")
-            
-        return cleaned_text
-    
+        self._get_replacement_choice(extensions_found, source_widget, appliquer)
+
     def _contains_file_extensions(self, text: str) -> bool:
         """Vérifie si le texte contient des extensions de fichiers"""
         pattern = r'\.(?:' + '|'.join(ext[1:] for ext in self._user_extensions) + r')\b'
@@ -98,33 +104,35 @@ class PasteCleanupService(QObject):
             
         return extensions_found
     
-    def _get_replacement_choice(self, extensions_found: List[Tuple[str, int, int]], 
-                               source_widget=None) -> Optional[str]:
+    def _get_replacement_choice(self, extensions_found: List[Tuple[str, int, int]],
+                               source_widget, sur_choix: Callable[[Optional[str]], None]) -> None:
         """
-        Détermine le remplacement à appliquer selon les préférences utilisateur
-        
-        Returns:
-            str: Type de remplacement ('or', 'and', 'space', 'remove') ou None si annulé
+        Détermine le remplacement à appliquer selon les préférences utilisateur.
+
+        sur_choix reçoit le type de remplacement ('or', 'and', 'space', 'remove')
+        ou None si annulé — tout de suite si le choix est mémorisé, sinon à la
+        fermeture du dialogue.
         """
         # Créer une clé pour mémoriser le choix
         ext_key = '|'.join(sorted(set(ext for ext, _, _ in extensions_found)))
         
         # Si on a déjà mémorisé un choix pour ces extensions
         if not self._ask_confirmation or ext_key in self._user_choice_memory:
-            return self._user_choice_memory.get(ext_key, 'or')
-        
+            return sur_choix(self._user_choice_memory.get(ext_key, 'or'))
+
+        def _sur_reponse(choice):
+            # Mémoriser le choix si demandé
+            if choice and self._remember_choice:
+                self._user_choice_memory[ext_key] = choice
+            sur_choix(choice)
+
         # Demander confirmation à l'utilisateur
-        choice = self._show_replacement_dialog(extensions_found, source_widget)
-        
-        # Mémoriser le choix si demandé
-        if choice and self._remember_choice:
-            self._user_choice_memory[ext_key] = choice
-            
-        return choice
+        self._show_replacement_dialog(extensions_found, source_widget, _sur_reponse)
     
-    def _show_replacement_dialog(self, extensions_found: List[Tuple[str, int, int]], 
-                                source_widget=None) -> Optional[str]:
-        """Affiche le dialogue de choix de remplacement"""
+    def _show_replacement_dialog(self, extensions_found: List[Tuple[str, int, int]],
+                                source_widget, sur_choix: Callable[[Optional[str]], None]) -> None:
+        """Affiche le dialogue de choix de remplacement (modal non bloquant, jamais
+        exec_) ; sur_choix reçoit le choix, ou None si annulé."""
         from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox
         
         class ReplacementDialog(QDialog):
@@ -185,13 +193,16 @@ class PasteCleanupService(QObject):
                 self.accept()
         
         dialog = ReplacementDialog(source_widget)
-        if dialog.exec_() == QDialog.Accepted:
+
+        def _sur_fin(code):
+            if code != QDialog.Accepted:
+                return sur_choix(None)
             # Mettre à jour la préférence de mémorisation
             if hasattr(dialog, 'remember_checkbox'):
                 self._remember_choice = dialog.remember_checkbox.isChecked()
-            return dialog.choice
-            
-        return None
+            sur_choix(dialog.choice)
+
+        ouvrir_modal(dialog, sur_fin=_sur_fin)
     
     def _clean_text(self, text: str, replacement_type: str) -> str:
         """

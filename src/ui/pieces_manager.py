@@ -2,16 +2,41 @@
 Gestionnaire des pièces - Fenêtre de gestion des références de pièces
 """
 
-from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
-                           QTableWidgetItem, QTableWidgetSelectionRange, QLabel,
-                           QPushButton, QLineEdit,
-                           QHeaderView, QMessageBox, QSplitter, QTextEdit,
-                           QApplication, QWidget, QMenu, QInputDialog, QCheckBox,
-                           Qt, QTimer, pyqtSignal, QColor,
-                           QButtonGroup, QFont,
-                           QFrame, QScrollArea, QSize, QPoint, QCursor, QPalette,
-                           QEvent, QStackedWidget, QProgressBar, QItemSelectionModel)
-from typing import List, Tuple, Dict
+from ..utils.qt_imports import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QTableWidgetSelectionRange,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QHeaderView,
+    QMessageBox,
+    QSplitter,
+    QApplication,
+    QWidget,
+    QMenu,
+    QInputDialog,
+    QCheckBox,
+    Qt,
+    QTimer,
+    pyqtSignal,
+    QColor,
+    QButtonGroup,
+    QFont,
+    QFrame,
+    QScrollArea,
+    QSize,
+    QPoint,
+    QCursor,
+    QEvent,
+    QStackedWidget,
+    QProgressBar,
+    QItemSelectionModel
+)
+from typing import List, Tuple
 import html as _html
 import qtawesome as qta
 
@@ -88,7 +113,7 @@ from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
 from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
-from .ouverture_modale import ouvrir_modal
+from ..utils.ouverture_modale import ouvrir_modal
 
 class ActionButtonWidget(QWidget):
     """Widget contenant les boutons d'action (icônes sans fond) pour chaque ligne du tableau"""

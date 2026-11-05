@@ -4,8 +4,8 @@ ouvrir_modal : dialogue modal sans boucle d'événements imbriquée (show, jamai
 
 from PyQt5.QtWidgets import QApplication, QDialog, QLineEdit, QWidget
 
-from src.ui import ouverture_modale
-from src.ui.ouverture_modale import ouvrir_modal
+from src.utils import ouverture_modale
+from src.utils.ouverture_modale import ouvrir_modal
 
 
 class _Saisie(QDialog):

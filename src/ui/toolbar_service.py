@@ -9,7 +9,7 @@ Responsabilités:
 """
 
 import qtawesome as qta
-from ..utils.qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy, QHBoxLayout
+from ..utils.qt_imports import QToolBar, QAction, QPushButton, QMenu, QWidget, QSizePolicy
 from ..utils.qt_imports import QSize, Qt
 from ..utils.qt_imports import QKeySequence
 from .style_manager import StyleManager
@@ -393,5 +393,5 @@ class ToolbarService:
             )
 
         # Modal sans boucle imbriquée (jamais exec_)
-        from .ouverture_modale import ouvrir_modal
+        from ..utils.ouverture_modale import ouvrir_modal
         ouvrir_modal(dialog, sur_accepte=_appliquer)

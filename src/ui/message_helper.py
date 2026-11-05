@@ -3,8 +3,9 @@
 Élimine la duplication des 39 occurrences de QMessageBox dans le projet
 """
 
-from typing import Optional, Union
+from typing import Optional
 from ..utils.qt_imports import QMessageBox, QWidget
+from ..utils.ouverture_modale import ouvrir_modal
 
 class MessageType:
     """Types de messages standardisés"""
@@ -60,13 +61,15 @@ class MessageHelper:
         details: str, 
         title: str = MessageType.ERROR
     ) -> None:
-        """Afficher une erreur avec détails techniques"""
+        """Afficher une erreur avec détails techniques — modale, mais non bloquante
+        pour l'appelant (jamais exec_) : handle_errors renvoie sa valeur de repli
+        sans attendre la fermeture, comme il le faisait déjà après exec_()."""
         msg_box = QMessageBox(parent)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.setDetailedText(details)
         msg_box.setIcon(QMessageBox.Critical)
-        msg_box.exec_()
+        ouvrir_modal(msg_box)
 
 class CommonMessages:
     """Messages couramment utilisés dans l'application"""

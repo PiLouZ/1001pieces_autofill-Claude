@@ -15,6 +15,7 @@ from ..utils.qt_imports import QDialog
 from src.core.logger import app_logger
 from src.utils.error_handler import handle_data_management_errors
 from src.services.proposition_type_fabricant import proposer_type_fabricant
+from src.utils.ouverture_modale import ouvrir_modal
 
 @dataclass
 class FieldCompletionResult:
@@ -147,12 +148,14 @@ class DataManagementService:
                 'values': updates}
     
     @handle_data_management_errors()
-    def prepare_data_cleaning(self) -> Optional[Dict[str, Any]]:
+    def prepare_data_cleaning(self, sur_resultat=None) -> None:
         """
-        Préparer le nettoyage des données avec analyse préalable
+        Ouvrir le nettoyage des données avec analyse préalable (fenêtre modale non
+        bloquante, jamais exec_).
 
-        Returns:
-            Dict avec le résultat de la fenêtre ou None si annulé
+        Args:
+            sur_resultat: appelé à la fermeture avec {'dialog_completed': True,
+                'user_choice': ...} si la fenêtre a été utilisée ; rien si annulée.
         """
         # Importer et utiliser CleanupPreviewDialog
         from .cleanup_preview_refactored import CleanupPreviewDialog
@@ -164,18 +167,22 @@ class DataManagementService:
         # Ouvrir la fenêtre de prévisualisation
         preview_dialog = CleanupPreviewDialog(self.main_window)
 
-        result = preview_dialog.exec_()
-        user_choice = preview_dialog.get_user_choice()
+        @handle_data_management_errors()
+        def _sur_fin(result):
+            user_choice = preview_dialog.get_user_choice()
 
-        # Le marquage "distinct" d'un groupe écrit directement en base, indépendamment
-        # du résultat (Appliquer/Annuler) : invalider le cache des doublons systématiquement
-        # pour que le bouton "Outils" reflète l'état réel.
-        if hasattr(self.main_window, 'duplicate_indicator_service'):
-            self.main_window.duplicate_indicator_service.invalidate_cache("nettoyage doublons")
+            # Le marquage "distinct" d'un groupe écrit directement en base, indépendamment
+            # du résultat (Appliquer/Annuler) : invalider le cache des doublons systématiquement
+            # pour que le bouton "Outils" reflète l'état réel.
+            if hasattr(self.main_window, 'duplicate_indicator_service'):
+                self.main_window.duplicate_indicator_service.invalidate_cache("nettoyage doublons")
 
-        # Si l'utilisateur a annulé ou fermé la fenêtre
-        if result != QDialog.Accepted and user_choice != 'applied':
-            return None
+            # Si l'utilisateur a annulé ou fermé la fenêtre
+            if result != QDialog.Accepted and user_choice != 'applied':
+                return
 
-        # Retourner un dict indiquant que la fenêtre a été utilisée avec succès
-        return {'dialog_completed': True, 'user_choice': user_choice}
+            # La fenêtre a été utilisée avec succès
+            if sur_resultat is not None:
+                sur_resultat({'dialog_completed': True, 'user_choice': user_choice})
+
+        ouvrir_modal(preview_dialog, sur_fin=_sur_fin)

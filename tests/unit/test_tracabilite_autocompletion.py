@@ -136,7 +136,7 @@ def test_decisions_remises_au_callback(qapp, db):
     recus = []
     choix = iter(['Cuisinière'])
     fenetre = _fenetre(_entrees(db), on_validate=lambda v, c: recus.append((v, c)),
-                       value_picker=lambda champ, actuel, cands: next(choix))
+                       value_picker=lambda champ, actuel, cands, ok: ok(next(choix)))
     item_four = _item(fenetre, 1)
     fenetre._on_double_clic(item_four, COL_TYPE)       # corrige et valide
     assert fenetre.etat(item_four) == VALIDE

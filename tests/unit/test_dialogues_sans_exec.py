@@ -46,7 +46,7 @@ def db():
 @pytest.fixture
 def capture(monkeypatch):
     """Intercepte ouvrir_modal tout en l'exécutant : donne accès au dialogue ouvert."""
-    import src.ui.ouverture_modale as om
+    import src.utils.ouverture_modale as om
     ouverts = []
     vrai = om.ouvrir_modal
 
@@ -124,7 +124,7 @@ def test_annuler_ne_change_rien(fenetre_pieces, db, qapp):
 # ─── Configuration du nettoyage du collage (barre d'outils) ─────────────────
 
 def test_config_collage_rend_la_main_puis_applique(qapp, monkeypatch):
-    import src.ui.ouverture_modale as om
+    import src.utils.ouverture_modale as om
     from src.ui.toolbar_service import ToolbarService
     from PyQt5.QtWidgets import QMainWindow
     ouverts = []

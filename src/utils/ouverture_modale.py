@@ -13,7 +13,7 @@ suite du traitement passe par `sur_accepte` / `sur_fin`.
 
 from typing import Callable, Optional
 
-from ..utils.qt_imports import QDialog, QTimer
+from .qt_imports import QDialog, QTimer
 
 # Dialogues sans parent Qt : seule cette référence les garde en vie jusqu'à leur
 # fermeture (sinon Python les détruirait dès la sortie de la fonction appelante).

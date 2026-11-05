@@ -4,8 +4,18 @@ Utilise les services DuplicatesAnalysisService et CleanupUIService
 """
 
 from ..utils.qt_imports import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QStackedWidget, QButtonGroup, QFrame, QWidget, QMessageBox, QProgressBar, QSizePolicy, QSize
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QButtonGroup,
+    QFrame,
+    QWidget,
+    QProgressBar,
+    QSizePolicy,
+    QSize
 )
 from ..utils.qt_imports import Qt, QTimer
 import qtawesome as qta
@@ -13,10 +23,9 @@ import qtawesome as qta
 from ..core.logger import app_logger
 from .style_manager import StyleManager
 from ..data.database_manager import DatabaseManager
-from ..data.data_validator import DataValidator
 from ..services.duplicates_analysis_service import DuplicatesAnalysisService
 from ..services.cleanup_ui_service import CleanupUIService
-from .message_helper import show_success, show_error, MessageHelper
+from .message_helper import show_error, MessageHelper
 from ..utils.error_handler import handle_cleanup_preview_errors
 
 class CleanupPreviewDialog(QDialog):
@@ -587,7 +596,10 @@ class CleanupPreviewDialog(QDialog):
         # Arrêter l'analyse si en cours
         if self.analysis_service:
             self.analysis_service.stop_analysis()
-        event.accept()
+        # Comportement standard de QDialog : la croix vaut reject(), donc émet
+        # finished — indispensable depuis que la fenêtre s'ouvre en show() et non
+        # exec_() (l'appelant réagit à finished : invalidation du cache doublons).
+        super().closeEvent(event)
         
     def reject(self):
         """Gérer l'annulation"""

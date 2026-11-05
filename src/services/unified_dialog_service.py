@@ -23,11 +23,7 @@ from ..utils.qt_imports import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QComboBox,
-    QCheckBox,
-    QTextEdit,
     QMessageBox,
-    QDialogButtonBox,
     QWidget,
     QFrame,
     QSize
@@ -145,121 +141,6 @@ class ComplexDialogs:
     
     def __init__(self, main_window):
         self.main_window = main_window
-    
-    @_handle_dialog_errors(default_return=None, context="dialogue options import")
-    def get_import_options_unified(self, detected_columns=None, default_ref_piece=None,
-                                 import_method="CSV", sample_data=None) -> Optional[Dict[str, Any]]:
-        """
-        Dialogue unifié pour les options d'import
-
-        Args:
-            detected_columns: Nombre de colonnes détectées
-            default_ref_piece: Référence par défaut
-            import_method: Méthode d'import (CSV, PDF, PASTE)
-            sample_data: Échantillon de données pour aperçu
-
-        Returns:
-            Dictionnaire avec les options sélectionnées ou None si annulé
-        """
-        dialog = QDialog(self.main_window)
-        dialog.setWindowTitle(f"Options d'import {import_method}")
-        dialog.setModal(True)
-        dialog.setMinimumWidth(600)
-
-        layout = QVBoxLayout()
-
-        # Information sur les colonnes détectées
-        if detected_columns:
-            info_label = QLabel(f"Données {import_method} détectées : {detected_columns} colonnes")
-            info_label.setStyleSheet("color: #198754; font-weight: bold; margin: 5px;")
-            layout.addWidget(info_label)
-
-        # Référence par défaut
-        ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("Référence par défaut :"))
-        ref_input = QLineEdit(default_ref_piece or "")
-        ref_input.setPlaceholderText("Laisser vide pour auto-détection")
-        ref_layout.addWidget(ref_input)
-        layout.addLayout(ref_layout)
-
-        # Mode d'import
-        mode_layout = QHBoxLayout()
-        mode_layout.addWidget(QLabel("Mode d'import :"))
-        mode_combo = QComboBox()
-        mode_combo.addItems([
-            "Ajouter aux données existantes",
-            "Remplacer toutes les données",
-            "Mise à jour (selon référence)"
-        ])
-        mode_layout.addWidget(mode_combo)
-        layout.addLayout(mode_layout)
-
-        # Options avancées
-        options_label = QLabel("Options :")
-        options_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(options_label)
-
-        auto_complete_cb = QCheckBox("Auto-complétion après import")
-        auto_complete_cb.setChecked(True)
-        layout.addWidget(auto_complete_cb)
-
-        validate_cb = QCheckBox("Valider les données après import")
-        validate_cb.setChecked(True)
-        layout.addWidget(validate_cb)
-
-        clean_cb = QCheckBox("Nettoyer les doublons automatiquement")
-        clean_cb.setChecked(False)
-        layout.addWidget(clean_cb)
-
-        # Aperçu des données si disponibles
-        if sample_data:
-            preview_label = QLabel("Aperçu des données :")
-            preview_label.setStyleSheet("font-weight: bold; margin-top: 15px;")
-            layout.addWidget(preview_label)
-
-            preview_text = QTextEdit()
-            preview_text.setMaximumHeight(150)
-            preview_text.setReadOnly(True)
-
-            # Formater l'aperçu selon le type de données
-            if isinstance(sample_data, list):
-                if sample_data and len(sample_data) > 0:
-                    preview_content = "\n".join([
-                        f"Ligne {i+1}: {row}" for i, row in enumerate(sample_data[:5])
-                    ])
-                    if len(sample_data) > 5:
-                        preview_content += f"\n... et {len(sample_data) - 5} autres lignes"
-                else:
-                    preview_content = "Aucune donnée d'aperçu disponible"
-            else:
-                preview_content = str(sample_data)[:500]
-
-            preview_text.setText(preview_content)
-            layout.addWidget(preview_text)
-
-        # Boutons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        layout.addWidget(button_box)
-
-        dialog.setLayout(layout)
-
-        if dialog.exec_() == QDialog.Accepted:
-            # Collecter les options sélectionnées
-            options = {
-                'default_reference': ref_input.text().strip(),
-                'import_mode': mode_combo.currentIndex(),
-                'import_mode_text': mode_combo.currentText(),
-                'auto_complete': auto_complete_cb.isChecked(),
-                'validate_data': validate_cb.isChecked(),
-                'clean_duplicates': clean_cb.isChecked()
-            }
-
-            app_logger.info(f"Options d'import sélectionnées: {options}")
-            return options
-
-        return None
     
     @_handle_dialog_errors(default_return=None, context="dialogue sélection référence")
     def show_reference_selection_dialog(self, title: str, message: str,
@@ -456,10 +337,6 @@ class UnifiedDialogService:
         return SimpleDialogs.confirm_action(parent, title, message)
     
     # Délégation aux dialogues complexes (méthodes d'instance)
-    def get_import_options_unified(self, **kwargs) -> Optional[Dict[str, Any]]:
-        """Dialogue d'options d'import"""
-        return self.complex.get_import_options_unified(**kwargs)
-    
     def show_reference_selection_dialog(self, title: str, message: str, 
                                       default_reference: str = "",
                                       destination: Optional[Dict[str, Any]] = None,
