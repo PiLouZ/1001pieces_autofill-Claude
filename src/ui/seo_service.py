@@ -10,9 +10,10 @@ Responsabilités:
 - Validation et formatage des données pour l'optimisation SEO
 """
 
-from typing import Optional, Dict, Any, List, Tuple
-from ..utils.qt_imports import QInputDialog, QApplication
-from ..utils.qt_imports import QTimer, Qt
+from typing import Callable, Optional, Dict, Any, List, Tuple
+from ..utils.qt_imports import QApplication
+from ..utils.boites import choisir_element
+from ..utils.qt_imports import Qt
 
 from src.core.config import Config
 from src.core.logger import app_logger
@@ -44,11 +45,15 @@ class SEOService:
         self._refus_silencieux = False
         self.raison_refus: Optional[str] = None
 
-    @handle_seo_generation_errors()
     def generate_meta_title(self) -> None:
         """Générer et copier un méta titre SEO optimisé (Maj+clic : autre formulation)"""
-        autre_formulation = self._maj_enfoncee()
-        preparees = self.preparer_donnees_fiche("title", "Référence pour Méta Title")
+        self._generer_meta_title(self._maj_enfoncee())
+
+    @handle_seo_generation_errors()
+    def _generer_meta_title(self, autre_formulation: bool) -> None:
+        preparees = self.preparer_donnees_fiche(
+            "title", "Référence pour Méta Title",
+            relancer=lambda: self._generer_meta_title(autre_formulation))
         if not preparees:
             return
         search_data, ref_obsolete = preparees
@@ -90,11 +95,15 @@ class SEOService:
             
         
     
-    @handle_seo_generation_errors()
     def generate_meta_description(self) -> None:
         """Générer et copier une méta description SEO (Maj+clic : autre formulation)"""
-        autre_formulation = self._maj_enfoncee()
-        preparees = self.preparer_donnees_fiche("description", "Référence pour Méta Description")
+        self._generer_meta_description(self._maj_enfoncee())
+
+    @handle_seo_generation_errors()
+    def _generer_meta_description(self, autre_formulation: bool) -> None:
+        preparees = self.preparer_donnees_fiche(
+            "description", "Référence pour Méta Description",
+            relancer=lambda: self._generer_meta_description(autre_formulation))
         if not preparees:
             return
         search_data, ref_obsolete = preparees
@@ -152,7 +161,8 @@ class SEOService:
         self.main_window.user_interaction_service.add_to_history(detailed_message)
         self.main_window.statusbar.showMessage(status_msg, 5000)
     
-    def preparer_donnees_fiche(self, genre: str, titre_dialogue: str, interactif: bool = True
+    def preparer_donnees_fiche(self, genre: str, titre_dialogue: str, interactif: bool = True,
+                               relancer: Optional[Callable[[], None]] = None
                                ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
         """
         Données d'une fiche pour une génération (méta title, méta description,
@@ -167,15 +177,21 @@ class SEOService:
         interactif=False (aperçu d'export mis à jour pendant la saisie) : aucune
         boîte de choix ni entrée d'historique ; la raison d'un refus est
         gardée dans raison_refus.
+
+        Choix de la référence (plusieurs références, interactif) : boîte modale
+        NON bloquante (jamais de boucle imbriquée). Ce premier appel renvoie None
+        — l'action s'arrête comme sur une annulation — puis `relancer()` est
+        appelé une fois la référence choisie : l'action reprend avec ce choix.
         """
         self.raison_refus = None
         self._refus_silencieux = not interactif
         try:
-            return self._preparer_donnees_fiche(genre, titre_dialogue, interactif)
+            return self._preparer_donnees_fiche(genre, titre_dialogue, interactif, relancer)
         finally:
             self._refus_silencieux = False
 
-    def _preparer_donnees_fiche(self, genre: str, titre_dialogue: str, interactif: bool
+    def _preparer_donnees_fiche(self, genre: str, titre_dialogue: str, interactif: bool,
+                                relancer: Optional[Callable[[], None]] = None
                                 ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
         multi_terms = self._get_multi_reference_terms()
         if multi_terms and not interactif:
@@ -183,13 +199,14 @@ class SEOService:
                                  f"cliquez sur Actualiser pour choisir.")
             return None
         if multi_terms:
-            selected_reference = self._show_reference_selection_dialog(
-                titre_dialogue,
-                f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
-                f"Choisissez la référence à utiliser pour la génération SEO :",
-                multi_terms[0]
-            )
+            selected_reference, self._reference_choisie = self._reference_choisie, None
             if not selected_reference:
+                if relancer is not None:
+                    self._demander_reference(
+                        titre_dialogue,
+                        f"Plusieurs références détectées ({', '.join(multi_terms)}).\n"
+                        f"Choisissez la référence à utiliser pour la génération SEO :",
+                        multi_terms, relancer)
                 return None
             search_data = self._get_current_search_data_for_reference(selected_reference)
         else:
@@ -503,30 +520,25 @@ class SEOService:
         # Recherche simple
         return []
     
+    # Référence choisie dans la boîte de choix, consommée par la relance de l'action
+    _reference_choisie: Optional[str] = None
+
     @handle_seo_dialog_errors(return_value=None, title="Erreur dialogue sélection référence")
-    def _show_reference_selection_dialog(self, title: str, message: str, default_reference: str) -> Optional[str]:
-        """
-        Afficher un dialogue de sélection de référence pour la génération SEO
-        """
-        # Récupérer toutes les références détectées
-        multi_terms = self._get_multi_reference_terms()
-        if not multi_terms:
-            return default_reference
+    def _demander_reference(self, title: str, message: str, multi_terms: List[str],
+                            relancer: Callable[[], None]) -> None:
+        """Choix de la référence pour la génération SEO (boîte modale non bloquante) :
+        à la validation, relance l'action avec la référence retenue."""
+        def _sur_choix(reference):
+            if not reference:
+                return
+            self._reference_choisie = reference
+            try:
+                relancer()
+            finally:
+                self._reference_choisie = None
 
-        # Utiliser QInputDialog avec une liste de choix
-        reference, ok = QInputDialog.getItem(
-            self.main_window,
-            title,
-            message,
-            multi_terms,
-            0,  # Index du choix par défaut
-            False  # Non éditable
-        )
-
-        if ok and reference:
-            return reference
-        else:
-            return None
+        choisir_element(self.main_window, title, message, multi_terms, _sur_choix,
+                        courant=0, modifiable=False)
     
     @handle_seo_generation_errors()
     def update_seo_buttons_state(self) -> None:

@@ -3,21 +3,29 @@ Service d'interface utilisateur pour le nettoyage des doublons
 Centralise la logique d'affichage et d'interaction pour la prévisualisation de nettoyage
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import qtawesome as qta
 from ..utils.qt_imports import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView, QGroupBox, QTabWidget,
-    QProgressBar, QCheckBox, QTreeWidget, QTreeWidgetItem, QApplication, QMessageBox,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QAbstractItemView,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QMessageBox,
     QSize
 )
-from ..utils.qt_imports import Qt, QObject, pyqtSignal
+from ..utils.qt_imports import Qt, pyqtSignal
 from ..utils.qt_imports import QFont, QKeyEvent, QPainter, QColor
 from ..ui.style_manager import StyleManager
 
 from ..core.logger import app_logger
-from .duplicates_analysis_service import clean_display_text
-from .base_service import BaseService, safe_operation, service_operation
+from .base_service import BaseService
+from ..utils.boites import demander_oui_non, choisir_fichier_a_enregistrer
 
 class KeyboardTreeWidget(QTreeWidget):
     """QTreeWidget personnalisé avec gestion clavier pour sélection par barre espace"""
@@ -509,84 +517,75 @@ class DuplicateDevicesWidget(QWidget):
         refs_apercu = ", ".join(self._extract_ref_modele(g) for g in group_items[:5])
         if nb > 5:
             refs_apercu += f", … (+{nb - 5})"
-        reply = QMessageBox.question(
-            self,
-            "Marquage immédiat",
-            f"Marquer {nb} {'groupe' if nb <= 1 else 'groupes'} comme distinct{'s' if nb > 1 else ''} ?\n\n"
-            f"{refs_apercu}\n\n"
-            "Attention — cette action est enregistrée immédiatement en base "
-            "(elle ne passe pas par le bouton « Appliquer le nettoyage »).",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
+            # Accéder au DatabaseManager via la chaîne de parents
+            parent_widget = self.parent()
+            while parent_widget and not hasattr(parent_widget, 'db_manager'):
+                parent_widget = parent_widget.parent()
 
-        # Accéder au DatabaseManager via la chaîne de parents
-        parent_widget = self.parent()
-        while parent_widget and not hasattr(parent_widget, 'db_manager'):
-            parent_widget = parent_widget.parent()
+            if not (parent_widget and hasattr(parent_widget, 'db_manager')):
+                app_logger.error("Impossible d'accéder au DatabaseManager")
+                return
 
-        if not (parent_widget and hasattr(parent_widget, 'db_manager')):
-            app_logger.error("Impossible d'accéder au DatabaseManager")
-            return
+            db_manager = parent_widget.db_manager
+            marked = []  # [{'ref_modele', 'affected', 'savings'}]
+            root = self.devices_tree.invisibleRootItem()
 
-        db_manager = parent_widget.db_manager
-        marked = []  # [{'ref_modele', 'affected', 'savings'}]
-        root = self.devices_tree.invisibleRootItem()
-
-        for group_item in group_items:
-            ref_modele = self._extract_ref_modele(group_item)
-            success = db_manager.save_reference_decision(
-                ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
-            )
-            if not success:
-                app_logger.error(f"Échec marquage distinct pour {ref_modele}")
-                continue
-
-            app_logger.info(f"Groupe {ref_modele} marqué comme distinct")
-
-            # Nombre d'appareils concernés par ce groupe (pour les stats live)
-            affected = group_item.childCount()
-
-            # Retrait immédiat du groupe de l'arbre (#3)
-            index = root.indexOfChild(group_item)
-            if index >= 0:
-                root.takeChild(index)
-
-            # Tenir à jour la liste interne des groupes
-            self.duplicate_groups = [
-                g for g in self.duplicate_groups if g.get('ref_modele') != ref_modele
-            ]
-
-            marked.append({
-                'ref_modele': ref_modele,
-                'affected': affected,
-                'savings': max(affected - 1, 0),  # économie = doublons potentiels du groupe
-            })
-
-        if not marked:
-            return
-
-        # Historique : une entrée agrégée si plusieurs groupes, sinon unitaire
-        if self.history_callback:
-            if len(marked) == 1:
-                self.history_callback(
-                    "Marquage distinct",
-                    f"Référence '{marked[0]['ref_modele']}' marquée comme distincte",
-                    "Succès"
+            for group_item in group_items:
+                ref_modele = self._extract_ref_modele(group_item)
+                success = db_manager.save_reference_decision(
+                    ref_modele, 'DISTINCT', 'Marqué comme appareils distincts par l\'utilisateur'
                 )
-            else:
-                refs = ", ".join(m['ref_modele'] for m in marked)
-                self.history_callback(
-                    "Marquage distinct",
-                    f"{len(marked)} références marquées comme distinctes : {refs}",
-                    "Succès"
-                )
+                if not success:
+                    app_logger.error(f"Échec marquage distinct pour {ref_modele}")
+                    continue
 
-        # Signaler au dialogue : décrément des stats + rafraîchissement de l'onglet distinctes
-        self.groups_marked_distinct.emit(marked)
-        self._update_buttons_state()
+                app_logger.info(f"Groupe {ref_modele} marqué comme distinct")
+
+                # Nombre d'appareils concernés par ce groupe (pour les stats live)
+                affected = group_item.childCount()
+
+                # Retrait immédiat du groupe de l'arbre (#3)
+                index = root.indexOfChild(group_item)
+                if index >= 0:
+                    root.takeChild(index)
+
+                # Tenir à jour la liste interne des groupes
+                self.duplicate_groups = [
+                    g for g in self.duplicate_groups if g.get('ref_modele') != ref_modele
+                ]
+
+                marked.append({
+                    'ref_modele': ref_modele,
+                    'affected': affected,
+                    'savings': max(affected - 1, 0),  # économie = doublons potentiels du groupe
+                })
+
+            if not marked:
+                return
+
+            # Historique : une entrée agrégée si plusieurs groupes, sinon unitaire
+            if self.history_callback:
+                if len(marked) == 1:
+                    self.history_callback(
+                        "Marquage distinct",
+                        f"Référence '{marked[0]['ref_modele']}' marquée comme distincte",
+                        "Succès"
+                    )
+                else:
+                    refs = ", ".join(m['ref_modele'] for m in marked)
+                    self.history_callback(
+                        "Marquage distinct",
+                        f"{len(marked)} références marquées comme distinctes : {refs}",
+                        "Succès"
+                    )
+
+            # Signaler au dialogue : décrément des stats + rafraîchissement de l'onglet distinctes
+            self.groups_marked_distinct.emit(marked)
+            self._update_buttons_state()
+
+        demander_oui_non(self, 'Marquage immédiat', f"Marquer {nb} {('groupe' if nb <= 1 else 'groupes')} comme distinct{('s' if nb > 1 else '')} ?\n\n{refs_apercu}\n\nAttention — cette action est enregistrée immédiatement en base (elle ne passe pas par le bouton « Appliquer le nettoyage »).", _suite, defaut=QMessageBox.No)
 
 class DuplicatePiecesWidget(QWidget):
     """Widget pour gérer les pièces dupliquées"""
@@ -885,36 +884,28 @@ class DistinctReferencesWidget(QWidget):
             return
 
         # Confirmation
-        reply = QMessageBox.question(
-            self,
-            "Confirmation de suppression",
-            f"Êtes-vous sûr de vouloir retirer {len(selected_refs)} références "
-            f"de la liste des références distinctes?\n\n"
-            f"Ces références pourront à nouveau être proposées comme doublons potentiels.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
+            # Supprimer de la base de données
+            placeholders = ','.join(['?'] * len(selected_refs))
+            delete_query = f"DELETE FROM reference_decisions WHERE ref_modele IN ({placeholders})"
 
-        # Supprimer de la base de données
-        placeholders = ','.join(['?'] * len(selected_refs))
-        delete_query = f"DELETE FROM reference_decisions WHERE ref_modele IN ({placeholders})"
+            # execute_write commit : sans cela la suppression disparaissait au
+            # lancement suivant si rien d'autre n'écrivait entre-temps.
+            success = self.db_manager.execute_write(delete_query, selected_refs) >= 0
 
-        # execute_write commit : sans cela la suppression disparaissait au
-        # lancement suivant si rien d'autre n'écrivait entre-temps.
-        success = self.db_manager.execute_write(delete_query, selected_refs) >= 0
+            if success:
+                self.load_distinct_references()
+                QMessageBox.information(
+                    self,
+                    "Suppression réussie",
+                    f"{len(selected_refs)} références retirées avec succès.\n"
+                    f"Elles pourront à nouveau être détectées comme doublons potentiels."
+                )
+            else:
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression des références.")
 
-        if success:
-            self.load_distinct_references()
-            QMessageBox.information(
-                self,
-                "Suppression réussie",
-                f"{len(selected_refs)} références retirées avec succès.\n"
-                f"Elles pourront à nouveau être détectées comme doublons potentiels."
-            )
-        else:
-            QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression des références.")
+        demander_oui_non(self, 'Confirmation de suppression', f'Êtes-vous sûr de vouloir retirer {len(selected_refs)} références de la liste des références distinctes?\n\nCes références pourront à nouveau être proposées comme doublons potentiels.', _suite, defaut=QMessageBox.No)
 
 class ActionHistoryWidget(QWidget):
     """Widget pour afficher l'historique des actions de nettoyage"""
@@ -1094,26 +1085,19 @@ class ActionHistoryWidget(QWidget):
 
     def _clear_history(self):
         """Vider l'historique après confirmation"""
-        reply = QMessageBox.question(
-            self,
-            "Confirmation de suppression",
-            "Êtes-vous sûr de vouloir vider l'historique des actions?\n\n"
-            "Cette action est irréversible.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
+            # Supprimer de la base de données
+            delete_query = "DELETE FROM cleanup_history"
+            success = self.db_manager.execute_write(delete_query) >= 0
 
-        # Supprimer de la base de données
-        delete_query = "DELETE FROM cleanup_history"
-        success = self.db_manager.execute_write(delete_query) >= 0
+            if success:
+                self.load_history()
+                QMessageBox.information(self, "Historique vidé", "L'historique a été vidé avec succès.")
+            else:
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression de l'historique.")
 
-        if success:
-            self.load_history()
-            QMessageBox.information(self, "Historique vidé", "L'historique a été vidé avec succès.")
-        else:
-            QMessageBox.warning(self, "Erreur", "Erreur lors de la suppression de l'historique.")
+        demander_oui_non(self, 'Confirmation de suppression', "Êtes-vous sûr de vouloir vider l'historique des actions?\n\nCette action est irréversible.", _suite, defaut=QMessageBox.No)
 
     def _export_history(self):
         """Exporter l'historique en CSV"""
@@ -1129,22 +1113,16 @@ class ActionHistoryWidget(QWidget):
         import os
         from .export_config_service import resolve_output_dir
         nom_defaut = f"historique_nettoyage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Exporter l'historique",
-            os.path.join(resolve_output_dir(self.export_config_service), nom_defaut),
-            "Fichiers CSV (*.csv)"
-        )
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite(filename):
+            # Exporter en CSV
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["Date/Heure", "Action", "Détails", "Résultat", "Utilisateur"])
 
-        if not filename:
-            return
+                for row in self.history_actions:
+                    writer.writerow(row)
 
-        # Exporter en CSV
-        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(["Date/Heure", "Action", "Détails", "Résultat", "Utilisateur"])
+            QMessageBox.information(self, "Export réussi", f"Historique exporté vers:\n{filename}")
 
-            for row in self.history_actions:
-                writer.writerow(row)
-
-        QMessageBox.information(self, "Export réussi", f"Historique exporté vers:\n{filename}")
+        choisir_fichier_a_enregistrer(self, "Exporter l'historique", os.path.join(resolve_output_dir(self.export_config_service), nom_defaut), 'Fichiers CSV (*.csv)', _suite)

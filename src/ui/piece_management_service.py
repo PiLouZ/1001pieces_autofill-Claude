@@ -158,7 +158,7 @@ class PieceManagementService:
         # Appelé si l'utilisateur confirme (boîte modale non bloquante, jamais exec_) ;
         # même garde d'erreur que la méthode, qui a rendu la main entre-temps.
         @handle_ui_errors(log_prefix="Erreur suppression pièce", show_message=True)
-        def _supprimer():
+        def _supprimer(_fenetre):
             # Obtenir l'ID de l'appareil sélectionné
             current_row = self.main_window.table.currentRow()
             if current_row < 0:
@@ -186,7 +186,7 @@ class PieceManagementService:
         self.main_window.user_interaction_service.demander_confirmation(
             "Confirmer la suppression",
             f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?",
-            _supprimer, default_yes=False
+            (lambda *a: _supprimer(self, *a)), default_yes=False
         )
 
     def delete_piece_from_selected(self, item: QListWidgetItem) -> None:

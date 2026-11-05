@@ -13,16 +13,38 @@ import os
 import qtawesome as qta
 from .flow_layout import FlowLayout
 from ..utils.qt_imports import (
-    QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget, QButtonGroup, QWidget,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTextBrowser,
-    QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QFrame, Qt, QFont, QSize, QSpinBox,
-    QEvent, QFileDialog, QScrollArea, QGridLayout, QSplitter, QSettings, QApplication
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QStackedWidget,
+    QButtonGroup,
+    QWidget,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QComboBox,
+    QTextBrowser,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QMessageBox,
+    QFrame,
+    Qt,
+    QFont,
+    QSize,
+    QSpinBox,
+    QEvent,
+    QScrollArea,
+    QGridLayout,
+    QSplitter,
+    QSettings,
+    QApplication
 )
 from src.core.logger import app_logger
 from .style_manager import StyleManager
 from .champ_modele_html import ChampModeleHtml
 from .colonne_variantes import ColonneVariantes
+from ..utils.boites import demander_oui_non, choisir_dossier
 
 
 def _make_icon_toggle(btn, icon_name, icon_color):
@@ -419,11 +441,11 @@ class ExportConfigDialog(QDialog):
     def _browse_output_dir(self):
         """Sélection du dossier de destination (dialogue de fichiers natif)."""
         depart = self.output_dir_input.text() or self.export_config_service.get_default_output_dir()
-        choisi = QFileDialog.getExistingDirectory(
-            self, "Choisir le dossier de destination des exports", depart
-        )
-        if choisi:
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite(choisi):
             self._set_output_dir(choisi)
+
+        choisir_dossier(self, 'Choisir le dossier de destination des exports', depart, _suite)
 
     def _build_csv_tab(self) -> QWidget:
         tab = QWidget()
@@ -978,49 +1000,48 @@ class ExportConfigDialog(QDialog):
         if not config['csv']['columns']:
             QMessageBox.warning(self, "Validation", "Le CSV doit avoir au moins une colonne.")
             return
-        if not self._confirmer_dossier_export():
-            return
-        if self.export_config_service.save_config(config):
-            app_logger.info("[OK] Configuration des exports sauvegardée")
-            self.close()
-        else:
-            QMessageBox.critical(self, "Erreur", "Impossible de sauvegarder la configuration.")
 
-    def _confirmer_dossier_export(self) -> bool:
+        def _enregistrer():
+            if self.export_config_service.save_config(config):
+                app_logger.info("[OK] Configuration des exports sauvegardée")
+                self.close()
+            else:
+                QMessageBox.critical(self, "Erreur", "Impossible de sauvegarder la configuration.")
+
+        self._confirmer_dossier_export(_enregistrer)
+
+    def _confirmer_dossier_export(self, sur_ok) -> None:
         """Alerter si le dossier configuré est inutilisable, sans bloquer.
+
+        sur_ok est appelé tout de suite si le dossier est utilisable, sinon si
+        l'utilisateur confirme (boîte modale non bloquante).
 
         On n'interdit pas l'enregistrement : un dossier sur disque externe
         actuellement débranché reste un réglage légitime. L'export retombera
         sur le Bureau le moment venu (cf. ExportConfigService.get_output_dir).
         """
         if not self._output_dir:
-            return True
+            return sur_ok()
         if os.path.isdir(self._output_dir) and os.access(self._output_dir, os.W_OK):
-            return True
+            return sur_ok()
 
-        reponse = QMessageBox.question(
+        demander_oui_non(
             self,
             "Dossier d'export",
             f"Le dossier suivant est introuvable ou non accessible en écriture :\n"
             f"{self._output_dir}\n\n"
             "Les exports retomberont sur le Bureau tant qu'il reste inutilisable.\n"
             "Enregistrer quand même ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            sur_ok, defaut=QMessageBox.No
         )
-        return reponse == QMessageBox.Yes
 
     def _on_cancel(self):
         self.close()
 
     def _reset_to_defaults(self):
-        reply = QMessageBox.question(
-            self,
-            "Réinitialiser",
-            "Remettre la configuration aux valeurs par défaut ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
             self.export_config_service.reset_to_defaults()
             self._load_config_into_ui()
+
+        demander_oui_non(self, 'Réinitialiser', 'Remettre la configuration aux valeurs par défaut ?', _suite, defaut=QMessageBox.No)

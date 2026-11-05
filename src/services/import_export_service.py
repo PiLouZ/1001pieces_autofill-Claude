@@ -6,10 +6,11 @@ Extrait de main_refactored.py pour centraliser la logique d'import/export
 import os
 from typing import Dict, Any
 
-from ..utils.qt_imports import QFileDialog, pyqtSignal
+from ..utils.qt_imports import pyqtSignal
 
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation, safe_operation
+from ..utils.boites import choisir_fichier_a_ouvrir
 
 class ImportExportService(BaseService):
     """Service centralisé pour les opérations d'import et d'export"""
@@ -59,19 +60,20 @@ class ImportExportService(BaseService):
     @safe_operation("import_file_dialog")
     def _safe_import_file(self):
         """Helper sécurisé pour dialogue import"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.parent_window,
-            "Importer un fichier",
-            "",
-            "Fichiers supportés (*.csv *.xlsx *.json *.pdf);;Fichiers CSV (*.csv);;Fichiers Excel (*.xlsx);;Fichiers JSON (*.json);;Fichiers PDF (*.pdf)"
-        )
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite(file_path):
+            # Même garde que @safe_operation("import_file_dialog") de la méthode
+            # (le décorateur, écrit pour une méthode, ne s'applique pas à ce rappel)
+            try:
+                # Déléguer au système d'import approprié
+                if file_path.lower().endswith('.pdf'):
+                    self.import_pdf_from_path(file_path)
+                else:
+                    self._process_import_file(file_path)
+            except Exception as e:
+                app_logger.error(f"{self._service_name}.Erreur import_file_dialog: {e}")
 
-        if file_path:
-            # Déléguer au système d'import approprié
-            if file_path.lower().endswith('.pdf'):
-                self.import_pdf_from_path(file_path)
-            else:
-                self._process_import_file(file_path)
+        choisir_fichier_a_ouvrir(self.parent_window, 'Importer un fichier', '', 'Fichiers supportés (*.csv *.xlsx *.json *.pdf);;Fichiers CSV (*.csv);;Fichiers Excel (*.xlsx);;Fichiers JSON (*.json);;Fichiers PDF (*.pdf)', _suite)
 
     def import_csv_from_path(self, file_path: str):
         """Import CSV par glisser/déposer avec fallback legacy"""

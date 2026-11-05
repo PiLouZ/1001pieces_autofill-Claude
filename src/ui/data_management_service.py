@@ -168,7 +168,7 @@ class DataManagementService:
         preview_dialog = CleanupPreviewDialog(self.main_window)
 
         @handle_data_management_errors()
-        def _sur_fin(result):
+        def _sur_fin(_fenetre, result):
             user_choice = preview_dialog.get_user_choice()
 
             # Le marquage "distinct" d'un groupe écrit directement en base, indépendamment
@@ -185,4 +185,4 @@ class DataManagementService:
             if sur_resultat is not None:
                 sur_resultat({'dialog_completed': True, 'user_choice': user_choice})
 
-        ouvrir_modal(preview_dialog, sur_fin=_sur_fin)
+        ouvrir_modal(preview_dialog, sur_fin=(lambda *a: _sur_fin(self, *a)))

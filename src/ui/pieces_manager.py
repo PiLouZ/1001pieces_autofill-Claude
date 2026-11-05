@@ -18,7 +18,6 @@ from ..utils.qt_imports import (
     QApplication,
     QWidget,
     QMenu,
-    QInputDialog,
     QCheckBox,
     Qt,
     QTimer,
@@ -114,6 +113,7 @@ from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
 from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
 from ..utils.ouverture_modale import ouvrir_modal
+from ..utils.boites import demander_oui_non, choisir_fichier_a_enregistrer, saisir_texte, choisir_element
 
 class ActionButtonWidget(QWidget):
     """Widget contenant les boutons d'action (icônes sans fond) pour chaque ligne du tableau"""
@@ -1840,39 +1840,34 @@ class PiecesManagerWindow(QDialog):
         if appareils_lines:
             msg += "\n\nAppareils concernés :" + "\n".join(appareils_lines)
 
-        confirm = QMessageBox.question(
-            self,
-            "Marquer comme obsolète",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
+            # Détecter si toutes les refs sélectionnées sont déjà obsolètes (toggle)
+            all_obsolete = all(
+                self.db_manager.get_piece_status(ref)['is_obsolete'] for ref in refs
+            )
+            details_lines = []
+            errors = []
+            for ref in refs:
+                if all_obsolete:
+                    ok = self.db_manager.unmark_obsolete(ref)
+                    label = f"==> '{ref}' → plus obsolète"
+                else:
+                    ok = self.db_manager.mark_obsolete(ref)
+                    label = f"==> '{ref}' → obsolète"
+                if ok:
+                    details_lines.append(label)
+                else:
+                    errors.append(f"{ref} : échec")
 
-        # Détecter si toutes les refs sélectionnées sont déjà obsolètes (toggle)
-        all_obsolete = all(
-            self.db_manager.get_piece_status(ref)['is_obsolete'] for ref in refs
-        )
-        details_lines = []
-        errors = []
-        for ref in refs:
-            if all_obsolete:
-                ok = self.db_manager.unmark_obsolete(ref)
-                label = f"==> '{ref}' → plus obsolète"
-            else:
-                ok = self.db_manager.mark_obsolete(ref)
-                label = f"==> '{ref}' → obsolète"
-            if ok:
-                details_lines.append(label)
-            else:
-                errors.append(f"{ref} : échec")
+            if details_lines:
+                self._notify_history("Succession :\n" + "\n".join(details_lines))
+                self._refresh_succession_panel(self._current_ref_piece)
+                self._load_pieces_data()
+            if errors:
+                QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
-        if details_lines:
-            self._notify_history("Succession :\n" + "\n".join(details_lines))
-            self._refresh_succession_panel(self._current_ref_piece)
-            self._load_pieces_data()
-        if errors:
-            QMessageBox.warning(self, "Erreur", "\n".join(errors))
+        demander_oui_non(self, 'Marquer comme obsolète', msg, _suite, defaut=None)
 
     def _on_cancel_succession(self):
         """Annuler la relation de succession pour les pièces sélectionnées."""
@@ -1881,24 +1876,19 @@ class PiecesManagerWindow(QDialog):
             return
 
         label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces"
-        confirm = QMessageBox.question(
-            self,
-            "Annuler la succession",
-            f"Supprimer le lien de succession pour {label} ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
+            details_lines = []
+            for ref in refs:
+                self.db_manager.remove_supersession(ref)
+                details_lines.append(f"==> '{ref}' → (succession annulée)")
 
-        details_lines = []
-        for ref in refs:
-            self.db_manager.remove_supersession(ref)
-            details_lines.append(f"==> '{ref}' → (succession annulée)")
+            if details_lines:
+                self._notify_history("Succession :\n" + "\n".join(details_lines))
+                self._refresh_succession_panel(self._current_ref_piece)
+                self._load_pieces_data()
 
-        if details_lines:
-            self._notify_history("Succession :\n" + "\n".join(details_lines))
-            self._refresh_succession_panel(self._current_ref_piece)
-            self._load_pieces_data()
+        demander_oui_non(self, 'Annuler la succession', f'Supprimer le lien de succession pour {label} ?', _suite, defaut=None)
 
     _format_refs_recap = staticmethod(_format_refs_recap)
 
@@ -1908,35 +1898,29 @@ class PiecesManagerWindow(QDialog):
         if len(refs) < 2:
             return
 
-        new_desc, ok = QInputDialog.getText(
-            self, "Modifier le libellé",
-            f"Nouveau libellé pour les {len(refs)} pièces sélectionnées :"
-        )
-        if not ok:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite(new_desc):
+            # Un champ laissé vide n'est pas un renommage mais un effacement de masse :
+            # le dire, plutôt que d'annoncer « va devenir «  » ».
+            if not new_desc.strip():
+                message = (f"Le libellé de {pluralize(len(refs), 'pièce')} va être "
+                           f"effacé :\n{self._format_refs_recap(refs)}")
+            else:
+                message = (f"Le libellé de {len(refs)} pièces va devenir « {new_desc} » :\n"
+                           f"{self._format_refs_recap(refs)}")
 
-        # Un champ laissé vide n'est pas un renommage mais un effacement de masse :
-        # le dire, plutôt que d'annoncer « va devenir «  » ».
-        if not new_desc.strip():
-            message = (f"Le libellé de {pluralize(len(refs), 'pièce')} va être "
-                       f"effacé :\n{self._format_refs_recap(refs)}")
-        else:
-            message = (f"Le libellé de {len(refs)} pièces va devenir « {new_desc} » :\n"
-                       f"{self._format_refs_recap(refs)}")
+            # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+            def _appliquer():
+                updated = self.db_manager.set_description_for_refs(refs, new_desc)
+                if updated:
+                    self._notify_history(
+                        f"Libellé :\n==> {pluralize(updated, 'pièce')} → « {new_desc} » ({self._format_refs_recap(refs)})"
+                    )
+                    self._load_pieces_data()
 
-        confirm = QMessageBox.question(
-            self, "Modifier le libellé", message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
+            demander_oui_non(self, 'Modifier le libellé', message, _appliquer, defaut=None)
 
-        updated = self.db_manager.set_description_for_refs(refs, new_desc)
-        if updated:
-            self._notify_history(
-                f"Libellé :\n==> {pluralize(updated, 'pièce')} → « {new_desc} » ({self._format_refs_recap(refs)})"
-            )
-            self._load_pieces_data()
+        saisir_texte(self, 'Modifier le libellé', f'Nouveau libellé pour les {len(refs)} pièces sélectionnées :', "", _suite)
 
     def _on_mark_equivalent_group(self):
         """Fusionner toutes les pièces sélectionnées dans un seul groupe d'équivalence (action D)."""
@@ -1944,29 +1928,24 @@ class PiecesManagerWindow(QDialog):
         if len(refs) < 2:
             return
 
-        confirm = QMessageBox.question(
-            self, "Marquer comme équivalentes",
-            f"Fusionner ces {len(refs)} pièces dans un seul groupe d'équivalence ?\n"
-            f"{self._format_refs_recap(refs)}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
+            errors = []
+            for ref_b in refs[1:]:
+                success, error_msg = self.db_manager.add_equivalence(refs[0], ref_b)
+                if success:
+                    self.db_manager.propagate_description(refs[0], ref_b)
+                else:
+                    errors.append(f"{ref_b} : {error_msg}")
 
-        errors = []
-        for ref_b in refs[1:]:
-            success, error_msg = self.db_manager.add_equivalence(refs[0], ref_b)
-            if success:
-                self.db_manager.propagate_description(refs[0], ref_b)
-            else:
-                errors.append(f"{ref_b} : {error_msg}")
+            self._notify_history(
+                f"Équivalence :\n==> {len(refs)} pièces fusionnées en un groupe ({self._format_refs_recap(refs)})"
+            )
+            self._load_pieces_data()
+            if errors:
+                QMessageBox.warning(self, "Erreur", "\n".join(errors))
 
-        self._notify_history(
-            f"Équivalence :\n==> {len(refs)} pièces fusionnées en un groupe ({self._format_refs_recap(refs)})"
-        )
-        self._load_pieces_data()
-        if errors:
-            QMessageBox.warning(self, "Erreur", "\n".join(errors))
+        demander_oui_non(self, 'Marquer comme équivalentes', f"Fusionner ces {len(refs)} pièces dans un seul groupe d'équivalence ?\n{self._format_refs_recap(refs)}", _suite, defaut=None)
 
     def _on_harmonize_labels(self):
         """Harmoniser les libellés divergents d'un groupe d'équivalence (action C)."""
@@ -2000,24 +1979,19 @@ class PiecesManagerWindow(QDialog):
                         if (self._desc_by_ref.get(r, "") or "").strip() == d)
             choices.append(f"{d}  —  {pluralize(count, 'pièce')}")
 
-        choice, ok = QInputDialog.getItem(
-            self, "Harmoniser les libellés",
-            f"Libellés actuels du groupe ({self._format_refs_recap(group_refs)}) :\n"
-            f"Choisir le libellé à appliquer à toutes les pièces du groupe :",
-            choices, 0, False
-        )
-        if not ok:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite(choice):
+            chosen_desc = descs[choices.index(choice)]
 
-        chosen_desc = descs[choices.index(choice)]
+            updated = self.db_manager.set_description_for_refs(group_refs, chosen_desc)
+            if updated:
+                self._notify_history(
+                    f"Libellé :\n==> {pluralize(updated, 'pièce harmonisée', 'pièces harmonisées')} → « {chosen_desc} » "
+                    f"({self._format_refs_recap(group_refs)})"
+                )
+                self._load_pieces_data()
 
-        updated = self.db_manager.set_description_for_refs(group_refs, chosen_desc)
-        if updated:
-            self._notify_history(
-                f"Libellé :\n==> {pluralize(updated, 'pièce harmonisée', 'pièces harmonisées')} → « {chosen_desc} » "
-                f"({self._format_refs_recap(group_refs)})"
-            )
-            self._load_pieces_data()
+        choisir_element(self, 'Harmoniser les libellés', f'Libellés actuels du groupe ({self._format_refs_recap(group_refs)}) :\nChoisir le libellé à appliquer à toutes les pièces du groupe :', choices, _suite, courant=0, modifiable=False)
 
     # ── Équivalences ────────────────────────────────────────────────────────
 
@@ -2112,17 +2086,14 @@ class PiecesManagerWindow(QDialog):
         ref_piece = self._current_ref_piece
         if not ref_piece:
             return
-        confirm = QMessageBox.question(
-            self, "Retirer du groupe",
-            f"Retirer '{ref_piece}' de son groupe d'équivalence ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
-        self.db_manager.remove_equivalence(ref_piece)
-        self._notify_history(f"Équivalence :\n==> '{ref_piece}' → (retiré du groupe)")
-        self._refresh_equivalence_panel(ref_piece)
-        self._load_pieces_data()
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite():
+            self.db_manager.remove_equivalence(ref_piece)
+            self._notify_history(f"Équivalence :\n==> '{ref_piece}' → (retiré du groupe)")
+            self._refresh_equivalence_panel(ref_piece)
+            self._load_pieces_data()
+
+        demander_oui_non(self, 'Retirer du groupe', f"Retirer '{ref_piece}' de son groupe d'équivalence ?", _suite, defaut=None)
 
     def _on_remove_superseded_by(self, ref_new: str):
         """Supprimer le lien 'Remplacée par ref_new' pour la pièce courante (chip ×)."""
@@ -2188,15 +2159,13 @@ class PiecesManagerWindow(QDialog):
         """Exporter la liste des pièces"""
         from ..utils.qt_imports import QFileDialog
 
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Exporter les pièces",
-            self._chemin_export_par_defaut("pieces_everyParts.csv"),
-            "Fichiers CSV (*.csv)"
-        )
-
-        if filename:
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        @handle_ui_errors(log_prefix='Erreur export pièces', show_message=True)
+        def _suite(_fenetre, filename):
             self._write_pieces_csv(filename, self._get_filtered_data())
             QMessageBox.information(self, "Export réussi", f"Liste exportée vers:\n{filename}")
+
+        choisir_fichier_a_enregistrer(self, 'Exporter les pièces', self._chemin_export_par_defaut('pieces_everyParts.csv'), 'Fichiers CSV (*.csv)', (lambda *a: _suite(self, *a)))
 
     @handle_ui_errors(log_prefix="Erreur export sélection pièces", show_message=True)
     def _export_selected_pieces(self, checked=False):
@@ -2209,15 +2178,13 @@ class PiecesManagerWindow(QDialog):
 
         rows = [row for row in self._get_filtered_data() if row[0] in selected_refs]
 
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Exporter la sélection",
-            self._chemin_export_par_defaut("pieces_selection.csv"),
-            "Fichiers CSV (*.csv)"
-        )
-
-        if filename:
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        @handle_ui_errors(log_prefix='Erreur export sélection pièces', show_message=True)
+        def _suite(_fenetre, filename):
             self._write_pieces_csv(filename, rows)
             QMessageBox.information(self, "Export réussi", f"Sélection exportée vers:\n{filename}")
+
+        choisir_fichier_a_enregistrer(self, 'Exporter la sélection', self._chemin_export_par_defaut('pieces_selection.csv'), 'Fichiers CSV (*.csv)', (lambda *a: _suite(self, *a)))
     
     def _do_delete_piece(self, ref_piece: str):
         """Suppression effective d'une pièce : associations puis pièce (sans commit — l'appelant commite)."""
@@ -2269,50 +2236,45 @@ class PiecesManagerWindow(QDialog):
 
         message += "Cette action est irréversible. Continuer ?"
 
-        reply = QMessageBox.question(
-            self, "Confirmation de suppression",
-            message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        @handle_ui_errors(log_prefix='Erreur suppression pièces', show_message=True)
+        def _suite(_fenetre):
+            deleted_count = 0
+            deleted_associations = 0
 
-        if reply != QMessageBox.StandardButton.Yes:
-            return
+            # Supprimer chaque pièce
+            for ref_piece, nb_appareils in pieces_to_delete:
+                self._do_delete_piece(ref_piece)
+                deleted_count += 1
+                deleted_associations += nb_appareils
 
-        deleted_count = 0
-        deleted_associations = 0
+                # Ajouter à l'historique de la fenêtre principale
+                self._add_to_main_history(ref_piece, nb_appareils)
 
-        # Supprimer chaque pièce
-        for ref_piece, nb_appareils in pieces_to_delete:
-            self._do_delete_piece(ref_piece)
-            deleted_count += 1
-            deleted_associations += nb_appareils
+            # Valider la transaction
+            self.db_manager.conn.commit()
 
-            # Ajouter à l'historique de la fenêtre principale
-            self._add_to_main_history(ref_piece, nb_appareils)
+            # Message de succès
+            if len(pieces_to_delete) == 1:
+                QMessageBox.information(
+                    self, "Suppression réussie",
+                    f"La référence '{pieces_to_delete[0][0]}' et ses {pluralize(pieces_to_delete[0][1], 'association')} ont été supprimées."
+                )
+            else:
+                QMessageBox.information(
+                    self, "Suppression réussie",
+                    f"{pluralize(deleted_count, 'référence')} supprimées avec {pluralize(deleted_associations, 'association')} au total."
+                )
 
-        # Valider la transaction
-        self.db_manager.conn.commit()
+            # La sélection sticky portait exactement sur les pièces supprimées :
+            # la purger pour éviter des refs fantômes comptées « hors écran » après reload.
+            self._sticky_selected_refs.clear()
+            self._current_ref_piece = None
 
-        # Message de succès
-        if len(pieces_to_delete) == 1:
-            QMessageBox.information(
-                self, "Suppression réussie",
-                f"La référence '{pieces_to_delete[0][0]}' et ses {pluralize(pieces_to_delete[0][1], 'association')} ont été supprimées."
-            )
-        else:
-            QMessageBox.information(
-                self, "Suppression réussie",
-                f"{pluralize(deleted_count, 'référence')} supprimées avec {pluralize(deleted_associations, 'association')} au total."
-            )
+            # Recharger les données (sans fermer la fenêtre)
+            self._load_pieces_data()
 
-        # La sélection sticky portait exactement sur les pièces supprimées :
-        # la purger pour éviter des refs fantômes comptées « hors écran » après reload.
-        self._sticky_selected_refs.clear()
-        self._current_ref_piece = None
-
-        # Recharger les données (sans fermer la fenêtre)
-        self._load_pieces_data()
+        demander_oui_non(self, 'Confirmation de suppression', message, (lambda *a: _suite(self, *a)), defaut=QMessageBox.StandardButton.No)
 
         # Informer la fenêtre principale si elle existe (sans forcer le refresh qui pourrait fermer cette fenêtre)
         # Note: Le refresh est fait automatiquement par l'historique
@@ -2348,42 +2310,46 @@ class PiecesManagerWindow(QDialog):
                                     "La référence ne peut pas contenir les caractères '||' ou '&&'.")
                 return
 
+            def _enregistrer():
+                # Suite de la validation, directe ou après « Oui » (boîte non bloquante)
+                if not self.db_manager.rename_piece_catalog(current_ref, new_ref, new_desc):
+                    QMessageBox.warning(
+                        self, "Référence existante",
+                        f"La référence '{new_ref}' existe déjà. Veuillez choisir une référence différente."
+                    )
+                    return
+
+                self._load_pieces_data()
+
+                if hasattr(self.parent(), 'user_interaction_service'):
+                    msg = _format_piece_edit_history(current_ref, new_ref, current_desc, new_desc)
+                    if msg:
+                        self.parent().user_interaction_service.add_to_history(msg)
+
+                if propagate and refs_liees:
+                    updated = self.db_manager.set_description_for_refs(refs_liees, new_desc)
+                    if updated and hasattr(self.parent(), 'user_interaction_service'):
+                        details = "\n".join(f"   {l}" for l in resume_references_liees(liees))
+                        self.parent().user_interaction_service.add_to_history(
+                            f"Libellé :\n==> {pluralize(updated, 'référence liée', 'références liées')} "
+                            f"→ « {new_desc} »\n{details}"
+                        )
+                        self._load_pieces_data()
+
             # La référence était validée non vide, le libellé ne l'était pas :
             # valider le dialogue avec le champ effacé suffisait à perdre le
             # libellé, et à le perdre pour toute la lignée si « propager » est coché.
             if not new_desc.strip() and (current_desc or '').strip():
                 cibles = 1 + (len(refs_liees) if (propagate and refs_liees) else 0)
-                if QMessageBox.question(
+                demander_oui_non(
                     self, "Effacer le libellé",
                     f"Le libellé « {current_desc} » va être effacé "
                     f"de {pluralize(cibles, 'pièce')}.\nContinuer ?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                ) != QMessageBox.StandardButton.Yes:
-                    return
-
-            if not self.db_manager.rename_piece_catalog(current_ref, new_ref, new_desc):
-                QMessageBox.warning(
-                    self, "Référence existante",
-                    f"La référence '{new_ref}' existe déjà. Veuillez choisir une référence différente."
+                    _enregistrer, defaut=None,
                 )
                 return
 
-            self._load_pieces_data()
-
-            if hasattr(self.parent(), 'user_interaction_service'):
-                msg = _format_piece_edit_history(current_ref, new_ref, current_desc, new_desc)
-                if msg:
-                    self.parent().user_interaction_service.add_to_history(msg)
-
-            if propagate and refs_liees:
-                updated = self.db_manager.set_description_for_refs(refs_liees, new_desc)
-                if updated and hasattr(self.parent(), 'user_interaction_service'):
-                    details = "\n".join(f"   {l}" for l in resume_references_liees(liees))
-                    self.parent().user_interaction_service.add_to_history(
-                        f"Libellé :\n==> {pluralize(updated, 'référence liée', 'références liées')} "
-                        f"→ « {new_desc} »\n{details}"
-                    )
-                    self._load_pieces_data()
+            _enregistrer()
 
         dialog.accepted.connect(_on_accepted)
         dialog.show()
@@ -2434,16 +2400,9 @@ class PiecesManagerWindow(QDialog):
         ref_piece = ref_item.data(Qt.UserRole) or ref_item.text()
 
         # Confirmation
-        reply = QMessageBox.question(
-            self,
-            "Confirmer la suppression",
-            f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?\n\n"
-            f"Cette action supprimera également toutes ses associations avec les appareils.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-
-        if reply == QMessageBox.Yes:
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        @handle_ui_errors(log_prefix='Erreur suppression pièce (row)', show_message=True)
+        def _suite(_fenetre):
             nb_item = self.pieces_table.item(row, 2)
             nb_appareils = int(nb_item.text()) if nb_item and nb_item.text().isdigit() else 0
 
@@ -2455,6 +2414,8 @@ class PiecesManagerWindow(QDialog):
                 self._current_ref_piece = None
             self._load_pieces_data()
             self._add_to_main_history(ref_piece, nb_appareils)
+
+        demander_oui_non(self, 'Confirmer la suppression', f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?\n\nCette action supprimera également toutes ses associations avec les appareils.", (lambda *a: _suite(self, *a)), defaut=QMessageBox.No)
 
 # Chargement complet du gestionnaire de pièces (comptages, types, fantômes).
 # Types : NULLIF(TRIM(…), '') — un type VIDE (cellule vidée par Suppr, ligne

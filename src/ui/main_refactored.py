@@ -983,7 +983,7 @@ class MainWindow(QMainWindow):
         # Appelé à la validation du dialogue (modal non bloquant, jamais exec_) ;
         # même garde d'erreur que la méthode, qui a rendu la main entre-temps.
         @handle_ui_errors(log_prefix="Erreur affichage valeurs colonne", show_message=True)
-        def _ecrire(selected_value):
+        def _ecrire(_fenetre, selected_value):
             # Écrire dans le modèle → cell_edited → pipeline complet (save, undo, etc.)
             row = self.table.currentRow()
             model = self.table_controller.model
@@ -991,7 +991,7 @@ class MainWindow(QMainWindow):
                 model.setData(model.index(row, current_col), selected_value, Qt.EditRole)
 
         self.autocompletion_service.show_column_values_dialog(
-            self.table, current_item, current_col, prefill=prefill, sur_resultat=_ecrire
+            self.table, current_item, current_col, prefill=prefill, sur_resultat=(lambda *a: _ecrire(self, *a))
         )
 
     def _apply_suggestion_decisions(self, decisions):
@@ -1968,14 +1968,14 @@ class MainWindow(QMainWindow):
         """Helper sécurisé pour nettoyer les données"""
         # Appelé à la fermeture de la fenêtre si elle a été utilisée (rien si annulée)
         @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage données")
-        def _apres_nettoyage(result):
+        def _apres_nettoyage(_fenetre, result):
             if result.get('user_choice') == 'applied':
                 # Rafraîchir l'affichage après nettoyage
                 self._force_refresh_display()
 
         # Ouvrir la fenêtre de nettoyage refactorisée qui gère tout
         # (modale non bloquante, jamais exec_)
-        self.data_management_service.prepare_data_cleaning(sur_resultat=_apres_nettoyage)
+        self.data_management_service.prepare_data_cleaning(sur_resultat=(lambda *a: _apres_nettoyage(self, *a)))
     
     def _on_search_position_toggled(self, checked: bool):
         """Basculer la position de la barre de recherche pièce (haut/bas) et mémoriser."""
@@ -2006,14 +2006,17 @@ class MainWindow(QMainWindow):
     def _safe_manage_categories(self):
         """Helper sécurisé pour gérer les catégories"""
         current_categories = self.db_manager.get_categories()
-        new_categories = self.dialog_service.get_categories(self, current_categories)
 
-        if new_categories is not None:
+        # Appelé si l'utilisateur valide (saisie modale non bloquante)
+        @handle_database_operation_errors(return_value=None, log_prefix="Erreur gestion catégories")
+        def _enregistrer(_fenetre, new_categories):
             self.db_manager.update_categories(new_categories)
             self.statusbar.showMessage(
                 Config.get_message('categories_updated'),
                 Config.STATUS_MESSAGE_TIMEOUT
             )
+
+        self.dialog_service.get_categories(self, current_categories, (lambda *a: _enregistrer(self, *a)))
     
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""

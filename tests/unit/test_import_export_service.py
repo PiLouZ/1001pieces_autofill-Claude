@@ -79,7 +79,7 @@ class TestImportExportService:
         """Test import fichier CSV"""
         test_file = "/tmp/test.csv"
 
-        with patch('PyQt5.QtWidgets.QFileDialog.getOpenFileName', return_value=(test_file, "")):
+        with patch('src.services.import_export_service.choisir_fichier_a_ouvrir', side_effect=lambda p, t, d, f, sur_chemin: sur_chemin(test_file)):
             with patch.object(import_export_service, '_process_import_file') as mock_process:
                 import_export_service.import_file()
 
@@ -89,7 +89,7 @@ class TestImportExportService:
         """Test import fichier PDF"""
         test_file = "/tmp/test.pdf"
 
-        with patch('PyQt5.QtWidgets.QFileDialog.getOpenFileName', return_value=(test_file, "")):
+        with patch('src.services.import_export_service.choisir_fichier_a_ouvrir', side_effect=lambda p, t, d, f, sur_chemin: sur_chemin(test_file)):
             with patch.object(import_export_service, 'import_pdf_from_path') as mock_import:
                 import_export_service.import_file()
 

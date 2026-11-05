@@ -17,11 +17,12 @@ import sys
 
 from .base_service import BaseService
 from .export_config_service import ExportConfigService
-from ..utils.qt_imports import QThread, pyqtSignal, QFileDialog, QMessageBox, Qt
+from ..utils.qt_imports import QThread, pyqtSignal, QMessageBox, Qt
 from ..ui.progress_dialog import ProgressDialog
 from ..ui.message_helper import MessageHelper
 from ..ui.style_manager import StyleManager
 from ..core.logger import app_logger
+from ..utils.boites import choisir_dossier
 
 # Chemin vers le script d'export à la racine du projet
 _EXPORT_SCRIPT = pathlib.Path(__file__).parent.parent.parent / 'export_app.py'
@@ -125,58 +126,54 @@ class AppExportService(BaseService):
         parent = self.parent_window
 
         # ── Sélection du dossier de destination ─────────────────────────────
-        output_dir = QFileDialog.getExistingDirectory(
-            parent,
-            "Choisir le dossier de destination de l'export",
-            ExportConfigService.get_default_output_dir(),
-        )
-        if not output_dir:
-            return
+        # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
+        def _suite(output_dir):
+            # ── Barre de progression ─────────────────────────────────────────────
+            progress_dlg = ProgressDialog("Export de l'application", None, 0, 0, parent)
+            progress_dlg.show()
 
-        # ── Barre de progression ─────────────────────────────────────────────
-        progress_dlg = ProgressDialog("Export de l'application", None, 0, 0, parent)
-        progress_dlg.show()
+            # ── Thread d'export ──────────────────────────────────────────────────
+            worker = _ExportWorker(output_dir, cible)
+            self._worker = worker  # Maintenir la référence
 
-        # ── Thread d'export ──────────────────────────────────────────────────
-        worker = _ExportWorker(output_dir, cible)
-        self._worker = worker  # Maintenir la référence
+            def _on_progress(msg):
+                progress_dlg.setLabelText(msg)
 
-        def _on_progress(msg):
-            progress_dlg.setLabelText(msg)
+            def _on_finished(result):
+                progress_dlg.close()
+                self._worker.wait()
+                self._worker = None
+                if result['success']:
+                    # Régénérer aussi le lanceur .app sur la machine source (Mac seulement)
+                    if sys.platform == 'darwin':
+                        _charger_module_export().create_source_launcher()
 
-        def _on_finished(result):
-            progress_dlg.close()
-            self._worker.wait()
-            self._worker = None
-            if result['success']:
-                # Régénérer aussi le lanceur .app sur la machine source (Mac seulement)
-                if sys.platform == 'darwin':
-                    _charger_module_export().create_source_launcher()
-
-                if cible == CIBLE_WINDOWS:
-                    etapes = ("  1. Dézipper l'archive (clic droit → Extraire tout…)\n"
-                              "  2. Double-clic sur 1001pieces_autofill.bat")
+                    if cible == CIBLE_WINDOWS:
+                        etapes = ("  1. Dézipper l'archive (clic droit → Extraire tout…)\n"
+                                  "  2. Double-clic sur 1001pieces_autofill.bat")
+                    else:
+                        version = f"{sys.version_info.major}.{sys.version_info.minor}"
+                        etapes = ("  1. Dézipper l'archive\n"
+                                  f"  2. Installer Python {version} s'il est absent\n"
+                                  "  3. Double-clic sur install.command   (une seule fois)\n"
+                                  "  4. Double-clic sur 1001pieces_autofill.app")
+                    MessageHelper.show_info(
+                        parent,
+                        f"Export terminé avec succès !\n\n"
+                        f"Archive : {result['path']}\n"
+                        f"Taille  : {result['size_mb']:.0f} Mo\n\n"
+                        f"Sur le poste cible :\n{etapes}",
+                        "Export réussi",
+                    )
                 else:
-                    version = f"{sys.version_info.major}.{sys.version_info.minor}"
-                    etapes = ("  1. Dézipper l'archive\n"
-                              f"  2. Installer Python {version} s'il est absent\n"
-                              "  3. Double-clic sur install.command   (une seule fois)\n"
-                              "  4. Double-clic sur 1001pieces_autofill.app")
-                MessageHelper.show_info(
-                    parent,
-                    f"Export terminé avec succès !\n\n"
-                    f"Archive : {result['path']}\n"
-                    f"Taille  : {result['size_mb']:.0f} Mo\n\n"
-                    f"Sur le poste cible :\n{etapes}",
-                    "Export réussi",
-                )
-            else:
-                MessageHelper.show_error(
-                    parent,
-                    f"Échec de l'export :\n{result['error']}",
-                    "Erreur export",
-                )
+                    MessageHelper.show_error(
+                        parent,
+                        f"Échec de l'export :\n{result['error']}",
+                        "Erreur export",
+                    )
 
-        worker.progress.connect(_on_progress)
-        worker.finished.connect(_on_finished)
-        worker.start()
+            worker.progress.connect(_on_progress)
+            worker.finished.connect(_on_finished)
+            worker.start()
+
+        choisir_dossier(parent, "Choisir le dossier de destination de l'export", ExportConfigService.get_default_output_dir(), _suite)

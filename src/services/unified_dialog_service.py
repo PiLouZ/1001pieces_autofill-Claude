@@ -14,22 +14,21 @@ ARCHITECTURE :
 - Dialogues complexes : Méthodes d'instance avec accès à main_window
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Callable, Optional, Dict, Any, List
 from ..utils.qt_imports import (
-    QInputDialog,
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
-    QMessageBox,
     QWidget,
     QFrame,
     QSize
 )
 from ..utils.qt_imports import Qt
 from ..utils.qt_imports import QFont
+from ..utils.boites import saisir_texte
 
 from ..core.logger import app_logger
 from functools import wraps
@@ -60,78 +59,27 @@ class SimpleDialogs:
     
     @staticmethod
     @_handle_dialog_errors(default_return=None, context="dialogue catégories")
-    def get_categories(parent, current_categories: List[str]) -> Optional[List[str]]:
+    def get_categories(parent, current_categories: List[str],
+                       sur_categories: Callable[[List[str]], None]) -> None:
         """
-        Dialogue de gestion des catégories
+        Dialogue de gestion des catégories (modal non bloquant, jamais de boucle
+        imbriquée).
 
         Args:
             parent: Widget parent
             current_categories: Liste des catégories actuelles
-
-        Returns:
-            Liste des catégories ou None si annulé
+            sur_categories: appelé avec la nouvelle liste si l'utilisateur valide
         """
-        text, ok = QInputDialog.getMultiLineText(
-            parent,
-            "Gestion des Catégories",
-            "Entrez les catégories (une par ligne) :",
-            '\n'.join(current_categories) if current_categories else ""
-        )
-
-        if ok:
+        def _valider(text):
             categories = [line.strip() for line in text.split('\n') if line.strip()]
             app_logger.debug(f"Catégories sélectionnées: {categories}")
-            return categories
-        return None
+            sur_categories(categories)
+
+        saisir_texte(parent, "Gestion des Catégories",
+                     "Entrez les catégories (une par ligne) :",
+                     '\n'.join(current_categories) if current_categories else "",
+                     _valider, multiligne=True)
     
-    @staticmethod
-    @_handle_dialog_errors(default_return=None, context="dialogue notes")
-    def get_notes(parent, current_notes: str = "") -> Optional[str]:
-        """
-        Dialogue d'édition des notes
-
-        Args:
-            parent: Widget parent
-            current_notes: Texte des notes actuelles
-
-        Returns:
-            Texte des notes ou None si annulé
-        """
-        text, ok = QInputDialog.getMultiLineText(
-            parent,
-            "Notes et Commentaires",
-            "Entrez vos notes :",
-            current_notes
-        )
-
-        if ok:
-            app_logger.debug("Notes modifiées")
-            return text
-        return None
-    
-    @staticmethod
-    @_handle_dialog_errors(default_return=False, context="dialogue confirmation")
-    def confirm_action(parent, title: str, message: str) -> bool:
-        """
-        Dialogue de confirmation simple
-
-        Args:
-            parent: Widget parent
-            title: Titre du dialogue
-            message: Message à afficher
-
-        Returns:
-            True si confirmé, False sinon
-        """
-        reply = QMessageBox.question(
-            parent,
-            title,
-            message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        return reply == QMessageBox.Yes
-
 class ComplexDialogs:
     """
     Dialogues complexes - Méthodes d'instance avec accès à l'application
@@ -322,19 +270,10 @@ class UnifiedDialogService:
     
     # Délégation aux dialogues simples (méthodes statiques)
     @staticmethod
-    def get_categories(parent, current_categories: List[str]) -> Optional[List[str]]:
-        """Dialogue de gestion des catégories"""
-        return SimpleDialogs.get_categories(parent, current_categories)
-    
-    @staticmethod  
-    def get_notes(parent, current_notes: str = "") -> Optional[str]:
-        """Dialogue d'édition des notes"""
-        return SimpleDialogs.get_notes(parent, current_notes)
-    
-    @staticmethod
-    def confirm_action(parent, title: str, message: str) -> bool:
-        """Dialogue de confirmation"""
-        return SimpleDialogs.confirm_action(parent, title, message)
+    def get_categories(parent, current_categories: List[str],
+                       sur_categories: Callable[[List[str]], None]) -> None:
+        """Dialogue de gestion des catégories (non bloquant)"""
+        return SimpleDialogs.get_categories(parent, current_categories, sur_categories)
     
     # Délégation aux dialogues complexes (méthodes d'instance)
     def show_reference_selection_dialog(self, title: str, message: str, 

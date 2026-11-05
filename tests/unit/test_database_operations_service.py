@@ -283,7 +283,7 @@ class TestDatabaseOperationsService:
         database_service.db_manager.delete_appareil.return_value = True
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
-            with patch.object(database_service, '_confirm_deletion', return_value=True):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: sur_oui()):
                 deleted_count = database_service.delete_selected_devices()
 
         # Vérifications
@@ -298,7 +298,7 @@ class TestDatabaseOperationsService:
         device_ids = [123, 124]
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
-            with patch.object(database_service, '_confirm_deletion', return_value=False):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: None):
                 deleted_count = database_service.delete_selected_devices()
 
         assert deleted_count == 0
@@ -320,7 +320,7 @@ class TestDatabaseOperationsService:
         database_service.db_manager.delete_appareil.side_effect = [True, False, True]
 
         with patch.object(database_service, '_get_selected_device_ids', return_value=device_ids):
-            with patch.object(database_service, '_confirm_deletion', return_value=True):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: sur_oui()):
                 deleted_count = database_service.delete_selected_devices()
 
         assert deleted_count == 2  # 2 succès sur 3
@@ -352,20 +352,24 @@ class TestDatabaseOperationsService:
         return item
 
     def test_confirm_deletion_single(self, database_service):
-        """Test confirmation suppression simple"""
-        with patch('PyQt5.QtWidgets.QMessageBox.question', return_value=QMessageBox.Yes):
-            result = database_service._confirm_deletion(1)
-            assert result
-
-        with patch('PyQt5.QtWidgets.QMessageBox.question', return_value=QMessageBox.No):
-            result = database_service._confirm_deletion(1)
-            assert not result
+        """Confirmation simple : boîte Oui/Non non bloquante, sur_oui relayé"""
+        appels = []
+        with patch('src.services.database_operations_service.demander_oui_non',
+                   side_effect=lambda parent, titre, msg, sur_oui, defaut: appels.append((titre, msg, sur_oui))):
+            sur_oui = Mock()
+            assert database_service._confirm_deletion(1, sur_oui) is None   # rend la main
+        (titre, msg, relaye), = appels
+        assert titre == "Confirmer la suppression" and "cet appareil" in msg
+        assert relaye is sur_oui
 
     def test_confirm_deletion_multiple(self, database_service):
-        """Test confirmation suppression multiple"""
-        with patch('PyQt5.QtWidgets.QMessageBox.question', return_value=QMessageBox.Yes):
-            result = database_service._confirm_deletion(5)
-            assert result
+        """Confirmation multiple : le nombre figure dans le message"""
+        appels = []
+        with patch('src.services.database_operations_service.demander_oui_non',
+                   side_effect=lambda parent, titre, msg, sur_oui, defaut: appels.append((titre, msg))):
+            database_service._confirm_deletion(5, Mock())
+        assert appels == [("Confirmer la suppression multiple",
+                           "Êtes-vous sûr de vouloir supprimer ces 5 appareils ?")]
 
     def test_update_save_indicators(self, database_service):
         """Test mise à jour indicateurs de sauvegarde"""
@@ -414,7 +418,7 @@ class TestDatabaseOperationsService:
         database_service.db_manager.delete_appareil.return_value = True
         database_service.db_manager.get_device_info.return_value = {'manufacturer': 'Test', 'type': 'Test'}
         with patch.object(database_service, '_get_selected_device_ids', return_value=[123]):
-            with patch.object(database_service, '_confirm_deletion', return_value=True):
+            with patch.object(database_service, '_confirm_deletion', side_effect=lambda n, sur_oui: sur_oui()):
                 database_service.delete_selected_devices()
                 database_service.device_deleted.emit.assert_called_once_with([123])
 

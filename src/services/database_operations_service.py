@@ -11,6 +11,7 @@ from ..core.config import pluralize
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 from ..utils.error_handler import handle_database_operation_errors
+from ..utils.boites import demander_oui_non
 
 class DatabaseOperationsService(BaseService):
     """Service centralisé pour les opérations CRUD de base de données"""
@@ -389,10 +390,17 @@ class DatabaseOperationsService(BaseService):
         if not device_ids:
             return 0
 
-        # Demander confirmation
-        if not self._confirm_deletion(len(device_ids)):
-            return 0
+        # Confirmation non bloquante (jamais de boucle imbriquée) : la suppression
+        # se fait dans le rappel. Le nombre supprimé est renvoyé si la réponse est
+        # immédiate, 0 sinon (l'unique appelant, _delete_selected_rows, l'ignore).
+        resultat = []
+        self._confirm_deletion(len(device_ids),
+                               lambda: resultat.append(self._supprimer_appareils(device_ids)))
+        return resultat[0] if resultat else 0
 
+    @handle_database_operation_errors(return_value=0, log_prefix="Erreur suppression appareils")
+    def _supprimer_appareils(self, device_ids: List[int]) -> int:
+        """Supprimer les appareils (après confirmation) ; renvoie le nombre supprimé."""
         # Récupérer les infos avant suppression (pour historique)
         devices_info = []
         for device_id in device_ids:
@@ -642,12 +650,13 @@ class DatabaseOperationsService(BaseService):
         # Utiliser la méthode existante qui connaît la structure de données
         return self.parent_window.table_fill_service.get_db_id_from_row(table, row)
 
-    def _confirm_deletion(self, count: int) -> bool:
-        """Demander confirmation pour la suppression"""
-        return self._safe_confirm_deletion(count)
+    def _confirm_deletion(self, count: int, sur_oui) -> None:
+        """Demander confirmation pour la suppression ; sur_oui est appelé si Oui
+        (boîte modale non bloquante)."""
+        return self._safe_confirm_deletion(count, sur_oui)
 
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur dialogue confirmation")
-    def _safe_confirm_deletion(self, count: int) -> bool:
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur dialogue confirmation")
+    def _safe_confirm_deletion(self, count: int, sur_oui) -> None:
         """Version sécurisée de _confirm_deletion"""
         if count == 1:
             message = "Êtes-vous sûr de vouloir supprimer cet appareil ?"
@@ -656,15 +665,7 @@ class DatabaseOperationsService(BaseService):
             message = f"Êtes-vous sûr de vouloir supprimer ces {count} appareils ?"
             title = "Confirmer la suppression multiple"
 
-        reply = QMessageBox.question(
-            self.parent_window,
-            title,
-            message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-
-        return reply == QMessageBox.Yes
+        demander_oui_non(self.parent_window, title, message, sur_oui, defaut=QMessageBox.No)
 
     def _update_save_indicators(self, saved: bool):
         """Mettre à jour les indicateurs de sauvegarde"""

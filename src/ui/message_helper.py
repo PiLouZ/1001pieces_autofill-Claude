@@ -42,19 +42,6 @@ class MessageHelper:
         QMessageBox.critical(parent, title, message)
     
     @staticmethod
-    def ask_question(parent: Optional[QWidget], message: str, title: str = MessageType.QUESTION) -> bool:
-        """
-        Poser une question oui/non
-        Returns: True si l'utilisateur clique sur Yes/Oui
-        """
-        reply = QMessageBox.question(
-            parent, title, message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        return reply == QMessageBox.Yes
-    
-    @staticmethod
     def show_detailed_error(
         parent: Optional[QWidget], 
         message: str, 
@@ -110,7 +97,3 @@ def show_error(parent: Optional[QWidget], message: str, details: str = None) -> 
         MessageHelper.show_detailed_error(parent, message, details)
     else:
         MessageHelper.show_error(parent, message)
-
-def ask_confirmation(parent: Optional[QWidget], message: str = CommonMessages.CONFIRM_DELETE) -> bool:
-    """Raccourci pour demander une confirmation"""
-    return MessageHelper.ask_question(parent, message)
