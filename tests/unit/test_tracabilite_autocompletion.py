@@ -265,6 +265,110 @@ def test_changer_la_casse_garde_l_italique(qapp):
     assert modele.data(modele.index(0, 1), Qt.FontRole).italic()
 
 
+# ─── Repérage visuel : fond, numéro de ligne, coche cliquable ───────────────
+
+def test_fond_lavande_des_seules_cellules_auto_completees(qapp):
+    from src.data.appareils_table_model import _AUTOCOMPLETE_BG
+    modele = _modele()
+    assert modele.data(modele.index(0, 0), Qt.BackgroundRole).color() == _AUTOCOMPLETE_BG
+    assert modele.data(modele.index(0, 2), Qt.BackgroundRole) is None
+    assert modele.data(modele.index(1, 0), Qt.BackgroundRole) is None
+
+
+def test_suggestion_garde_son_fond_jaune(qapp):
+    from src.data.appareils_table_model import _SUGGESTION_BG
+    modele = _modele()
+    modele._pending_suggestions = {1: [{'type': 'Four', 'manufacturer': 'Bosch'}]}
+    assert modele.data(modele.index(0, 0), Qt.BackgroundRole).color() == _SUGGESTION_BG
+
+
+def test_numero_de_ligne_signale_la_ligne_a_verifier(qapp):
+    modele = _modele()
+    assert modele.ligne_a_verifier(0) and not modele.ligne_a_verifier(1)
+    assert not modele.ligne_a_verifier(99)
+    assert "à vérifier" in modele.headerData(0, Qt.Vertical, Qt.ToolTipRole)
+    assert modele.headerData(1, Qt.Vertical, Qt.ToolTipRole) is None
+    assert modele.headerData(0, Qt.Vertical, Qt.DisplayRole) == '1'
+
+
+def test_numero_rafraichi_quand_la_ligne_n_est_plus_a_verifier(qapp):
+    modele = _modele()
+    recus = []
+    modele.headerDataChanged.connect(lambda o, a, b: recus.append((o, a, b)))
+    modele.setData(modele.index(0, 0), 'Cuisinière')
+    assert recus == []                               # Fabricant reste à vérifier
+    modele.setData(modele.index(0, 1), 'Siemens')
+    assert recus == [(Qt.Vertical, 0, 0)] and not modele.ligne_a_verifier(0)
+    modele.set_autocompletes({2: {'type': ('S', 1, 1)}})
+    assert (Qt.Vertical, 1, 1) in recus
+
+
+def test_en_tete_de_lignes_garde_le_clic_de_selection(qapp):
+    from src.ui.custom_table_view import CustomTableView, _EnteteLignes
+    vue = CustomTableView()
+    entete = vue.verticalHeader()
+    assert isinstance(entete, _EnteteLignes)
+    assert entete.sectionsClickable() and entete.highlightSections()
+
+
+def test_en_tete_de_lignes_dessine_le_repere(qapp):
+    from PyQt5.QtGui import QColor
+    from src.ui.custom_table_view import CustomTableView, _EnteteLignes
+    vue = CustomTableView()
+    vue.setModel(_modele())
+    vue.resize(400, 200)
+    vue.show()
+    qapp.processEvents()
+    image = vue.verticalHeader().viewport().grab().toImage()
+    haut = vue.verticalHeader().sectionSize(0)
+    assert QColor(image.pixel(1, haut // 2)) == _EnteteLignes._ORANGE           # ligne 1
+    assert QColor(image.pixel(1, haut + haut // 2)) != _EnteteLignes._ORANGE    # ligne 2
+    vue.close()
+
+
+def _clic(position):
+    from PyQt5.QtCore import QEvent, QPointF
+    from PyQt5.QtGui import QMouseEvent
+    return QMouseEvent(QEvent.MouseButtonRelease, QPointF(position), Qt.LeftButton,
+                       Qt.LeftButton, Qt.NoModifier)
+
+
+def test_coche_cliquable_marque_verifie(qapp):
+    from PyQt5.QtCore import QRect
+    from PyQt5.QtWidgets import QStyleOptionViewItem
+    from src.data.appareils_table_model import SuggestionCellDelegate
+    modele = _modele()
+    delegue = SuggestionCellDelegate()
+    clics = []
+    delegue.verify_handler = lambda index: clics.append((index.row(), index.column()))
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 140, 26)
+    sur_icone = delegue._icon_rect(option.rect).center()
+    assert delegue.editorEvent(_clic(sur_icone), modele, option, modele.index(0, 1))
+    assert clics == [(0, 1)]
+    # Ailleurs dans la case, ou sur une cellule non auto-complétée : rien.
+    delegue.editorEvent(_clic(option.rect.topLeft()), modele, option, modele.index(0, 1))
+    delegue.editorEvent(_clic(sur_icone), modele, option, modele.index(1, 0))
+    assert clics == [(0, 1)]
+    # Une suggestion en attente garde la priorité (baguette, pas de coche).
+    modele._pending_suggestions = {1: [{'type': 'Four', 'manufacturer': 'Bosch'}]}
+    acceptees = []
+    delegue.accept_handler = lambda index, s: acceptees.append(index.row())
+    delegue.editorEvent(_clic(sur_icone), modele, option, modele.index(0, 0))
+    assert clics == [(0, 1)] and acceptees == [0]
+
+
+def test_coche_relayee_vers_marquer_verifie(qapp):
+    from src.ui.table_controller import TableController
+    appels = []
+    faux = types.SimpleNamespace(
+        model=_modele(),
+        parent_window=types.SimpleNamespace(
+            _marquer_lignes_verifiees=lambda ids, origine: appels.append((ids, origine))))
+    TableController._on_verify_icon_clicked(faux, faux.model.index(0, 0))
+    assert appels == [([1], "clic sur la coche")]
+
+
 # ─── Tri par colonne des deux fenêtres ──────────────────────────────────────
 
 def _ordre(arbre, col):

@@ -46,6 +46,39 @@ class _SelectionRangeCompat:
         return self._right - self._left + 1
 
 
+class _EnteteLignes(QHeaderView):
+    """En-tête vertical (numéros de ligne) qui signale les lignes portant une
+    auto-complétion à vérifier : fond orange pâle, barre orange à gauche et
+    numéro en orange gras. Le modèle dit quelles lignes via `ligne_a_verifier`.
+
+    Dessiné à la main car la feuille de style globale (QHeaderView::section)
+    l'emporte sur ForegroundRole/FontRole du modèle."""
+
+    _FOND = QColor('#FFE8CC')
+    _ORANGE = QColor('#E67E22')
+
+    def paintSection(self, painter, rect, logical_index):
+        # save/restore autour du rendu standard : sans eux, Qt laisse le peintre
+        # dans un état où le dessin ajouté ensuite n'apparaît pas.
+        painter.save()
+        super().paintSection(painter, rect, logical_index)
+        painter.restore()
+        model = self.model()
+        if not (rect.isValid() and hasattr(model, 'ligne_a_verifier')
+                and model.ligne_a_verifier(logical_index)):
+            return
+        painter.save()
+        painter.fillRect(rect.adjusted(0, 0, -1, -1), self._FOND)
+        painter.fillRect(rect.left(), rect.top(), 4, rect.height(), self._ORANGE)
+        police = QFont(self.font())
+        police.setBold(True)
+        painter.setFont(police)
+        painter.setPen(self._ORANGE)
+        texte = model.headerData(logical_index, Qt.Vertical, Qt.DisplayRole)
+        painter.drawText(rect, Qt.AlignCenter, str(texte or ''))
+        painter.restore()
+
+
 class CustomTableView(QTableView):
     """QTableView avec gestion clavier identique à CustomTableWidget.
 
@@ -57,6 +90,12 @@ class CustomTableView(QTableView):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Numéros de ligne : repère des lignes à vérifier. Mêmes réglages que
+        # l'en-tête vertical par défaut de QTableView (clic = sélection de ligne).
+        entete = _EnteteLignes(Qt.Vertical, self)
+        entete.setSectionsClickable(True)
+        entete.setHighlightSections(True)
+        self.setVerticalHeader(entete)
         # Menu contextuel sur l'en-tête horizontal : « Sélectionner la colonne »
         # (repli souris du raccourci clavier Ctrl/Cmd+Espace). Le clic GAUCHE
         # sur l'en-tête reste réservé au tri (géré par table_controller).

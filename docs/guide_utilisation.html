@@ -50,7 +50,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h3>Ce que l'import complète tout seul</h3>
 <ul>
   <li><b>Auto-complétion</b> : un appareil importé sans Type ou sans Fabricant reçoit celui d'un appareil de même référence déjà en base. Un appareil existant dont le Type ou le Fabricant est vide est complété de la même façon ; une valeur déjà saisie n'est <b>jamais écrasée</b>.</li>
-  <li>Ces valeurs déduites s'affichent en <i>italique</i> dans le tableau, jusqu'à leur vérification (voir <b>Vérifier les auto-complétés</b> ci-dessous).</li>
+  <li>Ces valeurs déduites s'affichent dans le tableau en <i>italique</i>, sur fond lavande, avec une coche bleue à droite de la case ; le numéro de la ligne passe en orange gras sur fond orange pâle. Ces repères restent jusqu'à la vérification (voir <b>Vérifier les auto-complétés</b> ci-dessous).</li>
   <li><b>Suggestions</b> : quand rien ne permet de déduire la valeur, l'import propose un Type / une Marque d'après des références proches, ou le type que portent déjà les appareils de la pièce. Rien n'est écrit sans votre validation (voir ci-dessous).</li>
 </ul>
 
@@ -138,7 +138,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li>Bouton bleu <b>« Auto-complétés à vérifier (N) »</b> : ouvre la liste, regroupée par import. Tout est validé d'office ; mettez en attente ce qui est douteux, corrigez par double-clic, puis <b>Appliquer</b>. Mêmes raccourcis que pour les suggestions ; le panneau de droite confronte la valeur écrite aux pièces de l'appareil.</li>
   <li><b>Refuser</b> une ligne vide les champs auto-complétés de l'appareil, et l'import ne les réécrira plus (sauf si le fichier lui-même porte la valeur).</li>
   <li>Bouton vert <b>« Tout valider »</b> : valide tout d'un coup, après une confirmation qui rappelle la confiance des sources. Une validation en masse ne s'annule pas.</li>
-  <li>Dans le tableau : <b>clic droit → Marquer comme vérifié</b> sur les lignes sélectionnées. Corriger une valeur en italique la vérifie aussi.</li>
+  <li>Dans le tableau : <b>clic sur la coche</b> d'une case auto-complétée (vérifie toute la ligne : Type et Fabricant), ou <b>clic droit → Marquer comme vérifié</b> sur les lignes sélectionnées. Corriger une valeur en italique la vérifie aussi.</li>
 </ul>
 
 <hr/>
@@ -220,6 +220,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li>Nouveau bouton <b>Fiche complète</b> : tout le code HTML de la fiche produit (titre, marques, code produit, références remplacées et équivalentes, bloc Informations facultatif, appareils affichés) en un clic, selon des variantes réglables (onglet <b>Fiche</b>). Modèles HTML de la configuration des exports colorés et indentés à l'écran, exports inchangés.</li>
   <li>Boutons d'export réorganisés : Méta Title, Méta Desc, Exporter CSV ; puis Titre et Fiche complète ; HTML Marques et HTML Détails repliés sous « ▸ Exports HTML ». Flèche des boutons à gabarits : survol = liste des gabarits, clic = nouvelle fenêtre d'<b>aperçu d'export</b> (rendu et code de chaque gabarit sur la recherche en cours ; liste des gabarits à droite, près de Copier, noms complets sur plusieurs lignes ; Copier ferme la fenêtre).</li>
   <li>Configuration des exports plus grande et en trois colonnes ajustables (gabarits, réglages, aperçu) pour les onglets HTML, Titre et Fiche : renommage direct, listes triées avec le gabarit par défaut en tête, onglet Fiche dans l'ordre de sortie avec « Modifier ce gabarit › » et retour à la fiche.</li>
+  <li>Lignes auto-complétées à vérifier plus visibles : fond lavande sur les cases concernées, numéro de ligne en orange gras, et coche cliquable dans la case pour marquer la ligne comme vérifiée en un clic.</li>
 </ul>
 <h3>Versions livrées</h3>
 <ul>
