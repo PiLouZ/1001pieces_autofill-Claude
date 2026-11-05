@@ -21,7 +21,7 @@
 ## Version (depuis le 2026-10-29)
 - `Config.VERSION` (`src/core/config.py`) ne change **que lorsque l'utilisateur décide de livrer** — jamais dans une PR ordinaire. `AppInfo.VERSION` est figé.
 - Entre deux livraisons, les lignes « Nouveautés » du Guide s'accumulent sous « En préparation » ; pas de « (vX.Y.Z) » dans les commits ni les titres de PR.
-- Livraison (« on livre ») : un seul numéro proposé à l'utilisateur, « En préparation » renommé en ce numéro, bump de `Config.VERSION`, dans une PR dédiée.
+- Livraison (« on livre ») : un seul numéro proposé à l'utilisateur, « En préparation » renommé en ce numéro, bump de `Config.VERSION`, entrée `## [X.Y.Z]` ajoutée en tête de `CHANGELOG.md` (une section par PR livrée), dans une PR dédiée.
 - Correctif urgent : demander à l'utilisateur s'il veut livrer tout de suite.
 
 ## Flags de configuration clés (`src/core/config.py`)
