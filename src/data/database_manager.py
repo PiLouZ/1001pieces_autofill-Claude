@@ -557,40 +557,30 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """Conditions WHERE (et leurs paramètres) du périmètre affiché à l'écran :
         recherche, filtres de colonne, filtre « lignes incomplètes ».
 
-        Partagées par _load_data_original (les pages) et find_incomplete_position
-        (le saut ▲/▼) : une seule source, donc la position calculée en SQL
-        désigne forcément une ligne de la page qui sera affichée.
+        Partagées par _load_data_original (les pages), find_incomplete_position
+        (le saut ▲/▼), _count_data_core (le total « N résultats ») et
+        get_export_data (CSV, HTML Marques / Détails) : une seule source, donc la
+        position calculée en SQL désigne forcément une ligne de la page affichée,
+        le total compte exactement ces lignes et l'export sort exactement elles.
         """
         params = []
         conditions = []
 
-        # Recherche globale pour load_data (avec support recherche avancée)
+        # Recherche globale (avec support recherche avancée)
         if search_term:
             search_condition = self._build_search_condition_optimized(search_term)
             if search_condition:
-                # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
-                if search_condition.get('query_type') in ['exact', 'prefix']:
-                    # Pour les requêtes optimisées, extraire juste la condition WHERE
-                    if search_condition['query_type'] == 'exact':
-                        condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
-                    else:  # prefix
-                        condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
+                conditions.append(search_condition['condition'])
+                params.extend(search_condition['params'])
 
-                    conditions.append(condition)
-                    params.extend(search_condition['params'])
-                else:
-                    # Condition WHERE classique
-                    conditions.append(search_condition['condition'])
-                    params.extend(search_condition['params'])
-
-        # Filtres par colonne pour load_data
+        # Filtres par colonne
         if column_filters:
             for col_idx, filter_text in column_filters.items():
                 if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
                     conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
                     params.append(f"%{filter_text}%")
 
-        # Filtre pour les lignes incomplètes (champs type OU manufacturer vides) pour load_data
+        # Filtre pour les lignes incomplètes (champs type OU manufacturer vides)
         if incomplete_filter:
             conditions.append(self._get_incomplete_condition())
 
@@ -691,44 +681,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         # était inutile ici (pieces_count n'est pas utilisé dans un COUNT(*))
         # et forçait la matérialisation de 1,86M lignes pour rien.
         query = "SELECT COUNT(*) FROM appareils a"
-        params = []
-        conditions = []
-
-        # Recherche globale pour count_data (avec support recherche avancée)
-        if search_term:
-            search_condition = self._build_search_condition_optimized(search_term)
-            if search_condition:
-                # Si c'est une recherche regex, on ne peut pas compter précisément avec SQLite
-                if 'regex_filter' in search_condition:
-                    # Pour les regex, retourner un count approximatif (total)
-                    return self.cursor.execute("SELECT COUNT(*) FROM appareils").fetchone()[0]
-
-                # Phase 3: Gérer les requêtes optimisées (SELECT complets)
-                elif search_condition.get('query_type') in ['exact', 'prefix']:
-                    # Pour les requêtes optimisées, extraire juste la condition WHERE
-                    if search_condition['query_type'] == 'exact':
-                        condition = f"(ref_modele = ? OR commercial_ref = ? OR other_ref = ?) OR {self._piece_association_subquery('=')}"
-                    else:  # prefix
-                        condition = f"(ref_modele LIKE ? OR commercial_ref LIKE ? OR other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
-
-                    conditions.append(condition)
-                    params.extend(search_condition['params'])
-                else:
-                    # Condition WHERE classique
-                    conditions.append(search_condition['condition'])
-                    params.extend(search_condition['params'])
-
-        # Filtres par colonne pour count_data
-        if column_filters:
-            for col_idx, filter_text in column_filters.items():
-                if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
-                    conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
-                    params.append(f"%{filter_text}%")
-
-        # Filtre pour les lignes incomplètes pour count_data
-        if incomplete_filter:
-            incomplete_condition = self._get_incomplete_condition()
-            conditions.append(incomplete_condition)
+        # Même périmètre que les pages affichées (_build_load_conditions) : le
+        # total « N résultats » compte exactement les lignes du tableau.
+        conditions, params = self._build_load_conditions(search_term, column_filters, incomplete_filter)
 
         # Ajouter les conditions
         if conditions:
@@ -1468,8 +1423,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     def get_export_data(self, search_term: str,
                        column_filters: Optional[Dict[int, str]] = None,
                        incomplete_filter: bool = False) -> List[Tuple]:
-        """Récupérer les données pour l'export - utilise exactement la même logique que load_data()"""
-        # Construction de la requête similaire à load_data mais adaptée pour l'export
+        """Récupérer les données pour l'export — même périmètre que load_data()."""
+        # SELECT propre à l'export : 5 colonnes dédoublonnées + référence affichée
         headers_str = ', '.join(f'a.[{h}]' for h in Config.DB_HEADERS[:5])
         query = f"""
             SELECT DISTINCT {headers_str}, ? as ref_piece
@@ -1485,40 +1440,14 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         else:
             display_term = search_term
         params = [display_term]
-        conditions = []
 
-        # Recherche globale utilisant la même logique que load_data
-        if search_term:
-            # Parser le terme de recherche s'il contient des opérateurs || ou &&
-            parsed_search = self._parse_search_term_for_export(search_term)
-            search_condition = self._build_search_condition_optimized(parsed_search)
-            if search_condition:
-                # Phase 3: Gérer les requêtes optimisées (éviter erreur "near SELECT")
-                if search_condition.get('query_type') in ['exact', 'prefix']:
-                    # Pour les requêtes optimisées, extraire juste la condition WHERE
-                    if search_condition['query_type'] == 'exact':
-                        condition = f"(a.ref_modele = ? OR a.commercial_ref = ? OR a.other_ref = ?) OR {self._piece_association_subquery('=')}"
-                    else:  # prefix
-                        condition = f"(a.ref_modele LIKE ? OR a.commercial_ref LIKE ? OR a.other_ref LIKE ?) OR {self._piece_association_subquery('LIKE')}"
-
-                    conditions.append(condition)
-                    params.extend(search_condition['params'])
-                else:
-                    # Condition WHERE classique
-                    conditions.append(search_condition['condition'])
-                    params.extend(search_condition['params'])
-
-        # Filtres par colonne (comme dans load_data)
-        if column_filters:
-            for col_idx, filter_text in column_filters.items():
-                if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
-                    conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
-                    params.append(f"%{filter_text}%")
-
-        # Filtre pour les lignes incomplètes (comme dans load_data)
-        if incomplete_filter:
-            incomplete_condition = self._get_incomplete_condition()
-            conditions.append(incomplete_condition)
+        # Même périmètre que les pages affichées (_build_load_conditions) : l'export
+        # sort exactement les lignes du tableau. Seule étape propre à l'export : un
+        # terme brut contenant || ou && est d'abord découpé (le tableau reçoit
+        # toujours un terme déjà analysé par build_effective_search_term).
+        recherche = self._parse_search_term_for_export(search_term) if search_term else search_term
+        conditions, condition_params = self._build_load_conditions(recherche, column_filters, incomplete_filter)
+        params.extend(condition_params)
 
         # Ajouter les conditions WHERE si nécessaire
         if conditions:
