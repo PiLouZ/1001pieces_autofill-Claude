@@ -259,9 +259,8 @@ class TestBaseReelle:
 class _AideDialogue:
 
     def _dialog(self, test_db_manager, refs=LOT):
-        from src.core.import_manager import (
-            ImportManager, ImportDialog, ImportConfiguration, ImportFile,
-            ImportType, FileType)
+        from src.core.import_manager import ImportManager, ImportConfiguration, ImportFile, ImportType, FileType
+        from src.ui.fenetre_import import ImportDialog
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
         files = [ImportFile(f'/{r}.pdf', FileType.CSV, r) for r in refs]
         # Données pré-renseignées : évite la lecture disque du chargement différé.

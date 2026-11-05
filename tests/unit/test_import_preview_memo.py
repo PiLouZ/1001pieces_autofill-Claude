@@ -17,9 +17,8 @@ résultat obsolète.
 
 import pytest
 
-from src.core.import_manager import (
-    ImportDialog, ImportConfiguration, ImportFile, ImportType, FileType,
-)
+from src.core.import_manager import ImportConfiguration, ImportFile, ImportType, FileType
+from src.ui.fenetre_import import ImportDialog
 
 
 @pytest.fixture

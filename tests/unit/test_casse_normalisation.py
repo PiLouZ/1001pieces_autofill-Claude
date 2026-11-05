@@ -343,7 +343,7 @@ def test_autres_colonnes_et_effacement_intacts():
 # ─── Aperçu d'import : corrections annoncées avant d'écrire (v3.83.0) ────────
 
 def test_apercu_liste_marques_puis_types():
-    from src.core.import_manager import ImportPreviewDialog
+    from src.ui.fenetre_import import ImportPreviewDialog
     assert ImportPreviewDialog._lignes_alignements({
         'marques_alignees': [("DELTA", "Delta", 7), ("HEXATHERM", "Hexatherm", 1)],
         'types_alignes': [("CHAUFFAGE", "Chauffage", 25)],
@@ -352,7 +352,7 @@ def test_apercu_liste_marques_puis_types():
 
 
 def test_apercu_liste_longue_tronquee():
-    from src.core.import_manager import ImportPreviewDialog
+    from src.ui.fenetre_import import ImportPreviewDialog
     lignes = ImportPreviewDialog._lignes_alignements(
         {'marques_alignees': [(f"MARQUE{i}", f"Marque{i}", 1) for i in range(11)]})
     assert len(lignes) == 1 + ImportPreviewDialog.MAX_ALIGNEMENTS_AFFICHES + 1
@@ -360,7 +360,7 @@ def test_apercu_liste_longue_tronquee():
 
 
 def test_apercu_sans_correction_sans_encadre(qapp):
-    from src.core.import_manager import ImportPreviewDialog
+    from src.ui.fenetre_import import ImportPreviewDialog
     dialogue = ImportPreviewDialog({'new_entries': 1}, None)
     assert dialogue._encadre_alignements({'new_entries': 1}) is None
     assert dialogue._encadre_alignements({'types_alignes': [("CHAUFFAGE", "Chauffage", 1)]}) is not None

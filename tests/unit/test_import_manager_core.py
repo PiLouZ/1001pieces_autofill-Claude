@@ -514,9 +514,8 @@ class TestDialogRelationsCollection:
 
     def test_validate_collecte_relations_multi(self, qapp, test_db_manager):
         from PyQt5.QtWidgets import QListWidgetItem
-        from src.core.import_manager import (
-            ImportManager, ImportDialog, ImportConfiguration, ImportFile,
-            ImportType, FileType)
+        from src.core.import_manager import ImportManager, ImportConfiguration, ImportFile, ImportType, FileType
+        from src.ui.fenetre_import import ImportDialog
         from src.services.import_relations import KIND_SUCCESSION
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
         files = [ImportFile(f'/{r}.csv', FileType.CSV, r) for r in ('REF_A', 'REF_B', 'REF_C')]
@@ -545,9 +544,8 @@ class TestDialogRelationsCollection:
         assert {c.ref for c in rc.relations_cards} == {'REF_A', 'REF_B', 'REF_C'}
 
     def test_mono_fichier_pas_de_relations_groups(self, qapp, test_db_manager):
-        from src.core.import_manager import (
-            ImportManager, ImportDialog, ImportConfiguration, ImportFile,
-            ImportType, FileType)
+        from src.core.import_manager import ImportManager, ImportConfiguration, ImportFile, ImportType, FileType
+        from src.ui.fenetre_import import ImportDialog
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
         f = ImportFile('/a.csv', FileType.CSV, 'REF_A')
         # Pré-renseigner les données (cf. note test multi) : évite la lecture disque
@@ -594,9 +592,8 @@ class TestEquivalenceGuardDialog:
     d'équivalence dans le dialogue d'import multi-fichiers."""
 
     def _dialog(self, test_db_manager, refs=('REF_A', 'REF_B', 'REF_C')):
-        from src.core.import_manager import (
-            ImportManager, ImportDialog, ImportConfiguration, ImportFile,
-            ImportType, FileType)
+        from src.core.import_manager import ImportManager, ImportConfiguration, ImportFile, ImportType, FileType
+        from src.ui.fenetre_import import ImportDialog
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
         files = [ImportFile(f'/{r}.csv', FileType.CSV, r) for r in refs]
         for f in files:
@@ -929,7 +926,7 @@ class TestReferencePieceManquanteCollage:
     associations » — des appareils créés sans aucun rattachement à une pièce."""
 
     def _dialog(self, test_db_manager, ref_piece=''):
-        from src.core.import_manager import ImportDialog
+        from src.ui.fenetre_import import ImportDialog
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
         f = ImportFile('Collage', FileType.CLIPBOARD, '', '')
         f.data = [['Lave-linge', 'Samsung', 'WW80T4020EE']]
@@ -1043,20 +1040,20 @@ class TestDetectionEnTeteReference:
     mapping ref_modele, ce qui grisait le bouton Importer sans explication."""
 
     def test_reference_seule_reconnue(self):
-        from src.core.import_manager import ImportDialog
+        from src.ui.fenetre_import import ImportDialog
         mapping = ImportDialog._detect_csv_header_mapping(
             [['Type', 'Marque', 'Référence']], 3)
         assert mapping == ['type', 'manufacturer', 'ref_modele']
 
     def test_ref_seule_reconnue(self):
-        from src.core.import_manager import ImportDialog
+        from src.ui.fenetre_import import ImportDialog
         mapping = ImportDialog._detect_csv_header_mapping([['Ref', 'Fabricant']], 2)
         assert mapping == ['ref_modele', 'manufacturer']
 
     def test_pas_de_collision_avec_ref_commerciale(self):
         """NON-RÉGRESSION : la correspondance est exacte, « Ref commerciale » et
         « Autre ref » ne doivent pas basculer sur ref_modele."""
-        from src.core.import_manager import ImportDialog
+        from src.ui.fenetre_import import ImportDialog
         mapping = ImportDialog._detect_csv_header_mapping(
             [['Référence', 'Ref commerciale', 'Autre ref']], 3)
         assert mapping == ['ref_modele', 'commercial_ref', 'other_ref']
@@ -1066,7 +1063,7 @@ class TestCaseEnTeteVisibleCollage:
     """La case « 1ʳᵉ ligne = en-têtes » n'était affichée que pour les CSV."""
 
     def _dialog(self, test_db_manager, type_fichier, data):
-        from src.core.import_manager import ImportDialog
+        from src.ui.fenetre_import import ImportDialog
         im = ImportManager(db_manager=test_db_manager, parent_widget=None)
         f = ImportFile('Collage', type_fichier, 'REF', '')
         f.data = data
