@@ -37,9 +37,7 @@ class SupersessionReportService(BaseService):
             app_logger.error("[F8] db_manager indisponible")
             return ''
 
-        rows = db_manager.execute_query(
-            "SELECT ref_old, ref_new FROM piece_supersessions ORDER BY ref_old"
-        )
+        rows = db_manager.lister_supersessions()
         if not rows:
             app_logger.info("[F8] Aucune supersession à exporter")
             return ''

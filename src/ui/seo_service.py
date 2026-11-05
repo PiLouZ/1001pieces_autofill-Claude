@@ -15,7 +15,6 @@ from ..utils.qt_imports import QApplication
 from ..utils.boites import choisir_element
 from ..utils.qt_imports import Qt
 
-from src.core.config import Config
 from src.core.logger import app_logger
 from src.utils.seo_generator import SEOGenerator
 from src.utils.error_handler import handle_seo_generation_errors, handle_seo_data_errors, handle_seo_dialog_errors
@@ -285,13 +284,7 @@ class SEOService:
             return []
         nb_modeles = {ref: 0 for ref in predecesseurs}
         try:
-            placeholders = ','.join('?' * len(predecesseurs))
-            query = f"""SELECT p.ref_piece, COUNT(DISTINCT pa.appareil_id)
-                        FROM pieces p
-                        JOIN piece_associations pa ON pa.piece_id = p.id
-                        WHERE p.ref_piece IN ({placeholders})
-                        GROUP BY p.ref_piece"""
-            for ref, n in self.main_window.db_manager.execute_custom_query(query, predecesseurs):
+            for ref, n in self.main_window.db_manager.compter_modeles_par_ref(predecesseurs):
                 nb_modeles[ref] = n
         except Exception as e:
             app_logger.warning(f"SEO: impossible de classer les références {predecesseurs}: {e}")
@@ -303,12 +296,7 @@ class SEOService:
         if not refs:
             return 0
         try:
-            placeholders = ','.join('?' * len(refs))
-            query = f"""SELECT COUNT(DISTINCT pa.appareil_id)
-                        FROM piece_associations pa
-                        JOIN pieces p ON pa.piece_id = p.id
-                        WHERE p.ref_piece IN ({placeholders})"""
-            result = self.main_window.db_manager.execute_custom_query(query, refs)
+            result = self.main_window.db_manager.compter_modeles_compatibles(refs)
             return result[0][0] if result else 0
         except Exception as e:
             app_logger.warning(f"SEO: impossible de compter les modèles pour {refs}: {e}")
@@ -422,12 +410,9 @@ class SEOService:
         avec le libellé d'une autre pièce.
         """
         db = self.main_window.db_manager
-        rows = db.execute_custom_query(
-            "SELECT ref_piece, description FROM pieces WHERE ref_piece = ? LIMIT 1", [reference])
+        rows = db.lire_piece_exacte(reference)
         if not rows:
-            rows = db.execute_custom_query(
-                "SELECT ref_piece, description FROM pieces WHERE ref_piece = ? COLLATE NOCASE LIMIT 2",
-                [reference])
+            rows = db.lire_piece_sans_casse(reference)
             if len(rows) != 1:  # absente, ou ambiguë (deux casses différentes en base)
                 return None
         ref_piece, description = rows[0]
@@ -710,9 +695,7 @@ class SEOService:
         poids_fabricants: Dict[str, int] = {}
         if not refs:
             return poids_types, poids_fabricants
-        query = Config.get_query('device_counts_for_pieces',
-                                 placeholders=','.join('?' * len(refs)))
-        for type_val, manufacturer, nb_modeles in self.main_window.db_manager.execute_custom_query(query, refs):
+        for type_val, manufacturer, nb_modeles in self.main_window.db_manager.compter_appareils_par_type_marque(refs):
             if type_val:
                 poids_types[type_val] = poids_types.get(type_val, 0) + nb_modeles
             if manufacturer:

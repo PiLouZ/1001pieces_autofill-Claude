@@ -95,8 +95,9 @@ class CasseNormalisationService(BaseService):
         # (valeur brute, valeur retenue) → nombre de lignes, pour la trace d'import
         self._alignements: Dict[Tuple[str, str], int] = {}
 
-    def _lire(self, requete: str) -> list:
-        lignes = self.db_manager.execute_query(requete)
+    def _lire(self, methode: str) -> list:
+        """Lecture de la colonne par la méthode `methode` de la base."""
+        lignes = getattr(self.db_manager, methode)(self.colonne)
         # Base indisponible : seule la règle 2 s'applique, l'appelant continue
         return lignes if isinstance(lignes, (list, tuple)) else []
 
@@ -106,11 +107,7 @@ class CasseNormalisationService(BaseService):
         Plusieurs orthographes pour une même clé : la plus fréquente l'emporte.
         Remet aussi les traces d'alignement à zéro.
         """
-        lignes = self._lire(
-            f"SELECT {self.colonne}, COUNT(*) FROM appareils "
-            f"WHERE {self.colonne} IS NOT NULL AND TRIM({self.colonne}) <> '' "
-            f"GROUP BY {self.colonne} ORDER BY COUNT(*) DESC"
-        )
+        lignes = self._lire('valeurs_frequentes_colonne')
         canoniques: Dict[str, str] = {}
         for valeur, _nb in lignes:
             canoniques.setdefault(cle_marque(valeur), valeur)
@@ -122,9 +119,7 @@ class CasseNormalisationService(BaseService):
         restauration…). Lecture des seules valeurs distinctes, servie par l'index
         (< 1 ms) : appelée à chaque valeur inconnue, elle évite qu'une liste
         chargée au lancement devienne périmée."""
-        for ligne in self._lire(
-                f"SELECT DISTINCT {self.colonne} FROM appareils "
-                f"WHERE {self.colonne} IS NOT NULL AND TRIM({self.colonne}) <> ''"):
+        for ligne in self._lire('valeurs_colonne'):
             self._canoniques.setdefault(cle_marque(ligne[0]), ligne[0])
 
     def normaliser(self, valeur: str) -> str:

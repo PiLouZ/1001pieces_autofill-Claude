@@ -823,12 +823,7 @@ class PiecesManagerWindow(QDialog):
         self._loading_phase = 1  # empêche _update_table_display de switcher vers le tableau
         QApplication.setOverrideCursor(Qt.WaitCursor)
 
-        query_fast = """
-        SELECT p.ref_piece, p.description, 0, NULL, COALESCE(p.is_phantom, 0)
-        FROM pieces p
-        ORDER BY p.ref_piece ASC
-        """
-        results = self.db_manager.execute_query(query_fast) or []
+        results = self.db_manager.lister_pieces_apercu() or []
         self.all_pieces_data = results
         self.all_statuses = {}
         self._data_loaded = True
@@ -840,7 +835,7 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur chargement complet pièces", show_message=True)
     def _load_pieces_data_full(self, checked=False):
         """Phase 2 : chargement complet avec comptages, types et statuts de succession."""
-        results = self.db_manager.execute_query(REQUETE_PIECES_COMPLETE) or []
+        results = self.db_manager.lister_pieces_completes() or []
 
         total_pieces = len(results)
         orphan_pieces = len([r for r in results if r[2] == 0])
@@ -1197,8 +1192,7 @@ class PiecesManagerWindow(QDialog):
         (_do_edit_piece — historique, propagation aux équivalents, garde
         contre l'effacement)."""
         self.open_on_piece(ref)
-        rows = self.db_manager.execute_query(
-            "SELECT description FROM pieces WHERE ref_piece = ? LIMIT 1", [ref])
+        rows = self.db_manager.lire_libelle_piece(ref)
         libelle_actuel = (rows[0][0] or "") if rows else ""
         self._do_edit_piece(ref, libelle_actuel, focus_field='desc')
 
@@ -1496,11 +1490,7 @@ class PiecesManagerWindow(QDialog):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         # Récupérer les libellés en une seule requête batch
-        placeholders = ",".join(["?"] * len(refs))
-        desc_rows = self.db_manager.execute_query(
-            f"SELECT ref_piece, description FROM pieces WHERE ref_piece IN ({placeholders})",
-            list(refs)
-        )
+        desc_rows = self.db_manager.lire_libelles_pieces(refs)
         desc_map = {r[0]: (r[1] or "") for r in desc_rows}
 
         content = QWidget()
@@ -2415,22 +2405,7 @@ class PiecesManagerWindow(QDialog):
         demander_oui_non(self, 'Confirmer la suppression', f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?\n\nCette action supprimera également toutes ses associations avec les appareils.", (lambda *a: _suite(self, *a)), defaut=QMessageBox.No)
 
 # Chargement complet du gestionnaire de pièces (comptages, types, fantômes).
-# Types : NULLIF(TRIM(…), '') — un type VIDE (cellule vidée par Suppr, ligne
-# Cmd+N non remplie) n'est pas NULL, donc GROUP_CONCAT l'ajoutait et la
-# colonne affichait « Lave-vaisselle, » (virgule finale).
-REQUETE_PIECES_COMPLETE = """
-        SELECT
-            p.ref_piece,
-            p.description,
-            COUNT(DISTINCT pa.appareil_id) as nb_appareils,
-            GROUP_CONCAT(DISTINCT NULLIF(TRIM(a.type), '')) as types_appareils,
-            COALESCE(p.is_phantom, 0) as is_phantom
-        FROM pieces p
-        LEFT JOIN piece_associations pa ON p.id = pa.piece_id
-        LEFT JOIN appareils a ON pa.appareil_id = a.id
-        GROUP BY p.id, p.ref_piece, p.description, p.is_phantom
-        ORDER BY nb_appareils DESC, p.ref_piece ASC
-        """
+# REQUETE_PIECES_COMPLETE : déplacée dans src/data/_db_mixins/pieces.py
 
 
 def _formulaire_piece(ref: str = "", libelle: str = ""):

@@ -17,12 +17,13 @@ from src.core.import_manager import (
     ImportManager, ImportConfiguration, ImportFile, ImportType,
     LabelConfiguration, FileType,
 )
+from src.data._db_mixins.appareils import DatabaseAppareilsMixin
 from src.services.casse_normalisation_service import (
     CasseNormalisationService, cle_marque, mettre_en_forme, mettre_en_forme_type,
 )
 
 
-class _DbFactice:
+class _DbFactice(DatabaseAppareilsMixin):
     def __init__(self, marques):
         self.marques = marques
 
@@ -244,7 +245,7 @@ def test_colonne_inconnue_refusee():
         CasseNormalisationService(_DbFactice([]), 'notes')
 
 
-class _DbEvolutive:
+class _DbEvolutive(DatabaseAppareilsMixin):
     """Base dont le contenu change après le chargement (import, restauration)."""
     def __init__(self):
         self.valeurs = [("Delta", 37)]

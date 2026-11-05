@@ -22,6 +22,9 @@ from ._db_mixins.fts5 import DatabaseFts5Mixin
 from ._db_mixins.supersession import DatabaseSupersessionMixin
 from ._db_mixins.setup import DatabaseSetupMixin
 from ._db_mixins.autocompletion import DatabaseAutocompletionMixin
+from ._db_mixins.pieces import DatabasePiecesMixin
+from ._db_mixins.appareils import DatabaseAppareilsMixin
+from ._db_mixins.historiques import DatabaseHistoriquesMixin
 
 import sys
 import os
@@ -70,7 +73,8 @@ class SearchCache:
     
 
 class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin,
-                      DatabaseAutocompletionMixin):
+                      DatabaseAutocompletionMixin, DatabasePiecesMixin, DatabaseAppareilsMixin,
+                      DatabaseHistoriquesMixin):
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
 
     def __init__(self, db_file: str = None):
@@ -414,6 +418,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     # ── Supersession & Équivalences → voir src/data/_db_mixins/supersession.py ─
 
     # ── FTS5 Full-Text Search → voir src/data/_db_mixins/fts5.py ────────────
+    # ── Lectures pièces / appareils / historiques → voir _db_mixins/pieces.py,
+    #    appareils.py, historiques.py (requêtes rapatriées des fenêtres et services)
     
     @handle_db_query_errors(return_value=[], log_prefix="Erreur load_data")
     def load_data(self, search_term: Optional[str] = None,

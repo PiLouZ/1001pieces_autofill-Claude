@@ -7,7 +7,7 @@ GROUP_CONCAT écarte NULL mais pas la chaîne vide.
 
 import sqlite3
 
-from src.ui.pieces_manager import REQUETE_PIECES_COMPLETE
+from src.data._db_mixins.pieces import REQUETE_PIECES_COMPLETE
 
 
 def _base():
