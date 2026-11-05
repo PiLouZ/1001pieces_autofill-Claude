@@ -4,6 +4,162 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.100.0] - 2026-11-05 (PR #106 à #110)
+
+Première livraison sous la règle « version changée seulement à la livraison » (PR #104) :
+les nouveautés ci-dessous se sont accumulées sous « En préparation » dans le Guide.
+
+### Bouton « Fiche complète » (PR #107)
+- Tout le code HTML de la fiche produit en un clic : titre, marques, code produit,
+  « Remplace les références », références équivalentes (chacune suivie de ses anciennes
+  références) sur une seule ligne, bloc Informations facultatif, appareils affichés.
+- Équivalentes triées par nombre d'appareils ; à égalité, celles qui commencent par une
+  lettre d'abord (décision client), puis ordre alphabétique.
+- Section `fiche` de `export_config.json` (2 variantes par défaut), onglet **Fiche** de la
+  configuration des exports avec aperçu. Limite de caractères sur la fiche entière
+  (200 000 par défaut). Calcul du titre extrait (`calculer_titre`) et partagé.
+- Modèles HTML (onglets HTML, Titre, Fiche) colorés et indentés à l'écran ; le texte
+  enregistré reste identique (aller-retour vérifié sur 133 modèles).
+
+### Boutons d'export réorganisés et aperçu d'export (PR #107)
+- Ligne 1 : Méta Title | Méta Desc | Exporter CSV ; ligne 2 : Titre | Fiche complète ;
+  HTML Marques et HTML Détails repliés sous « ▸ Exports HTML » (état mémorisé par poste).
+- Flèche des boutons à gabarits (`FlecheGabarits`) : survol = menu des gabarits, clic =
+  fenêtre non bloquante **Aperçu d'export** (onglets Rendu / Code sur la recherche en cours,
+  gabarits à droite près de Copier, noms longs sur plusieurs lignes, Par défaut, Modifier
+  le modèle). Copier ferme la fenêtre et rend la main à la fenêtre principale.
+- macOS : le clic sur la flèche quand le menu ouvert au survol capte la souris est
+  reconnu à la fermeture du menu (anti-rebond pour le double-clic).
+
+### Configuration des exports en trois colonnes (PR #108)
+- Onglets HTML, Titre, Fiche : gabarits à gauche (défaut en tête avec étoile, tri naturel,
+  filtre dès 6), réglages au centre, aperçu à droite ; poignées alignées entre onglets.
+- `ColonneVariantes` factorise Nouveau / Dupliquer / Supprimer / clic droit et le
+  renommage direct (champ Nom, double-clic, F2 ; nom vide ou déjà pris refusé).
+- Onglet Fiche : une carte par bloc dans l'ordre de sortie, « Modifier ce gabarit › » avec
+  bandeau de retour ; un gabarit renommé est suivi par les variantes Fiche.
+- Fenêtre 1360×860 par défaut, taille et colonnes mémorisées par poste.
+
+### Lignes auto-complétées à vérifier plus visibles (PR #109)
+- Fond lavande (`_AUTOCOMPLETE_BG` #DDE2F7) sur les cases Type/Fabricant concernées, en
+  plus de l'italique ; le jaune des suggestions garde la priorité.
+- Numéro de ligne orange gras sur fond orange pâle : en-tête vertical `_EnteteLignes`
+  dessiné à la main (la feuille de style écrase `ForegroundRole`/`FontRole` ; `save()` /
+  `restore()` obligatoires autour du `paintSection` de base).
+- Coche cliquable dans la case : marque l'appareil vérifié en un clic, même chemin que le
+  clic droit (`_marquer_lignes_verifiees`).
+
+### Export Mac (PR #106)
+- `install.command` cherche le Python de la version qui a exporté (PATH, Homebrew,
+  python.org), vérifie version et architecture, explique quoi faire sinon, recrée le venv
+  et lève la quarantaine du dossier.
+- Le `.app` est re-signé (ad hoc) après injection de l'icône : macOS ne le déclare plus
+  « endommagé » ; l'export échoue si la signature n'est pas valide. Lanceur console ajouté.
+- Non validé sur un autre Mac à la date de livraison.
+
+---
+
+## [3.99.4] - 2026-10-29 (PR #103)
+
+### Menus de gabarits avec filtre et récents
+- À partir de 6 gabarits, la flèche de Titre / HTML Détails ouvre un menu avec un champ
+  « Filtrer… » qui a le focus (casse et accents ignorés, plusieurs mots, ↑/↓, Entrée =
+  premier résultat, Échap) et une section « Récents » (3 derniers choix, QSettings par poste).
+- Nouveau module `src/ui/menu_gabarits.py`, branché dans `_refresh_split_menu`.
+
+---
+
+## [3.99.3] - 2026-10-29 (PR #103)
+
+### Menus de gabarits triés, ordre des boutons
+- Menus des flèches Titre et HTML Détails triés par ordre naturel (insensible casse /
+  accents, « Profil 2 » avant « Profil 10 ») via `text_utils.cle_tri_naturel`.
+- Ligne 1 des exports : Titre, HTML Marques, HTML Détails.
+
+---
+
+## [3.99.2] - 2026-10-23 (PR #102)
+
+### Modèles HTML dans des zones multi-lignes
+- `ChampModeleHtml` (QPlainTextEdit à interface QLineEdit) pour les 6 modèles de l'onglet
+  HTML : retour à la ligne, 1 à 4 lignes puis défilement, chasse fixe. Une seule ligne
+  logique : Entrée ignorée, sauts de ligne collés remplacés par des espaces — exports inchangés.
+
+---
+
+## [3.99.1] - 2026-10-23 (PR #101)
+
+### Séparateurs du Titre, flèches des champs numériques
+- Profils Titre : séparateurs propres aux marques et aux types (« entre » / « avant le
+  dernier ») ; les séparateurs communs d'un gabarit 3.99.0 sont repris pour les deux.
+- Bouton Titre violet (#6f42c1) ; `icon_png_path` extrait de `inline_icon_html`.
+- QSpinBox : flèches ▲▼ décrites par la feuille de style (Qt les dessinait sans flèche).
+
+---
+
+## [3.99.0] - 2026-10-23 (PR #100)
+
+### Bouton « Titre » pour les fiches produits
+- `TitreProduitGenerator` : « {libelle} pour {type} {marques} - {reference} », 4 marques et
+  120 caractères au plus ; marques puis types retirés en fin de liste, libellé et référence
+  jamais coupés ; types cités s'ils couvrent 80 % du premier.
+- `SEOService.preparer_donnees_fiche` : préparation commune Méta Title / Méta Desc / Titre.
+- Config d'export : section `titre` (profils nommés), onglet Titre avec aperçu.
+
+---
+
+## [3.97.3] - 2026-10-23 (PR #98)
+
+### Version dans la barre d'état
+- Version affichée tout à droite de la barre d'état, en gris.
+- « Sauvegardé » et « Connecté » réduits à leur icône, état en infobulle
+  (`StatusLabel(icone_seule=True)`) ; couleur et infobulle suivent `setText`/`setStyleSheet`.
+
+---
+
+## [3.97.0 → 3.97.2] - 2026-10-23 (PR #97)
+
+### « Remplacée par » sur les cartes de l'import multi-fichiers
+- 3.97.0 : chaque carte de fichier porte sa remplaçante directe (lot, base ou fantôme) ;
+  chaînes A → B → C possibles. `conflits_remplacement` bloque deux remplaçantes pour une
+  réf ou une boucle (la base écraserait la première, INSERT OR REPLACE). Liens journalisés.
+- 3.97.1 : raccord automatique (la fin de chaîne d'un membre est reliée à la courante),
+  arbre des remplacements en direct, glisser-déposer tuile → « Remplacée par » et pastille
+  → lignée / groupe.
+- 3.97.2 : double-clic sur la pastille « Remplacée par » → la réf devient la courante ;
+  « Non groupées » vide réduit à une bande de dépôt ; la courante saisie en réf hors lot de
+  sa propre lignée est ignorée.
+- Vérifié sur une copie de la base avec les 3 PDF Beko : 5 successions, 0 erreur.
+
+---
+
+## [3.96.1] - 2026-10-22 (PR #96)
+
+### Onglet HTML de la configuration des exports refait
+- Les codes englobants faisaient écraser 15 champs à 20 px : cartes « Liste des marques » /
+  « Liste des appareils », grille libellé | champ, actions en icônes, zone de défilement,
+  aperçu en direct ; fenêtre 1020×720 (minimum 900×540).
+
+---
+
+## [3.96.0] - 2026-10-22 (PR #95)
+
+### Code englobant la liste des appareils (HTML Détails)
+- Champ « Code englobant les appareils » (variable `{appareils}`) par profil Détails.
+  Défaut `{appareils}` : sortie identique. Appliqué avant la limite de caractères.
+  Helper commun `wrap_content` partagé avec les marques.
+
+---
+
+## [3.95.0] - 2026-10-22 (PR #94)
+
+### Code englobant la liste des marques (HTML Marques)
+- Champ « Code englobant les marques » (variable `{liens}`), ex.
+  `<div class="class_perso2">Compatible avec {liens}</div>`. Défaut `{liens}` : sortie
+  identique. Pas d'enveloppe sans marque ni si le gabarit oublie `{liens}`.
+
+---
+
 ## [3.98.0] - 2026-10-23 (branche `claude/autre-reference-suggestions-60e934`)
 
 ### Suggestion du Type d'après la colonne « Autre référence »
