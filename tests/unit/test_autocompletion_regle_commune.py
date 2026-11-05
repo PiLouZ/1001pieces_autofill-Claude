@@ -15,7 +15,6 @@ import pytest
 
 from src.core.config import Config
 from src.data.database_manager import DatabaseManager
-from src.services.device_manager import DeviceManager
 from src.services.proposition_type_fabricant import PropositionChamp, proposer_type_fabricant
 from src.ui.data_management_service import DataManagementService
 
@@ -70,9 +69,7 @@ def _traces(db, appareil_id):
 
 
 def _service(db):
-    fenetre = types.SimpleNamespace(
-        _update_device_info=DeviceManager(db).update_device_info)
-    return DataManagementService(db, fenetre)
+    return DataManagementService(db, types.SimpleNamespace())
 
 
 def _lancer_bouton(db, ids):

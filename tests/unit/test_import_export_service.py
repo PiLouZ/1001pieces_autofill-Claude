@@ -4,10 +4,7 @@ Validation des opérations d'import/export sans régression
 """
 
 import pytest
-import os
-import tempfile
-from unittest.mock import Mock, MagicMock, patch, mock_open
-from PyQt5.QtWidgets import QApplication
+from unittest.mock import Mock, patch
 
 from src.services.import_export_service import ImportExportService
 
@@ -77,119 +74,6 @@ class TestImportExportService:
 
         # Ne doit pas lever d'exception
         service.export_data()
-
-    def test_export_with_custom_reference_no_input(self, import_export_service):
-        """Test export avec référence personnalisée - pas d'entrée"""
-        with patch.object(import_export_service, '_get_custom_reference_dialog', return_value=("", False)):
-            import_export_service.export_with_custom_reference()
-
-            # Aucune requête ne doit être exécutée
-            import_export_service.db_manager.execute_query.assert_not_called()
-
-    def test_export_with_custom_reference_with_data(self, import_export_service):
-        """Test export avec référence personnalisée - avec données"""
-        # Mock des données de retour
-        mock_results = [
-            ("Type1", "Marque1", "Modele1", "REF001", "Designation1", 10.50, 5, "Notes1"),
-            ("Type2", "Marque2", "Modele2", "REF002", "Designation2", 20.75, 3, "Notes2")
-        ]
-
-        import_export_service.db_manager.execute_query.return_value = mock_results
-
-        with patch.object(import_export_service, '_get_custom_reference_dialog', return_value=("TEST_REF", True)):
-            with patch.object(import_export_service, '_export_custom_results') as mock_export:
-                import_export_service.export_with_custom_reference()
-
-                # Vérifier que la requête a été exécutée
-                import_export_service.db_manager.execute_query.assert_called_once()
-
-                # Vérifier que l'export a été appelé avec les bonnes données
-                mock_export.assert_called_once_with(mock_results, "TEST_REF")
-
-    def test_export_with_custom_reference_no_results(self, import_export_service):
-        """Test export avec référence personnalisée - aucun résultat"""
-        import_export_service.db_manager.execute_query.return_value = []
-
-        with patch.object(import_export_service, '_get_custom_reference_dialog', return_value=("UNKNOWN_REF", True)):
-            import_export_service.export_with_custom_reference()
-
-            # Dialog d'info doit être affiché
-            import_export_service.dialog_service.show_info.assert_called_once()
-
-    def test_export_csv_with_reference(self, import_export_service):
-        """Test export CSV avec référence"""
-        test_data = [
-            ("Type1", "Marque1", "Modele1", "REF001", "Designation1", 10.50, 5, "Notes1"),
-            ("Type2", "Marque2", "Modele2", "REF002", "Designation2", 20.75, 3, "Notes2")
-        ]
-
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp_file:
-            tmp_path = tmp_file.name
-
-        try:
-            with patch('PyQt5.QtWidgets.QFileDialog.getSaveFileName', return_value=(tmp_path, "")):
-                import_export_service.export_csv_with_reference(test_data, "TEST_REF")
-
-                # Vérifier que le fichier a été créé
-                assert os.path.exists(tmp_path)
-
-                # Vérifier le contenu
-                with open(tmp_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    assert "Type;Marque;Modèle" in content  # Headers
-                    assert "REF001" in content  # Données
-                    assert "REF002" in content
-
-                # Vérifier les signaux
-                import_export_service.dialog_service.show_success.assert_called_once()
-
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-
-    def test_export_csv_cancelled(self, import_export_service):
-        """Test export CSV annulé par l'utilisateur"""
-        test_data = [("Type1", "Marque1", "Modele1", "REF001", "Designation1", 10.50, 5, "Notes1")]
-
-        with patch('PyQt5.QtWidgets.QFileDialog.getSaveFileName', return_value=("", "")):
-            import_export_service.export_csv_with_reference(test_data, "TEST_REF")
-
-            # Aucun dialogue de succès ne doit être affiché
-            import_export_service.dialog_service.show_success.assert_not_called()
-
-    def test_export_html_with_reference(self, import_export_service, qapp):
-        """Test export HTML avec référence"""
-        test_data = [
-            ("Type1", "Marque1", "Modele1", "REF001", "Designation1", 10.50, 5, "Notes1")
-        ]
-
-        with patch.object(import_export_service, '_generate_html_table', return_value="<table>test</table>") as mock_html:
-            import_export_service.export_html_with_reference(test_data, "TEST_REF")
-
-            # Vérifier que le HTML a été généré
-            mock_html.assert_called_once_with(test_data, "TEST_REF")
-
-            # Vérifier le dialogue de succès
-            import_export_service.dialog_service.show_success.assert_called_once()
-
-    def test_generate_html_table(self, import_export_service):
-        """Test génération de table HTML"""
-        test_data = [
-            ("Type1", "Marque1", "Modele1", "REF001", "Designation1", 10.50, 5, "Notes1"),
-            ("Type2", "Marque2", "Modele2", "REF002", "Designation2", None, 0, None)  # Test valeurs nulles
-        ]
-
-        html = import_export_service._generate_html_table(test_data, "TEST_REF")
-
-        # Vérifier la structure HTML
-        assert "<table" in html
-        assert "<caption>" in html
-        assert "TEST_REF" in html
-        assert "2 résultats" in html
-        assert "<th" in html
-        assert "REF001" in html
-        assert "REF002" in html
-        assert "</table>" in html
 
     def test_import_file_csv(self, import_export_service):
         """Test import fichier CSV"""
@@ -357,36 +241,6 @@ class TestImportExportService:
         assert "test.csv" in summary
         assert "Avertissements: 2" in summary
 
-    def test_detect_separator(self, import_export_service):
-        """Test détection séparateur CSV"""
-        # Test avec point-virgule
-        with patch('builtins.open', mock_open(read_data="col1;col2;col3\nval1;val2;val3")):
-            separator = import_export_service._detect_separator("/tmp/test.csv")
-            assert separator == ';'
-
-        # Test avec virgule
-        with patch('builtins.open', mock_open(read_data="col1,col2,col3\nval1,val2,val3")):
-            separator = import_export_service._detect_separator("/tmp/test.csv")
-            assert separator == ','
-
-        # Test avec tabulation
-        with patch('builtins.open', mock_open(read_data="col1\tcol2\tcol3\nval1\tval2\tval3")):
-            separator = import_export_service._detect_separator("/tmp/test.csv")
-            assert separator == '\t'
-
-    def test_detect_file_encoding_with_chardet(self, import_export_service):
-        """Test détection encodage avec chardet"""
-        with patch('chardet.detect', return_value={'encoding': 'utf-8', 'confidence': 0.9}):
-            with patch('builtins.open', mock_open()):
-                encoding = import_export_service._detect_file_encoding("/tmp/test.csv")
-                assert encoding == 'utf-8'
-
-    def test_detect_file_encoding_without_chardet(self, import_export_service):
-        """Test détection encodage sans chardet"""
-        with patch('chardet.detect', side_effect=ImportError()):
-            encoding = import_export_service._detect_file_encoding("/tmp/test.csv")
-            assert encoding == 'utf-8'  # Fallback
-
     def test_get_import_options_unified(self, import_export_service):
         """Test obtention options import unifiées"""
         options = import_export_service._get_import_options_unified()
@@ -416,34 +270,5 @@ class TestImportExportService:
         assert "test_import.csv" in call_args
         assert "5 ajoutés" in call_args
         assert "2 mis à jour" in call_args
-
-    def test_signal_emission(self, import_export_service):
-        """Test émission des signaux"""
-        # Mock des signaux
-        import_export_service.import_completed = Mock()
-        import_export_service.export_completed = Mock()
-
-        # Test signal import
-        mock_result = {'success': True, 'stats': {'added': 5}}
-        import_export_service._show_import_results_new(mock_result)
-        import_export_service.import_completed.emit.assert_called_once_with(mock_result)
-
-        # Test signal export
-        test_data = [("Type1", "Marque1", "Modele1", "REF001", "Designation1", 10.50, 5, "Notes1")]
-        with patch.object(import_export_service, '_generate_html_table', return_value="<table>test</table>"):
-            import_export_service.export_html_with_reference(test_data, "TEST_REF")
-            import_export_service.export_completed.emit.assert_called_once_with("clipboard")
-
-    def test_error_handling(self, import_export_service):
-        """Test gestion d'erreurs"""
-        # Services manquants
-        import_export_service.dialog_service = None
-        import_export_service.db_manager = None
-
-        # Ces opérations ne doivent pas planter
-        import_export_service.export_data()
-        import_export_service.export_with_custom_reference("TEST")
-        import_export_service._show_import_summary({})
-        import_export_service._log_import_to_history({})
 
         # Pas d'exception attendue

@@ -10,10 +10,8 @@ Responsabilités:
 """
 
 import sys
-from typing import Optional, Callable, Dict
-from ..ui.qt_imports import pyqtSignal, Qt, QKeySequence, QKeyEvent, QWidget
+from ..ui.qt_imports import pyqtSignal, Qt, QKeySequence, QKeyEvent
 
-from ..core.config import Config
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation, safe_operation
 
@@ -298,39 +296,3 @@ class KeyboardShortcutService(BaseService):
                 advanced_search_service.clear_search_ui(self.parent_window)
 
     # === CONFIGURATION DYNAMIQUE ===
-
-    @safe_operation("register_shortcut")
-    def register_shortcut(self, key: int, action_name: str, description: str, with_modifier: bool = True):
-        """Enregistrer un nouveau raccourci dynamiquement"""
-        if with_modifier:
-            self.shortcut_actions[key] = (action_name, description)
-        else:
-            self.function_key_shortcuts[key] = (action_name, description)
-
-        app_logger.debug(f" Raccourci enregistré: {description} ({action_name})")
-
-    @safe_operation("unregister_shortcut")
-    def unregister_shortcut(self, key: int, with_modifier: bool = True):
-        """Supprimer un raccourci"""
-        if with_modifier and key in self.shortcut_actions:
-            del self.shortcut_actions[key]
-        elif not with_modifier and key in self.function_key_shortcuts:
-            del self.function_key_shortcuts[key]
-
-        app_logger.debug(f" Raccourci supprimé: clé {key}")
-
-    def get_registered_shortcuts(self) -> Dict[str, Dict]:
-        """Obtenir la liste des raccourcis enregistrés"""
-        return {
-            "modifier_shortcuts": dict(self.shortcut_actions),
-            "standard_shortcuts": dict(self.standard_shortcuts),
-            "function_key_shortcuts": dict(self.function_key_shortcuts)
-        }
-
-    def enable_focus_constraint(self, key: int):
-        """Activer une contrainte de focus pour un raccourci"""
-        self.focus_dependent_shortcuts.add(key)
-
-    def disable_focus_constraint(self, key: int):
-        """Désactiver une contrainte de focus pour un raccourci"""
-        self.focus_dependent_shortcuts.discard(key)

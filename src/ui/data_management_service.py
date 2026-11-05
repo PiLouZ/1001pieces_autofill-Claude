@@ -126,11 +126,13 @@ class DataManagementService:
         if refus:
             propositions = {champ: p for champ, p in propositions.items()
                             if (db_id, champ, p.valeur.strip().lower()) not in refus}
-        if not propositions or not self.main_window:
+        if not propositions:
             return None
 
+        # Chemin batché canonique, qui COMMIT (execute_custom_query ne le fait pas :
+        # l'UPDATE serait perdu à la fermeture).
         updates = {champ: p.valeur for champ, p in propositions.items()}
-        if not self.main_window._update_device_info(db_id, updates):
+        if not self.db_manager.update_multiple_cells_batch({db_id: updates}):
             return None
 
         # Tracée APRÈS l'écriture (le déclencheur effacerait sinon la trace) et

@@ -3,29 +3,7 @@ Processeur de données pour le collage depuis le presse-papiers
 Extrait de main_refactored.py pour améliorer la maintenabilité
 """
 
-from typing import List, Dict, Any, Tuple, Optional
-from dataclasses import dataclass
-from src.core.config import Config
-from src.core.logger import app_logger
-from src.services.base_service import safe_operation
-
-
-@dataclass
-class PasteProcessingResult:
-    """Résultat du traitement des données collées"""
-    inserted_count: int = 0
-    updated_count: int = 0
-    ignored_count: int = 0
-    associations_created: int = 0
-    duplicates_skipped: int = 0
-    manual_completion_count: int = 0
-    no_piece_ref_count: int = 0
-    descriptions_updated: int = 0
-    duplicates_list: List[Dict[str, Any]] = None
-    
-    def __post_init__(self):
-        if self.duplicates_list is None:
-            self.duplicates_list = []
+from typing import List
 
 
 class PasteDataProcessor:
@@ -93,44 +71,5 @@ class PasteDataProcessor:
             cleaned_rows.append(clean_row)
         
         return cleaned_rows
-    
-    
-    def validate_device_data(self, device_data: Dict[str, Any], row_idx: int) -> bool:
-        """
-        Valider les données d'un appareil
-        
-        Args:
-            device_data: Données de l'appareil à valider
-            row_idx: Index de la ligne pour les logs
-            
-        Returns:
-            True si valide, False sinon (mais continue l'import avec avertissement)
-        """
-        validation_result = self.validator.validate_record(device_data)
-        if not validation_result.is_valid:
-            app_logger.warning(
-                f"Données ligne {row_idx + 1} avec avertissement: {validation_result.error_message}"
-            )
-            app_logger.warning(f"⚠️ Ligne {row_idx + 1}: VALIDATION: {validation_result.error_message} - Continuant l'import...")
-            app_logger.warning(f"    Données concernées: {device_data}")
-            return False  # Mais on continue l'import
-        return True
-    
-
-    def _needs_manual_completion(self, device_data: Dict[str, str]) -> bool:
-        """
-        Vérifier si l'appareil nécessite une complétion manuelle
-        
-        Args:
-            device_data: Données de l'appareil
-            
-        Returns:
-            bool: True si complétion manuelle nécessaire
-        """
-        # Vérifier si les champs obligatoires sont vides
-        return not (device_data.get('type', '').strip() and device_data.get('manufacturer', '').strip())
-
-    
-    
     
     

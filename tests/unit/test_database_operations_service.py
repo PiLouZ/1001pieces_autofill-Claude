@@ -4,9 +4,8 @@ Validation des opérations CRUD sans régression
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-from PyQt5.QtWidgets import QMessageBox, QTableWidgetItem
-from PyQt5.QtCore import Qt
+from unittest.mock import Mock, patch
+from PyQt5.QtWidgets import QMessageBox
 
 from src.services.database_operations_service import DatabaseOperationsService
 
@@ -251,31 +250,6 @@ class TestDatabaseOperationsService:
         item.text.return_value = headers[col] if col < len(headers) else f'col_{col}'
         return item
 
-    def test_save_drag_changes_success(self, database_service):
-        """Test sauvegarde modifications drag & drop"""
-        drag_handle = Mock()
-        drag_handle.get_rows_to_save.return_value = [
-            {'id': 123, 'marque': 'Samsung', 'prix': '399.99'},
-            {'id': 124, 'stock': '10'}
-        ]
-
-        database_service.db_manager.update_multiple_cells_batch.return_value = True
-
-        success = database_service.save_drag_changes(drag_handle)
-
-        assert success
-        database_service.user_interaction_service.add_to_history.assert_called_once()
-
-    def test_save_drag_changes_invalid_handle(self, database_service):
-        """Test sauvegarde drag & drop avec handle invalide"""
-        success = database_service.save_drag_changes(None)
-        assert not success
-
-        invalid_handle = Mock()
-        del invalid_handle.get_rows_to_save  # Supprimer la méthode
-        success = database_service.save_drag_changes(invalid_handle)
-        assert not success
-
     def test_manual_save_cellules_modifiees_passe_par_le_batch(self, database_service):
         """Sauvegarde manuelle avec des cellules modifiées : délègue à save_cells_batch"""
         database_service.parent_window.modified_cells = {(0, 1)}
@@ -393,30 +367,6 @@ class TestDatabaseOperationsService:
             result = database_service._confirm_deletion(5)
             assert result
 
-    def test_detect_data_inconsistencies(self, database_service):
-        """Test détection d'incohérences"""
-        # Mock des incohérences
-        database_service.db_manager.find_duplicate_references.return_value = ['REF001', 'REF002']
-        database_service.db_manager.find_invalid_prices.return_value = [123, 124]
-        database_service.db_manager.find_negative_stocks.return_value = [125]
-
-        inconsistencies = database_service.detect_data_inconsistencies()
-
-        assert len(inconsistencies) == 3
-        assert 'Références dupliquées' in inconsistencies[0]
-        assert 'Prix invalides' in inconsistencies[1]
-        assert 'Stocks négatifs' in inconsistencies[2]
-
-    def test_detect_data_inconsistencies_none(self, database_service):
-        """Test détection sans incohérences"""
-        database_service.db_manager.find_duplicate_references.return_value = []
-        database_service.db_manager.find_invalid_prices.return_value = []
-        database_service.db_manager.find_negative_stocks.return_value = []
-
-        inconsistencies = database_service.detect_data_inconsistencies()
-
-        assert len(inconsistencies) == 0
-
     def test_update_save_indicators(self, database_service):
         """Test mise à jour indicateurs de sauvegarde"""
         # Test sauvegarde réussie
@@ -435,41 +385,6 @@ class TestDatabaseOperationsService:
 
         database_service.parent_window.save_indicator.setStyleSheet.assert_called_with("color: orange;")
         database_service.parent_window.save_indicator.setText.assert_called_with("● Non sauvegardé")
-
-    def test_execute_with_transaction_success(self, database_service):
-        """Test exécution avec transaction - succès"""
-        operations = [Mock(return_value=True), Mock(return_value=True), Mock(return_value=True)]
-
-        result = database_service.execute_with_transaction(operations)
-
-        assert result
-        for op in operations:
-            op.assert_called_once()
-        database_service.db_manager.begin_transaction.assert_called_once()
-        database_service.db_manager.commit_transaction.assert_called_once()
-
-    def test_execute_with_transaction_failure(self, database_service):
-        """Test exécution avec transaction - échec"""
-        operations = [Mock(return_value=True), Mock(return_value=False), Mock(return_value=True)]
-
-        result = database_service.execute_with_transaction(operations)
-
-        assert not result
-        database_service.db_manager.rollback_transaction.assert_called_once()
-        database_service.db_manager.commit_transaction.assert_not_called()
-
-    def test_execute_with_transaction_no_support(self, database_service):
-        """Test exécution sans support transactions"""
-        # Supprimer le support des transactions
-        del database_service.db_manager.begin_transaction
-
-        operations = [Mock(return_value=True), Mock(return_value=True)]
-
-        result = database_service.execute_with_transaction(operations)
-
-        assert result
-        for op in operations:
-            op.assert_called_once()
 
     def test_signal_emission(self, database_service):
         """Test émission des signaux"""

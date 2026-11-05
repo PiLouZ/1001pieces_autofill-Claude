@@ -9,14 +9,12 @@ RESPONSABILITÉS UNIFIÉES :
 - Interface cohérente pour toute l'application
 
 ARCHITECTURE :
-- DialogType : Énumération des types de dialogue
 - UnifiedDialogService : Service principal avec factory et instances
 - Dialogues simples : Méthodes statiques sans dépendances
 - Dialogues complexes : Méthodes d'instance avec accès à main_window
 """
 
-from typing import Optional, Dict, Any, List, Union
-from enum import Enum
+from typing import Optional, Dict, Any, List
 from ..ui.qt_imports import (
     QInputDialog, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit, 
@@ -45,15 +43,6 @@ def _handle_dialog_errors(default_return=None, context="Dialogue"):
                 return default_return
         return wrapper
     return decorator
-
-class DialogType(Enum):
-    """Types de dialogues disponibles"""
-    CATEGORIES = "categories"
-    NOTES = "notes" 
-    IMPORT_OPTIONS = "import_options"
-    REFERENCE_SELECTION = "reference_selection"
-    AUTOCOMPLETION = "autocompletion"
-    CONFIRMATION = "confirmation"
 
 class SimpleDialogs:
     """

@@ -3,11 +3,11 @@ Service centralisé pour les opérations de base de données CRUD
 Extrait de main_refactored.py pour centraliser la logique métier critique
 """
 
-from typing import Optional, Dict, List, Any, Tuple, Callable
+from typing import Optional, Dict, List, Tuple
 from ..ui.qt_imports import QMessageBox
 from ..ui.qt_imports import pyqtSignal, Qt
 
-from ..core.config import Config, pluralize
+from ..core.config import pluralize
 from ..core.logger import app_logger
 from .base_service import BaseService, service_operation
 from ..utils.error_handler import handle_database_operation_errors
@@ -220,46 +220,6 @@ class DatabaseOperationsService(BaseService):
             if self.user_interaction_service:
                 self.user_interaction_service.show_error("Erreur lors de la sauvegarde")
             return False
-
-    def save_drag_changes(self, drag_handle) -> bool:
-        """Sauvegarder les modifications issues d'un drag & drop"""
-        return self._safe_save_drag_changes(drag_handle)
-
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur sauvegarde drag & drop")
-    def _safe_save_drag_changes(self, drag_handle) -> bool:
-        """Version sécurisée de save_drag_changes"""
-        if not drag_handle or not hasattr(drag_handle, 'get_rows_to_save'):
-            app_logger.warning("Drag handle invalide")
-            return False
-
-        # Récupérer les lignes à sauvegarder
-        rows_to_save = drag_handle.get_rows_to_save()
-        if not rows_to_save:
-            return True
-
-        # Préparer les mises à jour
-        updates_by_db_id = {}
-        for row_data in rows_to_save:
-            db_id = row_data.get('id')
-            if db_id:
-                updates_by_db_id[db_id] = {
-                    col: value for col, value in row_data.items()
-                    if col != 'id' and value is not None
-                }
-
-        # Utiliser la sauvegarde batch
-        success = self.save_cells_batch(updates_by_db_id)
-
-        if success:
-            app_logger.info(f"Modifications drag & drop sauvegardées: {len(rows_to_save)} lignes")
-
-            # Ajouter à l'historique
-            if self.user_interaction_service:
-                self.user_interaction_service.add_to_history(
-                    f"Modification par glisser-déposer: {len(rows_to_save)} appareils"
-                )
-
-        return success
 
     def manual_save(self) -> bool:
         """Effectuer une sauvegarde manuelle"""
@@ -583,38 +543,6 @@ class DatabaseOperationsService(BaseService):
                 return "Le stock ne peut pas dépasser 99 999"
         return None
 
-    def detect_data_inconsistencies(self) -> List[str]:
-        """Détecter les incohérences dans les données"""
-        return self._safe_detect_data_inconsistencies()
-
-    @handle_database_operation_errors(return_value=["Erreur de détection"], log_prefix="Erreur détection incohérences")
-    def _safe_detect_data_inconsistencies(self) -> List[str]:
-        """Version sécurisée de detect_data_inconsistencies"""
-        inconsistencies = []
-
-        if not self.db_manager:
-            return inconsistencies
-
-        # Vérifier les références dupliquées
-        duplicates = self.db_manager.find_duplicate_references()
-        if duplicates:
-            inconsistencies.append(f"Références dupliquées détectées: {len(duplicates)}")
-
-        # Vérifier les prix incohérents
-        invalid_prices = self.db_manager.find_invalid_prices()
-        if invalid_prices:
-            inconsistencies.append(f"Prix invalides détectés: {len(invalid_prices)}")
-
-        # Vérifier les stocks négatifs
-        negative_stocks = self.db_manager.find_negative_stocks()
-        if negative_stocks:
-            inconsistencies.append(f"Stocks négatifs détectés: {len(negative_stocks)}")
-
-        if inconsistencies:
-            app_logger.warning(f"Incohérences détectées: {inconsistencies}")
-
-        return inconsistencies
-
     # ================================
     # MÉTHODES PRIVÉES/UTILITAIRES
     # ================================
@@ -762,37 +690,3 @@ class DatabaseOperationsService(BaseService):
     # ================================
     # TRANSACTIONS
     # ================================
-
-    def execute_with_transaction(self, operations: List[Callable]) -> bool:
-        """Exécuter plusieurs opérations dans une transaction"""
-        return self._safe_execute_with_transaction(operations)
-
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur gestion transaction")
-    def _safe_execute_with_transaction(self, operations: List[Callable]) -> bool:
-        """Version sécurisée de execute_with_transaction"""
-        if not self.db_manager or not hasattr(self.db_manager, 'begin_transaction'):
-            app_logger.warning("Transactions non supportées, exécution séquentielle")
-            # Fallback: exécution séquentielle sans transaction
-            for operation in operations:
-                if not operation():
-                    return False
-            return True
-
-        # Début de transaction
-        self.db_manager.begin_transaction()
-
-        # Exécuter les opérations avec gestion d'erreur séparée
-        return self._safe_execute_transaction_operations(operations)
-
-    @handle_database_operation_errors(return_value=False, log_prefix="Erreur exécution transaction")
-    def _safe_execute_transaction_operations(self, operations: List[Callable]) -> bool:
-        """Exécuter les opérations de transaction avec rollback automatique"""
-        # Exécuter toutes les opérations (le décorateur gère les exceptions)
-        for operation in operations:
-            if not operation():
-                self.db_manager.rollback_transaction()
-                return False
-
-        # Confirmer la transaction
-        self.db_manager.commit_transaction()
-        return True

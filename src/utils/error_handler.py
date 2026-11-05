@@ -6,7 +6,7 @@
 import functools
 import traceback
 import logging
-from typing import Callable, Optional, Union, Any, Type, Tuple
+from typing import Callable, Any, Type, Tuple
 from ..ui.message_helper import MessageHelper
 from ..core.constants import Messages
 
@@ -262,16 +262,6 @@ def handle_async_worker_errors(log_prefix="Erreur worker asynchrone", emit_signa
     return decorator
 
 
-def handle_import_errors(title: str = "Erreur d'import"):
-    """
-    Décorateur spécialisé pour les erreurs d'import
-    """
-    return handle_errors(
-        title=title,
-        message="Erreur lors de l'import des données. Vérifiez le format du fichier.",
-        return_on_error=None
-    )
-
 def handle_export_errors(title: str = "Erreur d'export"):
     """
     Décorateur spécialisé pour les erreurs d'export  
@@ -336,17 +326,6 @@ def handle_logger_errors(return_value=None, title: str = "Erreur logger"):
         title=title,
         message="Erreur lors de la lecture des logs.",
         show_message=False,  # Logging seulement pour éviter récursion
-        return_on_error=return_value
-    )
-
-def handle_auto_save_errors(return_value=None, title: str = "Erreur sauvegarde automatique"):
-    """
-    Décorateur spécialisé pour les opérations d'auto-sauvegarde
-    """
-    return handle_errors(
-        title=title,
-        message="Erreur lors de la sauvegarde automatique. Les modifications seront sauvegardées au prochain cycle.",
-        show_message=True,  # Afficher à l'utilisateur pour les erreurs d'auto-save
         return_on_error=return_value
     )
 
@@ -442,24 +421,6 @@ def handle_navigation_errors(return_value=None, title: str = "Erreur navigation"
 
 
 # Fonctions utilitaires pour les cas d'usage courants
-
-def safe_call_method(obj, method_name: str, *args, **kwargs) -> Any:
-    """
-    Appeler une méthode de manière sécurisée
-    
-    Usage:
-        result = safe_call_method(mon_objet, "ma_methode", arg1, arg2)
-    """
-    try:
-        method = getattr(obj, method_name)
-        return method(*args, **kwargs)
-    except AttributeError:
-        error_logger.error(f"Méthode {method_name} non trouvée sur {type(obj)}")
-        return None
-    except Exception as e:
-        error_logger.error(f"Erreur lors de l'appel de {method_name}: {str(e)}", exc_info=True)
-        return None
-
 
 def handle_log_viewer_errors(return_value=None, title: str = "Erreur visionneur de logs"):
     """

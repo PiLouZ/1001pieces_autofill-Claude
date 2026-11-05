@@ -4,15 +4,30 @@ Gestion centralisée du tableau, filtres, pagination et tri
 
 import html as _html
 
-from typing import List, Dict, Optional, Tuple, Any
-from .qt_imports import (QWidget, QVBoxLayout, QHBoxLayout,
-                            QTableWidgetItem, QLineEdit, QComboBox, QPushButton, QToolButton,
-                            QLabel,
-                            Qt, QTimer, QThread, pyqtSignal,
-                            QSizePolicy, QMenu, QAction, QPoint, QAbstractItemView, QSize,
-                            QHeaderView, QCompleter, QStringListModel)
+from typing import List, Optional
+from .qt_imports import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QComboBox,
+    QPushButton,
+    QToolButton,
+    QLabel,
+    Qt,
+    QTimer,
+    QThread,
+    pyqtSignal,
+    QMenu,
+    QAction,
+    QPoint,
+    QAbstractItemView,
+    QSize,
+    QHeaderView,
+    QCompleter
+)
 
-from ..core.config import Config, pluralize
+from ..core.config import Config
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
 from ..utils.error_handler import (
@@ -23,22 +38,6 @@ from ..data.database_manager import DatabaseManager
 from ..services.pieces_count_service import PiecesCountService
 from .pieces_list_service import PieceRelationsPopup
 from .style_manager import StyleManager
-
-def _truncate_refs(refs: list, max_inline: int = 3) -> tuple:
-    """
-    Tronque une liste de références si elle dépasse max_inline.
-    Retourne (display_str, full_tooltip).
-    - display_str  : "A, B, C … +N" si > max_inline, sinon la str complète.
-    - full_tooltip : str complète si tronquée, sinon "".
-    """
-    if not refs:
-        return "", ""
-    full = ", ".join(refs)
-    if len(refs) <= max_inline:
-        return full, ""
-    shown = ", ".join(refs[:max_inline])
-    return f"{shown}  … +{len(refs) - max_inline}", full
-
 
 class ComboFiltreColonne(QComboBox):
     """Liste de filtre (Type, Marque) : toutes les valeurs en base, filtrées à la frappe.
@@ -457,8 +456,7 @@ class TableController:
         self.advanced_search_input = QLineEdit()
         self.advanced_search_input.setPlaceholderText("Référence pièce (ex: AS6015830, ou plusieurs: ref1 || ref2)...")
         self.advanced_search_input.setClearButtonEnabled(True)  # Bouton × natif intégré au champ
-        # Sera connecté par MainWindow à AdvancedSearchService
-        # self.advanced_search_input.textChanged.connect(self._on_advanced_search_changed)
+        # Connecté par MainWindow à AdvancedSearchService
         search_layout2.addWidget(self.advanced_search_input, 1, Qt.AlignVCenter)
 
         # Bouton "Étendre la recherche" : par défaut, la recherche par référence est
@@ -1533,16 +1531,6 @@ class TableController:
         self.load_data(self.current_search_term, is_search=bool(self.current_search_term))
 
     
-    def _on_advanced_search_changed(self, text: str):
-        """Gestionnaire de changement du texte de recherche avancée avec timer automatique"""
-        search_term = text.strip()
-        
-        # Stocker le terme original - le parsing sera fait dans load_data si nécessaire
-        self.pending_search_term = search_term
-            
-        self.search_timer.stop()
-        self.search_timer.start(800)  # 800ms de délai pour recherche automatique
-    
     def _perform_delayed_search(self):
         """Effectuer la recherche après le délai"""
         if self.pending_search_term is not None:
@@ -1723,7 +1711,7 @@ class TableController:
 
     @staticmethod
     def _make_linked_refs(refs: list, max_inline: int = 3, link_color: str = '#5D4037') -> tuple:
-        """Variante de _truncate_refs qui enveloppe les refs visibles en liens HTML.
+        """Tronque une liste de refs en enveloppant les refs visibles en liens HTML.
 
         Retourne (html_inline, tooltip_plain) :
         - html_inline  : refs inline avec <a href>, tronquées si > max_inline

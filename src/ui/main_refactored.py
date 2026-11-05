@@ -4,40 +4,51 @@ Architecture modulaire avec séparation des responsabilités
 """
 
 import sys
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Dict, Any
 
 from .qt_imports import (
-    QApplication, QMainWindow, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget, QLabel, QPushButton, QHBoxLayout,
-    QMessageBox, QLineEdit,
-    QAction, QStatusBar, QSplitter, QTabWidget,
-    QListWidgetItem, QFileDialog, QComboBox,
-    QCheckBox, QMenu, QDialog, QTextEdit, QTextBrowser,
-    QColor, QIcon,
-    Qt, QSettings, QEvent, QMimeData, QUrl, QSizePolicy, QFrame, QSize
+    QApplication,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+    QLabel,
+    QPushButton,
+    QHBoxLayout,
+    QMessageBox,
+    QAction,
+    QSplitter,
+    QListWidgetItem,
+    QMenu,
+    QTextBrowser,
+    QIcon,
+    Qt,
+    QSettings,
+    QEvent,
+    QSizePolicy,
+    QFrame,
+    QSize
 )
 
 # Imports Python standard consolidés
 import os
 from pathlib import Path
-from datetime import datetime
 
 # Helpers et utilitaires refactorisés
-from .message_helper import MessageHelper, CommonMessages, show_success, show_error, ask_confirmation
-from .dialog_manager import DialogManager
+from .message_helper import MessageHelper
 from ..utils.error_handler import (
-    handle_errors, handle_database_errors,
-    handle_ui_errors, handle_ui_column_errors,
-    handle_database_operation_errors, handle_ui_operation_errors,
-    handle_table_operations_errors, handle_navigation_errors,
-    handle_export_errors, handle_import_errors,
+    handle_database_errors,
+    handle_ui_errors,
+    handle_ui_column_errors,
+    handle_database_operation_errors,
+    handle_ui_operation_errors,
+    handle_navigation_errors,
     handle_log_viewer_errors,
-    handle_data_management_errors, handle_drag_operation_errors,
-    handle_event_handler_errors, handle_ui_update_errors
+    handle_drag_operation_errors,
+    handle_event_handler_errors
 )
-from ..core.constants import UIConfig, Messages, DatabaseConfig, Paths
+from ..core.constants import UIConfig, Messages, Paths
 
-from ..services import SearchService, ImportService
+from ..services import SearchService
 from ..services.advanced_search_service import AdvancedSearchService
 from ..services.event_bus import event_bus
 from ..core.constants import ExportFormat
@@ -45,8 +56,6 @@ from ..services.navigation_service import NavigationService
 from ..services.cell_editing_service import CellEditingService
 # PHASE 4 : Remplacement par ExportManagerService unifié
 from ..services.export_manager import ExportManagerService, ExportType
-from ..services.device_manager import DeviceManager
-from ..services.paste_results_service import PasteResultsService
 
 # Imports des modules refactorisés
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -54,12 +63,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core.config import Config, pluralize
 from src.core.logger import app_logger
 from src.core.import_manager import ImportManager
-from src.data.database_manager import DatabaseManager, DatabaseError
-from src.data.data_validator import DataValidator, ValidationResult
+from src.data.database_manager import DatabaseManager
+from src.data.data_validator import DataValidator
 from .style_manager import StyleManager
 from .table_controller import TableController
 from .paste_data_processor import PasteDataProcessor
-from .data_management_service import DataManagementService, FieldCompletionResult
+from .data_management_service import DataManagementService
 from .user_interaction_service import UserInteractionService
 from .log_viewer import LogViewer
 from .piece_management_service import PieceManagementService
@@ -69,10 +78,9 @@ from .fiche_produit_service import FicheProduitService
 from .pieces_list_service import PiecesListService
 from ..services.grouped_history_service import GroupedHistoryService
 from ..services.history_service import HistoryService
-from ..services.drag_handle_service import DragHandle, DragHandleService
+from ..services.drag_handle_service import DragHandleService
 from ..services.undo_manager import UndoRedoManager
 from ..services.app_export_service import AppExportService
-# Supprimé: remplacé par DialogManager dans les imports centralisés
 from ..services.event_handlers_service import EventHandlersService
 from ..services.table_fill_service import TableFillService
 
@@ -175,8 +183,6 @@ class MainWindow(QMainWindow):
         self.export_config_service = ExportConfigService(self)
         _HtmlExportService.set_config_service(self.export_config_service)
 
-        self.device_manager = DeviceManager(self.db_manager)
-
         # Sauvegarde automatique avant opérations destructives (nettoyage, import)
         from ..services.backup_service import BackupService
         self.backup_service = BackupService(self)
@@ -202,9 +208,6 @@ class MainWindow(QMainWindow):
         # PHASE 4 : Nouveau service d'export unifié
         self.export_manager = ExportManagerService(self)
 
-        # Services d'import conservés
-        self.import_service = ImportService(self.db_manager)
-
         # import_manager et file_processing_service créés en premier
         # car les initialize_services() suivants en ont besoin via parent_window
         self.import_manager = ImportManager(self.db_manager, parent_widget=self)
@@ -223,11 +226,6 @@ class MainWindow(QMainWindow):
         self.database_operations_service = DatabaseOperationsService(self)
         self.database_operations_service.initialize_services()
 
-        # PHASE 3.4 : Service unifié de gestion de l'état UI
-        from ..services.ui_state_management_service import UIStateManagementService
-        self.ui_state_management_service = UIStateManagementService(self)
-        self.ui_state_management_service.initialize_services()
-
         # PHASE 3.5 : Service unifié des raccourcis clavier
         from ..services.keyboard_shortcut_service import KeyboardShortcutService
         self.keyboard_shortcut_service = KeyboardShortcutService(self)
@@ -235,7 +233,6 @@ class MainWindow(QMainWindow):
     
     def _init_business_services(self):
         """Initialiser les services métier"""
-        self.paste_results_service = PasteResultsService(self)
         self.event_handlers_service = EventHandlersService(self)
         self.table_fill_service = TableFillService(self)
         
@@ -263,8 +260,6 @@ class MainWindow(QMainWindow):
         self.toolbar_service = ToolbarService(self)
         self.app_export_service = AppExportService(self)
 
-        self.dialog_manager = DialogManager(self)
-
         from ..services.unified_dialog_service import UnifiedDialogService
         self.dialog_service = UnifiedDialogService(self)
 
@@ -275,9 +270,6 @@ class MainWindow(QMainWindow):
         # Service optimisé pour l'indication des doublons
         from ..services.duplicate_indicator_service import DuplicateIndicatorService
         self.duplicate_indicator_service = DuplicateIndicatorService(self.db_manager, self)
-
-        from .custom_reference_service import CustomReferenceService
-        self.custom_reference_service = CustomReferenceService(self)
 
         from ..services.paste_cleanup_service import PasteCleanupService
         self.paste_cleanup_service = PasteCleanupService(self)
@@ -406,10 +398,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'navigation_service'):
             self.navigation_service.page_changed.connect(self._on_navigation_page_changed)
             self.navigation_service.page_size_changed.connect(self._on_navigation_page_size_changed)
-            
-        if hasattr(self, 'cell_editing_service'):
-            self.cell_editing_service.cell_updated.connect(self._on_cell_editing_updated)
-            self.cell_editing_service.cell_validation_failed.connect(self._on_cell_validation_failed)
+
     
     # PHASE 5: Callbacks pour les événements des services centralisés
     def _on_navigation_page_changed(self, page: int):
@@ -424,16 +413,6 @@ class MainWindow(QMainWindow):
         # Mettre à jour les variables d'état locales si nécessaire
         self.page_size = new_size
         
-    def _on_cell_editing_updated(self, item, old_value: str, new_value: str):
-        """Callback pour mise à jour de cellule"""
-        # Gérer les actions spécifiques à l'interface principale
-        self._handle_successful_cell_update(item, old_value, new_value, False)
-        
-    def _on_cell_validation_failed(self, item, error_message: str):
-        """Callback pour échec de validation de cellule"""
-        from .message_helper import show_error
-        show_error(self, "Erreur de validation", error_message)
-    
     def _connect_advanced_search_signals(self):
         """PHASE 2.3: Connecter les signaux du service de recherche avancé"""
         if hasattr(self, 'advanced_search_service'):
@@ -1635,7 +1614,7 @@ class MainWindow(QMainWindow):
                 self.grouped_history_service.add_modification(db_id, column_name, old_value, new_value, source=source)
             except Exception as e:
                 # Fallback vers historique normal en cas d'erreur
-                app_logger.warning(f"Erreur historique groupé dans _on_cell_editing_updated, fallback: {e}")
+                app_logger.warning(f"Erreur historique groupé, fallback: {e}")
                 self.user_interaction_service.add_to_history(f"Modification {column_name}: '{old_value}' → '{new_value}'")
 
     def _update_toolbar_states(self):
@@ -1720,28 +1699,6 @@ class MainWindow(QMainWindow):
 
 
     
-    def _handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
-        """Gérer les actions post mise à jour - PHASE 5: Appel délégué + actions spécifiques"""
-        return self._safe_handle_successful_cell_update(item, old_value, new_value, skip_history)
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur traitement mise à jour cellule")
-    def _safe_handle_successful_cell_update(self, item: QTableWidgetItem, old_value: str, new_value: str, skip_history: bool):
-        """Helper sécurisé pour gérer les actions post mise à jour"""
-        row, col = item.row(), item.column()
-
-        # Actions spécifiques à l'interface principale
-        if old_value != new_value and not skip_history:
-            # NOUVEAU: Utiliser le service de groupement d'historique (helper factorisé)
-            self._safe_add_to_grouped_history(row, col, old_value, new_value)
-        
-        self.modified_cells.discard((row, col))
-        item.setBackground(QColor(255, 255, 255))  # Blanc
-        
-        # Mettre à jour l'indicateur de sauvegarde
-        if not self.modified_cells:
-            self.save_indicator.setText(Config.get_message('save_success'))
-            self.save_indicator.setStyleSheet("color: green;")
-
     def _save_drag_changes(self):
         """Sauvegarder les modifications du glisser-déposer"""
         return self._safe_save_drag_changes()
@@ -3649,42 +3606,6 @@ class MainWindow(QMainWindow):
         """Copier la fiche produit complète (bouton "Fiche complète") — délégation vers FicheProduitService"""
         self.fiche_produit_service.generer_fiche(profile_name)
     
-    def _is_piece_reference_search(self) -> bool:
-        """Vérifier si la recherche actuelle est une référence de pièce - Support multi-références"""
-        return self._safe_is_piece_reference_search()
-
-    @handle_ui_operation_errors(return_value=False, log_prefix="Erreur vérification référence pièce")
-    def _safe_is_piece_reference_search(self) -> bool:
-        """Helper sécurisé pour vérifier référence pièce"""
-        search_term = self.search_input.text().strip()
-        if not search_term:
-            return False
-
-        # Détecter les recherches multi-références avec || ou &&
-        if '||' in search_term or '&&' in search_term:
-            return self.advanced_search_service._are_all_terms_piece_references(search_term)
-
-        # Recherche simple - vérifier si c'est une référence de pièce
-        return self.advanced_search_service._get_piece_description_from_reference(search_term) is not None
-
-    # --- Méthodes de gestion des dispositifs pour le collage (délégation vers DeviceManager) ---
-    
-    
-    def _try_auto_complete(self, device_data: Dict[str, str]) -> bool:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.try_auto_complete(device_data)
-    
-    def _needs_manual_completion(self, device_data: Dict[str, str]) -> bool:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.needs_manual_completion(device_data)
-    
-    
-    def _update_device_info(self, device_id: int, updates: Dict[str, str]) -> bool:
-        """Déléguer vers DeviceManager"""
-        return self.device_manager.update_device_info(device_id, updates)
-
-    # Les méthodes _log_paste_results et _show_paste_summary ont été déplacées vers PasteResultsService
-
     @handle_ui_operation_errors(return_value=None)
     def _safe_disconnect_search_signals(self):
         """Déconnecter les signaux de search_input en toute sécurité"""
