@@ -3,7 +3,8 @@ Historiques et décisions du nettoyage, mixés dans DatabaseManager.
 
 Requêtes autrefois écrites dans HistoryService (table modifications_history)
 et dans la fenêtre de nettoyage (cleanup_history, reference_decisions),
-rassemblées dans la couche données (audit 2026-11-05).
+rassemblées dans la couche données (audit 2026-11-05 ; les deux INSERT
+d'historique ont suivi le 2026-11-06, toujours via execute_insert).
 
 Lectures et DDL : même méthode d'exécution que l'appel d'origine. Écritures :
 execute_write, qui COMMIT — y compris pour vider l'historique des
@@ -92,6 +93,23 @@ class DatabaseHistoriquesMixin:
             f"SELECT COUNT(*) FROM modifications_history {where}", params
         )
 
+    def ajouter_historique_modification(self, timestamp: str, action_type: str, title: str,
+                                        details: Optional[str], device_ref: Optional[str],
+                                        field_name: Optional[str], old_value: Optional[str],
+                                        new_value: Optional[str]) -> Optional[int]:
+        """Écrire une entrée de l'historique des modifications (commité) ;
+        id de la ligne. Lève DatabaseError en cas d'échec (execute_insert)."""
+        return self.execute_insert(
+            """
+            INSERT INTO modifications_history
+                (timestamp, action_type, title, details,
+                 device_ref, field_name, old_value, new_value)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [timestamp, action_type, title, details,
+             device_ref, field_name, old_value, new_value]
+        )
+
     def vider_historique(self) -> int:
         """Supprimer tout l'historique des modifications (commité) ; nombre de
         lignes supprimées, ou -1 en cas d'échec."""
@@ -136,6 +154,15 @@ class DatabaseHistoriquesMixin:
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+    def ajouter_action_nettoyage(self, timestamp: str, action_type: str, details: str,
+                                 result: str, user: str) -> Optional[int]:
+        """Écrire une action du nettoyage (commité) ; id de la ligne. Lève
+        DatabaseError en cas d'échec (execute_insert)."""
+        return self.execute_insert("""
+            INSERT INTO cleanup_history (timestamp, action_type, details, result, user)
+            VALUES (?, ?, ?, ?, ?)
+        """, (timestamp, action_type, details, result, user))
 
     def historique_nettoyage(self) -> List[Tuple]:
         """100 dernières actions du nettoyage : (timestamp, action_type, details,

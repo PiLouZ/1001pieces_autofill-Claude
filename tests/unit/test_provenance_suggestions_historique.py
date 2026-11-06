@@ -85,7 +85,7 @@ class TestPersistance:
         service = HistoryService.__new__(HistoryService)
         service.db_manager = MagicMock()
         service.persist(_parse_entry(message, datetime(2026, 10, 15, 10, 0, 0)))
-        sql, valeurs = service.db_manager.execute_insert.call_args[0]
+        valeurs = service.db_manager.ajouter_historique_modification.call_args[0]
         return dict(zip(["timestamp", "action_type", "title", "details",
                          "device_ref", "field_name", "old_value", "new_value"], valeurs))
 

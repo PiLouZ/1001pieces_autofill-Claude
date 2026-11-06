@@ -975,11 +975,7 @@ class ActionHistoryWidget(QWidget):
         from datetime import datetime
         import getpass
 
-        # Insérer dans la base de données
-        query = """
-            INSERT INTO cleanup_history (timestamp, action_type, details, result, user)
-            VALUES (?, ?, ?, ?, ?)
-        """
+        # Valeurs calculées avant la création de la table, comme auparavant
         values = (
             datetime.now().isoformat(),
             action_type,
@@ -991,7 +987,7 @@ class ActionHistoryWidget(QWidget):
         # Créer la table si elle n'existe pas
         self._ensure_history_table()
 
-        result = self.db_manager.execute_insert(query, values)
+        result = self.db_manager.ajouter_action_nettoyage(*values)
         success = result is not None
         if success:
             self.load_history()  # Recharger pour afficher la nouvelle entrée

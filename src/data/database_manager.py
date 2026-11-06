@@ -23,6 +23,7 @@ from ._db_mixins.autocompletion import DatabaseAutocompletionMixin
 from ._db_mixins.pieces import DatabasePiecesMixin
 from ._db_mixins.appareils import DatabaseAppareilsMixin
 from ._db_mixins.historiques import DatabaseHistoriquesMixin
+from ._db_mixins.doublons import DatabaseDoublonsMixin
 
 import sys
 import os
@@ -70,7 +71,7 @@ class SearchCache:
 
 class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin,
                       DatabaseAutocompletionMixin, DatabasePiecesMixin, DatabaseAppareilsMixin,
-                      DatabaseHistoriquesMixin):
+                      DatabaseHistoriquesMixin, DatabaseDoublonsMixin):
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
 
     def __init__(self, db_file: str = None):

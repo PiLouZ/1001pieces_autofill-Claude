@@ -86,3 +86,31 @@ def test_filtre_commun_a_la_page_et_au_total(db):
         total = db.historique_total(**filtres)[0][0]
         assert total == len(page), filtres
     assert db.historique_total(date_to='2026-10-31')[0][0] == 3   # journée de fin incluse
+
+
+def test_ajouter_historique_modification_commite(db):
+    """INSERT rapatrié de HistoryService.persist (2026-11-06) : relu sur une
+    connexion neuve, avec les huit colonnes dans l'ordre."""
+    db.ajouter_historique_modification(
+        '2026-11-06 10:00:00', 'edit', '[Type]', '[]', 'R1', 'Type', '', 'Four')
+    neuve = sqlite3.connect(Config.DB_FILE)
+    try:
+        assert neuve.execute(
+            "SELECT timestamp, action_type, title, details, device_ref, field_name, "
+            "old_value, new_value FROM modifications_history").fetchall() == [
+            ('2026-11-06 10:00:00', 'edit', '[Type]', '[]', 'R1', 'Type', '', 'Four')]
+    finally:
+        neuve.close()
+
+
+def test_ajouter_action_nettoyage_commite(db):
+    """INSERT rapatrié de ActionHistoryWidget.add_action (2026-11-06)."""
+    db.creer_table_historique_nettoyage()
+    db.ajouter_action_nettoyage('2026-11-06T11:00:00', 'fusion', 'détails', 'ok', 'testeur')
+    neuve = sqlite3.connect(Config.DB_FILE)
+    try:
+        assert neuve.execute(
+            "SELECT timestamp, action_type, details, result, user FROM cleanup_history"
+        ).fetchall() == [('2026-11-06T11:00:00', 'fusion', 'détails', 'ok', 'testeur')]
+    finally:
+        neuve.close()
