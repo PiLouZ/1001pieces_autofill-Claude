@@ -625,7 +625,6 @@ class CustomTableView(QTableView):
         les deux exposent topRow/bottomRow/leftColumn/rightColumn.
         """
         from PyQt5.QtCore import QItemSelection
-        from PyQt5.QtWidgets import QAbstractItemView
         model = self.model()
         sm = self.selectionModel()
         if not model or not sm:

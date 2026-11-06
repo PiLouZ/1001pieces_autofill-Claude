@@ -2221,9 +2221,7 @@ class TableController:
     
     @handle_table_operations_errors(log_prefix="Erreur log largeur colonne")
     def _on_column_resized(self, logical_index: int, old_size: int, new_size: int):
-        """Log des largeurs de colonnes quand elles sont modifiées"""
-        # Récupérer le nom de la colonne
-        column_name = Config.UI_HEADERS[logical_index] if logical_index < len(Config.UI_HEADERS) else f"Colonne {logical_index}"
+        """Réception du redimensionnement d'une colonne (aucun traitement pour l'instant)."""
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur nettoyage widgets")
     def stop_workers(self):

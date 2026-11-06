@@ -7,11 +7,10 @@ Responsabilités:
 - PieceRelationsPopup : popup de synthèse de toutes les relations d'une pièce
 """
 
-from typing import Optional
 import qtawesome as qta
 from ..utils.qt_imports import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                           QListWidget, QListWidgetItem, QLabel, QMenu,
-                          QFont, QSize, Qt, QDialog, QScrollArea, QFrame,
+                          QSize, Qt, QDialog, QScrollArea, QFrame,
                           QTimer, QApplication, QPainter, QColor)
 from .popup_positioning import PopupAuCurseurMixin
 from .style_manager import inline_icon_html

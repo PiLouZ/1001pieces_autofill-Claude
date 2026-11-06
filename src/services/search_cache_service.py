@@ -3,9 +3,8 @@ Service de gestion du cache de recherche - Phase 2.3+
 Gère l'invalidation intelligente du cache lors des modifications de données
 """
 
-from typing import Set, List, Optional, Callable, Dict, Any
+from typing import List, Callable, Dict, Any
 from ..core.logger import app_logger
-from ..core.config import Config
 from ..utils.error_handler import handle_cache_callback_errors
 
 class SearchCacheInvalidationService:

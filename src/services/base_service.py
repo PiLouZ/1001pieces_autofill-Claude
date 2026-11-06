@@ -10,8 +10,8 @@ Responsabilités:
 - Injection de dépendances
 """
 
-from typing import List, Callable, Any, Optional
-from ..utils.qt_imports import QObject, pyqtSignal, QTimer, QApplication
+from typing import Callable, Any
+from ..utils.qt_imports import QObject, pyqtSignal, QTimer
 
 from ..core.logger import app_logger
 

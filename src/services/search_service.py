@@ -21,7 +21,6 @@ class SearchService(BaseService):
         MÉTHODE CONSOLIDÉE - PRIORITÉ 2 
         Centralise toute la logique de parsing pour éviter duplications
         """
-        from ..core.logger import app_logger
         
         if not text or not text.strip():
             return None

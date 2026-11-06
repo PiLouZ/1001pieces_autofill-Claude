@@ -3,7 +3,6 @@ Service optimisé pour la gestion du bouton des lignes incomplètes
 Utilise un cache intelligent pour éviter les requêtes SQL répétées
 """
 
-from typing import Optional, Callable
 from ..utils.qt_imports import QObject, pyqtSignal, QTimer, QPushButton
 
 from ..core.logger import app_logger

@@ -1341,7 +1341,6 @@ class PiecesManagerWindow(QDialog):
         item = self.pieces_table.item(row, 0)
         if not item:
             return
-        ref = item.data(Qt.UserRole) or item.text()
         self.pieces_table.setCurrentCell(row, 0)
         self._on_mark_obsolete()
 
@@ -2157,7 +2156,6 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur export pièces", show_message=True)
     def _export_pieces(self, checked=False):
         """Exporter la liste des pièces"""
-        from ..utils.qt_imports import QFileDialog
 
         # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
         @handle_ui_errors(log_prefix='Erreur export pièces', show_message=True)
@@ -2170,7 +2168,6 @@ class PiecesManagerWindow(QDialog):
     @handle_ui_errors(log_prefix="Erreur export sélection pièces", show_message=True)
     def _export_selected_pieces(self, checked=False):
         """Exporter uniquement les pièces sélectionnées"""
-        from ..utils.qt_imports import QFileDialog
 
         selected_refs = set(self._get_selected_refs())
         if not selected_refs:

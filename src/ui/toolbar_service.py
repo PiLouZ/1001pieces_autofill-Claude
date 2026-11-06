@@ -110,10 +110,6 @@ class ToolbarService:
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
 
-        # Style compact partagé (réduit l'encombrement → limite le débordement de la
-        # toolbar aux fenêtres étroites ; au-delà, repli natif dans le menu » de QToolBar)
-        _compact_btn = "QPushButton { padding: 2px 8px; font-size: 11px; }"
-
         # Le groupe « ▲ Lignes à traiter ▼ » est dans la barre d'état, sous le
         # tableau (IncompleteNavWidget, cf. main_refactored._setup_statusbar).
 

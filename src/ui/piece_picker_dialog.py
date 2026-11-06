@@ -9,7 +9,6 @@ from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
                           QLabel, QPushButton, QLineEdit, QTableWidget,
                           QTableWidgetItem, QHeaderView, Qt, QFrame, QScrollArea,
                           QSize, pyqtSignal, QColor, QFont)
-from src.core.config import Config
 from src.core.logger import app_logger
 from .style_manager import StyleManager
 

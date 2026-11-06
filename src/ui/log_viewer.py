@@ -8,10 +8,10 @@ from .style_manager import StyleManager
 from ..utils.qt_imports import (
     QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QComboBox,
     QPushButton, QLabel, QSpinBox, QStackedWidget, QButtonGroup, QFrame, QWidget,
-    QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
+    QTableWidget, QTableWidgetItem, QLineEdit
 )
-from ..utils.qt_imports import QTimer, Qt, QSize
-from ..utils.qt_imports import QFont, QColor
+from ..utils.qt_imports import QTimer, QSize
+from ..utils.qt_imports import QColor
 
 
 def _make_icon_toggle(btn, icon_name, icon_color):
@@ -20,7 +20,6 @@ def _make_icon_toggle(btn, icon_name, icon_color):
         btn.setIcon(qta.icon(icon_name, color='white' if checked else icon_color))
     return _on_toggled
 import json
-import os
 from datetime import datetime
 
 from ..core.config import Config

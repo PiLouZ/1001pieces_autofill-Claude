@@ -3,15 +3,10 @@ Advanced Search Service - Phase 2.3 Refactoring
 Centralise toute la logique de recherche avancée avec opérateurs && et ||
 """
 
-import re
-from typing import Optional, Dict, Any, Callable, List
+from typing import Optional, Dict, Any
 from ..utils.qt_imports import QTimer, QObject, pyqtSignal
-from ..utils.qt_imports import QTableWidgetItem
-from ..utils.qt_imports import QColor
 
 from .search_service import SearchService
-from ..core.logger import app_logger
-from ..core.config import Config
 from .base_service import BaseService
 from ..utils.error_handler import handle_search_errors
 
@@ -118,7 +113,6 @@ class AdvancedSearchService(QObject):
         
     def get_current_search_term_with_fallback(self, main_window):
         """Récupérer le terme de recherche actuel avec fallback intelligent - SOURCE DE VÉRITÉ = champ de recherche visible"""
-        from ..core.logger import app_logger
         
         # SOURCE DE VÉRITÉ: Le champ de recherche visible par l'utilisateur
         if hasattr(main_window, 'search_input') and main_window.search_input:

@@ -8,8 +8,7 @@ Responsabilités:
 """
 
 from typing import Dict, Set, List, Optional
-from ..utils.qt_imports import QListWidgetItem, Qt, QColor
-from src.core.logger import app_logger
+from ..utils.qt_imports import QListWidgetItem, QColor
 from ..utils.error_handler import handle_pieces_panel_errors
 
 

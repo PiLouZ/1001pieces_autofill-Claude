@@ -11,13 +11,11 @@ Responsabilités:
 """
 
 import time
-from typing import Optional
 
 from PyQt5.QtCore import QItemSelection, QItemSelectionModel
 from ..utils.qt_imports import (QWidget, Qt, QTimer, QPainter, QPen, QColor)
 
 from ..core.config import Config
-from ..core.logger import app_logger
 from ..utils.error_handler import handle_drag_operation_errors
 
 class DragHandle(QWidget):

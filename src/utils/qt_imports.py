@@ -50,11 +50,13 @@ __all__ = [
     'QToolBar', 'QToolButton', 'QAction', 'QActionGroup', 'QStatusBar', 'QSplitter', 'QTabWidget',
     'QMenu', 'QMenuBar', 'QCompleter', 'QFrame', 'QScrollArea', 'QSizePolicy', 'QStackedWidget', 'QWidgetAction',
     'QStyledItemDelegate', 'QStyleOptionViewItem',
+    'QGroupBox', 'QButtonGroup', 'QRadioButton', 'QSpinBox', 'QProgressBar',
     
     # Core
     'Qt', 'QTimer', 'QSettings', 'QEvent', 'QSize', 'QRect', 'QPoint',
     'QMimeData', 'QUrl', 'QThread', 'QRunnable', 'QThreadPool',
     'QObject', 'pyqtSignal', 'pyqtSlot', 'QVariant', 'QItemSelectionModel',
+    'QModelIndex', 'QAbstractTableModel', 'QStringListModel',
     
     # GUI
     'QKeySequence', 'QPainter', 'QPen', 'QColor', 'QBrush', 'QKeyEvent',

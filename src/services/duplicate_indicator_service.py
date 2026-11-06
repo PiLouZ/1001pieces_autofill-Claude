@@ -4,7 +4,7 @@ Utilise un cache intelligent pour éviter les requêtes SQL répétées
 Basé sur le modèle d'IncompleteButtonService
 """
 
-from typing import Optional, List, Tuple
+from typing import List, Tuple
 from ..utils.qt_imports import QObject, pyqtSignal, QTimer, QPushButton, QAction
 
 from ..core.logger import app_logger

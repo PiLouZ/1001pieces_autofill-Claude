@@ -3,18 +3,16 @@ Gestionnaire de base de données pour l'application de gestion d'appareils
 """
 
 import sqlite3
-from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 from collections import OrderedDict
 import hashlib
-import time
 
 from ..core.config import Config
 from ..core.constants import DatabaseConfig
 from ..core.logger import app_logger
 from ..utils.error_handler import (
     handle_db_query_errors,
-    handle_sqlite_column_errors, handle_database_errors,
+    handle_database_errors,
     handle_database_operation_errors
 )
 from ._db_mixins import DatabaseError, with_query_lock as _with_query_lock
@@ -29,8 +27,6 @@ from ._db_mixins.historiques import DatabaseHistoriquesMixin
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-
-from src.core.config import Config
 
 
 class SearchCache:
@@ -783,7 +779,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
             return True
 
-        except Exception as e:
+        except Exception:
             # Annuler la transaction en cas d'erreur (seulement si on l'a commencée)
             if not in_transaction:
                 self.conn.rollback()
@@ -1498,7 +1494,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 self.cursor.execute(query, params)
                 self.conn.commit()
                 return self.cursor.lastrowid
-            except Exception as e:
+            except Exception:
                 self.conn.rollback()
                 raise
     
@@ -1765,7 +1761,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             self.cursor.execute(query, (ref_modele, decision, notes))
             self.conn.commit()
             return True
-        except Exception as e:
+        except Exception:
             self.conn.rollback()
             raise
 

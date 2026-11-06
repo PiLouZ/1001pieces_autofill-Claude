@@ -4,7 +4,6 @@ Extrait des méthodes _on_* de main_refactored.py
 """
 
 from typing import Any, Dict
-from src.core.logger import app_logger
 from src.core.config import pluralize
 from src.utils.error_handler import handle_event_handler_errors
 

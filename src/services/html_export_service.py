@@ -4,7 +4,7 @@ Extrait et unifie les méthodes de génération HTML de data_exporter.py et serv
 """
 
 from collections import defaultdict
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict
 import html
 import re
 
