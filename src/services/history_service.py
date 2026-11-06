@@ -92,15 +92,9 @@ class HistoryService(BaseService):
                     if new_value is None:
                         new_value = m.group(2)
 
-            self.db_manager.execute_insert(
-                """
-                INSERT INTO modifications_history
-                    (timestamp, action_type, title, details,
-                     device_ref, field_name, old_value, new_value)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [timestamp_str, action_type, title, details_json,
-                 device_ref, field_name, old_value, new_value]
+            self.db_manager.ajouter_historique_modification(
+                timestamp_str, action_type, title, details_json,
+                device_ref, field_name, old_value, new_value
             )
 
         except Exception as e:

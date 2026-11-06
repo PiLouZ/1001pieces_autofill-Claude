@@ -283,31 +283,8 @@ class DuplicatesAnalysisService(BaseService):
         # second défaut : supprimer l'appareil sans avoir transféré ses pièces
         # laisserait des associations orphelines (les FOREIGN KEY ne protègent
         # que si Config.FOREIGN_KEYS est actif, et ne transfèrent rien).
-        operations = []
-        for duplicate_id in duplicate_ids:
-            # Stratégie: Supprimer d'abord les doublons de pièces puis transférer les uniques
-
-            # 1. Supprimer les associations de pièces qui existent déjà pour le maître
-            #    (éviter les violations de contrainte UNIQUE)
-            operations.append(("""
-            DELETE FROM piece_associations
-            WHERE appareil_id = ?
-            AND piece_id IN (
-                SELECT piece_id FROM piece_associations
-                WHERE appareil_id = ?
-            )
-            """, (duplicate_id, master_id)))
-
-            # 2. Transférer les pièces restantes du duplicata vers le maître
-            operations.append((
-                "UPDATE piece_associations SET appareil_id = ? WHERE appareil_id = ?",
-                (master_id, duplicate_id)
-            ))
-
-            # 3. Supprimer l'appareil dupliqué
-            operations.append(("DELETE FROM appareils WHERE id = ?", (duplicate_id,)))
-
-        if not self.db_manager.execute_write_batch(operations):
+        # Le lot est construit dans la couche données (DatabaseDoublonsMixin).
+        if not self.db_manager.fusionner_appareils(master_id, duplicate_ids):
             app_logger.error(f"Fusion de l'appareil {master_id} avec {duplicate_ids} annulée")
             return False
 
@@ -317,18 +294,10 @@ class DuplicatesAnalysisService(BaseService):
     @safe_operation(operation_name="_delete_duplicate_pieces", default_return=0)
     def _delete_duplicate_pieces(self, ref_piece: str) -> int:
         """Supprimer les pièces dupliquées (garder la plus récente)"""
-        # Garder la pièce avec l'ID le plus élevé (plus récente)
-        query = """
-        DELETE FROM pieces
-        WHERE ref_piece = ?
-        AND id NOT IN (
-            SELECT MAX(id) FROM pieces WHERE ref_piece = ?
-        )
-        """
-
-        # execute_write commit ET renvoie le nombre réel de lignes : la suppression
-        # est durable, et le compte n'est plus simulé à 1 quoi qu'il arrive.
-        supprimees = self.db_manager.execute_write(query, (ref_piece, ref_piece))
+        # Garde la pièce avec l'ID le plus élevé (plus récente). La couche données
+        # passe par execute_write : commit ET nombre réel de lignes (la suppression
+        # est durable, et le compte n'est plus simulé à 1 quoi qu'il arrive).
+        supprimees = self.db_manager.supprimer_pieces_dupliquees(ref_piece)
         if supprimees < 0:
             app_logger.error(f"Suppression pièces dupliquées {ref_piece} : échec")
             return 0
