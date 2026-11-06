@@ -307,18 +307,20 @@ def count_planned_relations(groups: List[Group], cards: List[CardData]) -> Dict[
     return counts
 
 
-def apply_relations(groups: List[Group], cards: List[CardData], db,
-                    journal: Optional[List[str]] = None) -> Dict[str, int]:
-    """Applique le modèle en base via `db`. Retourne un récap de comptes.
-    Ne lève jamais (les primitives renvoient (ok, msg) ou bool).
-    `journal` (facultatif) reçoit chaque lien créé (« A → B », « A ≡ B ») et
-    chaque refus (« A → B refusé : … »), pour le log de l'import."""
-    counts = {'successions': 0, 'equivalences': 0, 'obsoletes': 0, 'errors': 0}
+class _Applicateur:
+    """État et primitives d'une application des relations en base : `db`, le
+    récap de comptes et le journal facultatif (cf. `apply_relations`)."""
 
+    def __init__(self, db, journal: Optional[List[str]]):
+        self.db = db
+        self.journal = journal
+        self.counts = {'successions': 0, 'equivalences': 0, 'obsoletes': 0, 'errors': 0}
+
+    @staticmethod
     def _ok(res):
         return res[0] if isinstance(res, (tuple, list)) else bool(res)
 
-    def _propager_libelle(a, b):
+    def _propager_libelle(self, a, b):
         """Faire hériter le libellé à celle des deux réfs qui n'en a pas.
 
         Une réf citée mais absente de la base est créée en fantôme SANS libellé :
@@ -330,7 +332,7 @@ def apply_relations(groups: List[Group], cards: List[CardData], db,
         primitives de relation). Une absence de méthode ne doit pas se
         transformer en erreur de relation — la relation, elle, a bien été créée.
         """
-        propager = getattr(db, 'propagate_description', None)
+        propager = getattr(self.db, 'propagate_description', None)
         if propager is None:
             return
         try:
@@ -339,82 +341,94 @@ def apply_relations(groups: List[Group], cards: List[CardData], db,
             from ..core.logger import app_logger
             app_logger.warning(f"Libellé non propagé entre {a} et {b} : {exc}")
 
-    def _noter(lien, res, ok):
-        if journal is None:
+    def _noter(self, lien, res, ok):
+        if self.journal is None:
             return
         if ok:
-            journal.append(lien)
+            self.journal.append(lien)
         else:
             motif = res[1] if isinstance(res, (tuple, list)) and len(res) > 1 else ""
-            journal.append(f"{lien} refusé" + (f" : {motif}" if motif else ""))
+            self.journal.append(f"{lien} refusé" + (f" : {motif}" if motif else ""))
 
-    def _superse(old, new):
-        if not old or not new or old == new:
-            return
-        try:
-            res = db.add_supersession(old, new)
-            ok = _ok(res)
-        except Exception as e:
-            counts['errors'] += 1
-            _noter(f"{old} → {new}", (False, str(e)), False)
-            return
-        counts['successions' if ok else 'errors'] += 1
-        _noter(f"{old} → {new}", res, ok)
-        if ok:
-            _propager_libelle(old, new)
+    def _lier(self, primitive: str, a, b, symbole, compteur):
+        """Créer un lien via `db.<primitive>(a, b)`, le compter, le noter au
+        journal et propager le libellé s'il a réussi. Commun aux successions (→)
+        et aux équivalences (≡), jadis recopié dans deux fonctions.
 
-    def _equiv(a, b):
+        La primitive est lue DANS le try, comme avant : un double de test sans
+        la méthode donne une erreur comptée, pas une exception."""
         if not a or not b or a == b:
             return
+        lien = f"{a} {symbole} {b}"
         try:
-            res = db.add_equivalence(a, b)
-            ok = _ok(res)
+            res = getattr(self.db, primitive)(a, b)
+            ok = self._ok(res)
         except Exception as e:
-            counts['errors'] += 1
-            _noter(f"{a} ≡ {b}", (False, str(e)), False)
+            self.counts['errors'] += 1
+            self._noter(lien, (False, str(e)), False)
             return
-        counts['equivalences' if ok else 'errors'] += 1
-        _noter(f"{a} ≡ {b}", res, ok)
+        self.counts[compteur if ok else 'errors'] += 1
+        self._noter(lien, res, ok)
         if ok:
-            _propager_libelle(a, b)
+            self._propager_libelle(a, b)
 
-    def _obsolete(ref):
+    def superse(self, old, new):
+        self._lier('add_supersession', old, new, "→", 'successions')
+
+    def equiv(self, a, b):
+        self._lier('add_equivalence', a, b, "≡", 'equivalences')
+
+    def obsolete(self, ref):
         try:
-            counts['obsoletes' if db.mark_obsolete(ref) else 'errors'] += 1
+            self.counts['obsoletes' if self.db.mark_obsolete(ref) else 'errors'] += 1
         except Exception:
-            counts['errors'] += 1
+            self.counts['errors'] += 1
 
+    def appliquer_groupes(self, groups: List[Group], remplacantes, obsoletes: Set[str]):
+        """Lignées (successions + anciennes marquées obsolètes) et groupes
+        d'équivalence (le 1er membre, ou la repère, relié à chacun des autres)."""
+        for g in groups:
+            if g.kind == KIND_SUCCESSION and g.courante:
+                for old, new in liens_lignee(g, remplacantes):
+                    self.superse(old, new)
+                    obsoletes.add(old)
+            elif g.kind == KIND_EQUIVALENCE:
+                members = [m for i, m in enumerate(g.members) if m not in g.members[:i]]
+                if g.courante and g.courante not in members:
+                    members = [g.courante] + members
+                for m in members[1:]:
+                    self.equiv(members[0], m)
+
+    def appliquer_cartes(self, cards: List[CardData], obsoletes: Set[str]):
+        """Réfs isolées obsolètes + « remplace » base + « remplacée par » (carte)."""
+        for c in cards:
+            if c.is_obsolete:
+                obsoletes.add(c.ref)
+            if c.base_replaces:
+                self.superse(c.base_replaces, c.ref)
+            if c.replaced_by and c.replaced_by != c.ref:
+                self.superse(c.ref, c.replaced_by)
+                obsoletes.add(c.ref)
+
+
+def apply_relations(groups: List[Group], cards: List[CardData], db,
+                    journal: Optional[List[str]] = None) -> Dict[str, int]:
+    """Applique le modèle en base via `db`. Retourne un récap de comptes.
+    Ne lève jamais (les primitives renvoient (ok, msg) ou bool).
+    `journal` (facultatif) reçoit chaque lien créé (« A → B », « A ≡ B ») et
+    chaque refus (« A → B refusé : … »), pour le log de l'import."""
+    app = _Applicateur(db, journal)
     obsoletes: Set[str] = set()
-    remplacantes = remplacantes_des_cartes(cards)
 
-    for g in groups:
-        if g.kind == KIND_SUCCESSION and g.courante:
-            for old, new in liens_lignee(g, remplacantes):
-                _superse(old, new)
-                obsoletes.add(old)
-        elif g.kind == KIND_EQUIVALENCE:
-            members = [m for i, m in enumerate(g.members) if m not in g.members[:i]]
-            if g.courante and g.courante not in members:
-                members = [g.courante] + members
-            for m in members[1:]:
-                _equiv(members[0], m)
-
-    # Réfs isolées obsolètes + « remplace » base + « remplacée par » (carte)
-    for c in cards:
-        if c.is_obsolete:
-            obsoletes.add(c.ref)
-        if c.base_replaces:
-            _superse(c.base_replaces, c.ref)
-        if c.replaced_by and c.replaced_by != c.ref:
-            _superse(c.ref, c.replaced_by)
-            obsoletes.add(c.ref)
+    app.appliquer_groupes(groups, remplacantes_des_cartes(cards), obsoletes)
+    app.appliquer_cartes(cards, obsoletes)
 
     for ref in obsoletes:
-        _obsolete(ref)
+        app.obsolete(ref)
 
     # Checkbox « équivalente entre groupes » : relier les ancres cochées
     cross = cross_anchors(groups)
     for c in cross[1:]:
-        _equiv(cross[0], c)
+        app.equiv(cross[0], c)
 
-    return counts
+    return app.counts

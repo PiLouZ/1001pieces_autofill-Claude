@@ -694,38 +694,11 @@ class ImportManager:
             cache_service.suspend_invalidation(f"import de {len(config.files)} fichier(s)")
 
         try:
-            results = {
-                'total_files': len(config.files),
-                'successful_files': 0,
-                'total_imported': 0,
-                'matches_found': 0,
-                'new_entries': 0,
-                'associations_created': 0,
-                'associations_existing': 0,
-                'manual_completion': 0,
-                'duplicates_in_file': 0,
-                'errors': [],
-                'file_details': []
-            }
+            results = ImportManager._nouveaux_resultats_import(len(config.files))
 
             app_logger.info(f" Import de {len(config.files)} fichier(s)")
             seen_device_refs = set()
-            # Collecte (niveau session, accumulée sur tous les fichiers) des lignes
-            # restées incomplètes après le mécanisme exact, pour suggestions différées.
-            self._pending_similarity_candidates = []
-            # Frères COMPLETS du même lot (Type+Marque renseignés) : on les ajoutera à
-            # l'index de similarité pour que les incomplètes du lot « voient » leurs
-            # frères importés en même temps (pas encore en base au moment du calcul).
-            self._imported_complete_for_similarity = []
-            # Références de pièce de chaque ligne incomplète (clé : id(device_data)),
-            # pour la suggestion « type de la pièce importée ».
-            self._refs_pieces_candidats = {}
-            # Appareils existants dont Type/Fabricant vides ont été complétés
-            # (clé : id), pour le bloc d'historique de l'import.
-            self._completions_existants = {}
-            # Appareils dont un champ auto-complété a été tracé (fenêtre « à vérifier »)
-            self._appareils_autocompletes = set()
-            self._horodatage_import = datetime.now().isoformat(sep=' ', timespec='seconds')
+            self._reinitialiser_etat_session()
 
             n = len(config.files)
             if progress_cb:
@@ -745,97 +718,24 @@ class ImportManager:
                 if progress_cb:
                     progress_cb(i, n, f"Import de {file.filename}… ({i+1}/{n})")
 
-                pdf_progress_cb = None
-                if progress_cb and file.type == FileType.PDF:
-                    # Sous-résolution pour faire avancer la barre PENDANT l'extraction
-                    # d'un même fichier (sinon elle reste bloquée sur i/n)
-                    PDF_SUBSCALE = 1000
-
-                    def pdf_progress_cb(page, total_pages, _i=i, _n=n, _file=file):
-                        sub_value = _i * PDF_SUBSCALE + int((page / total_pages) * PDF_SUBSCALE)
-                        progress_cb(sub_value, _n * PDF_SUBSCALE,
-                                    f"Extraction de {_file.filename} : page {page}/{total_pages} ({_i+1}/{_n})")
-
                 file_results = self._safe_import_single_file(
                     file, config, seen_device_refs,
                     shared_devices_cache, shared_autocomplete_cache,
-                    dry_run=dry_run, pdf_progress_cb=pdf_progress_cb,
+                    dry_run=dry_run,
+                    pdf_progress_cb=ImportManager._progression_pdf(progress_cb, file, i, n),
                     errors_out=results['errors'],
                 )
 
                 if file_results:
-                    results['successful_files'] += 1
-                    results['file_details'].append({
-                        'filename': file.filename,
-                        'lines_processed': file_results.get('total_lines_extracted', 0),
-                        'type': 'PDF' if file.type.name == 'PDF' else 'CSV'
-                    })
-                    for key in ['total_imported', 'matches_found', 'new_entries',
-                                'associations_created', 'associations_existing',
-                                'manual_completion', 'duplicates_in_file']:
-                        results[key] += file_results.get(key, 0)
-                    if file_results.get('pages_vides'):
-                        alerte = self._alerte_pages_vides(file.filename, file_results['pages_vides'])
-                        results.setdefault('alerte_pages_vides', []).append(alerte)
-                        app_logger.warning(f"[Import] {' | '.join(alerte)}")
+                    self._cumuler_resultats_fichier(results, file, file_results)
 
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
 
-            # Appareils existants complétés (Type/Fabricant vides) : tracés dans l'historique
-            if self._completions_existants:
-                results['appareils_completes'] = list(self._completions_existants.values())
-            if self._appareils_autocompletes:
-                results['autocompletes_a_verifier'] = len(self._appareils_autocompletes)
-
-            # Marques et types réécrits (« DELTA → Delta ») : tracés dans l'historique
-            for service, cle, libelle in ((self._marques, 'marques_alignees', 'Marques alignées'),
-                                          (self._types, 'types_alignes', 'Types alignés')):
-                alignements = service.alignements()
-                if alignements:
-                    results[cle] = alignements
-                    app_logger.info(f"[Import] {libelle} : {service.resume(alignements)}")
-
-            # Les fichiers en échec sont sautés, pas fatals : le lot se termine et
-            # la liste des refusés part dans results['errors'] jusqu'à l'UI.
-            echecs = len(results['errors'])
-            resume = f"[OK] Import terminé : {results['successful_files']}/{n} fichiers"
-            if echecs:
-                apercu = " | ".join(results['errors'][:5])
-                if echecs > 5:
-                    apercu += f" | … ({echecs - 5} de plus)"
-                app_logger.warning(f"{resume} — {echecs} fichier(s) ignoré(s) : {apercu}")
-            else:
-                app_logger.info(resume)
-
-            # Suggestions Type/Marque par similarité (additif, non bloquant) : calcul
-            # en un seul lot sur les lignes incomplètes collectées pendant l'import.
-            # On transmet progress_cb pour rendre cette phase visible (sinon la barre
-            # reste figée sur « Finalisation… » pendant tout le calcul → effet "planté").
-            if not dry_run:
-                results['similarity_suggestions'] = \
-                    self._compute_pending_similarity_suggestions(progress_cb=progress_cb)
-
-            if not dry_run:
-                if getattr(config, 'relations_groups', None) is not None or \
-                        getattr(config, 'relations_cards', None) is not None:
-                    self._apply_relations_from_config(config, results)
-                else:
-                    self._apply_succession_from_config(config, results)
-
-            if not dry_run and hasattr(self.db_manager, 'cache_invalidation'):
-                self.db_manager.cache_invalidation.invalidate_after_import(results)
-
-            # Références pièce importées, dans l'ordre des fichiers (sans doublon ni vide) —
-            # utilisé pour charger automatiquement la recherche sur la référence courante.
-            seen_refs = set()
-            imported_refs = []
-            for ref in config.individual_references.values():
-                ref = (ref or '').strip()
-                if ref and ref not in seen_refs:
-                    seen_refs.add(ref)
-                    imported_refs.append(ref)
-            results['imported_refs'] = imported_refs
+            self._tracer_completions_et_alignements(results)
+            ImportManager._journaliser_fin_import(results, n)
+            self._finaliser_import_en_base(config, results, progress_cb, dry_run)
+            results['imported_refs'] = ImportManager._refs_importees(config)
 
             self._log_resume_import(results, seen_device_refs)
             return results
@@ -844,6 +744,146 @@ class ImportManager:
             self._import_cancel_check = None
             if cache_service:
                 cache_service.resume_invalidation(force_invalidate=True)
+
+    # ── Étapes de _run_import_files ──────────────────────────────────────────
+
+    @staticmethod
+    def _nouveaux_resultats_import(nb_fichiers: int) -> Dict[str, Any]:
+        """Récap vierge d'un import de `nb_fichiers` fichiers."""
+        return {
+            'total_files': nb_fichiers,
+            'successful_files': 0,
+            'total_imported': 0,
+            'matches_found': 0,
+            'new_entries': 0,
+            'associations_created': 0,
+            'associations_existing': 0,
+            'manual_completion': 0,
+            'duplicates_in_file': 0,
+            'errors': [],
+            'file_details': []
+        }
+
+    def _reinitialiser_etat_session(self) -> None:
+        """État accumulé sur TOUS les fichiers d'une session d'import."""
+        # Collecte (niveau session, accumulée sur tous les fichiers) des lignes
+        # restées incomplètes après le mécanisme exact, pour suggestions différées.
+        self._pending_similarity_candidates = []
+        # Frères COMPLETS du même lot (Type+Marque renseignés) : on les ajoutera à
+        # l'index de similarité pour que les incomplètes du lot « voient » leurs
+        # frères importés en même temps (pas encore en base au moment du calcul).
+        self._imported_complete_for_similarity = []
+        # Références de pièce de chaque ligne incomplète (clé : id(device_data)),
+        # pour la suggestion « type de la pièce importée ».
+        self._refs_pieces_candidats = {}
+        # Appareils existants dont Type/Fabricant vides ont été complétés
+        # (clé : id), pour le bloc d'historique de l'import.
+        self._completions_existants = {}
+        # Appareils dont un champ auto-complété a été tracé (fenêtre « à vérifier »)
+        self._appareils_autocompletes = set()
+        self._horodatage_import = datetime.now().isoformat(sep=' ', timespec='seconds')
+
+    @staticmethod
+    def _progression_pdf(progress_cb, file, i: int, n: int):
+        """Rappel de progression page par page pour un PDF, ou None (pas de
+        barre, ou fichier non PDF).
+
+        Sous-résolution pour faire avancer la barre PENDANT l'extraction d'un
+        même fichier (sinon elle reste bloquée sur i/n)."""
+        if not progress_cb or file.type != FileType.PDF:
+            return None
+        PDF_SUBSCALE = 1000
+
+        def pdf_progress_cb(page, total_pages, _i=i, _n=n, _file=file):
+            sub_value = _i * PDF_SUBSCALE + int((page / total_pages) * PDF_SUBSCALE)
+            progress_cb(sub_value, _n * PDF_SUBSCALE,
+                        f"Extraction de {_file.filename} : page {page}/{total_pages} ({_i+1}/{_n})")
+        return pdf_progress_cb
+
+    def _cumuler_resultats_fichier(self, results: Dict[str, Any], file,
+                                   file_results: Dict[str, Any]) -> None:
+        """Ajouter au récap de session le résultat d'un fichier importé."""
+        results['successful_files'] += 1
+        results['file_details'].append({
+            'filename': file.filename,
+            'lines_processed': file_results.get('total_lines_extracted', 0),
+            'type': 'PDF' if file.type.name == 'PDF' else 'CSV'
+        })
+        for key in ['total_imported', 'matches_found', 'new_entries',
+                    'associations_created', 'associations_existing',
+                    'manual_completion', 'duplicates_in_file']:
+            results[key] += file_results.get(key, 0)
+        if file_results.get('pages_vides'):
+            alerte = self._alerte_pages_vides(file.filename, file_results['pages_vides'])
+            results.setdefault('alerte_pages_vides', []).append(alerte)
+            app_logger.warning(f"[Import] {' | '.join(alerte)}")
+
+    def _tracer_completions_et_alignements(self, results: Dict[str, Any]) -> None:
+        """Appareils existants complétés, auto-complétions à vérifier, marques et
+        types réécrits (« DELTA → Delta ») : reportés au récap pour l'historique."""
+        if self._completions_existants:
+            results['appareils_completes'] = list(self._completions_existants.values())
+        if self._appareils_autocompletes:
+            results['autocompletes_a_verifier'] = len(self._appareils_autocompletes)
+
+        for service, cle, libelle in ((self._marques, 'marques_alignees', 'Marques alignées'),
+                                      (self._types, 'types_alignes', 'Types alignés')):
+            alignements = service.alignements()
+            if alignements:
+                results[cle] = alignements
+                app_logger.info(f"[Import] {libelle} : {service.resume(alignements)}")
+
+    @staticmethod
+    def _journaliser_fin_import(results: Dict[str, Any], n: int) -> None:
+        """Ligne de fin d'import. Les fichiers en échec sont sautés, pas fatals :
+        le lot se termine et la liste des refusés part dans results['errors']
+        jusqu'à l'UI."""
+        echecs = len(results['errors'])
+        resume = f"[OK] Import terminé : {results['successful_files']}/{n} fichiers"
+        if echecs:
+            apercu = " | ".join(results['errors'][:5])
+            if echecs > 5:
+                apercu += f" | … ({echecs - 5} de plus)"
+            app_logger.warning(f"{resume} — {echecs} fichier(s) ignoré(s) : {apercu}")
+        else:
+            app_logger.info(resume)
+
+    def _finaliser_import_en_base(self, config: ImportConfiguration, results: Dict[str, Any],
+                                  progress_cb, dry_run: bool) -> None:
+        """Après les fichiers (hors simulation) : suggestions par similarité,
+        relations entre références, invalidation du cache."""
+        if dry_run:
+            return
+
+        # Suggestions Type/Marque par similarité (additif, non bloquant) : calcul
+        # en un seul lot sur les lignes incomplètes collectées pendant l'import.
+        # On transmet progress_cb pour rendre cette phase visible (sinon la barre
+        # reste figée sur « Finalisation… » pendant tout le calcul → effet "planté").
+        results['similarity_suggestions'] = \
+            self._compute_pending_similarity_suggestions(progress_cb=progress_cb)
+
+        if getattr(config, 'relations_groups', None) is not None or \
+                getattr(config, 'relations_cards', None) is not None:
+            self._apply_relations_from_config(config, results)
+        else:
+            self._apply_succession_from_config(config, results)
+
+        if hasattr(self.db_manager, 'cache_invalidation'):
+            self.db_manager.cache_invalidation.invalidate_after_import(results)
+
+    @staticmethod
+    def _refs_importees(config: ImportConfiguration) -> List[str]:
+        """Références pièce importées, dans l'ordre des fichiers (sans doublon ni
+        vide) — utilisé pour charger automatiquement la recherche sur la
+        référence courante."""
+        seen_refs = set()
+        imported_refs = []
+        for ref in config.individual_references.values():
+            ref = (ref or '').strip()
+            if ref and ref not in seen_refs:
+                seen_refs.add(ref)
+                imported_refs.append(ref)
+        return imported_refs
 
     @staticmethod
     def _alerte_pages_vides(nom_fichier: str, trous: List[Dict]) -> List[str]:
@@ -2212,57 +2252,19 @@ class ImportManager:
         return ref_modele, commercial_ref, f"{ref_modele.lower()}|{commercial_ref.lower()}"
 
     def _parse_row_data(self, row: List[str], config: ImportConfiguration) -> Optional[Dict[str, Any]]:
-        """Parser une ligne de données selon la configuration"""
+        """Parser une ligne de données selon la configuration : mapping de colonnes
+        s'il est renseigné pour ce nombre de colonnes (v3.30.0), sinon lecture
+        positionnelle. Ligne sans aucune valeur → None ; sinon casse alignée
+        puis auto-complétion si Type ou Fabricant manque."""
         if not row:
             return None
 
-        # Mode mapping personnalisé (v3.30.0) — uniquement si explicitement renseigné
         n = len(row)
         if config.column_mapping and n in config.column_mapping:
-            data = {}
-            for i, champ in enumerate(config.column_mapping[n]):
-                if i < n and champ != "ignore" and row[i] is not None:
-                    data[champ] = str(row[i]).strip()
-            if not any(v for v in data.values() if v):
-                return None
-            self._normaliser_casse(data)
-            if not data.get('type') or not data.get('manufacturer'):
-                self._try_auto_complete(data)
-            return data
+            data = ImportManager._lire_ligne_par_mapping(row, config.column_mapping[n])
+        else:
+            data = ImportManager._lire_ligne_par_position(row, config.third_column_choice)
 
-        # Mode positionnel — comportement actuel inchangé (fallback)
-        data = {}
-        
-        if len(row) >= 1:
-            data['ref_modele'] = str(row[0]).strip() if row[0] is not None else ""
-        
-        if len(row) >= 2:
-            data['commercial_ref'] = str(row[1]).strip() if row[1] is not None else ""
-        
-        if len(row) >= 3:
-            # Traiter la 3ème colonne selon le paramètre third_column_choice
-            third_col_value = str(row[2]).strip() if row[2] is not None else ""
-            if config.third_column_choice == "other_ref":
-                data['other_ref'] = third_col_value
-            elif config.third_column_choice == "notes":
-                data['notes'] = third_col_value
-            # Si choice == "ignore", ne rien faire avec cette colonne
-        
-        if len(row) >= 4:
-            data['type'] = str(row[0]).strip() if row[0] is not None else ""
-            data['manufacturer'] = str(row[1]).strip() if row[1] is not None else ""
-            data['ref_modele'] = str(row[2]).strip() if row[2] is not None else ""
-            data['commercial_ref'] = str(row[3]).strip() if row[3] is not None else ""
-            
-        if len(row) >= 5:
-            # Pour les fichiers 5+ colonnes, la 5ème colonne pourrait aussi être concernée
-            fifth_col_value = str(row[4]).strip() if row[4] is not None else ""
-            if config.third_column_choice == "other_ref":
-                data['other_ref'] = fifth_col_value
-            elif config.third_column_choice == "notes":
-                data['notes'] = fifth_col_value
-            # Si choice == "ignore", ne rien faire avec cette colonne
-        
         # Vérifier qu'on a au moins une donnée utile
         if not any(v for v in data.values() if v):
             return None
@@ -2270,11 +2272,67 @@ class ImportManager:
         self._normaliser_casse(data)
 
         # Appliquer l'autocomplétion si Type ou Fabricant sont manquants
-        if data and (not data.get('type') or not data.get('manufacturer')):
+        if not data.get('type') or not data.get('manufacturer'):
             self._try_auto_complete(data)
-        
+
         return data
-    
+
+    @staticmethod
+    def _cellule(row: List[str], i: int) -> str:
+        """Valeur de la colonne i, nettoyée ; "" pour une cellule None."""
+        return str(row[i]).strip() if row[i] is not None else ""
+
+    @staticmethod
+    def _lire_ligne_par_mapping(row: List[str], mapping: List[str]) -> Dict[str, Any]:
+        """Mode mapping personnalisé : chaque colonne va au champ désigné, sauf
+        « ignore » ; une cellule None ne crée pas de champ."""
+        n = len(row)
+        data = {}
+        for i, champ in enumerate(mapping):
+            if i < n and champ != "ignore" and row[i] is not None:
+                data[champ] = str(row[i]).strip()
+        return data
+
+    @staticmethod
+    def _lire_ligne_par_position(row: List[str], third_column_choice: str) -> Dict[str, Any]:
+        """Mode positionnel (repli historique, inchangé) :
+        - 1-3 colonnes : ref_modele, commercial_ref, puis la 3e vers other_ref ou
+          notes selon `third_column_choice` (« ignore » : rien) ;
+        - 4 colonnes et plus : type, manufacturer, ref_modele, commercial_ref (les
+          deux réfs sont réécrites à leur place d'origine dans le dict) ;
+        - 5e colonne : remplace la valeur de la 3e dans other_ref / notes.
+        L'ordre des clés est celui de toujours."""
+        data = {}
+        cellule = ImportManager._cellule
+
+        if len(row) >= 1:
+            data['ref_modele'] = cellule(row, 0)
+
+        if len(row) >= 2:
+            data['commercial_ref'] = cellule(row, 1)
+
+        if len(row) >= 3:
+            ImportManager._ranger_colonne_choisie(data, cellule(row, 2), third_column_choice)
+
+        if len(row) >= 4:
+            data['type'] = cellule(row, 0)
+            data['manufacturer'] = cellule(row, 1)
+            data['ref_modele'] = cellule(row, 2)
+            data['commercial_ref'] = cellule(row, 3)
+
+        if len(row) >= 5:
+            ImportManager._ranger_colonne_choisie(data, cellule(row, 4), third_column_choice)
+
+        return data
+
+    @staticmethod
+    def _ranger_colonne_choisie(data: Dict[str, Any], valeur: str, choix: str) -> None:
+        """Ranger la colonne libre dans other_ref ou notes ; « ignore » : rien."""
+        if choix == "other_ref":
+            data['other_ref'] = valeur
+        elif choix == "notes":
+            data['notes'] = valeur
+
     def _normaliser_casse(self, data: Dict[str, Any]) -> None:
         """Marque et type importés réécrits selon la base (« DELTA » → « Delta »),
         avant l'auto-complétion. Commun aux deux modes de parsing, donc aux deux
