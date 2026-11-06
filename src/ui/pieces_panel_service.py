@@ -10,6 +10,7 @@ Responsabilités:
 from typing import Dict, Set, List, Optional
 from ..utils.qt_imports import QListWidgetItem, QColor
 from ..utils.error_handler import handle_pieces_panel_errors
+from ..core.logger import app_logger
 
 
 class PiecesPanelService:
@@ -202,8 +203,8 @@ class PiecesPanelService:
                 if refs:
                     label = f"{label}  [{refs}]" if label else f"[{refs}]"
                 return label
-        except Exception:
-            pass
+        except Exception as exc:
+            app_logger.debug(f"Libellé de l'appareil {db_id} non construit : {exc}")
         return ""
 
     # ── Helpers internes ───────────────────────────────────────────────────

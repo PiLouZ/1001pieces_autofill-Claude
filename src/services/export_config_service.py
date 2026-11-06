@@ -362,8 +362,8 @@ class ExportConfigService(BaseService):
             systeme = QStandardPaths.writableLocation(QStandardPaths.DesktopLocation)
             if systeme and os.path.isdir(systeme):
                 return systeme
-        except Exception:
-            pass
+        except Exception as exc:
+            app_logger.debug(f"Bureau système introuvable via QStandardPaths : {exc}")
         return os.path.expanduser("~")
 
     def get_output_dir(self) -> str:

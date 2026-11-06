@@ -471,8 +471,8 @@ class ImportDialog(QDialog):
                     "La référence commune sera associée à TOUS les appareils importés.\n"
                     "Elle sera créée et enregistrée dans la base de données\n"
                     "comme toute autre référence de pièce."))
-            except Exception:
-                pass
+            except Exception as exc:
+                app_logger.debug(f"Bouton d'information (référence commune) non ajouté : {exc}")
             row_ref.addStretch(1)
 
             # Cases « tout appliquer » alignées à droite de la ligne Référence
@@ -707,8 +707,8 @@ class ImportDialog(QDialog):
             try:
                 info_and_option_layout.addWidget(self._make_info_button(
                     "Génération automatique des références de pièces basées sur les noms de fichiers."))
-            except Exception:
-                pass
+            except Exception as exc:
+                app_logger.debug(f"Bouton d'information (références automatiques) non ajouté : {exc}")
             info_and_option_layout.addStretch(1)
 
             individual_layout.addLayout(info_and_option_layout)

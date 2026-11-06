@@ -10,6 +10,7 @@ import re
 from typing import List, Tuple, Dict, Any, Optional, Callable
 from pathlib import Path
 from src.utils.error_handler import handle_pdf_extraction_errors
+from src.core.logger import app_logger
 
 class PDFExtractionError(Exception):
     """Exception levée lors d'erreurs d'extraction PDF"""
@@ -75,7 +76,8 @@ class CamelotPDFExtractor:
             from pdfminer.pdfpage import PDFPage
             with open(pdf_path, 'rb') as f:
                 return sum(1 for _ in PDFPage.get_pages(f))
-        except Exception:
+        except Exception as exc:
+            app_logger.debug(f"Nombre de pages illisible pour {pdf_path}, 1 page supposée : {exc}")
             return 1
 
     def _extract_with_camelot(self, pdf_path: Path, preview_mode: bool = False,
