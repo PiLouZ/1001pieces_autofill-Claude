@@ -4,6 +4,38 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.100.3] - 2026-11-06 (PR #119, #120, #121, #122, #123)
+
+Version de maintenance : fin des restes de l'audit d'intégrité du code, sans
+nouvelle fonctionnalité ni changement à l'écran.
+
+### Ménage pyflakes (PR #119)
+- 59 imports inutilisés retirés dans 30 fichiers et 19 petites alertes corrigées
+  (f-strings sans variable, variables inutilisées, import en double). Les noms
+  ré-exportés par `src/utils/qt_imports.py` sont déclarés dans `__all__`.
+
+### Erreurs avalées en silence journalisées (PR #120)
+- 20 `except Exception` muets écrivent désormais un avertissement (donnée manquante
+  dans un résultat : propagation de libellé, preuves de la revue, fiche produit,
+  SEO, bandeaux) ou une trace de débogage (replis cosmétiques ou d'arrêt). Mêmes
+  valeurs de repli, aucun changement de flux.
+
+### Dernières requêtes SQL vers la couche données (PR #121)
+- Les écritures d'historique et du nettoyage des doublons passent par
+  `DatabaseManager` (`_db_mixins/historiques.py`, nouveau `_db_mixins/doublons.py`) :
+  plus aucun SQL dans `src/services` ni `src/ui`.
+
+### Trois fonctions de l'import découpées (PR #122)
+- `apply_relations` (complexité 39 → 3), `_parse_row_data` (34 → 8) et
+  `_run_import_files` (32 → 11) découpées en étapes nommées ; 100 000 cas aléatoires
+  et import des 9 PDF de test identiques à l'ancienne version.
+
+### Tri : calcul mort retiré (PR #123)
+- `TableController._apply_database_sort` recalculait un terme de recherche sans
+  l'utiliser ; le tri retrie bien les résultats affichés, comportement inchangé.
+
+---
+
 ## [3.100.2] - 2026-11-05 (PR #114, #115, #116, #117)
 
 Version corrective : deux écritures en base qui n'étaient pas définitives, et la suite
