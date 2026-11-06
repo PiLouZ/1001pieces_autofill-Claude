@@ -1216,21 +1216,9 @@ class TableController:
         self._sorting_in_progress = True
 
         try:
-            # CORRECTION: Utiliser la même logique que F5 et bouton toolbar
-            search_term = None
-            if (hasattr(self.parent_window, 'advanced_search_service') and
-                hasattr(self.parent_window.advanced_search_service, 'get_current_search_term_with_fallback')):
-                search_term = self.parent_window.advanced_search_service.get_current_search_term_with_fallback(self.parent_window)
-            else:
-                # Fallback vers ancienne logique si service indisponible
-                if hasattr(self.parent_window, 'pending_search_term') and self.parent_window.pending_search_term:
-                    search_term = self.parent_window.pending_search_term
-                elif hasattr(self, 'current_search_term') and self.current_search_term:
-                    search_term = self.current_search_term
-                elif hasattr(self.parent_window, 'search_input') and self.parent_window.search_input:
-                    text = self.parent_window.search_input.text().strip()
-                    search_term = text if text else None
-
+            # Retrier ce qui est affiché : current_search_term est le terme des
+            # résultats à l'écran (une frappe pas encore lancée relancera de
+            # toute façon une recherche qui remet le tri à zéro).
             # Passer par load_data (is_search=False) pour conserver toutes les injections :
             # bypass_supersession, expand_predecessors (sœurs), expand_equivalents.
             # current_sort_column / current_sort_order sont déjà mis à jour par _on_header_click.
