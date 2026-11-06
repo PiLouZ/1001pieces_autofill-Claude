@@ -2128,8 +2128,8 @@ class PiecesManagerWindow(QDialog):
             parent = self.parent()
             if parent and hasattr(parent, 'user_interaction_service'):
                 parent.user_interaction_service.add_to_history(message)
-        except Exception:
-            pass
+        except Exception as exc:
+            app_logger.debug(f"Message non envoyé à l'historique principal : {exc}")
 
     @staticmethod
     def _write_pieces_csv(filename, rows):

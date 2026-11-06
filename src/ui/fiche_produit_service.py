@@ -132,7 +132,8 @@ class FicheProduitService:
                 continue
             try:
                 anciennes = db.get_all_predecessors(equivalente)
-            except Exception:
+            except Exception as exc:
+                app_logger.warning(f"Anciennes réf. de l'équivalente {equivalente} non lues : {exc}")
                 anciennes = []
             lignee = [equivalente] + [r for r in anciennes if r not in deja and r != equivalente]
             deja.update(lignee)

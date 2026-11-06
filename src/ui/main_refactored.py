@@ -3497,8 +3497,8 @@ class MainWindow(QMainWindow):
                     import_worker.cancel()
                 if import_worker.isRunning():
                     import_worker.wait()
-            except Exception:
-                pass
+            except Exception as exc:
+                app_logger.debug(f"Arrêt du worker d'import à la fermeture : {exc}")
 
         # Nettoyer le service d'historique groupé (flush des modifs en attente)
         if hasattr(self, 'grouped_history_service'):

@@ -335,8 +335,9 @@ def apply_relations(groups: List[Group], cards: List[CardData], db,
             return
         try:
             propager(a, b)
-        except Exception:
-            pass
+        except Exception as exc:
+            from ..core.logger import app_logger
+            app_logger.warning(f"Libellé non propagé entre {a} et {b} : {exc}")
 
     def _noter(lien, res, ok):
         if journal is None:

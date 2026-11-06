@@ -31,6 +31,7 @@ from PyQt5.QtWidgets import (
 import qtawesome as qta
 
 from src.core.config import pluralize
+from src.core.logger import app_logger
 from .style_manager import StyleManager
 from .tri_colonnes import ItemTriable, ROLE_TRI, activer_tri, TriSuspendu
 
@@ -633,7 +634,8 @@ class FenetreRevue(QDialog):
         if cle not in self._cache_preuves:
             try:
                 self._cache_preuves[cle] = self._preuves(donnees)
-            except Exception:
+            except Exception as exc:
+                app_logger.warning(f"Preuves de la ligne non calculées : {exc}")
                 self._cache_preuves[cle] = None
         return self._cache_preuves[cle]
 

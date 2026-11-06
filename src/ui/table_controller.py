@@ -1643,7 +1643,8 @@ class TableController:
                 # 1er chargement sans expansion (flag pas encore connu) → relancer
                 self.load_data(self.current_search_term, is_search=False)
                 self._update_equivalence_banner()
-        except Exception:
+        except Exception as exc:
+            app_logger.warning(f"Bandeaux remplacement/équivalence masqués après erreur : {exc}")
             self._hide_supersession_banner()
             self._hide_equivalence_banner()
 
@@ -2052,7 +2053,8 @@ class TableController:
             else:
                 self._hide_equivalence_banner()
                 return False
-        except Exception:
+        except Exception as exc:
+            app_logger.warning(f"Bandeau d'équivalence masqué après erreur : {exc}")
             self._hide_equivalence_banner()
             return False
 
@@ -2233,8 +2235,8 @@ class TableController:
         if hasattr(self, 'prefetch_timer') and self.prefetch_timer is not None:
             try:
                 self.prefetch_timer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                app_logger.debug(f"Arrêt du minuteur de préchargement : {exc}")
         for attr in ('query_worker', 'prefetch_worker'):
             worker = getattr(self, attr, None)
             if worker is not None:
@@ -2242,8 +2244,8 @@ class TableController:
                     if worker.isRunning():
                         worker.quit()
                         worker.wait()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    app_logger.debug(f"Arrêt d'un worker de préchargement : {exc}")
                 setattr(self, attr, None)
 
     def cleanup(self):

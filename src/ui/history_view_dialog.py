@@ -29,6 +29,7 @@ import qtawesome as qta
 from .popup_positioning import PopupAuCurseurMixin
 from .style_manager import StyleManager
 from ..core.config import Config
+from ..core.logger import app_logger
 from ..utils.boites import demander_oui_non
 
 _PAGE_SIZE = 100
@@ -477,8 +478,8 @@ class HistoryViewDialog(QDialog):
                     details = json.loads(details_json)
                     if isinstance(details, list) and len(details) > 1:
                         description = f"{title} — {len(details)} champs"
-                except Exception:
-                    pass
+                except Exception as exc:
+                    app_logger.debug(f"Détails d'historique illisibles (JSON) : {exc}")
 
             desc_item = QTableWidgetItem(description)
             desc_item.setFlags(desc_item.flags() & ~Qt.ItemIsEditable)
@@ -524,7 +525,8 @@ class HistoryViewDialog(QDialog):
         action_type, title, details_json = data
         try:
             details = json.loads(details_json) if details_json else []
-        except Exception:
+        except Exception as exc:
+            app_logger.debug(f"Détails d'historique illisibles (JSON) : {exc}")
             details = []
 
         if self._active_popup is not None:

@@ -115,12 +115,14 @@ class SEOService:
         try:
             preds = db.get_all_predecessors(search_data['reference'])
             all_refs_for_count.extend(preds)
-        except Exception:
+        except Exception as exc:
+            app_logger.warning(f"Anciennes réf. de {search_data['reference']} non lues (SEO) : {exc}")
             preds = []
         try:
             groupe = db.get_equivalents(search_data['reference'])
             equivalentes = db.get_equivalents_hors_chaine(search_data['reference'])
-        except Exception:
+        except Exception as exc:
+            app_logger.warning(f"Équivalentes de {search_data['reference']} non lues (SEO) : {exc}")
             groupe, equivalentes = [], []
         all_refs_for_count.extend(r for r in groupe if r not in all_refs_for_count)
         n_modeles = self._count_compatible_models(all_refs_for_count)
@@ -642,8 +644,8 @@ class SEOService:
                 for pred in self.main_window.db_manager.get_all_predecessors(ref):
                     if pred not in all_refs:
                         all_refs.append(pred)
-            except Exception:
-                pass
+            except Exception as exc:
+                app_logger.warning(f"Anciennes réf. de {ref} non lues (SEO) : {exc}")
         return all_refs
 
     def _completer_avec_equivalentes(self, search_data: Dict[str, Any]) -> None:
@@ -670,8 +672,8 @@ class SEOService:
                 for autre in db.get_equivalents(ref):
                     if autre not in famille and autre not in equivalentes:
                         equivalentes.append(autre)
-            except Exception:
-                pass
+            except Exception as exc:
+                app_logger.warning(f"Équivalentes de {ref} non lues (SEO) : {exc}")
         if not equivalentes:
             return
         try:
