@@ -79,7 +79,6 @@ class MappingGroupWidget(QWidget):
     # ── Construction UI ──────────────────────────────────────────────────────
 
     def _build_ui(self, n_cols, files, sample_data, is_recognized, default_mapping):
-        import os
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 1, 0, 1)
         outer.setSpacing(2)

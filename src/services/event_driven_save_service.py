@@ -3,7 +3,7 @@ Service de Sauvegarde Événementielle - Factorisation Architecture
 Centralise la logique de sauvegarde immédiate dispersée dans l'application
 """
 
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Set, Tuple
 from ..utils.qt_imports import QTimer
 from ..core.logger import app_logger
 from ..core.config import Config
@@ -190,9 +190,9 @@ class EventDrivenSaveService(BaseService):
 
         if success:
             self._update_save_indicator_success()
-            app_logger.debug(f"Sauvegarde événementielle réussie après suppression")
+            app_logger.debug("Sauvegarde événementielle réussie après suppression")
         else:
-            app_logger.warning(f"Échec sauvegarde événementielle après suppression")
+            app_logger.warning("Échec sauvegarde événementielle après suppression")
 
         return success
 

@@ -552,7 +552,7 @@ class CleanupPreviewDialog(QDialog):
                     error_text = "\n".join(results['errors'])
                     show_error(self, "Erreurs lors du nettoyage", f"Certaines opérations ont échoué:\n{error_text}")
                 else:
-                    success_message = f"Nettoyage terminé avec succès!\n\n"
+                    success_message = "Nettoyage terminé avec succès!\n\n"
                     success_message += f"• {results.get('devices_merged', 0)} appareils fusionnés\n"
                     success_message += f"• {results.get('devices_deleted', 0)} doublons d'appareils supprimés\n"
                     success_message += f"• {results.get('pieces_deleted', 0)} pièces dupliquées supprimées"

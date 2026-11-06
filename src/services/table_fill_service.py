@@ -5,7 +5,6 @@ Phase 5 de la migration QTableView : tout le remplissage passe par AppareillsTab
 
 from typing import List
 
-from src.core.config import Config
 
 
 class TableFillService:

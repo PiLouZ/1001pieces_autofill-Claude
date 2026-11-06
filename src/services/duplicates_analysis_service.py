@@ -3,8 +3,8 @@ Service d'analyse des doublons
 Centralise toute la logique d'analyse et de détection des doublons
 """
 
-from typing import Dict, List, Any, Optional, Tuple, Set
-from ..utils.qt_imports import QObject, pyqtSignal, QThread, QTimer
+from typing import Dict, List, Any
+from ..utils.qt_imports import pyqtSignal, QThread
 
 from ..core.logger import app_logger
 from ..data.database_manager import DatabaseManager

@@ -127,7 +127,7 @@ class PieceManagementService:
         
         # Affichage détaillé des erreurs si nécessaire
         if error_count > 0 and len(errors_detail) <= 5:
-            error_msg = f"Erreurs détaillées:\n" + "\n".join(errors_detail)
+            error_msg = "Erreurs détaillées:\n" + "\n".join(errors_detail)
             self.main_window.user_interaction_service.show_error(error_msg)
         elif error_count > 5:
             self.main_window.user_interaction_service.show_error(f"{error_count} erreurs détectées (trop nombreuses pour être affichées)")
@@ -178,7 +178,7 @@ class PieceManagementService:
                 self.main_window._refresh_pieces_count_column()
                 self.main_window.user_interaction_service.add_to_history(f"Pièce '{ref_piece}' supprimée")
                 self.main_window.user_interaction_service.show_status_message(
-                    f"Pièce supprimée avec succès", Config.STATUS_MESSAGE_TIMEOUT
+                    "Pièce supprimée avec succès", Config.STATUS_MESSAGE_TIMEOUT
                 )
             else:
                 self.main_window.user_interaction_service.show_error("Erreur lors de la suppression")

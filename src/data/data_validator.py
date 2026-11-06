@@ -3,7 +3,7 @@ Validateur de données pour l'application de gestion d'appareils
 """
 
 import re
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 import sys
@@ -162,7 +162,7 @@ class DataValidator:
             if char in cleaned_value:
                 return ValidationResult(
                     is_valid=False,
-                    error_message=f"Caractère de contrôle interdit dans la référence"
+                    error_message="Caractère de contrôle interdit dans la référence"
                 )
         
         # Vérifier que ce n'est pas que des espaces ou caractères vides

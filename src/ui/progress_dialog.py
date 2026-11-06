@@ -17,7 +17,6 @@ from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QWidg
                           Qt, QSize, QSizePolicy, pyqtSignal)
 import qtawesome as qta
 from .style_manager import StyleManager
-from ..core.config import pluralize
 
 
 # ── Journal d'étapes : découpage des libellés (fonctions pures, testées) ─────

@@ -6,7 +6,6 @@ Remplace les anciennes méthodes pdfplumber
 
 import camelot
 import pandas as pd
-import os
 import re
 from typing import List, Tuple, Dict, Any, Optional, Callable
 from pathlib import Path

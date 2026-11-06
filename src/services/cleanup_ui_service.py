@@ -816,7 +816,6 @@ class DistinctReferencesWidget(QWidget):
             ref_modele = row[0]
             nb_appareils = row[1]
             created_at = row[2]
-            ref_id = row[3]
 
             item = QTreeWidgetItem([
                 "", ref_modele, str(nb_appareils),
@@ -1063,7 +1062,6 @@ class ActionHistoryWidget(QWidget):
 
     def _export_history(self):
         """Exporter l'historique en CSV"""
-        from ..utils.qt_imports import QFileDialog
         import csv
         from datetime import datetime
 

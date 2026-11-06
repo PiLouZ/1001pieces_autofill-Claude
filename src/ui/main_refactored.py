@@ -783,7 +783,6 @@ class MainWindow(QMainWindow):
     def _setup_paste_cleanup_for_search_input(self):
         """Configure l'interception du collage pour le champ de recherche"""
         from ..utils.qt_imports import QLineEdit
-        from ..utils.qt_imports import QEvent
 
         class PasteInterceptor(QLineEdit):
             def __init__(self, parent_window, paste_service):
@@ -1938,7 +1937,7 @@ class MainWindow(QMainWindow):
 
         # Afficher le résultat
         if result.errors:
-            error_msg = f"Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
+            error_msg = "Erreurs lors de l'auto-complétion:\n" + "\n".join(result.errors[:5])
             if len(result.errors) > 5:
                 error_msg += f"\n... et {len(result.errors) - 5} autres erreurs"
             self.user_interaction_service.show_error(error_msg)
@@ -2067,7 +2066,7 @@ class MainWindow(QMainWindow):
         if rejected_lines > 0:
             summary += f"  {rejected_lines} ligne rejetée\n"
         else:
-            summary += f"  0 ligne rejetée\n"
+            summary += "  0 ligne rejetée\n"
         
         # Lignes sans référence de pièce
         no_piece_ref = results.get('no_piece_ref', 0)
@@ -2204,7 +2203,6 @@ class MainWindow(QMainWindow):
 
     def _log_import_to_history(self, results, ref_piece, source, pdf_files_info=None):
         """Enregistrer l'import dans l'historique avec format console"""
-        from datetime import datetime
         
         # Générer la synthèse dans le format console
         console_summary = self._generate_console_summary(results, ref_piece, source, pdf_files_info)
@@ -2687,7 +2685,7 @@ class MainWindow(QMainWindow):
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur gestionnaire FTS5")
     def _safe_open_fts5_manager(self):
         """Dialogue de gestion de l'index de recherche FTS5"""
-        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressDialog
+        from ..utils.qt_imports import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
         from ..core.config import Config
 
         dialog = QDialog(self)

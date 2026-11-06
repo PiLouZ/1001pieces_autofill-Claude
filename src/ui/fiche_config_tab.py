@@ -21,7 +21,7 @@ import re
 import qtawesome as qta
 from ..utils.qt_imports import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox,
-    QSpinBox, QCheckBox, QTextBrowser, QSizePolicy, Qt, QSize
+    QSpinBox, QCheckBox, QTextBrowser, QSizePolicy, Qt
 )
 from .style_manager import StyleManager
 from .champ_modele_html import ChampModeleHtml

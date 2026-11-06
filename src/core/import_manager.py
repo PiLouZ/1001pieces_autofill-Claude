@@ -1284,7 +1284,6 @@ class ImportManager:
         # Import hissé en tête : un « from .config import Config » plus bas dans la
         # fonction rendrait Config local à TOUTE la fonction (UnboundLocalError sur
         # les usages antérieurs).
-        from .config import Config
 
         results = {
             'total_imported': 0,
@@ -2071,8 +2070,6 @@ class ImportManager:
             cursor = conn.cursor()
             try:
                 # Traiter par chunks pour optimiser SQLite
-                total_chunks = (len(devices_batch) + chunk_size - 1) // chunk_size
-
                 for i in range(0, len(devices_batch), chunk_size):
                     chunk = devices_batch[i:i + chunk_size]
 
@@ -2223,9 +2220,9 @@ class ImportManager:
         n = len(row)
         if config.column_mapping and n in config.column_mapping:
             data = {}
-            for i, field in enumerate(config.column_mapping[n]):
-                if i < n and field != "ignore" and row[i] is not None:
-                    data[field] = str(row[i]).strip()
+            for i, champ in enumerate(config.column_mapping[n]):
+                if i < n and champ != "ignore" and row[i] is not None:
+                    data[champ] = str(row[i]).strip()
             if not any(v for v in data.values() if v):
                 return None
             self._normaliser_casse(data)

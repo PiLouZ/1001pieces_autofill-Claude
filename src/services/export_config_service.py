@@ -13,7 +13,6 @@ import copy
 import html
 import json
 import os
-import re
 from typing import Dict, Any, List, Tuple
 
 from .base_service import BaseService

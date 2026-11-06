@@ -4,7 +4,7 @@ Groupe les modifications multiples d'un même appareil en une seule entrée
 """
 
 from contextlib import nullcontext
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from datetime import datetime
 from ..utils.qt_imports import QTimer, QObject, pyqtSignal
 from ..core.logger import app_logger
