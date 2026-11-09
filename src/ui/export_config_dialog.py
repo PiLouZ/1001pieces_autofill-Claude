@@ -822,15 +822,16 @@ class ExportConfigDialog(QDialog):
         self.details_colonne.load(self.export_config_service.get_details_profiles(),
                                   self.export_config_service.get_default_details_profile_name())
 
+        # Appellations des appareils dans les textes générés (avant Titre : son
+        # aperçu les reprend pour les gabarits qui varient le nom de l'appareil)
+        self.appareils_tab.load(config['synonymes_appareils'])
+
         # Gabarits du bouton Titre
         self.titre_tab.load(config['titre'])
 
         # Variantes du bouton Fiche complète (après Titre et HTML Détails :
         # elles listent leurs gabarits)
         self.fiche_tab.load(config['fiche'])
-
-        # Appellations des appareils dans les textes générés
-        self.appareils_tab.load(config['synonymes_appareils'])
 
     # ─── Profils HTML Détails (copie de travail : self.details_colonne) ──────
 

@@ -33,8 +33,12 @@ SYNONYME, SOUS_TYPE = "synonyme", "sous_type"
 CHAMPS = {
     "meta_title": "Méta title",
     "meta_description": "Méta description",
-    "titre": "Titre (et fiche complète)",
 }
+
+# Titres : réglés gabarit par gabarit (case « Varier le nom de l'appareil » de
+# l'onglet Titre), pas ici. Le service ne passe les appellations au générateur
+# que pour un gabarit coché ; ce champ varie donc dès qu'on le demande.
+TITRE = "titre"
 
 
 def _v(terme: str, genre: str, nature: str = SYNONYME, actif: Optional[bool] = None) -> Dict:
@@ -89,9 +93,8 @@ CONFIG_PAR_DEFAUT: Dict[str, Any] = {
     "actif": True,
     # Part du terme principal (type en base) dans les tirages, en %
     "part_principal": 50,
-    # Méta title et Titre : toujours le terme principal (le nom en base) ;
-    # seule la méta description varie par défaut
-    "champs": {"meta_title": False, "meta_description": True, "titre": False},
+    # Méta title : toujours le terme principal (le mot-clé qui pèse le plus)
+    "champs": {"meta_title": False, "meta_description": True},
     "appareils": APPAREILS_PAR_DEFAUT,
 }
 
@@ -181,10 +184,14 @@ class Appellations:
         return Appellation(type_norm, entree["genre"] if entree else MASCULIN, True)
 
     def candidates(self, type_norm: str, champ: str) -> List[Appellation]:
-        """Principal puis appellations actives ; principal seul si le champ ne varie pas."""
+        """Principal puis appellations actives ; principal seul si le champ ne varie pas.
+
+        Un champ hors CHAMPS (le Titre) varie toujours : son gabarit en décide.
+        """
         principal = self.principal(type_norm)
         entree = self._par_type.get(cle_type(type_norm))
-        if not (entree and self.config["actif"] and self.config["champs"].get(champ)):
+        champ_coupe = champ in CHAMPS and not self.config["champs"].get(champ)
+        if not (entree and self.config["actif"]) or champ_coupe:
             return [principal]
         return [principal] + [Appellation(v["terme"], v["genre"], False)
                               for v in entree["variantes"] if v["actif"]]

@@ -10,7 +10,8 @@ colonne de gauche (ColonneVariantes), qui en garde la copie de travail jusqu'à
 
 import copy
 
-from ..utils.qt_imports import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox, QTextBrowser
+from ..utils.qt_imports import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox,
+                                QTextBrowser, QCheckBox)
 from .champ_modele_html import ChampModeleHtml
 from .colonne_variantes import ColonneVariantes
 from src.utils.titre_produit_generator import TitreProduitGenerator
@@ -78,6 +79,13 @@ class TitreConfigTab(QWidget):
                                                 "(seuls ceux qui pèsent à peu près autant que le premier)")
         add_row(grid, "Types au plus :", self._seul(self.max_types_spin))
 
+        self.varier_check = QCheckBox("Varier le nom de l'appareil")
+        self.varier_check.setToolTip(
+            "Cochée : le type peut être cité sous une autre appellation (« machine à laver »\n"
+            "pour « lave-linge »), selon l'onglet Appareils. Décochée : le nom en base.\n"
+            "Utile pour un gabarit repris dans une description.")
+        add_row(grid, "Appareil :", self._seul(self.varier_check))
+
         self.max_car_spin = self._spin(0, 500, "Longueur maximale du titre (0 = sans limite)")
         self.max_car_spin.setSuffix(" car.")
         self.max_car_spin.setSpecialValueText("Sans limite")
@@ -113,6 +121,7 @@ class TitreConfigTab(QWidget):
             champ.textChanged.connect(self._update_preview)
         for spin in (self.max_marques_spin, self.max_types_spin, self.max_car_spin):
             spin.valueChanged.connect(self._update_preview)
+        self.varier_check.toggled.connect(self._update_preview)
 
     @staticmethod
     def _paire_separateurs(add_row, grid, libelle, entre_quoi, avant_quoi):
@@ -162,6 +171,7 @@ class TitreConfigTab(QWidget):
         profile['max_marques'] = self.max_marques_spin.value()
         profile['max_types'] = self.max_types_spin.value()
         profile['max_caracteres'] = self.max_car_spin.value()
+        profile['varier_appareil'] = self.varier_check.isChecked()
         profile.update(self._separateurs())
         profile.pop('separateur', None)
         profile.pop('dernier_separateur', None)
@@ -171,6 +181,7 @@ class TitreConfigTab(QWidget):
         self.max_marques_spin.setValue(profile.get('max_marques', 4))
         self.max_types_spin.setValue(profile.get('max_types', 3))
         self.max_car_spin.setValue(profile.get('max_caracteres', 120))
+        self.varier_check.setChecked(bool(profile.get('varier_appareil', False)))
         self.sep_marques_input.setText(profile.get('separateur_marques', ', '))
         self.dernier_sep_marques_input.setText(profile.get('dernier_separateur_marques', ' et '))
         self.sep_types_input.setText(profile.get('separateur_types', ', '))
@@ -196,14 +207,27 @@ class TitreConfigTab(QWidget):
             'max_caracteres': self.max_car_spin.value(),
             **self._separateurs(),
         }
+        appellations = self._appellations() if self.varier_check.isChecked() else None
         lignes = []
         for libelle, poids_types, marques, reference in _APERCU_TITRE:
             types = self._generateur.types_proches(poids_types, profil['max_types'])
-            r = self._generateur.generer(profil, libelle, types, marques, reference)
+            r = self._generateur.generer(profil, libelle, types, marques, reference,
+                                         appellations=appellations)
             nb = len(r['info']['marques_retenues'])
             resume = f"{r['longueur']} car. — {nb} marque{'s' if nb > 1 else ''} sur {len(marques)}"
             lignes.append((r['titre'], resume))
         return lignes
+
+    def showEvent(self, event):
+        """Aperçu à jour des appellations modifiées entre-temps dans l'onglet Appareils."""
+        super().showEvent(event)
+        self._update_preview()
+
+    def _appellations(self):
+        """Appellations de l'onglet Appareils tel qu'affiché (non enregistré compris)."""
+        from src.utils.appellations_appareils import Appellations
+        onglet = getattr(self._dialog, 'appareils_tab', None)
+        return Appellations(onglet.collect() if onglet is not None else None)
 
     def _update_preview(self):
         import html

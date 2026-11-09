@@ -2,7 +2,8 @@
 Onglet « Appareils » de la configuration des exports
 
 Appellations des types d'appareils dans les textes générés (méta title, méta
-description, titre de fiche) : « lave-linge » peut être cité « machine à laver ».
+description, et les gabarits Titre qui le demandent) : « lave-linge » peut être
+cité « machine à laver ».
 À gauche les types (tels qu'en base) et leur genre, à droite les autres
 appellations du type sélectionné, en dessous la part de chacune et un exemple.
 La copie de travail (self._appareils) n'est enregistrée qu'avec « Enregistrer »
@@ -20,7 +21,7 @@ from ..utils.qt_imports import (
 from .style_manager import StyleManager
 from src.utils.appellations_appareils import (
     Appellations, CHAMPS, CONFIG_PAR_DEFAUT, FEMININ, MASCULIN, SOUS_TYPE, SYNONYME,
-    Appellation, cle_type,
+    Appellation, TITRE, cle_type,
 )
 
 import qtawesome as qta
@@ -359,7 +360,7 @@ class AppareilsConfigTab(QWidget):
         appellations = Appellations(self.collect())
         type_norm = cle_type(type_appareil)
         resultat = []
-        for champ, libelle in CHAMPS.items():
+        for champ, libelle in [*CHAMPS.items(), (TITRE, "Titres (gabarits cochés)")]:
             comptes = {}
             for i in range(_NB_REFS_APERCU):
                 choix = appellations.choisir(type_norm, f"REF{i}", champ)

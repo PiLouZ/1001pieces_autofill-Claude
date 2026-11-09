@@ -23,7 +23,7 @@ def _config(**modifs):
     return config
 
 
-TOUS_CHAMPS = {"meta_title": True, "meta_description": True, "titre": True}
+TOUS_CHAMPS = {"meta_title": True, "meta_description": True}
 
 
 def _parts(appellations, type_, champ, n=2000):
@@ -56,8 +56,11 @@ def test_meta_title_garde_le_terme_principal_par_defaut():
     assert set(_parts(Appellations(None), "lave-linge", "meta_title")) == {"lave-linge"}
 
 
-def test_titre_garde_le_nom_en_base_par_defaut():
-    assert set(_parts(Appellations(None), "lave-linge", "titre")) == {"lave-linge"}
+def test_titre_varie_quand_le_gabarit_le_demande():
+    """Le Titre n'a pas de case ici : c'est son gabarit qui décide (cf. TitreProduitService)."""
+    assert set(_parts(Appellations(None), "lave-linge", "titre")) == {"lave-linge",
+                                                                       "machine à laver"}
+    assert set(_parts(Appellations(_config(actif=False)), "lave-linge", "titre")) == {"lave-linge"}
 
 
 def test_variation_desactivee():
@@ -116,7 +119,7 @@ def test_config_nettoyee():
         ],
     })
     assert config["part_principal"] == 100
-    assert config["champs"] == {"meta_title": True, "meta_description": True, "titre": False}
+    assert config["champs"] == {"meta_title": True, "meta_description": True}
     assert [a["type"] for a in config["appareils"]] == ["lave-linge"]
     variantes = config["appareils"][0]["variantes"]
     assert [v["terme"] for v in variantes] == ["machine à laver", "lavante"]
@@ -218,12 +221,40 @@ PROFIL = {"template": "{libelle} pour {type} {marques} - {reference}", "max_marq
           "max_types": 3, "max_caracteres": 120}
 
 
-def test_titre_inchange_par_defaut():
-    gen = TitreProduitGenerator()
-    a = Appellations(_config(part_principal=0))
-    r = gen.generer(PROFIL, "pompe de vidange", ["Lave-linge"], ["Bosch"], "00145787",
-                    appellations=a)
-    assert r["titre"] == "Pompe de vidange pour lave-linge Bosch - 00145787"
+class _FenetreFactice:
+    """Juste ce que TitreProduitService.calculer_titre lit de la fenêtre principale."""
+
+    def __init__(self, service_config):
+        class _Seo:
+            @staticmethod
+            def poids_types_fiche(donnees):
+                return {"Lave-linge": 10}
+
+            @staticmethod
+            def appellations():
+                return Appellations(_config(part_principal=0))
+        self.export_config_service = service_config
+        self.seo_service = _Seo()
+
+
+@pytest.mark.parametrize("varier, attendu", [
+    (False, "Pompe de vidange pour lave-linge Bosch - 00145787"),
+    (True, "Pompe de vidange pour machine à laver Bosch - 00145787"),
+])
+def test_case_du_gabarit_titre(tmp_path, monkeypatch, varier, attendu):
+    from src.services import export_config_service as ecs
+    from src.ui.titre_produit_service import TitreProduitService
+    monkeypatch.setattr(ecs.ExportConfigService, "_resolve_config_path",
+                        staticmethod(lambda: str(tmp_path / "export_config.json")))
+    service = ecs.ExportConfigService()
+    assert service.get_titre_profile(None)["varier_appareil"] is False
+    config = service.get_config()
+    config["titre"]["profiles"][0]["varier_appareil"] = varier
+    assert service.save_config(config)
+    service = ecs.ExportConfigService()
+    donnees = {"description": "pompe de vidange", "fabricants": ["Bosch"], "reference": "00145787"}
+    resultat, _ = TitreProduitService(_FenetreFactice(service)).calculer_titre(donnees, None)
+    assert resultat["titre"] == attendu
 
 
 def test_titre_varie_si_demande():

@@ -86,7 +86,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "separateur_marques":         ", ",
                 "dernier_separateur_marques": " et ",
                 "separateur_types":           ", ",
-                "dernier_separateur_types":   " et "
+                "dernier_separateur_types":   " et ",
+                "varier_appareil":    False
             }
         ],
         "default_profile": "Format standard"
@@ -148,7 +149,7 @@ DETAILS_PROFILE_KEYS = (
 TITRE_PROFILE_KEYS = (
     "template", "max_marques", "max_types", "max_caracteres",
     "separateur_marques", "dernier_separateur_marques",
-    "separateur_types", "dernier_separateur_types"
+    "separateur_types", "dernier_separateur_types", "varier_appareil"
 )
 # Séparateurs communs d'avant la 3.99.1 → repris pour les marques ET les types
 TITRE_ANCIENS_SEPARATEURS = {
@@ -312,6 +313,7 @@ class ExportConfigService(BaseService):
                     profile[k] = max(0, int(profile[k]))
                 except (TypeError, ValueError):
                     profile[k] = defaut[k]
+            profile['varier_appareil'] = profile['varier_appareil'] is True
             profile['name'] = str(p['name'])
             if str(p['name']) not in [q['name'] for q in profiles]:
                 profiles.append(profile)

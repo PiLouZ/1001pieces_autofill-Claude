@@ -73,6 +73,19 @@ def test_ajouter_et_supprimer(dialogue):
     assert len(onglet._appareils) == nb
 
 
+def test_case_varier_du_gabarit_titre(dialogue):
+    titre = dialogue.titre_tab
+    assert not titre.varier_check.isChecked()
+    assert all('machine à laver' not in t for t, _ in titre.apercu())
+    dialogue.appareils_tab.part_spin.setValue(0)
+    titre.varier_check.setChecked(True)
+    assert any('machine à laver' in t for t, _ in titre.apercu())
+    config = dialogue._collect_config()
+    assert config['titre']['profiles'][0]['varier_appareil'] is True
+    assert dialogue.export_config_service.save_config(config)
+    assert dialogue.export_config_service.get_titre_profile(None)['varier_appareil'] is True
+
+
 def test_apercu_parts(dialogue):
     onglet = dialogue.appareils_tab
     onglet.part_spin.setValue(100)
