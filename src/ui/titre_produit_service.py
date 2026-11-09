@@ -50,7 +50,8 @@ class TitreProduitService:
         types = self.generateur.types_proches(self.main_window.seo_service.poids_types_fiche(donnees),
                                               profil.get('max_types', 3))
         resultat = self.generateur.generer(profil, donnees['description'], types,
-                                           donnees['fabricants'], donnees['reference'])
+                                           donnees['fabricants'], donnees['reference'],
+                                           appellations=self.main_window.seo_service.appellations())
         return resultat, profil
 
     # ─── Contexte / rendu / copie (bouton et aperçu d'export) ───────────────

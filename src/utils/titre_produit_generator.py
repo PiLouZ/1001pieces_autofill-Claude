@@ -81,12 +81,16 @@ class TitreProduitGenerator:
         return " ".join(titre.split())
 
     def generer(self, profil: Dict[str, Any], libelle: str, types: List[str],
-                marques: List[str], reference: str) -> Dict[str, Any]:
+                marques: List[str], reference: str, appellations=None) -> Dict[str, Any]:
         """
         Titre selon `profil`, avec `types` et `marques` classés du plus au moins
         couvrant. Au-delà de `max_caracteres` (0 = sans limite), on retire la
         dernière marque jusqu'à n'en garder qu'une, puis le dernier type jusqu'à
         n'en garder qu'un ; jamais le libellé ni la référence. Coupe sans mention.
+
+        `appellations` (Appellations, facultatif) : chaque type peut être cité sous
+        une autre appellation si le champ « titre » varie, à condition de ne faire
+        retirer ni marque ni type de plus qu'avec les types en base.
         """
         libelle_net = self._seo._adjust_first_char((libelle or "").strip(), upper=True)
         reference_nette = (reference or "").strip()
@@ -95,18 +99,37 @@ class TitreProduitGenerator:
         marques_retenues = marques_dispo[:max(1, int(profil.get('max_marques', 4)))]
         limite = int(profil.get('max_caracteres', 0) or 0)
 
-        titre_complet = self._rendre(profil, libelle_net, types_retenus, marques_retenues,
+        def _ajuster(types_cites, marques_citees):
+            complet = self._rendre(profil, libelle_net, types_cites, marques_citees,
+                                   reference_nette)
+            rendu = complet
+            while limite and len(rendu) > limite:
+                if len(marques_citees) > 1:
+                    marques_citees = marques_citees[:-1]
+                elif len(types_cites) > 1:
+                    types_cites = types_cites[:-1]
+                else:
+                    break
+                rendu = self._rendre(profil, libelle_net, types_cites, marques_citees,
                                      reference_nette)
-        titre = titre_complet
-        while limite and len(titre) > limite:
-            if len(marques_retenues) > 1:
-                marques_retenues = marques_retenues[:-1]
-            elif len(types_retenus) > 1:
-                types_retenus = types_retenus[:-1]
-            else:
-                break
-            titre = self._rendre(profil, libelle_net, types_retenus, marques_retenues,
-                                 reference_nette)
+            return complet, rendu, types_cites, marques_citees
+
+        titre_complet, titre, types_cites, marques_finales = _ajuster(types_retenus,
+                                                                       marques_retenues)
+        appellations_citees = list(types_cites)
+        if appellations is not None:
+            termes = []
+            for t in types_retenus:
+                terme = appellations.choisir(t, reference_nette, 'titre').terme
+                if terme not in termes:
+                    termes.append(terme)
+            if termes != types_retenus:
+                complet_v, titre_v, types_v, marques_v = _ajuster(termes, marques_retenues)
+                if len(types_v) >= len(types_cites) and len(marques_v) >= len(marques_finales):
+                    titre_complet, titre, appellations_citees, marques_finales = (
+                        complet_v, titre_v, types_v, marques_v)
+                    types_cites = types_retenus[:len(types_v)]
+        marques_retenues, types_retenus = marques_finales, types_cites
 
         return {
             'titre': titre,
@@ -117,5 +140,6 @@ class TitreProduitGenerator:
                 'marques_retenues': marques_retenues,
                 'nb_marques_disponibles': len(marques_dispo),
                 'types_retenus': types_retenus,
+                'appellations': appellations_citees,
             },
         }

@@ -17,6 +17,8 @@ from typing import Dict, Any, List, Tuple
 
 from .base_service import BaseService
 from src.core.logger import app_logger
+from src.utils.appellations_appareils import (
+    Appellations, CONFIG_PAR_DEFAUT as SYNONYMES_PAR_DEFAUT, nettoyer_config as nettoyer_synonymes)
 
 
 # Valeurs par défaut = comportement actuel exact (zéro régression)
@@ -123,7 +125,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             }
         ],
         "default_profile": "Fiche standard"
-    }
+    },
+    # Appellations des appareils dans les textes générés (« lave-linge » /
+    # « machine à laver ») : cf. src/utils/appellations_appareils.py
+    "synonymes_appareils": SYNONYMES_PAR_DEFAUT,
 }
 
 # Clés éditables d'un profil Fiche (hors 'name')
@@ -257,6 +262,8 @@ class ExportConfigService(BaseService):
             merged['titre'] = self._merge_titre(loaded['titre'])
         if isinstance(loaded.get('fiche'), dict):
             merged['fiche'] = self._merge_fiche(loaded['fiche'])
+        if 'synonymes_appareils' in loaded:
+            merged['synonymes_appareils'] = nettoyer_synonymes(loaded['synonymes_appareils'])
         return merged
 
     @staticmethod
@@ -433,6 +440,10 @@ class ExportConfigService(BaseService):
         return self._config['html'].get('details_default_profile', 'Format standard')
 
     # ─── Accesseurs Titre ────────────────────────────────────────────────────
+
+    def get_appellations(self) -> Appellations:
+        """Appellations des appareils pour les textes générés (onglet « Appareils »)."""
+        return Appellations(self._config.get('synonymes_appareils'))
 
     def get_titre_profile_names(self) -> List[str]:
         return [p['name'] for p in self._config['titre']['profiles']]
