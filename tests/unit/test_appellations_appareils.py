@@ -23,6 +23,9 @@ def _config(**modifs):
     return config
 
 
+TOUS_CHAMPS = {"meta_title": True, "meta_description": True, "titre": True}
+
+
 def _parts(appellations, type_, champ, n=2000):
     comptes = {}
     for i in range(n):
@@ -46,15 +49,19 @@ def test_part_du_terme_principal_environ_50_pourcent():
 
 @pytest.mark.parametrize("part, attendu", [(100, {"lave-linge"}), (0, {"machine à laver"})])
 def test_part_extreme(part, attendu):
-    assert set(_parts(Appellations(_config(part_principal=part)), "lave-linge", "titre")) == attendu
+    assert set(_parts(Appellations(_config(part_principal=part)), "lave-linge", "meta_description")) == attendu
 
 
 def test_meta_title_garde_le_terme_principal_par_defaut():
     assert set(_parts(Appellations(None), "lave-linge", "meta_title")) == {"lave-linge"}
 
 
+def test_titre_garde_le_nom_en_base_par_defaut():
+    assert set(_parts(Appellations(None), "lave-linge", "titre")) == {"lave-linge"}
+
+
 def test_variation_desactivee():
-    assert set(_parts(Appellations(_config(actif=False)), "lave-linge", "titre")) == {"lave-linge"}
+    assert set(_parts(Appellations(_config(actif=False)), "lave-linge", "meta_description")) == {"lave-linge"}
 
 
 def test_sous_types_desactives_par_defaut():
@@ -62,14 +69,14 @@ def test_sous_types_desactives_par_defaut():
     sous_types = [v for v in chauffage["variantes"] if v["nature"] == SOUS_TYPE]
     assert {v["terme"] for v in sous_types} == {"radiateur", "sèche-serviette", "accumulateur"}
     assert not any(v["actif"] for v in sous_types)
-    assert set(_parts(Appellations(None), "chauffage", "titre")) == {"chauffage",
-                                                                      "appareil de chauffage"}
+    assert set(_parts(Appellations(None), "chauffage", "meta_description")) == {
+        "chauffage", "appareil de chauffage"}
 
 
 def test_type_inconnu_ou_sans_variante():
     a = Appellations(None)
-    assert a.choisir("tireuse à bière", "R1", "titre").terme == "tireuse à bière"
-    assert a.choisir("four", "R1", "titre").terme == "four"
+    assert a.choisir("tireuse à bière", "R1", "meta_description").terme == "tireuse à bière"
+    assert a.choisir("four", "R1", "meta_description").terme == "four"
 
 
 def test_type_reconnu_apres_normalisation():
@@ -79,7 +86,7 @@ def test_type_reconnu_apres_normalisation():
 
 def test_champs_independants():
     """Une même fiche peut citer les deux appellations (tirages distincts par champ)."""
-    a = Appellations(None)
+    a = Appellations(_config(champs=TOUS_CHAMPS))
     differents = sum(a.choisir("lave-linge", f"R{i}", "titre")
                      != a.choisir("lave-linge", f"R{i}", "meta_description") for i in range(200))
     assert differents > 50
@@ -109,7 +116,7 @@ def test_config_nettoyee():
         ],
     })
     assert config["part_principal"] == 100
-    assert config["champs"] == {"meta_title": True, "meta_description": True, "titre": True}
+    assert config["champs"] == {"meta_title": True, "meta_description": True, "titre": False}
     assert [a["type"] for a in config["appareils"]] == ["lave-linge"]
     variantes = config["appareils"][0]["variantes"]
     assert [v["terme"] for v in variantes] == ["machine à laver", "lavante"]
@@ -197,8 +204,7 @@ def test_meta_title_inchange_par_defaut():
 
 def test_meta_title_varie_si_demande_et_tient_en_entier():
     gen = SEOGenerator()
-    a = Appellations(_config(part_principal=0, champs={"meta_title": True,
-                                                       "meta_description": True, "titre": True}))
+    a = Appellations(_config(part_principal=0, champs=TOUS_CHAMPS))
     r = gen.generate_meta_title(reference="R1", description="Pompe", type_appareil="Lave-linge",
                                 fabricants=["Bosch"], appellations=a)
     assert "machine à laver" in r["title"] and not r["info"]["truncated"]
@@ -212,9 +218,17 @@ PROFIL = {"template": "{libelle} pour {type} {marques} - {reference}", "max_marq
           "max_types": 3, "max_caracteres": 120}
 
 
-def test_titre_varie():
+def test_titre_inchange_par_defaut():
     gen = TitreProduitGenerator()
     a = Appellations(_config(part_principal=0))
+    r = gen.generer(PROFIL, "pompe de vidange", ["Lave-linge"], ["Bosch"], "00145787",
+                    appellations=a)
+    assert r["titre"] == "Pompe de vidange pour lave-linge Bosch - 00145787"
+
+
+def test_titre_varie_si_demande():
+    gen = TitreProduitGenerator()
+    a = Appellations(_config(part_principal=0, champs=TOUS_CHAMPS))
     r = gen.generer(PROFIL, "pompe de vidange", ["Lave-linge"], ["Bosch", "Siemens"], "00145787",
                     appellations=a)
     assert r["titre"] == "Pompe de vidange pour machine à laver Bosch et Siemens - 00145787"
@@ -231,7 +245,7 @@ def test_titre_sans_appellations_inchange():
 def test_titre_appellation_ne_coute_pas_de_marque():
     gen = TitreProduitGenerator()
     profil = dict(PROFIL, max_caracteres=len("Pompe pour lave-linge Bosch et Siemens - 00145787"))
-    a = Appellations(_config(part_principal=0))
+    a = Appellations(_config(part_principal=0, champs=TOUS_CHAMPS))
     r = gen.generer(profil, "pompe", ["Lave-linge"], ["Bosch", "Siemens"], "00145787",
                     appellations=a)
     assert r["titre"] == "Pompe pour lave-linge Bosch et Siemens - 00145787"
@@ -250,4 +264,4 @@ def test_config_des_exports(tmp_path, monkeypatch):
     assert service.save_config(config)
     relu = ecs.ExportConfigService()
     assert relu.get_config()["synonymes_appareils"]["actif"] is False
-    assert relu.get_appellations().choisir("lave-linge", "R1", "titre").terme == "lave-linge"
+    assert relu.get_appellations().choisir("lave-linge", "R1", "meta_description").terme == "lave-linge"

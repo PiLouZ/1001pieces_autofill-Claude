@@ -89,8 +89,9 @@ CONFIG_PAR_DEFAUT: Dict[str, Any] = {
     "actif": True,
     # Part du terme principal (type en base) dans les tirages, en %
     "part_principal": 50,
-    # Méta title : toujours le terme principal (le mot-clé qui pèse le plus)
-    "champs": {"meta_title": False, "meta_description": True, "titre": True},
+    # Méta title et Titre : toujours le terme principal (le nom en base) ;
+    # seule la méta description varie par défaut
+    "champs": {"meta_title": False, "meta_description": True, "titre": False},
     "appareils": APPAREILS_PAR_DEFAUT,
 }
 

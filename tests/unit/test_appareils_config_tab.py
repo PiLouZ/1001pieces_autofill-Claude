@@ -46,7 +46,7 @@ def test_activer_un_sous_type_puis_enregistrer(dialogue):
                      ['synonymes_appareils']['appareils'] if a['type'] == 'chauffage')
     assert chauffage['variantes'][1]['actif'] is True
     appellations = dialogue.export_config_service.get_appellations()
-    termes = {appellations.choisir('chauffage', f'R{i}', 'titre').terme for i in range(300)}
+    termes = {appellations.choisir('chauffage', f'R{i}', 'meta_description').terme for i in range(300)}
     assert 'radiateur' in termes
 
 
