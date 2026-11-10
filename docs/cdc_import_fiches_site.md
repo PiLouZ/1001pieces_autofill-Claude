@@ -1,0 +1,338 @@
+# Cahier des charges — Reprise des fiches produit du site 1001pieces.com
+
+**Statut :** À réaliser — conception validée le 2026-11-10, rien n'est codé
+**Version :** 1.0
+**Contexte :** le site 1001pieces.com (PrestaShop) contient des milliers de fiches produit qui listent les appareils compatibles et les relations entre pièces (remplacements, équivalences). Une partie de ces fiches a été produite par l'outil (export « Fiche complète »), une autre a été écrite à la main dans le back-office. Ce document définit comment reprendre ces données dans l'outil, puis comment l'outil devient la passerelle qui alimente le site.
+
+L'outil CompatsRadar (artefact du technicien) a servi de point de départ : il lit la même liste « Appareils employant cette pièce », mais dans l'autre sens (description → compatibilités EveryParts). Ses règles de lecture (formats de références, groupes de marques, normalisation de la ponctuation) sont réutilisées ici.
+
+---
+
+## 1. Objectifs
+
+- Reprendre dans l'outil, en une fois, le contenu des fiches du site : pièces, appareils compatibles, remplacements, équivalences, EAN.
+- Ensuite, lire une fiche à la demande à partir de son lien, pour les fiches modifiées directement dans le back-office.
+- Ne rien écraser ni supprimer : l'import **ajoute** des données. Tout doute est **validé par l'utilisateur**.
+- Faire de l'outil la référence pour les appareils, les compatibilités et les relations entre pièces, puis régénérer les descriptions du site avec les gabarits « Fiche complète ».
+
+**Hors périmètre :** l'alimentation d'EveryParts (l'export actuel des compatibilités suffit, car EveryParts crée les appareils à la volée) et ServiceNet (portail Whirlpool, cité seulement comme illustration).
+
+---
+
+## 2. Volumes mesurés (2026-11-10)
+
+| | Site PrestaShop | Outil |
+|---|---|---|
+| Produits ou pièces | 13 303 (13 090 actifs) | 5 856 pièces réelles |
+| Descriptions avec liste d'appareils | 9 187 | — |
+| Descriptions avec « Remplace les références » | 2 946 | 2 363 remplacements |
+| Descriptions avec « Références équivalentes » | 740 | 163 groupes, 754 références |
+| Liens pièce → appareil | 6 956 846 (table EveryParts, 4 224 produits) | 5 081 891 |
+| Appareils par produit, en moyenne | ≈ 1 650 | ≈ 870 |
+| Appareils | — | 717 250 |
+
+Conséquences :
+- Pour environ 5 000 produits, la description est la **seule** source de compatibilités : il n'y a pas de lien dans la table du site.
+- La base de l'outil (≈ 1 Go) peut atteindre 1,5 à 2 Go. Le premier lot sert de mesure avant de lancer la suite (§ 7.4).
+- Un lot de 100 produits représente environ 165 000 lignes d'appareils : la validation se fait par catégorie de cas, pas ligne par ligne (§ 7).
+
+---
+
+## 3. Sources
+
+### 3.1 Export SQL PrestaShop — reprise initiale
+
+L'utilisateur a accès à la base du site. Deux exports CSV (séparateur `;`, champs entre `"`, en-têtes en première ligne), triés par `id_product` :
+
+- **Produits** (`emg_product`, `emg_product_lang` avec `id_lang = 1`, `emg_manufacturer`, `emg_category_lang`) : `id_produit`, `reference`, `nom_produit`, `marque`, `ean`, `categorie`, `actif`, **`description`**.
+- **Compatibilités** (`emg_ukooparts_compatibility`, `emg_ukooparts_engine`, `emg_ukooparts_manufacturer`, `emg_ukooparts_engine_type_lang`) : `id_produit`, `reference_appareil`, `modele_appareil`, `marque_appareil`, `type_appareil`.
+
+Les relations entre pièces (remplacements, équivalences) n'existent **que dans la description**. L'export des compatibilités ne suffit donc pas.
+
+### 3.2 Lien d'une fiche — au fil de l'eau
+
+La page publique d'une fiche contient tout ce qu'il faut, sans accès à la base :
+- la **description** balisée (§ 4.1) ;
+- la **table des compatibilités** EveryParts (bloc `ucpt-table`), quand elle existe : type, marque, `réf - nom` pour chaque appareil ;
+- la **catégorie** du produit dans les métadonnées (par exemple « Pompe de vidange - Lave-linge »).
+
+Il est aussi possible de coller la description (le HTML du back-office ou le texte).
+
+### 3.3 Un seul lecteur
+
+Les deux sources passent par **le même lecteur de description**. Il n'y a ainsi qu'une seule règle de lecture à maintenir.
+
+---
+
+## 4. Lecture d'une description
+
+### 4.1 Structure actuelle des fiches
+
+```html
+<h2 class="class_perso1">Pompe de vidange … <span class="class_perso6">(photos non contractuelles)</span></h2>
+<div class="class_perso2">Compatible avec <a href="#Balay">Balay</a> <a href="#Bauknecht">Bauknecht</a> …</div>
+<div class="class_perso3">Code produit : 481073071153 C00319033</div>
+<div class="class_perso3 class_perso6">Remplace les références : C00535957 488000535957 C00309416 482000032568</div>
+<div class="class_perso3 class_perso6">Références équivalentes : 00145522</div>
+<div class="class_perso3 class_perso6">Références équivalentes : 481949</div>
+<div class="class_perso4">Appareils compatibles :</div>
+<div class="class_perso5">
+  <div id="Balay"><b><u>Balay</u></b></div>
+  <div>3TL865/02 - 3TL865</div>
+  …
+</div>
+```
+
+| Bloc | Contenu | Rangement dans l'outil |
+|---|---|---|
+| `Compatible avec` | liste des marques | indice pour reconnaître les marques (§ 4.4), rien n'est enregistré |
+| `Code produit` | 1 à 3 références | la 1ʳᵉ = la pièce, les suivantes = équivalentes (§ 5.1) |
+| `Remplace les références` | anciennes références | remplacements vers la pièce (§ 5.4) |
+| `Références équivalentes` | une ligne par origine | groupe d'équivalence avec étiquette d'origine (§ 5.3) |
+| Titre de la liste | « Appareils compatibles : », anciennement « Appareils employant cette pièce », autres variantes possibles | début de la liste |
+| Marque | `<div id="…">` | constructeur des lignes qui suivent |
+| Ligne `RÉF - NOM` | réf. modèle et nom commercial | appareil (§ 5.2) |
+
+### 4.2 Lecture guidée par les gabarits
+
+- Les gabarits « Fiche complète » de l'outil (`code_produit_template`, `remplace_template`, `equivalentes_template` dans la section `fiche` de la configuration des exports) servent **aussi** de modèles de lecture : le texte qui entoure `{reference}` ou `{references}` devient le repère.
+- **Tous les profils Fiche enregistrés** sont essayés. Chacun reçoit un score, égal au nombre de blocs reconnus (code produit, remplace, équivalentes, titre de liste), et le meilleur l'emporte.
+- En cas d'égalité, ou si aucun profil ne reconnaît l'essentiel, l'utilisateur choisit dans l'aperçu. L'outil se rabat alors sur le **repérage par texte** (libellés « Code produit : », « Remplace les références : », titres de liste connus), sur le modèle de CompatsRadar.
+- Si un gabarit est modifié, l'export **et** la lecture suivent ensemble. Il n'y a pas de réglage de lecture séparé.
+
+### 4.3 Normalisation avant comparaison
+
+La fiche et les gabarits sont réduits à la même forme avant d'être comparés :
+- **on garde** le découpage en blocs (`div`, `p`, `br`), les classes et le texte ;
+- **on ignore** les balises de mise en forme (`b`, `u`, `strong`, `em`, `span`) et les attributs `style` ;
+- les espaces multiples et les `&nbsp;` sont ramenés à un seul espace.
+
+Les variantes de mise en forme (gras en balise ou en CSS inline) n'ont donc aucun effet sur la lecture.
+
+### 4.4 Reconnaître une marque
+
+On ne s'appuie pas sur le gras, mais sur un faisceau d'indices :
+- un bloc sans ` - ` ;
+- dont le texte figure dans la ligne « Compatible avec » ou parmi les marques connues de la base ;
+- ou qui porte un `id`.
+
+Une marque inconnue est un doute.
+
+### 4.5 Lignes d'appareils
+
+- Le format actuel est `RÉF - NOM`.
+- Les formats anciens restent reconnus : Bosch-Siemens `RÉF/01 NOM`, et numéros PNC Electrolux de 8 à 13 chiffres alignés sur une ligne. Ce sont les règles de CompatsRadar.
+- Les noms commerciaux tronqués (`ITW A 51052 W1 (DE`) ou de casse variable (`WATEco10Di` / `WATECO10DI`) sont lus tels quels. Ils ne servent pas à identifier l'appareil (§ 5.2).
+
+### 4.6 Liste tronquée
+
+Une fiche exportée par l'outil peut avoir une liste d'appareils réduite par la limite de caractères (`max_caracteres`). Le lecteur doit repérer une liste coupée, pour ne pas en tirer de faux « absents » (§ 6.2).
+
+---
+
+## 5. Rapprochement avec la base
+
+### 5.1 Identité de la pièce
+
+- `ref_piece` = **la 1ʳᵉ référence du « Code produit »**.
+- `p.reference` (PrestaShop) sert de secours quand la ligne manque. Un écart entre les deux est un doute : la référence interne du site peut varier.
+- Les références suivantes du « Code produit » (Indesit, Beko…) sont **équivalentes** à la pièce. Elles n'ont pas forcément la même liste d'appareils : **la liste de la fiche s'attache à la pièce principale seule**.
+- Une pièce présente en base comme **fantôme** (`is_phantom = 1`) devient une pièce réelle quand elle correspond à un produit du site. Ses liens hérités ne changent pas.
+- **EAN :** nouvelle colonne `pieces.ean`, vide par défaut. C'est une donnée commerciale, donc le site fait foi :
+
+| Situation | Action |
+|---|---|
+| EAN vide dans l'outil | rempli depuis le site |
+| même EAN | rien |
+| EAN différent | doute |
+| clé de contrôle EAN-13 fausse | signalé, non enregistré |
+
+Attention aux produits génériques : leur EAN peut être celui du générique et non de la pièce d'origine. Une incohérence est un doute.
+
+### 5.2 Appareils
+
+Un appareil est identifié par **marque + réf. modèle normalisée**. La normalisation ignore la ponctuation (espaces, tirets, `/`) et suit la casse des marques de l'outil.
+
+| Niveau | Règle | Traitement |
+|---|---|---|
+| Exact | marque et réf. modèle identiques | lié |
+| Normalisé | identiques à la ponctuation près | lié |
+| Déjà couvert | l'appareil est déjà lié à une autre référence de la lignée de la pièce (prédécesseur, successeur ou équivalente) | **pas de nouveau lien** ; rattachement direct possible sur demande dans l'aperçu |
+| À valider | référence trouvée sous une autre marque du groupe ou un autre type, ou seulement par le nom commercial | l'utilisateur choisit |
+| Absent | inconnu de la base | création de l'appareil, validée dans l'aperçu |
+
+- **Le nom commercial n'est jamais écrasé** à partir d'une fiche.
+- La lignée se calcule **une fois par fiche** (chaîne de remplacements et groupe d'équivalence), et non une fois par appareil.
+
+Cas observé : la fiche BSH `11051894` liste 450 appareils. Dans l'outil, ce sont exactement les liens de ses 4 prédécesseurs (306 + 2 + 20 + 122). Ils sont tous « déjà couverts » : rien n'est ajouté.
+
+### 5.3 Équivalences et étiquette d'origine
+
+- **Un seul groupe d'équivalence par pièce**, comme aujourd'hui : l'outil fusionne les groupes et l'équivalence se propage.
+- Chaque membre du groupe reçoit une **étiquette d'origine**, par exemple « BSH ». L'outil mémorise aussi **la ligne de la fiche** d'où vient la référence. Les lignes peuvent ainsi être réécrites à l'identique, même sans étiquette.
+- L'étiquette est **déduite du format** de la référence (§ 5.5). Sinon, elle est **saisie dans l'aperçu**.
+- Une référence reconnue comme une erreur peut être **écartée**. Elle est consignée comme telle et n'est plus proposée. Exemple : `481949` sur la fiche de la pompe 481073071153.
+
+Il faut donc ajouter une colonne d'origine (et le numéro de ligne) sur `piece_equivalence_groups`, vide pour les 754 références existantes.
+
+### 5.4 Remplacements
+
+« Remplace les références : X Y » signifie X → pièce et Y → pièce. Les anciennes références absentes de la base sont créées comme fantômes, comme aujourd'hui.
+
+En cas de conflit (X a déjà un autre successeur Z) :
+1. **vérifier la chaîne** (`get_supersession_chain`) : si la pièce de la fiche se trouve plus loin dans la chaîne de Z, la fiche confirme la lignée et il n'y a pas de conflit ;
+2. sinon, c'est un **doute** : l'aperçu propose de garder l'existant ou de prendre la fiche.
+
+Entre paires Whirlpool/Indesit, le remplacement se fait **terme à terme** : `481244019535 → 481244010747` et `C00338369 → C00314482`. On ne croise jamais les marques. L'appariement s'appuie sur la forme des références (§ 5.5), pas sur leur position dans la ligne.
+
+### 5.5 Table des formats de références
+
+La table est tirée des pièces de la base (marque dominante des appareils liés). Elle est validée dans les grandes lignes et doit vivre **en configuration**, modifiable sans PR. Les règles sont appliquées de la plus précise à la plus large : la première qui correspond l'emporte.
+
+| Motif | Origine |
+|---|---|
+| `48` + 10 chiffres | Whirlpool |
+| `C00` + 6 chiffres | Indesit (groupe Whirlpool) |
+| `00` + 6 chiffres | BSH (ancien format) |
+| 8 chiffres commençant par `10`, `11`, `12`, `17`, `20` | BSH |
+| 8 chiffres commençant par `41`, `43`, `49`, `70`, `91`, `92`, `93` | Candy (Hoover, Rosières) |
+| 10 chiffres commençant par `17`, `18`, `28` | Beko |
+| 10 chiffres, autres débuts | Electrolux |
+| 11 chiffres commençant par `50`, 12 chiffres commençant par `14` | Electrolux |
+| 9 chiffres commençant par `61`, `71`, `74`, `95` | Liebherr |
+| 9 chiffres commençant par `69`, `75`, `81` | Smeg |
+| 7 chiffres | Miele |
+| 6 chiffres commençant par `0` | Atlantic / Thermor |
+| `92X` + 4 chiffres, `AS` + 7 chiffres | Brandt (De Dietrich, Sauter, Fagor) |
+| `DD82-…`, `DA97-…`, `DC31-…` | Samsung |
+| 3 lettres + 8 chiffres | LG |
+
+Cas mélangés, donc des doutes : 10 chiffres commençant par `15` (Electrolux ou Beko), 8 chiffres commençant par `42` (Candy ou Sharp), 8 chiffres commençant par `32` (Sharp ?), 9 chiffres commençant par `16` ou `26` (Beko ?).
+
+**Apprentissage :** les choix de l'utilisateur sur les cas inconnus sont consignés, comme le font déjà `reference_decisions` et `refus_completions`. Une série de choix identiques sur une même forme devient une **règle proposée**, ajoutée à la table seulement après validation.
+
+### 5.6 Type d'appareil
+
+La description ne donne pas le type, et certaines fiches mélangent plusieurs types. Le type se décide **appareil par appareil** :
+1. la table des compatibilités du site (`type_appareil`) ;
+2. l'appareil déjà en base (même marque et même réf. modèle). Si la base le connaît sous deux types, c'est un doute ;
+3. la catégorie du produit, seulement si elle désigne un seul type sans ambiguïté (table de correspondance catégorie → type) ;
+4. sinon, c'est un doute, regroupé par fiche dans le résumé.
+
+### 5.7 Provenance des liens
+
+Les liens pièce → appareil sont **l'union** de la description et de la table du site. Une nouvelle colonne de provenance sur `piece_associations` prend la valeur « description », « table du site » ou « les deux ». Elle reste vide pour les liens existants (PDF, CSV, saisie). Un lien déjà présent ne crée pas de doublon (`UNIQUE(piece_id, appareil_id)`) : seule sa provenance est complétée.
+
+---
+
+## 6. Qui fait foi, relecture
+
+### 6.1 Partage
+
+| Donnée | Fait foi |
+|---|---|
+| Appareils, compatibilités, remplacements, équivalences | l'outil |
+| Nom du produit, prix, stock, catégorie, EAN | le site |
+
+### 6.2 Relire une fiche déjà importée
+
+- L'outil **ajoute seulement**.
+- Les liens présents dans l'outil mais absents de la fiche sont **signalés pour information**, sans proposition de retrait. Seuls les liens de provenance site sont concernés, et rien n'est signalé si la liste de la fiche est tronquée (§ 4.6).
+- Une fiche produite par l'outil et non modifiée depuis ne doit rien apporter : sa relecture sert de contrôle de cohérence.
+
+---
+
+## 7. Aperçu et import en masse
+
+### 7.1 Fiche seule
+
+Aperçu complet ligne à ligne, avec les niveaux du § 5.2, les relations (§ 5.3, 5.4) et les doutes. Rien n'est écrit avant validation.
+
+### 7.2 Import en masse
+
+- **Lots de 100 produits** (réglable), dans l'ordre de `id_produit`.
+- Chaque lot s'ouvre sur un **résumé par catégorie** : exacts, normalisés, déjà couverts, à valider, absents, conflits, types manquants, profils ambigus. Chaque catégorie se valide **en bloc**.
+- Le **détail complet** reste accessible, avec des filtres par niveau, type de relation et provenance, dans la vue virtuelle existante.
+
+### 7.3 Reprise
+
+- L'outil mémorise le dernier `id_produit` traité et la date de l'export : on peut fermer l'application et reprendre au lot suivant.
+- Un export plus récent est détecté : l'outil propose de repartir de zéro ou de continuer.
+- Relancer un lot ne crée pas de doublon.
+
+### 7.4 Premier lot de mesure
+
+Le premier lot sert à mesurer la part de liens déjà en base, la part de doutes et la croissance réelle de la base. Le rythme des lots suivants se décide à partir de ces chiffres.
+
+### 7.5 Passage par l'existant
+
+Le tout passe par le tronc commun d'import et par `EventDrivenSaveService` (conventions du projet).
+
+---
+
+## 8. Retour vers le site
+
+L'export « Fiche complète » (`src/utils/fiche_produit_generator.py`) produit déjà le format du site. Il reste deux écarts à combler :
+1. **une ligne « Références équivalentes » par origine**, alors qu'elles sont aujourd'hui toutes sur une ligne (`toutes_equivalentes`). On regroupe par étiquette, puis par ligne mémorisée ;
+2. **la paire dans le code produit**, par exemple `481073071153 C00319033`, alors que le gabarit n'en porte aujourd'hui qu'une (`{reference}`).
+
+La structure reste modifiable par les gabarits, comme pour les exports HTML. Les références écartées (§ 5.3) disparaissent de la fiche régénérée.
+
+---
+
+## 9. Évolutions du modèle de données
+
+Toutes les colonnes sont nullables et sans valeur par défaut calculée : leur ajout est instantané sous SQLite, même sur 5 millions de lignes.
+
+| Table | Ajout |
+|---|---|
+| `pieces` | `ean` |
+| `piece_associations` | provenance du lien |
+| `piece_equivalence_groups` | étiquette d'origine, n° de ligne de la fiche |
+| nouvelle | état de la reprise (dernier `id_produit`, date de l'export) |
+| nouvelle | décisions sur les formats et références écartées |
+| configuration | table des formats, correspondance catégorie → type |
+
+---
+
+## 10. Découpage proposé
+
+Chaque étape peut être testée seule :
+1. **Lecteur de description** : normalisation, gabarits, repérage par texte. Il n'écrit rien en base et se vérifie sur les 9 187 descriptions du site (part lue correctement, variantes de balises rencontrées).
+2. **Rapprochement** avec la base : niveaux, lignée, formats, type.
+3. **Aperçu et enregistrement** d'une fiche, avec les colonnes du § 9.
+4. **Import en masse** par lots, résumé, reprise.
+5. **Export** : une ligne par origine, paire dans le code produit.
+
+---
+
+## 11. Fiches d'exemple
+
+| Produit | Intérêt |
+|---|---|
+| 7285, pompe de vidange Whirlpool / Indesit (générique) | paire en code produit, remplacements, 2 lignes d'équivalentes dont une erreur, 16 marques, table du site présente |
+| 20746, régulateur de débit Electrolux | une seule référence, PNC, aucune table du site ; 831 lignes = 831 liens en base (fiche produite par l'outil) |
+| 20744, balconnet BSH | pièce fantôme en base, 4 remplacements ; 450 lignes = union des prédécesseurs |
+
+---
+
+## 12. Décisions arrêtées
+
+| Sujet | Décision |
+|---|---|
+| Source | export SQL pour la reprise, lien de fiche ensuite |
+| ServiceNet, EveryParts | hors périmètre |
+| Pièce principale | 1ʳᵉ réf. du code produit, `p.reference` en secours |
+| Liste d'appareils | sur la pièce principale seule |
+| Équivalences | un groupe, étiquette d'origine déduite du format, saisie en secours |
+| Appareils | union description et table, avec provenance |
+| Type | par appareil : table, base, catégorie, doute |
+| Remplacements | vérifier la chaîne avant de signaler un conflit |
+| Lignée | appareil déjà couvert = pas de nouveau lien, forçage possible |
+| Doutes | toujours validés par l'utilisateur, décisions consignées |
+| Relecture | ajout seul, absents signalés |
+| Qui fait foi | l'outil pour les relations, le site pour le commercial |
+| Lecture | tous les profils Fiche, HTML normalisé, repli texte |
+| Masse | lots de 100, résumé par catégorie, détail filtrable, reprise |
+| EAN | conservé sur la pièce, le site fait foi |
+| Retour vers le site | gabarits Fiche complète, une ligne par origine, paire |
