@@ -104,6 +104,18 @@ class AccesBaseLecture:
     def __exit__(self, *exc):
         self.fermer()
 
+    def oublier(self, marques: Optional[Iterable[str]] = None):
+        """Après une écriture (import en masse, étape 4) : oublie l'index des marques
+        touchées (toutes si None), et les écritures de marques et de types, qu'une
+        création a pu enrichir. Les autres index restent en cache."""
+        if marques is None:
+            self._index.clear()
+        else:
+            for m in marques:
+                self._index.pop(m, None)
+        self._marques = self._types = None
+        self._tables = None
+
     def _lignes(self, requete: str, params: Iterable = ()) -> List[tuple]:
         return self.cnx.execute(requete, list(params)).fetchall()
 

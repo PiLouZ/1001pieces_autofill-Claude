@@ -1,6 +1,6 @@
 # Cahier des charges — Reprise des fiches produit du site 1001pieces.com
 
-**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`), étape 2 (rapprochement, `src/utils/rapprochement_fiche/`) et étape 3 (aperçu et enregistrement d'une fiche) réalisées le 2026-11-12
+**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`), étape 2 (rapprochement, `src/utils/rapprochement_fiche/`), étape 3 (aperçu et enregistrement d'une fiche) et étape 4 (import en masse par lots, `src/utils/reprise_site/`) réalisées le 2026-11-12
 **Version :** 1.0
 **Contexte :** le site 1001pieces.com (PrestaShop) contient des milliers de fiches produit qui listent les appareils compatibles et les relations entre pièces (remplacements, équivalences). Une partie de ces fiches a été produite par l'outil (export « Fiche complète »), une autre a été écrite à la main dans le back-office. Ce document définit comment reprendre ces données dans l'outil, puis comment l'outil devient la passerelle qui alimente le site.
 
@@ -344,7 +344,7 @@ Toutes les colonnes sont nullables et sans valeur par défaut calculée : leur a
 | nouvelle `produits_site` | `ref_interne` (unique), `id_product`, `ref_piece` (pièce principale), `ean`, date de dernière lecture |
 | `piece_associations` | provenance du lien |
 | `piece_equivalence_groups` | étiquette d'origine, n° de ligne de la fiche |
-| nouvelle | état de la reprise (dernier `id_produit`, date de l'export) — étape 4 |
+| nouvelles | état de la reprise `reprise_site_etat` (dernier `id_produit`, date, tailles et chemins de l'export), journal des lots `reprise_site_lots` (durées, taille de la base, mesures), fiches mises de côté `reprise_site_de_cote` — **fait à l'étape 4** |
 | nouvelle | décisions sur les formats et références écartées |
 | nouvelle | décisions sur les paires d'écritures d'appareils (marque, écriture A, écriture B, « même » ou « distinct ») |
 | configuration | table des formats, correspondance catégorie → type, préfixes de référence interne, groupes et alias de marques : `data/reprise_fiches.json` (défauts dans `src/utils/rapprochement_fiche/configuration.py`, copie dans `data/reprise_fiches.example.json`) — **fait à l'étape 2** |
@@ -428,6 +428,39 @@ Vérification : fiches d'exemple sur un extrait de la vraie base (`tests/fixture
 - **Vérification** (`tests/unit/test_enregistrement_fiche.py`, sans réseau) : les 3 fiches d'exemple enregistrées puis relues sans rien ajouter, sur l'extrait **et** sur une copie de la vraie base (`scripts/mesurer_migration_fiches.py --fiches`) ; 20744 : la fantôme devient réelle, aucun nouveau lien ; 20746 : 831 provenances complétées, aucun lien créé ; 7285 : pièce créée avec le titre pour libellé, remplacements terme à terme, origines BSH / Indesit et n° de ligne, `481949` écartée puis plus proposée.
 
 ---
+
+### 10.4 Import en masse par lots — étape 4 (2026-11-12)
+
+- **Lecture des exports** (`src/utils/reprise_site/exports.py`) : les deux CSV sont lus **ensemble** (jointure par fusion sur `id_produit`, tri contrôlé : un export non trié est refusé). Un produit et ses compatibilités seulement sont en mémoire. `modele_appareil` (« RÉF - NOM ») donne le nom ; `reference_appareil` la référence. La table complète remplace la 1ʳᵉ page de la page publique (`table_site`) ; la marque du produit va en `marque_produit`. L'export complet (13 302 produits, 6 924 928 lignes de compatibilités) se parcourt en **12 s** ; reprendre en fin d'export coûte ≈ 11 s, une fois par session (le lecteur se garde d'un lot à l'autre).
+- **Lots** (`lot.py`) : 100 produits ayant un contenu (réglable), dans l'ordre de `id_produit`. Le résumé reprend les catégories de `decisions.py`, plus « profils ambigus » ; une décision vaut pour tout le lot. **Doutes regroupés** par genre et par forme, avec un choix en bloc : référence interne sans rapport avec le code produit (forme où les lettres restent, `ES99999`), EAN différent, libellé différent, référence interne d'une autre pièce, remplacement en conflit, équivalente sans étiquette (étiquette commune ou références écartées). Une fiche ouverte dans l'aperçu (`FicheSiteDialog`, mode « fiche du lot ») garde ses propres décisions.
+- **Référence interne différente** : c'est désormais un choix (`CHOIX_IDENTITE`) : enregistrer le produit avec cette référence (proposition) ou non. Elle passe donc par la catégorie « conflits », y compris pour une fiche seule.
+- **Écriture** (`RepriseSiteService`) : une connexion en lecture seule gardée toute la session (index des marques en cache ; seules les marques où des appareils ont été créés sont oubliées après un lot). Tous les appareils à créer du lot en **une** insertion du tronc d'import, puis chaque fiche par les briques de l'étape 3 (`EnregistrementFicheService._ecrire` reçoit les appareils déjà créés), puis, dans une seule transaction, le journal du lot, les fiches mises de côté et le dernier `id_produit`. Caches et sauvegarde événementielle une fois par lot. Analyse et écriture dans un thread, avec progression et annulation (entre deux fiches).
+- **Choix faits pour que la relance ne change rien** (constatés sur le 1er lot réel) :
+  - un appareil absent cité par **plusieurs fiches** du lot (même marque, même forme normalisée) n'est créé qu'une fois ;
+  - une ligne à compléter (absente sans type, ou « à valider » sans proposition, par exemple par le seul nom commercial) dont l'appareil est créé par une autre ligne du lot **partage cette création** ;
+  - un appareil à choisir parmi plusieurs dont **un seul** candidat est lié par une autre ligne de la même fiche (souvent la table du site, sous la bonne marque) est retenu dès le 1er passage. C'est la règle de mémoire de l'étape 3, appliquée à l'intérieur de la fiche ;
+  - une ligne « déjà couverte » dont l'appareil est lié quand même par une autre ligne apporte sa provenance au lien ; deux lignes qui visent le même appareil réunissent leurs provenances.
+- **Lecture** : « Réf. fabricant : 10/1863-5010 POUR APPAREILS VN606E » ne garde que la référence de tête ; la suite est un bloc non lu (sinon `POUR` et `APPAREILS` devenaient des équivalences).
+
+**Mesure du 1er lot** (`scripts/mesurer_lot_reprise.py`, copie de la vraie base par l'API backup, export complet, produits 7084 à 7191). Tout est validé en bloc, avec les propositions des groupes de doutes et les lignes à compléter laissées de côté : c'est la **borne haute** de la croissance.
+
+| | 1ᵉʳ lot |
+|---|---|
+| Fiches | 100 (83 pièces absentes de l'outil, 17 réelles), 22 sans aucun doute |
+| Lignes d'appareils | 50 929 (description 22 668, table 640, les deux 27 621) |
+| Niveaux | exact 45 410 (89,2 %), à valider 3 864 (7,6 %), absent 1 650 (3,2 %), exact multiple 5 |
+| **Déjà en base** | **47,0 %** (déjà liées 17 212, déjà couvertes 6 715) ; nouveaux liens 26 181 |
+| Doutes les plus fréquents (fiches) | réf. interne différente 31, lecture 31, à valider 28, libellé différent 17, marque à choisir 11, origine inconnue 8 |
+| Doutes regroupés | 17 groupes (dont 4 de réf. internes par forme), 3 profils ambigus |
+| Lignes à compléter laissées de côté | 374 |
+| Écrit | 1 329 appareils (1 382 lignes de création), 231 pièces, 25 230 liens (17 188 provenances complétées), 87 remplacements, 194 membres d'équivalence, 100 produits du site |
+| Durées | analyse **6,7 s**, écriture **0,5 s** |
+| **Croissance de la base** | **+9,9 Mo** (999,9 Mo au départ) |
+| Relance du même lot | **0** appareil, lien, provenance, relation ou produit ajouté |
+
+Sur 3 lots consécutifs (300 fiches), la base grandit de 26 Mo (9,9 + 11,1 + 5,1) et chaque lot prend moins de 10 s. Si ce rythme se maintient, les 133 lots ajouteraient de l'ordre de **1,1 à 1,3 Go** (en tout validé), pour une vingtaine de minutes de calcul ; c'est la validation des doutes qui fixera la durée réelle. Relancer le lot 1 **après** les lots 2 et 3 ajoute 11 liens et aucun doublon : ce sont des appareils créés par les lots suivants, que des lignes laissées de côté du lot 1 retrouvent maintenant.
+
+Vérification (`tests/unit/test_reprise_site.py`, sans réseau) : jointure des exports, tri contrôlé, lots et dernier `id_produit` ; lot sur une base construite (création partagée entre 2 fiches, groupe `ES99999` ignoré en bloc) ; interruption au milieu de l'écriture puis reprise, même résultat qu'un passage sans interruption ; relance sans aucun ajout ; fermer et reprendre au lot suivant ; export différent (repartir de zéro ou continuer) ; fiches mises de côté puis reprises ; profils ambigus laissés de côté ; lot des 3 fiches d'exemple sur l'extrait de la base ; fenêtre rendue hors écran.
 
 ## 11. Fiches d'exemple
 

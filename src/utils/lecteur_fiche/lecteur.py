@@ -357,6 +357,13 @@ class _Lecture:
             if not m or not (nom.isupper() or cle_marque(nom) in self.marques_connues):
                 return False
         refs = decouper_references(m.group('refs'))
+        # Références de tête seulement (avec un chiffre) : la suite est du texte
+        # (« 10/1863-5010 POUR APPAREILS VN606E »), signalée comme non lue
+        fin = next((k for k, r in enumerate(refs) if not any(c.isdigit() for c in r)), len(refs))
+        if fin < len(refs):
+            self.r.non_compris.append(NonCompris(
+                'bloc_non_lu', bloc.texte, bloc.index, ' '.join(refs[fin:])))
+            refs = refs[:fin]
         if refs:
             self.r.references_par_marque.append(LigneEquivalentes(
                 len(self.r.references_par_marque) + 1, refs, bloc.index, 'texte',

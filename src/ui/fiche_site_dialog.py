@@ -18,6 +18,11 @@ Fenêtre « Lire une fiche du site » : aperçu et enregistrement d'une fiche
 - Pièce : choix sur les doutes d'identité (EAN, libellé, référence interne).
 - Informations : liens absents de la fiche, ce que le lecteur n'a pas compris.
 
+Mode « fiche d'un lot » (import en masse, étape 4) : `on_decide` fourni, la
+fenêtre montre une fiche déjà rapprochée (`afficher(r, decisions)`), sans
+lien ni collage ; « Reprendre dans le lot » rend les décisions au lot au lieu
+d'écrire (l'écriture se fait avec tout le lot).
+
 Non bloquant : show() + callbacks, jamais exec_() (conventions du projet).
 """
 
@@ -48,7 +53,9 @@ _PROVENANCES = {'description': "description", 'table': "table du site", 'les_deu
 _STATUTS_PIECE = {'reelle': "pièce réelle", 'fantome': "fantôme → deviendra réelle",
                   'absente': "absente → sera créée"}
 _LIBELLES_CHOIX = {'site': "prendre l'EAN du site", 'outil': "garder l'EAN de l'outil",
-                   'garder': "garder l'existant", 'prendre': "prendre la fiche"}
+                   'garder': "garder l'existant", 'prendre': "prendre la fiche",
+                   'enregistrer': "enregistrer le produit avec cette réf.",
+                   'ignorer': "ne pas enregistrer le produit"}
 _COLONNES = ("N°", "Catégorie", "Niveau", "Lien", "Marque", "Réf. modèle", "Nom", "Type",
              "Provenance", "Choix", "Raison")
 
@@ -163,9 +170,11 @@ class FicheSiteDialog(QDialog):
     """Aperçu complet d'une fiche du site, puis enregistrement après validation."""
 
     def __init__(self, db_manager, main_window=None, on_enregistre: Optional[Callable] = None,
-                 service: Optional[EnregistrementFicheService] = None):
+                 service: Optional[EnregistrementFicheService] = None,
+                 on_decide: Optional[Callable[[DecisionsFiche], None]] = None):
         super().__init__(main_window)
-        self.setWindowTitle("Lire une fiche du site")
+        self.on_decide = on_decide
+        self.setWindowTitle("Fiche du lot" if on_decide else "Lire une fiche du site")
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.resize(1180, 820)
         self.main_window = main_window
@@ -177,6 +186,11 @@ class FicheSiteDialog(QDialog):
         self._types: List[str] = []
         self._marques: List[str] = []
         self._construire()
+        if on_decide is not None:
+            for w in (self.champ_lien, self.bouton_lien, self.bouton_coller):
+                w.setVisible(False)
+            self.bouton_enregistrer.setText("Reprendre dans le lot")
+            self.bouton_enregistrer.setIcon(qta.icon('fa5s.reply', color='white'))
 
     # =========================================================================
     # Construction
@@ -405,9 +419,12 @@ class FicheSiteDialog(QDialog):
             self._marques = self.service.marques_outil()
         self.afficher(r)
 
-    def afficher(self, r):
+    def afficher(self, r, decisions: Optional[DecisionsFiche] = None):
+        if not self._types:
+            self._types = self.service.types_outil()
+            self._marques = self.service.marques_outil()
         self.rapprochement = r
-        self.decisions = DecisionsFiche()
+        self.decisions = decisions if decisions is not None else DecisionsFiche()
         self.modele.charger(r.appareils, self.decisions)
         self.table.resizeColumnsToContents()
         self._remplir_carte()
@@ -677,9 +694,15 @@ class FicheSiteDialog(QDialog):
             texte = "Avant d'enregistrer — " + " ; ".join(raisons)
             self.etat.setStyleSheet(StyleManager.TEXTE_AVERTISSEMENT)
         self.etat.setText(texte)
-        self.bouton_enregistrer.setEnabled(p.pret)
+        # Fiche d'un lot : les décisions reviennent au lot même incomplètes (le lot
+        # signale alors la fiche « à compléter »)
+        self.bouton_enregistrer.setEnabled(p.pret or self.on_decide is not None)
 
     def _enregistrer(self):
+        if self.rapprochement is not None and self.on_decide is not None:
+            self.on_decide(self.decisions)
+            self.close()
+            return
         if self.rapprochement is None or not self.plan.pret:
             return
         QApplication.setOverrideCursor(Qt.WaitCursor)

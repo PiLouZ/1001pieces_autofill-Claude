@@ -47,6 +47,9 @@ CHOIX_IDENTITE = {
     'ean_different': ('site', 'outil'),
     'libelle_different': ('garder', 'prendre'),
     'ref_interne_autre_piece': ('prendre', 'garder'),
+    # Réf. interne sans rapport avec le code produit (codes fournisseur…) : le
+    # produit est enregistré avec elle, ou pas du tout (étape 4, traité en bloc)
+    'ref_interne_differente': ('enregistrer', 'ignorer'),
 }
 _FORME_CHIFFRES = re.compile(r'\d')
 _FORME_LETTRES = re.compile(r'[A-Za-z]')
@@ -174,6 +177,7 @@ class PlanEnregistrement:
     decisions_references: List[Tuple[str, str, str, Optional[str], str]] = field(default_factory=list)
     informations: List[str] = field(default_factory=list)
     a_completer: List[str] = field(default_factory=list)
+    lignes_a_completer: List[int] = field(default_factory=list)      # index des appareils à compléter
     en_attente: List[str] = field(default_factory=list)              # catégories en attente
 
     @property
@@ -221,8 +225,11 @@ class _Planificateur:
             return p
         p.en_attente = [CATEGORIES_RESUME[c] for c in self.cats if self._etat(c) == ATTENTE]
         self._identite()
+        self._differees: List[Tuple[int, AppareilRapproche]] = []
+        self._couverts: List[AppareilRapproche] = []
         for i, a in enumerate(self.r.appareils):
             self._appareil(i, a)
+        self._resoudre_par_la_fiche()
         for rp in self.r.remplacements:
             self._remplacement(rp)
         for e in self.r.equivalences:
@@ -252,6 +259,9 @@ class _Planificateur:
         if 'ref_interne_autre_piece' in doutes and \
                 self._choix_identite('ref_interne_autre_piece') != 'prendre':
             return                      # produit laissé à sa pièce actuelle
+        if 'ref_interne_differente' in doutes and \
+                self._choix_identite('ref_interne_differente') != 'enregistrer':
+            return                      # produit non enregistré (réf. interne écartée)
         ean = i.ean if i.statut_ean == 'valide' else None
         if 'ean_different' in doutes and self._choix_identite('ean_different') != 'site':
             ean = None                  # on garde l'EAN de l'outil (COALESCE)
@@ -285,15 +295,37 @@ class _Planificateur:
             self._creer(index, a, choix, categorie, cle)
             return
         if a.lien == 'deja_couvert' and not (choix is not None and choix.rattacher):
+            self._couverts.append(a)
             return                      # pas de nouveau lien (§ 5.2)
         ident = a.appareil_id if a.appareil_id is not None else a.proposition
         if ident is None and len(a.candidats) == 1:
             ident = a.candidats[0].id
         if ident is None:
-            p.a_completer.append(f"ligne {a.numero or 'table'} {a.marque or '?'} {a.ref_modele} : "
-                                 f"appareil à choisir parmi {len(a.candidats)}")
+            self._differees.append((index, a))
             return
         p.liens.append((ident, a.provenance))
+
+    def _resoudre_par_la_fiche(self):
+        """Appareil à choisir parmi plusieurs : si un seul candidat est lié par une
+        AUTRE ligne de la fiche (souvent la table du site, sous la bonne marque), c'est
+        lui — comme un candidat déjà lié à la pièce (rapprocher, memoires=True). Sans
+        cela, seule une relecture le trouverait. Sinon la ligne est à compléter."""
+        p = self.plan
+        lies = {c for c, _ in p.liens if not isinstance(c, tuple)}
+        for index, a in self._differees:
+            communs = {c.id for c in a.candidats} & lies
+            if len(communs) == 1:
+                p.liens.append((communs.pop(), a.provenance))
+                continue
+            p.a_completer.append(f"ligne {a.numero or 'table'} {a.marque or '?'} {a.ref_modele} : "
+                                 f"appareil à choisir parmi {len(a.candidats)}")
+            p.lignes_a_completer.append(index)
+        # Ligne « déjà couverte » dont l'appareil est lié quand même par une autre
+        # ligne : le lien existera, il porte aussi sa provenance
+        lies = {c for c, _ in p.liens if not isinstance(c, tuple)}
+        for a in self._couverts:
+            if a.appareil_id in lies:
+                p.liens.append((a.appareil_id, a.provenance))
 
     def _creer(self, index, a, choix, categorie, cle):
         p = self.plan
@@ -304,6 +336,7 @@ class _Planificateur:
         if manque:
             p.a_completer.append(f"ligne {a.numero or 'table'} {a.ref_modele} : "
                                  f"{' et '.join(manque)} à choisir pour la création")
+            p.lignes_a_completer.append(index)
             return
         p.appareils_a_creer.append(AppareilACreer(index, marque, a.ref_modele, a.nom, type_))
         p.liens.append((('creer', index), a.provenance))
