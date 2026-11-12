@@ -173,6 +173,9 @@ class PlanEnregistrement:
     remplacements: List[Tuple[str, str]] = field(default_factory=list)
     equivalences: List[str] = field(default_factory=list)           # à relier à la pièce
     origines: List[Tuple[str, Optional[str], Optional[int]]] = field(default_factory=list)
+    # (ancienne référence, position dans « Remplace » de la fiche) : complétée à
+    # chaque lecture, comme les origines ; ne compte pas dans `vide`
+    rangs_remplace: List[Tuple[str, int]] = field(default_factory=list)
     produit: Optional[Dict[str, object]] = None
     decisions_ecritures: List[Tuple[str, str, str, str]] = field(default_factory=list)
     decisions_references: List[Tuple[str, str, str, Optional[str], str]] = field(default_factory=list)
@@ -253,6 +256,8 @@ class _Planificateur:
         if i.libelle:
             if i.statut_libelle == 'a_remplir' or i.statut == 'absente':
                 p.libelle = i.libelle
+            elif i.statut_libelle == 'ancienne_regle':
+                p.libelle, p.remplacer_libelle = i.libelle, True
             elif 'libelle_different' in doutes and self._choix_identite('libelle_different') == 'prendre':
                 p.libelle, p.remplacer_libelle = i.libelle, True
         if not i.ref_interne:
@@ -360,7 +365,10 @@ class _Planificateur:
 
     # --- Relations (§ 5.3, 5.4) --------------------------------------------------
     def _remplacement(self, rp: Remplacement):
-        if rp.statut in ('deja_present', 'confirme_par_chaine', 'identique', 'cycle'):
+        if rp.statut in ('deja_present', 'confirme_par_chaine'):
+            self._rang(rp)
+            return
+        if rp.statut in ('identique', 'cycle'):
             return
         choix = self.d.remplacements.get(rp.ancienne)
         if choix == 'ignorer':
@@ -375,6 +383,11 @@ class _Planificateur:
         elif choix not in (None, 'garder', 'prendre'):
             nouvelle = choix            # appariement : autre réf. du code produit
         self.plan.remplacements.append((rp.ancienne, nouvelle))
+        self._rang(rp)
+
+    def _rang(self, rp: Remplacement):
+        if rp.rang is not None and rp.sens == 'remplace':
+            self.plan.rangs_remplace.append((rp.ancienne, rp.rang))
 
     def _equivalence(self, e: Equivalence):
         # n° de ligne gardé tel quel : 0 = 2ᵉ réf. du code produit, que la Fiche

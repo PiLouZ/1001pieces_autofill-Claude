@@ -489,6 +489,9 @@ class FicheSiteDialog(QDialog):
                           + (f", {etat}" if etat else '') + ")")
         if i.libelle and i.statut_libelle == 'different':
             lignes.append(f"Nom actuel dans l'outil : « {i.libelle_outil} »")
+        elif i.libelle and i.statut_libelle == 'ancienne_regle':
+            lignes.append(f"Nom raccourci (sans le type d'appareil) : « {i.libelle_outil} » "
+                          f"devient « {i.libelle} »")
         if r.liste_tronquee:
             lignes.append("<i>Liste d'appareils probablement réduite : rien n'en est déduit sur les "
                           "appareils absents.</i>")

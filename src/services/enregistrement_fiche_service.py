@@ -79,6 +79,15 @@ class EnregistrementFicheService(BaseService):
         if self._configuration is None:
             from ..utils.rapprochement_fiche import charger_configuration
             self._configuration = charger_configuration()
+        # Appellations de l'onglet Appareils (coupe du titre en libellé), lues à
+        # chaque fois : un changement de l'onglet vaut dès la fiche suivante
+        service = getattr(self.parent_window, 'export_config_service', None)
+        if service is not None:
+            try:
+                self._configuration.appellations_appareils = \
+                    service.get_config().get('synonymes_appareils')
+            except Exception as e:
+                app_logger.debug(f"Appellations des appareils non lues : {e}")
         return self._configuration
 
     def _modeles(self):
@@ -206,6 +215,7 @@ class EnregistrementFicheService(BaseService):
         # 5. Étiquettes d'origine, produit du site, décisions consignées
         with db._query_lock:
             db._definir_origines(plan.origines)
+            db._definir_rangs_remplace(plan.rangs_remplace)
             produit = plan.produit
             if produit:
                 precedente = produit.get('ref_interne_precedente')

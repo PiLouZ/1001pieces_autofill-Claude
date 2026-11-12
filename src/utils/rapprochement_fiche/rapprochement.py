@@ -49,9 +49,21 @@ _DOUTES_DE_CHOIX = ('normalise_ambigu', 'exact_multiple', 'a_valider', 'marque_a
 _MENTIONS_TITRE = re.compile(r"\(\s*photos?\s+non\s+contractuelles?\s*\)", re.I)
 
 
-def libelle_depuis_titre(titre: str) -> str:
-    """Titre de la fiche sans « (photos non contractuelles) », pour le libellé de la pièce."""
+def libelle_titre_complet(titre: str) -> str:
+    """Titre de la fiche sans « (photos non contractuelles) » : le libellé écrit
+    avant la coupe au type d'appareil (reconnu à la relecture pour être remplacé)."""
     return re.sub(r"\s+", " ", _MENTIONS_TITRE.sub(' ', titre or '')).strip(' -–')
+
+
+def libelle_depuis_titre(titre: str, appellations=None) -> str:
+    """Libellé de la pièce tiré du titre de la fiche : ce qui précède « pour <type
+    d'appareil> » (types et appellations de l'onglet Appareils). Ce qui suit le
+    type est retiré (« (pièce générique) », « et cuisinière »), sauf une
+    caractéristique chiffrée hors parenthèses, gardée à la suite (« Résistance
+    pour sèche linge 1900W » → « Résistance 1900W »). Sans type reconnu : le
+    titre entier. Le type n'est ainsi plus répété dans les exports."""
+    from src.utils.rapprochement_fiche.coupe_titre import couper_au_type
+    return couper_au_type(libelle_titre_complet(titre), appellations)
 
 
 def rapprocher(lecture: LectureFiche, acces: AccesBaseLecture,
@@ -179,13 +191,18 @@ class _Rapprochement:
                 self._doute('ean_different',
                             f"EAN {i.ean_outil} dans l'outil, {self.ean} sur le site", 'identite')
         # Libellé de la pièce : titre de la fiche
-        i.libelle = libelle_depuis_titre(self.l.titre)
+        i.libelle = libelle_depuis_titre(self.l.titre,
+                                         getattr(self.config, 'appellations_appareils', None))
         i.libelle_outil = self.acces.libelle(i.ref_piece) if i.statut != 'absente' else ''
         if i.libelle:
             if not i.libelle_outil:
                 i.statut_libelle = 'a_remplir'
             elif i.libelle_outil.strip() == i.libelle:
                 i.statut_libelle = 'identique'
+            elif i.libelle_outil.strip() == libelle_titre_complet(self.l.titre):
+                # Écrit par une reprise antérieure, avant la coupe au type :
+                # remplacé sans question (c'est le même titre)
+                i.statut_libelle = 'ancienne_regle'
             else:
                 i.statut_libelle = 'different'
                 self._doute('libelle_different',
@@ -265,6 +282,7 @@ class _Rapprochement:
     def _remplacements(self, principale: str) -> List[Remplacement]:
         couples: List[Tuple[str, str, str, str]] = []
         cibles = self._cibles_par_origine()
+        rangs = {ref: n for n, ref in enumerate(dict.fromkeys(self.l.remplace), 1)}
         for ancienne in dict.fromkeys(self.l.remplace):
             if len(self.l.code_produit) <= 1:
                 couples.append((ancienne, principale, 'remplace', 'unique'))
@@ -284,8 +302,12 @@ class _Rapprochement:
         anciennes = [a for a, *_ in couples]
         successeurs = self.acces.successeurs(anciennes)
         pieces = self.acces.pieces(anciennes)
-        return [self._remplacement(a, n, sens, app, successeurs, pieces)
-                for a, n, sens, app in couples]
+        resultat = [self._remplacement(a, n, sens, app, successeurs, pieces)
+                    for a, n, sens, app in couples]
+        for r in resultat:
+            if r.sens == 'remplace':
+                r.rang = rangs.get(r.ancienne)
+        return resultat
 
     def _cibles_par_origine(self) -> Dict[str, str]:
         """Origine → réf. du code produit, pour les origines portées par une seule réf."""

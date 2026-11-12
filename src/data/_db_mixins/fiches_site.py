@@ -16,6 +16,9 @@ sur les 5 millions de liens) :
 - `piece_equivalence_groups.origine` et `.ligne_fiche` : étiquette d'origine
   et n° de la ligne « Références équivalentes » de la fiche. La fusion de
   groupes (`add_equivalence`) passe par un UPDATE de group_id : elles suivent.
+- `piece_supersessions.rang_fiche` : position de l'ancienne référence dans la
+  ligne « Remplace les références » de la fiche, pour la réécrire dans le même
+  ordre (paires Whirlpool / Indesit, Beko). Vide = ordre de la chaîne.
 - `decisions_ecritures` : « même appareil » / « appareils distincts » pour une
   paire d'écritures d'une marque (§ 5.2).
 - `decisions_references` : références écartées et étiquettes d'origine
@@ -97,6 +100,7 @@ class DatabaseFichesSiteMixin:
             self._ajouter_colonne_si_absente('piece_associations', 'provenance', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'origine', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'ligne_fiche', 'INTEGER')
+            self._ajouter_colonne_si_absente('piece_supersessions', 'rang_fiche', 'INTEGER')
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
 
@@ -347,6 +351,31 @@ class DatabaseFichesSiteMixin:
                 [origine or None, ligne, ref])
             n += cur.rowcount
         return n
+
+    def _definir_rangs_remplace(self, rangs: Iterable[Tuple[str, int]]) -> int:
+        """Position de chaque ancienne référence dans « Remplace les références » de
+        la fiche (la fiche fait foi pour l'ordre ; rien n'est créé : seules les
+        successions présentes sont complétées)."""
+        n = 0
+        for ref_old, rang in rangs:
+            cur = self.cursor.execute(
+                "UPDATE piece_supersessions SET rang_fiche = ? WHERE ref_old = ? "
+                "AND rang_fiche IS NOT ?", [rang, ref_old, rang])
+            n += cur.rowcount
+        return n
+
+    @with_query_lock
+    def rangs_remplace(self, refs: Iterable[str]) -> Dict[str, int]:
+        """Ancienne référence → position mémorisée dans « Remplace » (absente = aucune)."""
+        refs = [r for r in dict.fromkeys(refs) if r]
+        resultat: Dict[str, int] = {}
+        for i in range(0, len(refs), 500):
+            tranche = refs[i:i + 500]
+            resultat.update(self.cursor.execute(
+                f"SELECT ref_old, rang_fiche FROM piece_supersessions WHERE rang_fiche "
+                f"IS NOT NULL AND ref_old IN ({','.join('?' * len(tranche))})",
+                tranche).fetchall())
+        return resultat
 
     def _enregistrer_produit_site(self, ref_interne: str, id_product: Optional[int],
                                   ref_piece: str, ean: Optional[str], lu_le: str):

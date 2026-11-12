@@ -93,7 +93,7 @@ class Identite:
     ref_interne_precedente: str = ''    # même id_product, autre réf. interne (changée sur le site)
     libelle: str = ''                   # titre de la fiche, nettoyé
     libelle_outil: str = ''
-    statut_libelle: str = ''            # 'a_remplir', 'identique', 'different', ''
+    statut_libelle: str = ''            # 'a_remplir', 'identique', 'different', 'ancienne_regle', ''
 
 
 @dataclass
@@ -132,6 +132,9 @@ class Remplacement:
     successeur_actuel: Optional[str] = None
     fantome_a_creer: bool = False
     raison: str = ''
+    # Position dans la ligne « Remplace les références » de la fiche (1, 2…) :
+    # mémorisée pour que la Fiche complète réécrive la ligne dans cet ordre
+    rang: Optional[int] = None
 
 
 STATUTS_REMPLACEMENT = {

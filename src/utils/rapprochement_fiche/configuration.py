@@ -131,6 +131,10 @@ class ConfigurationRapprochement:
         self.alias_marques: Dict[str, str] = {
             cle_marque(k): v for k, v in (d.get('alias_marques') or {}).items() if v}
         self.regles: Dict[str, str] = dict(d.get('regles_reprise') or {})
+        # Onglet Appareils des exports (`synonymes_appareils`) : types et appellations
+        # où couper le titre d'une fiche pour en faire un libellé ; None = défauts.
+        # Renseigné par le service d'enregistrement depuis la config des exports.
+        self.appellations_appareils: Any = None
         # marque (clé) → nom du groupe
         self.groupe_de: Dict[str, str] = {}
         for groupe, marques in (d.get('groupes_marques') or {}).items():
