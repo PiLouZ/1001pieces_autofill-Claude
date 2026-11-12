@@ -8,6 +8,7 @@ import zlib
 from typing import List, Dict, Tuple, Optional
 from .error_handler import handle_seo_generation_errors
 from .largeur_texte import largeur_px, TAILLE_TITLE_PX, TAILLE_DESCRIPTION_PX
+from .appellations_appareils import Appellation, MASCULIN
 
 class SEOGenerator:
     """Générateur de métadonnées SEO pour pièces détachées électroménager"""
@@ -22,7 +23,7 @@ class SEOGenerator:
         # Réparation
         "Réparez votre {type_appareil} {fabricants} avec {description} {reference} — commandez en ligne, livraison rapide",
         "Retrouvez {description} {reference} pour {type_appareil} {fabricants} et réparez votre appareil vous-même",
-        "Redonnez vie à un {type_appareil} {fabricants} avec {description} {reference} — commande en ligne, expédition rapide",
+        "Redonnez vie à {un_type_appareil} {fabricants} avec {description} {reference} — commande en ligne, expédition rapide",
         # Expédition / qualité (aucune donnée de stock : jamais « en stock » ni « disponible »)
         "{description_cap} {reference} pour {type_appareil} {fabricants} — d'origine ou de qualité équivalente, expédition rapide",
         "{description_cap} {reference} pour {type_appareil} {fabricants} — commandez chez votre spécialiste électroménager",
@@ -196,12 +197,16 @@ class SEOGenerator:
         self.last_generation_info = {}
 
     def _normalize_type(self, type_appareil: str) -> str:
+        return self.normaliser_type(type_appareil)
+
+    @classmethod
+    def normaliser_type(cls, type_appareil: str) -> str:
         """
         Normalise le type d'appareil : forme canonique + première lettre minuscule.
         Corrige les variantes orthographiques (espaces/tirets, accents manquants).
         """
         t = type_appareil.strip().lower()
-        for variant, canonical in self.TYPE_NORMALIZATION.items():
+        for variant, canonical in cls.TYPE_NORMALIZATION.items():
             if t == variant:
                 return canonical
         return t
@@ -224,7 +229,7 @@ class SEOGenerator:
     @handle_seo_generation_errors()
     def generate_meta_title(self, reference: str, description: str, type_appareil: str,
                            fabricants: List[str], max_length: int = TITLE_MAX_CARACTERES,
-                           variante: int = 0) -> Dict[str, any]:
+                           variante: int = 0, appellations=None) -> Dict[str, any]:
         """
         Générer un méta title : référence (courante) en tête, puis libellé,
         type d'appareil et jusqu'à 3 marques, via un gabarit tiré de META_TITLE_TEMPLATES.
@@ -238,6 +243,10 @@ class SEOGenerator:
 
         Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
         `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
+
+        `appellations` (Appellations, facultatif) : l'appareil peut être cité sous
+        une autre appellation (« machine à laver ») si le champ « meta_title » varie ;
+        si elle oblige à raccourcir davantage, le type en base est repris.
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=True)
@@ -245,11 +254,25 @@ class SEOGenerator:
         marques = self._marques_uniques(fabricants)[:self.MAX_MARQUES]
 
         template = self._choose_title_template(reference_clean, variante)
-        title_complet = self._rendre_title(template, reference_clean, description_clean,
-                                           type_clean, marques)
-        title, marques_retenues = self._raccourcir_title(
-            template, reference_clean, description_clean, type_clean, marques, max_length
-        )
+
+        def _rediger(type_rendu):
+            complet = self._rendre_title(template, reference_clean, description_clean,
+                                         type_rendu, marques)
+            court, retenues = self._raccourcir_title(
+                template, reference_clean, description_clean, type_rendu, marques, max_length)
+            return complet, court, retenues
+
+        appellation = type_clean
+        title_complet, title, marques_retenues = _rediger(type_clean)
+        if appellations is not None:
+            choix = appellations.choisir(type_clean, reference_clean, 'meta_title')
+            if not choix.principal:
+                complet_v, title_v, retenues_v = _rediger(choix.terme)
+                # L'appellation ne doit rien coûter : retenue seulement si le title
+                # tient en entier (aucune marque ni aucun mot du libellé retiré)
+                if title_v == complet_v:
+                    appellation = choix.terme
+                    title_complet, title, marques_retenues = complet_v, title_v, retenues_v
         fabricants_utilises = ", ".join(marques_retenues)
 
         generation_info = {
@@ -265,6 +288,7 @@ class SEOGenerator:
             'brand_guaranteed': bool(marques_retenues),
             'variante': variante % len(self.META_TITLE_TEMPLATES),
             'nb_variantes': len(self.META_TITLE_TEMPLATES),
+            'appellation': appellation,
         }
 
         self.last_generation_info['title'] = generation_info
@@ -389,7 +413,8 @@ class SEOGenerator:
                                  fabricants: List[str], max_length: int = DESCRIPTION_MAX_CARACTERES,
                                  n_modeles: int = 0, anciennes_refs: Optional[List[str]] = None,
                                  variante: int = 0,
-                                 equivalentes: Optional[List[str]] = None) -> Dict[str, any]:
+                                 equivalentes: Optional[List[str]] = None,
+                                 appellations=None) -> Dict[str, any]:
         """
         Générer une méta description via un tirage pondéré contextuel (L2/L3) :
         pool générique (unicité à grande échelle) enrichi de templates de segment
@@ -404,6 +429,11 @@ class SEOGenerator:
         Avec les deux à la fois : 1 ancienne + 1 équivalente (décision client).
         Le gabarit est fixe pour une référence donnée (voir _ordre_deterministe) ;
         `variante` > 0 passe aux formulations suivantes (Maj+clic dans l'interface).
+
+        `appellations` (Appellations, facultatif) : l'appareil peut être cité sous
+        une autre appellation si le champ « meta_description » varie, à condition
+        de ne coûter ni troncature, ni marque, ni réf. liée ; son genre accorde
+        « un » / « une ». Le gabarit (segment compris) suit toujours le type en base.
         """
         reference_clean = reference.strip()
         description_clean = self._adjust_first_char(description.strip(), upper=False)
@@ -425,42 +455,59 @@ class SEOGenerator:
         nb_variantes = len(pool)
         a_des_marques = bool(self._marques_uniques(fabricants))
 
-        # Le gabarit prévu, puis, s'il ne laisse la place à aucune marque ou oblige à
-        # couper la phrase (« … compatible avec plus de 200 »), les suivants dans
-        # l'ordre propre à la référence : le résultat reste fixe pour une référence.
-        ordre = self._ordre_deterministe(pool, poids, reference_clean)
-        depart = ordre.index(template) if template in ordre else 0
-        candidats = [template] + [ordre[(depart + k) % len(ordre)] for k in range(1, len(ordre))
-                                  if ordre[(depart + k) % len(ordre)] != template]
-        # Avec des équivalentes, un 1er passage n'accepte qu'un gabarit qui garde TOUTES
-        # les réfs prévues : sinon le repli (une seule réf liée) sacrifierait
-        # l'équivalente dès le gabarit prévu, alors qu'un suivant tient en entier
-        # (34 fiches sur 329 au 2026-10-08). Sans équivalente : un seul passage, comme
-        # avant — les métas existantes restent identiques au caractère près.
-        nb_prevu = len(anciennes) + len(equivs)
-        exigences = (True, False) if equivs else (False,)
-        premier = choisi = None
-        rendus = {}
-        for toutes_les_refs in exigences:
-            for candidat in candidats:
-                if candidat not in rendus:
-                    rendus[candidat] = self._remplir_description(
-                        candidat, fabricants, anciennes, reference_clean, description_with_article,
-                        type_clean, n_modeles, max_length, equivs)
-                rendu = rendus[candidat]
-                premier = premier or (candidat, rendu)
-                texte, fabricants_rendus, a_citees, e_citees = rendu
-                if toutes_les_refs and len(a_citees) + len(e_citees) < nb_prevu:
-                    continue
-                if (fabricants_rendus or not a_des_marques) and self._tient_description(texte, max_length):
-                    choisi = (candidat, rendu)
-                    break
-            if choisi:
-                break
-        # Aucun ne tient en entier : le gabarit prévu, raccourci
-        template, (description_text, fabricants_str, anciennes, equivs) = choisi or premier
+        anciennes_prevues, equivs_prevues = anciennes, equivs
 
-        final_description = self._smart_truncate_description(description_text, max_length)
+        def _rediger(appel):
+            # Le gabarit prévu, puis, s'il ne laisse la place à aucune marque ou oblige à
+            # couper la phrase (« … compatible avec plus de 200 »), les suivants dans
+            # l'ordre propre à la référence : le résultat reste fixe pour une référence.
+            ordre = self._ordre_deterministe(pool, poids, reference_clean)
+            depart = ordre.index(template) if template in ordre else 0
+            candidats = [template] + [ordre[(depart + k) % len(ordre)] for k in range(1, len(ordre))
+                                      if ordre[(depart + k) % len(ordre)] != template]
+            # Avec des équivalentes, un 1er passage n'accepte qu'un gabarit qui garde TOUTES
+            # les réfs prévues : sinon le repli (une seule réf liée) sacrifierait
+            # l'équivalente dès le gabarit prévu, alors qu'un suivant tient en entier
+            # (34 fiches sur 329 au 2026-10-08). Sans équivalente : un seul passage, comme
+            # avant — les métas existantes restent identiques au caractère près.
+            nb_prevu = len(anciennes_prevues) + len(equivs_prevues)
+            exigences = (True, False) if equivs_prevues else (False,)
+            premier = choisi = None
+            rendus = {}
+            for toutes_les_refs in exigences:
+                for candidat in candidats:
+                    if candidat not in rendus:
+                        rendus[candidat] = self._remplir_description(
+                            candidat, fabricants, anciennes_prevues, reference_clean, description_with_article,
+                            appel.terme, n_modeles, max_length, equivs_prevues, appel.feminin)
+                    rendu = rendus[candidat]
+                    premier = premier or (candidat, rendu)
+                    texte, fabricants_rendus, a_citees, e_citees = rendu
+                    if toutes_les_refs and len(a_citees) + len(e_citees) < nb_prevu:
+                        continue
+                    if (fabricants_rendus or not a_des_marques) and self._tient_description(texte, max_length):
+                        choisi = (candidat, rendu)
+                        break
+                if choisi:
+                    break
+            # Aucun ne tient en entier : le gabarit prévu, raccourci
+            gabarit, (texte_complet, marques_str, a_citees, e_citees) = choisi or premier
+
+            return (gabarit, texte_complet, marques_str, a_citees, e_citees,
+                    self._smart_truncate_description(texte_complet, max_length))
+
+        appellation = Appellation(type_clean, MASCULIN, True)
+        if appellations is not None:
+            appellation = appellations.principal(type_clean)
+        redaction = _rediger(appellation)
+        if appellations is not None:
+            choix = appellations.choisir(type_clean, reference_clean, 'meta_description')
+            if not choix.principal:
+                variante_redigee = _rediger(choix)
+                # L'appellation ne doit rien coûter : ni troncature, ni marque, ni réf. liée
+                if self._redaction_au_moins_aussi_complete(variante_redigee, redaction, fabricants):
+                    appellation, redaction = choix, variante_redigee
+        template, description_text, fabricants_str, anciennes, equivs, final_description = redaction
 
         generation_info = {
             'template_used': template,
@@ -477,6 +524,7 @@ class SEOGenerator:
             'is_supersession': '{anciennes_refs}' in template,
             'variante': variante % nb_variantes,
             'nb_variantes': nb_variantes,
+            'appellation': appellation.terme,
         }
 
         self.last_generation_info['description'] = generation_info
@@ -490,7 +538,7 @@ class SEOGenerator:
     def _remplir_description(self, template: str, fabricants: List[str], anciennes: List[str],
                              reference: str, description_with_article: str, type_appareil: str,
                              n_modeles: int, max_length: int,
-                             equivalentes: Optional[List[str]] = None
+                             equivalentes: Optional[List[str]] = None, feminin: bool = False
                              ) -> Tuple[str, str, List[str], List[str]]:
         """
         Rend un gabarit : (texte, marques retenues, anciennes réfs citées,
@@ -502,7 +550,7 @@ class SEOGenerator:
         anciennes_str = self._formuler_refs_liees(anciennes, equivalentes)
         fabricants_str = self._select_fabricants_for_description(
             fabricants, template, reference, description_with_article, type_appareil, max_length,
-            anciennes_refs=anciennes_str, n_modeles=n_modeles
+            anciennes_refs=anciennes_str, n_modeles=n_modeles, feminin=feminin
         )
         if not fabricants_str and fabricants and len(anciennes) + len(equivalentes) > 1:
             if anciennes:
@@ -512,13 +560,15 @@ class SEOGenerator:
             anciennes_str = self._formuler_refs_liees(anciennes, equivalentes)
             fabricants_str = self._select_fabricants_for_description(
                 fabricants, template, reference, description_with_article, type_appareil,
-                max_length, anciennes_refs=anciennes_str, n_modeles=n_modeles
+                max_length, anciennes_refs=anciennes_str, n_modeles=n_modeles, feminin=feminin
             )
         texte = template.format(
             description=description_with_article,
             description_cap=self._adjust_first_char(description_with_article, upper=True),
             reference=reference,
             type_appareil=type_appareil,
+            un_type_appareil=Appellation(type_appareil, 'f' if feminin else MASCULIN,
+                                         True).avec_article_indefini(),
             fabricants=fabricants_str,
             anciennes_refs=anciennes_str,
             nb_modeles=self._formuler_nb_modeles(n_modeles),
@@ -526,6 +576,19 @@ class SEOGenerator:
         # " ".join(split()) : un {fabricants} vide ne laisse pas de double espace ;
         # ni d'espace avant une virgule (« pour congélateur , compatible »)
         return " ".join(texte.split()).replace(" ,", ","), fabricants_str, anciennes, equivalentes
+
+    @classmethod
+    def _redaction_au_moins_aussi_complete(cls, autre: tuple, reference: tuple,
+                                           fabricants: List[str]) -> bool:
+        """Rédaction `autre` (gabarit, texte, marques, anciennes, équivalentes, final)
+        sans troncature et avec au moins autant de marques et de réfs liées que `reference`."""
+        def _nb_marques(marques_str: str) -> int:
+            return sum(1 for m in cls._marques_uniques(fabricants) if m and m in marques_str)
+        _, texte, marques, anciennes, equivs, final = autre
+        _, _, marques_ref, anciennes_ref, equivs_ref, _ = reference
+        return (final == texte
+                and _nb_marques(marques) >= _nb_marques(marques_ref)
+                and len(anciennes) + len(equivs) >= len(anciennes_ref) + len(equivs_ref))
 
     def _segment_templates_for(self, type_norm: str) -> List[str]:
         """
@@ -584,7 +647,8 @@ class SEOGenerator:
     def _select_fabricants_for_description(self, fabricants: List[str], template: str,
                                          reference: str, description_with_article: str,
                                          type_appareil: str, max_length: int,
-                                         anciennes_refs: str = "", n_modeles: int = 0) -> str:
+                                         anciennes_refs: str = "", n_modeles: int = 0,
+                                         feminin: bool = False) -> str:
         """
         Jusqu'à MAX_MARQUES marques (« A, B et C »), autant qu'en laisse la place
         (DESCRIPTION_MAX_PX et max_length caractères, description rendue en entier).
@@ -600,6 +664,8 @@ class SEOGenerator:
             description_cap=description_cap,
             reference=reference,
             type_appareil=type_appareil,
+            un_type_appareil=Appellation(type_appareil, 'f' if feminin else MASCULIN,
+                                         True).avec_article_indefini(),
             fabricants="",
             anciennes_refs=anciennes_refs,
             nb_modeles=self._formuler_nb_modeles(n_modeles),

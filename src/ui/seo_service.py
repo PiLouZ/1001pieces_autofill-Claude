@@ -44,6 +44,12 @@ class SEOService:
         self._refus_silencieux = False
         self.raison_refus: Optional[str] = None
 
+    def appellations(self):
+        """Appellations des appareils de la config des exports (None sans service :
+        le type en base, comme avant)."""
+        config = getattr(self.main_window, 'export_config_service', None)
+        return config.get_appellations() if config is not None else None
+
     def generate_meta_title(self) -> None:
         """Générer et copier un méta titre SEO optimisé (Maj+clic : autre formulation)"""
         self._generer_meta_title(self._maj_enfoncee())
@@ -63,6 +69,7 @@ class SEOService:
             type_appareil=search_data['type_appareil'],
             fabricants=search_data['fabricants'],
             variante=self._variante('title', search_data['reference'], autre_formulation),
+            appellations=self.appellations(),
         )
         # n_modeles non utilisé dans le title (pas assez de place) mais compté pour info
 
@@ -83,6 +90,7 @@ class SEOService:
         if ref_obsolete:
             detailed_message += f" (remplace {ref_obsolete})"
         detailed_message += f"\n==> Titre: {result['title']}"
+        detailed_message += self._ligne_appellation(result['info'], search_data['type_appareil'])
         detailed_message += f"\n==> Longueur: {largeur}"
         if result['info']['fabricants_count'] > 0:
             detailed_message += f"\n==> Fabricants inclus: {result['info']['fabricants_count']}"
@@ -138,6 +146,7 @@ class SEOService:
             anciennes_refs=anciennes_refs,  # toujours citées quand il y en a (décision client)
             equivalentes=equivalentes,      # idem ; 1 + 1 si la fiche a les deux
             variante=self._variante('description', search_data['reference'], autre_formulation),
+            appellations=self.appellations(),
         )
 
         QApplication.clipboard().setText(result['description'])
@@ -155,6 +164,7 @@ class SEOService:
         if ref_obsolete:
             detailed_message += f" (remplace {ref_obsolete})"
         detailed_message += f"\n==> Description: {result['description']}"
+        detailed_message += self._ligne_appellation(result['info'], search_data['type_appareil'])
         detailed_message += f"\n==> Longueur: {largeur}"
         if result['info']['truncated']:
             detailed_message += "\n==> Description raccourcie (mots entiers retirés pour tenir dans la largeur)"
@@ -267,6 +277,14 @@ class SEOService:
         if not info.get('variante'):
             return ""
         return f" [formulation {info['variante'] + 1}/{info['nb_variantes']}]"
+
+    @staticmethod
+    def _ligne_appellation(info: Dict[str, Any], type_appareil: str) -> str:
+        """Ligne d'historique quand l'appareil est cité sous une autre appellation."""
+        appellation = info.get('appellation')
+        if not appellation or appellation == SEOGenerator.normaliser_type(type_appareil or ""):
+            return ""
+        return f"\n==> Appareil cité : « {appellation} » (type en base : {type_appareil})"
 
     def _anciennes_refs_principales(self, predecesseurs: List[str]) -> List[str]:
         """

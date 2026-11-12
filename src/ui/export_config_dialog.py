@@ -6,6 +6,7 @@ Onglet CSV  : colonnes (en-tête + source/assemblage), séparateur, encodage, pa
 Onglet HTML : templates marques et détails avec preview en temps réel
 Onglet Titre : gabarits du titre de fiche produit (cf. titre_config_tab.py)
 Onglet Fiche : variantes de la fiche produit complète (cf. fiche_config_tab.py)
+Onglet Appareils : appellations des appareils dans les textes générés (cf. appareils_config_tab.py)
 """
 
 import os
@@ -318,6 +319,7 @@ class ExportConfigDialog(QDialog):
             ("HTML", 'fa5s.code',  '#e67e22'),
             ("Titre", 'fa5s.tag',  '#6f42c1'),
             ("Fiche", 'fa5s.file-alt', '#0b5ed7'),
+            ("Appareils", 'fa5s.blender', '#198754'),
         ]
         for i, (label, icon_name, icon_color) in enumerate(_nav_defs):
             btn = QPushButton(label)
@@ -348,6 +350,9 @@ class ExportConfigDialog(QDialog):
         from .fiche_config_tab import FicheConfigTab
         self.fiche_tab = FicheConfigTab(self)
         self._nav_stack.addWidget(self.fiche_tab)
+        from .appareils_config_tab import AppareilsConfigTab
+        self.appareils_tab = AppareilsConfigTab(self)
+        self._nav_stack.addWidget(self.appareils_tab)
         # Gabarit Titre ou profil HTML Détails renommé : les variantes Fiche suivent
         self.titre_tab.colonne.renommages.append(
             lambda ancien, nouveau: self.fiche_tab.renommer_gabarit('titre_profile', ancien, nouveau))
@@ -817,6 +822,10 @@ class ExportConfigDialog(QDialog):
         self.details_colonne.load(self.export_config_service.get_details_profiles(),
                                   self.export_config_service.get_default_details_profile_name())
 
+        # Appellations des appareils dans les textes générés (avant Titre : son
+        # aperçu les reprend pour les gabarits qui varient le nom de l'appareil)
+        self.appareils_tab.load(config['synonymes_appareils'])
+
         # Gabarits du bouton Titre
         self.titre_tab.load(config['titre'])
 
@@ -988,7 +997,8 @@ class ExportConfigDialog(QDialog):
                 "details_default_profile": self._default_profile
             },
             "titre": self.titre_tab.collect(),
-            "fiche": self.fiche_tab.collect()
+            "fiche": self.fiche_tab.collect(),
+            "synonymes_appareils": self.appareils_tab.collect()
         }
 
     def _collect_profiles(self) -> list:

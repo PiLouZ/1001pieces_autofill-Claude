@@ -64,7 +64,7 @@ def test_gabarit_conforme(gabarit):
 def test_gabarit_se_remplit(gabarit):
     """Chaque gabarit n'utilise que des champs connus du générateur."""
     gabarit.format(description="le joint", description_cap="Le joint", reference="R1",
-                   type_appareil="four", fabricants="Bosch", anciennes_refs="ancienne réf. R0",
+                   type_appareil="four", un_type_appareil="un four", fabricants="Bosch", anciennes_refs="ancienne réf. R0",
                    nb_modeles="1 200")
 
 

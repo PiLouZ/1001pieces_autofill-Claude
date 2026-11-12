@@ -49,8 +49,12 @@ class TitreProduitService:
 
         types = self.generateur.types_proches(self.main_window.seo_service.poids_types_fiche(donnees),
                                               profil.get('max_types', 3))
+        # Nom de l'appareil varié seulement si le gabarit le demande (sinon le type en base)
+        appellations = (self.main_window.seo_service.appellations()
+                        if profil.get('varier_appareil') else None)
         resultat = self.generateur.generer(profil, donnees['description'], types,
-                                           donnees['fabricants'], donnees['reference'])
+                                           donnees['fabricants'], donnees['reference'],
+                                           appellations=appellations)
         return resultat, profil
 
     # ─── Contexte / rendu / copie (bouton et aperçu d'export) ───────────────
