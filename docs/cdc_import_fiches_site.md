@@ -1,6 +1,6 @@
 # Cahier des charges — Reprise des fiches produit du site 1001pieces.com
 
-**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`), étape 2 (rapprochement, `src/utils/rapprochement_fiche/`), étape 3 (aperçu et enregistrement d'une fiche) et étape 4 (import en masse par lots, `src/utils/reprise_site/`) réalisées le 2026-11-12
+**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`), étape 2 (rapprochement, `src/utils/rapprochement_fiche/`), étape 3 (aperçu et enregistrement d'une fiche) et étape 4 (import en masse par lots, `src/utils/reprise_site/`), refonte par questions et étape 5 (export, § 10.10) réalisées le 2026-11-12
 **Version :** 1.0
 **Contexte :** le site 1001pieces.com (PrestaShop) contient des milliers de fiches produit qui listent les appareils compatibles et les relations entre pièces (remplacements, équivalences). Une partie de ces fiches a été produite par l'outil (export « Fiche complète »), une autre a été écrite à la main dans le back-office. Ce document définit comment reprendre ces données dans l'outil, puis comment l'outil devient la passerelle qui alimente le site.
 
@@ -612,6 +612,35 @@ Ce sont les erreurs de lecture relevées sur le 1ᵉʳ lot réel (audit des donn
   - relance sans ajout.
 
 Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_rien_de_faux.py` (alias GE, doublons par le nom).
+
+### 10.10 Export — étape 5 (2026-11-12)
+
+**Fiche complète** (§ 8.1) :
+- La 2ᵉ réf. du code produit est désormais **mémorisée avec le n° de ligne 0** (`piece_equivalence_groups.ligne_fiche`). Avant, `0` devenait vide à l'enregistrement et la paire ne se retrouvait plus. Une fiche déjà reprise le récupère à sa relecture (`COALESCE`).
+- `FicheProduitService.references_fiche` part des lignées actuelles (`references_liees`, inchangée) et rend :
+  - le **code produit** : la pièce, puis ses équivalentes de ligne 0 si la pièce a un produit du site (et qu'elles n'en ont pas elles-mêmes) ;
+  - « **Remplace** » : les anciennes références des deux ;
+  - **une ligne d'équivalentes par marque d'origine**, puis par ligne mémorisée (`lignes_par_origine`), rangées par n° de ligne de la fiche ; chaque équivalente garde ses anciennes références ;
+  - sans les **références écartées** (`decisions_references`).
+- Sans rien de mémorisé (pièce de l'outil, 754 réf. existantes, base non migrée) : une seule ligne d'équivalentes et la seule référence, comme avant.
+- `FicheProduitGenerator` : `{reference}` reçoit la paire jointe par le séparateur ; une ligne `equivalentes_template` par liste. Les profils enregistrés n'ont pas à changer, et le lecteur accepte déjà `{reference}` comme `{references}`. L'onglet Fiche montre deux lignes d'équivalentes dans son aperçu.
+- Limite connue : la 2ᵉ réf. du code produit recherchée seule (`C00319033`) n'a pas de produit. Sa fiche est celle d'avant : pas de paire, et la pièce principale y figure en équivalente.
+
+**Export EveryParts** (§ 8.2) :
+- Le terme recherché passe par `resolve_current_ref`, puis par `produits_site_de` (`00703010` → `11051894` → `GAU11051894`).
+- **Un produit** : sa référence interne est pré-remplie, modifiable, avec le n° du produit dans le message.
+- **Plusieurs produits** : une liste « Produit du site » dans le même dialogue remplit le champ et le nom du fichier.
+- **Aucun produit**, export HTML ou recherche multiple : comportement actuel.
+- Le produit retenu alimente `{ref_interne}` et `{id_product}` (colonnes et nom de fichier). Il est gardé même si la référence est retapée. L'export rapide ne prend que les variables, et seulement si la pièce n'a qu'un produit.
+- Format par défaut inchangé.
+
+**Vérification** (`tests/unit/test_fiche_export_site.py`, extrait de la vraie base, sans réseau ni réglage du poste) :
+- les 3 fiches d'exemple enregistrées, régénérées puis relues : même nombre de lignes d'appareils (1 840, 831, 450), plan vide, aucun lien créé ni complété, base identique ;
+- 7285 : code produit `481073071153 C00319033`, une ligne BSH `00145522`, `481949` absente (même rajoutée à la main au groupe) ;
+- EveryParts : 20746 → `EL1113161010`, `00703010` → `GAU11051894`, pas de produit → terme recherché ;
+- deux produits : vrai dialogue rendu hors écran, choix → champ et nom du fichier ;
+- aperçu d'export de 7285 rendu hors écran ;
+- suite complète (1 991 tests), `compileall`, lancement de `run.py`.
 
 ## 11. Fiches d'exemple
 

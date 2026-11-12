@@ -8,11 +8,15 @@ des exports, et le copie dans le presse-papiers.
 - Titre : celui du bouton Titre (TitreProduitService.calculer_titre), avec le
   gabarit choisi dans le profil.
 - Code produit : la référence tapée ; si elle est remplacée, la plus récente
-  de sa lignée (comme le Titre).
-- « Remplace les références » : toutes ses anciennes références.
-- « Références équivalentes » : une seule ligne ; chaque équivalente hors
-  lignée y est suivie de ses propres anciennes références, de la plus fournie
-  en appareils à la moins fournie.
+  de sa lignée (comme le Titre). Pièce reprise du site : suivie de la 2ᵉ réf.
+  du code produit de la fiche (paire Whirlpool / Indesit, CDC fiches site § 8.1).
+- « Remplace les références » : toutes ses anciennes références (et celles de
+  la 2ᵉ réf. du code produit).
+- « Références équivalentes » : chaque équivalente hors lignée est suivie de
+  ses propres anciennes références, de la plus fournie en appareils à la moins
+  fournie. Une ligne par marque d'origine (puis par ligne mémorisée de la fiche
+  du site) ; sans rien de mémorisé, une seule ligne. Les références écartées à
+  la reprise n'apparaissent pas.
 - Marques et appareils : ce qu'affiche le tableau (bandeaux et filtres de
   colonnes), comme les boutons HTML Marques / Détails.
 """
@@ -68,9 +72,11 @@ class FicheProduitService:
                 seo.raison_refus = raison
             return None
 
-        remplace, equivalentes = self.references_liees(reference)
+        refs = self.references_fiche(reference)
         return {'donnees': donnees, 'ref_obsolete': ref_obsolete, 'reference': reference,
-                'appareils': appareils, 'remplace': remplace, 'equivalentes': equivalentes,
+                'appareils': appareils, 'remplace': refs['remplace'],
+                'equivalentes': refs['equivalentes'], 'code_produit': refs['code_produit'],
+                'lignes_equivalentes': refs['lignes_equivalentes'],
                 'marques_html': HtmlExportService.generate_html_brands(appareils)}
 
     def rendre(self, contexte: Dict[str, Any], profile_name: Optional[str]) -> Dict[str, Any]:
@@ -85,6 +91,8 @@ class FicheProduitService:
             contexte['reference'], contexte['remplace'], contexte['equivalentes'],
             lambda reste: HtmlExportService.generate_html_details(
                 appareils, profile_name=details_profile, char_limit=reste),
+            code_produit=contexte.get('code_produit'),
+            lignes_equivalentes=contexte.get('lignes_equivalentes'),
         )
         strategie = HtmlExportService.last_strategy_used
         resume = f"{resultat['longueur']} car."
@@ -103,7 +111,9 @@ class FicheProduitService:
         QApplication.clipboard().setText(rendu['html'])
         self._signaler(rendu['profil'], contexte['donnees'], contexte['ref_obsolete'],
                        contexte['appareils'], contexte['remplace'], contexte['equivalentes'],
-                       rendu['resultat'], rendu['strategie'])
+                       rendu['resultat'], rendu['strategie'],
+                       code_produit=contexte.get('code_produit'),
+                       lignes_equivalentes=contexte.get('lignes_equivalentes'))
 
     # ─── Références liées ────────────────────────────────────────────────────
 
@@ -145,6 +155,74 @@ class FicheProduitService:
         lignees.sort(key=lambda l: (-nb[l[0]], l[0][:1].isdigit(), l[0]))
         return remplace, lignees
 
+    def references_fiche(self, reference: str) -> Dict[str, Any]:
+        """
+        Références des lignes de la fiche :
+        {'code_produit', 'remplace', 'equivalentes' (lignées), 'lignes_equivalentes'}.
+
+        Mémoire de la reprise des fiches du site (CDC § 5.3, § 8.1) :
+        - une équivalente mémorisée comme 2ᵉ réf. du code produit (ligne 0)
+          d'une pièce vendue sur le site rejoint le code produit ; ses anciennes
+          références rejoignent « Remplace » ;
+        - les autres lignées sont regroupées par marque d'origine, puis par
+          ligne mémorisée (`lignes_par_origine`) ;
+        - les références écartées à la reprise disparaissent.
+        Sans mémoire (pièce saisie dans l'outil, base non migrée) : comme avant,
+        une seule ligne d'équivalentes et la seule référence en code produit.
+        """
+        remplace, lignees = self.references_liees(reference)
+        db = self.main_window.db_manager
+        try:
+            memoire = db.memoire_equivalences(reference)
+            principales = db.pieces_avec_produit_site([reference] + [l[0] for l in lignees])
+            ecartees = db.references_ecartees(
+                [reference, *remplace, *(r for l in lignees for r in l)])
+        except Exception as e:
+            # Base sans les tables de la reprise, ou fenêtre de test sans ces lectures
+            app_logger.debug(f"Fiche: mémoire de la reprise de {reference} non lue : {e}")
+            memoire, principales, ecartees = {}, set(), set()
+
+        code, autres = [reference], []
+        remplace = list(remplace)
+        for lignee in lignees:
+            tete = lignee[0]
+            if (reference in principales and tete not in principales
+                    and (memoire.get(tete) or (None, None))[1] == 0):
+                code.append(tete)
+                remplace += [r for r in lignee[1:] if r not in remplace]
+            else:
+                autres.append(lignee)
+
+        def garder(refs):
+            return [r for r in refs if r not in ecartees]
+        autres = [l for l in (garder(l) for l in autres) if l]
+        lignes = [l for l in (garder(l) for l in self.lignes_par_origine(autres, memoire)) if l]
+        return {'code_produit': [reference] + garder(code[1:]), 'remplace': garder(remplace),
+                'equivalentes': autres, 'lignes_equivalentes': lignes}
+
+    @staticmethod
+    def lignes_par_origine(lignees: List[List[str]],
+                           memoire: Dict[str, Tuple[Optional[str], Optional[int]]]
+                           ) -> List[List[str]]:
+        """Une ligne par marque d'origine, puis par ligne mémorisée de la fiche ;
+        les lignées sans rien de mémorisé ensemble. Chaque lignée suit sa tête.
+        Lignes rangées par n° de ligne de la fiche ; sans n°, à la suite, dans
+        l'ordre des lignées (le plus d'appareils d'abord)."""
+        lignes: Dict[Tuple[str, Any], List[str]] = {}
+        rang: Dict[Tuple[str, Any], float] = {}
+        for lignee in lignees:
+            origine, ligne = memoire.get(lignee[0]) or (None, None)
+            if origine:
+                cle = ('origine', origine.strip().casefold())
+            elif ligne:
+                cle = ('ligne', ligne)
+            else:
+                cle = ('', None)
+            lignes.setdefault(cle, []).extend(lignee)
+            rang[cle] = min(rang.get(cle, float('inf')), ligne if ligne else float('inf'))
+        apparition = {c: i for i, c in enumerate(lignes)}
+        return [lignes[c] for c in sorted(lignes, key=lambda c: (rang[c], apparition[c]))]
+
     # ─── Compte rendu ────────────────────────────────────────────────────────
 
     @staticmethod
@@ -165,7 +243,7 @@ class FicheProduitService:
         return ""
 
     def _signaler(self, profil, donnees, ref_obsolete, appareils, remplace, equivalentes,
-                  resultat, strategie) -> None:
+                  resultat, strategie, code_produit=None, lignes_equivalentes=None) -> None:
         reference = donnees['reference']
         resume = self._resume_appareils(appareils)
         status = f"Fiche copiée ({resultat['longueur']} car., {resume})"
@@ -177,9 +255,14 @@ class FicheProduitService:
             detail += f" (remplace {ref_obsolete})"
         detail += f" — profil « {profil.get('name', '')} »"
         detail += f"\n==> {resume} ; {resultat['longueur']} car."
+        if code_produit and len(code_produit) > 1:
+            detail += f"\n==> Code produit : {' '.join(code_produit)}"
         if remplace:
             detail += f"\n==> Remplace : {' '.join(remplace)}"
-        if equivalentes:
+        if lignes_equivalentes is not None:
+            for ligne in lignes_equivalentes:
+                detail += f"\n==> Équivalentes : {' '.join(ligne)}"
+        elif equivalentes:
             detail += f"\n==> Équivalentes : {' '.join(r for lignee in equivalentes for r in lignee)}"
         reduction = self._reduction(resultat['html'], strategie)
         if reduction:

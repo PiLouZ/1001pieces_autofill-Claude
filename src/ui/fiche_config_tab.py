@@ -143,7 +143,9 @@ class FicheConfigTab(QWidget):
         card, grid = self._carte("3 · Code produit")
         self.code_input = ChampModeleHtml()
         add_row(grid, "Ligne :", self.code_input, VariableChipsBar(
-            [("reference", "Référence tapée ; si elle est remplacée, la plus récente")],
+            [("reference", "Référence tapée ; si elle est remplacée, la plus récente.\n"
+                           "Pièce reprise du site : suivie de la 2ᵉ réf. de son code produit\n"
+                           "(paire Whirlpool / Indesit), jointe par le séparateur")],
             targets=[self.code_input],
         ))
         reglages_layout.addWidget(card)
@@ -162,8 +164,10 @@ class FicheConfigTab(QWidget):
         card, grid = self._carte("5 · Références équivalentes")
         self.equivalentes_input = ChampModeleHtml()
         self.equivalentes_input.setToolTip(
-            "Toutes les références équivalentes, chacune suivie de ses anciennes références,\n"
-            "de la plus fournie en appareils à la moins fournie")
+            "Les références équivalentes, chacune suivie de ses anciennes références,\n"
+            "de la plus fournie en appareils à la moins fournie.\n"
+            "Une ligne par marque d'origine (pièces reprises du site) ; sans marque\n"
+            "d'origine connue, toutes sur une seule ligne. Références écartées jamais écrites")
         add_row(grid, "Ligne :", self.equivalentes_input, VariableChipsBar(
             [("references", "Références équivalentes, jointes par le séparateur")],
             targets=[self.equivalentes_input],
@@ -381,6 +385,8 @@ class FicheConfigTab(QWidget):
         return self._generateur.generer(
             self._champs(), self._titre_apercu(), self._marques_apercu(), "00145787",
             _APERCU_REMPLACE, _APERCU_EQUIVALENTES, lambda _reste: self._appareils_apercu(),
+            # Deux marques d'origine : une ligne chacune, comme une pièce reprise du site
+            lignes_equivalentes=_APERCU_EQUIVALENTES,
         )['html']
 
     def _update_preview(self):

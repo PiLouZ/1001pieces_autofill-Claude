@@ -13,7 +13,7 @@ import copy
 import html
 import json
 import os
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 
 from .base_service import BaseService
 from src.core.logger import app_logger
@@ -162,7 +162,7 @@ TITRE_PROFILE_INT_KEYS = ("max_marques", "max_types", "max_caracteres")
 AVAILABLE_VARIABLES = [
     "{export_ref}", "{ref_piece}", "{type_app}", "{manufacturer}",
     "{ref_modele}", "{commercial_ref}", "{other_ref}",
-    "{modele_complet}", "{separateur}"
+    "{modele_complet}", "{separateur}", "{ref_interne}", "{id_product}"
 ]
 
 AVAILABLE_HTML_VARIABLES = {
@@ -494,15 +494,18 @@ class ExportConfigService(BaseService):
 
     # ─── Rendu CSV ───────────────────────────────────────────────────────────
 
-    def render_csv_row(self, record: Tuple, export_ref: str = '') -> List[str]:
+    def render_csv_row(self, record: Tuple, export_ref: str = '',
+                       produit: Optional[Dict] = None) -> List[str]:
         """
         Générer une ligne CSV depuis un record selon la config colonnes.
 
         record = (type_app, manufacturer, ref_modele, commercial_ref, other_ref, ref_piece)
         export_ref = référence d'export retenue pour ce lot (celle confirmée dans
             le dialogue d'export), substituée à {export_ref}.
+        produit = produit du site retenu ({'ref_interne', 'id_product'}), pour
+            {ref_interne} et {id_product} ; None = vides.
         """
-        return render_csv_row_with(self._config['csv']['columns'], record, export_ref)
+        return render_csv_row_with(self._config['csv']['columns'], record, export_ref, produit)
 
     # ─── Rendu HTML ──────────────────────────────────────────────────────────
 
@@ -551,7 +554,17 @@ def _render_source(source: str, context: Dict) -> str:
         return source
 
 
-def render_csv_row_with(columns: List[Dict], record: Tuple, export_ref: str = '') -> List[str]:
+def _variables_produit(produit: Optional[Dict]) -> Dict[str, str]:
+    """{ref_interne} et {id_product} du produit du site retenu à l'export
+    (CDC fiches site § 8.2) ; vides sans produit."""
+    produit = produit or {}
+    id_product = produit.get('id_product')
+    return {'ref_interne': produit.get('ref_interne') or '',
+            'id_product': '' if id_product in (None, '') else str(id_product)}
+
+
+def render_csv_row_with(columns: List[Dict], record: Tuple, export_ref: str = '',
+                        produit: Optional[Dict] = None) -> List[str]:
     """Rendre une ligne CSV pour un jeu de colonnes donné.
 
     Renderer unique de l'application : ExportConfigService.render_csv_row y
@@ -576,6 +589,7 @@ def render_csv_row_with(columns: List[Dict], record: Tuple, export_ref: str = ''
         'other_ref':      other_ref or '',
         'modele_complet': modele_complet,
         'separateur':     separateur,
+        **_variables_produit(produit),
     }
 
     return [_render_source(col['source'], context) for col in columns]
@@ -605,7 +619,8 @@ def get_csv_settings(service) -> Dict[str, Any]:
     }
 
 
-def format_csv_filename(pattern: str, export_ref: str, timestamp: str = '') -> str:
+def format_csv_filename(pattern: str, export_ref: str, timestamp: str = '',
+                        produit: Optional[Dict] = None) -> str:
     """Appliquer le pattern de nom de fichier, sans jamais faire échouer l'export.
 
     Le pattern est saisi librement dans la fenêtre de configuration : une
@@ -614,7 +629,8 @@ def format_csv_filename(pattern: str, export_ref: str, timestamp: str = '') -> s
     de destination choisi.
     """
     try:
-        nom = pattern.format(export_ref=export_ref, timestamp=timestamp)
+        nom = pattern.format(export_ref=export_ref, timestamp=timestamp,
+                             **_variables_produit(produit))
     except (KeyError, IndexError, ValueError) as e:
         app_logger.warning(
             f"[!] Pattern de nom de fichier invalide ({pattern!r} : {e}), "

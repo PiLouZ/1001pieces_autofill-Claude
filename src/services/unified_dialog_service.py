@@ -24,7 +24,8 @@ from ..utils.qt_imports import (
     QPushButton,
     QWidget,
     QFrame,
-    QSize
+    QSize,
+    QComboBox
 )
 from ..utils.qt_imports import Qt
 from ..utils.qt_imports import QFont
@@ -94,7 +95,9 @@ class ComplexDialogs:
     def show_reference_selection_dialog(self, title: str, message: str,
                                       default_reference: str = "",
                                       destination: Optional[Dict[str, Any]] = None,
-                                      bouton_valider: str = "OK") -> Optional[str]:
+                                      bouton_valider: str = "OK",
+                                      produits: Optional[List[Dict[str, Any]]] = None,
+                                      choix: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
         Dialogue de saisie de la référence d'export.
 
@@ -108,6 +111,9 @@ class ComplexDialogs:
                 nom du fichier qui sera écrit, recalculé à chaque frappe.
                 None pour les exports sans fichier (HTML → presse-papier).
             bouton_valider: Libellé du bouton de validation
+            produits: Produits du site de la pièce ({'ref_interne', 'id_product'}) ;
+                plusieurs → liste « Produit du site » qui remplit le champ
+            choix: Reçoit le produit retenu sous 'produit'
 
         Returns:
             Référence saisie, ou None si annulé
@@ -131,6 +137,27 @@ class ComplexDialogs:
         ref_input = QLineEdit(default_reference)
         ref_input.setPlaceholderText("Entrez la référence…")
         ref_input.setStyleSheet("QLineEdit { padding: 6px; font-size: 13px; }")
+
+        # Plusieurs produits du site pour la pièce : le choix remplit le champ
+        if produits and len(produits) > 1:
+            liste = QComboBox()
+            liste.setObjectName("produits_site")
+            for p in produits:
+                numero = f"  ·  n° {p['id_product']} sur le site" if p.get('id_product') else ""
+                liste.addItem(f"{p['ref_interne']}{numero}", p)
+            liste.setToolTip("Produit du site qui sert à cet export")
+
+            def _produit_choisi(index):
+                produit = liste.itemData(index)
+                if choix is not None:
+                    choix['produit'] = produit
+                if produit:
+                    ref_input.setText(produit['ref_interne'])
+            liste.currentIndexChanged.connect(_produit_choisi)
+            ligne_produit = QHBoxLayout()
+            ligne_produit.addWidget(QLabel("Produit du site :"))
+            ligne_produit.addWidget(liste, 1)
+            layout.addLayout(ligne_produit)
         layout.addWidget(ref_input)
 
         if message:
@@ -279,10 +306,13 @@ class UnifiedDialogService:
     def show_reference_selection_dialog(self, title: str, message: str, 
                                       default_reference: str = "",
                                       destination: Optional[Dict[str, Any]] = None,
-                                      bouton_valider: str = "OK") -> Optional[str]:
+                                      bouton_valider: str = "OK",
+                                      produits: Optional[List[Dict[str, Any]]] = None,
+                                      choix: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """Dialogue de saisie de la référence d'export"""
         return self.complex.show_reference_selection_dialog(
-            title, message, default_reference, destination, bouton_valider
+            title, message, default_reference, destination, bouton_valider,
+            produits=produits, choix=choix,
         )
     
     # Factory methods pour compatibilité avec l'ancien code
