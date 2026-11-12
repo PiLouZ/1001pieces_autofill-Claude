@@ -2579,6 +2579,23 @@ class MainWindow(QMainWindow):
                                  on_enregistre=self._apres_fiche_site)
         dialog.show()
 
+    def _open_reprise_site_dialog(self):
+        """Reprise des fiches du site en masse, par lots (CDC reprise des fiches,
+        étape 4) : une seule fenêtre à la fois (elle tient la session de reprise)."""
+        from .reprise_site_dialog import RepriseSiteDialog
+        dialog = getattr(self, '_reprise_site_dialog', None)
+        if dialog is not None:
+            try:
+                dialog.raise_()
+                dialog.activateWindow()
+                return
+            except RuntimeError:        # fenêtre fermée (WA_DeleteOnClose)
+                pass
+        dialog = RepriseSiteDialog(self.db_manager, main_window=self)
+        dialog.destroyed.connect(lambda *_: setattr(self, '_reprise_site_dialog', None))
+        self._reprise_site_dialog = dialog
+        dialog.show()
+
     def _apres_fiche_site(self, ref_piece: str, _resultat):
         """Fiche enregistrée : afficher la pièce dans la recherche."""
         self._search_piece_from_history(ref_piece)

@@ -20,6 +20,10 @@ sur les 5 millions de liens) :
   paire d'écritures d'une marque (§ 5.2).
 - `decisions_references` : références écartées et étiquettes d'origine
   choisies, avec la forme de la référence pour l'apprentissage (§ 5.3, 5.5).
+- Reprise en masse (§ 7.3, étape 4) : `reprise_site_etat` (une ligne : dernier
+  id_produit traité, export en cours), `reprise_site_lots` (journal des lots
+  enregistrés, mesures comprises) et `reprise_site_de_cote` (fiches mises de
+  côté, à reprendre plus tard).
 """
 
 from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
@@ -89,11 +93,53 @@ class DatabaseFichesSiteMixin:
             """)
             self.cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_decisions_ref_forme ON decisions_references(forme)")
+            self._setup_reprise_site_tables()
             self._ajouter_colonne_si_absente('piece_associations', 'provenance', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'origine', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'ligne_fiche', 'INTEGER')
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
+
+    def _setup_reprise_site_tables(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reprise_site_etat (
+                cle                   TEXT PRIMARY KEY CHECK (cle = 'courant'),
+                dernier_id            INTEGER NOT NULL DEFAULT 0,
+                date_export           TEXT,
+                taille_produits       INTEGER,
+                taille_compatibilites INTEGER,
+                chemin_produits       TEXT,
+                chemin_compatibilites TEXT,
+                maj_le                TEXT
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reprise_site_lots (
+                numero        INTEGER PRIMARY KEY AUTOINCREMENT,
+                premier_id    INTEGER,
+                dernier_id    INTEGER,
+                date_export   TEXT,
+                produits      INTEGER,
+                fiches        INTEGER,
+                de_cote       INTEGER,
+                analyse_s     REAL,
+                ecriture_s    REAL,
+                taille_avant  INTEGER,
+                taille_apres  INTEGER,
+                mesures       TEXT,
+                enregistre_le TEXT
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reprise_site_de_cote (
+                id_produit  INTEGER PRIMARY KEY,
+                ref_piece   TEXT,
+                nom         TEXT,
+                raison      TEXT,
+                date_export TEXT,
+                le          TEXT
+            )
+        """)
 
     def _ajouter_colonne_si_absente(self, table: str, colonne: str, type_sql: str):
         colonnes = {r[1] for r in self.cursor.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -110,6 +156,84 @@ class DatabaseFichesSiteMixin:
             "WHERE ref_piece = ? ORDER BY ref_interne", [ref_piece]).fetchall()
         return [dict(zip(('ref_interne', 'id_product', 'ref_piece', 'ean', 'lu_le'), r))
                 for r in rows]
+
+    # ── Reprise en masse (§ 7.3) ─────────────────────────────────────────────
+
+    _COLONNES_ETAT = ('dernier_id', 'date_export', 'taille_produits', 'taille_compatibilites',
+                      'chemin_produits', 'chemin_compatibilites', 'maj_le')
+
+    @with_query_lock
+    def etat_reprise_site(self) -> Optional[Dict]:
+        """État de la reprise (None = jamais commencée)."""
+        row = self.cursor.execute(
+            f"SELECT {', '.join(self._COLONNES_ETAT)} FROM reprise_site_etat "
+            f"WHERE cle = 'courant'").fetchone()
+        return dict(zip(self._COLONNES_ETAT, row)) if row else None
+
+    @with_query_lock
+    def lots_reprise_site(self, limite: int = 50) -> List[Dict]:
+        colonnes = ('numero', 'premier_id', 'dernier_id', 'date_export', 'produits', 'fiches',
+                    'de_cote', 'analyse_s', 'ecriture_s', 'taille_avant', 'taille_apres',
+                    'mesures', 'enregistre_le')
+        rows = self.cursor.execute(
+            f"SELECT {', '.join(colonnes)} FROM reprise_site_lots ORDER BY numero DESC LIMIT ?",
+            [limite]).fetchall()
+        return [dict(zip(colonnes, r)) for r in rows]
+
+    @with_query_lock
+    def fiches_de_cote_reprise_site(self) -> List[Dict]:
+        colonnes = ('id_produit', 'ref_piece', 'nom', 'raison', 'date_export', 'le')
+        rows = self.cursor.execute(
+            f"SELECT {', '.join(colonnes)} FROM reprise_site_de_cote ORDER BY id_produit").fetchall()
+        return [dict(zip(colonnes, r)) for r in rows]
+
+    @with_query_lock
+    def definir_export_reprise_site(self, signature: Dict, repartir_de_zero: bool, le: str):
+        """Nouvel export choisi : le garde comme export en cours. `repartir_de_zero`
+        remet le dernier id_produit à 0 et oublie les fiches mises de côté."""
+        self.cursor.execute("""
+            INSERT INTO reprise_site_etat (cle, dernier_id, date_export, taille_produits,
+                taille_compatibilites, chemin_produits, chemin_compatibilites, maj_le)
+            VALUES ('courant', 0, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(cle) DO UPDATE SET
+                date_export = excluded.date_export, taille_produits = excluded.taille_produits,
+                taille_compatibilites = excluded.taille_compatibilites,
+                chemin_produits = excluded.chemin_produits,
+                chemin_compatibilites = excluded.chemin_compatibilites, maj_le = excluded.maj_le
+        """, [signature['date_export'], signature['taille_produits'],
+              signature['taille_compatibilites'], signature['chemin_produits'],
+              signature['chemin_compatibilites'], le])
+        if repartir_de_zero:
+            self.cursor.execute("UPDATE reprise_site_etat SET dernier_id = 0 WHERE cle = 'courant'")
+            self.cursor.execute("DELETE FROM reprise_site_de_cote")
+        self.conn.commit()
+
+    def _avancer_reprise_site(self, dernier_id: int, le: str):
+        """Dernier id_produit traité (sans commit : même transaction que le journal du lot).
+        Ne recule jamais : relancer un lot déjà passé ne fait pas revenir la reprise."""
+        self.cursor.execute(
+            "UPDATE reprise_site_etat SET dernier_id = MAX(dernier_id, ?), maj_le = ? "
+            "WHERE cle = 'courant'", [dernier_id, le])
+
+    def _journaliser_lot_reprise_site(self, lot: Dict) -> int:
+        colonnes = ('premier_id', 'dernier_id', 'date_export', 'produits', 'fiches', 'de_cote',
+                    'analyse_s', 'ecriture_s', 'taille_avant', 'taille_apres', 'mesures',
+                    'enregistre_le')
+        cur = self.cursor.execute(
+            f"INSERT INTO reprise_site_lots ({', '.join(colonnes)}) "
+            f"VALUES ({', '.join('?' * len(colonnes))})", [lot.get(c) for c in colonnes])
+        return cur.lastrowid
+
+    def _mettre_de_cote_reprise_site(self, fiches: Iterable[Tuple[int, str, str, str]],
+                                     date_export: str, le: str):
+        """(id_produit, ref_piece, nom, raison) : fiches à reprendre plus tard."""
+        self.cursor.executemany(
+            "INSERT OR REPLACE INTO reprise_site_de_cote VALUES (?, ?, ?, ?, ?, ?)",
+            [(i, r, n, raison, date_export, le) for i, r, n, raison in fiches])
+
+    def _retirer_de_cote_reprise_site(self, ids: Iterable[int]):
+        self.cursor.executemany("DELETE FROM reprise_site_de_cote WHERE id_produit = ?",
+                                [(i,) for i in ids])
 
     # ── Écriture (appelées par EnregistrementFicheService, sans commit) ──────
     # Le service ouvre une seule transaction pour toute la fiche : ces
@@ -142,7 +266,12 @@ class DatabaseFichesSiteMixin:
         """Liens pièce → appareil avec leur provenance. Un lien présent n'est pas
         recréé (UNIQUE(piece_id, appareil_id)) : seule sa provenance est complétée."""
         compte = {'crees': 0, 'completes': 0, 'inchanges': 0}
-        liens = list(dict(liens).items())
+        # Deux lignes de la fiche peuvent viser le même appareil (écritures proches,
+        # description et table) : leurs provenances se réunissent
+        reunis: Dict[int, str] = {}
+        for appareil_id, provenance in liens:
+            reunis[appareil_id] = fusion_provenance(reunis.get(appareil_id), provenance)
+        liens = list(reunis.items())
         actuelles = {}
         ids = [a for a, _ in liens]
         for i in range(0, len(ids), 500):

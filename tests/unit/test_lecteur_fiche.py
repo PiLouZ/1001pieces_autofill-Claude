@@ -570,3 +570,14 @@ class TestVariantesDuSite:
         # Marque du produit inconnue (« 1001pièces ») : pas une candidate
         d = lire_description(fiche, marques_connues=['Miele'], marque_produit='1001pièces')
         assert d.marques_annoncees == [] and d.appareils[0].marque is None
+
+
+def test_ref_fabricant_suivie_de_texte():
+    """« Réf. fabricant : 10/1863-5010 POUR APPAREILS VN606E » (étape 4, produit 7089) :
+    seule la référence de tête est une référence de la pièce ; la suite est signalée."""
+    html = ('<div class="class_perso3">Code produit : 481225988048</div>'
+            '<div class="class_perso4">Appareils employant cette pièce</div>'
+            '<div class="class_perso5">Bauknecht Réf. fabricant : 10/1863-5010 POUR APPAREILS VN606E</div>')
+    lecture = lire_description(html, MODELES, ['Bauknecht'])
+    assert [e.references for e in lecture.references_par_marque] == [['10/1863-5010']]
+    assert [(n.nature, n.detail) for n in lecture.non_compris] == [('bloc_non_lu', 'POUR APPAREILS VN606E')]

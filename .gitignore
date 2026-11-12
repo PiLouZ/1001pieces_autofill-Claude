@@ -29,6 +29,10 @@ data/backups/
 data/export_config.json
 # Configuration de la reprise des fiches du site (data/reprise_fiches.example.json = défauts)
 data/reprise_fiches.json
+# Exports PrestaShop de la reprise en masse (CSV de plusieurs centaines de Mo)
+data/reprise_site/
+# Certificats racines exportés du trousseau macOS (src/utils/certificats.py)
+data/certificats_racines.pem
 
 # Logs
 logs/

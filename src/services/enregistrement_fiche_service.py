@@ -33,9 +33,11 @@ def telecharger_page(url: str) -> str:
     """Page publique d'une fiche (appelé hors du thread principal par l'aperçu)."""
     from urllib.parse import urlparse
     from urllib.request import Request, urlopen
+    from ..utils.certificats import contexte_ssl
     if urlparse(url).scheme not in ('http', 'https'):
         raise ValueError("le lien doit commencer par http:// ou https://")
-    with urlopen(Request(url, headers=_ENTETES_HTTP), timeout=_DELAI_HTTP) as reponse:
+    with urlopen(Request(url, headers=_ENTETES_HTTP), timeout=_DELAI_HTTP,
+                 context=contexte_ssl()) as reponse:
         jeu = reponse.headers.get_content_charset() or 'utf-8'
         return reponse.read().decode(jeu, errors='replace')
 from .base_service import BaseService
@@ -145,7 +147,10 @@ class EnregistrementFicheService(BaseService):
         return res
 
     # -------------------------------------------------------------------------
-    def _ecrire(self, plan: PlanEnregistrement, res: ResultatEnregistrement):
+    def _ecrire(self, plan: PlanEnregistrement, res: ResultatEnregistrement,
+                nouveaux: Optional[Dict[int, int]] = None):
+        """Écrit le plan d'une fiche. `nouveaux` (import en masse) : appareils du plan
+        déjà créés pour tout le lot (index de la ligne → id) ; sinon ils sont créés ici."""
         db = self.db
         # 1. La pièce : créée réelle, ou fantôme → réelle (liens hérités inchangés)
         with db._query_lock:
@@ -154,18 +159,32 @@ class EnregistrementFicheService(BaseService):
             db.conn.commit()
 
         # 2. Appareils à créer : brique d'insertion du tronc d'import
+        if nouveaux is None:
+            nouveaux = self.creer_appareils(plan.appareils_a_creer, res)
+        # 3 à 5. Liens, relations, origines, produit, décisions
+        self._ecrire_suite(plan, res, piece_id, nouveaux)
+
+    def creer_appareils(self, appareils, res: Optional[ResultatEnregistrement] = None
+                        ) -> Dict[int, int]:
+        """Crée les appareils (AppareilACreer) par la brique d'insertion du tronc
+        d'import ; retourne index de la ligne → id."""
         nouveaux: Dict[int, int] = {}
-        if plan.appareils_a_creer:
+        if appareils:
             from ..core.import_manager import ImportManager
             lot = [{'type': a.type, 'manufacturer': a.marque, 'ref_modele': a.ref_modele,
                     'commercial_ref': a.nom, 'other_ref': '', 'notes': '', 'category': ''}
-                   for a in plan.appareils_a_creer]
-            ids = ImportManager(db)._batch_insert_devices(lot)
+                   for a in appareils]
+            ids = ImportManager(self.db)._batch_insert_devices(lot)
             if len(ids) != len(lot):
                 raise RuntimeError(f"{len(lot)} appareils à créer, {len(ids)} créés")
-            nouveaux = {a.index: i for a, i in zip(plan.appareils_a_creer, ids)}
-            res.appareils_crees = len(ids)
+            nouveaux = {a.index: i for a, i in zip(appareils, ids)}
+            if res is not None:
+                res.appareils_crees = len(ids)
+        return nouveaux
 
+    def _ecrire_suite(self, plan: PlanEnregistrement, res: ResultatEnregistrement,
+                      piece_id: int, nouveaux: Dict[int, int]):
+        db = self.db
         # 3. Liens avec provenance (§ 5.7)
         liens = []
         for cible, provenance in plan.liens:
@@ -200,8 +219,9 @@ class EnregistrementFicheService(BaseService):
             db._enregistrer_decisions_references(plan.decisions_references, le)
             db.conn.commit()
 
-    def _apres_ecriture(self, res: ResultatEnregistrement):
-        """Caches invalidés comme après un import, puis sauvegarde événementielle."""
+    def _apres_ecriture(self, res: ResultatEnregistrement, source: str = "fiche_site"):
+        """Caches invalidés comme après un import, puis sauvegarde événementielle
+        (thread principal : la sauvegarde passe par des minuteries Qt)."""
         bilan = {'new_entries': res.appareils_crees,
                  'associations_created': res.liens_crees + res.liens_completes}
         try:
@@ -213,4 +233,4 @@ class EnregistrementFicheService(BaseService):
             invalidation.invalidate_after_import(bilan)
         sauvegarde = getattr(self.parent_window, 'event_driven_save_service', None)
         if sauvegarde is not None:
-            sauvegarde.save_after_import("fiche_site")
+            sauvegarde.save_after_import(source)

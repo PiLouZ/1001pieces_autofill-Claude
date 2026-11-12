@@ -55,8 +55,13 @@ def demander_oui_non(parent, titre: str, message: str,
 
 
 def _selecteur(parent, titre: str, dossier: str, filtre: str, mode, accepter,
-               sur_chemin: Callable[[str], None]) -> QFileDialog:
+               sur_chemin: Callable[[str], None], natif: bool = True) -> QFileDialog:
     dialogue = QFileDialog(parent, titre, dossier or "", filtre or "")
+    if not natif:
+        # Sélecteur dessiné par Qt : toujours visible dans l'application (le natif
+        # macOS, ouvert depuis une fenêtre non modale, peut rester invisible et
+        # bloquer tous les clics)
+        dialogue.setOption(QFileDialog.DontUseNativeDialog, True)
     dialogue.setFileMode(mode)
     dialogue.setAcceptMode(accepter)
     if mode == QFileDialog.Directory:
@@ -79,10 +84,11 @@ def choisir_dossier(parent, titre: str, dossier: str,
 
 
 def choisir_fichier_a_ouvrir(parent, titre: str, dossier: str, filtre: str,
-                             sur_chemin: Callable[[str], None]) -> QFileDialog:
-    """Équivalent de `QFileDialog.getOpenFileName(parent, titre, dossier, filtre)`."""
+                             sur_chemin: Callable[[str], None], natif: bool = True) -> QFileDialog:
+    """Équivalent de `QFileDialog.getOpenFileName(parent, titre, dossier, filtre)`.
+    natif=False : sélecteur dessiné par Qt (cf. _selecteur)."""
     return _selecteur(parent, titre, dossier, filtre, QFileDialog.ExistingFile,
-                      QFileDialog.AcceptOpen, sur_chemin)
+                      QFileDialog.AcceptOpen, sur_chemin, natif)
 
 
 def choisir_fichier_a_enregistrer(parent, titre: str, chemin: str, filtre: str,

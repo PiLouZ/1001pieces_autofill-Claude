@@ -191,6 +191,20 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li>Vos choix sont mémorisés : « même appareil » ou « appareils distincts » pour deux écritures proches, étiquettes saisies, références écartées. Relire une fiche déjà reprise n'ajoute rien.</li>
 </ul>
 
+<h3>Reprise en masse, par lots</h3>
+<p>Menu <b>Données → Reprise des fiches du site…</b> : toutes les fiches du site, lot par lot, à partir de deux exports CSV de la base PrestaShop (séparateur <code>;</code>, triés par <code>id_produit</code>) : les <b>produits</b> avec leur description, et les <b>compatibilités</b> (la table complète, et pas seulement la 1<sup>re</sup> page affichée sur le site). <b>Rien n'est écrit avant « Enregistrer le lot ».</b></p>
+<ul>
+  <li><b>Exports</b> : choisissez les deux fichiers (par défaut dans <code>data/reprise_site/</code>), puis <b>Utiliser ces exports</b>. Si ce n'est pas l'export de la reprise en cours (un export plus récent, par exemple), choisissez <b>Repartir de zéro</b> ou <b>Continuer la reprise</b> après le dernier produit traité.</li>
+  <li><b>État</b> : dernier produit traité, date de l'export, lots enregistrés, fiches mises de côté. Vous pouvez fermer la fenêtre ou l'application à tout moment : la reprise continue au lot suivant.</li>
+  <li><b>Analyser le lot suivant</b> : 100 produits par défaut (réglable), dans l'ordre de <code>id_produit</code>. La fenêtre reste utilisable pendant l'analyse ; <b>Annuler</b> l'arrête.</li>
+  <li><b>Résumé du lot</b> : les catégories de la fiche seule (exacts, normalisés, déjà couverts, à valider, absents, types manquants, relations, conflits), plus les <b>profils ambigus</b> (fiches que plusieurs profils lisent différemment), avec le nombre de fiches et d'éléments. Une décision vaut pour <b>tout le lot</b> : Validée en bloc, Laissée de côté ou En attente. Profils ambigus laissés de côté : ces fiches sont mises de côté.</li>
+  <li><b>Doutes regroupés</b> : un choix pour tout un groupe. Par exemple, les références internes sans rapport avec le code produit sont regroupées par forme (<code>ES99999</code> pour les codes fournisseur <code>ES…</code>) : enregistrer le produit avec cette référence, ou non. Autres groupes : EAN différent, titre différent du libellé, référence interne déjà rattachée à une autre pièce, remplacements en conflit, équivalentes sans étiquette d'origine (étiquette commune ou références écartées).</li>
+  <li><b>Fiches</b> : l'état de chaque fiche (prête, en attente, à compléter, de côté). Double-clic ou <b>Aperçu de la fiche…</b> : l'aperçu complet de la fiche seule ; <b>Reprendre dans le lot</b> rend vos choix au lot, et ils l'emportent sur ceux du lot. <b>Mettre la fiche de côté</b> : rien n'est écrit pour elle, elle se reprend plus tard par <b>Reprendre les fiches de côté</b>.</li>
+  <li><b>Détail</b> : tous les éléments du lot (appareils, remplacements, équivalences), filtrables par nature, catégorie, niveau, lien, provenance et texte. Double-clic : l'aperçu de la fiche.</li>
+  <li><b>Laisser de côté les lignes à compléter</b> : les lignes qui bloquent (appareil à choisir, marque ou type manquant) sont laissées de côté en un clic ; elles reviendront à la relecture de leur fiche. Une ligne dont l'appareil est créé par une autre fiche du même lot le partage : un appareil cité par deux fiches n'est créé qu'une fois.</li>
+  <li><b>Enregistrer le lot</b> : tout le lot en une fois, sans figer la fenêtre. Le dernier produit traité n'avance qu'une fois le lot écrit en entier : après une interruption, relancez le lot, <b>rien n'est doublé</b>. Chaque lot est journalisé (durées, taille de la base).</li>
+</ul>
+
 <hr/>
 
 <h2>Raccourcis clavier</h2>
@@ -237,6 +251,8 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h3>En préparation</h3>
 <ul>
   <li>Reprise des fiches du site : menu <b>Données → Lire une fiche du site…</b>. À partir du lien d'une fiche ou de sa description, l'outil montre ce qu'il reprendrait (appareils, remplacements, équivalences avec leur origine, référence interne, EAN, libellé tiré du titre), catégorie par catégorie, et n'enregistre qu'après votre validation. Les liens gardent leur provenance (description, table du site), vos choix sont mémorisés, et relire une fiche n'ajoute rien.</li>
+  <li>Reprise en masse des fiches du site : menu <b>Données → Reprise des fiches du site…</b>. À partir des deux exports CSV de PrestaShop (produits avec description, compatibilités), l'outil reprend les fiches par lots de 100 : résumé par catégorie validable en bloc pour tout le lot, doutes regroupés (par exemple les références internes « ES… » des fournisseurs), détail filtrable, aperçu d'une fiche au besoin. La reprise se poursuit d'une session à l'autre ; relancer un lot ne double rien.</li>
+  <li>Lecture des fiches : « Réf. fabricant : 10/1863-5010 POUR APPAREILS … » ne lit plus que la référence ; la suite est signalée comme non lue au lieu de devenir des équivalences.</li>
   <li>Appellations des appareils : la méta description peut citer l'appareil sous un autre nom, par exemple « machine à laver » pour « lave-linge » ou « plaque de cuisson » pour « plaque ». Le choix est fixe pour une référence. Le méta title et les titres gardent le type en base : une case dans l'onglet Appareils pour le méta title, et une case par gabarit dans l'onglet Titre (pour un gabarit repris dans une description, par exemple). Listes modifiables dans <i>Configuration des exports</i>, nouvel onglet <b>Appareils</b>. « Une hotte », « une plaque » : l'article s'accorde désormais au genre de l'appareil.</li>
 </ul>
 <h3>Versions livrées</h3>
