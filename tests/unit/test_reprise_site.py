@@ -70,8 +70,8 @@ def _description(code, marque, lignes, remplace=()):
     return html + '</div>'
 
 
-def _service(db):
-    s = RepriseSiteService(db, configuration=CONFIG)
+def _service(db, regles=None):
+    s = RepriseSiteService(db, configuration=CONFIG, chemin_configuration=regles)
     s._modeles = MODELES
     return s
 
@@ -418,15 +418,19 @@ def test_lot_des_fiches_exemples_sur_extrait(tmp_path):
 # =============================================================================
 
 def test_fenetre_reprise_rendue_et_fiche_du_lot(qapp, tmp_path):
+    """Fenêtre « Importer les fiches du site » par questions (refonte, étape 4)."""
     from src.ui.fiche_site_dialog import FicheSiteDialog
     from src.ui.reprise_site_dialog import RepriseSiteDialog
+    from src.utils.rapprochement_fiche.decisions import ChoixAppareil
     b = Construite(tmp_path)
     b.appareil('Bosch', 'WAE24/01')
     p, c = b.exports([
         _produit(101, '481010595117', 'Bosch', [('WAE24/01', 'Maxx'), ('ZZNEUF01/02', 'Neuf')]),
         _produit(102, '481010595118', 'Bosch', [('WAE24/01', 'Maxx')], ref_interne='ES10028')])
-    s = _service(b.db)
+    s = _service(b.db, tmp_path / 'regles.json')
     d = RepriseSiteDialog(b.db, service=s)
+    d.setWindowTitle(d.windowTitle())
+    assert d.windowTitle() == "Importer les fiches du site"
     d.champ_produits.setText(p)
     d.champ_compat.setText(c)
     d._examiner_export()
@@ -434,22 +438,25 @@ def test_fenetre_reprise_rendue_et_fiche_du_lot(qapp, tmp_path):
     d.afficher_lot(s.analyser_lot_suivant(10))
     d.show()
     qapp.processEvents()
-    assert d.resume.topLevelItemCount() >= 2
-    assert d.groupes.topLevelItemCount() == 1           # réf. interne ES…
-    assert d.modele_fiches.rowCount() == 2
-    assert d.modele_detail.rowCount() == 3
-    assert not d.bouton_enregistrer.isEnabled()
-    # Filtre du détail : nature « appareil », catégorie « absents »
-    d.filtres[1].setCurrentIndex(d.filtres[1].findData('absents'))
-    assert d.filtre_detail.rowCount() == 1
-    # Aperçu d'une fiche du lot : ses décisions reviennent au lot
+    q = d.lot.questionnaire
+    assert {'Q1', 'R5'} <= set(q.questions) and set(d.panneau.cartes) == set(q.questions)
+    assert d.onglets.tabText(0) == f"À décider ({len(q.sans_reponse())})"
+    assert d.modele_fiches.rowCount() == 2 and d.modele_detail.rowCount() == 3
+    assert not d.bouton_enregistrer.isEnabled() and d.bouton_propositions.isEnabled()
+    # Toutes les lignes, filtrées sur une question (« Voir les lignes »)
+    d._voir_lignes('Q1')
+    assert d.onglets.currentIndex() == 2 and d.filtre_detail.rowCount() == 1
+    # Fiche du lot : un choix ligne par ligne revient au lot et sort la ligne de Q1
     d._ouvrir_fiche(0)
     fiche = d._fiche_ouverte
     assert isinstance(fiche, FicheSiteDialog) and fiche.bouton_enregistrer.isEnabled()
-    fiche._tout_valider()
+    k = next(i for i, a in enumerate(fiche.rapprochement.appareils) if a.ref_modele == 'ZZNEUF01/02')
+    fiche.individuels.appareils[k] = ChoixAppareil(ignorer=True)
     fiche._enregistrer()
-    assert d.lot.fiches[0].personnalisee
-    d._tout_valider()
-    assert d.bouton_enregistrer.isEnabled()
+    assert 0 in q.individuels and 'Q1' not in q.questions
+    # Propositions acceptées : plus rien en attente
+    d._propositions_acceptees()
+    assert not q.sans_reponse() and d.bouton_enregistrer.isEnabled(), d.etat.text()
     assert d.grab().width() > 0
+    assert not (RACINE / 'data' / 'reprise_fiches.json').exists()
     d.close()

@@ -550,6 +550,39 @@ Elle n'en est retirée qu'une fois complète. Relue (« Reprendre les fiches de 
 
 Vérification : `test_reprise_questions.py::test_fiche_partielle_a_revoir_puis_complete`.
 
+### 10.8 Écrans par questions — refonte, étape 4 (2026-11-12)
+
+- **Panneau commun** (`src/ui/questions_reprise.py`) aux deux fenêtres :
+  - « Ce que l'outil fera sans vous » : un récapitulatif, sans aucun clic ;
+  - « Règles à poser une fois » (mémorisées) ;
+  - « Questions » ;
+  - « Règles déjà posées » (« Revenir sur cette règle »).
+
+  Une carte par question donne le nombre de cas, des exemples et la réponse proposée (bouton vert). Elle se replie une fois répondue ; « Modifier » la rouvre. « Voir les lignes » mène aux lignes concernées.
+- **« Importer les fiches du site »** (nouveau nom de la fenêtre de reprise, menu Données) a trois onglets :
+  - « À décider » ;
+  - « Fiches du lot » : ce qu'il reste pour chaque fiche, filtrable ;
+  - « Toutes les lignes » : la vue virtuelle, en vocabulaire métier, avec un filtre par question.
+
+  « Accepter les propositions… » montre d'abord ce qu'il va faire. Répondre « oui » à une règle de groupe de marques relit le lot automatiquement. « Fiches à revoir (N) » remplace « Reprendre les fiches de côté ». Les tableaux « Catégorie / Éléments / Décision / Type commun » et l'onglet « Doutes regroupés » disparaissent.
+- **« Lire une fiche du site »** applique le même moteur à un lot d'une seule fiche :
+  - la carte de la pièce est en langage métier ;
+  - les onglets sont « Appareils », « Anciennes références et équivalentes » (conflits marqués) et « À savoir » ; l'onglet « Pièce » disparaît, ses doutes deviennent des questions ;
+  - la marque et le type ne s'affichent qu'avec « Créer l'appareil ».
+
+  Les choix ligne par ligne (`QuestionnaireLot.individuels`) l'emportent sur les réponses et sortent leurs lignes des questions. En mode « fiche du lot », « Garder ces choix pour le lot » les rend au lot.
+- **Vocabulaire :**
+  - lien → compatibilité ;
+  - en base → dans l'outil ;
+  - fantôme → ancienne référence ;
+  - étiquette d'origine → marque d'origine ;
+  - « → » → « remplacée par » ;
+  - id_product → n° du produit sur le site.
+
+Vérification :
+- rendu hors écran du 1ᵉʳ lot réel (à décider, après propositions, fiches, lignes) et des deux modes de « Lire une fiche du site » ;
+- tests d'écran réécrits (`test_reprise_site.py::test_fenetre_reprise_rendue_et_fiche_du_lot`, `test_enregistrement_fiche.py::test_apercu_rendu_et_enregistrement`), qui vérifient aussi que le `data/reprise_fiches.json` du poste n'est jamais écrit par les tests.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |
@@ -578,7 +611,7 @@ Vérification : `test_reprise_questions.py::test_fiche_partielle_a_revoir_puis_c
 | Relecture | ajout seul, absents signalés |
 | Qui fait foi | l'outil pour les relations, le site pour le commercial |
 | Lecture | tous les profils Fiche, HTML normalisé, repli texte |
-| Masse | lots de 100, résumé par catégorie, détail filtrable, reprise |
+| Masse | lots de 100, récapitulatif et questions (règles posées une fois, mémorisées, révocables), détail filtrable, reprise, fiches « à revoir » (§ 10.6 à 10.8) |
 | EAN | conservé avec le produit du site, le site fait foi |
 | Référence interne | gardée pour chaque produit du site (avec `id_product`), proposée à l'export EveryParts |
 | Retour vers le site | gabarits Fiche complète, une ligne par origine, paire |

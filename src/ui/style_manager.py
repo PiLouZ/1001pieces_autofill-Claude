@@ -407,6 +407,18 @@ class StyleManager:
         "QPushButton:disabled { background: #f8f9fa; color: #adb5bd; border-color: #e9ecef; }"
     )
 
+    # Questions de l'import des fiches du site (src/ui/questions_reprise.py) :
+    # carte d'une question ouverte, carte répondue (repliée), choix proposé
+    CARTE_QUESTION = ('QFrame#carteQuestion { background: white; border: 1px solid #dee2e6;'
+                      ' border-radius: 6px; }')
+    CARTE_QUESTION_REPONDUE = ('QFrame#carteQuestion { background: #f3faf5; border: 1px solid #cfe8d6;'
+                               ' border-radius: 6px; }')
+    CHOIX_PROPOSE_BUTTON = (
+        "QPushButton { background: #198754; color: white; border: 1px solid #198754;"
+        " padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; }"
+        "QPushButton:hover { background: #157347; border-color: #157347; }"
+    )
+
     # Action finale destructive (Restaurer une sauvegarde : remplace la base) :
     # mêmes mesures que PRIMARY / SECONDARY_ACTION_BUTTON, en rouge contour —
     # un vert « valider » serait trompeur.
