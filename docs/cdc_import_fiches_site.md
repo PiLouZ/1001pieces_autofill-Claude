@@ -1,6 +1,6 @@
 # Cahier des charges — Reprise des fiches produit du site 1001pieces.com
 
-**Statut :** À réaliser — conception validée le 2026-11-10, rien n'est codé
+**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`) réalisée le 2026-11-12
 **Version :** 1.0
 **Contexte :** le site 1001pieces.com (PrestaShop) contient des milliers de fiches produit qui listent les appareils compatibles et les relations entre pièces (remplacements, équivalences). Une partie de ces fiches a été produite par l'outil (export « Fiche complète »), une autre a été écrite à la main dans le back-office. Ce document définit comment reprendre ces données dans l'outil, puis comment l'outil devient la passerelle qui alimente le site.
 
@@ -55,7 +55,7 @@ Les relations entre pièces (remplacements, équivalences) n'existent **que dans
 
 La page publique d'une fiche contient tout ce qu'il faut, sans accès à la base :
 - la **description** balisée (§ 4.1) ;
-- la **table des compatibilités** EveryParts (bloc `ucpt-table`), quand elle existe : type, marque, `réf - nom` pour chaque appareil ;
+- la **table des compatibilités** EveryParts (bloc `ucpt-table`), quand elle existe : type, marque, `réf - nom` pour chaque appareil. La page n'en affiche que **la première page** (20 lignes ; 92 pages pour le produit 7285) : le reste est chargé à la demande. La table complète vient donc de l'export SQL des compatibilités (§ 3.1) ; le lecteur relève le nombre de pages et signale une table incomplète ;
 - la **catégorie** du produit dans les métadonnées (par exemple « Pompe de vidange - Lave-linge ») ;
 - la **référence produit interne**, dans le bloc `.product-reference` (`<span class="js-product-reference">EL1113161010</span>`) et dans les métadonnées (`sku`, `mpn`), ainsi que l'**EAN** (`gtin13`) quand il existe ;
 - l'**`id_product`** PrestaShop, au début du nom de la page (`…/20746-regulateur-de-debit-….html`).
