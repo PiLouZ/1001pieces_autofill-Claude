@@ -489,6 +489,8 @@ class ExportConfigDialog(QDialog):
                 ("other_ref",      "Autre référence"),
                 ("modele_complet", "Référence modèle + commerciale fusionnées (tiret absent si l'une est vide)"),
                 ("separateur",     "\" - \" si les deux références sont présentes, \"\" sinon"),
+                ("ref_interne",    "Référence interne du produit du site retenu à l'export (vide sinon)"),
+                ("id_product",     "N° du produit sur le site 1001pieces.com (vide sinon)"),
             ],
             targets=[('table', self.csv_table, 1)],
         ))
@@ -553,7 +555,8 @@ class ExportConfigDialog(QDialog):
         self.csv_pattern_input = QLineEdit()
         self.csv_pattern_input.setToolTip(
             "Pattern du nom de fichier.\n"
-            "Variables : {export_ref} (référence export), {timestamp} (date heure)"
+            "Variables : {export_ref} (référence export), {timestamp} (date heure),\n"
+            "{ref_interne} et {id_product} (produit du site retenu, vides sinon)"
         )
         opts_layout.addWidget(self.csv_pattern_input, 1)
 
@@ -565,6 +568,8 @@ class ExportConfigDialog(QDialog):
             [
                 ("export_ref", "Référence d'export de l'appareil"),
                 ("timestamp",  "Date et heure de génération de l'export"),
+                ("ref_interne", "Référence interne du produit du site (vide sinon)"),
+                ("id_product",  "N° du produit sur le site (vide sinon)"),
             ],
             targets=[self.csv_pattern_input],
         ), 1)

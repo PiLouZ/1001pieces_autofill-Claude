@@ -377,6 +377,8 @@ class _Planificateur:
         self.plan.remplacements.append((rp.ancienne, nouvelle))
 
     def _equivalence(self, e: Equivalence):
+        # n° de ligne gardé tel quel : 0 = 2ᵉ réf. du code produit, que la Fiche
+        # complète réécrit dans le code produit (paire, § 8.1)
         p = self.plan
         origine = self.d.origines.get(e.reference, e.origine)
         if e.reference in self.d.ecartees:
@@ -387,14 +389,14 @@ class _Planificateur:
             return
         if e.statut in ('deja_dans_le_groupe', 'dans_la_succession'):
             if e.statut == 'deja_dans_le_groupe':
-                p.origines.append((e.reference, origine or None, e.ligne or None))
+                p.origines.append((e.reference, origine or None, e.ligne))
             return
         if e.reference not in self.d.origines and self._etat(categorie_equivalence(e)) != VALIDEE:
             return
         if e.reference not in self.d.origines and not _FORME_CHIFFRES.search(e.reference):
             return                      # « Brandt », « : » : jamais écrite en bloc
         p.equivalences.append(e.reference)
-        p.origines.append((e.reference, origine or None, e.ligne or None))
+        p.origines.append((e.reference, origine or None, e.ligne))
         if e.reference in self.d.origines and self.d.origines[e.reference]:
             p.decisions_references.append(
                 (p.ref_piece, e.reference, 'origine', self.d.origines[e.reference],

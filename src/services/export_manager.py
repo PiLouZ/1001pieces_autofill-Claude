@@ -34,10 +34,12 @@ class ExportType(Enum):
 
 class ReferenceSelectionResult:
     """Résultat de sélection de référence"""
-    def __init__(self, reference: str, search_term: Union[str, Dict], cancelled: bool = False):
+    def __init__(self, reference: str, search_term: Union[str, Dict], cancelled: bool = False,
+                 produit: Optional[Dict[str, Any]] = None):
         self.reference = reference
         self.search_term = search_term 
         self.cancelled = cancelled
+        self.produit = produit          # produit du site retenu ({ref_interne}, {id_product})
 
 class ExportManagerService:
     """
@@ -103,7 +105,8 @@ class ExportManagerService:
         return self._execute_export_with_reference(
             selection_result.search_term, 
             selection_result.reference, 
-            export_format
+            export_format,
+            produit=selection_result.produit,
         )
     
     
@@ -115,8 +118,14 @@ class ExportManagerService:
 
         # Utiliser le terme parsé avec flags bannières
         parsed = self._parse_search_term(search_term)
+        # Sans dialogue, la référence reste le terme ; un produit du site unique
+        # alimente seulement {ref_interne} et {id_product}
+        produit = None
+        if export_format == ExportFormat.CSV:
+            produits = self.produits_site_du_terme(search_term)
+            produit = produits[0] if len(produits) == 1 else None
         return self._execute_export_with_reference(parsed, reference, export_format,
-                                                   profile_name=profile_name)
+                                                   profile_name=profile_name, produit=produit)
     
     # ===== SÉLECTION DE RÉFÉRENCE UNIFIÉE =====
     
@@ -136,21 +145,35 @@ class ExportManagerService:
     
     def _handle_single_reference_dialog(self, search_term: str, export_format: ExportFormat,
                                          parsed_term=None) -> ReferenceSelectionResult:
-        """Dialogue pour référence unique"""
+        """Dialogue pour référence unique.
+
+        Export EveryParts (CSV) d'une pièce reprise du site : la référence
+        interne de son produit est proposée (modifiable) ; plusieurs produits →
+        choix dans le dialogue ; aucun → le terme recherché, comme avant
+        (CDC fiches site § 8.2)."""
         default_reference = self._extract_default_reference(search_term)
+        produits = (self.produits_site_du_terme(search_term)
+                    if export_format == ExportFormat.CSV else [])
+        choix: Dict[str, Any] = {'produit': produits[0] if produits else None}
+        if produits:
+            default_reference = produits[0]['ref_interne']
 
         # Adapter le message selon le format
         title, message = self._get_reference_dialog_messages(export_format, search_term)
+        if produits:
+            message = self._message_produits(produits) + " " + message
 
         # Afficher le dialogue
         selected_reference = self._show_reference_dialog(
-            title, message, default_reference, export_format
+            title, message, default_reference, export_format,
+            produits=produits, choix=choix,
         )
 
         if selected_reference:
             # Utiliser parsed_term (avec flags des bannières actives) si disponible
             search_data = parsed_term if parsed_term is not None else search_term
-            return ReferenceSelectionResult(selected_reference, search_data)
+            return ReferenceSelectionResult(selected_reference, search_data,
+                                            produit=choix.get('produit'))
         else:
             return ReferenceSelectionResult("", "", cancelled=True)
     
@@ -179,15 +202,21 @@ class ExportManagerService:
     # ===== DIALOGUES UNIFIÉS =====
     
     def _show_reference_dialog(self, title: str, message: str, default_reference: str,
-                               export_format: ExportFormat = None) -> Optional[str]:
-        """Afficher dialogue de saisie de la référence d'export"""
+                               export_format: ExportFormat = None,
+                               produits: Optional[List[Dict[str, Any]]] = None,
+                               choix: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Afficher dialogue de saisie de la référence d'export.
+        produits : produits du site de la pièce (liste de choix si plusieurs) ;
+        choix['produit'] reçoit celui retenu."""
         # Utiliser le service de dialogue unifié si disponible
         if hasattr(self.main_window, 'dialog_service'):
-            destination = self._destination_export(export_format)
+            destination = self._destination_export(export_format, choix)
+            kwargs = {'produits': produits, 'choix': choix} if produits else {}
             return self.main_window.dialog_service.show_reference_selection_dialog(
                 title, message, default_reference,
                 destination=destination,
                 bouton_valider="Exporter" if destination else "OK",
+                **kwargs,
             )
         else:
             # Fallback avec QInputDialog
@@ -209,7 +238,37 @@ class ExportManagerService:
     def _libelle_format(cls, export_format: ExportFormat) -> str:
         return cls._LIBELLES_FORMAT.get(export_format, getattr(export_format, 'value', ''))
 
-    def _destination_export(self, export_format: ExportFormat) -> Optional[Dict[str, Any]]:
+    # ===== PRODUIT DU SITE (CDC fiches site § 8.2) =====
+
+    def produits_site_du_terme(self, search_term: str) -> List[Dict[str, Any]]:
+        """Produits du site de la pièce recherchée. Une ancienne référence de la
+        lignée mène à la pièce courante (00703010 → 11051894 → GAU11051894).
+        [] sans produit, ou si la base ne connaît pas encore les produits du site."""
+        terme = (self._extract_default_reference(search_term) or '').strip()
+        db = getattr(self.main_window, 'db_manager', None)
+        if not terme or db is None:
+            return []
+        try:
+            courante = db.resolve_current_ref(terme) or terme
+            produits = db.produits_site_de(courante)
+            if not produits and courante != terme:
+                produits = db.produits_site_de(terme)
+            return produits
+        except Exception as e:
+            app_logger.debug(f"[Export] Produits du site de {terme} non lus : {e}")
+            return []
+
+    @staticmethod
+    def _message_produits(produits: List[Dict[str, Any]]) -> str:
+        if len(produits) == 1:
+            p = produits[0]
+            numero = f" n° {p['id_product']}" if p.get('id_product') else ""
+            return f"Référence interne du produit{numero} sur le site, proposée."
+        return (f"La pièce est vendue sur le site sous {len(produits)} produits : "
+                f"choisissez celui de l'export.")
+
+    def _destination_export(self, export_format: ExportFormat,
+                            choix: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Décrire où ira le fichier, pour les exports qui en écrivent un.
 
         None pour les exports HTML : ils vont dans le presse-papier, il n'y a
@@ -232,7 +291,8 @@ class ExportManagerService:
         horodatage = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         def nom_fichier(reference: str) -> str:
-            return format_csv_filename(reglages['filename_pattern'], reference, horodatage)
+            return format_csv_filename(reglages['filename_pattern'], reference, horodatage,
+                                       produit=(choix or {}).get('produit'))
 
         def changer_dossier():
             """Ouvrir le sélecteur et mémoriser le choix dans la configuration."""
@@ -308,7 +368,8 @@ class ExportManagerService:
     @handle_export_errors(title="Erreur exécution export")
     def _execute_export_with_reference(self, search_data_term: Union[str, Dict],
                                      reference: str, export_format: ExportFormat,
-                                     profile_name: str = None) -> bool:
+                                     profile_name: str = None,
+                                     produit: Optional[Dict[str, Any]] = None) -> bool:
         """
         Exécuter l'export avec référence personnalisée
 
@@ -333,7 +394,7 @@ class ExportManagerService:
 
         # Export selon le format
         if export_format == ExportFormat.CSV:
-            return self._execute_csv_export(data, reference)
+            return self._execute_csv_export(data, reference, produit=produit)
         elif export_format in [ExportFormat.HTML_BRANDS, ExportFormat.HTML_DETAILS]:
             return self._execute_html_export(data, reference, export_format,
                                              profile_name=profile_name)
@@ -341,7 +402,8 @@ class ExportManagerService:
             raise Exception(f"Format d'export {export_format} non supporté")
     
     @handle_export_errors(title="Erreur export CSV")
-    def _execute_csv_export(self, data: List, reference: str) -> bool:
+    def _execute_csv_export(self, data: List, reference: str,
+                            produit: Optional[Dict[str, Any]] = None) -> bool:
         """Exécuter l'export CSV selon la configuration utilisateur.
 
         Colonnes, séparateur, encodage et pattern de nom proviennent de la
@@ -361,6 +423,7 @@ class ExportManagerService:
             reglages['filename_pattern'],
             export_ref=reference,
             timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+            produit=produit,
         )
         full_path = os.path.join(resolve_output_dir(service), filename)
 
@@ -373,7 +436,7 @@ class ExportManagerService:
                 record = tuple(record) + ('',) * (6 - len(record)) if len(record) < 6 else record
                 # Neutralisation injection de formules avant écriture
                 writer.writerow(_assainir_ligne_csv(
-                    render_csv_row_with(reglages['columns'], record, reference)
+                    render_csv_row_with(reglages['columns'], record, reference, produit)
                 ))
 
         self._add_to_history(f"Export CSV: {filename} ({len(data)} lignes)")

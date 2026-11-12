@@ -26,7 +26,7 @@ sur les 5 millions de liens) :
   côté, à reprendre plus tard).
 """
 
-from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 from ...core.logger import app_logger
 from . import with_query_lock
@@ -156,6 +156,41 @@ class DatabaseFichesSiteMixin:
             "WHERE ref_piece = ? ORDER BY ref_interne", [ref_piece]).fetchall()
         return [dict(zip(('ref_interne', 'id_product', 'ref_piece', 'ean', 'lu_le'), r))
                 for r in rows]
+
+    @with_query_lock
+    def pieces_avec_produit_site(self, refs: Iterable[str]) -> Set[str]:
+        """Parmi `refs`, celles qui sont vendues sur le site (pièces principales)."""
+        refs = [r for r in dict.fromkeys(refs) if r]
+        trouvees: Set[str] = set()
+        for i in range(0, len(refs), 500):
+            lot = refs[i:i + 500]
+            trouvees.update(r for (r,) in self.cursor.execute(
+                f"SELECT DISTINCT ref_piece FROM produits_site "
+                f"WHERE ref_piece IN ({','.join('?' * len(lot))})", lot).fetchall())
+        return trouvees
+
+    @with_query_lock
+    def memoire_equivalences(self, ref_piece: str) -> Dict[str, Tuple[Optional[str], Optional[int]]]:
+        """Membres du groupe d'équivalence de `ref_piece` → (marque d'origine, n° de
+        ligne de la fiche) ; 0 = 2ᵉ réf. du code produit, None = rien de mémorisé."""
+        rows = self.cursor.execute(
+            "SELECT g2.ref_piece, g2.origine, g2.ligne_fiche "
+            "FROM piece_equivalence_groups g1 "
+            "JOIN piece_equivalence_groups g2 ON g2.group_id = g1.group_id "
+            "WHERE g1.ref_piece = ?", [ref_piece]).fetchall()
+        return {r: ((o or None), l) for r, o, l in rows}
+
+    @with_query_lock
+    def references_ecartees(self, refs_pieces: Iterable[str]) -> Set[str]:
+        """Références écartées (§ 5.3) sur l'une des pièces `refs_pieces`."""
+        refs = [r for r in dict.fromkeys(refs_pieces) if r]
+        ecartees: Set[str] = set()
+        for i in range(0, len(refs), 500):
+            lot = refs[i:i + 500]
+            ecartees.update(r for (r,) in self.cursor.execute(
+                f"SELECT reference FROM decisions_references WHERE nature = 'ecartee' "
+                f"AND ref_piece IN ({','.join('?' * len(lot))})", lot).fetchall())
+        return ecartees
 
     # ── Reprise en masse (§ 7.3) ─────────────────────────────────────────────
 
