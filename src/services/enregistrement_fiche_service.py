@@ -33,9 +33,11 @@ def telecharger_page(url: str) -> str:
     """Page publique d'une fiche (appelé hors du thread principal par l'aperçu)."""
     from urllib.parse import urlparse
     from urllib.request import Request, urlopen
+    from ..utils.certificats import contexte_ssl
     if urlparse(url).scheme not in ('http', 'https'):
         raise ValueError("le lien doit commencer par http:// ou https://")
-    with urlopen(Request(url, headers=_ENTETES_HTTP), timeout=_DELAI_HTTP) as reponse:
+    with urlopen(Request(url, headers=_ENTETES_HTTP), timeout=_DELAI_HTTP,
+                 context=contexte_ssl()) as reponse:
         jeu = reponse.headers.get_content_charset() or 'utf-8'
         return reponse.read().decode(jeu, errors='replace')
 from .base_service import BaseService

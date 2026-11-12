@@ -494,7 +494,7 @@ class RepriseSiteDialog(QDialog):
     def _parcourir(self, champ: QLineEdit, titre: str):
         dossier = str(Path(champ.text()).parent) if champ.text() else str(_DOSSIER_DEFAUT)
         choisir_fichier_a_ouvrir(self, titre, dossier, "Fichiers CSV (*.csv);;Tous les fichiers (*)",
-                                 lambda chemin: champ.setText(chemin))
+                                 lambda chemin: champ.setText(chemin), natif=False)
 
     def _examiner_export(self):
         produits = self.champ_produits.text().strip()
