@@ -1,23 +1,26 @@
 """
-Fenêtre « Reprise des fiches du site » : import en masse par lots
-(CDC docs/cdc_import_fiches_site.md, § 7.2 à 7.4, étape 4)
+Fenêtre « Importer les fiches du site » : import en masse par lots
+(CDC docs/cdc_import_fiches_site.md, § 7.2 à 7.4, § 10.4 à 10.8)
 
 - Exports : les deux CSV PrestaShop (produits avec description ;
   compatibilités). Un export différent de celui de la reprise en cours est
   signalé : « Repartir de zéro » ou « Continuer ».
-- État : dernier id_produit traité, date de l'export, lots enregistrés, fiches
-  mises de côté. On peut fermer à tout moment et reprendre au lot suivant.
-- Lot : « Analyser le lot suivant » (thread, progression, annulation), puis
-  * Résumé : une ligne par catégorie (fiches, éléments), validée en bloc,
-    laissée de côté ou en attente pour tout le lot ;
-  * Doutes regroupés : un choix par groupe (ex. réf. internes « ES… ») ;
-  * Fiches : état de chaque fiche ; double-clic = aperçu complet de la fiche
-    (FicheSiteDialog), dont les décisions l'emportent sur celles du lot ;
-  * Détail : table virtuelle de tous les éléments du lot, filtrable par
-    nature (appareil, remplacement, équivalence), catégorie, niveau, lien,
-    provenance et texte.
-- « Enregistrer le lot » (thread) n'est actif que lorsque rien n'est en attente
-  ni à compléter ; « Laisser de côté les lignes à compléter » débloque en un clic.
+- Avancement : dernier produit importé, lots enregistrés, fiches à revoir. On
+  peut fermer à tout moment et reprendre au lot suivant.
+- Lot : « Lire le lot suivant » (thread, progression, « Arrêter »), puis :
+  * À décider : ce que l'outil fera sans vous (récapitulatif), les règles à
+    poser une fois (mémorisées), les questions du lot ; chaque question a sa
+    réponse proposée et ses exemples (src/ui/questions_reprise.py) ;
+  * Fiches du lot : ce qu'il reste pour chaque fiche ; « Ouvrir la fiche… »
+    = aperçu complet, dont les choix ligne par ligne l'emportent ;
+  * Toutes les lignes : table virtuelle filtrable (genre, question, ce que
+    l'outil a trouvé, compatibilité, provenance, texte).
+- « Accepter les propositions… » montre d'abord ce qu'il va faire ; il ne
+  répond jamais à une question sans proposition.
+- « Enregistrer le lot » (thread) n'est actif que lorsque toutes les questions
+  ont une réponse. Les appareils sans réponse possible (à choisir parmi
+  plusieurs, illisibles) ne sont pas écrits : leurs fiches passent dans
+  « Fiches à revoir ».
 
 Non bloquant : show() + callbacks, jamais exec_() (conventions du projet).
 """
@@ -25,15 +28,14 @@ Non bloquant : show() + callbacks, jamais exec_() (conventions du projet).
 import copy
 import threading
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 from PyQt5.QtCore import (
     QAbstractTableModel, QModelIndex, QSettings, QSortFilterProxyModel, Qt, QThread, pyqtSignal,
 )
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-    QProgressBar, QPushButton, QSpinBox, QTableView, QTabWidget, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout, QWidget,
+    QAbstractItemView, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar,
+    QPushButton, QSpinBox, QTableView, QTabWidget, QVBoxLayout, QWidget,
 )
 import qtawesome as qta
 
@@ -41,26 +43,20 @@ from src.core.logger import app_logger
 from src.services.reprise_site_service import (
     EXPORT_DIFFERENT, EXPORT_IDENTIQUE, RepriseSiteService,
 )
-from src.utils.boites import choisir_fichier_a_ouvrir
-from src.utils.rapprochement_fiche import LIENS, NIVEAUX
-from src.utils.rapprochement_fiche.decisions import (
-    ATTENTE, CATEGORIES_RESUME, DE_COTE, VALIDEE, categorie_appareil, categorie_equivalence,
-    categorie_remplacement,
+from src.utils.boites import choisir_fichier_a_ouvrir, demander_oui_non
+from src.utils.rapprochement_fiche import STATUTS_EQUIVALENCE, STATUTS_REMPLACEMENT
+from src.utils.reprise_site.questions import A_REVOIR, ILLISIBLE
+from .questions_reprise import (
+    LIENS_METIER, NIVEAUX_METIER, PROVENANCES_METIER, PanneauQuestions, libelle_reponse, nombre,
 )
-from src.utils.reprise_site import CATEGORIES_LOT, PROFILS_AMBIGUS
 from .style_manager import StyleManager
 
-_ETATS = [(ATTENTE, "En attente"), (VALIDEE, "Validée en bloc"), (DE_COTE, "Laissée de côté")]
-_PROVENANCES = {'description': "description", 'table': "table du site", 'les_deux': "les deux"}
-_NATURES = {'appareil': "Appareil", 'remplacement': "Remplacement", 'equivalence': "Équivalence"}
-_LIBELLES_CHOIX = {'enregistrer': "enregistrer le produit", 'ignorer': "ne pas enregistrer le produit",
-                   'prendre': "prendre la fiche", 'garder': "garder l'existant",
-                   'site': "prendre l'EAN du site", 'outil': "garder l'EAN de l'outil",
-                   'etiquette': "étiquette ci-contre", 'ecarter': "écarter les références"}
+_GENRES = {'appareil': "Appareil", 'remplacement': "Ancienne référence", 'equivalence': "Équivalente"}
 _DOSSIER_DEFAUT = Path(__file__).resolve().parents[2] / 'data' / 'reprise_site'
 _CLE_PRODUITS = 'reprise_site/export_produits'
 _CLE_COMPAT = 'reprise_site/export_compatibilites'
 _CLE_TAILLE = 'reprise_site/taille_lot'
+_SANS_QUESTION = {A_REVOIR: "à revoir : appareil à choisir", ILLISIBLE: "illisible : non créé"}
 
 
 # =============================================================================
@@ -91,18 +87,18 @@ class _Tache(QThread):
 # Modèles virtuels
 # =============================================================================
 
-_COLONNES_DETAIL = ("Produit", "Pièce", "Nature", "Catégorie", "Niveau / statut", "Lien",
-                    "Marque", "Réf.", "Nom / origine", "Type", "Provenance", "Raison")
+_COLONNES_DETAIL = ("N°", "Pièce", "Genre", "Ce que l'outil a trouvé", "Compatibilité", "Marque",
+                    "Référence", "Nom commercial", "Type", "Cité dans", "Question", "Pourquoi")
 
 
 class ModeleDetailLot(QAbstractTableModel):
-    """Tous les éléments du lot (appareils, remplacements, équivalences), calculés
-    à la demande : rien n'est copié ligne par ligne (≈ 165 000 lignes par lot)."""
+    """Tous les éléments du lot (appareils, anciennes références, équivalentes),
+    calculés à la demande : rien n'est copié ligne par ligne (≈ 165 000 lignes)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.lot = None
-        self.lignes: List[tuple] = []        # (index de fiche, nature, index ou objet)
+        self.lignes: List[tuple] = []        # (index de fiche, genre, index ou objet)
 
     def charger(self, lot):
         self.beginResetModel()
@@ -126,51 +122,67 @@ class ModeleDetailLot(QAbstractTableModel):
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
             return _COLONNES_DETAIL[section]
+        if orientation == Qt.Horizontal and role == Qt.ToolTipRole and section == 0:
+            return "Numéro du produit sur 1001pieces.com"
         return None
 
+    def question(self, ligne: int) -> str:
+        """Clé de la question d'une ligne d'appareil ('' = aucune)."""
+        i, genre, x = self.lignes[ligne]
+        q = getattr(self.lot, 'questionnaire', None)
+        if q is None or genre != 'appareil':
+            return ''
+        return q.lignes.get((i, x), '')
+
     def cles(self, ligne: int):
-        """(nature, catégorie, niveau, lien, provenance) d'une ligne, pour le filtre."""
-        i, nature, x = self.lignes[ligne]
-        if nature == 'appareil':
+        """(genre, question, niveau, lien, provenance) d'une ligne, pour le filtre."""
+        i, genre, x = self.lignes[ligne]
+        if genre == 'appareil':
             a = self.lot.fiches[i].rapprochement.appareils[x]
-            return nature, categorie_appareil(a), a.niveau, a.lien, a.provenance
-        if nature == 'remplacement':
-            return nature, categorie_remplacement(x), x.statut, '', ''
-        return nature, categorie_equivalence(x), x.statut, '', ''
+            return genre, self.question(ligne), a.niveau, a.lien, a.provenance
+        return genre, '', x.statut, '', ''
+
+    def libelle_question(self, cle: str) -> str:
+        if not cle:
+            return ''
+        if cle in _SANS_QUESTION:
+            return _SANS_QUESTION[cle]
+        q = getattr(self.lot, 'questionnaire', None)
+        question = q.questions.get(cle) if q is not None else None
+        if question is None:
+            return cle
+        reponse = libelle_reponse(question, question.reponse)
+        return f"{cle} · {reponse}" if reponse else f"{cle} · sans réponse"
 
     def texte(self, ligne: int) -> tuple:
-        i, nature, x = self.lignes[ligne]
+        i, genre, x = self.lignes[ligne]
         f = self.lot.fiches[i]
-        if nature == 'appareil':
+        if genre == 'appareil':
             a = f.rapprochement.appareils[x]
-            return (f.id_produit, f.ref_piece, "appareil",
-                    CATEGORIES_RESUME[categorie_appareil(a)].split(' (')[0], a.niveau,
-                    a.lien or "à décider", a.marque or a.marque_fiche or "?", a.ref_modele, a.nom,
-                    a.type or "—", _PROVENANCES.get(a.provenance, a.provenance), a.raison)
-        if nature == 'remplacement':
-            return (f.id_produit, f.ref_piece, "remplacement",
-                    CATEGORIES_RESUME[categorie_remplacement(x)].split(' (')[0], x.statut, '', '',
-                    f"{x.ancienne} → {x.nouvelle}", x.successeur_actuel or '', '', '', x.raison)
-        return (f.id_produit, f.ref_piece, "équivalence",
-                CATEGORIES_RESUME[categorie_equivalence(x)].split(' (')[0], x.statut, '', '',
-                f"≡ {x.reference}", x.origine or '', '', '', x.raison)
+            return (f.id_produit, f.ref_piece, _GENRES[genre], NIVEAUX_METIER.get(a.niveau, a.niveau),
+                    LIENS_METIER.get(a.lien, a.lien), a.marque or a.marque_fiche or "?", a.ref_modele,
+                    a.nom, a.type or "—", PROVENANCES_METIER.get(a.provenance, a.provenance),
+                    self.libelle_question(self.question(ligne)), a.suspecte or a.raison)
+        if genre == 'remplacement':
+            return (f.id_produit, f.ref_piece, _GENRES[genre],
+                    STATUTS_REMPLACEMENT.get(x.statut, x.statut), '', '',
+                    f"{x.ancienne} remplacée par {x.nouvelle}", x.successeur_actuel or '', '', '', '',
+                    x.raison)
+        return (f.id_produit, f.ref_piece, _GENRES[genre], STATUTS_EQUIVALENCE.get(x.statut, x.statut),
+                '', x.origine or '', f"équivalente : {x.reference}", '', '', '', '', x.raison)
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
             return None
-        if role == Qt.DisplayRole:
+        if role in (Qt.DisplayRole, Qt.ToolTipRole):
             return self.texte(index.row())[index.column()]
-        if role == Qt.ToolTipRole and index.column() == 4:
-            return NIVEAUX.get(self.texte(index.row())[4], '')
-        if role == Qt.ToolTipRole and index.column() == 5:
-            return LIENS.get(self.cles(index.row())[3], '')
         return None
 
 
 class FiltreDetailLot(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.valeurs = ['', '', '', '', '']     # nature, catégorie, niveau, lien, provenance
+        self.valeurs = ['', '', '', '', '']     # genre, question, niveau, lien, provenance
         self.texte = ''
 
     def filterAcceptsRow(self, ligne, parent):
@@ -184,7 +196,9 @@ class FiltreDetailLot(QSortFilterProxyModel):
         return True
 
 
-_COLONNES_FICHES = ("Produit", "Pièce", "Nom", "Lignes desc.", "Lignes table", "État", "Détail")
+_COLONNES_FICHES = ("N°", "Pièce", "Fiche", "Appareils", "Ce qu'il reste")
+_FILTRES_FICHES = [('', "Toutes les fiches"), ('question', "Avec une question"),
+                   ('prete', "Prêtes"), ('revoir', "À revoir")]
 
 
 class ModeleFichesLot(QAbstractTableModel):
@@ -192,12 +206,17 @@ class ModeleFichesLot(QAbstractTableModel):
         super().__init__(parent)
         self.lot = None
         self.plan = None
-        self._plans = {}
+        self.questions_fiche: Dict[int, Set[str]] = {}
 
     def charger(self, lot, plan):
         self.beginResetModel()
         self.lot, self.plan = lot, plan
-        self._plans = dict(plan.plans) if plan is not None else {}
+        self.questions_fiche = {}
+        q = getattr(lot, 'questionnaire', None) if lot is not None else None
+        if q is not None:
+            for question in q.sans_reponse():
+                for i, _ in question.occurrences:
+                    self.questions_fiche.setdefault(i, set()).add(question.cle)
         self.endResetModel()
 
     def rowCount(self, parent=QModelIndex()):
@@ -209,31 +228,51 @@ class ModeleFichesLot(QAbstractTableModel):
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
             return _COLONNES_FICHES[section]
+        if orientation == Qt.Horizontal and role == Qt.ToolTipRole and section == 0:
+            return "Numéro du produit sur 1001pieces.com"
         return None
 
     def etat(self, i: int):
+        """(genre, texte) : 'revoir', 'question', 'prete'."""
         f = self.lot.fiches[i]
         if f.erreur:
-            return "erreur", f.erreur
+            return 'revoir', f"À revoir : lecture impossible ({f.erreur})"
         if self.plan is not None and i in self.plan.de_cote:
-            return "de côté", f.raison_de_cote or "profil ambigu laissé de côté"
-        plan = self._plans.get(i)
-        if plan is not None and plan.a_completer:
-            return "à compléter", f"{len(plan.a_completer)} ligne(s) : {plan.a_completer[0]}"
-        if plan is not None and plan.en_attente:
-            return "en attente", ", ".join(c.split(' (')[0] for c in plan.en_attente)
-        suffixe = " (décidée dans l'aperçu)" if f.personnalisee else ''
-        return "prête" + suffixe, ''
+            return 'revoir', f"À revoir : {f.raison_de_cote or 'mise de côté'}"
+        questions = self.questions_fiche.get(i)
+        if questions:
+            return 'question', f"{len(questions)} question(s) : {', '.join(sorted(questions))}"
+        revoir = (self.plan.a_revoir.get(i) if self.plan is not None else None) or []
+        if revoir:
+            return 'revoir', f"Enregistrée en partie, puis à revoir : {len(revoir)} appareil(s) ({revoir[0]})"
+        suffixe = " (choix faits dans la fiche)" if (
+            getattr(self.lot, 'questionnaire', None) is not None
+            and i in self.lot.questionnaire.individuels) else ''
+        return 'prete', "Prête" + suffixe
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid() or self.lot is None:
             return None
         f = self.lot.fiches[index.row()]
-        if role == Qt.DisplayRole:
-            etat, detail = self.etat(index.row())
-            return (f.id_produit, f.ref_piece or '?', f.nom, f.lignes_description, f.lignes_table,
-                    etat, detail)[index.column()]
+        if role in (Qt.DisplayRole, Qt.ToolTipRole):
+            appareils = len(f.rapprochement.appareils) if f.rapprochement is not None else 0
+            return (f.id_produit, f.ref_piece or '?', f.nom, appareils,
+                    self.etat(index.row())[1])[index.column()]
+        if role == Qt.UserRole:
+            return self.etat(index.row())[0]
         return None
+
+
+class FiltreFichesLot(QSortFilterProxyModel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.genre = ''
+
+    def filterAcceptsRow(self, ligne, parent):
+        if not self.genre:
+            return True
+        m = self.sourceModel()
+        return m.data(m.index(ligne, 0), Qt.UserRole) == self.genre
 
 
 # =============================================================================
@@ -241,14 +280,14 @@ class ModeleFichesLot(QAbstractTableModel):
 # =============================================================================
 
 class RepriseSiteDialog(QDialog):
-    """Import en masse des fiches du site, lot par lot."""
+    """Import des fiches du site, lot par lot, par questions."""
 
     def __init__(self, db_manager, main_window=None, service: Optional[RepriseSiteService] = None,
                  on_lot_enregistre: Optional[Callable] = None):
         super().__init__(main_window)
-        self.setWindowTitle("Reprise des fiches du site")
+        self.setWindowTitle("Importer les fiches du site")
         self.setAttribute(Qt.WA_DeleteOnClose)
-        self.resize(1240, 860)
+        self.resize(1240, 880)
         self.db = db_manager
         self.main_window = main_window
         self.on_lot_enregistre = on_lot_enregistre
@@ -257,7 +296,6 @@ class RepriseSiteDialog(QDialog):
         self.plan = None
         self._tache: Optional[_Tache] = None
         self._signature = None
-        self._types: List[str] = []
         self._fiche_ouverte = None
         self._construire()
         self._charger_chemins()
@@ -271,13 +309,11 @@ class RepriseSiteDialog(QDialog):
         racine.setContentsMargins(12, 12, 12, 12)
         racine.setSpacing(8)
 
-        titre = QLabel("Exports du site (CSV PrestaShop, triés par id_produit)")
+        titre = QLabel("Exports du site (CSV de la base PrestaShop)")
         titre.setStyleSheet(StyleManager.TITRE_SECTION)
         racine.addWidget(titre)
-        self.champ_produits = self._ligne_fichier(racine, "Produits :",
-                                                  "Export des produits")
-        self.champ_compat = self._ligne_fichier(racine, "Compatibilités :",
-                                                "Export des compatibilités")
+        self.champ_produits = self._ligne_fichier(racine, "Produits :", "Export des produits")
+        self.champ_compat = self._ligne_fichier(racine, "Compatibilités :", "Export des compatibilités")
         choisir = QHBoxLayout()
         self.bouton_export = QPushButton(qta.icon('fa5s.file-import', color='#555555'),
                                          "Utiliser ces exports")
@@ -287,7 +323,7 @@ class RepriseSiteDialog(QDialog):
         self.bouton_zero.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         self.bouton_zero.clicked.connect(lambda: self._adopter(True))
         self.bouton_continuer = QPushButton(qta.icon('fa5s.forward', color='#555555'),
-                                            "Continuer la reprise")
+                                            "Continuer l'import")
         self.bouton_continuer.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         self.bouton_continuer.clicked.connect(lambda: self._adopter(False))
         for b in (self.bouton_zero, self.bouton_continuer):
@@ -305,20 +341,22 @@ class RepriseSiteDialog(QDialog):
         racine.addWidget(self.carte)
 
         lot = QHBoxLayout()
-        lot.addWidget(QLabel("Produits par lot :"))
+        lot.addWidget(QLabel("Fiches par lot :"))
         self.taille = QSpinBox()
         self.taille.setRange(1, 2000)
         self.taille.setValue(int(QSettings().value(_CLE_TAILLE, 100) or 100))
         lot.addWidget(self.taille)
-        self.bouton_analyser = QPushButton(qta.icon('fa5s.search', color='white'),
-                                           "Analyser le lot suivant")
+        self.bouton_analyser = QPushButton(qta.icon('fa5s.search', color='white'), "Lire le lot suivant")
         self.bouton_analyser.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
+        self.bouton_analyser.setToolTip("Lit les fiches suivantes de l'export et les compare à l'outil. "
+                                        "Rien n'est enregistré avant « Enregistrer le lot ».")
         self.bouton_analyser.clicked.connect(self._analyser_lot)
-        self.bouton_de_cote = QPushButton(qta.icon('fa5s.inbox', color='#555555'),
-                                          "Reprendre les fiches de côté")
+        self.bouton_de_cote = QPushButton(qta.icon('fa5s.inbox', color='#555555'), "Fiches à revoir")
         self.bouton_de_cote.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
+        self.bouton_de_cote.setToolTip("Fiches mises de côté, ou enregistrées en partie parce que des "
+                                       "appareils restaient à choisir. Elles reviennent ici quand vous voulez.")
         self.bouton_de_cote.clicked.connect(self._analyser_de_cote)
-        self.bouton_annuler = QPushButton(qta.icon('fa5s.stop', color='#555555'), "Annuler")
+        self.bouton_annuler = QPushButton(qta.icon('fa5s.stop', color='#555555'), "Arrêter")
         self.bouton_annuler.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         self.bouton_annuler.clicked.connect(self._annuler)
         self.bouton_annuler.setEnabled(False)
@@ -334,20 +372,27 @@ class RepriseSiteDialog(QDialog):
         racine.addLayout(lot)
         racine.addWidget(self.texte_progression)
 
+        self.titre_lot = QLabel("Aucun lot lu : cliquez « Lire le lot suivant ».")
+        self.titre_lot.setStyleSheet(StyleManager.TITRE_SECTION)
+        racine.addWidget(self.titre_lot)
         self.onglets = QTabWidget()
-        self.onglets.addTab(self._construire_resume(), "Résumé du lot")
-        self.onglets.addTab(self._construire_groupes(), "Doutes regroupés")
-        self.onglets.addTab(self._construire_fiches(), "Fiches")
-        self.onglets.addTab(self._construire_detail(), "Détail")
+        self.panneau = PanneauQuestions(self._repondre, self._voir_lignes)
+        self.panneau.vider()
+        self.onglets.addTab(self.panneau, "À décider")
+        self.onglets.addTab(self._construire_fiches(), "Fiches du lot")
+        self.onglets.addTab(self._construire_detail(), "Toutes les lignes")
         racine.addWidget(self.onglets, 1)
 
         pied = QHBoxLayout()
         self.etat = QLabel("")
         self.etat.setWordWrap(True)
         self.etat.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
-        self.bouton_lignes = QPushButton("Laisser de côté les lignes à compléter")
-        self.bouton_lignes.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
-        self.bouton_lignes.clicked.connect(self._lignes_de_cote)
+        self.bouton_propositions = QPushButton(qta.icon('fa5s.check-double', color='#555555'),
+                                               "Accepter les propositions…")
+        self.bouton_propositions.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
+        self.bouton_propositions.setToolTip("Répond par sa proposition à chaque question qui en a une. "
+                                            "Les questions sans proposition restent à votre décision.")
+        self.bouton_propositions.clicked.connect(self._accepter_propositions)
         self.bouton_enregistrer = QPushButton(qta.icon('fa5s.save', color='white'), "Enregistrer le lot")
         self.bouton_enregistrer.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         self.bouton_enregistrer.clicked.connect(self._enregistrer)
@@ -355,7 +400,7 @@ class RepriseSiteDialog(QDialog):
         fermer.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         fermer.clicked.connect(self.close)
         pied.addWidget(self.etat, 1)
-        pied.addWidget(self.bouton_lignes)
+        pied.addWidget(self.bouton_propositions)
         pied.addWidget(self.bouton_enregistrer)
         pied.addWidget(fermer)
         racine.addLayout(pied)
@@ -375,60 +420,41 @@ class RepriseSiteDialog(QDialog):
         racine.addLayout(ligne)
         return champ
 
-    def _construire_resume(self) -> QWidget:
-        boite = QWidget()
-        disposition = QVBoxLayout(boite)
-        entete = QHBoxLayout()
-        self.titre_lot = QLabel("Aucun lot analysé")
-        self.titre_lot.setStyleSheet(StyleManager.TITRE_SECTION)
-        tout = QPushButton(qta.icon('fa5s.check-double', color='#555555'), "Tout valider")
-        tout.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
-        tout.clicked.connect(self._tout_valider)
-        entete.addWidget(self.titre_lot)
-        entete.addStretch(1)
-        entete.addWidget(tout)
-        disposition.addLayout(entete)
-        self.resume = QTreeWidget()
-        self.resume.setHeaderLabels(["Catégorie", "Fiches", "Éléments", "Décision", "Type commun"])
-        self.resume.setRootIsDecorated(False)
-        self.resume.setUniformRowHeights(True)
-        self.resume.header().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.resume.itemDoubleClicked.connect(self._filtrer_sur_categorie)
-        disposition.addWidget(self.resume, 1)
-        self.mesures = QLabel("")
-        self.mesures.setWordWrap(True)
-        self.mesures.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
-        disposition.addWidget(self.mesures)
-        return boite
-
-    def _construire_groupes(self) -> QWidget:
-        self.groupes = QTreeWidget()
-        self.groupes.setHeaderLabels(["Doute", "Forme", "Fiches", "Exemples", "Décision", ""])
-        self.groupes.setRootIsDecorated(False)
-        self.groupes.header().setSectionResizeMode(3, QHeaderView.Stretch)
-        return self.groupes
-
     def _construire_fiches(self) -> QWidget:
         boite = QWidget()
         disposition = QVBoxLayout(boite)
+        haut = QHBoxLayout()
+        self.filtre_fiches_genre = QComboBox()
+        for valeur, libelle in _FILTRES_FICHES:
+            self.filtre_fiches_genre.addItem(libelle, valeur)
+        self.filtre_fiches_genre.currentIndexChanged.connect(self._filtrer_fiches)
+        haut.addWidget(self.filtre_fiches_genre)
+        haut.addStretch(1)
+        disposition.addLayout(haut)
         self.modele_fiches = ModeleFichesLot(self)
+        self.filtre_fiches = FiltreFichesLot(self)
+        self.filtre_fiches.setSourceModel(self.modele_fiches)
         self.table_fiches = QTableView()
-        self.table_fiches.setModel(self.modele_fiches)
+        self.table_fiches.setModel(self.filtre_fiches)
         self.table_fiches.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_fiches.verticalHeader().setVisible(False)
         self.table_fiches.verticalHeader().setDefaultSectionSize(22)
         self.table_fiches.horizontalHeader().setStretchLastSection(True)
         self.table_fiches.setAlternatingRowColors(True)
-        self.table_fiches.doubleClicked.connect(lambda idx: self._ouvrir_fiche(idx.row()))
+        self.table_fiches.doubleClicked.connect(
+            lambda idx: self._ouvrir_fiche(self.filtre_fiches.mapToSource(idx).row()))
         disposition.addWidget(self.table_fiches, 1)
         actions = QHBoxLayout()
-        ouvrir = QPushButton(qta.icon('fa5s.search-plus', color='#555555'), "Aperçu de la fiche…")
+        ouvrir = QPushButton(qta.icon('fa5s.search-plus', color='#555555'), "Ouvrir la fiche…")
         ouvrir.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+        ouvrir.setToolTip("Aperçu complet de la fiche : vos choix ligne par ligne l'emportent sur "
+                          "les réponses du lot.")
         ouvrir.clicked.connect(lambda: self._ouvrir_fiche(self._fiche_selectionnee()))
-        de_cote = QPushButton("Mettre la fiche de côté")
+        de_cote = QPushButton("Mettre à revoir")
         de_cote.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+        de_cote.setToolTip("Rien n'est enregistré pour cette fiche ; elle passe dans « Fiches à revoir ».")
         de_cote.clicked.connect(self._fiche_de_cote)
-        reprendre = QPushButton("Reprendre la fiche")
+        reprendre = QPushButton("Remettre dans le lot")
         reprendre.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         reprendre.clicked.connect(self._fiche_reprise)
         for b in (ouvrir, de_cote, reprendre):
@@ -443,11 +469,11 @@ class RepriseSiteDialog(QDialog):
         filtres = QHBoxLayout()
         self.filtres = []
         for tous, valeurs in (
-                ("Toutes natures", _NATURES),
-                ("Toutes catégories", CATEGORIES_RESUME),
-                ("Tous niveaux / statuts", {k: k for k in NIVEAUX}),
-                ("Tous les liens", LIENS),
-                ("Toutes provenances", _PROVENANCES)):
+                ("Tous les genres", _GENRES),
+                ("Toutes les questions", {}),
+                ("Tout ce que l'outil a trouvé", NIVEAUX_METIER),
+                ("Toutes les compatibilités", {k: v for k, v in LIENS_METIER.items() if k}),
+                ("Partout (description et table)", PROVENANCES_METIER)):
             combo = QComboBox()
             combo.addItem(tous, '')
             for cle, libelle in valeurs.items():
@@ -456,7 +482,7 @@ class RepriseSiteDialog(QDialog):
             filtres.addWidget(combo)
             self.filtres.append(combo)
         self.filtre_texte = QLineEdit()
-        self.filtre_texte.setPlaceholderText("Filtrer (produit, pièce, marque, réf.)")
+        self.filtre_texte.setPlaceholderText("Filtrer (n°, pièce, marque, référence)")
         self.filtre_texte.textChanged.connect(self._filtrer)
         filtres.addWidget(self.filtre_texte, 1)
         disposition.addLayout(filtres)
@@ -514,7 +540,7 @@ class RepriseSiteDialog(QDialog):
             for b in (self.bouton_zero, self.bouton_continuer):
                 b.setVisible(True)
             self._message(f"Cet export (du {signature.date_export.replace('T', ' ')}) n'est pas celui "
-                          f"de la reprise en cours : repartir de zéro, ou continuer après le produit "
+                          f"de l'import en cours : repartir de zéro, ou continuer après le produit "
                           f"{self.service.dernier_id()} ?", avertissement=True)
             return
         self._adopter(statut != EXPORT_IDENTIQUE and not self.service.dernier_id())
@@ -526,7 +552,7 @@ class RepriseSiteDialog(QDialog):
         for b in (self.bouton_zero, self.bouton_continuer):
             b.setVisible(False)
         self._effacer_lot()
-        self._message("Export prêt : analysez le lot suivant.")
+        self._message("Exports prêts : lisez le lot suivant.")
         self._rafraichir_etat()
 
     def _rafraichir_etat(self):
@@ -534,20 +560,20 @@ class RepriseSiteDialog(QDialog):
         lots = self.db.lots_reprise_site(limite=1000)
         de_cote = self.db.fiches_de_cote_reprise_site()
         if not etat:
-            texte = "Aucune reprise commencée : choisissez les deux exports."
+            texte = "Aucun import commencé : choisissez les deux exports."
         else:
-            texte = (f"<b>Dernier produit traité : {etat['dernier_id'] or '—'}</b> · export du "
-                     f"{(etat['date_export'] or '?').replace('T', ' ')} · {len(lots)} lot(s) "
-                     f"enregistré(s) · {len(de_cote)} fiche(s) de côté")
+            texte = (f"<b>Dernier produit importé : {etat['dernier_id'] or '—'}</b> · exports du "
+                     f"{(etat['date_export'] or '?').replace('T', ' à ')} · {len(lots)} lot(s) "
+                     f"enregistré(s) · {len(de_cote)} fiche(s) à revoir")
             if lots:
                 d = lots[0]
                 texte += (f"<br>Dernier lot : produits {d['premier_id']} à {d['dernier_id']}, "
-                          f"{d['fiches']} fiche(s), analyse {d['analyse_s'] or 0:.0f} s, écriture "
-                          f"{d['ecriture_s'] or 0:.0f} s, base "
+                          f"{d['fiches']} fiche(s), base "
                           f"{((d['taille_apres'] or 0) - (d['taille_avant'] or 0)) / 1e6:+.1f} Mo")
             if self.service.signature is None:
-                texte += "<br><i>Cliquez « Utiliser ces exports » pour reprendre.</i>"
+                texte += "<br><i>Cliquez « Utiliser ces exports » pour continuer.</i>"
         self.carte.setText(texte)
+        self.bouton_de_cote.setText(f"Fiches à revoir ({len(de_cote)})")
         self.bouton_de_cote.setEnabled(bool(de_cote) and self._tache is None
                                        and self.service.signature is not None)
         self._activer()
@@ -576,13 +602,14 @@ class RepriseSiteDialog(QDialog):
         self._tache = None
         self.progression.setRange(0, 1)
         self.progression.setValue(1)
+        self.texte_progression.setText('')
         fin(resultat, erreur)
         self._rafraichir_etat()
 
     def _annuler(self):
         if self._tache is not None:
             self._tache.arret.set()
-            self.texte_progression.setText("Annulation demandée…")
+            self.texte_progression.setText("Arrêt demandé…")
 
     def _analyser_lot(self):
         if self.service.signature is None:
@@ -593,36 +620,42 @@ class RepriseSiteDialog(QDialog):
         QSettings().setValue(_CLE_TAILLE, taille)
         self._effacer_lot()
         self._lancer(lambda prog, annule: self.service.analyser_lot_suivant(taille, prog, annule),
-                     self._lot_analyse, "Analyse du lot…")
+                     self._lot_analyse, "Lecture du lot…")
 
     def _analyser_de_cote(self):
         self._effacer_lot()
         self._lancer(lambda prog, annule: self.service.analyser_fiches_de_cote(prog, annule),
-                     self._lot_analyse, "Analyse des fiches mises de côté…")
+                     self._lot_analyse, "Lecture des fiches à revoir…")
+
+    def _relire(self):
+        lot = self.lot
+        self._lancer(lambda prog, annule: self.service.relire_lot(lot, prog, annule),
+                     self._lot_analyse, "Relecture du lot (groupes de marques modifiés)…")
 
     def _lot_analyse(self, lot, erreur: str):
         if erreur:
-            annule = 'AnalyseAnnulee' in erreur
-            self._message("Analyse annulée." if annule else f"Analyse impossible : {erreur}",
-                          erreur=not annule)
+            arret = 'AnalyseAnnulee' in erreur
+            self._message("Lecture arrêtée." if arret else f"Lecture impossible : {erreur}",
+                          erreur=not arret)
             return
         if lot is None:
-            self._message("Export entièrement repris : plus aucun produit après le dernier traité.")
+            self._message("Export entièrement importé : plus aucun produit après le dernier traité.")
             return
         self.afficher_lot(lot)
 
     def afficher_lot(self, lot):
-        """Affiche un lot analysé (aussi appelé par les tests, sans thread)."""
+        """Affiche un lot lu (aussi appelé par les tests, sans thread)."""
         self.lot = lot
-        if not self._types:
-            self._types = self.service.fiche_service.types_outil()
+        if lot.questionnaire is None:
+            self.service.questionnaire(lot)
+        if not self.panneau.types:
+            self.panneau.types = self.service.fiche_service.types_outil()
+            self.panneau.marques = self.service.fiche_service.marques_outil()
         e = lot.export
-        nature = "Fiches mises de côté" if lot.fiches_de_cote else f"Produits {e.premier_id} à {e.dernier_id}"
-        self.titre_lot.setText(f"{nature} — {len(lot.fiches)} fiche(s)"
-                               + (f", {e.sans_contenu} sans contenu" if e.sans_contenu else '')
-                               + f" · analyse {lot.duree_analyse:.1f} s")
+        nature = ("Fiches à revoir" if lot.fiches_de_cote
+                  else f"Lot : produits {e.premier_id} à {e.dernier_id}")
+        self.titre_lot.setText(f"{nature} · {len(lot.fiches)} fiche(s) · rien n'est encore enregistré")
         self.modele_detail.charger(lot)
-        self._remplir_groupes()
         self._mettre_a_jour()
         for table in (self.table_detail, self.table_fiches):
             table.resizeColumnsToContents()
@@ -642,9 +675,9 @@ class RepriseSiteDialog(QDialog):
             return
         self.service.apres_lot(res)
         if res.annule or not res.ok:
-            self._message(("Enregistrement annulé" if res.annule else
+            self._message(("Enregistrement arrêté" if res.annule else
                            f"Enregistrement interrompu : {res.erreur}")
-                          + " — la reprise n'a pas avancé ; relancez le lot : rien ne sera doublé.",
+                          + " — l'import n'a pas avancé ; relisez le lot : rien ne sera doublé.",
                           erreur=not res.annule, avertissement=res.annule)
             return
         self._effacer_lot()
@@ -653,113 +686,66 @@ class RepriseSiteDialog(QDialog):
             self.on_lot_enregistre(res)
 
     # =========================================================================
-    # Résumé, groupes, fiches
+    # Questions
     # =========================================================================
-    def _remplir_resume(self):
-        self.resume.clear()
-        if self.lot is None:
+    def _repondre(self, cle: str, valeur: Optional[str]):
+        q = self.lot.questionnaire if self.lot is not None else None
+        if q is None:
             return
-        for ligne in self.lot.resume():
-            item = QTreeWidgetItem([ligne.libelle, _nombre(ligne.fiches), _nombre(ligne.elements), '', ''])
-            for col in (1, 2):
-                item.setTextAlignment(col, Qt.AlignRight | Qt.AlignVCenter)
-            item.setData(0, Qt.UserRole, ligne.cle)
-            self.resume.addTopLevelItem(item)
-            combo = QComboBox()
-            for etat, libelle in _ETATS:
-                combo.addItem(libelle, etat)
-            combo.setCurrentIndex([e for e, _ in _ETATS].index(self.lot.etat(ligne.cle)))
-            combo.currentIndexChanged.connect(
-                lambda _, c=ligne.cle, w=combo: self._changer_etat(c, w.currentData()))
-            self.resume.setItemWidget(item, 3, combo)
-            if ligne.cle == 'types_manquants':     # jamais sur les absents, déjà typés
-                types = QComboBox()
-                types.setEditable(True)
-                types.addItem('')
-                types.addItems(self._types)
-                types.setCurrentText(self.lot.type_par_categorie.get(ligne.cle, ''))
-                types.currentTextChanged.connect(lambda t, c=ligne.cle: self._type_commun(c, t))
-                self.resume.setItemWidget(item, 4, types)
-        for col in (1, 2):
-            self.resume.resizeColumnToContents(col)
-        self.resume.setColumnWidth(3, 170)
-
-    def _remplir_groupes(self):
-        self.groupes.clear()
-        if self.lot is None:
+        q.repondre(cle, valeur)
+        if q.relire and self._tache is None:
+            self._relire()
             return
-        for g in self.lot.groupes_doutes():
-            item = QTreeWidgetItem([g.libelle, g.forme or '—', str(g.fiches),
-                                    ' · '.join(g.exemples), '', ''])
-            self.groupes.addTopLevelItem(item)
-            combo = QComboBox()
-            combo.addItem("Proposition", '')
-            combo.setToolTip("Proposition : appliquée quand la catégorie « Conflits et doutes "
-                             "sur la pièce » est validée en bloc")
-            for choix in g.choix:
-                combo.addItem(_LIBELLES_CHOIX.get(choix, choix), choix)
-            deja = self.lot.choix_groupes.get(g.cle, '')
-            if deja:
-                i = combo.findData(deja.split(':', 1)[0])
-                combo.setCurrentIndex(max(0, i))
-            self.groupes.setItemWidget(item, 4, combo)
-            etiquette = None
-            if g.genre == 'origine_inconnue':
-                etiquette = QLineEdit(deja.split(':', 1)[1] if deja.startswith('etiquette:') else '')
-                etiquette.setPlaceholderText("étiquette (ex. BSH)")
-                self.groupes.setItemWidget(item, 5, etiquette)
-                etiquette.editingFinished.connect(
-                    lambda g=g, w=etiquette, c=combo: self._choix_groupe(g, 'etiquette', w.text())
-                    if c.currentData() == 'etiquette' else None)
-            combo.currentIndexChanged.connect(
-                lambda _, g=g, c=combo, e=etiquette: self._choix_groupe(
-                    g, c.currentData(), e.text() if e is not None else ''))
-        for col in (0, 1, 2):
-            self.groupes.resizeColumnToContents(col)
-        self.groupes.setColumnWidth(3, 320)
-        self.groupes.setColumnWidth(4, 240)
-        n = self.groupes.topLevelItemCount()
-        self.onglets.setTabText(1, f"Doutes regroupés ({n})" if n else "Doutes regroupés")
+        self._mettre_a_jour()
 
-    def _choix_groupe(self, groupe, choix: str, etiquette: str = ''):
-        self.lot.choisir_groupe(groupe, choix or '', etiquette)
-        self._mettre_a_jour(resume=False)
+    def _accepter_propositions(self):
+        q = self.lot.questionnaire if self.lot is not None else None
+        if q is None:
+            return
+        avec = [x for x in q.sans_reponse() if x.proposition is not None]
+        sans = [x for x in q.sans_reponse() if x.proposition is None]
+        if not avec:
+            self._message("Aucune question avec proposition ne reste sans réponse.")
+            return
+        texte = "Réponses qui seront données :\n" + "\n".join(
+            f"• {x.titre} → {libelle_reponse(x, x.proposition)} ({nombre(x.cas)} cas)" for x in avec)
+        if sans:
+            texte += "\n\nRestent à votre décision :\n" + "\n".join(f"• {x.titre}" for x in sans)
+        demander_oui_non(self, "Accepter les propositions ?", texte, self._propositions_acceptees,
+                         defaut=None)
 
-    def _changer_etat(self, categorie: str, etat: str):
-        self.lot.definir_etat(categorie, etat)
-        self._mettre_a_jour(resume=False)
-
-    def _type_commun(self, categorie: str, type_: str):
-        self.lot.type_par_categorie[categorie] = type_.strip()
-        self._mettre_a_jour(resume=False)
-
-    def _tout_valider(self):
-        if self.lot is not None:
-            self.lot.tout_valider()
+    def _propositions_acceptees(self):
+        q = self.lot.questionnaire if self.lot is not None else None
+        if q is not None:
+            q.accepter_propositions()
             self._mettre_a_jour()
 
-    def _lignes_de_cote(self):
-        if self.lot is not None:
-            n = self.lot.lignes_a_completer_de_cote()
-            self._mettre_a_jour(resume=False)
-            self._message(f"{n} ligne(s) à compléter laissée(s) de côté : rien n'est créé ni relié "
-                          f"pour elles, leurs fiches passeront dans « Fiches à revoir ».")
+    def _voir_lignes(self, cle: str):
+        combo = self.filtres[1]
+        i = combo.findData(cle)
+        if i < 0:
+            return
+        combo.setCurrentIndex(i)
+        self.onglets.setCurrentIndex(2)
 
+    # =========================================================================
+    # Fiches
+    # =========================================================================
     def _fiche_selectionnee(self) -> int:
         lignes = self.table_fiches.selectionModel().selectedRows() if self.lot else []
-        return lignes[0].row() if lignes else -1
+        return self.filtre_fiches.mapToSource(lignes[0]).row() if lignes else -1
 
     def _fiche_de_cote(self):
         i = self._fiche_selectionnee()
         if i >= 0:
-            self.lot.mettre_de_cote(i, "mise de côté dans le lot")
-            self._mettre_a_jour(resume=False)
+            self.lot.mettre_de_cote(i, "mise à revoir dans le lot")
+            self._mettre_a_jour()
 
     def _fiche_reprise(self):
         i = self._fiche_selectionnee()
         if i >= 0:
             self.lot.reprendre(i)
-            self._mettre_a_jour(resume=False)
+            self._mettre_a_jour()
 
     def _ouvrir_depuis_detail(self, index):
         source = self.filtre_detail.mapToSource(index)
@@ -770,77 +756,97 @@ class RepriseSiteDialog(QDialog):
             return
         from .fiche_site_dialog import FicheSiteDialog
         f = self.lot.fiches[i]
-        decisions = copy.deepcopy(self.lot.decisions_effectives(i))
+        q = self.lot.questionnaire
         dialogue = FicheSiteDialog(self.db, main_window=self, service=self.service.fiche_service,
                                    on_decide=lambda d, i=i: self._fiche_decidee(i, d))
-        dialogue.setWindowTitle(f"Fiche du lot — produit {f.id_produit}")
-        dialogue.afficher(f.rapprochement, decisions)
+        dialogue.setWindowTitle(f"Fiche du lot n° {f.id_produit}")
+        dialogue.afficher_dans_lot(f, q.reponses, copy.deepcopy(q.individuels.get(i)),
+                                   acces=self.service._acces_lecture(),
+                                   config=self.service.fiche_service.configuration(),
+                                   sauver_regles=self.service._sauver_regles)
         dialogue.show()
         self._fiche_ouverte = dialogue
 
-    def _fiche_decidee(self, i: int, decisions):
-        if self.lot is not None and i < len(self.lot.fiches):
-            self.lot.personnaliser(i, decisions)
-            self._mettre_a_jour(resume=False)
+    def _fiche_decidee(self, i: int, individuels):
+        if self.lot is not None and self.lot.questionnaire is not None and i < len(self.lot.fiches):
+            q = self.lot.questionnaire
+            q.memorisees = dict(self.service.fiche_service.configuration().regles)
+            if individuels is not None and (individuels.appareils or individuels.remplacements
+                                            or individuels.origines or individuels.ecartees
+                                            or individuels.identite):
+                q.individuels[i] = individuels
+            else:
+                q.individuels.pop(i, None)
+            q.construire()
+            self._mettre_a_jour()
 
-    def _filtrer_sur_categorie(self, item, _colonne=0):
-        cle = item.data(0, Qt.UserRole)
-        if cle == PROFILS_AMBIGUS:
-            return
-        i = self.filtres[1].findData(cle)
-        if i >= 0:
-            self.filtres[1].setCurrentIndex(i)
-            self.onglets.setCurrentIndex(3)
+    # =========================================================================
+    # Filtres et état
+    # =========================================================================
+    def _remplir_filtre_questions(self):
+        combo = self.filtres[1]
+        actuelle = combo.currentData()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Toutes les questions", '')
+        q = self.lot.questionnaire if self.lot is not None else None
+        if q is not None:
+            for x in q.liste():
+                combo.addItem(f"{x.cle} · {x.titre[:70]}", x.cle)
+            for cle, libelle in _SANS_QUESTION.items():
+                combo.addItem(libelle.capitalize(), cle)
+        i = combo.findData(actuelle)
+        combo.setCurrentIndex(max(0, i))
+        combo.blockSignals(False)
 
     def _filtrer(self, *_):
         self.filtre_detail.valeurs = [c.currentData() or '' for c in self.filtres]
         self.filtre_detail.texte = self.filtre_texte.text().strip().lower()
         self.filtre_detail.invalidateFilter()
-        self.compte_detail.setText(f"{self.filtre_detail.rowCount():,} ligne(s) sur "
-                                   f"{self.modele_detail.rowCount():,}".replace(',', ' '))
+        self.compte_detail.setText(f"{nombre(self.filtre_detail.rowCount())} ligne(s) sur "
+                                   f"{nombre(self.modele_detail.rowCount())}")
 
-    # =========================================================================
-    # État
-    # =========================================================================
+    def _filtrer_fiches(self, *_):
+        self.filtre_fiches.genre = self.filtre_fiches_genre.currentData() or ''
+        self.filtre_fiches.invalidateFilter()
+
     def _effacer_lot(self):
         self.lot = self.plan = None
-        self.resume.clear()
-        self.groupes.clear()
+        self.panneau.vider()
         self.modele_detail.charger(None)
         self.modele_fiches.charger(None, None)
-        self.titre_lot.setText("Aucun lot analysé")
-        self.mesures.setText('')
-        self.onglets.setTabText(1, "Doutes regroupés")
+        self.titre_lot.setText("Aucun lot lu : cliquez « Lire le lot suivant ».")
+        self.onglets.setTabText(0, "À décider")
+        self.onglets.setTabText(1, "Fiches du lot")
         self._activer()
 
-    def _mettre_a_jour(self, resume: bool = True):
+    def _mettre_a_jour(self):
         if self.lot is None:
             return
-        if resume:
-            self._remplir_resume()
+        q = self.lot.questionnaire
         self.plan = self.lot.planifier()
+        self.panneau.afficher(q)
+        self._remplir_filtre_questions()
         self.modele_fiches.charger(self.lot, self.plan)
         self._filtrer()
+        restantes = q.sans_reponse()
+        self.onglets.setTabText(0, f"À décider ({len(restantes)})" if restantes else "À décider")
+        self.onglets.setTabText(1, f"Fiches du lot ({len(self.lot.fiches)})")
         p = self.plan
-        s = p.resume()
         if p.pret:
-            self._message(f"Prêt : {s['fiches']} fiche(s) à enregistrer ({s['de_cote']} de côté), "
-                          f"{s['appareils_a_creer']} appareil(s) à créer, {s['liens']} lien(s), "
-                          f"{s['remplacements']} remplacement(s), {s['equivalences']} équivalence(s).")
+            s = p.resume()
+            revoir = len(p.a_revoir) + len(p.de_cote)
+            self._message(f"Prêt : {s['fiches']} fiche(s) · {nombre(s['appareils_a_creer'])} appareil(s) "
+                          f"créé(s) · {nombre(s['liens'])} compatibilité(s) · {s['remplacements']} "
+                          f"ancienne(s) référence(s) · {s['equivalences']} équivalente(s)"
+                          + (f" · {revoir} fiche(s) passeront dans « Fiches à revoir »" if revoir else ''))
         else:
-            raisons = []
+            texte = f"Il reste {len(restantes)} question(s)" if restantes else "Avant d'enregistrer"
             if p.en_attente:
-                raisons.append("en attente : " + ", ".join(c.split(' (')[0] for c in p.en_attente))
-            if p.fiches_a_completer:
-                raisons.append(f"{p.lignes_a_completer} ligne(s) à compléter dans "
-                               f"{len(p.fiches_a_completer)} fiche(s)")
-            self._message("Avant d'enregistrer — " + " ; ".join(raisons), avertissement=True)
-        from src.utils.reprise_site import mesures_lot
-        m = mesures_lot(self.lot)
-        self.mesures.setText(
-            f"{m['lignes']:,} ligne(s) d'appareils · {m['part_deja_en_base']:.0%} déjà en base "
-            f"(liées ou couvertes) · {m['fiches_sans_doute']} fiche(s) sans aucun doute"
-            .replace(',', ' '))
+                texte += " : " + " ; ".join(t.split(' : ')[0] for t in p.en_attente[:3])
+                if len(p.en_attente) > 3:
+                    texte += " ; …"
+            self._message(texte, avertissement=True)
         self._activer()
 
     def _activer(self):
@@ -848,8 +854,9 @@ class RepriseSiteDialog(QDialog):
         self.bouton_analyser.setEnabled(not occupe)
         self.bouton_export.setEnabled(not occupe)
         self.bouton_annuler.setEnabled(occupe)
-        self.bouton_lignes.setEnabled(not occupe and self.plan is not None
-                                      and bool(self.plan.fiches_a_completer))
+        q = self.lot.questionnaire if self.lot is not None else None
+        self.bouton_propositions.setEnabled(
+            not occupe and q is not None and any(x.proposition is not None for x in q.sans_reponse()))
         self.bouton_enregistrer.setEnabled(not occupe and self.plan is not None and self.plan.pret)
 
     def _message(self, texte: str, erreur: bool = False, avertissement: bool = False):
@@ -862,7 +869,7 @@ class RepriseSiteDialog(QDialog):
         t = self._tache
         if t is not None:
             # Tâche en cours : arrêt demandé, le thread survit à la fenêtre jusqu'à sa fin
-            # (l'écriture s'arrête entre deux fiches ; l'état n'avance pas).
+            # (l'écriture s'arrête entre deux fiches ; l'import n'avance pas).
             t.arret.set()
             t.termine.disconnect()
             t.setParent(None)
@@ -878,7 +885,3 @@ class RepriseSiteDialog(QDialog):
 
 
 _EN_COURS = set()
-
-
-def _nombre(n: int) -> str:
-    return f"{n:,}".replace(',', '\u202f')

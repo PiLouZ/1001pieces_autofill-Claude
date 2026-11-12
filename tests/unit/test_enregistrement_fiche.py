@@ -485,12 +485,14 @@ def test_apercu_rendu_et_enregistrement(qapp, tmp_path):
     db = _db_extrait(tmp_path)
     recus = []
     dlg = FicheSiteDialog(db, on_enregistre=lambda ref, res: recus.append((ref, res.ok)),
-                          service=_service(db))
+                          service=_service(db), chemin_regles=tmp_path / 'regles.json')
     dlg.analyser_page((FIXTURES / 'produit_7285.html').read_text(encoding='utf-8'),
                       'https://www.1001pieces.com/7285-fiche.html')
     dlg.show()
     qapp.processEvents()
-    assert dlg.resume.topLevelItemCount() == len(elements_par_categorie(dlg.rapprochement))
+    # À décider : récapitulatif et questions (moteur de l'import par lots)
+    q = dlg.panneau.questionnaire
+    assert q is not None and q.questions and set(dlg.panneau.cartes) == set(q.questions)
     assert dlg.modele.rowCount() == len(dlg.rapprochement.appareils)
     assert not dlg.bouton_enregistrer.isEnabled()
     image = dlg.grab()
@@ -503,7 +505,10 @@ def test_apercu_rendu_et_enregistrement(qapp, tmp_path):
         dlg.table.selectRow(ligne)
         dlg.choix_appareil.setCurrentIndex(1)            # 1er candidat
         dlg._appliquer_choix()
-    dlg._tout_valider()
+    dlg._tout_valider()                                  # propositions acceptées
+    for x in q.sans_reponse():                           # sans proposition : 1er choix
+        dlg._repondre(x.cle, x.choix[0][0])
+    assert not (RACINE / 'data' / 'reprise_fiches.json').exists()   # jamais le fichier du poste
     assert dlg.bouton_enregistrer.isEnabled(), dlg.etat.text()
     dlg._enregistrer()
     assert recus == [('481073071153', True)]

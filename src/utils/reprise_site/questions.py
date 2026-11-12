@@ -133,6 +133,10 @@ class QuestionnaireLot:
         self.memorisees: Dict[str, str] = dict(getattr(config, 'regles', {}) or {})
         self.reponses: Dict[str, str] = dict(reponses or {})
         self.relire = False                 # groupes de marques modifiés : relire le lot
+        # Choix faits ligne par ligne dans l'aperçu d'une fiche (index de fiche →
+        # décisions partielles) : ils l'emportent sur les réponses et sortent les
+        # éléments concernés des questions
+        self.individuels: Dict[int, DecisionsFiche] = {}
         self.questions: Dict[str, Question] = {}
         self.lignes: Dict[Tuple[int, int], str] = {}     # (fiche, ligne) → question ou A_REVOIR
         self.a_revoir: Dict[int, List[str]] = defaultdict(list)
@@ -206,7 +210,10 @@ class QuestionnaireLot:
                 continue
             r = f.rapprochement
             ident = f'{f.id_produit}'
+            ind = self.individuels.get(i)
             for k, a in enumerate(r.appareils):
+                if ind is not None and k in ind.appareils:
+                    continue                # choisi dans l'aperçu de la fiche
                 cle = self._cle_ligne(i, f, k, a, recap)
                 if cle is None:
                     continue
@@ -218,6 +225,8 @@ class QuestionnaireLot:
                 q.exemple(self._exemple_ligne(ident, cle, a))
             self._identite(i, f, r)
             for rp in r.remplacements:
+                if ind is not None and rp.ancienne in ind.remplacements:
+                    continue
                 if rp.statut == 'conflit':
                     q = self._question('Q5')
                     q.occurrences.append((i, rp.ancienne))
@@ -227,6 +236,8 @@ class QuestionnaireLot:
                     recap['remplacements'] += 1
             for e in r.equivalences:
                 if e.statut in ('deja_dans_le_groupe', 'dans_la_succession', 'ecartee'):
+                    continue
+                if ind is not None and (e.reference in ind.origines or e.reference in ind.ecartees):
                     continue
                 if categorie_equivalence(e) == 'conflits':
                     from src.utils.rapprochement_fiche.decisions import forme_reference
@@ -244,7 +255,25 @@ class QuestionnaireLot:
                 recap['profils_ambigus'] += 1
         self._proposer_types_et_marques()
         self._proposer_origines()
+        self._titres()
         self.recapitulatif = dict(recap)
+
+    def _titres(self):
+        """Titres lisibles des questions d'une fiche (nom de la fiche, références)."""
+        for cle, q in self.questions.items():
+            if not q.occurrences:
+                continue
+            f = self.lot.fiches[q.occurrences[0][0]]
+            fiche = f"fiche {f.id_produit} « {f.nom[:70]} »" if f.nom else f"fiche {f.id_produit}"
+            if cle.startswith('Q2:'):
+                q.titre = f"{q.cas} appareil(s) sans type à créer · {fiche} : quel type ?"
+            elif cle.startswith('Q3:'):
+                annoncees = ', '.join(f.marques_annoncees) or 'aucune'
+                q.titre = (f"{q.cas} appareil(s) à créer sans marque · {fiche} : quelle marque ? "
+                           f"(la fiche annonce : {annoncees})")
+            elif cle.startswith('Q4:'):
+                refs = ', '.join(dict.fromkeys(str(e) for _, e in q.occurrences))
+                q.titre = f"Équivalente(s) sans marque d'origine : {refs}"
 
     def _proposer_origines(self):
         """Équivalentes sans marque d'origine : si toutes leurs fiches n'annoncent
@@ -323,8 +352,9 @@ class QuestionnaireLot:
 
     def _identite(self, i, f, r):
         doutes = r.doutes_par_categorie()
+        ind = self.individuels.get(i)
         for genre, (cle, _) in _IDENTITE.items():
-            if genre in doutes:
+            if genre in doutes and not (ind is not None and genre in ind.identite):
                 q = self._question(cle)
                 q.occurrences.append((i, genre))
                 ident = r.identite
@@ -478,6 +508,15 @@ class QuestionnaireLot:
                 elif _valeur(rep, 'etiquette'):
                     d.origines[e.reference] = _valeur(rep, 'etiquette')
                 # « sans » : écrite sans marque d'origine ; sans réponse : le lot attend
+            ind = self.individuels.get(i)
+            if ind is not None:
+                for k in ind.appareils:
+                    f.lignes_auto.discard(k)
+                d.appareils.update(ind.appareils)
+                d.remplacements.update(ind.remplacements)
+                d.origines.update(ind.origines)
+                d.ecartees |= ind.ecartees
+                d.identite.update(ind.identite)
 
     def _ligne(self, i, f, k, a, cle, d: DecisionsFiche):
         def de_cote(raison):

@@ -204,8 +204,8 @@ class ToolbarService:
         fiche_site_action.triggered.connect(getattr(self.main_window, '_open_fiche_site_dialog', lambda: None))
         data_menu.addAction(fiche_site_action)
 
-        reprise_site_action = QAction("Reprise des fiches du site…", self.main_window)
-        reprise_site_action.setToolTip("Importer en masse les fiches du site, par lots, depuis les exports PrestaShop")
+        reprise_site_action = QAction("Importer les fiches du site…", self.main_window)
+        reprise_site_action.setToolTip("Importer toutes les fiches du site, par lots, depuis les exports PrestaShop")
         reprise_site_action.triggered.connect(getattr(self.main_window, '_open_reprise_site_dialog', lambda: None))
         data_menu.addAction(reprise_site_action)
 

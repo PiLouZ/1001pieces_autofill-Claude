@@ -2580,8 +2580,8 @@ class MainWindow(QMainWindow):
         dialog.show()
 
     def _open_reprise_site_dialog(self):
-        """Reprise des fiches du site en masse, par lots (CDC reprise des fiches,
-        étape 4) : une seule fenêtre à la fois (elle tient la session de reprise)."""
+        """Importer les fiches du site en masse, par lots (CDC reprise des fiches,
+        étape 4 et refonte) : une seule fenêtre à la fois (elle tient la session)."""
         from .reprise_site_dialog import RepriseSiteDialog
         dialog = getattr(self, '_reprise_site_dialog', None)
         if dialog is not None:
