@@ -573,11 +573,63 @@ class TestVariantesDuSite:
 
 
 def test_ref_fabricant_suivie_de_texte():
-    """« Réf. fabricant : 10/1863-5010 POUR APPAREILS VN606E » (étape 4, produit 7089) :
-    seule la référence de tête est une référence de la pièce ; la suite est signalée."""
+    """« Réf. fabricant : 10/1863-5010 POUR APPAREILS VN606E » (produit 7089) : la
+    référence de tête est celle de la pièce ; la suite donne les appareils."""
     html = ('<div class="class_perso3">Code produit : 481225988048</div>'
             '<div class="class_perso4">Appareils employant cette pièce</div>'
             '<div class="class_perso5">Bauknecht Réf. fabricant : 10/1863-5010 POUR APPAREILS VN606E</div>')
     lecture = lire_description(html, MODELES, ['Bauknecht'])
     assert [e.references for e in lecture.references_par_marque] == [['10/1863-5010']]
-    assert [(n.nature, n.detail) for n in lecture.non_compris] == [('bloc_non_lu', 'POUR APPAREILS VN606E')]
+    assert [(a.marque, a.ref_modele) for a in lecture.appareils] == [('Bauknecht', 'VN606E')]
+    assert not [n for n in lecture.non_compris if n.nature == 'bloc_non_lu']
+    # Suite qui n'est pas « pour appareils » : toujours signalée
+    autre = lire_description(html.replace('POUR APPAREILS VN606E', 'VOIR NOTICE'), MODELES, ['Bauknecht'])
+    assert [(n.nature, n.detail) for n in autre.non_compris] == [('bloc_non_lu', 'VOIR NOTICE')]
+
+
+class TestCorrectifsDuLot1:
+    """Lectures fausses constatées sur le 1er lot réel (refonte, étape 5)."""
+
+    def _lire(self, liste, entete='', marques=('Bauknecht', 'Philips', 'Whirlpool'), types=()):
+        html = (f'<div class="class_perso3">Code produit : 481010595117</div>{entete}'
+                '<div class="class_perso4">Appareils compatibles :</div>'
+                '<div class="class_perso5">' + ''.join(f'<div>{l}</div>' for l in liste) + '</div>')
+        return lire_description(html, MODELES, list(marques), list(types))
+
+    def test_equivalentes_avec_marque(self):
+        l = self._lire([], '<div class="class_perso3 class_perso6">Références équivalentes Rosières : '
+                           '49025106 49030919</div>')
+        assert [(e.references, e.origine) for e in l.equivalentes] == [(['49025106', '49030919'], 'Rosières')]
+
+    def test_remplace_les_dimensions(self):
+        l = self._lire([], '<div class="class_perso3 class_perso6">Remplace les dimensions : '
+                           'C00280008 482000031466</div>')
+        assert l.remplace == ['C00280008', '482000031466']
+
+    def test_cotes_pas_des_appareils(self):
+        l = self._lire(['<div id="Bauknecht"><b><u>Bauknecht</u></b></div>', 'VN606E - VN 606 E',
+                        'A : 97 cm', 'C : - cm'])
+        assert [a.ref_modele for a in l.appareils] == ['VN606E']
+
+    def test_reference_entre_parentheses(self):
+        l = self._lire(['<div id="Bauknecht"><b><u>Bauknecht</u></b></div>', 'VF3017 (VF 3017)'])
+        assert [(a.ref_modele, a.nom) for a in l.appareils] == [('VF3017', 'VF 3017')]
+
+    def test_famille_puis_modele(self):
+        l = self._lire(['<div id="Philips"><b><u>Philips</u></b></div>', 'HR 6325 - HR632501',
+                        'HR 6328 - HR6374', '3TL865/02 - 3TL865'])
+        assert [a.ref_modele for a in l.appareils] == ['HR632501', 'HR 6328', '3TL865/02']
+
+    def test_type_ouvrant_le_nom_et_ligne_suivante(self):
+        l = self._lire(['<div id="Whirlpool"><b><u>Whirlpool</u></b></div>',
+                        '852576929010 AKZM769/WH Four à Pyrolyse', '852587901101 AKZM8790/IX',
+                        'Four à Pyrolyse'], types=['Four'])
+        assert [(a.nom, a.type_ligne) for a in l.appareils] == [('AKZM769/WH', 'Four'), ('AKZM8790/IX', 'Four')]
+        assert not [n for n in l.non_compris if n.nature == 'marque_inconnue']
+
+    def test_reference_marque_a_une_faute_et_fabricant(self):
+        l = self._lire([], '<div class="class_perso2">Compatible avec Bauknecht</div>'
+                           '<div class="class_perso3 class_perso6">Référence Brauknecht : 10/2940-5010</div>'
+                           '<div class="class_perso3 class_perso6">Référence Ego : 20.41222.000 2041222000</div>')
+        assert [(e.references, e.origine) for e in l.references_par_marque] == [
+            (['10/2940-5010'], 'Bauknecht'), (['20.41222.000', '2041222000'], 'Ego')]

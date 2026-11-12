@@ -42,6 +42,8 @@ _INFOS = [
     ('illisibles', "ligne(s) illisible(s) ne seront pas créées (ex. « C : », parenthèses) : "
                    "leurs fiches passent dans « Fiches à revoir »"),
     ('profils_ambigus', "fiche(s) lisible(s) de plusieurs façons, même résultat"),
+    ('doublons', "ligne(s) qui ne sont que le nom commercial d'un appareil déjà cité par la fiche : "
+                 "rien n'est ajouté"),
 ]
 _LIBRE = {'type': "Autre type", 'marque': "Autre marque", 'etiquette': "Marque d'origine"}
 

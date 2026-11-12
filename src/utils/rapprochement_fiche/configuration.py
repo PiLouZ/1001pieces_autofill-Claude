@@ -76,7 +76,7 @@ CONFIGURATION_PAR_DEFAUT: Dict[str, Any] = {
         'Petit ménager': '',
     },
     # Écriture de la fiche → marque de l'outil (clé comparée sans casse ni accents)
-    'alias_marques': {},
+    'alias_marques': {'GE': 'General Electric', 'Brauknecht': 'Bauknecht'},
     # Réponses mémorisées aux questions de règle de l'import par lots (clé → réponse)
     'regles_reprise': {},
     'groupes_marques': {
