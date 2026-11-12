@@ -134,6 +134,8 @@ class DatabaseSetupMixin:
         self._setup_autocompletion_trace_table()
         # Refus mémorisés : suggestions écartées, auto-complétions vidées (v3.94.0)
         self._setup_refus_completions_table()
+        # Reprise des fiches du site : produits, provenance, origines, décisions
+        self._setup_fiches_site_tables()
 
         self.conn.commit()
 
