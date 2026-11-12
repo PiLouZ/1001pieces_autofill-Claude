@@ -538,6 +538,18 @@ Les écrans (étape 3 des fiches « à revoir » persistantes, étape 4 des écr
 
 Vérification : `tests/unit/test_reprise_questions.py` (base et exports construits : une question par genre, rien sans réponse, propositions partielles, réponses écrites et relance sans ajout, règles mémorisées puis révoquées dans un fichier de test, R4 « oui » puis relecture).
 
+### 10.7 Fiches « à revoir » — refonte, étape 3 (2026-11-12)
+
+Une fiche enregistrée dont des lignes ont été laissées de côté **par le lot**, et non par l'utilisateur, est inscrite dans `reprise_site_de_cote` avec la raison « partielle : N appareil(s) à revoir ». Ces lignes sont :
+- les appareils à choisir parmi plusieurs ;
+- les références illisibles ;
+- les lignes encore à compléter après réponse ;
+- celles laissées par « Laisser de côté les lignes à compléter ».
+
+Elle n'en est retirée qu'une fois complète. Relue (« Reprendre les fiches de côté »), elle ne pose plus que ses lignes restantes, et ce qui est déjà écrit ressort « déjà lié » : aucun doublon. Aucune migration n'a été nécessaire, la colonne `raison` existant déjà.
+
+Vérification : `test_reprise_questions.py::test_fiche_partielle_a_revoir_puis_complete`.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

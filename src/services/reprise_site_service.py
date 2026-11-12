@@ -61,6 +61,7 @@ class ResultatLot:
     numero: Optional[int] = None
     fiches_ecrites: int = 0
     de_cote: int = 0
+    partielles: int = 0                 # écrites en partie, inscrites « à revoir »
     appareils_crees: int = 0
     liens_crees: int = 0
     liens_completes: int = 0
@@ -73,7 +74,8 @@ class ResultatLot:
 
     def resume(self) -> str:
         croissance = (self.taille_apres - self.taille_avant) / 1e6
-        return (f"{self.fiches_ecrites} fiche(s) enregistrée(s), {self.de_cote} mise(s) de côté ; "
+        return (f"{self.fiches_ecrites} fiche(s) enregistrée(s) dont {self.partielles} à revoir, "
+                f"{self.de_cote} mise(s) de côté ; "
                 f"{self.appareils_crees} appareil(s) créé(s), {self.liens_crees} lien(s) créé(s), "
                 f"{self.liens_completes} complété(s) ; {self.remplacements} remplacement(s), "
                 f"{self.equivalences} équivalence(s) ; {self.ecriture_s:.1f} s, "
@@ -324,15 +326,27 @@ class RepriseSiteService(BaseService):
                     lot.fiches[i].raison_de_cote or "profil ambigu laissé de côté")
                    for i in plan.de_cote]
         res.de_cote = len(de_cote)
+        # Fiches écrites en partie (lignes laissées de côté par le lot, pas par
+        # l'utilisateur) : à revoir, elles reviennent avec « Fiches à revoir »
+        partielles = []
+        for i, _ in plan.plans:
+            f = lot.fiches[i]
+            n = sum(1 for k in f.lignes_auto
+                    if (c := f.decisions.appareils.get(k)) is not None and c.ignorer)
+            if n:
+                partielles.append((f.id_produit, f.ref_piece, f.nom,
+                                   f"partielle : {n} appareil(s) à revoir"))
+        res.partielles = len(partielles)
         mesures = dict(mesures, resultat={
             'appareils_crees': res.appareils_crees, 'liens_crees': res.liens_crees,
             'liens_completes': res.liens_completes, 'remplacements': res.remplacements,
             'equivalences': res.equivalences})
         db = self.db
         with db._query_lock:
+            restent = {p[0] for p in partielles}
             ecrites = [lot.fiches[i].id_produit for i, _ in plan.plans]
-            db._retirer_de_cote_reprise_site(ecrites)
-            db._mettre_de_cote_reprise_site(de_cote, date_export, le)
+            db._retirer_de_cote_reprise_site([i for i in ecrites if i not in restent])
+            db._mettre_de_cote_reprise_site(de_cote + partielles, date_export, le)
             res.numero = db._journaliser_lot_reprise_site({
                 'premier_id': lot.export.premier_id, 'dernier_id': lot.export.dernier_id,
                 'date_export': date_export, 'produits': len(lot.export.produits)
