@@ -221,3 +221,38 @@ def test_r4_oui_enrichit_le_groupe_et_relit_le_lot(tmp_path):
     hotte = next(a for a in lot.fiches[0].rapprochement.appareils if a.ref_modele == 'ZZE123')
     assert hotte.motif == 'meme_ref_groupe' and hotte.candidats[0].id == m.elica
     assert q.lignes[(0, lot.fiches[0].rapprochement.appareils.index(hotte))] == 'R1'
+
+
+def test_fiche_partielle_a_revoir_puis_complete(tmp_path):
+    """Étape 3 : une fiche écrite avec des lignes laissées de côté est inscrite « à
+    revoir » ; relue, elle n'ajoute aucun doublon ; complétée, elle est retirée."""
+    from src.utils.rapprochement_fiche.decisions import ChoixAppareil
+    m = Monde(tmp_path)
+    s = m.service()
+    lot, q = m.lot(s)
+    _repondre_tout(q)
+    res = s.enregistrer_lot(lot, lot.planifier())
+    assert res.ok and res.partielles == 1
+    a_revoir = m.db.fiches_de_cote_reprise_site()
+    assert [(f['id_produit'], f['raison']) for f in a_revoir] == [(101, 'partielle : 1 appareil(s) à revoir')]
+    avant = m.instantane()
+    # Relue : seule la ligne AMB/09 reste à revoir, rien n'est doublé
+    lot = s.analyser_fiches_de_cote()
+    q = s.questionnaire(lot)
+    _repondre_tout(q)
+    res = s.enregistrer_lot(lot, lot.planifier())
+    assert res.ok and (res.appareils_crees, res.liens_crees) == (0, 0)
+    assert m.instantane() == avant and len(m.db.fiches_de_cote_reprise_site()) == 1
+    # Complétée dans l'aperçu de la fiche : l'appareil choisi, elle est retirée
+    lot = s.analyser_fiches_de_cote()
+    f = lot.fiches[0]
+    k = next(i for i, a in enumerate(f.rapprochement.appareils) if a.ref_modele == 'AMB/09')
+    d = copy.deepcopy(lot.decisions_effectives(0))
+    d.valider_tout(f.rapprochement)
+    d.appareils[k] = ChoixAppareil(appareil_id=f.rapprochement.appareils[k].candidats[0].id)
+    for genre in ('ref_interne_differente', 'libelle_different'):
+        d.identite.setdefault(genre, {'ref_interne_differente': 'enregistrer'}.get(genre, 'garder'))
+    lot.personnaliser(0, d)
+    res = s.enregistrer_lot(lot, lot.planifier())
+    assert res.ok and res.partielles == 0 and res.liens_crees == 1
+    assert m.db.fiches_de_cote_reprise_site() == []

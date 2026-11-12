@@ -742,8 +742,8 @@ class RepriseSiteDialog(QDialog):
         if self.lot is not None:
             n = self.lot.lignes_a_completer_de_cote()
             self._mettre_a_jour(resume=False)
-            self._message(f"{n} ligne(s) à compléter laissée(s) de côté (elles reviendront à la "
-                          f"relecture de leur fiche).")
+            self._message(f"{n} ligne(s) à compléter laissée(s) de côté : rien n'est créé ni relié "
+                          f"pour elles, leurs fiches passeront dans « Fiches à revoir ».")
 
     def _fiche_selectionnee(self) -> int:
         lignes = self.table_fiches.selectionModel().selectedRows() if self.lot else []
