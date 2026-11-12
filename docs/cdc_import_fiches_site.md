@@ -1,6 +1,6 @@
 # Cahier des charges — Reprise des fiches produit du site 1001pieces.com
 
-**Statut :** À réaliser — conception validée le 2026-11-10, rien n'est codé
+**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`) réalisée le 2026-11-12
 **Version :** 1.0
 **Contexte :** le site 1001pieces.com (PrestaShop) contient des milliers de fiches produit qui listent les appareils compatibles et les relations entre pièces (remplacements, équivalences). Une partie de ces fiches a été produite par l'outil (export « Fiche complète »), une autre a été écrite à la main dans le back-office. Ce document définit comment reprendre ces données dans l'outil, puis comment l'outil devient la passerelle qui alimente le site.
 
@@ -55,7 +55,7 @@ Les relations entre pièces (remplacements, équivalences) n'existent **que dans
 
 La page publique d'une fiche contient tout ce qu'il faut, sans accès à la base :
 - la **description** balisée (§ 4.1) ;
-- la **table des compatibilités** EveryParts (bloc `ucpt-table`), quand elle existe : type, marque, `réf - nom` pour chaque appareil ;
+- la **table des compatibilités** EveryParts (bloc `ucpt-table`), quand elle existe : type, marque, `réf - nom` pour chaque appareil. La page n'en affiche que **la première page** (20 lignes ; 92 pages pour le produit 7285) : le reste est chargé à la demande. La table complète vient donc de l'export SQL des compatibilités (§ 3.1) ; le lecteur relève le nombre de pages et signale une table incomplète ;
 - la **catégorie** du produit dans les métadonnées (par exemple « Pompe de vidange - Lave-linge ») ;
 - la **référence produit interne**, dans le bloc `.product-reference` (`<span class="js-product-reference">EL1113161010</span>`) et dans les métadonnées (`sku`, `mpn`), ainsi que l'**EAN** (`gtin13`) quand il existe ;
 - l'**`id_product`** PrestaShop, au début du nom de la page (`…/20746-regulateur-de-debit-….html`).
@@ -361,6 +361,25 @@ Chaque étape peut être testée seule :
 3. **Aperçu et enregistrement** d'une fiche, avec les colonnes du § 9.
 4. **Import en masse** par lots, résumé, reprise.
 5. **Export** : une ligne par origine, paire dans le code produit, référence interne proposée dans l'export EveryParts.
+
+### 10.1 Mesure de l'étape 1 (2026-11-12)
+
+Mesure sur l'export complet du site (13 302 produits, `scripts/mesurer_lecteur_fiches.py`, marques et types de la base en lecture seule) :
+- 12 228 descriptions avec une liste, 6 454 931 lignes d'appareils. **10 867 (88,9 %) sont lues sans aucun doute de lecture** : code produit trouvé, au moins un appareil, aucun bloc non lu, aucune marque inconnue.
+- Les doutes restants sont surtout des en-têtes de série pris pour des marques (« Lave-linge SIWAMAT », « HOTTE DECOR », 456 fiches) et 139 blocs d'en-tête qui parlent de références sans format reconnu.
+- **Formats anciens rencontrés**, désormais reconnus :
+  - « Montage sur … » pour « Compatible avec » ;
+  - une vingtaine de titres de liste (« Appareil(s) employant ce thermostat », « utilisant ce filtre », « comaptibles »…) ;
+  - « Remplace les produits suivants » ;
+  - « Remplacé par » (le successeur) ;
+  - références par marque (« Référence EGO : … », « Bosch Réf. fabricant : … », 174 fiches) ;
+  - 12NC suivi du nom ;
+  - type écrit en fin de ligne ou sur la ligne suivante.
+- **Pour l'étape 2 :**
+  - 1 635 fiches n'ont pas d'en-tête de marque et annoncent plusieurs marques, souvent un groupe (« Whirlpool Laden Ignis Bauknecht ») : la marque de chaque ligne se déduit au rapprochement ;
+  - 412 fiches ne prennent leurs marques que dans la marque du produit ;
+  - références internes : 2 029 égales au code produit, 5 524 préfixées (FAR, EL, GAU, ROS, MIE, LH, ATC, D, NOT, BEO, CET, STN0…), 4 637 différentes, dont 1 106 désignent une référence de la lignée (remplacée ou équivalente) et la plupart des autres sont des codes de fournisseur (`ES10028`…).
+- 761 listes sont probablement réduites : replis de l'export de l'outil, dernière marque vide, ou points de suite.
 
 ---
 
