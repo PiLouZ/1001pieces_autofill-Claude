@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
 
 from src.utils.lecteur_fiche.lecteur import cle_marque
+from src.utils.rapprochement_fiche.acces_base import forme_normalisee
 from src.utils.rapprochement_fiche.resultat import (
     AppareilRapproche, Equivalence, Rapprochement, Remplacement,
 )
@@ -298,7 +299,10 @@ class _Planificateur:
             self._couverts.append(a)
             return                      # pas de nouveau lien (§ 5.2)
         ident = a.appareil_id if a.appareil_id is not None else a.proposition
-        if ident is None and len(a.candidats) == 1:
+        # Candidat unique : relié en bloc seulement s'il a la même réf. (à la
+        # ponctuation près) ; trouvé par le seul nom commercial, c'est un autre appareil
+        if ident is None and len(a.candidats) == 1 and \
+                forme_normalisee(a.candidats[0].ref_modele) == forme_normalisee(a.ref_modele):
             ident = a.candidats[0].id
         if ident is None:
             self._differees.append((index, a))
@@ -313,7 +317,8 @@ class _Planificateur:
         p = self.plan
         lies = {c for c, _ in p.liens if not isinstance(c, tuple)}
         for index, a in self._differees:
-            communs = {c.id for c in a.candidats} & lies
+            communs = {c.id for c in a.candidats if forme_normalisee(c.ref_modele)
+                       == forme_normalisee(a.ref_modele)} & lies
             if len(communs) == 1:
                 p.liens.append((communs.pop(), a.provenance))
                 continue
@@ -330,8 +335,15 @@ class _Planificateur:
     def _creer(self, index, a, choix, categorie, cle):
         p = self.plan
         marque = (choix.marque if choix and choix.marque else '') or a.marque
-        type_ = ((choix.type if choix and choix.type else '')
-                 or self.d.type_par_categorie.get(categorie, '') or a.type)
+        # Le type commun d'une catégorie ne remplace jamais un type déjà trouvé
+        # (table, ligne, base, catégorie du produit : § 5.6)
+        type_ = ((choix.type if choix and choix.type else '') or a.type
+                 or self.d.type_par_categorie.get(categorie, ''))
+        if a.suspecte and not (choix is not None and choix.creer):
+            p.a_completer.append(f"ligne {a.numero or 'table'} « {a.ref_modele} » : "
+                                 f"référence illisible ({a.suspecte}), non créée")
+            p.lignes_a_completer.append(index)
+            return
         manque = [n for n, v in (('marque', marque), ('type', type_)) if not v]
         if manque:
             p.a_completer.append(f"ligne {a.numero or 'table'} {a.ref_modele} : "
@@ -377,6 +389,8 @@ class _Planificateur:
             return
         if e.reference not in self.d.origines and self._etat(categorie_equivalence(e)) != VALIDEE:
             return
+        if e.reference not in self.d.origines and not _FORME_CHIFFRES.search(e.reference):
+            return                      # « Brandt », « : » : jamais écrite en bloc
         p.equivalences.append(e.reference)
         p.origines.append((e.reference, origine or None, e.ligne or None))
         if e.reference in self.d.origines and self.d.origines[e.reference]:

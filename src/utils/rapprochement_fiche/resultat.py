@@ -103,6 +103,7 @@ class AppareilRapproche:
     source_type: str = ''               # 'table', 'ligne', 'base', 'categorie', ''
     raison: str = ''
     doutes: List[str] = field(default_factory=list)
+    suspecte: str = ''                  # réf. qui ne ressemble pas à une réf. d'appareil
 
 
 @dataclass

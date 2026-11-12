@@ -236,8 +236,8 @@ class _Rapprochement:
         if not self.ref_interne or not i.ref_piece or i.source != 'code_produit':
             i.statut_ref_interne = 'prefixe' if i.prefixe else ''
             return
-        if self.ref_interne.upper() == i.ref_piece.upper():
-            i.statut_ref_interne = 'egale'
+        if forme_normalisee(self.ref_interne) == forme_normalisee(i.ref_piece):
+            i.statut_ref_interne = 'egale'      # à la ponctuation près (10-2930-5010)
             return
         _, prefixe = self.config.sans_prefixe(self.ref_interne, i.ref_piece)
         if prefixe:
@@ -415,6 +415,7 @@ class _Rapprochement:
         for ligne in self.l.appareils:
             a = AppareilRapproche(ligne.numero, ligne.marque or '', ligne.ref_modele, ligne.nom,
                                   'description')
+            a.suspecte = self._reference_suspecte(ligne.ref_modele)
             self._identifier_ligne(a, ligne.source_marque)
             cle = (cle_marque(a.marque), forme_normalisee(a.ref_modele))
             ligne_table = table.get(cle)
@@ -438,6 +439,21 @@ class _Rapprochement:
                 self._doute(categorie, f"{a.marque or '?'} {a.ref_modele} : {a.raison}",
                             f"appareil:{a.numero}" if a.numero else f"table:{a.ref_modele}")
         return lignes
+
+    def _reference_suspecte(self, ref: str) -> str:
+        """Pourquoi une réf. lue ne ressemble pas à une réf. d'appareil ('' = normale) :
+        elle n'est alors jamais créée en bloc (CDC § 5.2, création validée)."""
+        ref = (ref or '').strip()
+        if not any(c.isdigit() for c in ref):
+            return "sans aucun chiffre"
+        if any(c in ref for c in '():;'):
+            return "parenthèses ou ponctuation inattendue"
+        mots = ref.split()
+        if len(mots) >= 3 and sum(any(c.isdigit() for c in m) for m in mots) >= 2:
+            return "plusieurs codes sur une ligne"
+        if len(mots) >= 2 and cle_marque(mots[0]) in self.marques_outil:
+            return f"commence par une marque ({mots[0]})"
+        return ''
 
     def _marque_outil(self, marque: str) -> str:
         """Écriture de l'outil : clé exacte, alias de la configuration, puis singulier/pluriel."""
@@ -545,7 +561,11 @@ class _Rapprochement:
         for m in marques:
             groupe += [self._marque_outil(g) for g in self.config.marques_du_groupe(m)]
         voisines = {cle_marque(m) for m in groupe + marques}
-        propres = {cle_marque(m) for m in marques}
+        # Marques où la réf. a déjà été cherchée : celle de l'en-tête seule, ou toutes
+        # les annoncées quand la marque était à déduire (une annoncée qui n'est pas
+        # l'en-tête reste une marque du groupe où chercher : Ignis / Whirlpool)
+        propres = ({cle_marque(a.marque)} if a.marque_fiche and a.marque
+                   else {cle_marque(m) for m in marques})
         ailleurs = [c for c in self.acces.appareils_par_ref([a.ref_modele]).get(a.ref_modele, [])
                     if cle_marque(c.marque) in voisines and cle_marque(c.marque) not in propres]
         if ailleurs:
@@ -560,6 +580,11 @@ class _Rapprochement:
                 a.raison = (f"seulement par le nom commercial « {a.nom} » : "
                             f"{', '.join(sorted({c.ref_modele for c in par_nom}))}")
                 a.doutes.append('a_valider')
+                # Un seul candidat de même réf. (à la ponctuation près) : il est proposé
+                memes = [c for c in par_nom
+                         if forme_normalisee(c.ref_modele) == forme_normalisee(a.ref_modele)]
+                if len(memes) == 1:
+                    a.proposition = memes[0].id
 
     # --- Type (§ 5.6) ---------------------------------------------------------
     def _type_outil(self, t: str) -> str:
