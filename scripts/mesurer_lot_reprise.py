@@ -50,13 +50,42 @@ def tout_decider(lot):
     return plan, lignes
 
 
-def un_lot(service, db, taille, journal):
+# Réponse simulée aux questions sans proposition (mode --questions) : ce qu'un
+# utilisateur répondrait le plus probablement d'après l'audit du 1er lot
+_SIMULEES = {'R4': 'oui', 'R7': 'reprendre', 'Q4': 'sans', 'Q2': 'de_cote', 'Q3': 'de_cote'}
+
+
+def par_questions(service, lot):
+    """Mode questions : propositions acceptées, autres questions répondues comme
+    ci-dessus, relecture du lot si des groupes de marques ont changé."""
+    stats = {}
+    for passage in (1, 2):
+        q = lot.questionnaire or service.questionnaire(lot)
+        stats[f'questions_{passage}'] = q.resume()
+        stats[f'propositions_acceptees_{passage}'] = q.accepter_propositions()
+        for x in q.sans_reponse():
+            q.repondre(x.cle, _SIMULEES.get(x.cle.split(':')[0], x.choix[0][0]))
+        if not q.relire:
+            break
+        lot = service.relire_lot(lot)
+    plan = lot.planifier()
+    stats['a_revoir'] = {'fiches': len(plan.a_revoir),
+                         'lignes': sum(len(v) for v in plan.a_revoir.values())}
+    return lot, plan, stats
+
+
+def un_lot(service, db, taille, journal, questions=False):
     t = time.time()
     lot = service.analyser_lot_suivant(taille)
     if lot is None:
         return None
     analyse = time.time() - t
-    plan, lignes_de_cote = tout_decider(lot)
+    if questions:
+        lot, plan, stats_q = par_questions(service, lot)
+        lignes_de_cote = stats_q['a_revoir']['lignes']
+    else:
+        plan, lignes_de_cote = tout_decider(lot)
+        stats_q = None
     avant = compter(db)
     taille_avant = taille_base(db.db_file)
     res = service.enregistrer_lot(lot, plan)
@@ -71,6 +100,7 @@ def un_lot(service, db, taille, journal):
         'ajouts': {k: apres[k] - avant[k] for k in apres},
         'groupes_doutes': [(g.genre, g.forme, g.fiches) for g in lot.groupes_doutes()][:15],
         'resultat': res.resume(),
+        'questions': stats_q,
     })
     journal.append(m)
     print(json.dumps(m, ensure_ascii=False, indent=1))
@@ -87,13 +117,18 @@ def main():
     ap.add_argument('--lots', type=int, default=1)
     ap.add_argument('--rapport', default='')
     ap.add_argument('--sans-relance', action='store_true')
+    ap.add_argument('--questions', action='store_true',
+                    help="décider par le moteur de questions (règles écrites dans --regles)")
+    ap.add_argument('--regles', default='', help="fichier de configuration où écrire les règles")
     args = ap.parse_args()
 
     t = time.time()
     db = DatabaseManager(args.base)
     print(f"Base ouverte (migration comprise) : {time.time() - t:.1f} s, "
           f"{taille_base(db.db_file) / 1e6:.1f} Mo")
-    service = RepriseSiteService(db)
+    if args.questions and not args.regles:
+        ap.error("--questions demande --regles (jamais le data/reprise_fiches.json du poste)")
+    service = RepriseSiteService(db, chemin_configuration=args.regles or None)
     if Path(args.config).exists():
         service._modeles = modeles_depuis_config(json.loads(Path(args.config).read_text('utf-8')))
     signature, statut = service.examiner_export(args.produits, args.compatibilites)
@@ -101,7 +136,7 @@ def main():
     journal = []
     premier = None
     for _ in range(args.lots):
-        lot = un_lot(service, db, args.taille, journal)
+        lot = un_lot(service, db, args.taille, journal, args.questions)
         if lot is None:
             break
         premier = premier or lot
@@ -115,7 +150,10 @@ def main():
         print("\n=== Relance du 1er lot ===")
         avant = compter(db)
         lot = service.analyser_lot_suivant(args.taille)
-        plan, _ = tout_decider(lot)
+        if args.questions:
+            lot, plan, _ = par_questions(service, lot)
+        else:
+            plan, _ = tout_decider(lot)
         res = service.enregistrer_lot(lot, plan)
         apres = compter(db)
         relance = {'ajouts': {k: apres[k] - avant[k] for k in apres}, 'resultat': res.resume(),
