@@ -155,16 +155,25 @@ Ranger l'EAN avec le produit règle le cas des génériques : l'EAN du produit 7
 
 ### 5.2 Appareils
 
-Un appareil est identifié par **marque + réf. modèle normalisée**. La normalisation ignore la ponctuation (espaces, tirets, `/`) et suit la casse des marques de l'outil.
+Un appareil est cherché par **marque + réf. modèle**, en deux passes : **ponctuation considérée**, puis **ponctuation ignorée**. La normalisation retire les espaces, tirets, `/`, `.` et `_`, met la référence en majuscules et suit la casse des marques de l'outil. Les deux passes sont nécessaires :
+- ne considérer que l'écriture exacte **créerait des doublons** : `WOR 20154/02` serait un nouvel appareil à côté de `WOR20154/02` ;
+- n'utiliser que la forme normalisée **fusionnerait des appareils distincts** qui ne diffèrent que par la ponctuation.
+
+**Mesure dans la base (2026-11-12) :** 467 références normalisées correspondent déjà à plusieurs écritures, soit 937 appareils sur 717 250. Le plus souvent, c'est la présence ou l'absence de `/` (354 cas : `MBW61SW/1` / `MBW61SW1`), puis les espaces (63), les tirets (41 : `FN4957SED-1` / `FN4957SED1`) et des fautes (`CHW200G` / `CHW200G.`, `BBS2451FF//02`). Certains de ces cas sont de vrais doublons, d'autres peut-être pas. Seul l'utilisateur peut trancher.
 
 | Niveau | Règle | Traitement |
 |---|---|---|
-| Exact | marque et réf. modèle identiques | lié |
-| Normalisé | identiques à la ponctuation près | lié |
+| Exact | marque et réf. modèle identiques, ponctuation comprise, **un seul** candidat | lié |
+| Exact multiple | même réf. exacte portée par plusieurs appareils (cas des décisions `DISTINCT` de `reference_decisions`) | départage par le type (§ 5.6), sinon doute |
+| Normalisé | pas de correspondance exacte, **un seul** candidat à la ponctuation près, pas de décision contraire | proposé, validable en bloc dans le résumé ; l'écriture de la base est gardée |
+| Normalisé ambigu | plusieurs écritures en base pour la même forme normalisée | doute : l'utilisateur choisit l'appareil, ou signale un doublon existant |
 | Déjà couvert | l'appareil est déjà lié à une autre référence de la lignée de la pièce (prédécesseur, successeur ou équivalente) | **pas de nouveau lien** ; rattachement direct possible sur demande dans l'aperçu |
 | À valider | référence trouvée sous une autre marque du groupe ou un autre type, ou seulement par le nom commercial | l'utilisateur choisit |
-| Absent | inconnu de la base | création de l'appareil, validée dans l'aperçu |
+| Absent | aucun candidat, ni exact ni normalisé | création de l'appareil, validée dans l'aperçu |
 
+- **Pas de création si un candidat normalisé existe.** Un appareil n'est créé que si les deux passes échouent : c'est ce qui empêche les doublons.
+- **Les décisions sont mémorisées.** Quand l'utilisateur dit qu'une écriture est « le même appareil » ou « un appareil distinct », la décision est gardée pour la paire d'écritures et n'est plus redemandée. La table `reference_decisions` existante porte sur une **même** référence exacte partagée par plusieurs appareils (2 117 décisions `DISTINCT`) : il faut une mémoire du même genre pour les **paires d'écritures** (§ 9).
+- **Doublons existants :** les 467 cas déjà en base ne sont pas corrigés par l'import. Ils apparaissent en « normalisé ambigu » quand une fiche les touche, et leur nettoyage passe par l'outil de doublons existant.
 - **Le nom commercial n'est jamais écrasé** à partir d'une fiche.
 - La lignée se calcule **une fois par fiche** (chaîne de remplacements et groupe d'équivalence), et non une fois par appareil.
 
@@ -207,9 +216,11 @@ La table est tirée des pièces de la base (marque dominante des appareils liés
 | 9 chiffres commençant par `69`, `75`, `81` | Smeg |
 | 7 chiffres | Miele |
 | 6 chiffres commençant par `0` | Atlantic / Thermor |
-| `92X` + 4 chiffres, `AS` + 7 chiffres | Brandt (De Dietrich, Sauter, Fagor) |
+| 2 chiffres + `X` + 4 chiffres (`92X6108`, `31X1354`), `AS` + 7 chiffres | Brandt (De Dietrich, Sauter, Fagor) |
 | `DD82-…`, `DA97-…`, `DC31-…` | Samsung |
 | 3 lettres + 8 chiffres | LG |
+
+La base compte 407 références Brandt de la forme « 2 chiffres + `X` + 4 chiffres », et 2 avec un `S` à la place du `X` (`71S7962`, `71S8574`), à confirmer.
 
 Cas mélangés, donc des doutes : 10 chiffres commençant par `15` (Electrolux ou Beko), 8 chiffres commençant par `42` (Candy ou Sharp), 8 chiffres commençant par `32` (Sharp ?), 9 chiffres commençant par `16` ou `26` (Beko ?).
 
@@ -234,7 +245,7 @@ Chaque pièce reprise du site garde en mémoire **le produit du site qui la vend
 | Donnée | Source export SQL | Source page | Exemple |
 |---|---|---|---|
 | Référence produit interne | `p.reference` | `.product-reference`, `sku` | `EL1113161010` |
-| `id_product` | `p.id_product` | début du nom de la page | `20746` |
+| `id_product` : identifiant du produit **sur le site 1001pieces.com** (PrestaShop) | `p.id_product` | début du nom de la page | `20746` |
 | EAN | `p.ean13` | `gtin13` | `7321423021278` |
 | Date de la dernière lecture | date de l'export | date de lecture | — |
 
@@ -247,6 +258,7 @@ Exemples observés :
 | 20744 | `11051894` | `GAU11051894` |
 
 Règles :
+- L'`id_product` est **l'identifiant du site**. Il ne faut le confondre ni avec l'`id` interne des pièces de l'outil, ni avec les identifiants d'appareils EveryParts (`id_ukooparts_engine`, l'`id_appareil` de CompatsRadar). Le module EveryParts étant installé dans le PrestaShop du site, c'est ce même `id_product` qui désigne le produit dans les compatibilités EveryParts.
 - La référence interne est toujours **lue** sur le site, jamais reconstruite à partir d'un préfixe. Le préfixe varie et n'est pas déductible de façon sûre.
 - Elle se rattache à la **pièce principale** (1ʳᵉ réf. du code produit). Les équivalentes et les fantômes n'ont pas de produit, sauf s'ils sont eux-mêmes vendus sur le site.
 - **Une pièce peut avoir plusieurs produits** : par exemple une pièce d'origine et un générique, qui citent le même code produit. D'où une petite table dédiée plutôt qu'une colonne sur `pieces` (§ 9). Une référence interne n'appartient qu'à **une** pièce : si elle change de pièce à la relecture, c'est un doute.
@@ -334,6 +346,7 @@ Toutes les colonnes sont nullables et sans valeur par défaut calculée : leur a
 | `piece_equivalence_groups` | étiquette d'origine, n° de ligne de la fiche |
 | nouvelle | état de la reprise (dernier `id_produit`, date de l'export) |
 | nouvelle | décisions sur les formats et références écartées |
+| nouvelle | décisions sur les paires d'écritures d'appareils (marque, écriture A, écriture B, « même » ou « distinct ») |
 | configuration | table des formats, correspondance catégorie → type, préfixes de référence interne |
 
 `produits_site.ref_piece` suit les renommages de pièce comme les autres tables à référence texte (`piece_supersessions`, `piece_equivalence_groups`).
@@ -372,6 +385,7 @@ Chaque étape peut être testée seule :
 | Équivalences | un groupe, étiquette d'origine déduite du format, saisie en secours |
 | Appareils | union description et table, avec provenance |
 | Type | par appareil : table, base, catégorie, doute |
+| Identité d'un appareil | marque + réf. modèle, ponctuation considérée puis ignorée ; pas de création si un candidat normalisé existe ; décisions mémorisées |
 | Remplacements | vérifier la chaîne avant de signaler un conflit |
 | Lignée | appareil déjà couvert = pas de nouveau lien, forçage possible |
 | Doutes | toujours validés par l'utilisateur, décisions consignées |
