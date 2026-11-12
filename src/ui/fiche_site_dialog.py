@@ -471,7 +471,7 @@ class FicheSiteDialog(QDialog):
             combo.currentIndexChanged.connect(
                 lambda _, c=cle, w=combo: self._changer_etat(c, w.currentData()))
             self.resume.setItemWidget(item, 2, combo)
-            if cle in ('absents', 'types_manquants'):
+            if cle == 'types_manquants':     # jamais sur les absents, déjà typés
                 types = QComboBox()
                 types.setEditable(True)
                 types.addItem('')

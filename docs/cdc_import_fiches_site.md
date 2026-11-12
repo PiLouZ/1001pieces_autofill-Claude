@@ -462,6 +462,34 @@ Sur 3 lots consécutifs (300 fiches), la base grandit de 26 Mo (9,9 + 11,1 + 5,1
 
 Vérification (`tests/unit/test_reprise_site.py`, sans réseau) : jointure des exports, tri contrôlé, lots et dernier `id_produit` ; lot sur une base construite (création partagée entre 2 fiches, groupe `ES99999` ignoré en bloc) ; interruption au milieu de l'écriture puis reprise, même résultat qu'un passage sans interruption ; relance sans aucun ajout ; fermer et reprendre au lot suivant ; export différent (repartir de zéro ou continuer) ; fiches mises de côté puis reprises ; profils ambigus laissés de côté ; lot des 3 fiches d'exemple sur l'extrait de la base ; fenêtre rendue hors écran.
 
+### 10.5 Rien de faux en bloc — refonte, étape 1 (2026-11-12)
+
+Une équipe d'agents (données et UX) a rejoué « Tout valider » sur le 1ᵉʳ lot réel. Le plan de refonte de la reprise (écrans par questions, règles mémorisées) est en 5 étapes. L'étape 1 corrige d'abord ce qui s'écrivait de faux :
+- **Type** : le type commun d'une catégorie ne remplace jamais un type déjà trouvé (table, ligne, base, catégorie du produit). Il n'est plus proposé que pour les « types manquants ». Avant, il aurait pu faire créer les 1 100 filtres de hotte de la fiche 7188 en lave-linge.
+- **Candidat unique** : il n'est relié en bloc que s'il a la même référence à la ponctuation près. Trouvé par le seul nom commercial, c'est un autre appareil : la ligne est à compléter. Cela retire 42 liens faux. Même règle pour le candidat repris d'une autre ligne de la fiche.
+- **Nom commercial** : parmi plusieurs candidats, celui de même référence est proposé.
+- **Recherche dans le groupe** : une ligne avec un en-tête de marque n'a été cherchée que sous cette marque. Les autres marques annoncées sont donc cherchées comme marques du groupe. Cela évite 28 doublons, par exemple Ignis `854020013030`, qui existe sous Whirlpool.
+- **Référence interne** égale au code produit à la ponctuation près (`10-2930-5010` / `10/2930-5010`) : « égale ».
+- **Équivalente sans chiffre** (`Brandt`, `:`, erreurs de lecture) : jamais écrite en bloc.
+- **Référence illisible** : sans chiffre, avec parenthèses ou `:`, plusieurs codes sur une ligne, ou commençant par une marque (`C :`, `VF3017 (VF 3017)`, `FCSM6 BL2M6100 855620004000`, `ARDO CL60B`). Elle n'est jamais créée en bloc : la ligne est à compléter.
+
+**1ᵉʳ lot remesuré** (même protocole qu'au § 10.4) :
+
+| | Avant | Après |
+|---|---|---|
+| Appareils créés | 1 329 | 1 287 |
+| Liens créés | 25 230 | 25 271 |
+| Lignes à compléter laissées de côté | 374 | 360 |
+| Appareils créés illisibles | 23 | **0** |
+| Lignes « à valider » reliées à une autre référence | 42 | **0** |
+| Doublon Ignis / Whirlpool `854020013030` | créé | **évité** |
+| Durées / croissance | 6,7 s + 0,5 s / +9,9 Mo | 5,6 s + 0,4 s / +9,9 Mo |
+| Relance du même lot | 0 ajout | **0 ajout** |
+
+Les liens augmentent un peu malgré les 42 liens faux retirés, parce que des appareils sont maintenant retrouvés sous une autre marque du groupe au lieu d'être créés en double.
+
+Vérification : `tests/unit/test_reprise_rien_de_faux.py` (un test par correctif).
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

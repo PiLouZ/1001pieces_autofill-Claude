@@ -393,7 +393,7 @@ class LotReprise:
                 a = f.rapprochement.appareils[index]
                 # absente, ou « à valider » sans proposition (nom commercial seul…) :
                 # la même marque et la même forme sont créées par le lot
-                if a.niveau not in ('absent', 'a_valider'):
+                if a.niveau not in ('absent', 'a_valider') or a.suspecte:
                     continue
                 cle = (cle_marque(a.marque or a.marque_fiche), forme_normalisee(a.ref_modele))
                 modele = modeles.get(cle)

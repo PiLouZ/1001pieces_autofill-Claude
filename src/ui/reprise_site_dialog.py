@@ -672,7 +672,7 @@ class RepriseSiteDialog(QDialog):
             combo.currentIndexChanged.connect(
                 lambda _, c=ligne.cle, w=combo: self._changer_etat(c, w.currentData()))
             self.resume.setItemWidget(item, 3, combo)
-            if ligne.cle in ('absents', 'types_manquants'):
+            if ligne.cle == 'types_manquants':     # jamais sur les absents, déjà typés
                 types = QComboBox()
                 types.setEditable(True)
                 types.addItem('')
