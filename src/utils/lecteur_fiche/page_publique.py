@@ -157,7 +157,8 @@ def _table_site(page: str, p: PagePublique):
 
 
 def lire_page_publique(page: str, url: str = '', modeles: Iterable[ModeleLecture] = (),
-                       marques_connues: Iterable[str] = ()) -> PagePublique:
+                       marques_connues: Iterable[str] = (),
+                       types_connus: Iterable[str] = ()) -> PagePublique:
     """Lit la page HTML publique d'une fiche ; `url` sert si la page n'a pas de lien canonique."""
     page = page or ''
     p = PagePublique()
@@ -197,7 +198,8 @@ def lire_page_publique(page: str, url: str = '', modeles: Iterable[ModeleLecture
 
     p.description_html = extraire_description(page)
     if p.description_html:
-        p.description = lire_description(p.description_html, modeles, marques_connues)
+        p.description = lire_description(p.description_html, modeles, marques_connues,
+                                         types_connus, p.marque)
     else:
         p.non_compris.append("description introuvable")
     return p

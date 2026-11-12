@@ -265,9 +265,16 @@ class TestRepliTexte:
         assert d.appareils[1].marque == 'Zanussi'
 
     def test_bloc_entete_non_lu(self):
-        d = lire_description('<div>Code produit : 1</div><div>Texte libre 2024</div>'
+        """Texte libre de l'en-tête gardé à part ; signalé seulement s'il parle de références."""
+        d = lire_description('<div class="class_perso1">Pompe</div><div>Code produit : 1</div>'
+                             '<div class="class_perso6">Longueur : 120 mm</div>'
+                             '<table class="ve"><tr><td>AFC221</td></tr></table>'
+                             '<div>Référence fournisseur 2024</div>'
                              '<div>Appareils compatibles :</div>')
-        assert [(n.nature, n.texte) for n in d.non_compris] == [('bloc_non_lu', 'Texte libre 2024')]
+        assert d.titre == 'Pompe'
+        assert d.textes_libres == ['Longueur : 120 mm', 'AFC221']
+        assert [(n.nature, n.texte) for n in d.non_compris] == \
+            [('bloc_non_lu', 'Référence fournisseur 2024')]
 
     def test_marque_annoncee_absente(self):
         d = lire_description('<div class="class_perso2">Compatible avec <a>AEG</a> <a>Rex</a></div>'
@@ -417,3 +424,149 @@ def test_script_de_mesure(tmp_path):
     assert '**Descriptions avec liste : 1**, 831 lignes' in texte
     assert '**Lues correctement : 1 (100.0 %)**' in texte
     assert 'préfixée 1' in texte
+
+
+# =============================================================================
+# Variantes relevées sur les 13 302 descriptions du site (2026-11-12)
+# =============================================================================
+
+class TestVariantesDuSite:
+    def test_montage_sur_une_marque_sans_entete(self):
+        """Ancienne fiche : « Montage sur Whirlpool », 12NC sans en-tête de marque."""
+        d = lire_description(
+            '<div class="class_perso2">Montage sur Whirlpool</div>'
+            '<div class="class_perso3">Code produit : 481244069288</div>'
+            '<div class="class_perso4">Appareils employant cette pièce :</div>'
+            '<div class="class_perso5">854970043000<div>854970110002 854970110003</div>'
+            '<div>AFG7010</div></div>', MODELES)
+        assert d.marques_annoncees == ['Whirlpool']
+        assert [(a.marque, a.source_marque, a.ref_modele, a.format) for a in d.appareils] == [
+            ('Whirlpool', 'annonce', '854970043000', 'ref_seule'),
+            ('Whirlpool', 'annonce', '854970110002', 'pnc'),
+            ('Whirlpool', 'annonce', '854970110003', 'pnc'),
+            ('Whirlpool', 'annonce', 'AFG7010', 'ref_seule'),
+        ]
+        assert d.non_compris == [] and not d.liste_tronquee   # ancienne fiche : pas un repli
+
+    def test_montage_sur_plusieurs_marques(self):
+        d = lire_description('<div>Montage sur Bosch Siemens, De Dietrich et Sauter</div>'
+                             '<div>Code produit : 1</div><div>Appareils compatibles :</div>'
+                             '<div>WAE1 - X</div>',
+                             marques_connues=['Bosch', 'Siemens', 'De Dietrich', 'Sauter'])
+        assert d.marques_annoncees == ['Bosch', 'Siemens', 'De Dietrich', 'Sauter']
+        # Plusieurs marques annoncées : marque à déduire au rapprochement (étape 2)
+        assert (d.appareils[0].marque, d.appareils[0].source_marque) == (None, 'annonces')
+        assert [n.nature for n in d.non_compris] == ['marque_a_deduire']
+
+    def test_compatible_toutes_marques(self):
+        d = lire_description('<div class="class_perso2">Compatible toutes marques</div>'
+                             '<div>Code produit : 1</div>')
+        assert d.toutes_marques and d.marques_annoncees == [] and d.textes_libres == []
+
+    def test_references_par_marque(self):
+        d = lire_description(
+            '<div class="class_perso2">Montage sur Stiebel Eltron</div>'
+            '<div class="class_perso3">Code produit : 151967</div>'
+            "<div class=\"class_perso4\">Référence(s) de l'article par marque</div>"
+            '<div class="class_perso5">Stiebel Eltron Réf. fabricant : 0151967</div>'
+            '<div class="class_perso5">Bosch</div><div class="class_perso5">Réf. fabricant : 00123 00456</div>',
+            marques_connues=['Stiebel Eltron', 'Bosch'])
+        assert [(e.origine, e.references) for e in d.references_par_marque] == [
+            ('Stiebel Eltron', ['0151967']), ('Bosch', ['00123', '00456'])]
+        assert d.appareils == [] and d.marques == []
+        assert d.non_compris == []
+
+    def test_type_en_fin_et_sur_la_ligne_suivante(self):
+        d = lire_description(
+            '<div>Montage sur Whirlpool</div><div>Code produit : 1</div>'
+            '<div>Appareils employant cette pièce</div>'
+            '<div>851354038000 KOXS6630 Four Vapeur</div><div>851354038001 KOXS6630</div>'
+            '<div>Four Vapeur</div><div>Lave-linge</div><div>WAE1/04 WAE1</div>',
+            marques_connues=['Whirlpool'], types_connus=['Four Vapeur', 'Lave-linge'])
+        assert [(a.ref_modele, a.nom, a.format, a.type_ligne) for a in d.appareils] == [
+            ('851354038000', 'KOXS6630', 'pnc_nom', 'Four Vapeur'),
+            ('851354038001', 'KOXS6630', 'pnc_nom', 'Four Vapeur'),
+            ('WAE1/04', 'WAE1', 'bsh', 'Lave-linge'),       # type en tête de section
+        ]
+        assert d.non_compris == []
+
+    def test_bloc_d_extension_de_navigateur_ignore(self):
+        d = lire_description('<div>Code produit : 1</div><div>Appareils compatibles :</div>'
+                             '<div id="AEG">AEG</div><div>A - B</div>'
+                             '<div id="sconnect-is-installed">2.12.0.0</div>',
+                             marques_connues=['AEG'])
+        assert d.nb_lignes == 1 and d.non_compris == []
+
+    def test_dimensions_apres_la_liste(self):
+        d = lire_description('<div>Code produit : 1</div><div>Appareils compatibles :</div>'
+                             '<div id="AEG">AEG</div><div>A - B</div>'
+                             '<div class="class_perso4">Dimensions :</div>'
+                             '<div>Longueur : 9 mm</div>', marques_connues=['AEG'])
+        assert d.textes_libres == ['Dimensions :', 'Longueur : 9 mm']
+        assert d.non_compris == []
+
+    def test_decouper_marques_sans_marques_connues(self):
+        from src.utils.lecteur_fiche.lecteur import decouper_marques
+        assert decouper_marques('Bosch Siemens, Neff', set()) == (['Bosch', 'Siemens', 'Neff'], [])
+
+    @pytest.mark.parametrize('titre', [
+        'Appareil compatibles :', 'Appareils compatible :', 'Appareils comaptibles :',
+        'Appareil(s) employant cette pièce:', 'Appareils employant ce thermostat :',
+        'Appareils utilisant ces sacs :', 'Références commerciales employant cette pièce :',
+        "Référence(s) de l'article pour modèles :",
+    ])
+    def test_variantes_de_titre(self, titre):
+        d = lire_description(f'<div>Code produit : 1</div><div>{titre}</div>'
+                             '<div id="AEG">AEG</div><div>A - B</div>', marques_connues=['AEG'])
+        assert d.titre_liste == titre.rstrip(' :') and d.nb_lignes == 1
+        assert d.non_compris == []
+
+    @pytest.mark.parametrize('titre', [
+        'Appareils compatibles (liste non-exhaustive) :',
+        'Appareils compatibles : (Liste non exhaustive !)',
+        'Appareils employant cette pièce (liste non exhaustive)',
+    ])
+    def test_titre_non_exhaustif(self, titre):
+        d = lire_description(f'<div>Code produit : 1</div><div>{titre}</div>'
+                             '<div id="AEG">AEG</div><div>A - B</div>', marques_connues=['AEG'])
+        assert d.liste_non_exhaustive and d.nb_lignes == 1 and d.non_compris == []
+
+    def test_remplace_produits_suivants_et_reference_ego(self):
+        d = lire_description('<div>Compatible Airforce</div><div>Code produit : 1</div>'
+                             '<div>Remplace les produits suivants : 11 22</div>'
+                             '<div>Référence EGO : 55.13059.010 5513059010</div>')
+        assert d.marques_annoncees == ['Airforce']
+        assert d.remplace == ['11', '22']
+        assert [(e.origine, e.references) for e in d.references_par_marque] == \
+            [('EGO', ['55.13059.010', '5513059010'])]
+        assert d.non_compris == []
+
+    def test_points_de_suite(self):
+        d = lire_description('<div>Code produit : 1</div><div>Appareils compatibles :</div>'
+                             '<div id="AEG">AEG</div><div>A - B</div><div>...</div>',
+                             marques_connues=['AEG'])
+        assert d.liste_tronquee and d.motifs_troncature == ['points_de_suite']
+
+    def test_remplacee_par(self):
+        d = lire_description('<div>Code produit : 1</div>'
+                             '<div>Remplacé par la référence : 4810001</div>')
+        assert d.remplacee_par == ['4810001'] and d.remplace == [] and d.non_compris == []
+
+    def test_marques_sans_accents_ni_casse(self):
+        d = lire_description('<div>Code produit : 1</div><div>Appareils compatibles :</div>'
+                             '<div>Scholtes</div><div>A - B</div>', marques_connues=['Scholtès'])
+        assert d.appareils[0].marque == 'Scholtes' and d.non_compris == []
+
+    def test_marque_du_produit_sans_annonce(self):
+        """Aucune annonce : les marques connues du produit deviennent les candidates."""
+        fiche = '<div>Code produit : 1</div><div>Appareils compatibles :</div><div>G595 - G 595</div>'
+        d = lire_description(fiche, marques_connues=['Miele'], marque_produit='Miele')
+        assert (d.source_annonce, d.appareils[0].marque, d.appareils[0].source_marque) == \
+            ('produit', 'Miele', 'annonce')
+        d = lire_description(fiche, marques_connues=['Whirlpool', 'Ignis'],
+                             marque_produit='Whirlpool Laden Ignis')
+        assert d.marques_annoncees == ['Whirlpool', 'Ignis']
+        assert [n.nature for n in d.non_compris] == ['marque_a_deduire']
+        # Marque du produit inconnue (« 1001pièces ») : pas une candidate
+        d = lire_description(fiche, marques_connues=['Miele'], marque_produit='1001pièces')
+        assert d.marques_annoncees == [] and d.appareils[0].marque is None

@@ -65,6 +65,7 @@ class ModeleLecture:
     max_caracteres: int = 0
     profil_details: str = ''
     titre_litteraux: Tuple[str, ...] = ()    # textes fixes du gabarit Titre (cle_texte)
+    informations_titres: Tuple[str, ...] = ()  # intitulés du bloc Informations (cle_texte)
     profil_titre: str = ''
 
     def signature(self) -> tuple:
@@ -72,7 +73,7 @@ class ModeleLecture:
         return (self.code_produit, self.remplace, self.equivalentes,
                 self.separateur_references, self.titres_liste, self.classes_liste,
                 self.entete_marque, self.marque_par_id, self.inclure_informations,
-                self.titre_litteraux)
+                self.titre_litteraux, self.informations_titres)
 
 
 def _repere(gabarit: str, variables: Tuple[str, ...]) -> Optional[Repere]:
@@ -115,6 +116,12 @@ def _litteraux_titre(template: str) -> Tuple[str, ...]:
     textes = (cle_texte(' '.join(b.texte for b in normaliser(m))) if '<' in m
               else cle_texte(m) for m in morceaux)
     return tuple(t for t in textes if len(t) >= 3)
+
+
+def _titres_informations(template: str) -> Tuple[str, ...]:
+    """Intitulés (h1-h6) du bloc Informations : « Informations : », « Information importante : »…"""
+    return tuple(cle_texte(b.texte) for b in normaliser(template or '')
+                 if b.balise in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'))
 
 
 def _profil_titre(config: Dict[str, Any], nom: str) -> Dict[str, Any]:
@@ -165,6 +172,8 @@ def modele_depuis_profil(profil: Dict[str, Any], config: Dict[str, Any]) -> Mode
         profil_details=str(details.get('name') or ''),
         titre_litteraux=_litteraux_titre(titre.get('template') or ''),
         profil_titre=str(titre.get('name') or ''),
+        informations_titres=(_titres_informations(profil.get('informations_template') or '')
+                             if profil.get('inclure_informations') else ()),
     )
 
 

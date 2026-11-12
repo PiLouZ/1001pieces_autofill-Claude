@@ -362,6 +362,25 @@ Chaque étape peut être testée seule :
 4. **Import en masse** par lots, résumé, reprise.
 5. **Export** : une ligne par origine, paire dans le code produit, référence interne proposée dans l'export EveryParts.
 
+### 10.1 Mesure de l'étape 1 (2026-11-12)
+
+Mesure sur l'export complet du site (13 302 produits, `scripts/mesurer_lecteur_fiches.py`, marques et types de la base en lecture seule) :
+- 12 228 descriptions avec une liste, 6 454 931 lignes d'appareils. **10 867 (88,9 %) sont lues sans aucun doute de lecture** : code produit trouvé, au moins un appareil, aucun bloc non lu, aucune marque inconnue.
+- Les doutes restants sont surtout des en-têtes de série pris pour des marques (« Lave-linge SIWAMAT », « HOTTE DECOR », 456 fiches) et 139 blocs d'en-tête qui parlent de références sans format reconnu.
+- **Formats anciens rencontrés**, désormais reconnus :
+  - « Montage sur … » pour « Compatible avec » ;
+  - une vingtaine de titres de liste (« Appareil(s) employant ce thermostat », « utilisant ce filtre », « comaptibles »…) ;
+  - « Remplace les produits suivants » ;
+  - « Remplacé par » (le successeur) ;
+  - références par marque (« Référence EGO : … », « Bosch Réf. fabricant : … », 174 fiches) ;
+  - 12NC suivi du nom ;
+  - type écrit en fin de ligne ou sur la ligne suivante.
+- **Pour l'étape 2 :**
+  - 1 635 fiches n'ont pas d'en-tête de marque et annoncent plusieurs marques, souvent un groupe (« Whirlpool Laden Ignis Bauknecht ») : la marque de chaque ligne se déduit au rapprochement ;
+  - 412 fiches ne prennent leurs marques que dans la marque du produit ;
+  - références internes : 2 029 égales au code produit, 5 524 préfixées (FAR, EL, GAU, ROS, MIE, LH, ATC, D, NOT, BEO, CET, STN0…), 4 637 différentes, dont 1 106 désignent une référence de la lignée (remplacée ou équivalente) et la plupart des autres sont des codes de fournisseur (`ES10028`…).
+- 761 listes sont probablement réduites : replis de l'export de l'outil, dernière marque vide, ou points de suite.
+
 ---
 
 ## 11. Fiches d'exemple

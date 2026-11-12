@@ -37,10 +37,11 @@ from src.utils.lecteur_fiche import (  # noqa: E402
     NATURES_NON_COMPRIS, lire_description, modeles_depuis_config, normaliser,
 )
 
-# Ce qui empêche de dire qu'une fiche est « lue correctement »
+# Ce qui empêche de dire qu'une fiche est « lue correctement » (une liste sans
+# titre, un profil ambigu ou une liste réduite sont lus : ce sont des doutes)
 NATURES_GRAVES = {
     'bloc_non_lu', 'ligne_non_lue', 'appareil_sans_marque', 'lecture_divergente',
-    'code_produit_absent', 'code_produit_multiple', 'liste_sans_titre',
+    'code_produit_absent', 'code_produit_multiple',
 }
 _CHIFFRES = re.compile(r'\d')
 
@@ -55,11 +56,12 @@ def _signature(bloc) -> str:
     return f"<{bloc.balise}{'.' + classes if classes else ''}{' id' if bloc.id else ''}>"
 
 
-def _marques_base(chemin: str):
+def _valeurs_base(chemin: str, colonne: str):
+    """Valeurs distinctes d'une colonne d'appareils (base ouverte en lecture seule)."""
     uri = f"file:{Path(chemin).resolve()}?mode=ro"
     with sqlite3.connect(uri, uri=True) as cnx:
         return [r[0] for r in cnx.execute(
-            "SELECT DISTINCT manufacturer FROM appareils WHERE manufacturer <> ''")]
+            f"SELECT DISTINCT {colonne} FROM appareils WHERE {colonne} <> ''")]
 
 
 def _a_une_liste(desc: str, lecture) -> bool:
@@ -69,7 +71,8 @@ def _a_une_liste(desc: str, lecture) -> bool:
 def mesurer(args):
     config = json.loads(Path(args.config).read_text(encoding='utf-8'))
     modeles = modeles_depuis_config(config)
-    marques = _marques_base(args.base) if args.base else []
+    marques = _valeurs_base(args.base, 'manufacturer') if args.base else []
+    types = _valeurs_base(args.base, 'type') if args.base else []
     graves = NATURES_GRAVES | ({'marque_inconnue'} if marques else set())
     csv.field_size_limit(sys.maxsize)
 
@@ -93,7 +96,7 @@ def mesurer(args):
             if not desc.strip():
                 c['sans_description'] += 1
                 continue
-            d = lire_description(desc, modeles, marques)
+            d = lire_description(desc, modeles, marques, types, ligne.get('marque') or '')
             if not _a_une_liste(desc, d):
                 c['sans_liste'] += 1
                 if d.code_produit:
@@ -101,6 +104,14 @@ def mesurer(args):
                 continue
             c['avec_liste'] += 1
             c['lignes'] += d.nb_lignes
+            c['refs_par_marque'] += bool(d.references_par_marque)
+            c['toutes_marques'] += d.toutes_marques
+            c['annonce_produit'] += d.source_annonce == 'produit'
+            c['remplacee_par'] += bool(d.remplacee_par)
+            c['textes_libres'] += bool(d.textes_libres)
+            c['marque_par_annonce'] += any(a.source_marque == 'annonce' for a in d.appareils)
+            c['marque_a_deduire'] += any(a.source_marque == 'annonces' for a in d.appareils)
+            c['lignes_typees'] += sum(1 for a in d.appareils if a.type_ligne)
             profils[d.profil or '(repérage par texte)'] += 1
             if d.profil_ambigu:
                 c['profil_ambigu'] += 1
@@ -176,6 +187,14 @@ def rapport(resultats) -> str:
          + (", marque_inconnue (marques de la base chargées)" if avec_base else
             " (marques de la base non chargées : marque_inconnue hors critère)"),
          f"- Profil ambigu : {c['profil_ambigu']} ; listes probablement réduites : {c['tronquees']}",
+         f"- Marque à déduire parmi plusieurs marques annoncées (lignes sans en-tête de marque, "
+         f"rapprochement de l'étape 2) : {c['marque_a_deduire']} fiches",
+         f"- Marque des lignes tirée de la seule marque annoncée : {c['marque_par_annonce']} fiches ; "
+         f"lignes avec un type écrit : {c['lignes_typees']} ; « Réf. fabricant » par marque : "
+         f"{c['refs_par_marque']} fiches ; « toutes marques » : {c['toutes_marques']} ; "
+         f"texte libre dans l'en-tête : {c['textes_libres']} fiches",
+         f"- Marques prises de la marque du produit (aucune annonce dans la description) : "
+         f"{c['annonce_produit']} fiches ; « Remplacé par » : {c['remplacee_par']} fiches",
          f"- Référence interne / code produit : égale {c['ref_egale']}, préfixée {c['ref_prefixee']}, "
          f"différente {c['ref_differente']}", ""]
     l += ["## Profils retenus", "", "| Profil | Fiches |", "|---|---|"]
