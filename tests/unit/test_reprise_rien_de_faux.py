@@ -127,3 +127,30 @@ def test_reference_illisible_jamais_creee_en_bloc(tmp_path):
     plan = _plan(r)
     assert [a.ref_modele for a in plan.appareils_a_creer] == ['VF3017']
     assert plan.lignes_a_completer == [0, 1, 2, 3]
+
+
+def test_une_seule_marque_annoncee_apres_alias(tmp_path):
+    """« GE » et « General Electric » annoncés (fiche 7112) : une seule marque, celle de
+    la ligne sans en-tête — plus de « marque à choisir »."""
+    b = Base(tmp_path)
+    b.appareil('General Electric', 'X1')
+    cfg = ConfigurationRapprochement()                 # alias GE → General Electric (défaut)
+    r = rapprocher(_lecture([(None, 'EM673', '')], annoncees=['GE', 'General Electric']),
+                   AccesBaseLecture(b.db.conn), cfg, memoires=True)
+    a = r.appareils[0]
+    assert (a.marque, a.source_marque, a.niveau) == ('General Electric', 'annonce', 'absent')
+    assert 'marque_a_choisir' not in a.doutes and a.motif == ''
+
+
+def test_nom_commercial_d_un_appareil_deja_cite(tmp_path):
+    """Fiche 7164 : « WAT4564W » (sans marque) est le nom commercial, dans l'outil, de
+    Bauknecht 858341142074 cité plus haut par son 12NC : rien à créer."""
+    b = Base(tmp_path)
+    b.appareil('Bauknecht', '858341142074', nom='WAT4564W')
+    b.appareil('Whirlpool', 'X1')
+    r = b.rapprocher(_lecture([(None, '858341142074', ''), (None, 'WAT4564W', ''), (None, 'AWE7650', '')],
+                              annoncees=['Bauknecht', 'Whirlpool']))
+    motifs = [a.motif for a in r.appareils]
+    assert motifs[1] == 'doublon_nom' and motifs[2] == 'marque_a_choisir'
+    plan = _plan(r)
+    assert [a.ref_modele for a in plan.appareils_a_creer] == []

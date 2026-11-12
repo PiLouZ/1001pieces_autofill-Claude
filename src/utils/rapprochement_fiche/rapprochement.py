@@ -433,6 +433,7 @@ class _Rapprochement:
             self._typer(a, t, '')
             lignes.append(a)
         self._decisions_distinct(lignes)
+        self._doublons_par_le_nom(lignes)
         for a in lignes:
             self._lier(a, principale)
             for categorie in a.doutes:
@@ -454,6 +455,29 @@ class _Rapprochement:
         if len(mots) >= 2 and cle_marque(mots[0]) in self.marques_outil:
             return f"commence par une marque ({mots[0]})"
         return ''
+
+    def _doublons_par_le_nom(self, lignes: List[AppareilRapproche]):
+        """Ligne sans marque, absente, dont la « référence » est le nom commercial d'un
+        appareil déjà cité par une autre ligne de la fiche — nom écrit sur la fiche, ou
+        nom commercial de l'appareil dans l'outil (fiche 7164 : « WAT4564W » =
+        Bauknecht 858341142074, cité plus haut par son 12NC) : rien à créer."""
+        a_verifier = [a for a in lignes if a.niveau == 'absent' and not a.marque and not a.nom]
+        if not a_verifier:
+            return
+        noms: Dict[str, AppareilRapproche] = {}
+        for a in lignes:
+            if a.nom and (a.niveau != 'absent' or a.marque):
+                noms.setdefault(forme_normalisee(a.nom), a)
+        identifies = {a.appareil_id: a for a in lignes if a.appareil_id is not None}
+        for ident, nom in self.acces.noms_commerciaux(identifies).items():
+            noms.setdefault(forme_normalisee(nom), identifies[ident])
+        for a in a_verifier:
+            autre = noms.get(forme_normalisee(a.ref_modele))
+            if autre is not None and autre is not a:
+                a.motif = 'doublon_nom'
+                a.doutes = [d for d in a.doutes if d != 'marque_a_choisir']
+                a.raison = (f"nom commercial de la ligne {autre.numero or 'table'} "
+                            f"({autre.marque} {autre.ref_modele}) : déjà citée")
 
     def _marque_outil(self, marque: str) -> str:
         """Écriture de l'outil : clé exacte, alias de la configuration, puis singulier/pluriel."""
@@ -554,6 +578,13 @@ class _Rapprochement:
                 a.doutes.append('marque_a_choisir')
                 a.motif = 'marque_a_choisir'
                 return
+        if len(self.annoncees) == 1:
+            # Une seule marque annoncée (« GE » et « General Electric » ne font qu'une,
+            # alias de la configuration) : c'est la marque de la ligne
+            a.marque, a.source_marque = self.annoncees[0], 'annonce'
+            a.niveau, a.raison = 'absent', f"absente sous {self.annoncees[0]}, seule marque annoncée"
+            self._chercher_ailleurs(a)
+            return
         a.source_marque = 'a_choisir'
         a.niveau, a.raison = 'absent', f"absente sous {', '.join(self.annoncees)}"
         self._chercher_ailleurs(a)

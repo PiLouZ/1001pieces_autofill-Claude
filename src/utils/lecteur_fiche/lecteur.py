@@ -35,6 +35,8 @@ LIBELLES_EQUIVALENTES = (
 )
 LIBELLES_REMPLACE = (
     re.compile(rf"^remplacen?t?\s+(?:les\s+|la\s+)?(?:anciennes?\s+)?{_REF}\s*:?\s*(.*)$", re.I),
+    # « Remplace les dimensions : C00280008 … » : faute de saisie du site (fiche 7188)
+    re.compile(r"^remplacen?t?\s+les\s+dimensions\s*:\s*(.*\d.*)$", re.I),
     re.compile(r"^remplacen?t?\s+(?:les\s+)?(?:produits|pi[eè]ces|articles)(?:\s+suivante?s)?\s*:\s*(.*)$",
                re.I),
     re.compile(r"^remplacen?t?\s*:\s*(.*)$", re.I),
@@ -92,6 +94,14 @@ _BSH = re.compile(r"^(\S*[A-Za-z0-9]\S*/\d{1,2})\s+(\S.*)$")        # RÉF/01 NO
 _PNC_SERIE = re.compile(r"^\d{8,13}(?:\s+\d{8,13})+$")               # PNC alignés
 _PNC_NOM = re.compile(r"^(\d{8,13})\s+(\S.*)$")                      # PNC / 12NC NOM
 _CHIFFRE = re.compile(r"\d")
+# « VF3017 (VF 3017) » : réf. puis son écriture d'origine entre parenthèses
+_REF_PARENTHESES = re.compile(r"^(\S*\d\S*)\s+\(([^()]+)\)$")
+# Cotes du bloc Dimensions (« A : 92 cm », « C : - cm ») : pas des appareils
+_COTE = re.compile(r"^[A-Za-zØø]{1,3}\s*:\s*[-–\d.,\s]*\s*(?:cm|mm|m|w|v|kw)?\s*$", re.I)
+# Marque d'une ligne d'équivalentes : « Rosières : 49025106 … » (fiche 7188)
+_MARQUE_EN_TETE = re.compile(r"^(?P<marque>[^\d:]{2,30}?)\s*:\s*(?P<refs>.*\d.*)$")
+# Suite d'une ligne « Réf. fabricant » : « POUR APPAREILS VN606E / VF6017E »
+_POUR_APPAREILS = re.compile(r"^pour\s+(?:les\s+)?(?:appareils?|mod[eè]les?)\s*:?\s*(?P<refs>.*)$", re.I)
 _SEP_REFS = re.compile(r"[\s,;]+")
 _SEP_MARQUES = re.compile(r"\s*(?:,|;|/|\s\+\s|\set\s)\s*", re.I)
 
@@ -317,9 +327,13 @@ class _Lecture:
         # Équivalentes et remplace avant le code produit (libellés plus précis)
         v, src = self._valeur(bloc, m.equivalentes if m else None, LIBELLES_EQUIVALENTES)
         if v is not None:
+            origine = ''
+            marque = _MARQUE_EN_TETE.match(v)
+            if marque:                      # « Références équivalentes Rosières : … »
+                origine, v = marque.group('marque').strip(), marque.group('refs')
             refs = decouper_references(v, sep)
             self.r.equivalentes.append(LigneEquivalentes(
-                len(self.r.equivalentes) + 1, refs, bloc.index, src))
+                len(self.r.equivalentes) + 1, refs, bloc.index, src, origine))
             self._noter('equivalentes', src, bloc, self._libelle(bloc, v))
             return True
         v = _premier(LIBELLES_REMPLACEE_PAR, bloc.texte)
@@ -351,25 +365,60 @@ class _Lecture:
         écrite en capitales) : références de la pièce par marque.
         """
         m = REF_FABRICANT.match(bloc.texte)
+        nom_marque = ''
         if not m:
             m = REF_MARQUE.match(bloc.texte)
             nom = m.group('marque') if m else ''
-            if not m or not (nom.isupper() or cle_marque(nom) in self.marques_connues):
+            if not m:
                 return False
-        refs = decouper_references(m.group('refs'))
-        # Références de tête seulement (avec un chiffre) : la suite est du texte
-        # (« 10/1863-5010 POUR APPAREILS VN606E »), signalée comme non lue
+            nom_marque = self._marque_proche(nom)
+            refs_tete = decouper_references(m.group('refs'))
+            # « Référence Ego : 20.41222.000 » : un nom propre suivi de références
+            fabricant = (len(nom.split()) <= 2 and nom[:1].isupper() and refs_tete
+                         and all(_CHIFFRE.search(x) for x in refs_tete))
+            if not (nom.isupper() or nom_marque or fabricant):
+                return False
+        texte_refs = m.group('refs')
+        refs = decouper_references(texte_refs)
+        # Références de tête seulement (avec un chiffre) ; la suite « POUR APPAREILS
+        # VN606E / VF6017E » donne des appareils, sinon elle est signalée non lue
         fin = next((k for k, r in enumerate(refs) if not any(c.isdigit() for c in r)), len(refs))
+        origine = (nom_marque or m.group('marque') or marque or '').strip()
         if fin < len(refs):
-            self.r.non_compris.append(NonCompris(
-                'bloc_non_lu', bloc.texte, bloc.index, ' '.join(refs[fin:])))
+            suite = ' '.join(refs[fin:])
+            pour = _POUR_APPAREILS.match(suite)
+            appareils = [x for x in re.split(r"[\s,;/]+", pour.group('refs')) if _CHIFFRE.search(x)] \
+                if pour else []
+            if appareils:
+                marque_app = marque or origine or None
+                for ref in appareils:
+                    self.r.appareils.append(LigneAppareil(
+                        len(self.r.appareils) + 1, marque_app, ref, '', 'ref_seule', bloc.index,
+                        'entete' if marque_app else ''))
+            else:
+                self.r.non_compris.append(NonCompris('bloc_non_lu', bloc.texte, bloc.index, suite))
             refs = refs[:fin]
         if refs:
             self.r.references_par_marque.append(LigneEquivalentes(
-                len(self.r.references_par_marque) + 1, refs, bloc.index, 'texte',
-                (m.group('marque') or marque or '').strip()))
+                len(self.r.references_par_marque) + 1, refs, bloc.index, 'texte', origine))
             self._noter('references_par_marque', 'texte', bloc, bloc.texte[:m.start('refs')].strip())
         return True
+
+    def _marque_proche(self, nom: str) -> str:
+        """Marque connue écrite telle quelle ou à une faute près (« Brauknecht »
+        → « Bauknecht », fiche 7091) ; '' sinon."""
+        cle = cle_marque(nom)
+        if not cle:
+            return ''
+        if cle in self.marques_connues or cle in self.annoncees:
+            return nom
+        import difflib
+        proches = difflib.get_close_matches(cle, list(self.annoncees) or list(self.marques_connues),
+                                            n=1, cutoff=0.88)
+        if proches and len(cle) >= 6:
+            ecrite = next((n for n in self.r.marques_annoncees if cle_marque(n) == proches[0]), '')
+            return ecrite or proches[0].capitalize()
+        return ''
 
     def _titre_liste(self, bloc: Bloc) -> Optional[str]:
         m = self.modele
@@ -436,14 +485,39 @@ class _Lecture:
             fin = ' '.join(mots[-k:])
             if cle_marque(fin) in self.types_connus:
                 return ' '.join(mots[:-k]), fin
+        # « AKZM769/WH Four à Pyrolyse » : le type connu ouvre la fin du nom
+        for i in range(1, len(mots)):
+            t = self._type_en_tete(' '.join(mots[i:]))
+            if t:
+                return ' '.join(mots[:i]), t
         return nom, ''
+
+    def _type_en_tete(self, texte: str) -> str:
+        """« Four à Pyrolyse » → « Four » : le plus long début qui est un type connu
+        (texte sans chiffre seulement)."""
+        if not self.types_connus or _CHIFFRE.search(texte or ''):
+            return ''
+        mots = texte.split()
+        for k in range(min(4, len(mots)), 0, -1):
+            debut = ' '.join(mots[:k])
+            if cle_marque(debut) in self.types_connus:
+                return debut
+        return ''
 
     @staticmethod
     def _appareils(texte: str) -> List[Tuple[str, str, str]]:
         if _SEP_REF_NOM in texte:
             ref, _, nom = texte.partition(_SEP_REF_NOM)
             ref, nom = ref.strip(), nom.strip()
+            # Philips « HR 6325 - HR632501 » : à gauche la famille, à droite le modèle
+            # qui la prolonge (fiche 7138) ; la réf. est celle de droite
+            if ' ' in ref and nom and ' ' not in nom and len(nom) > len(ref.replace(' ', '')) \
+                    and nom.upper().startswith(ref.replace(' ', '').upper()):
+                return [(nom, ref, 'famille_modele')]
             return [(ref, nom, 'ref_nom')] if ref else []
+        m = _REF_PARENTHESES.match(texte)
+        if m:
+            return [(m.group(1), m.group(2).strip(), 'ref_parentheses')]
         if _PNC_SERIE.match(texte):
             return [(pnc, '', 'pnc') for pnc in texte.split()]
         m = _BSH.match(texte)
@@ -545,11 +619,19 @@ class _Lecture:
             if not dans_liste:
                 self._en_tete(bloc)
                 continue
-            if bloc.balise in BALISES_TABLEAU or (':' in texte and _SEP_REF_NOM not in texte
-                                                  and not _CHIFFRE.search(texte.split(':')[0])):
+            if bloc.balise in BALISES_TABLEAU or _COTE.match(texte) or (
+                    ':' in texte and _SEP_REF_NOM not in texte
+                    and not _CHIFFRE.search(texte.split(':')[0])):
                 r.textes_libres.append(texte)       # tableau ou « Dimensions : … » après la liste
                 continue
-            # Type d'appareil : suite de la ligne précédente, ou en-tête de section
+            # Type d'appareil : suite de la ligne précédente, ou en-tête de section ;
+            # « Four à Pyrolyse » après un appareil : son type commence par « Four »
+            if apres_appareil and not self._connue(texte) and \
+                    cle_marque(texte) not in self.types_connus and self._type_en_tete(texte):
+                for a in r.appareils:
+                    if a.bloc == r.appareils[-1].bloc:
+                        a.type_ligne = self._type_en_tete(texte)
+                continue
             if cle_marque(texte) in self.types_connus and not self._connue(texte):
                 if apres_appareil:
                     for a in r.appareils:

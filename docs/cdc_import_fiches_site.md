@@ -583,6 +583,36 @@ Vérification :
 - rendu hors écran du 1ᵉʳ lot réel (à décider, après propositions, fiches, lignes) et des deux modes de « Lire une fiche du site » ;
 - tests d'écran réécrits (`test_reprise_site.py::test_fenetre_reprise_rendue_et_fiche_du_lot`, `test_enregistrement_fiche.py::test_apercu_rendu_et_enregistrement`), qui vérifient aussi que le `data/reprise_fiches.json` du poste n'est jamais écrit par les tests.
 
+### 10.9 Correctifs du lecteur — refonte, étape 5 (2026-11-12)
+
+Ce sont les erreurs de lecture relevées sur le 1ᵉʳ lot réel (audit des données). Elles devenaient des questions ou des données fausses.
+
+| Fiche | Écrit sur le site | Lu désormais |
+|---|---|---|
+| 7089, 7095-7097 | `Bauknecht Réf. fabricant : 10/1863-5010 POUR APPAREILS VN606E` | réf. de la pièce `10/1863-5010` + appareil Bauknecht `VN606E` |
+| 7188 | `Références équivalentes Rosières : 49025106 …` | marque d'origine Rosières (plus d'équivalentes `Rosières`, `Electrolux`, `Brandt`, `:`) |
+| 7188 | `Remplace les dimensions : C00280008 …` (faute du site) | anciennes références |
+| 7095… | `C : - cm` (cote) | texte libre, pas un appareil |
+| 7091 | `VF3017 (VF 3017)` | réf. `VF3017`, nom `VF 3017` |
+| 7138 | `HR 6325 - HR632501` (famille - modèle) | réf. `HR632501`, si elle prolonge la famille ; `HR 6328 - HR6374` reste tel quel |
+| 7182 | `852576929010 AKZM769/WH Four à Pyrolyse`, ou `Four à Pyrolyse` seul après un appareil | type « Four » (début connu), plus une marque inconnue |
+| 7091, 7179 | `Référence Brauknecht : …`, `Référence Ego : …` | références par marque (marque à une faute près d'une marque annoncée ou connue ; fabricant écrit avec une majuscule, suivi de références) |
+
+**Côté rapprochement :**
+- **Alias par défaut** : `GE` → General Electric et `Brauknecht` → Bauknecht.
+- **Une seule marque annoncée après alias** : c'est la marque de la ligne sans en-tête. Cela règle la fiche 7112.
+- **Nom commercial d'un appareil déjà cité** : une ligne sans marque, absente, dont la « référence » est le nom commercial (sur la fiche, ou dans l'outil) d'un appareil déjà cité par une autre ligne est un doublon, et rien n'est créé. Exemple : fiche 7164, 208 lignes sur 209 (`WAT4564W` = Bauknecht `858341142074`).
+
+**Mesures :**
+- **Export complet** (`scripts/mesurer_lecteur_fiches.py`) : **10 878 fiches lues sans doute (89,0 %)**, contre 10 867 (88,9 %) au § 10.1 : 11 de plus, aucune de moins ; 6 454 931 lignes d'appareils.
+- **1ᵉʳ lot réel** (mode questions, copie de la base) :
+  - 26 questions au lieu de 32 ;
+  - **84 lignes « à revoir » au lieu de 301**, dans 12 fiches au lieu de 14 ;
+  - 91 remplacements au lieu de 87 ;
+  - relance sans ajout.
+
+Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_rien_de_faux.py` (alias GE, doublons par le nom).
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

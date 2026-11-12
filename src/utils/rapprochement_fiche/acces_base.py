@@ -183,6 +183,18 @@ class AccesBaseLecture:
                 out[r].append(AppareilBase(i, m or '', r, t or ''))
         return out
 
+    def noms_commerciaux(self, ids: Iterable[int]) -> Dict[int, str]:
+        """id d'appareil → nom commercial ('' exclus)."""
+        ids = list(dict.fromkeys(i for i in ids if i is not None))
+        out: Dict[int, str] = {}
+        for lot in _tranches(ids):
+            q = ','.join('?' * len(lot))
+            for i, nom in self._lignes(
+                    f"SELECT id, commercial_ref FROM appareils WHERE id IN ({q})", lot):
+                if nom:
+                    out[i] = nom
+        return out
+
     def appareils_par_nom(self, marques: Iterable[str], nom: str) -> List[AppareilBase]:
         """Appareils dont le nom commercial est exactement `nom`, parmi `marques`."""
         marques = list(dict.fromkeys(m for m in marques if m))

@@ -37,6 +37,7 @@ MOTIFS = {
     'marque_a_choisir': "marque à choisir parmi les marques annoncées",
     'exact_multiple': "plusieurs appareils de même réf.",
     'normalise_ambigu': "plusieurs écritures en base",
+    'doublon_nom': "nom commercial d'un appareil déjà cité par la fiche",
 }
 CATEGORIES_DOUTES = {
     # Identité (§ 5.1)

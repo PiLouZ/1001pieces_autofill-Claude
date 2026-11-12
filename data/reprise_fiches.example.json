@@ -119,7 +119,10 @@
     "Machine à café & bouilloire": "",
     "Petit ménager": ""
   },
-  "alias_marques": {},
+  "alias_marques": {
+    "GE": "General Electric",
+    "Brauknecht": "Bauknecht"
+  },
   "regles_reprise": {},
   "groupes_marques": {
     "Whirlpool": [

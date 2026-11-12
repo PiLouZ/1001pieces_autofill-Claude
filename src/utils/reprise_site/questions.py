@@ -49,6 +49,7 @@ from src.utils.rapprochement_fiche.decisions import (
 REGLE, LOT = 'regle', 'lot'
 A_REVOIR = 'a_revoir'                   # ligne sans question, laissée de côté
 ILLISIBLE = 'illisible'
+DOUBLON = 'doublon'                     # même appareil cité deux fois : rien à écrire
 
 TEXTES_REGLES = {
     'R1': ("Même référence sous une autre marque du même groupe : est-ce le même appareil ?",
@@ -218,7 +219,7 @@ class QuestionnaireLot:
                 if cle is None:
                     continue
                 self.lignes[(i, k)] = cle
-                if cle in (A_REVOIR, ILLISIBLE):
+                if cle in (A_REVOIR, ILLISIBLE, DOUBLON):
                     continue
                 q = self._question(cle)
                 q.occurrences.append((i, k))
@@ -304,6 +305,9 @@ class QuestionnaireLot:
                 return 'R3'
             return A_REVOIR                 # à choisir parmi plusieurs : à revoir
         # Absents et types manquants : création
+        if a.motif == 'doublon_nom':
+            recap['doublons'] += 1
+            return DOUBLON
         if a.suspecte:
             recap['illisibles'] += 1
             return ILLISIBLE
@@ -527,6 +531,9 @@ class QuestionnaireLot:
 
         if cle == A_REVOIR:
             de_cote(f"{a.marque or a.marque_fiche or '?'} {a.ref_modele} : appareil à choisir")
+            return
+        if cle == DOUBLON:
+            d.appareils[k] = ChoixAppareil(ignorer=True)      # déjà cité : ni écrit ni à revoir
             return
         if cle == ILLISIBLE:
             de_cote(f"« {a.ref_modele} » : référence illisible")
