@@ -26,6 +26,7 @@ Non bloquant : show() + callbacks, jamais exec_() (conventions du projet).
 """
 
 import copy
+import os
 import threading
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
@@ -57,6 +58,15 @@ _CLE_PRODUITS = 'reprise_site/export_produits'
 _CLE_COMPAT = 'reprise_site/export_compatibilites'
 _CLE_TAILLE = 'reprise_site/taille_lot'
 _SANS_QUESTION = {A_REVOIR: "à revoir : appareil à choisir", ILLISIBLE: "illisible : non créé"}
+
+
+def _reglages() -> QSettings:
+    """Réglages de la fenêtre, avec ceux de l'application (pas le domaine par défaut
+    de Qt, partagé avec tout programme lancé par le même Python, tests compris)."""
+    fichier = os.environ.get('AUTOFILL_REGLAGES_INI')    # tests : fichier à part
+    if fichier:
+        return QSettings(fichier, QSettings.IniFormat)
+    return QSettings("1001pieces", "autofill")
 
 
 # =============================================================================
@@ -344,7 +354,7 @@ class RepriseSiteDialog(QDialog):
         lot.addWidget(QLabel("Fiches par lot :"))
         self.taille = QSpinBox()
         self.taille.setRange(1, 2000)
-        self.taille.setValue(int(QSettings().value(_CLE_TAILLE, 100) or 100))
+        self.taille.setValue(int(_reglages().value(_CLE_TAILLE, 100) or 100))
         lot.addWidget(self.taille)
         self.bouton_analyser = QPushButton(qta.icon('fa5s.search', color='white'), "Lire le lot suivant")
         self.bouton_analyser.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
@@ -507,14 +517,16 @@ class RepriseSiteDialog(QDialog):
     # Exports et état
     # =========================================================================
     def _charger_chemins(self):
-        reglages = QSettings()
+        reglages = _reglages()
         etat = self.service.etat() or {}
         for champ, cle, colonne, nom in (
                 (self.champ_produits, _CLE_PRODUITS, 'chemin_produits', 'produits.csv'),
                 (self.champ_compat, _CLE_COMPAT, 'chemin_compatibilites', 'compatibilites.csv')):
-            chemin = etat.get(colonne) or reglages.value(cle, '') or ''
-            if not chemin and (_DOSSIER_DEFAUT / nom).exists():
-                chemin = str(_DOSSIER_DEFAUT / nom)
+            # Le premier chemin qui existe encore : état de l'import, dernier choix,
+            # puis l'export rangé dans data/reprise_site/
+            candidats = [etat.get(colonne) or '', reglages.value(cle, '') or '',
+                         str(_DOSSIER_DEFAUT / nom)]
+            chemin = next((c for c in candidats if c and Path(c).exists()), '')
             champ.setText(chemin)
 
     def _parcourir(self, champ: QLineEdit, titre: str):
@@ -532,7 +544,7 @@ class RepriseSiteDialog(QDialog):
             self._message("L'export des compatibilités est introuvable.", erreur=True)
             return
         signature, statut = self.service.examiner_export(produits, compat)
-        reglages = QSettings()
+        reglages = _reglages()
         reglages.setValue(_CLE_PRODUITS, produits)
         reglages.setValue(_CLE_COMPAT, compat)
         self._signature = signature
@@ -617,7 +629,7 @@ class RepriseSiteDialog(QDialog):
             if self.service.signature is None:
                 return
         taille = self.taille.value()
-        QSettings().setValue(_CLE_TAILLE, taille)
+        _reglages().setValue(_CLE_TAILLE, taille)
         self._effacer_lot()
         self._lancer(lambda prog, annule: self.service.analyser_lot_suivant(taille, prog, annule),
                      self._lot_analyse, "Lecture du lot…")

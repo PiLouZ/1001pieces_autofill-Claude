@@ -31,6 +31,7 @@ def pytest_sessionfinish(session, exitstatus):
     """Retirer le répertoire de logs temporaire en fin de session."""
     import shutil
     shutil.rmtree(_REPERTOIRE_LOGS_TEST, ignore_errors=True)
+    shutil.rmtree(globals().get('_REPERTOIRE_REGLAGES_TEST', ''), ignore_errors=True)
 
 
 from src.core.config import Config
@@ -252,3 +253,12 @@ class TestHelpers:
 def test_helpers():
     """Fixture pour accéder aux helpers de test"""
     return TestHelpers()
+
+# ── Isolation des réglages Qt ────────────────────────────────────────────────
+# Les fenêtres d'import rangent leurs réglages avec ceux de l'application
+# (QSettings « 1001pieces/autofill »). Sans cela, un test qui choisit des
+# fichiers y laisse des chemins temporaires que l'application propose ensuite
+# (constaté le 2026-11-12 : exports de la reprise pointant vers pytest-50/…).
+# Même principe que AUTOFILL_LOG_DIR : lu par src/ui/reprise_site_dialog.py.
+_REPERTOIRE_REGLAGES_TEST = tempfile.mkdtemp(prefix='autofill_reglages_test_')
+os.environ['AUTOFILL_REGLAGES_INI'] = os.path.join(_REPERTOIRE_REGLAGES_TEST, 'reglages.ini')
