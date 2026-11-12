@@ -27,6 +27,8 @@ data/backups/
 # Le fichier est recréé au premier lancement depuis les valeurs par défaut ;
 # data/export_config.example.json documente la structure attendue.
 data/export_config.json
+# Configuration de la reprise des fiches du site (data/reprise_fiches.example.json = défauts)
+data/reprise_fiches.json
 
 # Logs
 logs/

@@ -1,6 +1,6 @@
 # Cahier des charges — Reprise des fiches produit du site 1001pieces.com
 
-**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`) réalisée le 2026-11-12
+**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`) et étape 2 (rapprochement, `src/utils/rapprochement_fiche/`) réalisées le 2026-11-12
 **Version :** 1.0
 **Contexte :** le site 1001pieces.com (PrestaShop) contient des milliers de fiches produit qui listent les appareils compatibles et les relations entre pièces (remplacements, équivalences). Une partie de ces fiches a été produite par l'outil (export « Fiche complète »), une autre a été écrite à la main dans le back-office. Ce document définit comment reprendre ces données dans l'outil, puis comment l'outil devient la passerelle qui alimente le site.
 
@@ -347,7 +347,7 @@ Toutes les colonnes sont nullables et sans valeur par défaut calculée : leur a
 | nouvelle | état de la reprise (dernier `id_produit`, date de l'export) |
 | nouvelle | décisions sur les formats et références écartées |
 | nouvelle | décisions sur les paires d'écritures d'appareils (marque, écriture A, écriture B, « même » ou « distinct ») |
-| configuration | table des formats, correspondance catégorie → type, préfixes de référence interne |
+| configuration | table des formats, correspondance catégorie → type, préfixes de référence interne, groupes et alias de marques : `data/reprise_fiches.json` (défauts dans `src/utils/rapprochement_fiche/configuration.py`, copie dans `data/reprise_fiches.example.json`) — **fait à l'étape 2** |
 
 `produits_site.ref_piece` suit les renommages de pièce comme les autres tables à référence texte (`piece_supersessions`, `piece_equivalence_groups`).
 
@@ -380,6 +380,41 @@ Mesure sur l'export complet du site (13 302 produits, `scripts/mesurer_lecteur_f
   - 412 fiches ne prennent leurs marques que dans la marque du produit ;
   - références internes : 2 029 égales au code produit, 5 524 préfixées (FAR, EL, GAU, ROS, MIE, LH, ATC, D, NOT, BEO, CET, STN0…), 4 637 différentes, dont 1 106 désignent une référence de la lignée (remplacée ou équivalente) et la plupart des autres sont des codes de fournisseur (`ES10028`…).
 - 761 listes sont probablement réduites : replis de l'export de l'outil, dernière marque vide, ou points de suite.
+
+### 10.2 Rapprochement — étape 2 (2026-11-12)
+
+`src/utils/rapprochement_fiche/` : `rapprocher(lecture, acces, config, page=…)` rend, **sans rien écrire** (base ouverte en `mode=ro`), un `Rapprochement` :
+- **identité** : pièce (réelle, fantôme, absente), référence interne égale / préfixée / de la lignée / différente (doute), EAN vérifié ;
+- **appareils** : deux réponses par ligne. Le **niveau** d'identification (exact, exact multiple, normalisé, normalisé ambigu, à valider, absent) et le **lien** : *déjà lié* (lien présent sur la pièce elle-même, cas de 20746), *déjà couvert* (autre référence de la lignée, cas de 20744), *nouveau*. Union avec la table du site (provenance description / table / les deux), type appareil par appareil (table, ligne, base, catégorie) ;
+- **remplacements** (nouveau, déjà présent, confirmé par la chaîne, conflit, cycle) avec appariement par la forme dans une paire, et « Remplacé par » ;
+- **équivalences** (nouveau, déjà dans le groupe, fusion de groupes, déjà dans la succession, écartée) avec étiquette d'origine déduite du format ;
+- **doutes regroupés par catégorie** (`CATEGORIES_DOUTES`), et `resume()` pour l'aperçu.
+
+Choix faits à cette étape :
+- un appareil dont l'écriture exacte existe mais dont la forme normalisée a **plusieurs écritures en base** ressort en « normalisé ambigu », avec l'écriture exacte proposée : les 467 collisions de la base ressortent toutes ainsi (test sur une copie de la base) ;
+- « à valider » couvre la même réf. sous **une autre marque du groupe** (groupes en configuration, liste de départ), un **type explicite** (table, ligne) contraire à la base, et la correspondance par le **seul nom commercial** ;
+- marque d'une ligne sans en-tête : déduite quand **une seule** des marques annoncées porte la référence (exacte, puis normalisée) ; singulier/pluriel toléré (« Rosière » / « Rosières ») et alias en configuration ;
+- les mémoires du § 9 (décisions sur les paires d'écritures, références écartées) sont déjà prises **en paramètre** : leurs tables viennent à l'étape 3.
+
+Vérification : fiches d'exemple sur un extrait de la vraie base (`tests/fixtures/fiches_site/base_extrait.sql`, `scripts/extraire_base_fiches_test.py`) : 20746 → 831 déjà liés ; 20744 → 450 déjà couverts (306 + 2 + 20 + 122), pièce fantôme ; 7285 → 481… → 481…, C00… → C00…, `481949` en doute d'origine.
+
+**Mesure** (`scripts/mesurer_rapprochement_fiches.py`, 1 produit sur 10 de l'export, 1 298 fiches, 700 521 lignes, copie de la base ; médiane 2 ms par fiche, 1,6 s au plus quand l'index d'une grosse marque se charge) :
+
+| Niveau | Lignes | Part |
+|---|---|---|
+| exact | 560 068 | 80,0 % |
+| absent (création) | 128 893 | 18,4 % |
+| à valider | 6 309 | 0,9 % |
+| normalisé | 2 782 | 0,4 % |
+| exact multiple | 1 647 | 0,2 % |
+| normalisé ambigu | 822 | 0,1 % |
+
+- Liens : 64,5 % nouveaux, 21,5 % déjà liés, 12,9 % déjà couverts par la lignée, 1,1 % à décider.
+- **Lignes sans en-tête de marque** : 25 462 dans 173 fiches. La marque est déduite pour 62,9 % d'entre elles, et pour **90,7 % de celles qui existent en base** ; les autres sont des absents (marque à choisir pour la création) ou des références trouvées sous plusieurs marques.
+- 71,3 % des fiches n'ont aucun doute sur les appareils. Pièces : 80,2 % absentes de l'outil, 18,8 % réelles, 1,0 % fantômes.
+- Référence interne : 41,1 % « différente » (doute ; surtout des codes fournisseur), 37,6 % préfixée, 16,5 % égale, 4,6 % de la lignée.
+- Remplacements : 74,3 % nouveaux, 22,8 % déjà présents, 2,0 % confirmés par la chaîne, 9 conflits et 1 cycle. Équivalences : 91,9 % nouvelles.
+- Doutes les plus fréquents (en fiches) : référence interne différente (534), lecture (336), à valider (221), marque à choisir (150), origine inconnue (112).
 
 ---
 

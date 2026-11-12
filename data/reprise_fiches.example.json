@@ -1,0 +1,189 @@
+{
+  "formats_references": [
+    {
+      "motif": "48\\d{10}",
+      "origine": "Whirlpool"
+    },
+    {
+      "motif": "C00\\d{6}",
+      "origine": "Indesit"
+    },
+    {
+      "motif": "00\\d{6}",
+      "origine": "BSH"
+    },
+    {
+      "motif": "(?:10|11|12|17|20)\\d{6}",
+      "origine": "BSH"
+    },
+    {
+      "motif": "(?:41|43|49|70|91|92|93)\\d{6}",
+      "origine": "Candy"
+    },
+    {
+      "motif": "42\\d{6}",
+      "origine": "",
+      "doute": "Candy ou Sharp"
+    },
+    {
+      "motif": "32\\d{6}",
+      "origine": "",
+      "doute": "Sharp ?"
+    },
+    {
+      "motif": "15\\d{8}",
+      "origine": "",
+      "doute": "Electrolux ou Beko"
+    },
+    {
+      "motif": "(?:17|18|28)\\d{8}",
+      "origine": "Beko"
+    },
+    {
+      "motif": "\\d{10}",
+      "origine": "Electrolux"
+    },
+    {
+      "motif": "50\\d{9}",
+      "origine": "Electrolux"
+    },
+    {
+      "motif": "14\\d{10}",
+      "origine": "Electrolux"
+    },
+    {
+      "motif": "(?:61|71|74|95)\\d{7}",
+      "origine": "Liebherr"
+    },
+    {
+      "motif": "(?:69|75|81)\\d{7}",
+      "origine": "Smeg"
+    },
+    {
+      "motif": "(?:16|26)\\d{7}",
+      "origine": "",
+      "doute": "Beko ?"
+    },
+    {
+      "motif": "\\d{7}",
+      "origine": "Miele"
+    },
+    {
+      "motif": "0\\d{5}",
+      "origine": "Atlantic / Thermor"
+    },
+    {
+      "motif": "\\d{2}X\\d{4}",
+      "origine": "Brandt"
+    },
+    {
+      "motif": "AS\\d{7}",
+      "origine": "Brandt"
+    },
+    {
+      "motif": "\\d{2}S\\d{4}",
+      "origine": "",
+      "doute": "Brandt ? (S au lieu de X)"
+    },
+    {
+      "motif": "(?:DD82|DA97|DC31)-\\S+",
+      "origine": "Samsung"
+    },
+    {
+      "motif": "[A-Z]{3}\\d{8}",
+      "origine": "LG"
+    }
+  ],
+  "prefixes_ref_interne": [
+    "FAR",
+    "EL",
+    "GAU",
+    "ROS",
+    "MIE",
+    "LH",
+    "ATC",
+    "D",
+    "NOT",
+    "BEO",
+    "CET",
+    "STN0"
+  ],
+  "categories_types": {
+    "MO": "Micro-ondes",
+    "Réfrigérateur américain": "Réfrigérateur",
+    "Sac aspirateur": "Aspirateur",
+    "Brosse aspirateur": "Aspirateur",
+    "Tube aspirateur": "Aspirateur",
+    "Désodorisant réfrigérateur": "Réfrigérateur",
+    "Filtre / Climatisation": "Climatiseur",
+    "Machine à café & bouilloire": "",
+    "Petit ménager": ""
+  },
+  "alias_marques": {},
+  "groupes_marques": {
+    "Whirlpool": [
+      "Whirlpool",
+      "Bauknecht",
+      "Ignis",
+      "Laden",
+      "Indesit",
+      "Hotpoint-Ariston",
+      "Scholtès",
+      "Privileg",
+      "KitchenAid",
+      "Proline"
+    ],
+    "BSH": [
+      "Bosch",
+      "Siemens",
+      "Neff",
+      "Gaggenau",
+      "Balay",
+      "Constructa",
+      "Viva",
+      "Jünker",
+      "Pitsos",
+      "Profilo"
+    ],
+    "Electrolux": [
+      "Electrolux",
+      "AEG",
+      "Zanussi",
+      "Arthur-Martin-Electrolux",
+      "Faure",
+      "Progress",
+      "Rex",
+      "Juno",
+      "Zanker",
+      "Husqvarna",
+      "Elektra-Bregenz"
+    ],
+    "Candy": [
+      "Candy",
+      "Hoover",
+      "Rosières",
+      "Otsein",
+      "Iberna",
+      "Zerowatt"
+    ],
+    "Brandt": [
+      "Brandt",
+      "De Dietrich",
+      "Sauter",
+      "Fagor",
+      "Vedette",
+      "Thomson",
+      "Ocean",
+      "Edesa"
+    ],
+    "Beko": [
+      "Beko",
+      "Blomberg",
+      "Grundig"
+    ],
+    "Atlantic": [
+      "Atlantic",
+      "Thermor"
+    ]
+  }
+}
