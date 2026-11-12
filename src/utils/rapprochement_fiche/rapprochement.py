@@ -523,6 +523,9 @@ class _Rapprochement:
             if len(exacts) == 1:
                 a.proposition = exacts[0].id
             a.doutes.append('normalise_ambigu')
+            a.motif = 'normalise_ambigu'
+        elif niveau == 'exact_multiple':
+            a.motif = 'exact_multiple'
 
     def _deduire_marque(self, a: AppareilRapproche):
         """Ligne sans en-tête : la marque se choisit parmi les marques annoncées."""
@@ -532,6 +535,8 @@ class _Rapprochement:
             self._chercher_ailleurs(a)
             if 'marque_a_choisir' not in a.doutes:
                 a.doutes.append('marque_a_choisir')
+            if a.niveau == 'absent':
+                a.motif = 'marque_a_choisir'
             return
         resultats = {m: self._identifier(m, a.ref_modele) for m in self.annoncees}
         for niveaux in (('exact', 'exact_multiple'), ('normalise', 'normalise_ambigu')):
@@ -547,12 +552,14 @@ class _Rapprochement:
                 a.candidats = [c for m in marques for c in resultats[m][1]]
                 a.raison = f"trouvée sous {', '.join(marques)}"
                 a.doutes.append('marque_a_choisir')
+                a.motif = 'marque_a_choisir'
                 return
         a.source_marque = 'a_choisir'
         a.niveau, a.raison = 'absent', f"absente sous {', '.join(self.annoncees)}"
         self._chercher_ailleurs(a)
-        if 'marque_a_choisir' not in a.doutes:
+        if a.niveau == 'absent' and 'marque_a_choisir' not in a.doutes:
             a.doutes.append('marque_a_choisir')
+            a.motif = 'marque_a_choisir'
 
     def _chercher_ailleurs(self, a: AppareilRapproche):
         """Absent sous sa marque : même réf. sous une marque du groupe, ou même nom commercial."""
@@ -566,13 +573,20 @@ class _Rapprochement:
         # l'en-tête reste une marque du groupe où chercher : Ignis / Whirlpool)
         propres = ({cle_marque(a.marque)} if a.marque_fiche and a.marque
                    else {cle_marque(m) for m in marques})
-        ailleurs = [c for c in self.acces.appareils_par_ref([a.ref_modele]).get(a.ref_modele, [])
+        meme_ref = self.acces.appareils_par_ref([a.ref_modele]).get(a.ref_modele, [])
+        ailleurs = [c for c in meme_ref
                     if cle_marque(c.marque) in voisines and cle_marque(c.marque) not in propres]
         if ailleurs:
             a.niveau, a.candidats = 'a_valider', ailleurs
             a.raison = f"réf. trouvée sous {', '.join(sorted({c.marque for c in ailleurs}))}"
             a.doutes.append('a_valider')
+            a.motif = 'meme_ref_groupe'
+            a.doutes = [d for d in a.doutes if d != 'marque_a_choisir']
             return
+        # Même réf. exacte sous une marque hors du groupe : rien n'est lié, mais
+        # la question « ces marques sont-elles du même groupe ? » se pose
+        a.hors_groupe = sorted({c.marque for c in meme_ref
+                                if cle_marque(c.marque) not in voisines and c.marque})
         if a.nom and marques:
             par_nom = self.acces.appareils_par_nom(list(dict.fromkeys(marques + groupe)), a.nom)
             if par_nom:
@@ -585,6 +599,11 @@ class _Rapprochement:
                          if forme_normalisee(c.ref_modele) == forme_normalisee(a.ref_modele)]
                 if len(memes) == 1:
                     a.proposition = memes[0].id
+                    a.motif = 'nom_meme_ref'
+                elif len(par_nom) == 1:
+                    a.motif = 'nom_ref_differente'
+                else:
+                    a.motif = 'nom_plusieurs'
 
     # --- Type (§ 5.6) ---------------------------------------------------------
     def _type_outil(self, t: str) -> str:
@@ -613,6 +632,7 @@ class _Rapprochement:
                 a.raison = (a.raison + ', ' if a.raison else '') + \
                     f"type {choisi.type} en base, {a.type} sur la fiche"
                 a.doutes.append('a_valider')
+                a.motif = a.motif or 'autre_type'
             return
         choisi = self._choisi(a)
         if choisi is not None and choisi.type:
@@ -662,6 +682,7 @@ class _Rapprochement:
                 a.type = a.type or lies[0].type
                 a.raison += f" ; déjà lié à la pièce : {lies[0].marque} {lies[0].ref_modele}"
                 a.doutes = [d for d in a.doutes if d not in _DOUTES_DE_CHOIX]
+                a.motif = ''            # choix déjà fait : plus rien à demander
                 return
             a.lien = ''
             return

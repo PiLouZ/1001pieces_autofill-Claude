@@ -83,6 +83,7 @@ class FicheLot:
     # Lignes posées par le lot, pas par l'utilisateur : mises de côté par « laisser
     # de côté les lignes à compléter », ou rattachées à une création d'une autre fiche
     lignes_auto: Set[int] = field(default_factory=set)
+    marques_annoncees: List[str] = field(default_factory=list)   # « Compatible avec … »
     de_cote: bool = False               # rien n'est écrit, la fiche revient plus tard
     raison_de_cote: str = ''
     erreur: str = ''                    # lecture ou rapprochement impossible
@@ -105,6 +106,7 @@ def analyser_produit(produit: ProduitExport, acces: AccesBaseLecture,
         lecture = lire_description(produit.description, modeles, marques, types,
                                    marque_produit=produit.marque)
         fiche.profil_ambigu = lecture.profil_ambigu
+        fiche.marques_annoncees = [m for m in lecture.marques_annoncees if m]
         fiche.lignes_description = len(lecture.appareils)
         fiche.rapprochement = rapprocher(
             lecture, acces, config, ref_interne=produit.reference, ean=produit.ean,
@@ -184,6 +186,7 @@ class PlanLot:
     en_attente: List[str]
     fiches_a_completer: List[int]
     lignes_a_completer: int
+    a_revoir: Dict[int, List[str]] = field(default_factory=dict)     # mode questions : fiche → lignes de côté
 
     @property
     def pret(self) -> bool:
@@ -219,6 +222,7 @@ class LotReprise:
         self.type_par_categorie: Dict[str, str] = {}
         self.choix_groupes: Dict[Tuple[str, str], str] = {}
         self.fiches_de_cote = False         # lot des fiches mises de côté (la reprise n'avance pas)
+        self.questionnaire = None           # mode questions (refonte, étape 2) : QuestionnaireLot
         self._cats: Dict[int, Dict[str, Dict[str, list]]] = {}
 
     # --- Catégories ---------------------------------------------------------------
@@ -407,6 +411,28 @@ class LotReprise:
 
     # --- Plan --------------------------------------------------------------------
     def planifier(self) -> PlanLot:
+        q = self.questionnaire
+        if q is not None:
+            q.appliquer()                   # réponses → décisions ; catégories validées
+        plan = self._planifier()
+        if q is not None and plan.fiches_a_completer:
+            # Mode questions : une ligne qui reste à compléter (choix impossible,
+            # marque ou type manquant malgré la réponse) est laissée de côté et sa
+            # fiche signalée à revoir, au lieu de bloquer le lot
+            for i, p in plan.plans:
+                f = self.fiches[i]
+                for index, message in zip(p.lignes_a_completer, p.a_completer[-len(p.lignes_a_completer):]
+                                          if p.lignes_a_completer else []):
+                    f.decisions.appareils[index] = ChoixAppareil(ignorer=True)
+                    f.lignes_auto.add(index)
+                    q.a_revoir[i].append(message)
+            plan = self._planifier()
+        if q is not None:
+            plan.en_attente = q.en_attente() + plan.en_attente
+            plan.a_revoir = {i: list(v) for i, v in q.a_revoir.items() if v}
+        return plan
+
+    def _planifier(self) -> PlanLot:
         plans, de_cote, attente, a_completer = [], [], set(), []
         lignes = 0
         etat_profils = self.etat(PROFILS_AMBIGUS)

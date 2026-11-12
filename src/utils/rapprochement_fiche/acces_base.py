@@ -68,6 +68,20 @@ class IndexMarque:
     def candidats(self, ref_modele: str) -> List[AppareilBase]:
         return self.par_forme.get(forme_normalisee(ref_modele), [])
 
+    def par_prefixe(self, prefixe: str) -> List[AppareilBase]:
+        """Appareils dont la forme normalisée commence par `prefixe` (famille de
+        références : « HD78 » → HD7800, HD7818/50…), pour proposer un type ou une marque."""
+        import bisect
+        if not hasattr(self, '_formes_triees'):
+            self._formes_triees = sorted(self.par_forme)
+        formes = self._formes_triees
+        out: List[AppareilBase] = []
+        i = bisect.bisect_left(formes, prefixe)
+        while i < len(formes) and formes[i].startswith(prefixe):
+            out.extend(self.par_forme[formes[i]])
+            i += 1
+        return out
+
     def __len__(self):
         return sum(len(v) for v in self.par_forme.values())
 

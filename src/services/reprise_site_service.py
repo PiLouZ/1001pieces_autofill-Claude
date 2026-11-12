@@ -43,6 +43,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from ..core.logger import app_logger
 from .base_service import BaseService
 from .enregistrement_fiche_service import EnregistrementFicheService, ResultatEnregistrement
+from ..utils.lecteur_fiche.lecteur import cle_marque as cle_marque_
 
 Progression = Callable[[int, int, str], None]
 
@@ -94,9 +95,11 @@ class RepriseSiteService(BaseService):
     """Session de reprise des fiches du site par lots."""
 
     def __init__(self, db_manager, parent_window=None, parent=None, configuration=None,
-                 fiche_service: Optional[EnregistrementFicheService] = None):
+                 fiche_service: Optional[EnregistrementFicheService] = None,
+                 chemin_configuration=None):
         super().__init__(parent_window, parent)
         self.db = db_manager
+        self.chemin_configuration = chemin_configuration   # None = data/reprise_fiches.json
         self.fiche_service = fiche_service or EnregistrementFicheService(
             db_manager, parent_window, configuration=configuration)
         self.signature = None
@@ -196,6 +199,56 @@ class RepriseSiteService(BaseService):
                            self._modeles_lecture(), progression, annule)
         lot.fiches_de_cote = True
         return lot
+
+    # -------------------------------------------------------------------------
+    # Questions (refonte, étape 2)
+    # -------------------------------------------------------------------------
+    def questionnaire(self, lot, reponses: Optional[Dict[str, str]] = None):
+        """Met le lot en mode questions (réponses d'un passage précédent reprises)."""
+        from ..utils.reprise_site.questions import QuestionnaireLot
+        q = QuestionnaireLot(lot, self._acces_lecture(), self.fiche_service.configuration(),
+                             sauver_regles=self._sauver_regles, reponses=reponses)
+        lot.questionnaire = q
+        return q
+
+    def _sauver_regles(self, regles: Dict[str, str]):
+        """Règles mémorisées → data/reprise_fiches.json ; une règle R4 « oui » ajoute
+        la marque au groupe de l'autre (groupes_marques)."""
+        from ..utils.rapprochement_fiche.configuration import enregistrer_configuration
+        config = self.fiche_service.configuration()
+        modifs: Dict[str, object] = {'regles_reprise': dict(regles)}
+        groupes = {g: list(m) for g, m in (config.donnees.get('groupes_marques') or {}).items()}
+        change = False
+        for cle, reponse in regles.items():
+            if not cle.startswith('R4:') or reponse != 'oui':
+                continue
+            marque, autre = cle[3:].split('|', 1)
+            groupe = config.groupe_de.get(cle_marque_(marque)) or marque
+            membres = groupes.setdefault(groupe, [marque] if groupe == marque else [])
+            if all(cle_marque_(m) != cle_marque_(autre) for m in membres):
+                membres.append(autre)
+                change = True
+        if change:
+            modifs['groupes_marques'] = groupes
+        enregistrer_configuration(modifs, self.chemin_configuration)
+        from ..utils.rapprochement_fiche.configuration import ConfigurationRapprochement
+        donnees = dict(config.donnees)
+        donnees.update(modifs)
+        self.fiche_service._configuration = ConfigurationRapprochement(donnees)
+        app_logger.info(f"[Reprise site] règles enregistrées : {regles}")
+
+    def relire_lot(self, lot, progression: Optional[Progression] = None,
+                   annule: Optional[Callable[[], bool]] = None):
+        """Relit le même lot (configuration changée : groupes de marques…), en
+        gardant les réponses déjà données."""
+        from ..utils.reprise_site import analyser_lot
+        reponses = dict(lot.questionnaire.reponses) if lot.questionnaire is not None else None
+        nouveau = analyser_lot(lot.export, self._acces_lecture(), self.fiche_service.configuration(),
+                               self._modeles_lecture(), progression, annule)
+        nouveau.fiches_de_cote = lot.fiches_de_cote
+        if lot.questionnaire is not None:
+            self.questionnaire(nouveau, reponses)
+        return nouveau
 
     # -------------------------------------------------------------------------
     # Écriture (hors du thread principal)

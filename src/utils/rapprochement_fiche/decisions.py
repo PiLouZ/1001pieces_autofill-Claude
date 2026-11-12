@@ -363,6 +363,8 @@ class _Planificateur:
         if rp.statut in ('deja_present', 'confirme_par_chaine', 'identique', 'cycle'):
             return
         choix = self.d.remplacements.get(rp.ancienne)
+        if choix == 'ignorer':
+            return
         etat = self._etat(categorie_remplacement(rp))
         if choix is None and etat != VALIDEE:
             return

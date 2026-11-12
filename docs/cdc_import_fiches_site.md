@@ -490,6 +490,54 @@ Les liens augmentent un peu malgré les 42 liens faux retirés, parce que des ap
 
 Vérification : `tests/unit/test_reprise_rien_de_faux.py` (un test par correctif).
 
+### 10.6 Moteur de questions — refonte, étape 2 (2026-11-12)
+
+Décisions de l'utilisateur (2026-11-12) :
+- **règles mémorisées** : posées au 1ᵉʳ lot, appliquées ensuite avec un rappel, révocables ;
+- **fiche incomplète** : écrite pour le reste, puis signalée « à revoir » ;
+- **lecteur** : corrigé dans une étape à part, après les écrans ;
+- **nom de la fenêtre** : « Importer les fiches du site ».
+
+`src/utils/reprise_site/questions.py` (sans Qt) remplace, pour un lot, les catégories validées en bloc :
+- **un récapitulatif sans décision** : compatibilités déjà connues, déjà couvertes, nouvelles, remplacements, équivalentes d'origine reconnue ;
+- **des questions**, chacune avec ses cas, des exemples et une réponse proposée.
+
+Rien de douteux ne s'écrit sans la réponse à sa question. Tant qu'une question est sans réponse, le lot ne s'enregistre pas. « Accepter les propositions » ne répond jamais à une question sans proposition.
+
+| Clé | Question | Proposé |
+|---|---|---|
+| R1 | même réf. sous une autre marque du groupe = même appareil ? | oui |
+| R2 | appareil classé sous un autre type sur le site : le relier (type de l'outil gardé) ? | oui |
+| R3 | même nom commercial, réf. différente : nouvel appareil ? | créer |
+| R4:A\|B | même réf. sous une marque hors du groupe : B est-il du groupe de A ? | — |
+| R5 | réf. produit sans rapport avec le code produit : la garder ? | garder |
+| R6 | titre ≠ nom de la pièce : quel nom ? | garder l'outil |
+| R7 | pas de code produit : reprendre la pièce sous la réf. produit ? | — |
+| Q1 | créer les appareils inconnus (marque et type connus) ? | créer |
+| Q2:fiche | type des appareils à créer | d'après la base (même marque, même début de réf.) |
+| Q3:fiche | marque des appareils à créer | marque annoncée qui a le plus de réf. de même début |
+| Q4:forme | équivalentes sans marque d'origine | « écarter » sans chiffre ; la marque annoncée si elle est seule |
+| Q5, Q6, Q7 | remplacement en conflit, EAN différent, réf. produit d'une autre pièce | garder, site, prendre |
+
+**Comment les règles et les réponses sont traitées :**
+- Les règles R1 à R7 sont mémorisées dans `regles_reprise` (`data/reprise_fiches.json`, propre au poste, hors git) et révocables.
+- Un « oui » à R4 ajoute la marque au groupe (`groupes_marques`), puis le lot est relu (`RepriseSiteService.relire_lot`), en gardant les réponses déjà données.
+- Les réponses deviennent des choix individuels (`DecisionsFiche`). Le planificateur de l'étape 3 reste seul à décider de ce qui s'écrit.
+- Une ligne sans question est laissée de côté et sa fiche est signalée « à revoir » : appareil à choisir parmi plusieurs sans candidat de même réf., réf. illisible, ou ligne encore à compléter après réponse.
+- Le rapprochement note maintenant **pourquoi** une ligne demande un avis : `AppareilRapproche.motif` (cf. `MOTIFS`), et `hors_groupe` pour la même réf. sous une marque hors du groupe.
+
+**1ᵉʳ lot réel** (`scripts/mesurer_lot_reprise.py --questions --regles <fichier de test>`, copie de la base) :
+- **32 questions** au lieu de 4 104 lignes « à valider » : 12 règles (7 genres, dont 6 groupes de marques R4) et 20 questions du lot (1 « créer », 1 type, 6 marques, 11 équivalentes, 1 conflit) ;
+- **14 ont une proposition** et se règlent d'un clic : R1 (788 lignes), R2 (3 024), R3 (42), Q1 (1 230 créations), Q2 (« Machine à café » pour les 17 Philips de la fiche 7136, d'après la base)… ;
+- les questions sans proposition sont les vraies : Elica dans le groupe Whirlpool ? Bluesky, Far, Altus, Ardem dans le groupe Beko ? fiches sans code produit, marque de 6 fiches, 7 équivalentes inconnues ;
+- avec les réponses simulées (groupes : oui), 1 251 appareils et 26 071 liens sont créés ; 14 fiches sont « à revoir » (301 lignes laissées de côté) ;
+- la **relance n'ajoute rien** ;
+- **lot 2** (produits 7192 à 7292) : 11 questions seulement, dont 5 règles déjà mémorisées.
+
+Les écrans (étape 3 des fiches « à revoir » persistantes, étape 4 des écrans par questions) viennent ensuite ; d'ici là, la fenêtre garde l'affichage par catégories.
+
+Vérification : `tests/unit/test_reprise_questions.py` (base et exports construits : une question par genre, rien sans réponse, propositions partielles, réponses écrites et relance sans ajout, règles mémorisées puis révoquées dans un fichier de test, R4 « oui » puis relecture).
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

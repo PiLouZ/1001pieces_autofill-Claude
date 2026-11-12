@@ -27,6 +27,17 @@ LIENS = {
     'nouveau': "lien à créer",
     '': "à décider (appareil non retenu)",
 }
+# Motif d'une ligne qui demande un avis (moteur de questions, refonte étape 2)
+MOTIFS = {
+    'autre_type': "même appareil, classé sous un autre type sur le site",
+    'meme_ref_groupe': "même réf. sous une autre marque du groupe",
+    'nom_meme_ref': "retrouvé par le nom commercial, même réf. (autre marque du groupe)",
+    'nom_ref_differente': "même nom commercial, réf. différente",
+    'nom_plusieurs': "plusieurs appareils de même nom commercial, aucun de même réf.",
+    'marque_a_choisir': "marque à choisir parmi les marques annoncées",
+    'exact_multiple': "plusieurs appareils de même réf.",
+    'normalise_ambigu': "plusieurs écritures en base",
+}
 CATEGORIES_DOUTES = {
     # Identité (§ 5.1)
     'code_produit_absent': "pièce prise dans la référence interne (pas de code produit)",
@@ -104,6 +115,10 @@ class AppareilRapproche:
     raison: str = ''
     doutes: List[str] = field(default_factory=list)
     suspecte: str = ''                  # réf. qui ne ressemble pas à une réf. d'appareil
+    # Pourquoi la ligne demande un avis (cf. MOTIFS) ; '' = rien à décider
+    motif: str = ''
+    # Absent : même réf. exacte sous des marques HORS du groupe (Ikea, Elica…)
+    hors_groupe: List[str] = field(default_factory=list)
 
 
 @dataclass
