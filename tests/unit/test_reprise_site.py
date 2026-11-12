@@ -459,4 +459,27 @@ def test_fenetre_reprise_rendue_et_fiche_du_lot(qapp, tmp_path):
     assert not q.sans_reponse() and d.bouton_enregistrer.isEnabled(), d.etat.text()
     assert d.grab().width() > 0
     assert not (RACINE / 'data' / 'reprise_fiches.json').exists()
+    # Réglages : ceux du test, jamais ceux de l'application (chemins temporaires)
+    from PyQt5.QtCore import QSettings
+    import src.ui.reprise_site_dialog as fenetre
+    assert fenetre._reglages().value('reprise_site/export_produits') == p
+    assert 'pytest' not in str(QSettings("1001pieces", "autofill").value('reprise_site/export_produits', ''))
+    d.close()
+
+
+def test_chemins_disparus_jamais_proposes(qapp, tmp_path):
+    """Un export mémorisé (état de l'import, dernier choix) qui n'existe plus n'est pas
+    proposé : la fenêtre passe au suivant (cas d'un chemin temporaire de test)."""
+    from src.ui.reprise_site_dialog import RepriseSiteDialog, _reglages
+    b = Construite(tmp_path)
+    b.db.definir_export_reprise_site(
+        {'date_export': '2026-11-12T12:13:31', 'taille_produits': 1, 'taille_compatibilites': 1,
+         'chemin_produits': str(tmp_path / 'disparu_p.csv'),
+         'chemin_compatibilites': str(tmp_path / 'disparu_c.csv')}, True, '2026-11-12T12:20:42')
+    existant = _ecrire_csv(tmp_path / 'p.csv', ENTETE_P, [])
+    _reglages().setValue('reprise_site/export_produits', existant)
+    _reglages().setValue('reprise_site/export_compatibilites', str(tmp_path / 'disparu2.csv'))
+    d = RepriseSiteDialog(b.db, service=_service(b.db, tmp_path / 'regles.json'))
+    assert d.champ_produits.text() == existant
+    assert 'disparu' not in d.champ_compat.text()
     d.close()
