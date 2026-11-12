@@ -2571,6 +2571,18 @@ class MainWindow(QMainWindow):
         dialog = HistoryViewDialog(self.history_service, parent=self)
         dialog.show()
 
+    def _open_fiche_site_dialog(self):
+        """Lire une fiche du site (lien ou description collée) : aperçu puis
+        enregistrement après validation (CDC reprise des fiches, étape 3)."""
+        from .fiche_site_dialog import FicheSiteDialog
+        dialog = FicheSiteDialog(self.db_manager, main_window=self,
+                                 on_enregistre=self._apres_fiche_site)
+        dialog.show()
+
+    def _apres_fiche_site(self, ref_piece: str, _resultat):
+        """Fiche enregistrée : afficher la pièce dans la recherche."""
+        self._search_piece_from_history(ref_piece)
+
     def _export_supersession_chains(self):
         """Exporter les chaînes de supersession en CSV (F8)"""
         from ..services.supersession_report_service import SupersessionReportService

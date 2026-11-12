@@ -1,6 +1,6 @@
 # Cahier des charges — Reprise des fiches produit du site 1001pieces.com
 
-**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`) et étape 2 (rapprochement, `src/utils/rapprochement_fiche/`) réalisées le 2026-11-12
+**Statut :** En cours — conception validée le 2026-11-10 ; étape 1 (lecteur de description, `src/utils/lecteur_fiche/`), étape 2 (rapprochement, `src/utils/rapprochement_fiche/`) et étape 3 (aperçu et enregistrement d'une fiche) réalisées le 2026-11-12
 **Version :** 1.0
 **Contexte :** le site 1001pieces.com (PrestaShop) contient des milliers de fiches produit qui listent les appareils compatibles et les relations entre pièces (remplacements, équivalences). Une partie de ces fiches a été produite par l'outil (export « Fiche complète »), une autre a été écrite à la main dans le back-office. Ce document définit comment reprendre ces données dans l'outil, puis comment l'outil devient la passerelle qui alimente le site.
 
@@ -344,7 +344,7 @@ Toutes les colonnes sont nullables et sans valeur par défaut calculée : leur a
 | nouvelle `produits_site` | `ref_interne` (unique), `id_product`, `ref_piece` (pièce principale), `ean`, date de dernière lecture |
 | `piece_associations` | provenance du lien |
 | `piece_equivalence_groups` | étiquette d'origine, n° de ligne de la fiche |
-| nouvelle | état de la reprise (dernier `id_produit`, date de l'export) |
+| nouvelle | état de la reprise (dernier `id_produit`, date de l'export) — étape 4 |
 | nouvelle | décisions sur les formats et références écartées |
 | nouvelle | décisions sur les paires d'écritures d'appareils (marque, écriture A, écriture B, « même » ou « distinct ») |
 | configuration | table des formats, correspondance catégorie → type, préfixes de référence interne, groupes et alias de marques : `data/reprise_fiches.json` (défauts dans `src/utils/rapprochement_fiche/configuration.py`, copie dans `data/reprise_fiches.example.json`) — **fait à l'étape 2** |
@@ -415,6 +415,17 @@ Vérification : fiches d'exemple sur un extrait de la vraie base (`tests/fixture
 - Référence interne : 41,1 % « différente » (doute ; surtout des codes fournisseur), 37,6 % préfixée, 16,5 % égale, 4,6 % de la lignée.
 - Remplacements : 74,3 % nouveaux, 22,8 % déjà présents, 2,0 % confirmés par la chaîne, 9 conflits et 1 cycle. Équivalences : 91,9 % nouvelles.
 - Doutes les plus fréquents (en fiches) : référence interne différente (534), lecture (336), à valider (221), marque à choisir (150), origine inconnue (112).
+
+### 10.3 Aperçu et enregistrement — étape 3 (2026-11-12)
+
+- **Modèle (§ 9)** : `src/data/_db_mixins/fiches_site.py`. Tables `produits_site` (`ref_interne` clé, `id_product`, `ref_piece`, `ean`, `lu_le`), `decisions_ecritures` (clé de marque, écritures A < B, `meme` / `distinct`), `decisions_references` (`ref_piece`, référence, `ecartee` / `origine`, étiquette, forme de la référence pour l'apprentissage du § 5.5) ; colonnes `piece_associations.provenance`, `piece_equivalence_groups.origine` et `.ligne_fiche`. Le renommage et la suppression d'une pièce suivent `produits_site` et `decisions_references` ; la fusion de groupes garde les origines (UPDATE du `group_id`). L'état de la reprise (§ 7.3) est laissé à l'étape 4.
+- **Migration** sur une copie de la vraie base (API backup, 5 083 744 liens) : **0,01 s**, taille inchangée (999,7 Mo) ; toutes les colonnes nouvelles sont vides pour l'existant.
+- **Mémoires** : `rapprocher(…, memoires=True)` lit les décisions consignées (paires d'écritures, références écartées, étiquettes choisies) et compare la fiche à l'outil : EAN (à remplir / identique / différent = doute), référence interne déjà rattachée à une autre pièce (doute), référence interne changée sur le site pour le même `id_product` (mise à jour signalée), libellé de la pièce. Une ligne « à valider » dont **un seul** candidat est déjà lié à la pièce reprend ce choix sans le redemander. Les liens de provenance site absents de la fiche sont listés (`absents_de_la_fiche`), sauf liste tronquée.
+- **Libellé** (décision du 2026-11-12) : le titre de la fiche, sans « (photos non contractuelles) », devient le libellé d'une pièce qui n'en a pas ; un libellé différent est un doute (garder par défaut, ou prendre la fiche).
+- **Décisions et plan** (`src/utils/rapprochement_fiche/decisions.py`, sans Qt) : chaque élément appartient à une catégorie du résumé (exacts, normalisés, déjà couverts, à valider, absents, types manquants, remplacements et équivalences, conflits), validée en bloc, laissée de côté (rien n'est écrit, elle revient à la relecture) ou en attente. Un choix individuel l'emporte. Un élément validé sans proposition possible (appareil parmi plusieurs, création sans marque ou sans type) est « à compléter ». Rien ne s'enregistre tant qu'une catégorie est en attente ou qu'une ligne est à compléter. Choisir un appareil d'une autre écriture consigne « même » ; créer malgré une écriture proche consigne « distinct ».
+- **Enregistrement** (`EnregistrementFicheService`) par les briques du tronc d'import : `ImportManager._batch_insert_devices` pour les appareils, `import_relations.apply_relations` pour les remplacements (fantômes, obsolescence) et les équivalences (libellé propagé), invalidation des caches comme après un import, puis `EventDrivenSaveService.save_after_import`. Propres à la reprise : pièce fantôme → réelle, liens avec provenance (un lien présent ne fait que compléter sa provenance), origines, produit du site, décisions.
+- **Aperçu** : `src/ui/fiche_site_dialog.py`, menu Données → « Lire une fiche du site… » (lien téléchargé hors du thread principal, ou description collée).
+- **Vérification** (`tests/unit/test_enregistrement_fiche.py`, sans réseau) : les 3 fiches d'exemple enregistrées puis relues sans rien ajouter, sur l'extrait **et** sur une copie de la vraie base (`scripts/mesurer_migration_fiches.py --fiches`) ; 20744 : la fantôme devient réelle, aucun nouveau lien ; 20746 : 831 provenances complétées, aucun lien créé ; 7285 : pièce créée avec le titre pour libellé, remplacements terme à terme, origines BSH / Indesit et n° de ligne, `481949` écartée puis plus proposée.
 
 ---
 

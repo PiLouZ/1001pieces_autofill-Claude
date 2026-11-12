@@ -32,6 +32,9 @@ CATEGORIES_DOUTES = {
     'code_produit_absent': "pièce prise dans la référence interne (pas de code produit)",
     'ref_interne_differente': "référence interne sans rapport avec le code produit",
     'ean_invalide': "clé de contrôle EAN-13 fausse",
+    'ean_different': "EAN du site différent de celui de l'outil",
+    'ref_interne_autre_piece': "référence interne déjà rattachée à une autre pièce",
+    'libelle_different': "titre de la fiche différent du libellé de la pièce",
     # Appareils (§ 5.2, 5.6)
     'exact_multiple': "plusieurs appareils pour la même réf., type sans départage",
     'normalise_ambigu': "plusieurs écritures en base (doublon possible)",
@@ -71,6 +74,14 @@ class Identite:
     id_product: Optional[int] = None
     ean: str = ''
     statut_ean: str = ''                # 'valide', 'cle_fausse', ''
+    # Mémoires de l'outil (rapprocher(..., memoires=True), étape 3)
+    ean_outil: str = ''
+    statut_ean_outil: str = ''          # 'a_remplir', 'identique', 'different', ''
+    piece_du_produit: str = ''          # pièce qui porte déjà cette réf. interne
+    ref_interne_precedente: str = ''    # même id_product, autre réf. interne (changée sur le site)
+    libelle: str = ''                   # titre de la fiche, nettoyé
+    libelle_outil: str = ''
+    statut_libelle: str = ''            # 'a_remplir', 'identique', 'different', ''
 
 
 @dataclass
@@ -145,6 +156,9 @@ class Rapprochement:
     lignee: Dict[str, str] = field(default_factory=dict)    # ref → 'depart'/'succession'/'equivalence'
     doutes: List[Doute] = field(default_factory=list)
     liste_tronquee: bool = False        # aucun « absent » de la fiche n'est à tirer (§ 4.6)
+    # Liens de provenance site présents dans l'outil mais absents de la fiche :
+    # pour information (§ 6.2), vide si la liste est tronquée
+    absents_de_la_fiche: List[AppareilBase] = field(default_factory=list)
 
     def doutes_par_categorie(self) -> Dict[str, List[Doute]]:
         groupes: Dict[str, List[Doute]] = defaultdict(list)
@@ -167,4 +181,5 @@ class Rapprochement:
             'remplacements': dict(Counter(r.statut for r in self.remplacements)),
             'equivalences': dict(Counter(e.statut for e in self.equivalences)),
             'doutes': {c: len(v) for c, v in self.doutes_par_categorie().items()},
+            'absents_de_la_fiche': len(self.absents_de_la_fiche),
         }

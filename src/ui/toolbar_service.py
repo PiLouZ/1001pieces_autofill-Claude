@@ -199,6 +199,11 @@ class ToolbarService:
         )
         data_menu.addAction(suggest_action)
 
+        fiche_site_action = QAction("Lire une fiche du site…", self.main_window)
+        fiche_site_action.setToolTip("Reprendre une fiche produit du site : aperçu, validation, enregistrement")
+        fiche_site_action.triggered.connect(getattr(self.main_window, '_open_fiche_site_dialog', lambda: None))
+        data_menu.addAction(fiche_site_action)
+
         history_action = QAction("Historique des modifications…", self.main_window)
         history_action.setToolTip("Consulter l'historique persistant des modifications")
         history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))

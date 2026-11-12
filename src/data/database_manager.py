@@ -24,6 +24,7 @@ from ._db_mixins.pieces import DatabasePiecesMixin
 from ._db_mixins.appareils import DatabaseAppareilsMixin
 from ._db_mixins.historiques import DatabaseHistoriquesMixin
 from ._db_mixins.doublons import DatabaseDoublonsMixin
+from ._db_mixins.fiches_site import DatabaseFichesSiteMixin
 
 import sys
 import os
@@ -71,7 +72,8 @@ class SearchCache:
 
 class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetupMixin,
                       DatabaseAutocompletionMixin, DatabasePiecesMixin, DatabaseAppareilsMixin,
-                      DatabaseHistoriquesMixin, DatabaseDoublonsMixin):
+                      DatabaseHistoriquesMixin, DatabaseDoublonsMixin,
+                      DatabaseFichesSiteMixin):
     """Gestionnaire centralisé pour toutes les opérations de base de données"""
 
     def __init__(self, db_file: str = None):
@@ -1182,6 +1184,14 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 self.cursor.execute(
                     "UPDATE piece_equivalence_groups SET ref_piece = ? WHERE ref_piece = ?",
                     (new_ref_piece, old_ref_piece))
+                # Reprise des fiches du site (§ 9) : produit vendu et décisions
+                # consignées suivent la pièce
+                self.cursor.execute(
+                    "UPDATE produits_site SET ref_piece = ? WHERE ref_piece = ?",
+                    (new_ref_piece, old_ref_piece))
+                self.cursor.execute(
+                    "UPDATE decisions_references SET ref_piece = ? WHERE ref_piece = ?",
+                    (new_ref_piece, old_ref_piece))
                 # Une succession devenue réflexive (X → X) n'a aucun sens : elle
                 # apparaît si l'on renomme une pièce vers sa propre remplaçante.
                 self.cursor.execute(
@@ -1255,6 +1265,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             "DELETE FROM piece_supersessions WHERE ref_old = ? OR ref_new = ?",
             [ref_piece, ref_piece])
         self.cursor.execute("DELETE FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_piece])
+        self.cursor.execute("DELETE FROM produits_site WHERE ref_piece = ?", [ref_piece])
+        self.cursor.execute("DELETE FROM decisions_references WHERE ref_piece = ?", [ref_piece])
         self.cursor.execute("DELETE FROM pieces WHERE ref_piece = ?", [ref_piece])
         if commit:
             self.conn.commit()

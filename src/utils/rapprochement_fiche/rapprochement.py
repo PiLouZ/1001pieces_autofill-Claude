@@ -17,9 +17,15 @@ et où les doutes sont regroupés par catégorie, pour l'aperçu de l'étape 3.
   Whirlpool/Indesit, vérification de la chaîne avant de signaler un conflit.
 - Équivalences (§ 5.3, 5.5) : étiquette d'origine déduite du format.
 
-Les mémoires de décisions du § 9 (paires d'écritures, références écartées)
-n'existent pas encore en base : elles sont passées en paramètre.
+Mémoires du § 9 (étape 3) : passées en paramètre (décisions sur les paires
+d'écritures, références écartées, étiquettes choisies), ou lues dans la base
+avec `memoires=True`, qui ajoute aussi la comparaison avec le produit du site
+connu (réf. interne, EAN), le libellé de la pièce (titre de la fiche) et les
+liens de provenance site absents de la fiche (§ 6.2).
 """
+
+import re
+
 
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -39,6 +45,13 @@ from src.utils.rapprochement_fiche.resultat import (
 DecisionsPaires = Mapping[Tuple[str, FrozenSet[str]], str]
 
 _TYPES_EXPLICITES = ('table', 'ligne')
+_DOUTES_DE_CHOIX = ('normalise_ambigu', 'exact_multiple', 'a_valider', 'marque_a_choisir')
+_MENTIONS_TITRE = re.compile(r"\(\s*photos?\s+non\s+contractuelles?\s*\)", re.I)
+
+
+def libelle_depuis_titre(titre: str) -> str:
+    """Titre de la fiche sans « (photos non contractuelles) », pour le libellé de la pièce."""
+    return re.sub(r"\s+", " ", _MENTIONS_TITRE.sub(' ', titre or '')).strip(' -–')
 
 
 def rapprocher(lecture: LectureFiche, acces: AccesBaseLecture,
@@ -48,7 +61,9 @@ def rapprocher(lecture: LectureFiche, acces: AccesBaseLecture,
                id_product: Optional[int] = None,
                table_site: Iterable[LigneTableSite] = (),
                decisions_paires: Optional[DecisionsPaires] = None,
-               references_ecartees: Iterable[str] = ()) -> Rapprochement:
+               references_ecartees: Iterable[str] = (),
+               origines_choisies: Optional[Mapping[str, str]] = None,
+               memoires: bool = False) -> Rapprochement:
     """
     Rapproche une fiche lue avec la base (lecture seule).
 
@@ -57,6 +72,9 @@ def rapprocher(lecture: LectureFiche, acces: AccesBaseLecture,
         même nom sont vides (export SQL : passer les colonnes de l'export).
     table_site : lignes de compatibilité du site (export SQL complet) ; sinon
         celles de la page (1ʳᵉ page seulement).
+    origines_choisies : référence → étiquette d'origine choisie par l'utilisateur.
+    memoires : lire en base les décisions consignées (complétées par les
+        paramètres) et comparer la fiche au produit du site et à la pièce.
     """
     config = config or charger_configuration()
     if page is not None:
@@ -65,15 +83,17 @@ def rapprocher(lecture: LectureFiche, acces: AccesBaseLecture,
         categorie = categorie or page.categorie
         id_product = id_product if id_product is not None else page.id_product
         table_site = list(table_site) or list(page.table_site)
+    decisions = dict(acces.decisions_paires()) if memoires else {}
+    decisions.update(decisions_paires or {})
     return _Rapprochement(lecture, acces, config, ref_interne, ean, categorie, id_product,
-                          list(table_site), decisions_paires or {},
-                          set(references_ecartees)).executer()
+                          list(table_site), decisions, set(references_ecartees),
+                          dict(origines_choisies or {}), memoires).executer()
 
 
 class _Rapprochement:
 
     def __init__(self, lecture, acces, config, ref_interne, ean, categorie, id_product,
-                 table_site, decisions_paires, ecartees):
+                 table_site, decisions_paires, ecartees, origines, memoires=False):
         self.l: LectureFiche = lecture
         self.acces: AccesBaseLecture = acces
         self.config: ConfigurationRapprochement = config
@@ -84,6 +104,8 @@ class _Rapprochement:
         self.table_site: List[LigneTableSite] = table_site
         self.decisions = decisions_paires
         self.ecartees: Set[str] = ecartees
+        self.origines_choisies: Dict[str, str] = origines
+        self.memoires = memoires
         self.doutes: List[Doute] = []
         self.marques_outil = acces.marques()
         self.types_outil = acces.types()
@@ -95,6 +117,8 @@ class _Rapprochement:
     def executer(self) -> Rapprochement:
         identite = self._identite()
         principale = identite.ref_piece
+        if self.memoires and principale:
+            self._charger_decisions(principale)
         refs_fiche = self._refs_fiche(principale)
         # Lignée calculée une fois par fiche : celle de la base pour la pièce
         # seule (relations existantes), et celle de toute la fiche (couverture)
@@ -111,8 +135,67 @@ class _Rapprochement:
         for nc in self.l.non_compris:
             self._doute('lecture', f"{nc.nature} : {nc.texte or nc.detail}".strip(' :'),
                         f"bloc:{nc.bloc}" if nc.bloc is not None else '')
+        if self.memoires and principale:
+            self._comparer_a_l_outil(identite)
+            if not r.liste_tronquee:
+                r.absents_de_la_fiche = self._absents_de_la_fiche(principale, r.appareils)
         r.doutes = self.doutes
         return r
+
+    # =========================================================================
+    # Mémoires de l'outil (§ 5.1, 5.8, 6.2, 9)
+    # =========================================================================
+    def _charger_decisions(self, principale: str):
+        for ref, (nature, origine) in self.acces.decisions_references(principale).items():
+            if nature == 'ecartee':
+                self.ecartees.add(ref)
+            elif origine:
+                self.origines_choisies.setdefault(ref, origine)
+
+    def _comparer_a_l_outil(self, i: Identite):
+        # EAN (§ 5.1) : rangé avec le produit du site
+        produits = self.acces.produit_site(self.ref_interne, self.id_product)
+        par_ref = next((p for p in produits if p[0] == self.ref_interne), None)
+        if self.ref_interne and par_ref is not None and par_ref[2] and par_ref[2] != i.ref_piece:
+            i.piece_du_produit = par_ref[2]
+            self._doute('ref_interne_autre_piece',
+                        f"référence interne {self.ref_interne} rattachée à {par_ref[2]}, "
+                        f"la fiche la donne à {i.ref_piece}", 'identite')
+        if self.id_product is not None:
+            autre = next((p for p in produits if p[1] == self.id_product
+                          and p[0] != self.ref_interne), None)
+            if autre is not None and self.ref_interne:
+                i.ref_interne_precedente = autre[0]
+        connu = par_ref if par_ref is not None else next(
+            (p for p in produits if p[1] == self.id_product and self.id_product is not None), None)
+        i.ean_outil = (connu[3] or '') if connu else ''
+        if self.ean and i.statut_ean == 'valide':
+            if not i.ean_outil:
+                i.statut_ean_outil = 'a_remplir'
+            elif i.ean_outil == self.ean:
+                i.statut_ean_outil = 'identique'
+            else:
+                i.statut_ean_outil = 'different'
+                self._doute('ean_different',
+                            f"EAN {i.ean_outil} dans l'outil, {self.ean} sur le site", 'identite')
+        # Libellé de la pièce : titre de la fiche
+        i.libelle = libelle_depuis_titre(self.l.titre)
+        i.libelle_outil = self.acces.libelle(i.ref_piece) if i.statut != 'absente' else ''
+        if i.libelle:
+            if not i.libelle_outil:
+                i.statut_libelle = 'a_remplir'
+            elif i.libelle_outil.strip() == i.libelle:
+                i.statut_libelle = 'identique'
+            else:
+                i.statut_libelle = 'different'
+                self._doute('libelle_different',
+                            f"libellé « {i.libelle_outil} », fiche « {i.libelle} »", 'identite')
+
+    def _absents_de_la_fiche(self, principale: str, appareils: List[AppareilRapproche]):
+        # Un appareil de la fiche compte comme lu sous chacun de ses candidats
+        lus = {a.appareil_id if a.appareil_id is not None else a.proposition for a in appareils}
+        lus.update(c.id for a in appareils for c in a.candidats)
+        return [app for app, _ in self.acces.liens_site(principale) if app.id not in lus]
 
     def _refs_fiche(self, principale: Optional[str]) -> List[str]:
         refs = [principale] if principale else []
@@ -296,6 +379,9 @@ class _Rapprochement:
         element = f"equivalence:{e.reference}"
         if origine_fiche:
             e.origine, e.source_origine = origine_fiche, 'fiche'
+            return
+        if self.origines_choisies.get(e.reference):
+            e.origine, e.source_origine = self.origines_choisies[e.reference], 'decision'
             return
         if o.connue:
             e.origine, e.source_origine = o.etiquette, 'format'
@@ -542,6 +628,16 @@ class _Rapprochement:
             return
         ident = a.appareil_id if a.appareil_id is not None else a.proposition
         if ident is None:
+            # Choix déjà fait à une lecture précédente : un seul des candidats est
+            # lié à la pièce elle-même. Il est repris, sans redemander.
+            lies = [c for c in a.candidats if principale in self.liens.get(c.id, set())]
+            if len(lies) == 1:
+                a.appareil_id, a.lien = lies[0].id, 'deja_lie'
+                a.marque = a.marque or lies[0].marque
+                a.type = a.type or lies[0].type
+                a.raison += f" ; déjà lié à la pièce : {lies[0].marque} {lies[0].ref_modele}"
+                a.doutes = [d for d in a.doutes if d not in _DOUTES_DE_CHOIX]
+                return
             a.lien = ''
             return
         refs = self.liens.get(ident, set())

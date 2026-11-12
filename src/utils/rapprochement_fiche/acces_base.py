@@ -21,7 +21,7 @@ import sys
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 from src.data._db_mixins.supersession import DatabaseSupersessionMixin
 from src.utils.lecteur_fiche.lecteur import cle_marque
@@ -86,6 +86,7 @@ class AccesBaseLecture:
         self._index: 'OrderedDict[str, IndexMarque]' = OrderedDict()
         self._marques: Optional[Dict[str, str]] = None
         self._types: Optional[Dict[str, str]] = None
+        self._tables: Optional[Set[str]] = None
 
     @classmethod
     def ouvrir(cls, chemin) -> 'AccesBaseLecture':
@@ -269,3 +270,54 @@ class AccesBaseLecture:
                     f"JOIN pieces p ON p.id = pa.piece_id WHERE p.ref_piece IN ({q})", lot):
                 out[appareil_id].add(ref)
         return out
+
+    # --- Mémoires de la reprise (§ 9, étape 3) -----------------------------------
+    # Une base qui n'a pas encore été migrée (ouverte sans DatabaseManager) n'a
+    # ni ces tables ni ces colonnes : les lectures rendent alors du vide.
+    def _a_table(self, nom: str) -> bool:
+        if self._tables is None:
+            self._tables = {r for (r,) in self._lignes(
+                "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        return nom in self._tables
+
+    def _a_colonne(self, table: str, colonne: str) -> bool:
+        return self._a_table(table) and colonne in {
+            r[1] for r in self._lignes(f"PRAGMA table_info({table})")}
+
+    def decisions_paires(self) -> Dict[Tuple[str, FrozenSet[str]], str]:
+        """(clé de marque, {écriture A, écriture B}) → 'meme' / 'distinct'."""
+        if not self._a_table('decisions_ecritures'):
+            return {}
+        return {(m, frozenset((a, b))): d for m, a, b, d in self._lignes(
+            "SELECT marque, ecriture_a, ecriture_b, decision FROM decisions_ecritures")}
+
+    def decisions_references(self, ref_piece: str) -> Dict[str, Tuple[str, str]]:
+        """référence → (nature, origine) consignées pour la pièce."""
+        if not ref_piece or not self._a_table('decisions_references'):
+            return {}
+        return {r: (n, o or '') for r, n, o in self._lignes(
+            "SELECT reference, nature, origine FROM decisions_references WHERE ref_piece = ?",
+            [ref_piece])}
+
+    def produit_site(self, ref_interne: str = '', id_product: Optional[int] = None
+                     ) -> List[Tuple[str, Optional[int], Optional[str], Optional[str]]]:
+        """Produits connus par réf. interne ou id_product : (ref_interne, id_product, ref_piece, ean)."""
+        if not self._a_table('produits_site') or (not ref_interne and id_product is None):
+            return []
+        return self._lignes(
+            "SELECT ref_interne, id_product, ref_piece, ean FROM produits_site "
+            "WHERE ref_interne = ? OR id_product = ?", [ref_interne or None, id_product])
+
+    def libelle(self, ref_piece: str) -> str:
+        rows = self._lignes("SELECT description FROM pieces WHERE ref_piece = ?", [ref_piece])
+        return (rows[0][0] or '') if rows else ''
+
+    def liens_site(self, ref_piece: str) -> List[Tuple[AppareilBase, str]]:
+        """Liens de la pièce venus du site (provenance renseignée)."""
+        if not ref_piece or not self._a_colonne('piece_associations', 'provenance'):
+            return []
+        return [(AppareilBase(i, m or '', r or '', t or ''), prov) for i, m, r, t, prov in self._lignes(
+            "SELECT a.id, a.manufacturer, a.ref_modele, a.type, pa.provenance "
+            "FROM piece_associations pa JOIN pieces p ON p.id = pa.piece_id "
+            "JOIN appareils a ON a.id = pa.appareil_id "
+            "WHERE p.ref_piece = ? AND pa.provenance IS NOT NULL", [ref_piece])]

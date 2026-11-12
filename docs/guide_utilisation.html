@@ -176,6 +176,23 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <hr/>
 
+<h2>Reprendre une fiche du site</h2>
+<p>Menu <b>Données → Lire une fiche du site…</b> : l'outil lit une fiche produit de 1001pieces.com et propose d'en reprendre le contenu. <b>Rien n'est écrit avant « Enregistrer ».</b></p>
+<ul>
+  <li><b>Entrée</b> : collez le lien de la page publique et cliquez <b>Lire le lien</b>, ou <b>Coller une description</b> (HTML du back-office ou texte), puis <b>Lire la description</b>.</li>
+  <li><b>Carte de la pièce</b> : référence (1<sup>re</sup> du « Code produit »), statut (réelle, fantôme qui deviendra réelle, ou à créer), référence interne du site, <code>id_product</code>, EAN. Le <b>titre de la fiche</b> devient le libellé d'une pièce qui n'en a pas.</li>
+  <li><b>Résumé par catégorie</b> : exacts, normalisés, déjà couverts par la lignée, à valider, absents (appareils à créer), types manquants, remplacements et équivalences, conflits. Pour chaque catégorie, choisissez <b>Validée en bloc</b> (les propositions s'appliquent) ou <b>Laissée de côté</b> (rien n'est écrit, elle reviendra à la prochaine lecture). <b>Tout valider</b> valide toutes les catégories. Double-clic sur une catégorie : le détail est filtré dessus.</li>
+  <li><b>Types manquants</b> : choisissez un <b>type commun</b> dans le résumé, ou un type ligne par ligne.</li>
+  <li><b>Onglet Appareils</b> : le détail ligne à ligne, filtrable par catégorie, lien, provenance (description, table du site, les deux) et texte. Sélectionnez une ou plusieurs lignes, puis choisissez sous la table : l'appareil parmi les candidats, « Créer l'appareil », « Rattacher directement » (appareil déjà couvert par une ancienne référence), « Laisser de côté », la marque ou le type. <b>Appliquer</b> ; « Revenir à la proposition » annule le choix.</li>
+  <li><b>Onglet Relations</b> : remplacements (en cas de conflit, garder l'existant ou prendre la fiche) et équivalences, avec leur <b>étiquette d'origine</b> (BSH, Indesit…), modifiable, et le bouton <b>Écarter</b> pour une référence erronée : elle n'est plus proposée ensuite.</li>
+  <li><b>Onglet Pièce</b> : EAN différent (le site fait foi par défaut), titre différent du libellé (le libellé est gardé par défaut), référence interne déjà rattachée à une autre pièce.</li>
+  <li><b>Onglet Informations</b> : appareils liés dans l'outil (depuis une fiche du site) mais absents de cette fiche, pour information : <b>rien n'est retiré</b>. Rien n'est signalé si la liste de la fiche est tronquée.</li>
+  <li><b>Enregistrer</b> ne s'active que lorsque plus aucune catégorie n'est en attente et que chaque ligne validée a ce qu'il faut (un appareil choisi, une marque et un type pour une création). Après l'enregistrement, la pièce s'affiche dans la recherche.</li>
+  <li>Vos choix sont mémorisés : « même appareil » ou « appareils distincts » pour deux écritures proches, étiquettes saisies, références écartées. Relire une fiche déjà reprise n'ajoute rien.</li>
+</ul>
+
+<hr/>
+
 <h2>Raccourcis clavier</h2>
 <p>Sous Windows : <b>Ctrl</b> à la place de <b>Cmd</b>.</p>
 
@@ -219,6 +236,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
 <ul>
+  <li>Reprise des fiches du site : menu <b>Données → Lire une fiche du site…</b>. À partir du lien d'une fiche ou de sa description, l'outil montre ce qu'il reprendrait (appareils, remplacements, équivalences avec leur origine, référence interne, EAN, libellé tiré du titre), catégorie par catégorie, et n'enregistre qu'après votre validation. Les liens gardent leur provenance (description, table du site), vos choix sont mémorisés, et relire une fiche n'ajoute rien.</li>
   <li>Appellations des appareils : la méta description peut citer l'appareil sous un autre nom, par exemple « machine à laver » pour « lave-linge » ou « plaque de cuisson » pour « plaque ». Le choix est fixe pour une référence. Le méta title et les titres gardent le type en base : une case dans l'onglet Appareils pour le méta title, et une case par gabarit dans l'onglet Titre (pour un gabarit repris dans une description, par exemple). Listes modifiables dans <i>Configuration des exports</i>, nouvel onglet <b>Appareils</b>. « Une hotte », « une plaque » : l'article s'accorde désormais au genre de l'appareil.</li>
 </ul>
 <h3>Versions livrées</h3>
