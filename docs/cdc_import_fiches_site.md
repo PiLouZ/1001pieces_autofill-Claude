@@ -15,7 +15,9 @@ L'outil CompatsRadar (artefact du technicien) a servi de point de départ : il l
 - Ne rien écraser ni supprimer : l'import **ajoute** des données. Tout doute est **validé par l'utilisateur**.
 - Faire de l'outil la référence pour les appareils, les compatibilités et les relations entre pièces, puis régénérer les descriptions du site avec les gabarits « Fiche complète ».
 
-**Hors périmètre :** l'alimentation d'EveryParts (l'export actuel des compatibilités suffit, car EveryParts crée les appareils à la volée) et ServiceNet (portail Whirlpool, cité seulement comme illustration).
+- Garder, pour chaque pièce reprise du site, **la référence produit interne** du site, pour que l'export EveryParts se fasse sans ressaisie (§ 5.8).
+
+**Hors périmètre :** un nouveau format d'export EveryParts (l'export actuel des compatibilités suffit, car EveryParts crée les appareils à la volée ; il est seulement pré-rempli, § 8.2) et ServiceNet (portail Whirlpool, cité seulement comme illustration).
 
 ---
 
@@ -54,7 +56,9 @@ Les relations entre pièces (remplacements, équivalences) n'existent **que dans
 La page publique d'une fiche contient tout ce qu'il faut, sans accès à la base :
 - la **description** balisée (§ 4.1) ;
 - la **table des compatibilités** EveryParts (bloc `ucpt-table`), quand elle existe : type, marque, `réf - nom` pour chaque appareil ;
-- la **catégorie** du produit dans les métadonnées (par exemple « Pompe de vidange - Lave-linge »).
+- la **catégorie** du produit dans les métadonnées (par exemple « Pompe de vidange - Lave-linge ») ;
+- la **référence produit interne**, dans le bloc `.product-reference` (`<span class="js-product-reference">EL1113161010</span>`) et dans les métadonnées (`sku`, `mpn`), ainsi que l'**EAN** (`gtin13`) quand il existe ;
+- l'**`id_product`** PrestaShop, au début du nom de la page (`…/20746-regulateur-de-debit-….html`).
 
 Il est aussi possible de coller la description (le HTML du back-office ou le texte).
 
@@ -135,10 +139,10 @@ Une fiche exportée par l'outil peut avoir une liste d'appareils réduite par la
 ### 5.1 Identité de la pièce
 
 - `ref_piece` = **la 1ʳᵉ référence du « Code produit »**.
-- `p.reference` (PrestaShop) sert de secours quand la ligne manque. Un écart entre les deux est un doute : la référence interne du site peut varier.
+- `p.reference` (PrestaShop, la référence produit interne, § 5.8) sert de secours quand la ligne manque. Elle porte souvent un **préfixe** (`EL1113161010`, `GAU11051894`) : la comparaison avec le code produit se fait **préfixe retiré**, à partir d'une liste de préfixes connus tenue en configuration. Un écart qui subsiste est un doute.
 - Les références suivantes du « Code produit » (Indesit, Beko…) sont **équivalentes** à la pièce. Elles n'ont pas forcément la même liste d'appareils : **la liste de la fiche s'attache à la pièce principale seule**.
 - Une pièce présente en base comme **fantôme** (`is_phantom = 1`) devient une pièce réelle quand elle correspond à un produit du site. Ses liens hérités ne changent pas.
-- **EAN :** nouvelle colonne `pieces.ean`, vide par défaut. C'est une donnée commerciale, donc le site fait foi :
+- **EAN :** rangé avec le produit du site (§ 5.8), et non sur la pièce. C'est une donnée commerciale, donc le site fait foi :
 
 | Situation | Action |
 |---|---|
@@ -147,7 +151,7 @@ Une fiche exportée par l'outil peut avoir une liste d'appareils réduite par la
 | EAN différent | doute |
 | clé de contrôle EAN-13 fausse | signalé, non enregistré |
 
-Attention aux produits génériques : leur EAN peut être celui du générique et non de la pièce d'origine. Une incohérence est un doute.
+Ranger l'EAN avec le produit règle le cas des génériques : l'EAN du produit 7285 (`8015250275551`) est celui du **produit vendu**, sans rien affirmer sur la pièce d'origine `481073071153`.
 
 ### 5.2 Appareils
 
@@ -223,6 +227,32 @@ La description ne donne pas le type, et certaines fiches mélangent plusieurs ty
 
 Les liens pièce → appareil sont **l'union** de la description et de la table du site. Une nouvelle colonne de provenance sur `piece_associations` prend la valeur « description », « table du site » ou « les deux ». Elle reste vide pour les liens existants (PDF, CSV, saisie). Un lien déjà présent ne crée pas de doublon (`UNIQUE(piece_id, appareil_id)`) : seule sa provenance est complétée.
 
+### 5.8 Produit du site et référence interne
+
+Chaque pièce reprise du site garde en mémoire **le produit du site qui la vend** :
+
+| Donnée | Source export SQL | Source page | Exemple |
+|---|---|---|---|
+| Référence produit interne | `p.reference` | `.product-reference`, `sku` | `EL1113161010` |
+| `id_product` | `p.id_product` | début du nom de la page | `20746` |
+| EAN | `p.ean13` | `gtin13` | `7321423021278` |
+| Date de la dernière lecture | date de l'export | date de lecture | — |
+
+Exemples observés :
+
+| Produit | Code produit (= `ref_piece`) | Référence interne |
+|---|---|---|
+| 7285 | `481073071153` | `481073071153` (sans préfixe) |
+| 20746 | `1113161010` | `EL1113161010` |
+| 20744 | `11051894` | `GAU11051894` |
+
+Règles :
+- La référence interne est toujours **lue** sur le site, jamais reconstruite à partir d'un préfixe. Le préfixe varie et n'est pas déductible de façon sûre.
+- Elle se rattache à la **pièce principale** (1ʳᵉ réf. du code produit). Les équivalentes et les fantômes n'ont pas de produit, sauf s'ils sont eux-mêmes vendus sur le site.
+- **Une pièce peut avoir plusieurs produits** : par exemple une pièce d'origine et un générique, qui citent le même code produit. D'où une petite table dédiée plutôt qu'une colonne sur `pieces` (§ 9). Une référence interne n'appartient qu'à **une** pièce : si elle change de pièce à la relecture, c'est un doute.
+- Données commerciales : **le site fait foi** (§ 6.1). Une référence interne qui change sur le site met à jour l'outil, avec signalement dans l'aperçu.
+- Une pièce saisie dans l'outil sans produit sur le site n'a pas de référence interne. L'export EveryParts garde alors la saisie manuelle actuelle (§ 8.2).
+
 ---
 
 ## 6. Qui fait foi, relecture
@@ -232,7 +262,7 @@ Les liens pièce → appareil sont **l'union** de la description et de la table 
 | Donnée | Fait foi |
 |---|---|
 | Appareils, compatibilités, remplacements, équivalences | l'outil |
-| Nom du produit, prix, stock, catégorie, EAN | le site |
+| Nom du produit, prix, stock, catégorie, EAN, référence interne, `id_product` | le site |
 
 ### 6.2 Relire une fiche déjà importée
 
@@ -270,13 +300,26 @@ Le tout passe par le tronc commun d'import et par `EventDrivenSaveService` (conv
 
 ---
 
-## 8. Retour vers le site
+## 8. Retour vers le site et EveryParts
+
+### 8.1 Description du site
 
 L'export « Fiche complète » (`src/utils/fiche_produit_generator.py`) produit déjà le format du site. Il reste deux écarts à combler :
 1. **une ligne « Références équivalentes » par origine**, alors qu'elles sont aujourd'hui toutes sur une ligne (`toutes_equivalentes`). On regroupe par étiquette, puis par ligne mémorisée ;
 2. **la paire dans le code produit**, par exemple `481073071153 C00319033`, alors que le gabarit n'en porte aujourd'hui qu'une (`{reference}`).
 
 La structure reste modifiable par les gabarits, comme pour les exports HTML. Les références écartées (§ 5.3) disparaissent de la fiche régénérée.
+
+### 8.2 Export EveryParts
+
+Aujourd'hui, la colonne `product` du CSV EveryParts vaut `{export_ref}` : la référence saisie ou confirmée dans le dialogue d'export (`ExportManager._handle_single_reference_dialog`), qui propose par défaut le terme recherché (par exemple `1113161010`). L'utilisateur doit taper `EL1113161010` lui-même.
+
+Avec la référence interne en mémoire (§ 5.8) :
+- le dialogue **propose la référence interne** du produit de la pièce. Elle reste modifiable ;
+- si la pièce a **plusieurs produits**, le dialogue propose de choisir le produit ;
+- s'il n'y en a aucun, le comportement actuel est conservé ;
+- la recherche par une ancienne référence (lignée) propose la référence interne de la **pièce courante**. Exemple : rechercher `00703010` propose `GAU11051894` ;
+- une nouvelle variable de gabarit `{ref_interne}` (et `{id_product}`) est disponible dans la configuration des colonnes et du nom de fichier CSV. Le format par défaut ne change pas.
 
 ---
 
@@ -286,12 +329,14 @@ Toutes les colonnes sont nullables et sans valeur par défaut calculée : leur a
 
 | Table | Ajout |
 |---|---|
-| `pieces` | `ean` |
+| nouvelle `produits_site` | `ref_interne` (unique), `id_product`, `ref_piece` (pièce principale), `ean`, date de dernière lecture |
 | `piece_associations` | provenance du lien |
 | `piece_equivalence_groups` | étiquette d'origine, n° de ligne de la fiche |
 | nouvelle | état de la reprise (dernier `id_produit`, date de l'export) |
 | nouvelle | décisions sur les formats et références écartées |
-| configuration | table des formats, correspondance catégorie → type |
+| configuration | table des formats, correspondance catégorie → type, préfixes de référence interne |
+
+`produits_site.ref_piece` suit les renommages de pièce comme les autres tables à référence texte (`piece_supersessions`, `piece_equivalence_groups`).
 
 ---
 
@@ -302,7 +347,7 @@ Chaque étape peut être testée seule :
 2. **Rapprochement** avec la base : niveaux, lignée, formats, type.
 3. **Aperçu et enregistrement** d'une fiche, avec les colonnes du § 9.
 4. **Import en masse** par lots, résumé, reprise.
-5. **Export** : une ligne par origine, paire dans le code produit.
+5. **Export** : une ligne par origine, paire dans le code produit, référence interne proposée dans l'export EveryParts.
 
 ---
 
@@ -334,5 +379,6 @@ Chaque étape peut être testée seule :
 | Qui fait foi | l'outil pour les relations, le site pour le commercial |
 | Lecture | tous les profils Fiche, HTML normalisé, repli texte |
 | Masse | lots de 100, résumé par catégorie, détail filtrable, reprise |
-| EAN | conservé sur la pièce, le site fait foi |
+| EAN | conservé avec le produit du site, le site fait foi |
+| Référence interne | gardée pour chaque produit du site (avec `id_product`), proposée à l'export EveryParts |
 | Retour vers le site | gabarits Fiche complète, une ligne par origine, paire |
