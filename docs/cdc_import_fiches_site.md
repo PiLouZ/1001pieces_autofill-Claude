@@ -210,7 +210,7 @@ La table est tirée des pièces de la base (marque dominante des appareils liés
 | `00` + 6 chiffres | BSH (ancien format) |
 | 8 chiffres commençant par `10`, `11`, `12`, `17`, `20` | BSH |
 | 8 chiffres commençant par `41`, `43`, `49`, `70`, `91`, `92`, `93` | Candy (Hoover, Rosières) |
-| 10 chiffres commençant par `17`, `18`, `28` | Beko |
+| 10 chiffres commençant par `17`, `18`, `28`, `29`, `42` à `49`, `57` à `59`, `61`, ou par `151`, `190`, `191`, `244` à `249`, `270`, `271`, `917` à `919` | Beko |
 | 10 chiffres, autres débuts | Electrolux |
 | 11 chiffres commençant par `50`, 12 chiffres commençant par `14` | Electrolux |
 | 9 chiffres commençant par `61`, `71`, `74`, `95` | Liebherr |
@@ -223,7 +223,9 @@ La table est tirée des pièces de la base (marque dominante des appareils liés
 
 La base compte 407 références Brandt de la forme « 2 chiffres + `X` + 4 chiffres », et 2 avec un `S` à la place du `X` (`71S7962`, `71S8574`), à confirmer.
 
-Cas mélangés, donc des doutes : 10 chiffres commençant par `15` (Electrolux ou Beko), 8 chiffres commençant par `42` (Candy ou Sharp), 8 chiffres commençant par `32` (Sharp ?), 9 chiffres commençant par `16` ou `26` (Beko ?).
+Les débuts Beko ajoutés le 2026-11-13 (`2466300203` était lue Electrolux) sont ceux où la base ne compte que des pièces Beko (129 pièces) ; les débuts mélangés (`140`, `142`, `146`, `192`, `220`, `227`) restent Electrolux.
+
+Cas mélangés, donc des doutes : 10 chiffres commençant par `15`, hors `151` (Electrolux ou Beko), 8 chiffres commençant par `42` (Candy ou Sharp), 8 chiffres commençant par `32` (Sharp ?), 9 chiffres commençant par `16` ou `26` (Beko ?).
 
 **Apprentissage :** les choix de l'utilisateur sur les cas inconnus sont consignés, comme le font déjà `reference_decisions` et `refus_completions`. Une série de choix identiques sur une même forme devient une **règle proposée**, ajoutée à la table seulement après validation.
 

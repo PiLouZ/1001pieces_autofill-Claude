@@ -31,13 +31,17 @@
       "doute": "Sharp ?"
     },
     {
+      "motif": "(?:151|19[01]|24[4-9]|27[01]|91[7-9])\\d{7}",
+      "origine": "Beko"
+    },
+    {
+      "motif": "(?:17|18|28|29|4[2-9]|5[7-9]|61)\\d{8}",
+      "origine": "Beko"
+    },
+    {
       "motif": "15\\d{8}",
       "origine": "",
       "doute": "Electrolux ou Beko"
-    },
-    {
-      "motif": "(?:17|18|28)\\d{8}",
-      "origine": "Beko"
     },
     {
       "motif": "\\d{10}",

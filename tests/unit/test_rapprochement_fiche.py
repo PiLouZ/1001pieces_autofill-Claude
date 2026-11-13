@@ -460,7 +460,7 @@ class TestEquivalences:
         b.groupe(2, '11051894')
         b.remplace('00703010', 'P')
         fiche = _fiche(code=('P', 'C00319033'),
-                       equivalentes=[('00145522', '11051894'), ('00703010',), ('1512345678',),
+                       equivalentes=[('00145522', '11051894'), ('00703010',), ('1522345678',),
                                      ('481949',)],
                        refs_marque=[('EGO', ('55.13059.010',))])
         r = _r(b, fiche, references_ecartees=('481949',))
@@ -470,12 +470,12 @@ class TestEquivalences:
             '00145522': ('deja_dans_le_groupe', 'BSH', 'format'),
             '11051894': ('fusion_groupes', 'BSH', 'format'),
             '00703010': ('dans_la_succession', 'BSH', 'format'),
-            '1512345678': ('nouveau', '', ''),
+            '1522345678': ('nouveau', '', ''),
             '481949': ('ecartee', '', ''),
             '55.13059.010': ('nouveau', 'EGO', 'fiche'),
         }
         doutes = r.doutes_par_categorie()
-        assert [d.element for d in doutes['origine_ambigue']] == ['equivalence:1512345678']
+        assert [d.element for d in doutes['origine_ambigue']] == ['equivalence:1522345678']
         assert 'origine_inconnue' not in doutes         # 481949 écartée : plus demandée
 
     def test_ligne_melangee(self):
@@ -533,15 +533,28 @@ class TestConfiguration:
         ('611234567', 'Liebherr'), ('691234567', 'Smeg'), ('1234567', 'Miele'),
         ('012345', 'Atlantic / Thermor'), ('92X6108', 'Brandt'), ('AS0012345', 'Brandt'),
         ('DD82-01234A', 'Samsung'), ('ADQ12345678', 'LG'),
-        ('1512345678', ''), ('42123456', ''), ('32123456', ''), ('161234567', ''),
+        ('1522345678', ''), ('42123456', ''), ('32123456', ''), ('161234567', ''),
         ('71S7962', ''), ('481949', ''),
     ])
     def test_formats(self, ref, origine):
         assert CONFIG.origine(ref).etiquette == origine
 
     def test_cas_melanges_signales(self):
-        assert CONFIG.origine('1512345678').doute == 'Electrolux ou Beko'
+        assert CONFIG.origine('1522345678').doute == 'Electrolux ou Beko'
         assert not CONFIG.origine('481949').doute
+
+    @pytest.mark.parametrize('ref, origine', [
+        # Débuts Beko où la base ne compte que des pièces Beko (2026-11-13)
+        ('2466300203', 'Beko'), ('2448000100', 'Beko'), ('2912345600', 'Beko'),
+        ('4331234500', 'Beko'), ('5781234500', 'Beko'), ('6101234500', 'Beko'),
+        ('1511234500', 'Beko'), ('1911234500', 'Beko'), ('2711234500', 'Beko'),
+        ('9181234500', 'Beko'),
+        # Débuts Electrolux voisins ou mélangés : inchangés
+        ('2426000100', 'Electrolux'), ('4051234500', 'Electrolux'), ('5561234500', 'Electrolux'),
+        ('1461234500', 'Electrolux'), ('2271234500', 'Electrolux'), ('9161234500', 'Electrolux'),
+    ])
+    def test_formats_beko(self, ref, origine):
+        assert CONFIG.origine(ref).etiquette == origine
 
     def test_prefixes(self):
         assert CONFIG.sans_prefixe('EL1113161010', '1113161010') == ('1113161010', 'EL')
