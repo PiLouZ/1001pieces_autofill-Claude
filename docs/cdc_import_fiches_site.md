@@ -168,13 +168,14 @@ Un appareil est cherché par **marque + réf. modèle**, en deux passes : **ponc
 | Normalisé | pas de correspondance exacte, **un seul** candidat à la ponctuation près, pas de décision contraire | proposé, validable en bloc dans le résumé ; l'écriture de la base est gardée |
 | Normalisé ambigu | plusieurs écritures en base pour la même forme normalisée | doute : l'utilisateur choisit l'appareil, ou signale un doublon existant |
 | Déjà couvert | l'appareil est déjà lié à une autre référence de la lignée de la pièce (prédécesseur, successeur ou équivalente) | **pas de nouveau lien** ; rattachement direct possible sur demande dans l'aperçu |
-| À valider | référence trouvée sous une autre marque du groupe ou un autre type, ou seulement par le nom commercial | l'utilisateur choisit |
+| À valider | référence trouvée sous une autre marque du groupe, ou seulement par le nom commercial | l'utilisateur choisit |
 | Absent | aucun candidat, ni exact ni normalisé | création de l'appareil, validée dans l'aperçu |
 
 - **Pas de création si un candidat normalisé existe.** Un appareil n'est créé que si les deux passes échouent : c'est ce qui empêche les doublons.
 - **Les décisions sont mémorisées.** Quand l'utilisateur dit qu'une écriture est « le même appareil » ou « un appareil distinct », la décision est gardée pour la paire d'écritures et n'est plus redemandée. La table `reference_decisions` existante porte sur une **même** référence exacte partagée par plusieurs appareils (2 117 décisions `DISTINCT`) : il faut une mémoire du même genre pour les **paires d'écritures** (§ 9).
 - **Doublons existants :** les 467 cas déjà en base ne sont pas corrigés par l'import. Ils apparaissent en « normalisé ambigu » quand une fiche les touche, et leur nettoyage passe par l'outil de doublons existant.
-- **Le nom commercial n'est jamais écrasé** à partir d'une fiche.
+- **Le nom commercial n'est jamais écrasé sans un clic de l'utilisateur** (décision du 2026-11-12, § 10.11). Un nom vide dans l'outil est complété depuis la fiche.
+- **Appareil connu, champ différent** (§ 10.11) : même marque et même réf. (ou à la ponctuation près), mais un autre type, une autre écriture de la réf., un autre nom commercial ou une autre marque du groupe sur la fiche. L'appareil est relié ; l'outil est gardé par défaut et l'utilisateur prend la valeur du site d'un clic, cas par cas ou pour tous les cas identiques.
 - La lignée se calcule **une fois par fiche** (chaîne de remplacements et groupe d'équivalence), et non une fois par appareil.
 
 Cas observé : la fiche BSH `11051894` liste 450 appareils. Dans l'outil, ce sont exactement les liens de ses 4 prédécesseurs (306 + 2 + 20 + 122). Ils sont tous « déjà couverts » : rien n'est ajouté.
@@ -421,7 +422,7 @@ Vérification : fiches d'exemple sur un extrait de la vraie base (`tests/fixture
 - **Modèle (§ 9)** : `src/data/_db_mixins/fiches_site.py`. Tables `produits_site` (`ref_interne` clé, `id_product`, `ref_piece`, `ean`, `lu_le`), `decisions_ecritures` (clé de marque, écritures A < B, `meme` / `distinct`), `decisions_references` (`ref_piece`, référence, `ecartee` / `origine`, étiquette, forme de la référence pour l'apprentissage du § 5.5) ; colonnes `piece_associations.provenance`, `piece_equivalence_groups.origine` et `.ligne_fiche`. Le renommage et la suppression d'une pièce suivent `produits_site` et `decisions_references` ; la fusion de groupes garde les origines (UPDATE du `group_id`). L'état de la reprise (§ 7.3) est laissé à l'étape 4.
 - **Migration** sur une copie de la vraie base (API backup, 5 083 744 liens) : **0,01 s**, taille inchangée (999,7 Mo) ; toutes les colonnes nouvelles sont vides pour l'existant.
 - **Mémoires** : `rapprocher(…, memoires=True)` lit les décisions consignées (paires d'écritures, références écartées, étiquettes choisies) et compare la fiche à l'outil : EAN (à remplir / identique / différent = doute), référence interne déjà rattachée à une autre pièce (doute), référence interne changée sur le site pour le même `id_product` (mise à jour signalée), libellé de la pièce. Une ligne « à valider » dont **un seul** candidat est déjà lié à la pièce reprend ce choix sans le redemander. Les liens de provenance site absents de la fiche sont listés (`absents_de_la_fiche`), sauf liste tronquée.
-- **Libellé** (décision du 2026-11-12) : le titre de la fiche, sans « (photos non contractuelles) », devient le libellé d'une pièce qui n'en a pas ; un libellé différent est un doute (garder par défaut, ou prendre la fiche).
+- **Libellé** (décision du 2026-11-12) : le titre de la fiche, sans « (photos non contractuelles) », devient le libellé d'une pièce qui n'en a pas ; un libellé différent est un doute (garder par défaut, ou prendre la fiche). Depuis le § 10.11, le titre est coupé avant « pour <type d'appareil> ».
 - **Décisions et plan** (`src/utils/rapprochement_fiche/decisions.py`, sans Qt) : chaque élément appartient à une catégorie du résumé (exacts, normalisés, déjà couverts, à valider, absents, types manquants, remplacements et équivalences, conflits), validée en bloc, laissée de côté (rien n'est écrit, elle revient à la relecture) ou en attente. Un choix individuel l'emporte. Un élément validé sans proposition possible (appareil parmi plusieurs, création sans marque ou sans type) est « à compléter ». Rien ne s'enregistre tant qu'une catégorie est en attente ou qu'une ligne est à compléter. Choisir un appareil d'une autre écriture consigne « même » ; créer malgré une écriture proche consigne « distinct ».
 - **Enregistrement** (`EnregistrementFicheService`) par les briques du tronc d'import : `ImportManager._batch_insert_devices` pour les appareils, `import_relations.apply_relations` pour les remplacements (fantômes, obsolescence) et les équivalences (libellé propagé), invalidation des caches comme après un import, puis `EventDrivenSaveService.save_after_import`. Propres à la reprise : pièce fantôme → réelle, liens avec provenance (un lien présent ne fait que compléter sa provenance), origines, produit du site, décisions.
 - **Aperçu** : `src/ui/fiche_site_dialog.py`, menu Données → « Lire une fiche du site… » (lien téléchargé hors du thread principal, ou description collée).
@@ -507,7 +508,7 @@ Rien de douteux ne s'écrit sans la réponse à sa question. Tant qu'une questio
 | Clé | Question | Proposé |
 |---|---|---|
 | R1 | même réf. sous une autre marque du groupe = même appareil ? | oui |
-| R2 | appareil classé sous un autre type sur le site : le relier (type de l'outil gardé) ? | oui |
+| ~~R2~~ | ~~appareil classé sous un autre type sur le site : le relier (type de l'outil gardé) ?~~ Retirée le 2026-11-12 : l'appareil est relié, son type devient un écart (§ 10.11) | — |
 | R3 | même nom commercial, réf. différente : nouvel appareil ? | créer |
 | R4:A\|B | même réf. sous une marque hors du groupe : B est-il du groupe de A ? | — |
 | R5 | réf. produit sans rapport avec le code produit : la garder ? | garder |
@@ -642,6 +643,59 @@ Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_r
 - aperçu d'export de 7285 rendu hors écran ;
 - suite complète (1 991 tests), `compileall`, lancement de `run.py`.
 
+### 10.11 Trois correctifs avant la refonte de l'ergonomie (2026-11-13)
+
+**1. Libellé coupé au type d'appareil** (`src/utils/rapprochement_fiche/coupe_titre.py`, `libelle_depuis_titre`) :
+- Le libellé garde ce qui précède « pour <type> ». Les types reconnus sont ceux de l'onglet Appareils et toutes leurs appellations (actives ou non), au singulier ou au pluriel, avec un tiret ou une espace, sans accents ni casse : « machine à laver » = lave-linge, « refrigerateur » est reconnu.
+- Les types bruts de la base (« Porte », « Filtre », « Accessoires ») ne servent pas : « Joint pour porte de four » reste entier.
+- Ce qui suit le type est retiré (« (pièce générique) », « et cuisinière », « (lot de 2) »). Une caractéristique chiffrée hors parenthèses est gardée à la suite (choix B de l'utilisateur) : « Résistance pour sèche linge 1900W » → « Résistance 1900W ».
+- Même règle pour la fiche seule et pour le lot (le rapprochement est commun). Les appellations viennent de la configuration des exports (`ConfigurationRapprochement.appellations_appareils`, renseignée par `EnregistrementFicheService`).
+- Un libellé écrit en entier par une reprise antérieure (statut `ancienne_regle`) est remplacé sans question.
+- **Mesure sur l'export complet** (13 296 titres) : **8 960 coupés (67,4 %)**. 757 titres ont « pour » suivi d'autre chose (« pour porte de four », « pour panier de lave-vaisselle », fautes « sèche-ligne », « lave-vaisseille ») et restent entiers. 132 titres gardent leur fin chiffrée (« Thermostat A13-0135-A266 », « Spot halogène 20W G4 12V »).
+- **Coupes douteuses relevées** :
+  - « Vis de fixation pour plaque métallique HPF120 sur hotte » donne « Vis de fixation métallique HPF120 sur hotte » (« plaque » pris pour le type) ;
+  - « FILTRE À GRAISSE pour hotte ariston 275x217 mm » donne « FILTRE À GRAISSE ariston 275x217 mm » (la marque reste) ;
+  - « machine à expresso » n'est pas reconnu (l'appellation est « machine expresso ») ;
+  - 1 037 libellés n'ont plus qu'un mot (« Pressostat ») : voulu, le Titre ajoute le type.
+
+**2. Appareil connu, champ différent** (fiche et lot, même moteur) :
+- **Rapprochement** : `AppareilRapproche.ecarts`, une liste d'`Ecart(champ, outil, site, appareil_id)` sur l'appareil désigné par la ligne (retenu, proposé, ou seul candidat de même réf. sous une marque du groupe). Les champs comparés :
+  - le type (table du site ou ligne) ;
+  - la marque, seulement dans un même groupe et seulement si elle vient d'un en-tête ou de la table ;
+  - l'écriture de la réf. (à la ponctuation près) ;
+  - le nom commercial.
+- **Bruit écarté sur les noms** : pas d'écart à un ou deux caractères de fin près (indice de version : « AZB 82001 » / « AZB8200 »), ni quand le nom lu contient un code de 9 chiffres ou plus (liste d'appareils lue comme un nom, fiches 7146 et 7169).
+- **R2 disparaît.** Un appareil classé sous un autre type est relié (niveau exact ou normalisé, sans doute) avec le type de l'outil ; le type du site devient un écart. Une règle R2 déjà mémorisée est ignorée.
+- **Choix** : `DecisionsFiche.champs[(ligne, champ)]` vaut `outil` ou `site`. Sans choix, l'outil est gardé, rien n'est écrit, et l'écart revient à la relecture. Un champ vide dans l'outil (nom commercial) prend la fiche sans question.
+- **Lot** : `QuestionnaireLot.ecarts`, des `GroupeEcart` par cas identiques : clé `E:type:<outil>→<site>`, `E:marque:…`, `E:ref`, `E:nom`.
+  - Une réponse vaut pour tout le groupe ; un choix par ligne (`E:…@fiche:ligne`, ou fait dans l'aperçu de la fiche) l'emporte.
+  - Un écart ne bloque jamais le lot, et « Accepter les propositions » n'y répond pas.
+- **Écriture** :
+  - « prendre le site » donne `plan.maj_appareils` (id → colonnes). L'écriture se fait après le lot, sur le thread principal, par `EventDrivenSaveService.enregistrer_champs_appareils` (`save_cells_batch`). Sans fenêtre (scripts, tests), c'est la même `update_multiple_cells_batch` ;
+  - « garder l'outil » est mémorisé dans la table `decisions_champs(appareil_id, champ, valeur_site)`. La relecture ne repropose plus cette valeur du site ; une autre valeur est reproposée.
+- **Écran** (`questions_reprise.py`, panneau commun) : une section « Appareils connus, valeur différente sur le site » et une carte par groupe.
+  - Chaque cas s'affiche sur deux lignes, Outil puis Site. La valeur qui diffère est un bouton ambre ; celle gardée est verte (trait fin quand elle est gardée par défaut) ; l'autre est barrée.
+  - En bas de carte : « Garder l'outil (N) » (proposé) et « Prendre le site (N) ». Au-delà de 4 cas, un bouton « Voir les N cas » affiche la suite.
+  - Dans la fiche seule, les clics deviennent des choix ligne par ligne, rendus au lot par « Garder ces choix pour le lot ».
+- **1ᵉʳ lot réel** (copie de la base, réponses simulées comme au § 10.6) :
+  - 25 questions (26 avant : R2 retirée), 84 lignes à revoir comme avant, relance sans ajout ;
+  - écarts : 6 groupes de type (`Four vapeur → Four` 2 796 cas, `Sèche-linge → Lave-linge` 192, `Four → Four vapeur` 28, `Cuisinière → Four` 13…), 12 groupes de marque (Bauknecht ↔ Whirlpool, Ignis, Laden, Hotpoint-Ariston… ; `Elica → Ikea` vient de la réponse simulée « oui » au groupe), 19 écritures de réf., et 159 noms (749 avant le filtre du bruit) ;
+  - aucun nom vide à compléter dans ce lot.
+
+**3. Ordre de « Remplace les références »** :
+- Nouvelle colonne nullable `piece_supersessions.rang_fiche` : la position de l'ancienne référence dans la ligne de la fiche. Elle est écrite à la reprise, et complétée à la relecture pour un remplacement déjà présent (`plan.rangs_remplace`, qui ne compte pas dans `vide`).
+- `FicheProduitService.references_fiche` range les références mémorisées dans cet ordre, puis les autres dans l'ordre actuel. Une pièce sans mémoire ne change pas.
+- 481073071153 donne `C00535957 488000535957 C00309416 482000032568`.
+- La règle déduite (paires terme à terme) a été écartée : elle donnait `488000535957 C00535957 482000032568 C00309416`. L'ordre à l'intérieur d'une paire varie selon la ligne de la fiche (Indesit d'abord ici, Whirlpool d'abord dans le code produit).
+- 1ᵉʳ lot réel : 102 positions mémorisées.
+
+**Vérification** :
+- Tests : `test_coupe_titre.py`, `test_ecarts_fiche.py`, `test_ecarts_ecrans.py` (les deux fenêtres rendues hors écran, images dans `AUTOFILL_RENDUS`), `test_reprise_questions.py::test_ecarts_en_bloc_dans_le_lot_puis_relance_sans_ajout` et `test_fiche_export_site.py` (ordre, relecture qui complète la position).
+- Les 3 fiches d'exemple, sur l'extrait et sur une copie de la vraie base : relues sans rien ajouter.
+- Suite complète (2 029 tests), `compileall`, lancement de `run.py`.
+
+**Suite notée par l'utilisateur (2026-11-12)** : pour une référence Whirlpool, Indesit ou Beko, demander la référence associée (de l'un des deux autres groupes, ou aucune). C'est une mémoire de paires utile au code produit, à l'appariement des remplacements et aux imports PDF / CSV. Elle ne suffit pas à l'ordre exact du point 3 : l'ordre à l'intérieur d'une paire varie d'une ligne à l'autre. À traiter avec la refonte de l'ergonomie, ou dans une étape à part.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |
@@ -673,4 +727,6 @@ Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_r
 | Masse | lots de 100, récapitulatif et questions (règles posées une fois, mémorisées, révocables), détail filtrable, reprise, fiches « à revoir » (§ 10.6 à 10.8) |
 | EAN | conservé avec le produit du site, le site fait foi |
 | Référence interne | gardée pour chaque produit du site (avec `id_product`), proposée à l'export EveryParts |
-| Retour vers le site | gabarits Fiche complète, une ligne par origine, paire |
+| Retour vers le site | gabarits Fiche complète, une ligne par origine, paire, « Remplace » dans l'ordre de la fiche (`rang_fiche`) |
+| Libellé de la pièce | titre de la fiche coupé avant « pour <type> » (onglet Appareils), caractéristique chiffrée gardée |
+| Appareil connu, champ différent | relié ; outil gardé par défaut ; un clic prend le site, cas par cas ou en bloc ; « garder l'outil » mémorisé |

@@ -49,6 +49,25 @@ _DOUTES_DE_CHOIX = ('normalise_ambigu', 'exact_multiple', 'a_valider', 'marque_a
 _MENTIONS_TITRE = re.compile(r"\(\s*photos?\s+non\s+contractuelles?\s*\)", re.I)
 
 
+_CODE_LONG = re.compile(r"\d{9,}")
+
+
+def _noms_differents(outil: str, site: str) -> bool:
+    """Nom commercial du site à proposer à la place de celui de l'outil ?
+
+    Non quand ils ne diffèrent que par la ponctuation, ou par un ou deux caractères
+    en fin (indice de version : « AZB 82001 » sur le site, « AZB8200 » dans
+    l'outil), ni quand le nom lu contient un code de 9 chiffres ou plus (liste
+    d'appareils lue comme un nom : erreur de lecture). Mesure sur le 1ᵉʳ lot réel
+    (2026-11-13) : 749 écarts → 166."""
+    fo, fs = forme_normalisee(outil), forme_normalisee(site)
+    if fo == fs or _CODE_LONG.search(site):
+        return False
+    if fo and (fs.startswith(fo) or fo.startswith(fs)) and abs(len(fs) - len(fo)) <= 2:
+        return False
+    return True
+
+
 def libelle_titre_complet(titre: str) -> str:
     """Titre de la fiche sans « (photos non contractuelles) » : le libellé écrit
     avant la coupe au type d'appareil (reconnu à la relecture pour être remplacé)."""
@@ -506,7 +525,7 @@ class _Rapprochement:
                     and forme_normalisee(c.ref_modele) == forme_normalisee(a.ref_modele):
                 ecarts.append(Ecart('ref', c.ref_modele, a.ref_modele, c.id))
             nom_outil = noms.get(c.id, '')
-            if a.nom and forme_normalisee(a.nom) != forme_normalisee(nom_outil):
+            if a.nom and _noms_differents(nom_outil, a.nom):
                 ecarts.append(Ecart('nom', nom_outil, a.nom, c.id))
             for e in ecarts:
                 e.tranche = bool(e.outil) and tranches.get((c.id, e.champ)) == e.site

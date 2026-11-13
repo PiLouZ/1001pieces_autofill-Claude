@@ -68,6 +68,10 @@ def par_questions(service, lot):
         if not q.relire:
             break
         lot = service.relire_lot(lot)
+    # Écarts outil / site (§ 10.11) : sans réponse, l'outil est gardé ; mesurés tels quels
+    stats['ecarts'] = {g.cle: len(g.cas) for g in q.liste_ecarts()}
+    stats['ecarts_recap'] = {k: q.recapitulatif.get(k, 0)
+                             for k in ('noms_completes', 'ecarts_tranches')}
     plan = lot.planifier()
     stats['a_revoir'] = {'fiches': len(plan.a_revoir),
                          'lignes': sum(len(v) for v in plan.a_revoir.values())}
@@ -89,6 +93,7 @@ def un_lot(service, db, taille, journal, questions=False):
     avant = compter(db)
     taille_avant = taille_base(db.db_file)
     res = service.enregistrer_lot(lot, plan)
+    service.apres_lot(res)          # champs d'appareils pris sur le site (noms complétés…)
     apres = compter(db)
     m = mesures_lot(lot, plan)
     m.update({
@@ -100,6 +105,7 @@ def un_lot(service, db, taille, journal, questions=False):
         'ajouts': {k: apres[k] - avant[k] for k in apres},
         'groupes_doutes': [(g.genre, g.forme, g.fiches) for g in lot.groupes_doutes()][:15],
         'resultat': res.resume(),
+        'champs_pris_sur_le_site': res.champs_modifies,
         'questions': stats_q,
     })
     journal.append(m)

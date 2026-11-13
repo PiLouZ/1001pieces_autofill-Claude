@@ -146,3 +146,13 @@ class TestChoix:
         res = service.enregistrer(planifier(r, d))
         assert res.ok and appels == [{ident: {'type': 'Four'}}]
         assert _ligne(b, ident=ident)[0] == 'Four'
+
+
+def test_noms_qui_ne_sont_pas_des_ecarts():
+    from src.utils.rapprochement_fiche.rapprochement import _noms_differents
+    assert not _noms_differents('AZB8200', 'AZB 82001')          # indice de version
+    assert not _noms_differents('HR 6325', 'HR6325')             # ponctuation
+    assert not _noms_differents('ASC10', 'ASC10 854001038001 ASC10')   # liste lue comme un nom
+    assert _noms_differents('EXCELLENCE7670', 'EXCELLENCE 7671')
+    assert _noms_differents('Serie 4', 'Serie 6')
+    assert _noms_differents('', 'Logixx')                         # vide : complété
