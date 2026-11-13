@@ -7,6 +7,9 @@ Groupe « ▲ [n incomplètes] ▼ » de la barre d'état, sous le tableau.
   sélectionnée (logique dans TableController.set_incomplete_nav_buttons),
   masquées avec le bouton quand il n'y a plus de ligne incomplète.
 - Raccourcis ⌥⌘↑ / ⌥⌘↓ (Ctrl+Alt+flèche hors macOS).
+
+creer_fleche_nav sert aussi aux flèches « ligne à vérifier » autour de
+« Auto-complétés à vérifier » (main_refactored._setup_statusbar).
 """
 
 import qtawesome as qta
@@ -50,33 +53,40 @@ class IncompleteNavWidget(QWidget):
         return max(w.sizeHint().height() for w in (self.prev_btn, self.filter_btn, self.next_btn))
 
     def _create_nav_button(self, direction: str) -> QToolButton:
-        """Flèche ▲/▼ + son raccourci.
-
-        Le raccourci est porté par une QAction ajoutée à la fenêtre principale
-        (contexte fenêtre) : il fonctionne quel que soit le widget qui a le focus,
-        y compris le tableau, qui consomme lui-même les flèches. Il passe par
-        TableController.skip_to_incomplete_row, qui ne fait rien si la flèche est
-        grisée ou masquée — clavier et souris se comportent à l'identique.
-        """
+        """Flèche ▲/▼ « ligne incomplète » + raccourci ⌥⌘↑ / ⌥⌘↓."""
         up = direction == 'up'
-        btn = QToolButton()
-        btn.setIcon(qta.icon('fa5s.chevron-up' if up else 'fa5s.chevron-down',
-                             color='#555555', color_disabled='#c4c8cc'))
-        btn.setStyleSheet(StyleManager.HEALTH_NAV_BTN)
-        btn.setEnabled(False)  # activée par TableController selon le périmètre affiché
+        return creer_fleche_nav(
+            self.main_window, direction,
+            QKeySequence("Ctrl+Alt+Up" if up else "Ctrl+Alt+Down"),
+            "Ligne incomplète précédente" if up else "Ligne incomplète suivante",
+            "Type ou Fabricant vide, quelle que soit la colonne sélectionnée",
+            'incomplete')
 
-        sequence = QKeySequence("Ctrl+Alt+Up" if up else "Ctrl+Alt+Down")
-        label = "Ligne incomplète précédente" if up else "Ligne incomplète suivante"
-        btn.setToolTip(f"{label} ({sequence.toString(QKeySequence.NativeText)})\n"
-                       "Type ou Fabricant vide, quelle que soit la colonne sélectionnée")
 
-        main_window = self.main_window
-        shortcut_action = QAction(label, main_window)
-        shortcut_action.setShortcut(sequence)
-        shortcut_action.setShortcutContext(Qt.WindowShortcut)
-        shortcut_action.triggered.connect(
-            lambda: main_window.table_controller.skip_to_incomplete_row(direction)
-            if getattr(main_window, 'table_controller', None) else None
-        )
-        main_window.addAction(shortcut_action)
-        return btn
+def creer_fleche_nav(main_window, direction: str, sequence: QKeySequence,
+                     label: str, detail: str, critere: str) -> QToolButton:
+    """Flèche ▲/▼ de la barre d'état + son raccourci.
+
+    Le raccourci est porté par une QAction ajoutée à la fenêtre principale
+    (contexte fenêtre) : il fonctionne quel que soit le widget qui a le focus,
+    y compris le tableau, qui consomme lui-même les flèches. Il passe par
+    TableController.skip_to_row, qui ne fait rien si la flèche est grisée ou
+    masquée — clavier et souris se comportent à l'identique.
+    """
+    up = direction == 'up'
+    btn = QToolButton()
+    btn.setIcon(qta.icon('fa5s.chevron-up' if up else 'fa5s.chevron-down',
+                         color='#555555', color_disabled='#c4c8cc'))
+    btn.setStyleSheet(StyleManager.HEALTH_NAV_BTN)
+    btn.setEnabled(False)  # activée par TableController selon le périmètre affiché
+    btn.setToolTip(f"{label} ({sequence.toString(QKeySequence.NativeText)})\n{detail}")
+
+    shortcut_action = QAction(label, main_window)
+    shortcut_action.setShortcut(sequence)
+    shortcut_action.setShortcutContext(Qt.WindowShortcut)
+    shortcut_action.triggered.connect(
+        lambda: main_window.table_controller.skip_to_row(critere, direction)
+        if getattr(main_window, 'table_controller', None) else None
+    )
+    main_window.addAction(shortcut_action)
+    return btn

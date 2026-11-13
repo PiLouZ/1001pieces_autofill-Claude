@@ -615,8 +615,31 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                                  sort_column: Optional[int], sort_order: Optional[str],
                                  incomplete_filter: bool,
                                  from_position: int, direction: str) -> Optional[int]:
+        """Position de la prochaine ligne incomplète (Type ou Fabricant vide),
+        voir _find_position_par_condition."""
+        return self._find_position_par_condition(
+            self._get_incomplete_condition(), search_term, column_filters,
+            sort_column, sort_order, incomplete_filter, from_position, direction)
+
+    def find_a_verifier_position(self, search_term: Optional[str],
+                                 column_filters: Optional[Dict[int, str]],
+                                 sort_column: Optional[int], sort_order: Optional[str],
+                                 incomplete_filter: bool,
+                                 from_position: int, direction: str) -> Optional[int]:
+        """Position de la prochaine ligne auto-complétée à vérifier (au moins une
+        trace dans appareils_autocompletes), voir _find_position_par_condition."""
+        return self._find_position_par_condition(
+            "EXISTS (SELECT 1 FROM appareils_autocompletes t WHERE t.appareil_id = a.id)",
+            search_term, column_filters,
+            sort_column, sort_order, incomplete_filter, from_position, direction)
+
+    def _find_position_par_condition(self, condition: str, search_term: Optional[str],
+                                     column_filters: Optional[Dict[int, str]],
+                                     sort_column: Optional[int], sort_order: Optional[str],
+                                     incomplete_filter: bool,
+                                     from_position: int, direction: str) -> Optional[int]:
         """Position (0-based, dans l'ordre exact de l'écran) de la prochaine ligne
-        incomplète — Type ou Fabricant vide — strictement après (direction
+        satisfaisant `condition` (SQL sur l'alias a) strictement après (direction
         'down') ou avant ('up') from_position. None si aucune.
 
         ROW_NUMBER() numérote le périmètre affiché avec le même WHERE et le même
@@ -645,10 +668,10 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         query = f"""
             SELECT pos FROM (
                 SELECT ROW_NUMBER() OVER (ORDER BY {order_by}) - 1 AS pos,
-                       {self._get_incomplete_condition()} AS incomplete
+                       {condition} AS cible
                 FROM appareils a{where}
             )
-            WHERE incomplete AND {comparison}
+            WHERE cible AND {comparison}
             {pick} LIMIT 1
         """
         with self._query_lock:

@@ -300,6 +300,27 @@ class AppareillsTableModel(QAbstractTableModel):
             r += step
         return None
 
+    def find_a_verifier_row(self, start_row: int, direction: str) -> Optional[Tuple[int, int]]:
+        """Pendant de find_incomplete_row pour les lignes auto-complétées à
+        vérifier (même source que le numéro de ligne orange, ligne_a_verifier) :
+        prochaine ligne chargée de la page depuis start_row, avec la colonne à
+        contrôler — Type (0) s'il est auto-complété, sinon Fabricant (1) — ou
+        None si rien sur cette page."""
+        step = 1 if direction == 'down' else -1
+        r = start_row + step
+        while 0 <= r < len(self._records):
+            champs = self._autocompletes.get(self._records[r][0])
+            if champs:
+                for col in (0, 1):
+                    if _CHAMP_PAR_COLONNE[col] in champs:
+                        return r, col
+            r += step
+        return None
+
+    def a_des_autocompletes(self) -> bool:
+        """Au moins un appareil auto-complété à vérifier, toutes pages confondues."""
+        return bool(self._autocompletes)
+
     def reveal_row(self, row: int):
         """Force la révélation (virtual scroll) jusqu'à la ligne row incluse,
         pour qu'elle devienne sélectionnable/visible dans la vue."""

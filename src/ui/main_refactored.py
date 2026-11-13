@@ -714,12 +714,30 @@ class MainWindow(QMainWindow):
         self.statusbar.insertWidget(1, self.suggestions_btn)
         self._rafraichir_bouton_suggestions()
 
-        # « Auto-complétés à vérifier (N) | Tout valider » ensuite, deux moitiés
-        # accolées dans un même conteneur, masqué tant que N = 0
+        # « ▲ Auto-complétés à vérifier (N) | Tout valider ▼ » ensuite : deux
+        # moitiés accolées, encadrées des flèches « ligne à vérifier
+        # précédente/suivante », dans un même conteneur masqué tant que N = 0
+        from .incomplete_nav_widget import creer_fleche_nav
+        from ..utils.qt_imports import QKeySequence
         self.autocompletes_groupe = QWidget()
-        groupe = QHBoxLayout(self.autocompletes_groupe)
+        cadre = QHBoxLayout(self.autocompletes_groupe)
+        cadre.setContentsMargins(0, 0, 0, 0)
+        cadre.setSpacing(2)
+        fleches_a_verifier = []
+        for direction, touche, libelle in (
+                ('up', "Ctrl+Alt+Shift+Up", "Ligne auto-complétée précédente"),
+                ('down', "Ctrl+Alt+Shift+Down", "Ligne auto-complétée suivante")):
+            fleches_a_verifier.append(creer_fleche_nav(
+                self, direction, QKeySequence(touche), libelle,
+                "Type ou Fabricant auto-complété à contrôler, quelle que soit "
+                "la colonne sélectionnée", 'a_verifier'))
+        self.a_verifier_prev_btn, self.a_verifier_next_btn = fleches_a_verifier
+        cadre.addWidget(self.a_verifier_prev_btn)
+        paire = QWidget()
+        groupe = QHBoxLayout(paire)
         groupe.setContentsMargins(0, 0, 0, 0)
         groupe.setSpacing(0)
+        cadre.addWidget(paire)
         self.autocompletes_btn = QPushButton()
         self.autocompletes_btn.setIcon(qta.icon('fa5s.magic', color='white'))
         self.autocompletes_btn.setStyleSheet(StyleManager.AUTOCOMPLETES_OUVRIR_BTN)
@@ -732,6 +750,9 @@ class MainWindow(QMainWindow):
         self.autocompletes_valider_btn.setStyleSheet(StyleManager.AUTOCOMPLETES_VALIDER_BTN)
         self.autocompletes_valider_btn.clicked.connect(self._confirmer_tout_valider_autocompletes)
         groupe.addWidget(self.autocompletes_valider_btn)
+        cadre.addWidget(self.a_verifier_next_btn)
+        if hasattr(self, 'table_controller'):
+            self.table_controller.set_a_verifier_nav_buttons(*fleches_a_verifier)
         self.autocompletes_groupe.setVisible(False)
         self.statusbar.insertWidget(2, self.autocompletes_groupe)
         self._rafraichir_bouton_autocompletes()
@@ -1151,6 +1172,8 @@ class MainWindow(QMainWindow):
         model = getattr(getattr(self, 'table_controller', None), 'model', None)
         if model is not None and hasattr(model, 'set_autocompletes'):
             model.set_autocompletes(par_appareil)
+            # Flèches « ligne à vérifier » : la liste vient de changer
+            self.table_controller.on_autocompletes_changed()
         n = len(par_appareil)
         bouton.setText(f"Auto-complétés à vérifier ({n})")
         valider = getattr(self, 'autocompletes_valider_btn', None)
