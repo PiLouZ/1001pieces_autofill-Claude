@@ -215,6 +215,13 @@ class ToolbarService:
         a_refaire_action.triggered.connect(getattr(self.main_window, '_open_fiches_a_refaire', lambda: None))
         data_menu.addAction(a_refaire_action)
 
+        everyparts_action = QAction("Exporter les fiches reprises (EveryParts)…", self.main_window)
+        everyparts_action.setToolTip("Compatibilités des produits repris du site, au format EveryParts "
+                                     "(référence produit du site en 1re colonne)")
+        everyparts_action.triggered.connect(
+            getattr(self.main_window, '_open_export_fiches_reprises', lambda: None))
+        data_menu.addAction(everyparts_action)
+
         history_action = QAction("Historique des modifications…", self.main_window)
         history_action.setToolTip("Consulter l'historique persistant des modifications")
         history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))
