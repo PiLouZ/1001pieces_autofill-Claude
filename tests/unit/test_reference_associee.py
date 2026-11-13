@@ -140,3 +140,40 @@ def test_fiche_du_site_proposee_par_son_code_produit(qapp, qtbot, tmp_path):
     dialogue._validate_and_accept()
     qtbot.waitUntil(lambda: len(fenetre.imports) == 1, timeout=30000)
     assert db.reference_associee('481073071153') == (True, 'C00319033')
+
+
+def test_reference_associee_a_la_suite_dans_le_code_produit(tmp_path):
+    """Pièce importée par PDF (sans produit du site) : sa référence associée va à la
+    suite dans le code produit de la Fiche complète, pas dans les équivalentes ;
+    dans les deux sens."""
+    from tests.unit.test_fiche_export_site import _fiche_service
+    b = Construite(tmp_path)
+    b.db.definir_references_associees([('C00138863', '482000029398')], '2026-11-13T15:00:00',
+                                      {'482000029398': 'Whirlpool'})
+    svc = _fiche_service(b.db)
+    refs = svc.references_fiche('C00138863')
+    assert refs['code_produit'] == ['C00138863', '482000029398']
+    assert all('482000029398' not in l for l in refs['lignes_equivalentes'])
+    assert svc.references_fiche('482000029398')['code_produit'] == ['482000029398', 'C00138863']
+
+
+def test_champ_juste_apres_la_reference(qapp, tmp_path, rendus):
+    """Fichier seul : « Réf. associée » suit la référence, sans vide entre les deux."""
+    b = Construite(tmp_path)
+    fenetre = _fenetre(qapp, b.db)
+    fichier = ImportFile(path=str(tmp_path / 'C00138863.pdf'), type=FileType.CSV,
+                         suggested_reference='C00138863', data=[['WAE24/01', 'Maxx']])
+    dialogue = ImportDialog(None, ImportConfiguration(files=[fichier],
+                                                      import_type=ImportType.SINGLE_FILE),
+                            import_manager=fenetre.import_manager)
+    dialogue._load_data_deferred()
+    dialogue.resize(1000, 600)
+    dialogue.show()
+    qapp.processEvents()
+    dialogue.grab().save(str(rendus / 'reference_associee_fichier.png'))
+    ref = dialogue.findChild(__import__('PyQt5.QtWidgets', fromlist=['QLabel']).QLabel,
+                             f"ref_display_{fichier.path}")
+    champ = dialogue.champ_associee
+    ecart = champ.geometry().left() - ref.geometry().right()
+    assert 0 <= ecart < 30, ecart
+    dialogue.close()

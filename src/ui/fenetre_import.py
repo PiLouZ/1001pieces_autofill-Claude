@@ -584,6 +584,9 @@ class ImportDialog(QDialog):
                 self._memoire_associee(), proposee=(self._fiche.reference_associee()
                                                     if self._fiche is not None else ''))
             ref_row.addWidget(self.champ_associee)
+            if ref_saisie_unique := getattr(self, '_ref_saisie_unique', None):
+                ref_saisie_unique.setMaximumWidth(260)   # la réf. associée suit, à sa droite
+            ref_row.addStretch(1)
             self._champs_associes.append((file, self.champ_associee))
             ref_saisie = getattr(self, '_ref_saisie_unique', None)
             if ref_saisie is not None:
