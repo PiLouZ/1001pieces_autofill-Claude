@@ -580,9 +580,10 @@ class FicheAImporter:
         p.rangs_remplace = [(a, k) for a, k in p.rangs_remplace if a in gardees]
         fiche_eq = set(self.equivalentes())
         retirees = fiche_eq - equivalentes
-        p.equivalences = [e for e in p.equivalences if e not in retirees]
+        # (« ⇄ » : la nouvelle référence de la pièce n'est pas son équivalente)
+        p.equivalences = [e for e in p.equivalences if e not in retirees and e != ref]
         p.equivalences += [e for e in sorted(equivalentes - fiche_eq) if e != ref]
-        p.origines = [o for o in p.origines if o[0] not in retirees]
+        p.origines = [o for o in p.origines if o[0] not in retirees and o[0] != ref]
         p.decisions_references += [(ref, e, 'ecartee', None, forme_reference(e))
                                    for e in sorted(retirees)]
         return p

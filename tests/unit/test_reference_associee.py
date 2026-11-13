@@ -144,8 +144,8 @@ def test_fiche_du_site_proposee_par_son_code_produit(qapp, qtbot, tmp_path):
 
 def test_reference_associee_a_la_suite_dans_le_code_produit(tmp_path):
     """Pièce importée par PDF (sans produit du site) : sa référence associée va à la
-    suite dans le code produit de la Fiche complète, pas dans les équivalentes ;
-    dans les deux sens."""
+    suite dans le code produit de la Fiche complète, pas dans les équivalentes ; la
+    principale toujours en premier, quelle que soit la référence recherchée."""
     from tests.unit.test_fiche_export_site import _fiche_service
     b = Construite(tmp_path)
     b.db.definir_references_associees([('C00138863', '482000029398')], '2026-11-13T15:00:00',
@@ -154,7 +154,7 @@ def test_reference_associee_a_la_suite_dans_le_code_produit(tmp_path):
     refs = svc.references_fiche('C00138863')
     assert refs['code_produit'] == ['C00138863', '482000029398']
     assert all('482000029398' not in l for l in refs['lignes_equivalentes'])
-    assert svc.references_fiche('482000029398')['code_produit'] == ['482000029398', 'C00138863']
+    assert svc.references_fiche('482000029398')['code_produit'] == ['C00138863', '482000029398']
 
 
 def test_champ_juste_apres_la_reference(qapp, tmp_path, rendus):
@@ -177,3 +177,96 @@ def test_champ_juste_apres_la_reference(qapp, tmp_path, rendus):
     ecart = champ.geometry().left() - ref.geometry().right()
     assert 0 <= ecart < 30, ecart
     dialogue.close()
+
+
+# =============================================================================
+# « ⇄ » : la référence associée devient la principale
+# =============================================================================
+
+def test_inverser_dans_un_collage(qapp, tmp_path):
+    b = Construite(tmp_path)
+    dialogue = _collage('C00138863', qapp, b.db, [['WAE24/01', 'Maxx']])
+    champ = dialogue.champ_associee
+    assert champ.bouton_inverser.isHidden()               # rien à inverser sans associée
+    champ.champ.set_refs(['482000029398'])
+    assert not champ.bouton_inverser.isHidden()
+    champ.inverser()
+    from PyQt5.QtWidgets import QLineEdit
+    assert dialogue.findChild(QLineEdit, 'ref_input_Collage').text() == '482000029398'
+    assert champ.champ.refs() == ['C00138863']
+    dialogue._validate_and_accept()
+    config = dialogue.get_configuration()
+    assert config.individual_references['Collage'] == '482000029398'
+    assert config.references_associees == {'482000029398': 'C00138863'}
+
+
+def test_inverser_un_fichier_appareils_sur_la_principale(qapp, tmp_path, rendus):
+    from tests.unit.test_fiche_export_site import _fiche_service
+    b = Construite(tmp_path)
+    fenetre = _fenetre(qapp, b.db)
+    chemin = tmp_path / 'C00138863.csv'
+    chemin.write_text('WAE24/01;Maxx\n', encoding='utf-8')
+    fichier = ImportFile(path=str(chemin), type=FileType.CSV, suggested_reference='C00138863',
+                         data=[['WAE24/01', 'Maxx']])
+    dialogue = ImportDialog(None, ImportConfiguration(files=[fichier],
+                                                      import_type=ImportType.SINGLE_FILE),
+                            import_manager=fenetre.import_manager)
+    dialogue._load_data_deferred()
+    dialogue.champ_associee.champ.set_refs(['482000029398'])
+    dialogue.champ_associee.inverser()
+    from PyQt5.QtWidgets import QLabel
+    etiquette = dialogue.findChild(QLabel, f"ref_display_{fichier.path}")
+    assert etiquette.text() == "→ Réf. : 482000029398" and 'C00138863' in etiquette.toolTip()
+    dialogue.resize(1000, 600)
+    dialogue.show()
+    qapp.processEvents()
+    dialogue.grab().save(str(rendus / 'reference_associee_inversee.png'))
+    dialogue._validate_and_accept()
+    config = dialogue.get_configuration()
+    assert config.individual_references[fichier.path] == '482000029398'
+    ImportManager(b.db)._run_import_files(config)
+    lies = dict(b.db.conn.execute(
+        "SELECT p.ref_piece, COUNT(pa.id) FROM pieces p LEFT JOIN piece_associations pa "
+        "ON pa.piece_id = p.id GROUP BY p.ref_piece").fetchall())
+    assert lies.get('482000029398') == 1 and not lies.get('C00138863')
+    svc = _fiche_service(b.db)
+    for cherchee in ('482000029398', 'C00138863'):
+        assert svc.references_fiche(cherchee)['code_produit'] == ['482000029398', 'C00138863']
+    # Inverser deux fois revient au point de départ
+    d2 = ImportDialog(None, ImportConfiguration(files=[fichier], import_type=ImportType.SINGLE_FILE),
+                      import_manager=fenetre.import_manager)
+    d2._load_data_deferred()
+    d2.champ_associee.champ.set_refs(['482000029398'])
+    d2.champ_associee.inverser()
+    d2.champ_associee.inverser()
+    d2._validate_and_accept()
+    assert d2.get_configuration().individual_references[fichier.path] == 'C00138863'
+    dialogue.close()
+
+
+def test_inverser_une_fiche_du_site(qapp, qtbot, tmp_path):
+    """Fiche 7285 : la 2ᵉ réf. du code produit devient la pièce (appareils, produit du site)."""
+    db = _db_extrait(tmp_path)
+    fenetre = _fenetre(qapp, db)
+    service = _service(db, fenetre)
+    from src.ui.fiche_site_import import SaisieFicheSite
+    saisie = SaisieFicheSite(fenetre, service=service)
+    saisie.analyser_page((FIXTURES / 'produit_7285.html').read_text(encoding='utf-8'), URL_7285)
+    dialogue = _dialogue_import(qapp)
+    dialogue._load_data_deferred()
+    assert dialogue.champ_associee.champ.refs() == ['C00319033']
+    dialogue.champ_associee.inverser()
+    dialogue._validate_and_accept()
+    qtbot.waitUntil(lambda: len(fenetre.imports) == 1, timeout=30000)
+    assert db.reference_associee('C00319033') == (True, '481073071153')
+    produit = db.conn.execute("SELECT ref_piece FROM produits_site").fetchone()
+    assert produit == ('C00319033',)
+    liens = db.conn.execute(
+        "SELECT COUNT(*) FROM piece_associations pa JOIN pieces p ON p.id = pa.piece_id "
+        "WHERE p.ref_piece = 'C00319033'").fetchone()[0]
+    assert liens > 0
+    egale = db.conn.execute(
+        "SELECT COUNT(*) FROM piece_equivalence_groups a JOIN piece_equivalence_groups b "
+        "ON a.group_id = b.group_id WHERE a.ref_piece = 'C00319033' AND b.ref_piece = '481073071153'"
+    ).fetchone()[0]
+    assert egale == 1

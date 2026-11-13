@@ -261,6 +261,7 @@ class ImportDialog(QDialog):
         self._fiches_lot = fiches if self.import_config.import_type == ImportType.MULTI_FILE else []
         self._cartes_fiches = []
         self._champs_associes = []      # (fichier, ChampReferenceAssociee)
+        self._refs_inversees = {}       # chemin → réf. de pièce choisie par « ⇄ »
         self._fiche = fiches[0].fiche if fiches and not self._fiches_lot else None
         self.setWindowTitle("Importer les fiches du site" if self._fiches_lot
                             else "Importer une fiche du site" if self._fiche is not None
@@ -580,15 +581,17 @@ class ImportDialog(QDialog):
                 ref_display.setObjectName(f"ref_display_{file.path}")
                 ref_row.addWidget(ref_display)
             # Référence associée Whirlpool / Indesit / Beko, à droite de la référence (§ 10.17)
+            ref_saisie = getattr(self, '_ref_saisie_unique', None)
             self.champ_associee = ChampReferenceAssociee(
                 self._memoire_associee(), proposee=(self._fiche.reference_associee()
-                                                    if self._fiche is not None else ''))
+                                                    if self._fiche is not None else ''),
+                inversion=self._inversion(file, ref_saisie,
+                                          None if ref_saisie is not None else ref_display))
             ref_row.addWidget(self.champ_associee)
             if ref_saisie_unique := getattr(self, '_ref_saisie_unique', None):
                 ref_saisie_unique.setMaximumWidth(260)   # la réf. associée suit, à sa droite
             ref_row.addStretch(1)
             self._champs_associes.append((file, self.champ_associee))
-            ref_saisie = getattr(self, '_ref_saisie_unique', None)
             if ref_saisie is not None:
                 ref_saisie.textChanged.connect(self.champ_associee.definir_reference)
             else:
@@ -931,7 +934,7 @@ class ImportDialog(QDialog):
                 )
                 ref_display.setObjectName(f"ref_display_{file.path}")
                 row1.addWidget(ref_display)
-                row1.addWidget(self._champ_associee_carte(file))
+                row1.addWidget(self._champ_associee_carte(file, ref_label=ref_display))
 
             file_label = QLabel(file.filename)
             file_label.setStyleSheet(
@@ -1265,6 +1268,8 @@ class ImportDialog(QDialog):
     def _ref_du_fichier(self, file, auto_references_enabled):
         """Référence de pièce d'un fichier : champ éditable pour le collage, sinon
         déduite du nom de fichier (si l'option automatique est cochée)."""
+        if file.path in self._refs_inversees:
+            return self._refs_inversees[file.path]          # « ⇄ » : réf. associée choisie
         if file.type in (FileType.CLIPBOARD, FileType.FICHE_SITE):
             ref_input_edit = self.findChild(QLineEdit, f"ref_input_{file.path}")
             if ref_input_edit is not None:
@@ -1524,7 +1529,9 @@ class ImportDialog(QDialog):
             ref_edit.textChanged.connect(lambda t, c=importer: c.setChecked(bool(t.strip())))
             ligne1.addWidget(ref_edit)
             importer.setChecked(False)
-        ligne1.addWidget(self._champ_associee_carte(file, ref_edit, fiche.reference_associee()))
+        ligne1.addWidget(self._champ_associee_carte(
+            file, ref_edit, fiche.reference_associee(),
+            ref_label=ref if file.suggested_reference else None))
         titre = fiche.apercu()['titre'] or ''
         nom = QLabel(f"{titre}" if titre else "")
         nom.setStyleSheet("font-weight: bold; font-size: 12px; background: transparent;")
@@ -1581,10 +1588,12 @@ class ImportDialog(QDialog):
         db = getattr(self.import_manager, 'db_manager', None)
         return getattr(db, 'reference_associee', None)
 
-    def _champ_associee_carte(self, file, ref_edit=None, proposee: str = '') -> QWidget:
+    def _champ_associee_carte(self, file, ref_edit=None, proposee: str = '',
+                              ref_label=None) -> QWidget:
         """Réf. associée d'une carte : suit la référence de la carte."""
         champ = ChampReferenceAssociee(self._memoire_associee(), proposee=proposee, largeur=200,
-                                       petit=True)
+                                       petit=True,
+                                       inversion=self._inversion(file, ref_edit, ref_label))
         self._champs_associes.append((file, champ))
         # (le champ de saisie n'est pas encore rattaché à la fenêtre : pas de findChild)
         if ref_edit is not None:
@@ -1593,6 +1602,26 @@ class ImportDialog(QDialog):
         else:
             champ.definir_reference(file.suggested_reference)
         return champ
+
+    def _inversion(self, file, ref_edit=None, ref_label=None):
+        """« ⇄ » : la réf. associée devient la référence de la pièce. Champ de saisie
+        (collage, fiche sans code produit) : son texte change ; référence fixe (nom du
+        fichier, code produit) : elle est remplacée pour cet import."""
+        def inverser(nouvelle: str, ancienne: str):
+            if ref_edit is not None:
+                ref_edit.setText(nouvelle)
+                return
+            if nouvelle == file.suggested_reference:
+                self._refs_inversees.pop(file.path, None)
+            else:
+                self._refs_inversees[file.path] = nouvelle
+            if ref_label is not None:
+                ref_label.setText(f"→ Réf. : {nouvelle}")
+                ref_label.setToolTip("" if nouvelle == file.suggested_reference else
+                                     f"Référence principale choisie par « ⇄ » "
+                                     f"(fichier : {file.suggested_reference})")
+            self._pousser_cartes_relations()
+        return inverser
 
     def _collecter_associees(self, config: ImportConfiguration):
         """Réf. associées répondues, pour la référence que la pièce aura vraiment."""
@@ -1629,7 +1658,8 @@ class ImportDialog(QDialog):
             return
         config.saisies_fiches = {}
         for c in self._cartes_fiches:
-            ref = c['ref'].text().strip() if c['ref'] is not None else c['file'].suggested_reference
+            ref = (c['ref'].text().strip() if c['ref'] is not None
+                   else self._refs_inversees.get(c['file'].path, c['file'].suggested_reference))
             config.saisies_fiches[c['file'].path] = {
                 'importer': c['importer'].isChecked(), 'ref': ref,
                 'libelle': c['libelle'].text().strip(), 'obsolete': c['obsolete'].isChecked(),
