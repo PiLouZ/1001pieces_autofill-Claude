@@ -5,9 +5,9 @@ Reprise en masse des fiches du site par lots (CDC import fiches site, étape 4)
   reprise après un id, fiches mises de côté), découpage en lots ;
 - état de la reprise : avance à la fin du lot seulement, export différent
   détecté (repartir de zéro / continuer) ;
-- lots sur une base construite et sur l'extrait de la vraie base : résumé par
-  catégorie, doutes regroupés, appareils absents partagés entre fiches,
-  relance d'un lot sans doublon, reprise après une interruption ;
+- lots sur une base construite et sur l'extrait de la vraie base, planifiés par
+  les règles de l'import : appareils absents partagés entre fiches, relance d'un
+  lot sans doublon, reprise après une interruption ;
 - planificateur : choix repris d'une autre ligne de la fiche, provenance des
   lignes déjà couvertes ;
 - fenêtre de reprise rendue hors écran.
@@ -30,12 +30,8 @@ from src.services.reprise_site_service import (
 from src.utils.lecteur_fiche import lire_page_publique, modeles_depuis_config
 from src.utils.lecteur_fiche.page_publique import extraire_description
 from src.utils.rapprochement_fiche import ConfigurationRapprochement
-from src.utils.rapprochement_fiche.decisions import DE_COTE, VALIDEE
-from src.utils.reprise_site import (
-    PROFILS_AMBIGUS, ExportInvalide, ExportNonTrie, lire_exports, prochain_lot,
-)
+from src.utils.reprise_site import ExportInvalide, ExportNonTrie, lire_exports, prochain_lot
 from src.utils.reprise_site.exports import ligne_compatibilite
-from src.utils.reprise_site.lot import forme_ref_interne
 
 RACINE = Path(__file__).resolve().parents[2]
 FIXTURES = RACINE / 'tests' / 'fixtures' / 'fiches_site'
@@ -70,8 +66,8 @@ def _description(code, marque, lignes, remplace=()):
     return html + '</div>'
 
 
-def _service(db, regles=None):
-    s = RepriseSiteService(db, configuration=CONFIG, chemin_configuration=regles)
+def _service(db):
+    s = RepriseSiteService(db, configuration=CONFIG)
     s._modeles = MODELES
     return s
 
@@ -83,12 +79,8 @@ def _instantane(db):
 
 
 def _decider(lot):
-    lot.tout_valider()
-    for g in lot.groupes_doutes():
-        lot.choisir_groupe(g, g.choix[0])
-    lot.lignes_a_completer_de_cote()
-    plan = lot.planifier()
-    assert plan.pret, (plan.en_attente, plan.fiches_a_completer)
+    plan = lot.planifier_par_regles()
+    assert plan.pret, plan.fiches_a_completer
     return plan
 
 
@@ -174,10 +166,6 @@ class TestExports:
                                  'marque_appareil': 'Brandt', 'type_appareil': 'Sèche-linge'})
         assert (l.type_appareil, l.marque, l.ref_modele, l.nom) == ('Sèche-linge', 'Brandt', 'SL204/FR', 'SL204')
 
-    def test_forme_ref_interne(self):
-        assert forme_ref_interne('ES10028') == 'ES99999'
-        assert forme_ref_interne('el1113161010') == 'EL9999999999'
-
 
 # =============================================================================
 # Lots sur une base construite
@@ -199,7 +187,7 @@ class TestLotsConstruits:
                   [102, 'ZZNEUF01/02', 'ZZNEUF01/02 - Neuf', 'Bosch', 'Lave-linge']]
         return b, b.exports(produits, compat)
 
-    def test_lot_resume_groupes_et_creation_partagee(self, tmp_path):
+    def test_lot_creation_partagee(self, tmp_path):
         b, (p, c) = self._base(tmp_path)
         s = _service(b.db)
         signature, statut = s.examiner_export(p, c)
@@ -207,19 +195,8 @@ class TestLotsConstruits:
         s.adopter_export(signature, repartir_de_zero=True)
         lot = s.analyser_lot_suivant(10)
         assert [f.id_produit for f in lot.fiches] == [101, 102, 103, 104]
-        resume = {l.cle: l for l in lot.resume()}
-        assert resume['exacts'].fiches == 4
-        assert 'absents' in resume
-        # Réf. internes ES… : un groupe de doutes, traitable en bloc
-        groupes = {g.cle: g for g in lot.groupes_doutes()}
-        g = groupes[('ref_interne_differente', 'ES99999')]
-        assert g.fiches == 2 and g.choix == ('enregistrer', 'ignorer')
-        # Tant qu'une catégorie est en attente, rien ne s'écrit
-        assert not lot.planifier().pret
-        lot.tout_valider()
-        lot.choisir_groupe(g, 'ignorer')
-        plan = lot.planifier()
-        assert plan.pret
+        plan = lot.planifier_par_regles()
+        assert plan.pret and len(plan.plans) == 4
         # ZZNEUF01/02 et « ZZNEUF 01/02 » (2 fiches) : UN appareil à créer
         assert len(plan.creations) == 1
         avant = _instantane(b.db)
@@ -227,7 +204,7 @@ class TestLotsConstruits:
         assert res.ok, res.erreur
         apres = _instantane(b.db)
         assert apres['appareils'] - avant['appareils'] == 1
-        assert apres['produits_site'] == 2          # les 2 ES… ignorés
+        assert apres['produits_site'] == 4          # réf. produit ES… : le site fait foi
         assert s.dernier_id() == 104
         assert b.db.lots_reprise_site()[0]['fiches'] == 4
         neuf = b.db.conn.execute("SELECT id FROM appareils WHERE ref_modele = 'ZZNEUF01/02'").fetchone()[0]
@@ -319,17 +296,16 @@ class TestLotsConstruits:
         assert s.enregistrer_lot(lot, _decider(lot)).ok
         assert b.db.fiches_de_cote_reprise_site() == [] and s.dernier_id() == 104
 
-    def test_profils_ambigus_laisses_de_cote(self, tmp_path):
+    def test_profil_ambigu_importe(self, tmp_path):
+        """Plusieurs profils lisent la fiche aussi bien : elle est importée comme les
+        autres (plus de mise de côté par catégorie)."""
         b, (p, c) = self._base(tmp_path)
         s = _service(b.db)
         s.adopter_export(s.examiner_export(p, c)[0], repartir_de_zero=True)
         lot = s.analyser_lot_suivant(10)
         lot.fiches[0].profil_ambigu = True
-        lot.tout_valider()
-        assert lot.etat(PROFILS_AMBIGUS) == VALIDEE
-        lot.definir_etat(PROFILS_AMBIGUS, DE_COTE)
-        plan = lot.planifier()
-        assert 0 in plan.de_cote and plan.pret
+        plan = lot.planifier_par_regles()
+        assert 0 in [i for i, _ in plan.plans] and not plan.de_cote and plan.pret
 
 
 # =============================================================================
@@ -355,9 +331,7 @@ class TestPlanificateur:
             AppareilRapproche(2, 'Ignis', 'R9', '', 'description', niveau='exact', appareil_id=9,
                               lien='nouveau'),
         ])
-        d = DecisionsFiche()
-        d.valider_tout(r)
-        plan = planifier(r, d)
+        plan = planifier(r, DecisionsFiche())
         assert plan.a_completer == []
         assert (7, 'description') in plan.liens and (7, 'table') in plan.liens
         # la ligne couverte (table) porte sa provenance sur le lien posé par l'autre
@@ -434,7 +408,7 @@ def test_fenetre_reprise_lot_en_cartes(qapp, qtbot, tmp_path):
         _produit(102, '481010595118', 'Bosch', [('WAE24/01', 'Maxx')], ref_interne='ES10028'),
         [103, 'ES20203', 'Pièce sans code', 'Bosch', '', 'Pompe - Lave-linge', '1', sans_code]])
     fenetre = _fenetre(qapp, b.db)
-    s = _service(b.db, tmp_path / 'regles.json')
+    s = _service(b.db)
     d = RepriseSiteDialog(b.db, main_window=fenetre, service=s)
     assert d.windowTitle() == "Importer les fiches du site"
     d.champ_produits.setText(p)
@@ -509,7 +483,7 @@ def test_fenetre_lot_fermee_sans_importer(qapp, tmp_path):
     b = Construite(tmp_path)
     p, c = b.exports([_produit(101, '481010595117', 'Bosch', [('ZZNEUF01/02', 'Neuf')])])
     fenetre = _fenetre(qapp, b.db)
-    s = _service(b.db, tmp_path / 'regles.json')
+    s = _service(b.db)
     d = RepriseSiteDialog(b.db, main_window=fenetre, service=s)
     d.champ_produits.setText(p)
     d.champ_compat.setText(c)
@@ -562,7 +536,7 @@ def test_chemins_disparus_jamais_proposes(qapp, tmp_path):
     existant = _ecrire_csv(tmp_path / 'p.csv', ENTETE_P, [])
     _reglages().setValue('reprise_site/export_produits', existant)
     _reglages().setValue('reprise_site/export_compatibilites', str(tmp_path / 'disparu2.csv'))
-    d = RepriseSiteDialog(b.db, service=_service(b.db, tmp_path / 'regles.json'))
+    d = RepriseSiteDialog(b.db, service=_service(b.db))
     assert d.champ_produits.text() == existant
     assert 'disparu' not in d.champ_compat.text()
     d.close()

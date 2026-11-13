@@ -5,16 +5,11 @@ Mesure d'un lot de la reprise des fiches du site (CDC § 7.4, étape 4)
 Sur une COPIE de la base (faite avec l'API backup de sqlite3, jamais cp) :
 1. adopte l'export (deux CSV) en repartant de zéro ;
 2. analyse le 1er lot (taille réglable) : durée, part déjà en base, doutes ;
-3. valide tout en bloc (propositions des catégories et des groupes de doutes),
-   met de côté les lignes à compléter, enregistre : durée, croissance de la base ;
+3. planifie par les règles de l'import, sans question (§ 10.12 à 10.14 : lignes
+   non tranchées non importées, créations bancales retenues), enregistre :
+   durée, croissance de la base ;
 4. relance le MÊME lot (état remis au début du lot) : aucun appareil, lien ni
    relation ne doit être ajouté.
-
-Les décisions « tout valider » donnent la borne haute de la croissance : un
-utilisateur laisse en général des doutes de côté.
-
-Modes de décision : « tout valider » (défaut), `--questions` (moteur de questions,
-§ 10.6), `--regles-import` (règles de l'import, sans question, § 10.12).
 
 Usage :
     python3.13 scripts/mesurer_lot_reprise.py copie.db produits.csv compatibilites.csv \\
@@ -44,43 +39,6 @@ def compter(db):
                               'piece_equivalence_groups', 'produits_site')}
 
 
-def tout_decider(lot):
-    lot.tout_valider()
-    for g in lot.groupes_doutes():
-        lot.choisir_groupe(g, g.choix[0])
-    lignes = lot.lignes_a_completer_de_cote()
-    plan = lot.planifier()
-    return plan, lignes
-
-
-# Réponse simulée aux questions sans proposition (mode --questions) : ce qu'un
-# utilisateur répondrait le plus probablement d'après l'audit du 1er lot
-_SIMULEES = {'R4': 'oui', 'R7': 'reprendre', 'Q4': 'sans', 'Q2': 'de_cote', 'Q3': 'de_cote'}
-
-
-def par_questions(service, lot):
-    """Mode questions : propositions acceptées, autres questions répondues comme
-    ci-dessus, relecture du lot si des groupes de marques ont changé."""
-    stats = {}
-    for passage in (1, 2):
-        q = lot.questionnaire or service.questionnaire(lot)
-        stats[f'questions_{passage}'] = q.resume()
-        stats[f'propositions_acceptees_{passage}'] = q.accepter_propositions()
-        for x in q.sans_reponse():
-            q.repondre(x.cle, _SIMULEES.get(x.cle.split(':')[0], x.choix[0][0]))
-        if not q.relire:
-            break
-        lot = service.relire_lot(lot)
-    # Écarts outil / site (§ 10.11) : sans réponse, l'outil est gardé ; mesurés tels quels
-    stats['ecarts'] = {g.cle: len(g.cas) for g in q.liste_ecarts()}
-    stats['ecarts_recap'] = {k: q.recapitulatif.get(k, 0)
-                             for k in ('noms_completes', 'ecarts_tranches')}
-    plan = lot.planifier()
-    stats['a_revoir'] = {'fiches': len(plan.a_revoir),
-                         'lignes': sum(len(v) for v in plan.a_revoir.values())}
-    return lot, plan, stats
-
-
 def par_regles(lot):
     """Règles de l'import (§ 10.12) : aucune question, lignes non tranchées non importées."""
     plan = lot.planifier_par_regles()
@@ -90,21 +48,14 @@ def par_regles(lot):
     return plan, stats
 
 
-def un_lot(service, db, taille, journal, questions=False, regles_import=False):
+def un_lot(service, db, taille, journal):
     t = time.time()
     lot = service.analyser_lot_suivant(taille)
     if lot is None:
         return None
     analyse = time.time() - t
-    if regles_import:
-        plan, stats_q = par_regles(lot)
-        lignes_de_cote = stats_q['non_importees']['lignes']
-    elif questions:
-        lot, plan, stats_q = par_questions(service, lot)
-        lignes_de_cote = stats_q['a_revoir']['lignes']
-    else:
-        plan, lignes_de_cote = tout_decider(lot)
-        stats_q = None
+    plan, stats_q = par_regles(lot)
+    lignes_de_cote = stats_q['non_importees']['lignes']
     avant = compter(db)
     taille_avant = taille_base(db.db_file)
     res = service.enregistrer_lot(lot, plan)
@@ -118,10 +69,10 @@ def un_lot(service, db, taille, journal, questions=False, regles_import=False):
         'lignes_mises_de_cote': lignes_de_cote, 'fiches_de_cote': len(plan.de_cote),
         'croissance_mo': round((taille_base(db.db_file) - taille_avant) / 1e6, 1),
         'ajouts': {k: apres[k] - avant[k] for k in apres},
-        'groupes_doutes': [(g.genre, g.forme, g.fiches) for g in lot.groupes_doutes()][:15],
+        'fiches_a_refaire': len(plan.a_refaire),
         'resultat': res.resume(),
         'champs_pris_sur_le_site': res.champs_modifies,
-        'questions': stats_q,
+        'regles': stats_q,
         'import': {k: (res.resultats_import or {}).get(k) for k in (
             'new_entries', 'matches_found', 'associations_created', 'associations_existing',
             'duplicates_in_file', 'autocompletes_a_verifier')},
@@ -142,20 +93,13 @@ def main():
     ap.add_argument('--lots', type=int, default=1)
     ap.add_argument('--rapport', default='')
     ap.add_argument('--sans-relance', action='store_true')
-    ap.add_argument('--questions', action='store_true',
-                    help="décider par le moteur de questions (règles écrites dans --regles)")
-    ap.add_argument('--regles', default='', help="fichier de configuration où écrire les règles")
-    ap.add_argument('--regles-import', action='store_true',
-                    help="décider par les règles de l'import, sans question (§ 10.12)")
     args = ap.parse_args()
 
     t = time.time()
     db = DatabaseManager(args.base)
     print(f"Base ouverte (migration comprise) : {time.time() - t:.1f} s, "
           f"{taille_base(db.db_file) / 1e6:.1f} Mo")
-    if args.questions and not args.regles:
-        ap.error("--questions demande --regles (jamais le data/reprise_fiches.json du poste)")
-    service = RepriseSiteService(db, chemin_configuration=args.regles or None)
+    service = RepriseSiteService(db)
     if Path(args.config).exists():
         service._modeles = modeles_depuis_config(json.loads(Path(args.config).read_text('utf-8')))
     signature, statut = service.examiner_export(args.produits, args.compatibilites)
@@ -163,7 +107,7 @@ def main():
     journal = []
     premier = None
     for _ in range(args.lots):
-        lot = un_lot(service, db, args.taille, journal, args.questions, args.regles_import)
+        lot = un_lot(service, db, args.taille, journal)
         if lot is None:
             break
         premier = premier or lot
@@ -177,12 +121,7 @@ def main():
         print("\n=== Relance du 1er lot ===")
         avant = compter(db)
         lot = service.analyser_lot_suivant(args.taille)
-        if args.regles_import:
-            plan, _ = par_regles(lot)
-        elif args.questions:
-            lot, plan, _ = par_questions(service, lot)
-        else:
-            plan, _ = tout_decider(lot)
+        plan, _ = par_regles(lot)
         res = service.enregistrer_lot(lot, plan)
         apres = compter(db)
         relance = {'ajouts': {k: apres[k] - avant[k] for k in apres}, 'resultat': res.resume(),

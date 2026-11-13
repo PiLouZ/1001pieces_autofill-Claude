@@ -2,8 +2,8 @@
 « Rien de faux en bloc » (refonte de la reprise, étape 1) : ce que « Tout valider »
 écrivait de faux sur le 1er lot réel (produits 7084 à 7191) ne s'écrit plus.
 
-- le type commun d'une catégorie ne remplace jamais un type déjà trouvé
-  (1 100 filtres de hotte de la fiche 7188) ;
+- un appareil créé garde le type trouvé (catégorie du produit) : plus de « type
+  commun » qui l'écrasait (1 100 filtres de hotte de la fiche 7188 ; retiré § 10.20) ;
 - un candidat unique trouvé par le seul nom commercial, de réf. différente,
   n'est pas relié en bloc (42 liens faux) ; même réf. → proposé ;
 - une réf. présente sous une marque annoncée qui n'est pas celle de l'en-tête
@@ -48,23 +48,17 @@ def _lecture(lignes, annoncees=(), code=('481010595117',), equivalentes=()):
 
 
 def _plan(r):
-    d = DecisionsFiche()
-    d.valider_tout(r)
-    return planifier(r, d)
+    return planifier(r, DecisionsFiche())
 
 
-def test_type_commun_ne_remplace_pas_le_type_trouve(tmp_path):
+def test_type_trouve_garde_a_la_creation(tmp_path):
     b = Base(tmp_path)
     b.appareil('Elica', 'X1', 'Hotte')          # la marque existe ; ZZHOTTE1 est absent
     r = b.rapprocher(_lecture([('Elica', 'ZZHOTTE1', 'Hotte murale')]),
                      categorie='Filtre à graisse - Hotte')
     a = r.appareils[0]
     assert a.niveau == 'absent' and a.type == 'Hotte'
-    d = DecisionsFiche()
-    d.valider_tout(r)
-    d.type_par_categorie['absents'] = 'Lave-linge'
-    plan = planifier(r, d)
-    assert [x.type for x in plan.appareils_a_creer] == ['Hotte']
+    assert [x.type for x in _plan(r).appareils_a_creer] == ['Hotte']
 
 
 def test_nom_commercial_seul_reference_differente_non_relie(tmp_path):

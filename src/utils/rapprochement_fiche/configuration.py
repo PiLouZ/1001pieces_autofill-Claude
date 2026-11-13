@@ -14,10 +14,6 @@ Tables tenues EN CONFIGURATION, modifiables sans PR :
   « Rosières », est déjà toléré) ;
 - groupes de marques (niveau « à valider » du § 5.2 : référence trouvée sous
   une autre marque du même groupe industriel). Liste de départ, à compléter ;
-- règles de la reprise (`regles_reprise`) : réponses données une fois aux
-  questions de règle de l'import par lots (« même réf. sous une marque du
-  groupe = même appareil ? »…), appliquées ensuite à chaque lot, révocables.
-
 Les valeurs ci-dessous sont les défauts ; `data/reprise_fiches.json` (même
 structure, cf. data/reprise_fiches.example.json) les remplace clé par clé.
 """
@@ -78,7 +74,6 @@ CONFIGURATION_PAR_DEFAUT: Dict[str, Any] = {
     # Écriture de la fiche → marque de l'outil (clé comparée sans casse ni accents)
     'alias_marques': {'GE': 'General Electric', 'Brauknecht': 'Bauknecht'},
     # Réponses mémorisées aux questions de règle de l'import par lots (clé → réponse)
-    'regles_reprise': {},
     'groupes_marques': {
         'Whirlpool': ['Whirlpool', 'Bauknecht', 'Ignis', 'Laden', 'Indesit', 'Hotpoint-Ariston',
                       'Scholtès', 'Privileg', 'KitchenAid', 'Proline'],
@@ -130,7 +125,6 @@ class ConfigurationRapprochement:
             cle_marque(k): v for k, v in (d.get('categories_types') or {}).items()}
         self.alias_marques: Dict[str, str] = {
             cle_marque(k): v for k, v in (d.get('alias_marques') or {}).items() if v}
-        self.regles: Dict[str, str] = dict(d.get('regles_reprise') or {})
         # Onglet Appareils des exports (`synonymes_appareils`) : types et appellations
         # où couper le titre d'une fiche pour en faire un libellé ; None = défauts.
         # Renseigné par le service d'enregistrement depuis la config des exports.
@@ -211,27 +205,6 @@ def fusionner(defauts: Dict[str, Any], valeurs: Dict[str, Any]) -> Dict[str, Any
         if cle in d and val is not None:
             d[cle] = copy.deepcopy(val)
     return d
-
-
-def enregistrer_configuration(modifications: Dict[str, Any],
-                              chemin: Optional[Path] = None) -> Path:
-    """Écrit des clés dans data/reprise_fiches.json sans perdre les autres
-    (fichier propre au poste, hors git). Retourne le chemin écrit."""
-    chemin = Path(chemin) if chemin else CHEMIN_CONFIGURATION
-    donnees: Dict[str, Any] = {}
-    try:
-        if chemin.exists():
-            donnees = json.loads(chemin.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        donnees = {}
-    if not isinstance(donnees, dict):
-        donnees = {}
-    donnees.update(copy.deepcopy(modifications))
-    chemin.parent.mkdir(parents=True, exist_ok=True)
-    temporaire = chemin.with_suffix('.json.tmp')
-    temporaire.write_text(json.dumps(donnees, ensure_ascii=False, indent=2), encoding='utf-8')
-    temporaire.replace(chemin)
-    return chemin
 
 
 def charger_configuration(chemin: Optional[Path] = None) -> ConfigurationRapprochement:

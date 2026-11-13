@@ -1,18 +1,18 @@
 """
-Décisions de l'aperçu et plan d'écriture d'une fiche (CDC § 7.1, § 9, étape 3)
+Plan d'écriture d'une fiche (CDC § 7.1, § 9, § 10.20)
 
-Pur Python, sans Qt ni base : l'aperçu remplit un `DecisionsFiche`,
-`planifier()` en tire un `PlanEnregistrement` que le service écrit.
+Pur Python, sans Qt ni base : des choix ligne par ligne (`DecisionsFiche`, posés
+par les règles de l'import, `regles_import.py`), `planifier()` en tire un
+`PlanEnregistrement` que l'import écrit.
 
-- Chaque appareil, remplacement, équivalence et doute d'identité appartient à
-  UNE catégorie du résumé (`CATEGORIES_RESUME`). Une catégorie est *validée en
-  bloc* (les propositions s'appliquent aux éléments sans choix individuel),
-  *laissée de côté* (rien n'est écrit, tout revient à la relecture) ou *en
-  attente*. Tant qu'une catégorie est en attente, rien ne s'enregistre.
-- Un choix individuel l'emporte toujours sur l'état de sa catégorie.
-- Un élément validé sans proposition possible (appareil à choisir parmi
-  plusieurs, création sans marque ou sans type) est *à compléter* : il bloque
-  l'enregistrement jusqu'à un choix ou sa mise de côté.
+- Sans choix, chaque élément suit sa proposition : appareil reconnu relié,
+  absent créé, remplacement et équivalente écrits, doute d'identité tranché par
+  sa proposition (`CHOIX_IDENTITE`).
+- Un choix ligne par ligne l'emporte : appareil choisi, création, ligne ignorée,
+  rattachement direct d'une ligne déjà couverte.
+- Un élément sans proposition possible (appareil à choisir parmi plusieurs,
+  création sans marque ou sans type, référence illisible) est *à compléter* :
+  les règles de l'import ne l'importent pas.
 - Ajout seul (§ 6.2) : le plan ne contient aucune suppression ; les liens de
   provenance site absents de la fiche sont repris pour information.
 """
@@ -28,18 +28,6 @@ from src.utils.rapprochement_fiche.resultat import (
     CHAMPS_ECARTS, AppareilRapproche, Equivalence, Rapprochement, Remplacement,
 )
 
-VALIDEE, DE_COTE, ATTENTE = 'validee', 'de_cote', 'attente'
-
-CATEGORIES_RESUME = {
-    'exacts': "Exacts (identiques en base)",
-    'normalises': "Normalisés (à la ponctuation près)",
-    'deja_couverts': "Déjà couverts par la lignée",
-    'a_valider': "À valider (choix d'appareil ou de marque)",
-    'absents': "Absents (appareils à créer)",
-    'types_manquants': "Types manquants (appareils à créer)",
-    'relations': "Remplacements et équivalences",
-    'conflits': "Conflits et doutes sur la pièce",
-}
 # Doutes d'appareil qui demandent un choix (catégorie « à valider »)
 _DOUTES_CHOIX = {'normalise_ambigu', 'exact_multiple', 'a_valider', 'marque_a_choisir',
                  'type_ambigu'}
@@ -63,10 +51,13 @@ def forme_reference(ref: str) -> str:
 
 
 # =============================================================================
-# Catégories
+# Ce que demande une ligne d'appareil
 # =============================================================================
 
 def categorie_appareil(a: AppareilRapproche) -> str:
+    """Ce que la ligne demande : 'a_valider' (choix d'appareil ou de marque),
+    'absents' / 'types_manquants' (création), 'deja_couverts', 'normalises',
+    'exacts'. Les règles de l'import tranchent les lignes « à valider »."""
     if set(a.doutes) & _DOUTES_CHOIX:
         return 'a_valider'
     if a.niveau == 'absent':
@@ -78,38 +69,6 @@ def categorie_appareil(a: AppareilRapproche) -> str:
     if a.appareil_id is None and a.proposition is None:
         return 'a_valider'
     return 'exacts'
-
-
-def categorie_remplacement(r: Remplacement) -> str:
-    if r.statut in ('conflit', 'cycle') or r.appariement == 'a_choisir':
-        return 'conflits'
-    return 'relations'
-
-
-def categorie_equivalence(e: Equivalence) -> str:
-    return 'relations' if e.origine or e.statut == 'ecartee' else 'conflits'
-
-
-def elements_par_categorie(r: Rapprochement) -> Dict[str, Dict[str, list]]:
-    """catégorie → {'appareils': [index], 'remplacements': [...], 'equivalences': [...],
-    'identite': [catégorie de doute]} (catégories non vides seulement)."""
-    out: Dict[str, Dict[str, list]] = {}
-
-    def ranger(cat, nature, valeur):
-        out.setdefault(cat, {}).setdefault(nature, []).append(valeur)
-
-    for i, a in enumerate(r.appareils):
-        ranger(categorie_appareil(a), 'appareils', i)
-    for rp in r.remplacements:
-        if rp.statut not in ('deja_present', 'confirme_par_chaine', 'identique'):
-            ranger(categorie_remplacement(rp), 'remplacements', rp.ancienne)
-    for e in r.equivalences:
-        if e.statut not in ('deja_dans_le_groupe', 'dans_la_succession', 'ecartee'):
-            ranger(categorie_equivalence(e), 'equivalences', e.reference)
-    for categorie in r.doutes_par_categorie():
-        if categorie in CHOIX_IDENTITE:
-            ranger('conflits', 'identite', categorie)
-    return {c: out[c] for c in CATEGORIES_RESUME if c in out}
 
 
 # =============================================================================
@@ -129,29 +88,18 @@ class ChoixAppareil:
 
 @dataclass
 class DecisionsFiche:
-    etats: Dict[str, str] = field(default_factory=dict)             # catégorie → état
+    """Choix ligne par ligne ; sans choix, chaque élément suit sa proposition."""
     appareils: Dict[int, ChoixAppareil] = field(default_factory=dict)
-    type_par_categorie: Dict[str, str] = field(default_factory=dict)  # type commun d'une catégorie
-    remplacements: Dict[str, str] = field(default_factory=dict)     # ancienne → 'garder'/'prendre'/cible
+    remplacements: Dict[str, str] = field(default_factory=dict)     # ancienne → 'garder'/'prendre'/cible/'ignorer'
     origines: Dict[str, str] = field(default_factory=dict)          # réf. → étiquette saisie
     ecartees: Set[str] = field(default_factory=set)                 # réf. écartées
     identite: Dict[str, str] = field(default_factory=dict)          # doute d'identité → choix
-    # Champ d'un appareil connu qui diffère sur la fiche : (ligne, champ) → 'outil' / 'site'.
-    # Sans choix : l'outil est gardé (rien n'est écrit), sauf un champ vide dans l'outil
-    champs: Dict[Tuple[int, str], str] = field(default_factory=dict)
-    # Règle de l'import (§ 10.12) : un appareil à créer sans marque ou sans type est
-    # créé quand même ; l'auto-complétion puis « Suggestions à valider » s'en chargent
+    # Règle de l'import (§ 10.12) : un appareil à créer sans type est créé quand
+    # même ; l'auto-complétion puis « Suggestions à valider » s'en chargent
     creer_incomplets: bool = False
-
-    def etat(self, categorie: str) -> str:
-        return self.etats.get(categorie, ATTENTE)
 
     def choix(self, index: int) -> ChoixAppareil:
         return self.appareils.setdefault(index, ChoixAppareil())
-
-    def valider_tout(self, r: Rapprochement):
-        for c in elements_par_categorie(r):
-            self.etats[c] = VALIDEE
 
 
 # =============================================================================
@@ -183,11 +131,9 @@ class PlanEnregistrement:
     # chaque lecture, comme les origines ; ne compte pas dans `vide`
     rangs_remplace: List[Tuple[str, int]] = field(default_factory=list)
     produit: Optional[Dict[str, object]] = None
-    # Champs d'appareils connus pris sur le site : id → {colonne d'appareils: valeur}
-    # (écrits par la sauvegarde événementielle, sur le thread principal)
+    # Nom commercial vide d'un appareil connu, complété depuis la fiche :
+    # id → {colonne d'appareils: valeur} (sauvegarde événementielle, thread principal)
     maj_appareils: Dict[int, Dict[str, str]] = field(default_factory=dict)
-    # « Garder l'outil » choisi : (appareil_id, champ, valeur du site), mémorisé
-    decisions_champs: List[Tuple[int, str, str]] = field(default_factory=list)
     decisions_ecritures: List[Tuple[str, str, str, str]] = field(default_factory=list)
     decisions_references: List[Tuple[str, str, str, Optional[str], str]] = field(default_factory=list)
     informations: List[str] = field(default_factory=list)
@@ -198,18 +144,17 @@ class PlanEnregistrement:
     non_importees: List[str] = field(default_factory=list)
     # Créations retenues pour données bancales : fiche à refaire depuis les PDF (§ 10.14)
     a_refaire: Optional[object] = None          # regles_import.ARefaire
-    en_attente: List[str] = field(default_factory=list)              # catégories en attente
 
     @property
     def pret(self) -> bool:
-        return bool(self.ref_piece) and not self.a_completer and not self.en_attente
+        return bool(self.ref_piece) and not self.a_completer
 
     @property
     def vide(self) -> bool:
         """Rien de nouveau à écrire (relecture d'une fiche déjà reprise)."""
         return not (self.appareils_a_creer or self.remplacements or self.equivalences
                     or self.decisions_ecritures or self.decisions_references
-                    or self.maj_appareils or self.decisions_champs
+                    or self.maj_appareils
                     or self.statut_piece != 'reelle' or self.libelle)
 
     def resume(self) -> Dict[str, int]:
@@ -223,7 +168,7 @@ class PlanEnregistrement:
 
 
 def planifier(r: Rapprochement, d: DecisionsFiche) -> PlanEnregistrement:
-    """Plan d'écriture d'une fiche d'après les décisions de l'aperçu."""
+    """Plan d'écriture d'une fiche d'après ses choix ligne par ligne."""
     return _Planificateur(r, d).executer()
 
 
@@ -231,20 +176,15 @@ class _Planificateur:
 
     def __init__(self, r: Rapprochement, d: DecisionsFiche):
         self.r, self.d = r, d
-        self.cats = elements_par_categorie(r)
         ident = r.identite
         self.plan = PlanEnregistrement(ref_piece=ident.ref_piece or '', statut_piece=ident.statut)
         self.le = datetime.now().isoformat(timespec='seconds')
-
-    def _etat(self, categorie: str) -> str:
-        return self.d.etat(categorie)
 
     def executer(self) -> PlanEnregistrement:
         p = self.plan
         if not p.ref_piece:
             p.a_completer.append("pièce introuvable : ni code produit ni référence interne")
             return p
-        p.en_attente = [CATEGORIES_RESUME[c] for c in self.cats if self._etat(c) == ATTENTE]
         self._identite()
         self._differees: List[Tuple[int, AppareilRapproche]] = []
         self._couverts: List[AppareilRapproche] = []
@@ -262,11 +202,9 @@ class _Planificateur:
         return p
 
     # --- Identité, libellé, produit du site (§ 5.1, 5.8) ------------------------
-    def _choix_identite(self, doute: str) -> Optional[str]:
-        """Choix sur un doute d'identité : individuel, sinon proposition si validé."""
-        if doute in self.d.identite:
-            return self.d.identite[doute]
-        return CHOIX_IDENTITE[doute][0] if self._etat('conflits') == VALIDEE else None
+    def _choix_identite(self, doute: str) -> str:
+        """Choix sur un doute d'identité : posé, sinon la proposition."""
+        return self.d.identite.get(doute) or CHOIX_IDENTITE[doute][0]
 
     def _identite(self):
         i, p = self.r.identite, self.plan
@@ -298,14 +236,8 @@ class _Planificateur:
 
     # --- Appareils (§ 5.2, 5.6, 5.7) --------------------------------------------
     def _appareil(self, index: int, a: AppareilRapproche):
-        categorie = categorie_appareil(a)
         choix = self.d.appareils.get(index)
-        etat = self._etat(categorie)
         if choix is not None and choix.ignorer:
-            return
-        individuel = choix is not None and (choix.appareil_id is not None or choix.creer
-                                            or choix.rattacher)
-        if not individuel and etat != VALIDEE:
             return
         p = self.plan
         cle = cle_marque(a.marque or a.marque_fiche)
@@ -316,7 +248,7 @@ class _Planificateur:
                 p.decisions_ecritures.append((cle, a.ref_modele, choisi.ref_modele, 'meme'))
             return
         if (choix is not None and choix.creer) or a.niveau == 'absent':
-            self._creer(index, a, choix, categorie, cle)
+            self._creer(index, a, choix, cle)
             return
         if a.lien == 'deja_couvert' and not (choix is not None and choix.rattacher):
             self._couverts.append(a)
@@ -333,9 +265,9 @@ class _Planificateur:
         p.liens.append((ident, a.provenance))
 
     def _ecarts(self):
-        """Champs d'appareils connus : valeur du site prise (choix « site », ou champ
-        vide dans l'outil), ou « garder l'outil » mémorisé (choix explicite). Seulement
-        pour une ligne qui désigne bien cet appareil (reliée ou déjà couverte)."""
+        """Appareil connu au nom commercial vide : complété depuis la fiche (règle de
+        l'import : un champ vide est complété, une valeur de l'outil jamais écrasée).
+        Seulement pour une ligne qui désigne bien cet appareil (reliée ou couverte)."""
         p = self.plan
         lies = {c for c, _ in p.liens if not isinstance(c, tuple)}
         lies |= {a.appareil_id for a in self._couverts if a.appareil_id is not None}
@@ -350,14 +282,10 @@ class _Planificateur:
                 if choix is not None and choix.appareil_id is not None \
                         and choix.appareil_id != e.appareil_id:
                     continue
-                decision = self.d.champs.get((i, e.champ)) or ('site' if e.a_completer else None)
-                if decision == 'site':
+                if e.a_completer:
                     vus.add((e.appareil_id, e.champ))
                     colonne = CHAMPS_ECARTS[e.champ][1]
                     p.maj_appareils.setdefault(e.appareil_id, {})[colonne] = e.site
-                elif decision == 'outil':
-                    vus.add((e.appareil_id, e.champ))
-                    p.decisions_champs.append((e.appareil_id, e.champ, e.site))
 
     def _resoudre_par_la_fiche(self):
         """Appareil à choisir parmi plusieurs : si un seul candidat est lié par une
@@ -382,13 +310,11 @@ class _Planificateur:
             if a.appareil_id in lies:
                 p.liens.append((a.appareil_id, a.provenance))
 
-    def _creer(self, index, a, choix, categorie, cle):
+    def _creer(self, index, a, choix, cle):
         p = self.plan
         marque = (choix.marque if choix and choix.marque else '') or a.marque
-        # Le type commun d'une catégorie ne remplace jamais un type déjà trouvé
-        # (table, ligne, base, catégorie du produit : § 5.6)
-        type_ = ((choix.type if choix and choix.type else '') or a.type
-                 or self.d.type_par_categorie.get(categorie, ''))
+        # Type trouvé (table, ligne, base, catégorie du produit : § 5.6), sinon choisi
+        type_ = (choix.type if choix and choix.type else '') or a.type
         if a.suspecte and not (choix is not None and choix.creer):
             p.a_completer.append(f"ligne {a.numero or 'table'} « {a.ref_modele} » : "
                                  f"référence illisible ({a.suspecte}), non créée")
@@ -418,9 +344,6 @@ class _Planificateur:
         choix = self.d.remplacements.get(rp.ancienne)
         if choix == 'ignorer':
             return
-        etat = self._etat(categorie_remplacement(rp))
-        if choix is None and etat != VALIDEE:
-            return
         nouvelle = rp.nouvelle
         if rp.statut == 'conflit':
             if (choix or 'garder') == 'garder':
@@ -448,8 +371,6 @@ class _Planificateur:
         if e.statut in ('deja_dans_le_groupe', 'dans_la_succession'):
             if e.statut == 'deja_dans_le_groupe':
                 p.origines.append((e.reference, origine or None, e.ligne))
-            return
-        if e.reference not in self.d.origines and self._etat(categorie_equivalence(e)) != VALIDEE:
             return
         if e.reference not in self.d.origines and not _FORME_CHIFFRES.search(e.reference):
             return                      # « Brandt », « : » : jamais écrite en bloc

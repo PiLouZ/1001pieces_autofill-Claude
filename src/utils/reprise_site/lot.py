@@ -1,25 +1,20 @@
 """
-Analyse et décisions d'un lot de fiches (CDC § 7.2, étape 4)
+Analyse et plan d'un lot de fiches (CDC § 7.2, § 10.12 à 10.16, § 10.20)
 
 Pur Python, sans Qt : un lot de produits de l'export (`LotExport`) devient un
-`LotReprise`, une fiche rapprochée par produit, avec :
+`LotReprise`, une fiche rapprochée par produit. Son plan (`planifier_par_regles`)
+suit les règles de l'import, sans question :
 
-- un **résumé par catégorie** (celles de `decisions.CATEGORIES_RESUME`, plus
-  « profils ambigus ») compté en fiches et en éléments, chaque catégorie
-  validée en bloc, laissée de côté ou en attente pour TOUT le lot ;
-- des **doutes regroupés** par genre et par forme : une décision vaut pour toutes
-  les fiches du groupe (ex. 41 % de réf. internes « différentes », surtout des
-  codes fournisseur `ES…` : un groupe par forme, `AA99999`) ;
-- des fiches **personnalisées** (ouvertes dans l'aperçu d'une fiche) : leurs
-  décisions propres l'emportent sur celles du lot ;
-- un **plan de lot** : un `PlanEnregistrement` par fiche, et les appareils à
-  créer **dédoublonnés entre fiches** (même marque, même forme normalisée) :
-  chaque fiche est rapprochée seule et ne voit pas les créations prévues par
-  les autres ; sans ce partage, deux fiches qui citent le même appareil absent
-  le créeraient deux fois.
+- un `PlanEnregistrement` par fiche (`regles_import`) ; une fiche sans code
+  produit est mise de côté (référence de pièce à saisir dans sa carte) ; ce que
+  l'import ne sait pas trancher n'est pas importé, et compté ;
+- les appareils à créer **dédoublonnés entre fiches** (même marque, même forme
+  normalisée) : chaque fiche est rapprochée seule et ne voit pas les créations
+  prévues par les autres ; sans ce partage, deux fiches qui citent le même
+  appareil absent le créeraient deux fois ;
+- les créations bancales retenues (fiches à refaire depuis les PDF, § 10.14).
 """
 
-import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
@@ -29,40 +24,15 @@ from src.utils.lecteur_fiche.lecteur import cle_marque
 from src.utils.rapprochement_fiche.acces_base import AccesBaseLecture, forme_normalisee
 from src.utils.rapprochement_fiche.configuration import ConfigurationRapprochement
 from src.utils.rapprochement_fiche.decisions import (
-    ATTENTE, CATEGORIES_RESUME, CHOIX_IDENTITE, DE_COTE, VALIDEE, AppareilACreer, ChoixAppareil,
-    DecisionsFiche, PlanEnregistrement, categorie_equivalence, elements_par_categorie,
-    forme_reference, planifier,
+    AppareilACreer, ChoixAppareil, DecisionsFiche, PlanEnregistrement, planifier,
 )
 from src.utils.rapprochement_fiche.rapprochement import rapprocher
-from src.utils.rapprochement_fiche.resultat import CATEGORIES_DOUTES, Rapprochement
+from src.utils.rapprochement_fiche.resultat import Rapprochement
 from src.utils.reprise_site.exports import LotExport, ProduitExport
-
-PROFILS_AMBIGUS = 'profils_ambigus'
-CATEGORIES_LOT = dict(CATEGORIES_RESUME)
-CATEGORIES_LOT[PROFILS_AMBIGUS] = "Profils ambigus (lecture à confirmer)"
-
-# Genres de doutes traités en bloc, avec leurs choix (le 1er = la proposition)
-GENRES_GROUPES = {
-    'ref_interne_differente': ("Référence interne sans rapport avec le code produit",
-                               CHOIX_IDENTITE['ref_interne_differente']),
-    'ref_interne_autre_piece': ("Référence interne déjà rattachée à une autre pièce",
-                                CHOIX_IDENTITE['ref_interne_autre_piece']),
-    'ean_different': ("EAN du site différent de celui de l'outil", CHOIX_IDENTITE['ean_different']),
-    'libelle_different': ("Titre de la fiche différent du libellé", CHOIX_IDENTITE['libelle_different']),
-    'remplacement_conflit': ("Remplacement en conflit avec l'existant", ('garder', 'prendre')),
-    'origine_inconnue': ("Équivalente sans étiquette d'origine", ('etiquette', 'ecarter')),
-}
-_CHIFFRES = re.compile(r'\d')
 
 
 class AnalyseAnnulee(Exception):
     """Analyse du lot interrompue par l'utilisateur."""
-
-
-def forme_ref_interne(ref: str) -> str:
-    """Forme d'une réf. interne pour le regroupement : chiffres → 9, lettres
-    gardées (`ES10028` → `ES99999`), pour séparer les familles de codes."""
-    return _CHIFFRES.sub('9', (ref or '').upper())
 
 
 # =============================================================================
@@ -75,14 +45,10 @@ class FicheLot:
     nom: str
     ref_interne: str
     rapprochement: Optional[Rapprochement] = None
-    decisions: DecisionsFiche = field(default_factory=DecisionsFiche)
+    decisions: DecisionsFiche = field(default_factory=DecisionsFiche)   # posées par les règles
     profil_ambigu: bool = False
     lignes_description: int = 0
     lignes_table: int = 0
-    personnalisee: bool = False         # décidée dans l'aperçu de la fiche
-    # Lignes posées par le lot, pas par l'utilisateur : mises de côté par « laisser
-    # de côté les lignes à compléter », ou rattachées à une création d'une autre fiche
-    lignes_auto: Set[int] = field(default_factory=set)
     marques_annoncees: List[str] = field(default_factory=list)   # « Compatible avec … »
     de_cote: bool = False               # rien n'est écrit, la fiche revient plus tard
     raison_de_cote: str = ''
@@ -147,46 +113,12 @@ def analyser_lot(lot: LotExport, acces: AccesBaseLecture, config: ConfigurationR
 # =============================================================================
 
 @dataclass
-class LigneResume:
-    cle: str
-    libelle: str
-    fiches: int
-    elements: int
-
-
-@dataclass
-class GroupeDoutes:
-    genre: str                          # clé de GENRES_GROUPES
-    forme: str                          # sous-groupe ('' = un seul groupe)
-    occurrences: List[Tuple[int, str]]  # (index de fiche, élément : réf., ancienne réf.…)
-    exemples: List[str] = field(default_factory=list)
-
-    @property
-    def cle(self) -> Tuple[str, str]:
-        return (self.genre, self.forme)
-
-    @property
-    def fiches(self) -> int:
-        return len({i for i, _ in self.occurrences})
-
-    @property
-    def libelle(self) -> str:
-        return GENRES_GROUPES[self.genre][0]
-
-    @property
-    def choix(self) -> Tuple[str, ...]:
-        return GENRES_GROUPES[self.genre][1]
-
-
-@dataclass
 class PlanLot:
     plans: List[Tuple[int, PlanEnregistrement]]          # (index de fiche, plan) des fiches incluses
     creations: Dict[Tuple[str, str], List[Tuple[int, AppareilACreer]]]  # clé → occurrences
     de_cote: List[int]
-    en_attente: List[str]
-    fiches_a_completer: List[int]
-    lignes_a_completer: int
-    a_revoir: Dict[int, List[str]] = field(default_factory=dict)     # mode questions : fiche → lignes de côté
+    fiches_a_completer: List[int] = field(default_factory=list)
+    lignes_a_completer: int = 0
     # Règles de l'import (§ 10.12) : fiche → lignes non importées (historique)
     non_importees: Dict[int, List[str]] = field(default_factory=dict)
     # Fiches à refaire depuis les PDF (§ 10.14) : fiche → regles_import.ARefaire
@@ -194,9 +126,9 @@ class PlanLot:
 
     @property
     def pret(self) -> bool:
-        """Plus rien en attente ni à compléter (un lot dont toutes les fiches sont de
-        côté est prêt : il ne fait que les consigner et avancer la reprise)."""
-        return not self.en_attente and not self.fiches_a_completer
+        """Plus rien à compléter (un lot dont toutes les fiches sont de côté est
+        prêt : il ne fait que les consigner et avancer la reprise)."""
+        return not self.fiches_a_completer
 
     def resume(self) -> Dict[str, int]:
         total = {'fiches': len(self.plans), 'de_cote': len(self.de_cote),
@@ -216,127 +148,18 @@ def cle_creation(a: AppareilACreer) -> Tuple[str, str]:
 
 
 class LotReprise:
-    """Un lot analysé et ses décisions (résumé en bloc, groupes de doutes)."""
+    """Un lot analysé et son plan par les règles de l'import."""
 
     def __init__(self, export: LotExport, fiches: List[FicheLot], duree_analyse: float = 0.0):
         self.export = export
         self.fiches = fiches
         self.duree_analyse = duree_analyse
-        self.etats: Dict[str, str] = {}
-        self.type_par_categorie: Dict[str, str] = {}
-        self.choix_groupes: Dict[Tuple[str, str], str] = {}
         self.fiches_de_cote = False         # lot des fiches mises de côté (la reprise n'avance pas)
-        self.questionnaire = None           # mode questions (refonte, étape 2) : QuestionnaireLot
-        self._cats: Dict[int, Dict[str, Dict[str, list]]] = {}
-
-    # --- Catégories ---------------------------------------------------------------
-    def categories_fiche(self, index: int) -> Dict[str, Dict[str, list]]:
-        if index not in self._cats:
-            r = self.fiches[index].rapprochement
-            self._cats[index] = elements_par_categorie(r) if r is not None else {}
-        return self._cats[index]
 
     def fiches_actives(self) -> Iterable[Tuple[int, FicheLot]]:
         """Fiches analysées, hors erreurs de lecture."""
         return ((i, f) for i, f in enumerate(self.fiches) if f.rapprochement is not None
                 and f.ref_piece)
-
-    def resume(self) -> List[LigneResume]:
-        fiches: Dict[str, int] = {}
-        elements: Dict[str, int] = {}
-        for i, f in self.fiches_actives():
-            if f.profil_ambigu:
-                fiches[PROFILS_AMBIGUS] = fiches.get(PROFILS_AMBIGUS, 0) + 1
-                elements[PROFILS_AMBIGUS] = elements.get(PROFILS_AMBIGUS, 0) + 1
-            for cle, contenu in self.categories_fiche(i).items():
-                fiches[cle] = fiches.get(cle, 0) + 1
-                elements[cle] = elements.get(cle, 0) + sum(len(v) for v in contenu.values())
-        return [LigneResume(c, CATEGORIES_LOT[c], fiches[c], elements[c])
-                for c in CATEGORIES_LOT if c in fiches]
-
-    def etat(self, categorie: str) -> str:
-        return self.etats.get(categorie, ATTENTE)
-
-    def definir_etat(self, categorie: str, etat: str):
-        self.etats[categorie] = etat
-
-    def tout_valider(self):
-        for ligne in self.resume():
-            self.etats[ligne.cle] = VALIDEE
-
-    # --- Doutes regroupés ----------------------------------------------------------
-    def groupes_doutes(self) -> List[GroupeDoutes]:
-        groupes: Dict[Tuple[str, str], GroupeDoutes] = {}
-
-        def ajouter(genre, forme, index, element, exemple):
-            g = groupes.setdefault((genre, forme), GroupeDoutes(genre, forme, []))
-            g.occurrences.append((index, element))
-            if len(g.exemples) < 5 and exemple not in g.exemples:
-                g.exemples.append(exemple)
-
-        for i, f in self.fiches_actives():
-            r = f.rapprochement
-            doutes = r.doutes_par_categorie()
-            ident = r.identite
-            for genre in ('ref_interne_differente', 'ref_interne_autre_piece',
-                          'ean_different', 'libelle_different'):
-                if genre in doutes:
-                    forme = forme_ref_interne(ident.ref_interne) if genre == 'ref_interne_differente' else ''
-                    exemple = {
-                        'ref_interne_differente': f"{ident.ref_interne} ≠ {ident.ref_piece}",
-                        'ref_interne_autre_piece': f"{ident.ref_interne} → {ident.piece_du_produit}",
-                        'ean_different': f"{ident.ean} ≠ {ident.ean_outil}",
-                        'libelle_different': f"« {ident.libelle} »",
-                    }[genre]
-                    ajouter(genre, forme, i, genre, exemple)
-            for rp in r.remplacements:
-                if rp.statut == 'conflit':
-                    ajouter('remplacement_conflit', '', i, rp.ancienne,
-                            f"{rp.ancienne} : {rp.successeur_actuel} / {rp.nouvelle}")
-            for e in r.equivalences:
-                if categorie_equivalence(e) == 'conflits' and e.statut not in (
-                        'deja_dans_le_groupe', 'dans_la_succession', 'ecartee'):
-                    ajouter('origine_inconnue', forme_reference(e.reference), i, e.reference,
-                            e.reference)
-        ordre = list(GENRES_GROUPES)
-        return sorted(groupes.values(), key=lambda g: (ordre.index(g.genre), -g.fiches, g.forme))
-
-    def choisir_groupe(self, groupe: GroupeDoutes, choix: str, etiquette: str = ''):
-        """Décision en bloc sur un groupe de doutes (les fiches personnalisées gardent
-        la leur). Pour `origine_inconnue`, `choix` = 'etiquette' (avec `etiquette`)
-        ou 'ecarter'. `choix` vide : retour à la proposition (décisions retirées)."""
-        if choix:
-            self.choix_groupes[groupe.cle] = choix if choix != 'etiquette' else f"etiquette:{etiquette}"
-        else:
-            self.choix_groupes.pop(groupe.cle, None)
-        for index, element in groupe.occurrences:
-            f = self.fiches[index]
-            if f.personnalisee:
-                continue
-            d = f.decisions
-            if not choix:
-                if groupe.genre in CHOIX_IDENTITE:
-                    d.identite.pop(groupe.genre, None)
-                elif groupe.genre == 'remplacement_conflit':
-                    d.remplacements.pop(element, None)
-                else:
-                    d.ecartees.discard(element)
-                    d.origines.pop(element, None)
-                continue
-            if groupe.genre in CHOIX_IDENTITE:
-                d.identite[groupe.genre] = choix
-            elif groupe.genre == 'remplacement_conflit':
-                d.remplacements[element] = choix
-            elif groupe.genre == 'origine_inconnue':
-                if choix == 'ecarter':
-                    d.ecartees.add(element)
-                    d.origines.pop(element, None)
-                else:
-                    d.ecartees.discard(element)
-                    if etiquette.strip():
-                        d.origines[element] = etiquette.strip()
-                    else:
-                        d.origines.pop(element, None)
 
     # --- Fiches ------------------------------------------------------------------
     def mettre_de_cote(self, index: int, raison: str = "mise de côté"):
@@ -348,42 +171,61 @@ class LotReprise:
         if f.rapprochement is not None and f.ref_piece:
             f.de_cote, f.raison_de_cote = False, ''
 
-    def personnaliser(self, index: int, decisions: DecisionsFiche):
-        """Décisions prises dans l'aperçu de la fiche : elles l'emportent sur le lot."""
-        f = self.fiches[index]
-        f.decisions, f.personnalisee = decisions, True
-
-    def decisions_effectives(self, index: int) -> DecisionsFiche:
-        """Décisions de la fiche, états et type commun du lot reportés (sauf fiche
-        personnalisée, qui garde les siens)."""
-        f = self.fiches[index]
-        d = f.decisions
-        if not f.personnalisee:
-            d.etats = {c: self.etat(c) for c in self.categories_fiche(index)}
-            d.type_par_categorie = dict(self.type_par_categorie)
-        return d
-
-    def lignes_a_completer_de_cote(self) -> int:
-        """« Laisser de côté les lignes à compléter » : chaque ligne qui bloque le lot
-        (appareil à choisir, marque ou type manquant) est mise de côté."""
-        n = 0
+    # --- Plan --------------------------------------------------------------------
+    def planifier_par_regles(self, appellations=None) -> PlanLot:
+        """Plan du lot par les règles de l'import (CDC § 10.12) : aucune question.
+        Une fiche sans code produit est mise de côté (référence de pièce à saisir) ;
+        ce que l'import ne sait pas trancher n'est pas importé et compté. Les
+        créations restent partagées entre les fiches ; les créations bancales sont
+        retenues (§ 10.14)."""
+        from src.utils.rapprochement_fiche.coupe_titre import termes_appareils
+        from src.utils.rapprochement_fiche.regles_import import (
+            SANS_CODE_PRODUIT, decisions_import, retenir_creations_douteuses, sans_code_produit)
+        regles: Dict[int, List[str]] = {}
         for i, f in self.fiches_actives():
             if f.de_cote:
                 continue
-            plan = planifier(f.rapprochement, self.decisions_effectives(i))
-            for index in plan.lignes_a_completer:
-                f.decisions.appareils[index] = ChoixAppareil(ignorer=True)
-                f.lignes_auto.add(index)
-                n += 1
-        return n
+            if sans_code_produit(f.rapprochement):
+                self.mettre_de_cote(i, SANS_CODE_PRODUIT)
+                continue
+            f.decisions, regles[i] = decisions_import(f.rapprochement)
+        plan = self._planifier()
+        if plan.fiches_a_completer:
+            for i, p in plan.plans:
+                if not p.lignes_a_completer:
+                    continue
+                for index in p.lignes_a_completer:
+                    self.fiches[i].decisions.appareils[index] = ChoixAppareil(ignorer=True)
+                regles.setdefault(i, []).extend(p.a_completer)
+            plan = self._planifier()
+        # Créations bancales retenues (§ 10.14) ; une ligne retenue dont l'appareil est
+        # créé proprement par une autre fiche du lot partage cette création (sinon la
+        # relance la trouverait « exacte » et ajouterait un lien)
+        termes = termes_appareils(appellations)
+        a_refaire = {}
+        for i, p in plan.plans:
+            retenue = retenir_creations_douteuses(self.fiches[i].rapprochement,
+                                                  self.fiches[i].decisions, p, termes)
+            if retenue is not None:
+                a_refaire[i] = retenue
+        if a_refaire:
+            plan = self._planifier()
+            self._partager_creations_saines(plan, a_refaire)
+            plan = self._planifier()
+        plan.non_importees = {i: v for i, v in regles.items() if v}
+        plan.a_refaire = a_refaire
+        for i, p in plan.plans:
+            p.non_importees = list(plan.non_importees.get(i, []))
+            p.a_refaire = a_refaire.get(i)
+        return plan
 
     def _rattacher_aux_creations(self, plans: List[Tuple[int, PlanEnregistrement]]
                                  ) -> Set[int]:
-        """Ligne à compléter (absente sans type, à valider sans proposition) ou mise
-        de côté par le lot, dont l'appareil est créé par une AUTRE ligne du lot : elle reprend la
-        marque et le type de cette création, et la partage. Sans cela, la relance du
-        lot la trouverait « exacte » et créerait des liens que le 1er passage n'a pas
-        posés. Retourne les fiches à replanifier."""
+        """Ligne à compléter (absente sans type, à valider sans proposition) dont
+        l'appareil est créé par une AUTRE ligne du lot : elle reprend la marque et le
+        type de cette création, et la partage. Sans cela, la relance du lot la
+        trouverait « exacte » et créerait des liens que le 1er passage n'a pas posés.
+        Retourne les fiches à replanifier."""
         modeles: Dict[Tuple[str, str], AppareilACreer] = {}
         for _, plan in plans:
             for a in plan.appareils_a_creer:
@@ -393,11 +235,7 @@ class LotReprise:
             return a_refaire
         for i, plan in plans:
             f = self.fiches[i]
-            if f.personnalisee:
-                continue
-            candidates = set(plan.lignes_a_completer) | {
-                k for k in f.lignes_auto if (c := f.decisions.appareils.get(k)) and c.ignorer}
-            for index in candidates:
+            for index in plan.lignes_a_completer:
                 a = f.rapprochement.appareils[index]
                 # absente, ou « à valider » sans proposition (nom commercial seul…) :
                 # la même marque et la même forme sont créées par le lot
@@ -409,83 +247,8 @@ class LotReprise:
                     continue
                 f.decisions.appareils[index] = ChoixAppareil(creer=True, marque=modele.marque,
                                                              type=modele.type)
-                f.lignes_auto.add(index)
                 a_refaire.add(i)
         return a_refaire
-
-    # --- Plan --------------------------------------------------------------------
-    def planifier(self) -> PlanLot:
-        q = self.questionnaire
-        if q is not None:
-            q.appliquer()                   # réponses → décisions ; catégories validées
-        plan = self._planifier()
-        if q is not None and plan.fiches_a_completer:
-            # Mode questions : une ligne qui reste à compléter (choix impossible,
-            # marque ou type manquant malgré la réponse) est laissée de côté et sa
-            # fiche signalée à revoir, au lieu de bloquer le lot
-            for i, p in plan.plans:
-                f = self.fiches[i]
-                for index, message in zip(p.lignes_a_completer, p.a_completer[-len(p.lignes_a_completer):]
-                                          if p.lignes_a_completer else []):
-                    f.decisions.appareils[index] = ChoixAppareil(ignorer=True)
-                    f.lignes_auto.add(index)
-                    q.a_revoir[i].append(message)
-            plan = self._planifier()
-        if q is not None:
-            plan.en_attente = q.en_attente() + plan.en_attente
-            plan.a_revoir = {i: list(v) for i, v in q.a_revoir.items() if v}
-        return plan
-
-    def planifier_par_regles(self, appellations=None) -> PlanLot:
-        """Plan du lot par les règles de l'import (CDC § 10.12) : aucune question,
-        aucune catégorie en attente. Une fiche sans code produit est mise de côté
-        (référence de pièce à saisir) ; ce que l'import ne sait pas trancher n'est
-        pas importé et compté. Les créations restent partagées entre les fiches."""
-        from src.utils.rapprochement_fiche.coupe_titre import termes_appareils
-        from src.utils.rapprochement_fiche.regles_import import (
-            SANS_CODE_PRODUIT, decisions_import, retenir_creations_douteuses, sans_code_produit)
-        self.questionnaire = None
-        regles: Dict[int, List[str]] = {}
-        for i, f in self.fiches_actives():
-            if f.personnalisee or f.de_cote:
-                continue
-            if sans_code_produit(f.rapprochement):
-                self.mettre_de_cote(i, SANS_CODE_PRODUIT)
-                continue
-            f.decisions, regles[i] = decisions_import(f.rapprochement)
-        self.tout_valider()
-        self.etats[PROFILS_AMBIGUS] = VALIDEE
-        plan = self._planifier()
-        if plan.fiches_a_completer:
-            for i, p in plan.plans:
-                f = self.fiches[i]
-                if not p.lignes_a_completer or f.personnalisee:
-                    continue
-                for index in p.lignes_a_completer:
-                    f.decisions.appareils[index] = ChoixAppareil(ignorer=True)
-                regles.setdefault(i, []).extend(p.a_completer)
-            plan = self._planifier()
-        # Créations bancales retenues (§ 10.14) ; une ligne retenue dont l'appareil est
-        # créé proprement par une autre fiche du lot partage cette création (sinon la
-        # relance la trouverait « exacte » et ajouterait un lien)
-        termes = termes_appareils(appellations)
-        a_refaire = {}
-        for i, p in plan.plans:
-            f = self.fiches[i]
-            if not f.personnalisee:
-                retenue = retenir_creations_douteuses(f.rapprochement, f.decisions, p, termes)
-                if retenue is not None:
-                    a_refaire[i] = retenue
-        if a_refaire:
-            plan = self._planifier()
-            self._partager_creations_saines(plan, a_refaire)
-            plan = self._planifier()
-        plan.non_importees = {i: v for i, v in regles.items() if v}
-        plan.a_refaire = a_refaire
-        for i, p in plan.plans:
-            p.non_importees = list(plan.non_importees.get(i, []))
-            p.a_refaire = a_refaire.get(i)
-        return plan
 
     def _partager_creations_saines(self, plan: PlanLot, a_refaire: Dict[int, object]):
         """Ligne retenue d'une fiche à refaire, dont la même marque et la même forme
@@ -508,47 +271,26 @@ class LotReprise:
                         creer=True, marque=modele.marque, type=modele.type)
 
     def _planifier(self) -> PlanLot:
-        plans, de_cote, attente, a_completer = [], [], set(), []
+        plans, de_cote, a_completer = [], [], []
         lignes = 0
-        etat_profils = self.etat(PROFILS_AMBIGUS)
         for i, f in enumerate(self.fiches):
             if f.de_cote or f.rapprochement is None or not f.ref_piece:
                 de_cote.append(i)
                 continue
-            if f.profil_ambigu and not f.personnalisee:
-                if etat_profils == DE_COTE:
-                    de_cote.append(i)
-                    continue
-                if etat_profils == ATTENTE:
-                    attente.add(CATEGORIES_LOT[PROFILS_AMBIGUS])
-            plan = planifier(f.rapprochement, self.decisions_effectives(i))
-            attente.update(plan.en_attente)
+            plans.append((i, planifier(f.rapprochement, f.decisions)))
+        a_refaire = self._rattacher_aux_creations(plans)
+        for k, (i, plan) in enumerate(plans):
+            if i in a_refaire:
+                plan = planifier(self.fiches[i].rapprochement, self.fiches[i].decisions)
+                plans[k] = (i, plan)
             if plan.a_completer:
                 a_completer.append(i)
                 lignes += len(plan.a_completer)
-            plans.append((i, plan))
-        a_refaire = self._rattacher_aux_creations(plans)
-        if a_refaire:
-            a_completer, lignes = [], 0
-            for k, (i, plan) in enumerate(plans):
-                if i in a_refaire:
-                    plan = planifier(self.fiches[i].rapprochement, self.decisions_effectives(i))
-                    plans[k] = (i, plan)
-                if plan.a_completer:
-                    a_completer.append(i)
-                    lignes += len(plan.a_completer)
         creations: Dict[Tuple[str, str], List[Tuple[int, AppareilACreer]]] = {}
         for i, plan in plans:
             for a in plan.appareils_a_creer:
                 creations.setdefault(cle_creation(a), []).append((i, a))
-        ordre = list(CATEGORIES_LOT.values())
-        return PlanLot(plans, creations, de_cote,
-                       sorted(attente, key=lambda c: ordre.index(c) if c in ordre else 99),
-                       a_completer, lignes)
-
-
-def libelle_doute(categorie: str) -> str:
-    return CATEGORIES_DOUTES.get(categorie, categorie)
+        return PlanLot(plans, creations, de_cote, a_completer, lignes)
 
 
 def mesures_lot(lot: LotReprise, plan: Optional[PlanLot] = None) -> Dict[str, object]:

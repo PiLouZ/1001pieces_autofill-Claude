@@ -1,5 +1,7 @@
-"""Appareil connu dont un champ diffère sur la fiche (CDC § 10.11, point 2).
+"""Appareil connu dont un champ diffère sur la fiche (CDC § 10.11, point 2, et § 10.20).
 
+Le rapprochement relève les champs qui diffèrent ; l'import garde la valeur de
+l'outil (jamais écrasée) et ne complète qu'un nom commercial vide.
 Base construite par DatabaseManager, sans réseau ni réglage du poste.
 """
 
@@ -8,7 +10,7 @@ from types import SimpleNamespace
 from src.utils.lecteur_fiche.page_publique import LigneTableSite
 from src.utils.rapprochement_fiche.decisions import planifier
 from tests.unit.test_enregistrement_fiche import (
-    Construite, _enregistrer, _fiche, _rapprocher, _service, _tout_valider,
+    Construite, _decisions, _enregistrer, _fiche, _rapprocher, _service,
 )
 
 
@@ -69,67 +71,41 @@ class TestChoix:
         fiche = _fiche(lignes=[('Bosch', 'XXX - XYZ', 'Serie 6', 'Sèche-linge')])
         r = _rapprocher(b.db, fiche)
         plan, _ = _enregistrer(b.db, r)
-        assert not plan.maj_appareils and not plan.decisions_champs
+        assert not plan.maj_appareils
         assert _ligne(b, ident=ident) == ('Lave-linge', 'Bosch', 'XXX - XYZ', 'Serie 4')
-        # Relecture : rien de décidé, l'écart est reproposé
+        # Relecture : l'écart est toujours relevé, rien n'est écrit
         assert _ecarts(_rapprocher(b.db, fiche)) == [('type', 'Lave-linge', 'Sèche-linge'),
                                                     ('nom', 'Serie 4', 'Serie 6')]
 
-    def test_prendre_le_site_puis_relecture_sans_ecart(self, tmp_path):
+    def test_nom_vide_complete_puis_relecture_sans_ecart(self, tmp_path):
         b = Construite(tmp_path)
         b.piece('REFP')
         ident = b.appareil('Bosch', 'WAE24/01', 'Lave-linge', '')
         fiche = _fiche(lignes=[('Bosch', 'WAE2401', 'Maxx 6', 'Sèche-linge')])
         r = _rapprocher(b.db, fiche)
-        d = _tout_valider(r)
-        d.champs[(0, 'type')] = 'site'
-        d.champs[(0, 'ref')] = 'site'
-        plan, res = _enregistrer(b.db, r, d)
-        # Nom vide dans l'outil : complété sans question
-        assert plan.maj_appareils == {ident: {'type': 'Sèche-linge', 'ref_modele': 'WAE2401',
-                                              'commercial_ref': 'Maxx 6'}}
-        assert res.champs_modifies == 3
-        assert _ligne(b, ident=ident) == ('Sèche-linge', 'Bosch', 'WAE2401', 'Maxx 6')
+        plan, res = _enregistrer(b.db, r)
+        # Nom vide dans l'outil : complété ; type et écriture de l'outil gardés
+        assert plan.maj_appareils == {ident: {'commercial_ref': 'Maxx 6'}}
+        assert res.champs_modifies == 1
+        assert _ligne(b, ident=ident) == ('Lave-linge', 'Bosch', 'WAE24/01', 'Maxx 6')
         r2 = _rapprocher(b.db, fiche)
-        assert r2.appareils[0].niveau == 'exact' and _ecarts(r2) == []
-        assert planifier(r2, _tout_valider(r2)).vide
+        assert planifier(r2, _decisions(r2)).vide
 
-    def test_garder_l_outil_memorise_puis_repropose_si_le_site_change(self, tmp_path):
-        b = Construite(tmp_path)
-        b.piece('REFP')
-        ident = b.appareil('Bosch', 'XXX - XYZ', 'Lave-linge')
-        fiche = _fiche(lignes=[('Bosch', 'XXX - XYZ', '', 'Sèche-linge')])
-        r = _rapprocher(b.db, fiche)
-        d = _tout_valider(r)
-        d.champs[(0, 'type')] = 'outil'
-        plan, _ = _enregistrer(b.db, r, d)
-        assert plan.decisions_champs == [(ident, 'type', 'Sèche-linge')]
-        assert _ligne(b, ident=ident)[0] == 'Lave-linge'
-        r2 = _rapprocher(b.db, fiche)
-        assert r2.appareils[0].ecarts[0].tranche and _ecarts(r2) == []
-        assert planifier(r2, _tout_valider(r2)).vide
-        # Le site donne un autre type : de nouveau proposé
-        r3 = _rapprocher(b.db, _fiche(lignes=[('Bosch', 'XXX - XYZ', '', 'Four')]))
-        assert _ecarts(r3) == [('type', 'Lave-linge', 'Four')]
-
-    def test_ligne_laissee_de_cote_rien_n_est_ecrit(self, tmp_path):
+    def test_ligne_ignoree_nom_vide_non_complete(self, tmp_path):
         from src.utils.rapprochement_fiche.decisions import ChoixAppareil
         b = Construite(tmp_path)
         b.piece('REFP')
-        ident = b.appareil('Bosch', 'A1', 'Lave-linge', '')
+        b.appareil('Bosch', 'A1', 'Lave-linge', '')
         r = _rapprocher(b.db, _fiche(lignes=[('Bosch', 'A1', 'Nom', 'Four')]))
-        d = _tout_valider(r)
+        d = _decisions(r)
         d.appareils[0] = ChoixAppareil(ignorer=True)
-        d.champs[(0, 'type')] = 'site'
-        plan = planifier(r, d)
-        assert not plan.maj_appareils and not plan.decisions_champs
-        assert _ligne(b, ident=ident)[0] == 'Lave-linge'
+        assert not planifier(r, d).maj_appareils
 
     def test_ecriture_par_la_sauvegarde_evenementielle(self, tmp_path):
-        """Avec une fenêtre : les champs passent par EventDrivenSaveService."""
+        """Avec une fenêtre : le nom complété passe par EventDrivenSaveService."""
         b = Construite(tmp_path)
         b.piece('REFP')
-        ident = b.appareil('Bosch', 'A1', 'Lave-linge')
+        ident = b.appareil('Bosch', 'A1', 'Lave-linge', '')
         appels = []
 
         def enregistrer_champs_appareils(maj):
@@ -140,12 +116,10 @@ class TestChoix:
             save_after_import=lambda *_: True))
         service = _service(b.db)
         service.parent_window = fenetre
-        r = _rapprocher(b.db, _fiche(lignes=[('Bosch', 'A1', '', 'Four')]))
-        d = _tout_valider(r)
-        d.champs[(0, 'type')] = 'site'
-        res = service.enregistrer(planifier(r, d))
-        assert res.ok and appels == [{ident: {'type': 'Four'}}]
-        assert _ligne(b, ident=ident)[0] == 'Four'
+        r = _rapprocher(b.db, _fiche(lignes=[('Bosch', 'A1', 'Logixx', 'Four')]))
+        res = service.enregistrer(planifier(r, _decisions(r)))
+        assert res.ok and appels == [{ident: {'commercial_ref': 'Logixx'}}]
+        assert _ligne(b, ident=ident) == ('Lave-linge', 'Bosch', 'A1', 'Logixx')
 
 
 def test_noms_qui_ne_sont_pas_des_ecarts():

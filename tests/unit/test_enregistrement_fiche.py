@@ -4,13 +4,12 @@ Aperçu et enregistrement d'une fiche du site (CDC import fiches site, étape 3)
 - Schéma du § 9 : tables et colonnes créées par DatabaseManager, migration
   rejouable, colonnes vides pour l'existant, renommage et suppression suivis ;
 - mémoires branchées sur rapprocher(memoires=True) ;
-- décisions de l'aperçu → plan d'écriture (catégories en bloc, choix individuels,
-  lignes à compléter) ;
+- choix ligne par ligne → plan d'écriture (propositions par défaut, choix
+  individuels, lignes à compléter) ;
 - enregistrement sur l'extrait de la vraie base : les 3 fiches d'exemple
   enregistrées puis relues sans rien ajouter ; 20744 : la fantôme devient réelle,
   aucun nouveau lien ;
 - ajout seul : liens absents de la fiche signalés, rien si la liste est tronquée ;
-- aperçu rendu hors écran ;
 - sur une COPIE de la vraie base (variable AUTOFILL_BASE_COPIE, API backup) :
   migration mesurée.
 Aucun accès réseau.
@@ -34,8 +33,7 @@ from src.utils.lecteur_fiche import (
 )
 from src.utils.rapprochement_fiche import AccesBaseLecture, ConfigurationRapprochement, rapprocher
 from src.utils.rapprochement_fiche.decisions import (
-    DE_COTE, VALIDEE, ChoixAppareil, DecisionsFiche, categorie_appareil, elements_par_categorie,
-    forme_reference, planifier,
+    ChoixAppareil, DecisionsFiche, categorie_appareil, forme_reference, planifier,
 )
 from src.utils.rapprochement_fiche.rapprochement import libelle_depuis_titre
 
@@ -85,9 +83,9 @@ def _choisir_premier_candidat(r, d):
             d.appareils[i] = ChoixAppareil(appareil_id=a.candidats[0].id)
 
 
-def _tout_valider(r):
+def _decisions(r):
+    """Propositions par défaut, et le 1er candidat pour un appareil à choisir."""
     d = DecisionsFiche()
-    d.valider_tout(r)
     _choisir_premier_candidat(r, d)
     return d
 
@@ -107,8 +105,8 @@ def _rapprocher(db, fiche, **kw):
 
 
 def _enregistrer(db, r, d=None):
-    plan = planifier(r, d or _tout_valider(r))
-    assert plan.pret, (plan.en_attente, plan.a_completer)
+    plan = planifier(r, d or _decisions(r))
+    assert plan.pret, plan.a_completer
     res = _service(db).enregistrer(plan)
     assert res.ok, res.erreur
     return plan, res
@@ -232,7 +230,7 @@ class TestFichesExemple:
     def test_7285_piece_creee_relations_et_origines(self, tmp_path):
         db = _db_extrait(tmp_path)
         r = _lire(db, 7285)
-        d = _tout_valider(r)
+        d = _decisions(r)
         d.ecartees.add('481949')
         plan, res = _enregistrer(db, r, d)
         assert res.piece == 'creee'
@@ -261,7 +259,7 @@ class TestFichesExemple:
         apres = _instantane(db)
         for n in (7285, 20746, 20744):
             r = _lire(db, n)
-            plan = planifier(r, _tout_valider(r))
+            plan = planifier(r, _decisions(r))
             assert plan.vide, (n, plan.resume())
             assert not r.absents_de_la_fiche
             res = _service(db).enregistrer(plan)
@@ -283,7 +281,6 @@ class TestMemoires:
         r = _rapprocher(b.db, fiche)
         assert r.appareils[0].niveau == 'normalise_ambigu'
         d = DecisionsFiche()
-        d.valider_tout(r)
         d.appareils[0] = ChoixAppareil(appareil_id=a1)
         plan, _ = _enregistrer(b.db, r, d)
         assert plan.decisions_ecritures == [('bosch', 'WOR 20154/02', 'WOR20154/02', 'meme')]
@@ -299,7 +296,6 @@ class TestMemoires:
         r = _rapprocher(b.db, fiche)
         assert r.appareils[0].niveau == 'normalise'
         d = DecisionsFiche()
-        d.valider_tout(r)
         d.appareils[0] = ChoixAppareil(creer=True)
         _enregistrer(b.db, r, d)
         relue = _rapprocher(b.db, fiche)
@@ -313,7 +309,6 @@ class TestMemoires:
         r = _rapprocher(b.db, fiche)
         assert 'origine_inconnue' in r.doutes_par_categorie()
         d = DecisionsFiche()
-        d.valider_tout(r)
         d.origines['ZZ123'] = 'Maison'
         _enregistrer(b.db, r, d)
         relue = _rapprocher(b.db, fiche)
@@ -350,7 +345,7 @@ class TestMemoires:
             b.db._enregistrer_produit_site('XREFP', 5, 'REFP', '8015250275551', 'hier')
             b.db.conn.commit()
         r = _rapprocher(b.db, _fiche(), ref_interne='XREFP', id_product=5, ean='7321423021278')
-        d = _tout_valider(r)
+        d = _decisions(r)
         d.identite['ean_different'] = 'outil'
         _enregistrer(b.db, r, d)
         assert b.db.produits_site_de('REFP')[0]['ean'] == '8015250275551'
@@ -366,7 +361,7 @@ class TestMemoires:
         assert r.identite.statut_libelle == 'different'
         _enregistrer(b.db, r)
         assert b.db.conn.execute("SELECT description FROM pieces").fetchone() == ('Ancien',)
-        d = _tout_valider(r)
+        d = _decisions(r)
         d.identite['libelle_different'] = 'prendre'
         _enregistrer(b.db, r, d)
         assert b.db.conn.execute("SELECT description FROM pieces").fetchone() == ('Nouveau libellé',)
@@ -398,22 +393,21 @@ class TestMemoires:
 # =============================================================================
 
 class TestPlan:
-    def test_rien_sans_validation(self, tmp_path):
-        db = _db_extrait(tmp_path)
-        r = _lire(db, 20746)
+    def test_sans_piece_rien_ecrit(self, tmp_path):
+        b = Construite(tmp_path)
+        r = _rapprocher(b.db, _fiche(code=(), lignes=[('Bosch', 'NEUF1', '', 'Lave-linge')]))
         plan = planifier(r, DecisionsFiche())
-        assert not plan.pret and plan.en_attente
-        avant = _instantane(db)
-        res = _service(db).enregistrer(plan)
-        assert not res.ok and _instantane(db) == avant
+        assert not plan.pret and plan.a_completer
+        avant = _instantane(b.db)
+        res = _service(b.db).enregistrer(plan)
+        assert not res.ok and _instantane(b.db) == avant
 
-    def test_categorie_de_cote_rien_ecrit(self, tmp_path):
+    def test_ligne_ignoree_rien_ecrit(self, tmp_path):
         b = Construite(tmp_path)
         b.piece('REFP')
         r = _rapprocher(b.db, _fiche(lignes=[('Bosch', 'NEUF1', '', 'Lave-linge')]))
         d = DecisionsFiche()
-        d.valider_tout(r)
-        d.etats['absents'] = DE_COTE
+        d.appareils[0] = ChoixAppareil(ignorer=True)
         plan, res = _enregistrer(b.db, r, d)
         assert res.appareils_crees == 0 and _compte(b.db, 'appareils') == 0
 
@@ -422,7 +416,7 @@ class TestPlan:
         b.piece('REFP')
         fiche = _fiche(lignes=[('Bosch', 'NEUF1', 'Série 4', 'Lave-linge')])
         r = _rapprocher(b.db, fiche)
-        assert elements_par_categorie(r)['absents']['appareils'] == [0]
+        assert categorie_appareil(r.appareils[0]) == 'absents'
         plan, res = _enregistrer(b.db, r)
         assert res.appareils_crees == 1 and res.liens_crees == 1
         assert b.cnx.execute("SELECT type, manufacturer, ref_modele, commercial_ref FROM appareils"
@@ -430,17 +424,16 @@ class TestPlan:
         assert b.cnx.execute("SELECT provenance FROM piece_associations").fetchone() == ('description',)
         relue = _rapprocher(b.db, fiche)
         assert (relue.appareils[0].niveau, relue.appareils[0].lien) == ('exact', 'deja_lie')
-        assert planifier(relue, _tout_valider(relue)).vide
+        assert planifier(relue, _decisions(relue)).vide
 
     def test_type_manquant_a_completer(self, tmp_path):
         b = Construite(tmp_path)
         b.piece('REFP')
         r = _rapprocher(b.db, _fiche(lignes=[('Bosch', 'NEUF1')]))
         d = DecisionsFiche()
-        d.valider_tout(r)
         plan = planifier(r, d)
         assert not plan.pret and 'type' in plan.a_completer[0]
-        d.type_par_categorie['types_manquants'] = 'Lave-vaisselle'
+        d.appareils[0] = ChoixAppareil(creer=True, type='Lave-vaisselle')
         plan = planifier(r, d)
         assert plan.pret and plan.appareils_a_creer[0].type == 'Lave-vaisselle'
 
@@ -453,8 +446,8 @@ class TestPlan:
         b.db.add_supersession('ANC', 'REFP')
         r = _rapprocher(b.db, _fiche(lignes=[('Bosch', 'X1')]))
         assert r.appareils[0].lien == 'deja_couvert'
-        assert planifier(r, _tout_valider(r)).liens == []
-        d = _tout_valider(r)
+        assert planifier(r, _decisions(r)).liens == []
+        d = _decisions(r)
         d.appareils[0] = ChoixAppareil(rattacher=True)
         assert planifier(r, d).liens == [(a, 'description')]
 
@@ -464,8 +457,8 @@ class TestPlan:
         b.db.add_supersession('X', 'Z')
         r = _rapprocher(b.db, _fiche(remplace=['X']))
         assert r.remplacements[0].statut == 'conflit'
-        assert planifier(r, _tout_valider(r)).remplacements == []
-        d = _tout_valider(r)
+        assert planifier(r, _decisions(r)).remplacements == []
+        d = _decisions(r)
         d.remplacements['X'] = 'prendre'
         _enregistrer(b.db, r, d)
         assert b.cnx.execute("SELECT ref_new FROM piece_supersessions WHERE ref_old = 'X'"
@@ -480,7 +473,7 @@ class TestPlan:
         courte = _fiche(lignes=[('Bosch', 'A1')])
         r = _rapprocher(b.db, courte)
         assert [a.ref_modele for a in r.absents_de_la_fiche] == ['A2']
-        assert planifier(r, _tout_valider(r)).informations
+        assert planifier(r, _decisions(r)).informations
         courte.liste_tronquee = True
         assert _rapprocher(b.db, courte).absents_de_la_fiche == []
         assert _compte(b.db, 'piece_associations') == 3          # rien n'est retiré
@@ -488,45 +481,6 @@ class TestPlan:
     def test_forme_reference(self):
         assert forme_reference('C00319033') == 'A99999999'
         assert forme_reference('DD82-01') == 'AA99-99'
-
-
-# =============================================================================
-# Aperçu rendu hors écran
-# =============================================================================
-
-def test_apercu_rendu_et_enregistrement(qapp, tmp_path):
-    from src.ui.fiche_site_dialog import FicheSiteDialog
-    db = _db_extrait(tmp_path)
-    recus = []
-    dlg = FicheSiteDialog(db, on_enregistre=lambda ref, res: recus.append((ref, res.ok)),
-                          service=_service(db), chemin_regles=tmp_path / 'regles.json')
-    dlg.analyser_page((FIXTURES / 'produit_7285.html').read_text(encoding='utf-8'),
-                      'https://www.1001pieces.com/7285-fiche.html')
-    dlg.show()
-    qapp.processEvents()
-    # À décider : récapitulatif et questions (moteur de l'import par lots)
-    q = dlg.panneau.questionnaire
-    assert q is not None and q.questions and set(dlg.panneau.cartes) == set(q.questions)
-    assert dlg.modele.rowCount() == len(dlg.rapprochement.appareils)
-    assert not dlg.bouton_enregistrer.isEnabled()
-    image = dlg.grab()
-    assert not image.isNull() and image.width() > 800
-    # Filtre par catégorie
-    dlg.filtre_categorie.setCurrentIndex(dlg.filtre_categorie.findData('a_valider'))
-    assert dlg.filtre.rowCount() == 2
-    # Choix individuel sur les lignes à valider, via le panneau
-    for ligne in range(dlg.filtre.rowCount()):
-        dlg.table.selectRow(ligne)
-        dlg.choix_appareil.setCurrentIndex(1)            # 1er candidat
-        dlg._appliquer_choix()
-    dlg._tout_valider()                                  # propositions acceptées
-    for x in q.sans_reponse():                           # sans proposition : 1er choix
-        dlg._repondre(x.cle, x.choix[0][0])
-    assert not (RACINE / 'data' / 'reprise_fiches.json').exists()   # jamais le fichier du poste
-    assert dlg.bouton_enregistrer.isEnabled(), dlg.etat.text()
-    dlg._enregistrer()
-    assert recus == [('481073071153', True)]
-    dlg.close()
 
 
 # =============================================================================
