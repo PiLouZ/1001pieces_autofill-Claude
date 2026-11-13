@@ -38,7 +38,7 @@ from src.utils.rapprochement_fiche.configuration import (
     ConfigurationRapprochement, charger_configuration,
 )
 from src.utils.rapprochement_fiche.resultat import (
-    AppareilRapproche, Doute, Equivalence, Identite, Rapprochement, Remplacement,
+    AppareilRapproche, Doute, Ecart, Equivalence, Identite, Rapprochement, Remplacement,
 )
 
 # Décision mémorisée sur une paire d'écritures (§ 9) : (clé de marque, {A, B}) → 'meme'/'distinct'
@@ -461,7 +461,56 @@ class _Rapprochement:
             for categorie in a.doutes:
                 self._doute(categorie, f"{a.marque or '?'} {a.ref_modele} : {a.raison}",
                             f"appareil:{a.numero}" if a.numero else f"table:{a.ref_modele}")
+        self._ecarts(lignes)
         return lignes
+
+    # --- Champs qui diffèrent d'un appareil connu ------------------------------
+    @staticmethod
+    def cible(a: AppareilRapproche) -> Optional[AppareilBase]:
+        """Appareil de l'outil que la ligne désigne (retenu, proposé, ou seul candidat
+        de même réf. sous une autre marque du groupe) ; None sinon."""
+        ident = a.appareil_id if a.appareil_id is not None else a.proposition
+        if ident is not None:
+            return next((c for c in a.candidats if c.id == ident), None)
+        if a.motif in ('meme_ref_groupe', 'nom_meme_ref'):
+            memes = [c for c in a.candidats
+                     if forme_normalisee(c.ref_modele) == forme_normalisee(a.ref_modele)]
+            return memes[0] if len(memes) == 1 else None
+        return None
+
+    def _ecarts(self, lignes: List[AppareilRapproche]):
+        """Type, marque (dans le groupe), écriture de la réf. et nom commercial d'un
+        appareil connu qui diffèrent sur la fiche (rien n'est écrit sans choix, sauf
+        un nom commercial vide dans l'outil, complété)."""
+        cibles = {id(a): c for a in lignes if a.niveau != 'absent'
+                  for c in [self.cible(a)] if c is not None}
+        if not cibles:
+            return
+        ids = {c.id for c in cibles.values()}
+        noms = self.acces.noms_commerciaux(ids) if any(a.nom for a in lignes) else {}
+        tranches = self.acces.decisions_champs(ids) if self.memoires else {}
+        for a in lignes:
+            c = cibles.get(id(a))
+            if c is None:
+                continue
+            ecarts = []
+            if a.type_site and c.type and cle_marque(a.type_site) != cle_marque(c.type):
+                ecarts.append(Ecart('type', c.type, a.type_site, c.id))
+            if (a.marque and c.marque and cle_marque(a.marque) != cle_marque(c.marque)
+                    and a.source_marque in ('entete', 'table')
+                    and self.config.groupe_de.get(cle_marque(a.marque))
+                    and self.config.groupe_de.get(cle_marque(a.marque))
+                    == self.config.groupe_de.get(cle_marque(c.marque))):
+                ecarts.append(Ecart('marque', c.marque, a.marque, c.id))
+            if a.ref_modele and c.ref_modele != a.ref_modele \
+                    and forme_normalisee(c.ref_modele) == forme_normalisee(a.ref_modele):
+                ecarts.append(Ecart('ref', c.ref_modele, a.ref_modele, c.id))
+            nom_outil = noms.get(c.id, '')
+            if a.nom and forme_normalisee(a.nom) != forme_normalisee(nom_outil):
+                ecarts.append(Ecart('nom', nom_outil, a.nom, c.id))
+            for e in ecarts:
+                e.tranche = bool(e.outil) and tranches.get((c.id, e.champ)) == e.site
+            a.ecarts = ecarts
 
     def _reference_suspecte(self, ref: str) -> str:
         """Pourquoi une réf. lue ne ressemble pas à une réf. d'appareil ('' = normale) :
@@ -678,14 +727,13 @@ class _Rapprochement:
                 a.doutes.append('exact_multiple')
         if explicite[0]:
             a.type, a.source_type = explicite
+            a.type_site = explicite[0]
             choisi = self._choisi(a)
-            if choisi is not None and choisi.type and cle_marque(choisi.type) != cle_marque(a.type) \
-                    and a.niveau in ('exact', 'normalise'):
-                a.niveau = 'a_valider'
-                a.raison = (a.raison + ', ' if a.raison else '') + \
-                    f"type {choisi.type} en base, {a.type} sur la fiche"
-                a.doutes.append('a_valider')
-                a.motif = a.motif or 'autre_type'
+            if choisi is not None and choisi.type and cle_marque(choisi.type) != cle_marque(a.type):
+                # Même appareil, classé sous un autre type sur le site : il est relié
+                # (même marque, même réf.) et le type de l'outil est gardé par défaut ;
+                # l'écart est proposé à l'utilisateur (`ecarts`)
+                a.type, a.source_type = choisi.type, 'base'
             return
         choisi = self._choisi(a)
         if choisi is not None and choisi.type:

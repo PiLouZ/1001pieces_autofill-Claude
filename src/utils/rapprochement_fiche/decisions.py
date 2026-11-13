@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from src.utils.lecteur_fiche.lecteur import cle_marque
 from src.utils.rapprochement_fiche.acces_base import forme_normalisee
 from src.utils.rapprochement_fiche.resultat import (
-    AppareilRapproche, Equivalence, Rapprochement, Remplacement,
+    CHAMPS_ECARTS, AppareilRapproche, Equivalence, Rapprochement, Remplacement,
 )
 
 VALIDEE, DE_COTE, ATTENTE = 'validee', 'de_cote', 'attente'
@@ -136,6 +136,9 @@ class DecisionsFiche:
     origines: Dict[str, str] = field(default_factory=dict)          # réf. → étiquette saisie
     ecartees: Set[str] = field(default_factory=set)                 # réf. écartées
     identite: Dict[str, str] = field(default_factory=dict)          # doute d'identité → choix
+    # Champ d'un appareil connu qui diffère sur la fiche : (ligne, champ) → 'outil' / 'site'.
+    # Sans choix : l'outil est gardé (rien n'est écrit), sauf un champ vide dans l'outil
+    champs: Dict[Tuple[int, str], str] = field(default_factory=dict)
 
     def etat(self, categorie: str) -> str:
         return self.etats.get(categorie, ATTENTE)
@@ -177,6 +180,11 @@ class PlanEnregistrement:
     # chaque lecture, comme les origines ; ne compte pas dans `vide`
     rangs_remplace: List[Tuple[str, int]] = field(default_factory=list)
     produit: Optional[Dict[str, object]] = None
+    # Champs d'appareils connus pris sur le site : id → {colonne d'appareils: valeur}
+    # (écrits par la sauvegarde événementielle, sur le thread principal)
+    maj_appareils: Dict[int, Dict[str, str]] = field(default_factory=dict)
+    # « Garder l'outil » choisi : (appareil_id, champ, valeur du site), mémorisé
+    decisions_champs: List[Tuple[int, str, str]] = field(default_factory=list)
     decisions_ecritures: List[Tuple[str, str, str, str]] = field(default_factory=list)
     decisions_references: List[Tuple[str, str, str, Optional[str], str]] = field(default_factory=list)
     informations: List[str] = field(default_factory=list)
@@ -193,6 +201,7 @@ class PlanEnregistrement:
         """Rien de nouveau à écrire (relecture d'une fiche déjà reprise)."""
         return not (self.appareils_a_creer or self.remplacements or self.equivalences
                     or self.decisions_ecritures or self.decisions_references
+                    or self.maj_appareils or self.decisions_champs
                     or self.statut_piece != 'reelle' or self.libelle)
 
     def resume(self) -> Dict[str, int]:
@@ -234,6 +243,7 @@ class _Planificateur:
         for i, a in enumerate(self.r.appareils):
             self._appareil(i, a)
         self._resoudre_par_la_fiche()
+        self._ecarts()
         for rp in self.r.remplacements:
             self._remplacement(rp)
         for e in self.r.equivalences:
@@ -313,6 +323,33 @@ class _Planificateur:
             self._differees.append((index, a))
             return
         p.liens.append((ident, a.provenance))
+
+    def _ecarts(self):
+        """Champs d'appareils connus : valeur du site prise (choix « site », ou champ
+        vide dans l'outil), ou « garder l'outil » mémorisé (choix explicite). Seulement
+        pour une ligne qui désigne bien cet appareil (reliée ou déjà couverte)."""
+        p = self.plan
+        lies = {c for c, _ in p.liens if not isinstance(c, tuple)}
+        lies |= {a.appareil_id for a in self._couverts if a.appareil_id is not None}
+        vus = set()
+        for i, a in enumerate(self.r.appareils):
+            choix = self.d.appareils.get(i)
+            if choix is not None and (choix.ignorer or choix.creer):
+                continue
+            for e in a.ecarts:
+                if e.tranche or e.appareil_id not in lies or (e.appareil_id, e.champ) in vus:
+                    continue
+                if choix is not None and choix.appareil_id is not None \
+                        and choix.appareil_id != e.appareil_id:
+                    continue
+                decision = self.d.champs.get((i, e.champ)) or ('site' if e.a_completer else None)
+                if decision == 'site':
+                    vus.add((e.appareil_id, e.champ))
+                    colonne = CHAMPS_ECARTS[e.champ][1]
+                    p.maj_appareils.setdefault(e.appareil_id, {})[colonne] = e.site
+                elif decision == 'outil':
+                    vus.add((e.appareil_id, e.champ))
+                    p.decisions_champs.append((e.appareil_id, e.champ, e.site))
 
     def _resoudre_par_la_fiche(self):
         """Appareil à choisir parmi plusieurs : si un seul candidat est lié par une

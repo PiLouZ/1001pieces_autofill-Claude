@@ -55,6 +55,10 @@ class ResultatEnregistrement:
     relations: Dict[str, int] = field(default_factory=dict)
     journal: List[str] = field(default_factory=list)
     erreur: str = ''
+    # Champs d'appareils connus pris sur le site (id → {colonne: valeur}) : écrits
+    # après coup, sur le thread principal, par la sauvegarde événementielle
+    maj_appareils: Dict[int, Dict[str, str]] = field(default_factory=dict)
+    champs_modifies: int = 0
 
     def resume(self) -> str:
         r = self.relations
@@ -62,6 +66,13 @@ class ResultatEnregistrement:
                 f"{self.liens_crees} lien(s) créé(s), {self.liens_completes} complété(s) ; "
                 f"{r.get('successions', 0)} remplacement(s), {r.get('equivalences', 0)} "
                 f"équivalence(s)" + (f", {r['errors']} refus" if r.get('errors') else ''))
+
+
+def _champs_de_colonnes(colonnes) -> List[str]:
+    """Colonnes d'`appareils` → champs des écarts (type, marque, ref, nom)."""
+    from ..utils.rapprochement_fiche.resultat import CHAMPS_ECARTS
+    par_colonne = {col: champ for champ, (_, col) in CHAMPS_ECARTS.items()}
+    return [par_colonne[c] for c in colonnes if c in par_colonne]
 
 
 class EnregistrementFicheService(BaseService):
@@ -227,11 +238,44 @@ class EnregistrementFicheService(BaseService):
             le = produit['lu_le'] if produit else None
             db._enregistrer_decisions_ecritures(plan.decisions_ecritures, le)
             db._enregistrer_decisions_references(plan.decisions_references, le)
+            db._enregistrer_decisions_champs(plan.decisions_champs, le or self._maintenant())
+            db._oublier_decisions_champs((i, c) for i, cols in plan.maj_appareils.items()
+                                         for c in _champs_de_colonnes(cols))
             db.conn.commit()
+        for ident, colonnes in plan.maj_appareils.items():
+            res.maj_appareils.setdefault(ident, {}).update(colonnes)
+
+    @staticmethod
+    def _maintenant() -> str:
+        from datetime import datetime
+        return datetime.now().isoformat(timespec='seconds')
+
+    def ecrire_champs_appareils(self, maj: Dict[int, Dict[str, str]]) -> int:
+        """Champs d'appareils connus pris sur le site (type, marque, écriture de la
+        réf., nom commercial), écrits par la sauvegarde événementielle (thread
+        principal). Sans fenêtre (scripts, tests) : la même mise à jour par lots
+        du gestionnaire de base, que la sauvegarde événementielle appelle."""
+        maj = {i: dict(c) for i, c in maj.items() if c}
+        if not maj:
+            return 0
+        sauvegarde = getattr(self.parent_window, 'event_driven_save_service', None)
+        if sauvegarde is not None and hasattr(sauvegarde, 'enregistrer_champs_appareils'):
+            ok = sauvegarde.enregistrer_champs_appareils(maj)
+        else:
+            ok = self.db.update_multiple_cells_batch(maj)
+        n = sum(len(c) for c in maj.values())
+        if ok:
+            app_logger.info(f"[Fiche site] {n} champ(s) d'appareils pris sur le site "
+                            f"({len(maj)} appareil(s))")
+        else:
+            app_logger.error(f"[Fiche site] {n} champ(s) d'appareils non écrits")
+        return n if ok else 0
 
     def _apres_ecriture(self, res: ResultatEnregistrement, source: str = "fiche_site"):
         """Caches invalidés comme après un import, puis sauvegarde événementielle
         (thread principal : la sauvegarde passe par des minuteries Qt)."""
+        if res.maj_appareils:
+            res.champs_modifies = self.ecrire_champs_appareils(res.maj_appareils)
         bilan = {'new_entries': res.appareils_crees,
                  'associations_created': res.liens_crees + res.liens_completes}
         try:

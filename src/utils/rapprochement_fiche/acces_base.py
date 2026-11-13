@@ -329,6 +329,21 @@ class AccesBaseLecture:
         return {(m, frozenset((a, b))): d for m, a, b, d in self._lignes(
             "SELECT marque, ecriture_a, ecriture_b, decision FROM decisions_ecritures")}
 
+    def decisions_champs(self, ids: Iterable[int]) -> Dict[Tuple[int, str], str]:
+        """(id d'appareil, champ) → valeur du site pour laquelle « garder l'outil » a
+        été choisi (relecture : l'écart n'est plus présenté tant que le site ne change pas)."""
+        ids = list(dict.fromkeys(i for i in ids if i is not None))
+        if not ids or not self._a_table('decisions_champs'):
+            return {}
+        out: Dict[Tuple[int, str], str] = {}
+        for lot in _tranches(ids):
+            q = ','.join('?' * len(lot))
+            for i, champ, valeur in self._lignes(
+                    f"SELECT appareil_id, champ, valeur_site FROM decisions_champs "
+                    f"WHERE appareil_id IN ({q})", lot):
+                out[(i, champ)] = valeur or ''
+        return out
+
     def decisions_references(self, ref_piece: str) -> Dict[str, Tuple[str, str]]:
         """référence → (nature, origine) consignées pour la pièce."""
         if not ref_piece or not self._a_table('decisions_references'):
