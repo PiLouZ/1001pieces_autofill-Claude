@@ -418,6 +418,34 @@ class StyleManager:
         " padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; }"
         "QPushButton:hover { background: #157347; border-color: #157347; }"
     )
+    # Écarts outil / site d'un appareil connu (questions_reprise.py) : une valeur
+    # égale (texte simple), une valeur qui diffère (cliquable, ambre), celle qui
+    # sera gardée (vert ; trait fin = gardée par défaut, sans clic), celle écartée
+    ECART_ENTETE = "QLabel { color: #6c757d; font-size: 10px; padding: 0 4px; }"
+    ECART_LIGNE = "QLabel { color: #495057; font-size: 11px; font-weight: bold; padding: 0 4px; }"
+    ECART_EGALE = "QLabel { color: #495057; font-size: 11px; padding: 4px 6px; }"
+    ECART_DIFFERENT = (
+        "QPushButton { background: #fff3cd; color: #212529; border: 1px solid #ffda6a;"
+        " padding: 3px 8px; border-radius: 4px; font-size: 11px; text-align: left; }"
+        "QPushButton:hover { background: #ffe69c; border-color: #e0a800; }"
+    )
+    ECART_DEFAUT = (
+        "QPushButton { background: #fff3cd; color: #212529; border: 1px solid #198754;"
+        " padding: 3px 8px; border-radius: 4px; font-size: 11px; text-align: left; }"
+        "QPushButton:hover { background: #ffe69c; }"
+    )
+    ECART_CHOISI = (
+        "QPushButton { background: #d1e7dd; color: #0f5132; border: 2px solid #198754;"
+        " padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: bold;"
+        " text-align: left; }"
+        "QPushButton:hover { background: #badbcc; }"
+    )
+    ECART_ECARTE = (
+        "QPushButton { background: white; color: #adb5bd; border: 1px dashed #dee2e6;"
+        " padding: 3px 8px; border-radius: 4px; font-size: 11px; text-decoration: line-through;"
+        " text-align: left; }"
+        "QPushButton:hover { color: #6c757d; border-color: #adb5bd; }"
+    )
 
     # Action finale destructive (Restaurer une sauvegarde : remplace la base) :
     # mêmes mesures que PRIMARY / SECONDARY_ACTION_BUTTON, en rouge contour —

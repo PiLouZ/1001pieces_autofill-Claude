@@ -785,7 +785,7 @@ class RepriseSiteDialog(QDialog):
             q.memorisees = dict(self.service.fiche_service.configuration().regles)
             if individuels is not None and (individuels.appareils or individuels.remplacements
                                             or individuels.origines or individuels.ecartees
-                                            or individuels.identite):
+                                            or individuels.identite or individuels.champs):
                 q.individuels[i] = individuels
             else:
                 q.individuels.pop(i, None)

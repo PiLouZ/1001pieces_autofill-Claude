@@ -9,7 +9,12 @@ questions.py) en langage métier :
 2. « Règles à poser une fois » puis « Questions » : une carte par question,
    avec le nombre de cas, des exemples, la réponse proposée (bouton vert) et
    les autres réponses ; une question répondue se replie (« Modifier ») ;
-3. « Règles déjà posées » : rappel des règles mémorisées appliquées, avec
+3. « Appareils connus, valeur différente sur le site » : une carte par groupe
+   d'écarts identiques (`GroupeEcart`), avec les deux lignes Outil / Site de
+   chaque cas, la valeur qui diffère en couleur ; un clic sur une valeur la
+   garde pour ce cas (clé « E:…@fiche:ligne »), les deux boutons du bas
+   répondent pour tout le groupe. Sans clic, l'outil est gardé ;
+4. « Règles déjà posées » : rappel des règles mémorisées appliquées, avec
    « Revenir sur cette règle ».
 
 Il ne décide rien lui-même : chaque clic appelle `sur_reponse(cle, valeur)` ;
@@ -21,12 +26,15 @@ from typing import Callable, List, Optional
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout,
-    QWidget,
+    QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
+    QVBoxLayout, QWidget,
 )
 import qtawesome as qta
 
-from src.utils.reprise_site.questions import LOT, REGLE, Question, QuestionnaireLot
+from src.utils.rapprochement_fiche.resultat import CHAMPS_ECARTS
+from src.utils.reprise_site.questions import (
+    LOT, REGLE, GroupeEcart, Question, QuestionnaireLot, cle_ecart,
+)
 from .style_manager import StyleManager
 
 _VERT, _GRIS, _BLEU = '#198754', '#adb5bd', '#0b5ed7'
@@ -44,7 +52,10 @@ _INFOS = [
     ('profils_ambigus', "fiche(s) lisible(s) de plusieurs façons, même résultat"),
     ('doublons', "ligne(s) qui ne sont que le nom commercial d'un appareil déjà cité par la fiche : "
                  "rien n'est ajouté"),
+    ('noms_completes', "nom(s) commercial(aux) vide(s) dans l'outil, complété(s) depuis la fiche"),
+    ('ecarts_tranches', "valeur(s) déjà tranchée(s) en faveur de l'outil : rien ne change"),
 ]
+_EXEMPLES_ECART = 4                     # cas montrés par carte avant « Voir les N cas »
 _LIBRE = {'type': "Autre type", 'marque': "Autre marque", 'etiquette': "Marque d'origine"}
 
 
@@ -85,6 +96,8 @@ class PanneauQuestions(QScrollArea):
         self.setWidget(self._contenu)
         self.questionnaire: Optional[QuestionnaireLot] = None
         self.cartes = {}                    # clé → QFrame (tests)
+        self.cellules = {}                  # (clé « E:…@i:k », 'outil'/'site') → bouton (tests)
+        self._deplies = set()               # groupes d'écarts montrés en entier
 
     # -------------------------------------------------------------------------
     def vider(self, texte: str = ''):
@@ -97,7 +110,7 @@ class PanneauQuestions(QScrollArea):
         self._disposition.addStretch(1)
 
     def _effacer(self):
-        self.cartes = {}
+        self.cartes, self.cellules = {}, {}
         while self._disposition.count():
             item = self._disposition.takeAt(0)
             if item.widget() is not None:
@@ -126,11 +139,17 @@ class PanneauQuestions(QScrollArea):
             self._titre("Questions")
             for x in du_lot:
                 self._carte(x)
+        ecarts = q.liste_ecarts()
+        if ecarts:
+            self._titre("Appareils connus, valeur différente sur le site : cliquez celle à garder "
+                        "(sans clic, l'outil est gardé)")
+            for g in ecarts:
+                self._carte_ecart(g)
         if memorisees:
             self._titre("Règles déjà posées, appliquées ici")
             for x in memorisees:
                 self._rappel(x)
-        if not questions:
+        if not questions and not ecarts:
             fin = QLabel("Aucune question : tout est décidé.")
             fin.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
             self._disposition.addWidget(fin)
@@ -284,6 +303,136 @@ class PanneauQuestions(QScrollArea):
         voir.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
         voir.clicked.connect(lambda _, c=q.cle: self.sur_voir(c))
         disposition.addWidget(voir)
+
+    # --- Écarts outil / site ------------------------------------------------------
+    def _carte_ecart(self, g: GroupeEcart):
+        decide = g.reponse is not None or all((i, k) in g.choix for i, k, _ in g.cas)
+        cadre = self._cadre(decide)
+        self.cartes[g.cle] = cadre
+        v = QVBoxLayout(cadre)
+        v.setContentsMargins(10, 8, 10, 8)
+        v.setSpacing(4)
+        entete = QHBoxLayout()
+        pastille = QLabel()
+        pastille.setPixmap(qta.icon('fa5s.check-circle' if decide else 'fa5s.exchange-alt',
+                                    color=_VERT if decide else '#e0a800').pixmap(16, 16))
+        titre = QLabel(f"<b>{g.titre}</b>")
+        titre.setTextFormat(Qt.RichText)
+        titre.setWordWrap(True)
+        compte = QLabel(f"{nombre(len(g.cas))} cas · {g.fiches} fiche(s)")
+        compte.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
+        entete.addWidget(pastille, 0, Qt.AlignTop)
+        entete.addWidget(titre, 1)
+        entete.addWidget(compte, 0, Qt.AlignTop)
+        v.addLayout(entete)
+        cas = g.cas if g.cle in self._deplies else g.cas[:_EXEMPLES_ECART]
+        for i, k, _ in cas[:200]:
+            grille = self._comparaison(g, i, k)
+            if grille is not None:
+                v.addWidget(grille)
+        boutons = QHBoxLayout()
+        boutons.addSpacing(22)
+        n = len(g.cas)
+        if n > _EXEMPLES_ECART:
+            plus = QPushButton(f"Voir les {nombre(n)} cas" if g.cle not in self._deplies
+                               else "Réduire")
+            plus.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+            plus.clicked.connect(lambda _, c=g.cle: self._deplier(c))
+            boutons.addWidget(plus)
+        boutons.addStretch(1)
+        if g.reponse is not None:
+            reponse = QLabel("Pour tous : " + ("valeur de l'outil" if g.reponse == 'outil'
+                                                else "valeur du site"))
+            reponse.setStyleSheet(StyleManager.TEXTE_GRIS_MOYEN)
+            modifier = QPushButton("Modifier")
+            modifier.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+            modifier.clicked.connect(lambda _, c=g.cle: self.sur_reponse(c, None))
+            boutons.addWidget(reponse)
+            boutons.addWidget(modifier)
+        else:
+            pluriel = f" ({nombre(n)})" if n > 1 else ''
+            garder = QPushButton(f"Garder l'outil{pluriel}")
+            garder.setStyleSheet(StyleManager.CHOIX_PROPOSE_BUTTON)
+            garder.setProperty('valeur', 'outil')
+            garder.clicked.connect(lambda _, c=g.cle: self.sur_reponse(c, 'outil'))
+            prendre = QPushButton(f"Prendre le site{pluriel}")
+            prendre.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+            prendre.setProperty('valeur', 'site')
+            prendre.clicked.connect(lambda _, c=g.cle: self.sur_reponse(c, 'site'))
+            boutons.addWidget(garder)
+            boutons.addWidget(prendre)
+        v.addLayout(boutons)
+        self._disposition.addWidget(cadre)
+
+    def _deplier(self, cle: str):
+        (self._deplies.discard if cle in self._deplies else self._deplies.add)(cle)
+        if self.questionnaire is not None:
+            self.afficher(self.questionnaire)
+
+    def _comparaison(self, g: GroupeEcart, i: int, k: int) -> Optional[QWidget]:
+        """Deux lignes, Outil puis Site, de l'appareil (i, k) ; chaque valeur qui
+        diffère est un bouton qui la garde pour ce cas."""
+        q = self.questionnaire
+        f = q.lot.fiches[i]
+        a = f.rapprochement.appareils[k]
+        ecarts = {e.champ: e for e in a.ecarts if not e.tranche and not e.a_completer}
+        e0 = next(iter(ecarts.values()), None)
+        if e0 is None:
+            return None
+        c = next((c for c in a.candidats if c.id == e0.appareil_id), None)
+        outil = {'marque': c.marque if c else '', 'ref': c.ref_modele if c else '',
+                 'type': c.type if c else '', 'nom': ''}
+        site = {'marque': a.marque or outil['marque'], 'ref': a.ref_modele,
+                'type': a.type_site or outil['type'], 'nom': a.nom}
+        for champ, e in ecarts.items():
+            outil[champ], site[champ] = e.outil, e.site
+        champs = ['marque', 'ref', 'type'] + (['nom'] if a.nom or 'nom' in ecarts else [])
+        boite = QWidget()
+        grille = QGridLayout(boite)
+        grille.setContentsMargins(22, 2, 0, 2)
+        grille.setHorizontalSpacing(6)
+        grille.setVerticalSpacing(3)
+        ligne_fiche = f"ligne {a.numero}" if a.numero else "table du site"
+        # Fiche seule (n° de produit inconnu) : la ligne suffit
+        origine = QLabel(f"fiche {f.id_produit} · {ligne_fiche}" if f.id_produit else ligne_fiche)
+        origine.setStyleSheet(StyleManager.ECART_ENTETE)
+        grille.addWidget(origine, 0, 0)
+        for col, champ in enumerate(champs, 1):
+            t = QLabel(CHAMPS_ECARTS[champ][0])
+            t.setStyleSheet(StyleManager.ECART_ENTETE)
+            grille.addWidget(t, 0, col)
+        for ligne, (cote, nom_ligne, valeurs) in enumerate(
+                (('outil', "Outil", outil), ('site', "Site", site)), 1):
+            etiquette = QLabel(nom_ligne)
+            etiquette.setStyleSheet(StyleManager.ECART_LIGNE)
+            grille.addWidget(etiquette, ligne, 0)
+            for col, champ in enumerate(champs, 1):
+                texte = valeurs[champ] or '—'
+                e = ecarts.get(champ)
+                if e is None:
+                    cellule = QLabel(texte)
+                    cellule.setStyleSheet(StyleManager.ECART_EGALE)
+                    grille.addWidget(cellule, ligne, col)
+                    continue
+                cle = f"{cle_ecart(e)}@{i}:{k}"
+                groupe = q.ecarts.get(cle_ecart(e))
+                decision = groupe.decision(i, k) if groupe is not None else None
+                bouton = QPushButton(texte)
+                bouton.setCursor(Qt.PointingHandCursor)
+                bouton.setToolTip("Garder la valeur de l'outil" if cote == 'outil'
+                                  else "Prendre la valeur du site")
+                if decision is None:
+                    style = StyleManager.ECART_DEFAUT if cote == 'outil' else StyleManager.ECART_DIFFERENT
+                elif decision == cote:
+                    style = StyleManager.ECART_CHOISI
+                else:
+                    style = StyleManager.ECART_ECARTE
+                bouton.setStyleSheet(style)
+                bouton.clicked.connect(lambda _, c=cle, v=cote: self.sur_reponse(c, v))
+                self.cellules[(cle, cote)] = bouton
+                grille.addWidget(bouton, ligne, col)
+        grille.setColumnStretch(len(champs) + 1, 1)
+        return boite
 
     def _rappel(self, q: Question):
         cadre = self._cadre(True)
