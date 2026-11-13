@@ -122,6 +122,14 @@ class DatabaseFichesSiteMixin:
                     releve_le  TEXT
                 )
             """)
+            # Référence associée Whirlpool / Indesit / Beko (§ 10.17) : NULL = « aucune »
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS references_associees (
+                    ref_piece TEXT PRIMARY KEY,
+                    associee  TEXT,
+                    decide_le TEXT
+                )
+            """)
             self._setup_reprise_site_tables()
             self._ajouter_colonne_si_absente('piece_associations', 'provenance', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'origine', 'TEXT')
@@ -129,6 +137,54 @@ class DatabaseFichesSiteMixin:
             self._ajouter_colonne_si_absente('piece_supersessions', 'rang_fiche', 'INTEGER')
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
+
+    # --- Référence associée Whirlpool / Indesit / Beko (§ 10.17) ---------------------
+    def reference_associee(self, ref_piece: str) -> Tuple[bool, Optional[str]]:
+        """(réponse connue, référence associée ; None = « aucune »). Sans réponse
+        mémorisée : l'équivalente de la ligne 0 (2ᵉ réf. du code produit d'une fiche
+        reprise), proposée mais non connue."""
+        if not ref_piece:
+            return False, None
+        with self._query_lock:
+            row = self.cursor.execute(
+                "SELECT associee FROM references_associees WHERE ref_piece = ?",
+                [ref_piece]).fetchone()
+            if row is not None:
+                return True, row[0]
+            row = self.cursor.execute(
+                "SELECT e.ref_piece FROM piece_equivalence_groups e "
+                "JOIN piece_equivalence_groups p ON p.group_id = e.group_id "
+                "WHERE p.ref_piece = ? AND e.ref_piece != ? AND e.ligne_fiche = 0 "
+                "ORDER BY e.ref_piece LIMIT 1", [ref_piece, ref_piece]).fetchone()
+        return False, (row[0] if row else None)
+
+    def definir_references_associees(self, reponses: Iterable[Tuple[str, Optional[str]]],
+                                     le: str, origines: Optional[Dict[str, str]] = None) -> int:
+        """Mémorise chaque réponse (référence associée, ou None = « aucune »). Une
+        référence associée devient une équivalente de la pièce, marquée ligne 0
+        (code produit, § 8.1) avec sa marque d'origine. Retourne le nombre de réponses."""
+        n = 0
+        for ref, associee in reponses:
+            ref = (ref or '').strip()
+            associee = (associee or '').strip() or None
+            if not ref or associee == ref:
+                continue
+            if associee:
+                ok, message = self.add_equivalence(ref, associee)
+                if not ok:
+                    app_logger.warning(f"Référence associée {ref} ≡ {associee} : {message}")
+            with self._query_lock:
+                self.cursor.execute(
+                    "INSERT OR REPLACE INTO references_associees (ref_piece, associee, decide_le) "
+                    "VALUES (?, ?, ?)", [ref, associee, le])
+                if associee:
+                    self.cursor.execute(
+                        "UPDATE piece_equivalence_groups SET ligne_fiche = 0, "
+                        "origine = COALESCE(origine, ?) WHERE ref_piece = ?",
+                        [(origines or {}).get(associee), associee])
+                self.conn.commit()
+            n += 1
+        return n
 
     # --- Fiches à refaire depuis les PDF (§ 10.14) ---------------------------------
     def _noter_fiche_a_refaire(self, ref_piece: str, id_product: Optional[int], a_refaire,

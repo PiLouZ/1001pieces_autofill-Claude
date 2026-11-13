@@ -930,6 +930,50 @@ Fermer la fenêtre d'import sans importer n'écrit rien et ne fait pas avancer l
 - `test_fiche_import_ecran.py` : zone unique, lien ou description.
 - Suite complète, `compileall`, lancement de `run.py`.
 
+### 10.17 Référence associée Whirlpool / Indesit / Beko — refonte, PR 4 (2026-11-13)
+
+**Pour tous les imports** (PDF, CSV, collage, fiche seule, lot de fiches) :
+- `src/utils/rapprochement_fiche/associee.py` : `origine_associable(ref)` rend Whirlpool, Indesit ou Beko d'après la table des formats (§ 5.5, configuration lue sans jamais être écrite), sinon `''`.
+- `src/ui/champ_reference_associee.py` (`ChampReferenceAssociee`) : le champ « Réf. associée », une référence facultative, **à droite de la référence de la pièce** (demande de l'utilisateur, 2026-11-13 : le rapprocher de la référence incite à le compléter). Il se place sur la ligne « Réf. » du fichier seul, et à côté de la référence de chaque carte de plusieurs fichiers ou de fiche. Il n'apparaît que pour une pièce de l'un des trois groupes. Il suit la référence saisie (collage, fiche sans code produit) et se préremplit ainsi :
+  - la réponse mémorisée ;
+  - sinon l'équivalente de ligne 0 de la pièce ;
+  - sinon, pour une fiche du site, la 2ᵉ réf. de son code produit (`FicheAImporter.reference_associee`).
+- **Pas de case « aucune »** (décision de l'utilisateur, 2026-11-13) : le champ ne bloque rien, et laissé vide il n'écrit rien. La table garde la possibilité d'une réponse « aucune » (NULL), que l'interface n'écrit pas.
+- `ImportConfiguration.references_associees` (réf. de la pièce → référence associée), recueillie seulement pour la référence que la pièce aura vraiment. L'import l'applique en fin de finalisation, après les écritures propres aux fiches (`ImportManager._appliquer_references_associees`) ; le récapitulatif porte `references_associees`.
+- **Mémoire** : table `references_associees(ref_piece, associee, decide_le)`. Elle suit le renommage et la suppression de la pièce. Une référence associée devient une équivalente de la pièce, marquée ligne 0 (code produit de la Fiche complète, § 8.1) avec sa marque d'origine. **Écart au § 10.12** : « aucune » ne va pas dans `decisions_references`, dont la contrainte `CHECK (nature IN ('ecartee', 'origine'))` ne s'étend pas sans recréer la table ; une petite table dédiée est plus simple et plus claire.
+- Retouche : les libellés de la section Succession passent de 220 à 240 px (« Cette réf. est remplacée par » n'est plus coupé) ; `RefChipsInput.definir_aide`.
+
+**Vérification** :
+- `tests/unit/test_reference_associee.py` :
+  - formes des trois groupes ;
+  - mémoire (équivalente de ligne 0, « aucune », renommage) ;
+  - collage avec réponse retenue puis reproposée, champ laissé vide (rien de retenu), pièce BSH sans champ ;
+  - cartes de plusieurs fichiers ;
+  - fiche 7285 préremplie avec `C00319033` et mémorisée après l'import ;
+  - rendu hors écran.
+- Suite complète (2 048 tests), `compileall`, lancement de `run.py`.
+
+### 10.18 Export EveryParts des fiches reprises — pistes (2026-11-13, à décider)
+
+**Demande de l'utilisateur** : les fiches récupérées du site, seules ou par lot, doivent pouvoir donner un export EveryParts. La 1ʳᵉ colonne (`product`) porte la référence produit du site (`.product-reference`). C'est l'objectif secondaire de la reprise, en plus de consolider le catalogue. Il faut une petite fenêtre d'export des fiches récupérées.
+
+**Ce qui existe déjà** :
+- le format CSV EveryParts de la configuration des exports : `product` = `{export_ref}`, puis type, marque, modèle, réf. modèle, nom commercial ; fichier `{export_ref}_everyParts.csv` ;
+- `{ref_interne}` et `{id_product}` dans les colonnes et le nom de fichier (§ 10.10) ;
+- la `.product-reference` de chaque fiche reprise, gardée dans `produits_site.ref_interne` avec la pièce et le n° du produit ;
+- l'écriture d'une ligne par appareil (`ExportManager._execute_csv_export`, `render_csv_row_with`).
+
+**Pistes, de la plus simple à la plus complète** :
+1. **Fenêtre « Exporter les fiches reprises (EveryParts) »** (menu Données). Elle liste les produits du site gardés : réf. produit, n° du produit, pièce, nombre d'appareils, date de reprise, déjà exportée ou non. Elle filtre par « pas encore exportées », par lot ou par date, puis exporte la sélection vers un dossier. Chaque fiche passe par le CSV EveryParts de la configuration, avec `{export_ref}` = la réf. produit du site. Rien de nouveau à paramétrer.
+2. **Un fichier par fiche, ou un seul fichier pour la sélection** : la colonne `product` portant la réf. du produit sur chaque ligne, un fichier unique peut contenir plusieurs produits. Le choix se fait par une case dans la fenêtre.
+3. **Mémoire de l'export** : une colonne `exporte_le` sur `produits_site`, pour ne réexporter que les nouveautés, ou une fiche dont des appareils ont été ajoutés depuis (date du dernier lien de la pièce).
+4. **Raccourci en fin de lot** : « Exporter ce lot vers EveryParts » à la fin de l'import d'un lot (piste 1, filtrée sur le lot).
+
+**Questions à trancher avec l'utilisateur** :
+- les appareils exportés : ceux de la pièce seule, ou aussi ceux de ses anciennes références (lignée) ? Sur le site, la fiche 20744 liste les 450 appareils de ses 4 prédécesseurs ;
+- un fichier par fiche, ou un seul fichier ;
+- une pièce vendue par plusieurs produits (origine et générique) : une ligne par produit.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

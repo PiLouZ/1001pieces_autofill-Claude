@@ -74,6 +74,7 @@ def ouvrir_import_fiche(main_window, r, url: str = '',
 
     def preparer(validee):
         reelle, resultat = service.preparer_import(fiche, validee)
+        reelle.references_associees = validee.references_associees
         return reelle, lambda _results: service.apres_import(resultat)
 
     def fin(results):
@@ -118,7 +119,9 @@ def ouvrir_import_lot(main_window, service, lot, plan, fin=None, parent=None):
                 'remplacee_par': decouper_refs(validee.succession_replaced_by),
                 'equivalentes': decouper_refs(validee.equivalence_ref),
                 'obsolete': bool(validee.obsolete_refs)}}
-        return service.preparer_import_lot(lot, plan, cartes, saisies, fin=fin)
+        reelle, fin_import = service.preparer_import_lot(lot, plan, cartes, saisies, fin=fin)
+        reelle.references_associees = validee.references_associees
+        return reelle, fin_import
 
     def apres_import(results):
         if hasattr(main_window, '_on_import_complete'):
