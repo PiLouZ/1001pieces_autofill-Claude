@@ -118,6 +118,9 @@ class ImportConfiguration:
     # Jamais appelé en simulation. Les fiches du site y écrivent leur provenance,
     # leurs origines et leur produit du site (CDC fiches du site § 10.12).
     apres_ecriture: Optional[Callable[['ImportManager', Dict[str, Any]], None]] = None
+    # Lot de fiches du site (cartes) : saisies de chaque carte, par chemin de fichier
+    # (importer, ref, libelle, remplace, remplacee_par, equivalentes, obsolete)
+    saisies_fiches: Optional[Dict[str, Dict[str, Any]]] = None
 
     def __post_init__(self):
         if self.label_config is None:

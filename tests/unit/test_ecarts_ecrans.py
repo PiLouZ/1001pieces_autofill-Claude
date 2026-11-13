@@ -100,8 +100,9 @@ def test_fiche_seule_ecarts_cliques_puis_enregistres(qapp, tmp_path):
     dlg.close()
 
 
-def test_lot_ecart_en_bloc_et_fiche_du_lot(qapp, tmp_path):
-    from src.ui.reprise_site_dialog import RepriseSiteDialog
+def test_lot_par_les_regles_garde_l_outil(qapp, tmp_path):
+    """Import d'un lot par les règles (refonte, PR 3) : plus de question sur un champ
+    qui diffère ; l'outil est gardé (règle de l'import : jamais écraser)."""
     b, ids = _base(tmp_path)
     produits = [[101 + n, code, f"Pièce {code}", 'Bosch', '', 'Pompe - Lave-linge', '1',
                  _description(code, 'Bosch', _LIGNES)]
@@ -109,57 +110,11 @@ def test_lot_ecart_en_bloc_et_fiche_du_lot(qapp, tmp_path):
     compat = [[101 + n, ref, ref, 'Bosch', t] for n in range(2) for ref, t in _COMPAT]
     p, c = b.exports(produits, compat)
     s = _service(b.db, tmp_path / 'regles.json')
-    d = RepriseSiteDialog(b.db, service=s)
-    d.resize(1400, 950)
-    d.champ_produits.setText(p)
-    d.champ_compat.setText(c)
-    d._examiner_export()
-    d.afficher_lot(s.analyser_lot_suivant(10))
-    d.show()
-    qapp.processEvents()
-    q = d.lot.questionnaire
-    g = q.ecarts[CLE_TYPE]
-    assert len(g.cas) == 4 and g.fiches == 2                  # 2 appareils × 2 fiches
-    d.panneau.ensureWidgetVisible(d.panneau.cartes[CLE_TYPE])
-    qapp.processEvents()
-    dossier = _dossier(tmp_path)
-    _rendre(d, dossier / 'lot_1_avant.png')
-    # Fiche du lot : un choix sur un cas revient au lot
-    d._ouvrir_fiche(0)
-    fiche = d._fiche_ouverte
-    i, k, _ = fiche.panneau.questionnaire.ecarts[CLE_TYPE].cas[0]
-    fiche.panneau.cellules[(f"{CLE_TYPE}@{i}:{k}", 'site')].click()
-    qapp.processEvents()
-    fiche.resize(1400, 950)
-    fiche.panneau.ensureWidgetVisible(fiche.panneau.cartes[CLE_TYPE])
-    qapp.processEvents()
-    _rendre(fiche, dossier / 'lot_2_fiche_du_lot.png')
-    fiche._enregistrer()
-    assert q.individuels[0].champs[(k, 'type')] == 'site'
-    assert q.ecarts[CLE_TYPE].decision(0, k) == 'site'
-    # Puis « Garder l'outil (4) » pour le groupe : les choix par ligne du lot sont effacés,
-    # celui de la fiche (choix individuel de l'aperçu) l'emporte toujours
-    d._repondre(CLE_TYPE, 'outil')
-    qapp.processEvents()
-    g = q.ecarts[CLE_TYPE]
-    assert g.reponse == 'outil' and g.decision(0, k) == 'site' and g.decision(1, k) == 'outil'
-    d.panneau.ensureWidgetVisible(d.panneau.cartes[CLE_TYPE])
-    qapp.processEvents()
-    _rendre(d, dossier / 'lot_3_apres_bloc.png')
-    _rendre(d.panneau.cartes[CLE_TYPE], dossier / 'lot_carte_type.png')
-    d._propositions_acceptees()
-    assert d.bouton_enregistrer.isEnabled(), d.etat.text()
-    res = s.enregistrer_lot(d.lot, d.lot.planifier())
+    s.adopter_export(s.examiner_export(p, c)[0], repartir_de_zero=True)
+    lot = s.analyser_lot_suivant(10)
+    res = s.enregistrer_lot(lot, s.planifier_lot(lot))
     assert res.ok, res.erreur
-    s.apres_lot(res)
-    cible = q.lot.fiches[0].rapprochement.appareils[k].appareil_id
-    assert b.db.conn.execute("SELECT type FROM appareils WHERE id = ?", [cible]).fetchone()[0] \
-        == 'Sèche-linge'
-    autre = ids['wat'] if cible == ids['xyz'] else ids['xyz']
-    assert b.db.conn.execute("SELECT type FROM appareils WHERE id = ?", [autre]).fetchone()[0] \
-        == 'Lave-linge'
-    # « Garder l'outil » mémorisé pour l'appareil gardé tel quel (relecture : plus proposé)
-    assert b.db.conn.execute("SELECT valeur_site FROM decisions_champs WHERE appareil_id = ? "
-                             "AND champ = 'type'", [autre]).fetchone() == ('Sèche-linge',)
+    types = dict(b.db.conn.execute("SELECT id, type FROM appareils").fetchall())
+    assert types[ids['xyz']] == 'Lave-linge' and types[ids['wat']] == 'Lave-linge'
     assert not (RACINE / 'data' / 'reprise_fiches.json').exists()
-    d.close()
+

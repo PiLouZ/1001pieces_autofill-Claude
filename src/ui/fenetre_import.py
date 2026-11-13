@@ -254,9 +254,14 @@ class ImportDialog(QDialog):
 
         is_clipboard = any(f.type == FileType.CLIPBOARD for f in self.import_config.files)
         # Fiche du site (CDC fiches du site § 10.12) : lignes déjà lues, pas de colonnes
-        self._fiche = next((f.fiche for f in self.import_config.files
-                            if f.type == FileType.FICHE_SITE and f.fiche is not None), None)
-        self.setWindowTitle("Importer une fiche du site" if self._fiche is not None
+        fiches = [f for f in self.import_config.files
+                  if f.type == FileType.FICHE_SITE and f.fiche is not None]
+        # Lot de fiches (une carte par fiche) ou fiche seule
+        self._fiches_lot = fiches if self.import_config.import_type == ImportType.MULTI_FILE else []
+        self._cartes_fiches = []
+        self._fiche = fiches[0].fiche if fiches and not self._fiches_lot else None
+        self.setWindowTitle("Importer les fiches du site" if self._fiches_lot
+                            else "Importer une fiche du site" if self._fiche is not None
                             else "Importer depuis le presse-papiers" if is_clipboard
                             else "Configuration d'importation")
         self.setModal(True)
@@ -297,6 +302,8 @@ class ImportDialog(QDialog):
         PHASE 2.1 OPTIMISATION: Cette méthode s'exécute APRÈS que le dialogue
         soit affiché, éliminant le freeze initial.
         """
+        if self._data_loaded:
+            return                      # déjà fait (un 2ᵉ appel doublerait les cartes)
         if not self.import_manager:
             app_logger.warning("ImportManager non disponible pour chargement lazy")
             self._populate_data()
@@ -363,11 +370,14 @@ class ImportDialog(QDialog):
         
         self.format_desc_label = QLabel()
         self.format_desc_label.setStyleSheet("color: #6c757d; margin-left: 20px;")
+        # Fiche(s) du site : résumé sur plusieurs lignes si besoin
+        self.format_desc_label.setWordWrap(self._fiche is not None or bool(self._fiches_lot))
         format_layout.addWidget(self.format_desc_label)
 
         # Fiche du site aux données bancales : à refaire depuis les PDF (§ 10.14)
         self.bandeau_fiche = QLabel()
         self.bandeau_fiche.setWordWrap(True)
+        self.bandeau_fiche.setOpenExternalLinks(True)
         self.bandeau_fiche.setStyleSheet(StyleManager.BANDEAU_AVERTISSEMENT)
         self.bandeau_fiche.setVisible(False)
         format_layout.addWidget(self.bandeau_fiche)
@@ -458,7 +468,9 @@ class ImportDialog(QDialog):
         format_layout.addWidget(self.mapping_container)
 
         format_group.setLayout(format_layout)
-        format_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # Lot de fiches : l'aperçu se résume à deux lignes, les cartes prennent la hauteur
+        format_group.setSizePolicy(QSizePolicy.Expanding,
+                                   QSizePolicy.Maximum if self._fiches_lot else QSizePolicy.Preferred)
         layout.addWidget(format_group)
         
         # Section référence commune (pour multi-fichiers)
@@ -529,6 +541,8 @@ class ImportDialog(QDialog):
             ref_layout.addLayout(row_desc)
 
             ref_group.setLayout(ref_layout)
+            # Lot de fiches du site : chaque fiche a sa pièce, pas de réf. commune
+            ref_group.setVisible(not self._fiches_lot)
             # Différé : ajouté à la colonne gauche du QSplitter (cf fin _setup_ui)
             self._common_ref_group = ref_group
 
@@ -726,10 +740,15 @@ class ImportDialog(QDialog):
 
             self.auto_file_references_checkbox.stateChanged.connect(self._on_auto_references_changed)
             info_and_option_layout.addWidget(self.auto_file_references_checkbox)
+            if self._fiches_lot:
+                self.auto_file_references_checkbox.setChecked(True)
+                self.auto_file_references_checkbox.setVisible(False)
+                individual_group.setTitle("Fiches du lot : une carte par fiche (décochée = mise de côté)")
 
             try:
-                info_and_option_layout.addWidget(self._make_info_button(
-                    "Génération automatique des références de pièces basées sur les noms de fichiers."))
+                if not self._fiches_lot:
+                    info_and_option_layout.addWidget(self._make_info_button(
+                        "Génération automatique des références de pièces basées sur les noms de fichiers."))
             except Exception as exc:
                 app_logger.debug(f"Bouton d'information (références automatiques) non ajouté : {exc}")
             info_and_option_layout.addStretch(1)
@@ -786,7 +805,8 @@ class ImportDialog(QDialog):
             left_col = QWidget()
             # Plafonne la colonne gauche pour laisser la largeur à la zone Relations
             # (sinon le champ Description pousse la poignée et étrique les 2 sous-colonnes).
-            left_col.setMaximumWidth(580)
+            if rel_group is not None:
+                left_col.setMaximumWidth(580)
             left_layout = QVBoxLayout(left_col)
             left_layout.setContentsMargins(0, 0, 0, 0)  # l'espace vers la zone Relations est la poignée (8 px)
             left_layout.setSpacing(6)
@@ -813,7 +833,7 @@ class ImportDialog(QDialog):
         self.preview_checkbox = QCheckBox("Aperçu avant import (vérification détaillée, plus lent)")
         self.preview_checkbox.setChecked(False)
         # Fiche du site : l'aperçu est déjà dans la fenêtre
-        self.preview_checkbox.setVisible(self._fiche is None)
+        self.preview_checkbox.setVisible(self._fiche is None and not self._fiches_lot)
         self.preview_checkbox.setToolTip("Affiche un récapitulatif détaillé (créations/mises à jour) avant l'écriture définitive en base")
         buttons_layout.addWidget(self.preview_checkbox)
 
@@ -858,7 +878,10 @@ class ImportDialog(QDialog):
         # Références individuelles par fichier — multi-fichiers uniquement
         # (fichier unique : champs créés dans _setup_ui, section "Référence de pièce")
         for i, file in (enumerate(self.import_config.files) if len(self.import_config.files) > 1 else []):
-            
+            if file.type == FileType.FICHE_SITE and file.fiche is not None:
+                self.individual_refs_widget.addWidget(self._carte_fiche(file))
+                continue
+
             # ── Carte 2 lignes par fichier ───────────────────────────────────
             file_container = QWidget()
             file_container.setStyleSheet(
@@ -952,6 +975,8 @@ class ImportDialog(QDialog):
         """Construit la zone de relations « par groupes » (lignées de succession +
         groupes d'équivalence) pour le multi-fichiers, alimentée par les références
         du lot. Renvoie None si indisponible (≤ 1 réf ou erreur) — sans bloquer."""
+        if self._fiches_lot:
+            return None                 # relations propres à chaque fiche, sur sa carte
         try:
             from ..ui.import_relations_panel import GroupsZone
             from PyQt5.QtCore import QStringListModel
@@ -1160,6 +1185,7 @@ class ImportDialog(QDialog):
         self._collecter_options_format(config)
         self._collecter_relations(config)
         self._collecter_mapping_colonnes(config)
+        self._collecter_fiches(config)
 
         # Fiche du site sans code produit : la pièce est à saisir
         if self._fiche is not None and not any(
@@ -1445,6 +1471,152 @@ class ImportDialog(QDialog):
         box.finished.connect(lambda *_: box.deleteLater())
         box.show()
 
+    # --- Lot de fiches du site : une carte par fiche (§ 10.12, PR 3) -------------
+    def _carte_fiche(self, file) -> QWidget:
+        """Carte d'une fiche : importer ou non, pièce, libellé, Obsolète, ce que
+        deviennent ses appareils, ses relations (retirer une référence ne l'écrit pas)."""
+        fiche = file.fiche
+        carte = QWidget()
+        carte.setObjectName("carteFiche")
+        carte.setStyleSheet("#carteFiche { background: white; border: 1px solid #e9ecef;"
+                            " border-radius: 4px; }")
+        boite = QVBoxLayout(carte)
+        boite.setContentsMargins(10, 6, 10, 6)
+        boite.setSpacing(4)
+
+        ligne1 = QHBoxLayout()
+        importer = QCheckBox()
+        importer.setToolTip("Décochée : la fiche est mise de côté, rien n'est écrit pour elle.")
+        ligne1.addWidget(importer)
+        ref_edit = None
+        if file.suggested_reference:
+            ref = QLabel(f"→ Réf. : {file.suggested_reference}")
+            ref.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 3px 8px;"
+                              " border: 1px solid #ddd; border-radius: 4px; font-weight: bold;"
+                              " font-size: 11px;")
+            ligne1.addWidget(ref)
+            importer.setChecked(True)
+        else:
+            ref_edit = QLineEdit()
+            ref_edit.setPlaceholderText("Réf. à saisir (pas de code produit)")
+            ref_edit.setFixedWidth(300)
+            ref_edit.setStyleSheet("padding: 3px 6px; border: 2px solid #0066cc; border-radius: 4px;")
+            ref_edit.textChanged.connect(lambda t, c=importer: c.setChecked(bool(t.strip())))
+            ligne1.addWidget(ref_edit)
+            importer.setChecked(False)
+        titre = fiche.apercu()['titre'] or ''
+        nom = QLabel(f"{titre}" if titre else "")
+        nom.setStyleSheet("font-weight: bold; font-size: 12px; background: transparent;")
+        nom.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        ligne1.addWidget(nom, 1)
+        ligne1.addWidget(self._lien_fiche(fiche))
+        boite.addLayout(ligne1)
+
+        ligne2 = QHBoxLayout()
+        libelle_titre = QLabel("Libellé :")
+        libelle_titre.setStyleSheet(StyleManager.LIBELLE_PETIT_TRANSPARENT)
+        libelle_titre.setFixedWidth(50)
+        ligne2.addWidget(libelle_titre)
+        libelle = QLineEdit(file.suggested_label or '')
+        libelle.setStyleSheet("padding: 3px 6px; border: 1px solid #ced4da; border-radius: 4px;"
+                              " font-size: 11px;")
+        ligne2.addWidget(libelle, 1)
+        obsolete = QCheckBox("Obsolète")
+        obsolete.setStyleSheet("font-size: 11px; color: #c0392b;")
+        ligne2.addWidget(obsolete)
+        boite.addLayout(ligne2)
+
+        resume = QLabel(fiche.resume_carte())
+        resume.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
+        boite.addWidget(resume)
+        refaire = fiche.plan.a_refaire
+        if refaire is not None:
+            alerte = QLabel(f"À refaire depuis les PDF : {refaire.raison}")
+            alerte.setWordWrap(True)
+            alerte.setStyleSheet(StyleManager.TEXTE_AVERTISSEMENT)
+            boite.addWidget(alerte)
+
+        champs = {}
+        ligne = QHBoxLayout()
+        ligne.setSpacing(6)
+        for cle, titre_champ, refs, maxi, etirement in (
+                ('remplace', "Remplace :", fiche.remplace(), None, 3),
+                ('equivalentes', "Équivalentes :", fiche.equivalentes(), None, 3),
+                ('remplacee_par', "Remplacée par :", fiche.remplacee_par(), 1, 2)):
+            etiquette = QLabel(titre_champ)
+            etiquette.setStyleSheet(StyleManager.LIBELLE_PETIT_TRANSPARENT)
+            ligne.addWidget(etiquette)
+            chips = RefChipsInput("", max_refs=maxi)
+            chips.set_refs(refs)
+            ligne.addWidget(chips, etirement)
+            champs[cle] = chips
+        boite.addLayout(ligne)
+        self._cartes_fiches.append({'file': file, 'importer': importer, 'ref': ref_edit,
+                                    'libelle': libelle, 'obsolete': obsolete, **champs})
+        return carte
+
+    @staticmethod
+    def _lien_fiche(fiche) -> QLabel:
+        """N° du produit, lien vers sa fiche sur le site (pour la consulter, par
+        exemple pour trouver la référence d'une fiche sans code produit)."""
+        lien = fiche.lien_site
+        texte = f"n° {fiche.id_product}" if fiche.id_product else "fiche du site"
+        etiquette = QLabel(f'<a href="{lien}">{texte} sur le site</a>' if lien else texte)
+        etiquette.setTextFormat(Qt.RichText)
+        etiquette.setOpenExternalLinks(True)
+        etiquette.setToolTip(lien or "")
+        etiquette.setStyleSheet("font-size: 11px; background: transparent;")
+        return etiquette
+
+    def _collecter_fiches(self, config: ImportConfiguration):
+        """Saisies des cartes du lot de fiches du site."""
+        if not self._fiches_lot:
+            return
+        config.saisies_fiches = {}
+        for c in self._cartes_fiches:
+            ref = c['ref'].text().strip() if c['ref'] is not None else c['file'].suggested_reference
+            config.saisies_fiches[c['file'].path] = {
+                'importer': c['importer'].isChecked(), 'ref': ref,
+                'libelle': c['libelle'].text().strip(), 'obsolete': c['obsolete'].isChecked(),
+                'remplace': c['remplace'].refs(), 'equivalentes': c['equivalentes'].refs(),
+                'remplacee_par': c['remplacee_par'].refs()}
+
+    def _apercu_lot(self):
+        """Aperçu d'un lot de fiches : ce que deviennent leurs appareils."""
+        fiches = [f.fiche for f in self._fiches_lot]
+        total = {}
+        a_refaire = sans_code = 0
+        for fiche in fiches:
+            a = fiche.apercu()
+            for etat, n in a['compte'].items():
+                total[etat] = total.get(etat, 0) + n
+            a_refaire += a['a_refaire'] is not None
+            sans_code += bool(a['sans_code_produit'])
+        self.format_info_label.setText(f"Lot de {len(fiches)} fiches du site")
+        self.format_info_label.setVisible(True)
+        libelles = {"déjà lié": "déjà liés", "connu": "appareils connus à relier",
+                    "à créer": "appareils à créer", "à refaire": "non créés (fiches à refaire)",
+                    "couvert": "couverts par une ancienne référence", "non importé": "non importés"}
+        texte = " · ".join(f"{total[e]} {libelles[e]}" for e in self._ETATS_FICHE if total.get(e))
+        if sans_code:
+            texte += f" · {sans_code} fiche(s) sans code produit (référence à saisir)"
+        self.format_desc_label.setText(texte)
+        self.format_desc_label.setVisible(True)
+        self.format_warning_widget.setVisible(False)
+        self.preview_text.setVisible(False)
+        self.third_col_widget.setVisible(False)
+        self.headers_checkbox.setVisible(False)
+        self.mapping_container.setVisible(False)
+        self._format_options_panel.setVisible(False)
+        self._mapping_widgets = []
+        self.bandeau_fiche.setText(
+            f"<b>{a_refaire} fiche(s) à refaire depuis les PDF</b> : leurs appareils connus sont "
+            f"reliés, leurs appareils bancals ne sont pas créés. Elles rejoignent la liste "
+            f"« Fiches à refaire ».") if a_refaire else None
+        self.bandeau_fiche.setVisible(bool(a_refaire))
+        if hasattr(self, 'ok_btn'):
+            self.ok_btn.setEnabled(True)
+
     # États des lignes d'une fiche, dans l'ordre de l'aperçu
     _ETATS_FICHE = ("déjà lié", "connu", "à créer", "à refaire", "couvert", "non importé")
 
@@ -1496,7 +1668,11 @@ class ImportDialog(QDialog):
             alertes.append(f"{len(a['non_importees'])} ligne(s) non importée(s) "
                            f"(appareil à choisir, référence illisible, marque inconnue).")
         if a['sans_code_produit']:
-            alertes.append("Pas de code produit sur la fiche : saisissez la référence de la pièce.")
+            lien = self._fiche.lien_site
+            consulter = (f' Consultez <a href="{lien}">la fiche sur le site</a> pour la trouver.'
+                         if lien else '')
+            alertes.append("Pas de code produit sur la fiche : saisissez la référence de la "
+                           "pièce." + consulter)
         self.bandeau_fiche.setText("<br>".join(alertes))
         self.bandeau_fiche.setVisible(bool(alertes))
         if hasattr(self, 'ok_btn'):
@@ -1732,6 +1908,9 @@ class ImportDialog(QDialog):
             return
         if self._fiche is not None:
             self._apercu_fiche()
+            return
+        if self._fiches_lot:
+            self._apercu_lot()
             return
 
         # Grouper les fichiers par structure

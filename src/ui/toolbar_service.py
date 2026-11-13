@@ -200,14 +200,20 @@ class ToolbarService:
         data_menu.addAction(suggest_action)
 
         fiche_site_action = QAction("Lire une fiche du site…", self.main_window)
-        fiche_site_action.setToolTip("Reprendre une fiche produit du site : aperçu, validation, enregistrement")
-        fiche_site_action.triggered.connect(getattr(self.main_window, '_open_fiche_site_dialog', lambda: None))
+        fiche_site_action.setToolTip("Importer une fiche produit du site (lien ou description), comme un PDF")
+        ouvrir_fiche = getattr(self.main_window, '_open_fiche_site_dialog', lambda: None)
+        fiche_site_action.triggered.connect(lambda *_: ouvrir_fiche())
         data_menu.addAction(fiche_site_action)
 
         reprise_site_action = QAction("Importer les fiches du site…", self.main_window)
         reprise_site_action.setToolTip("Importer toutes les fiches du site, par lots, depuis les exports PrestaShop")
         reprise_site_action.triggered.connect(getattr(self.main_window, '_open_reprise_site_dialog', lambda: None))
         data_menu.addAction(reprise_site_action)
+
+        a_refaire_action = QAction("Fiches du site à refaire…", self.main_window)
+        a_refaire_action.setToolTip("Fiches du site aux données en vrac : cherchez leurs PDF et importez-les")
+        a_refaire_action.triggered.connect(getattr(self.main_window, '_open_fiches_a_refaire', lambda: None))
+        data_menu.addAction(a_refaire_action)
 
         history_action = QAction("Historique des modifications…", self.main_window)
         history_action.setToolTip("Consulter l'historique persistant des modifications")

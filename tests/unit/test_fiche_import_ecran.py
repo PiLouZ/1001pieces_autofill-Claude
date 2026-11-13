@@ -75,6 +75,24 @@ def _importer(qtbot, dialogue, fenetre, attendus):
     return fenetre.imports[-1]
 
 
+def test_zone_unique_lien_ou_description(qapp, monkeypatch, tmp_path):
+    """Un lien seul est téléchargé ; un texte (même contenant un lien) est une description."""
+    from src.ui.fiche_site_import import est_un_lien
+    assert est_un_lien(' https://www.1001pieces.com/7196-crochet.html \n')
+    assert not est_un_lien('<div>Code produit : 480131100599</div> https://x.fr/a')
+    db = _db_extrait(tmp_path)
+    fenetre = _fenetre(qapp, db)
+    saisie = SaisieFicheSite(fenetre, service=_service(db, fenetre))
+    appels = []
+    monkeypatch.setattr(saisie, 'lire_lien', lambda url='': appels.append(('lien', url)))
+    monkeypatch.setattr(saisie, '_analyser', lambda lire, url='': appels.append(('texte', url)))
+    saisie.champ.setPlainText('https://www.1001pieces.com/7196-crochet.html')
+    saisie.lire()
+    saisie.champ.setPlainText('Code produit : 480131100599\nAppareils : …')
+    saisie.lire()
+    assert appels == [('lien', 'https://www.1001pieces.com/7196-crochet.html'), ('texte', '')]
+
+
 def test_lien_du_site_reconnu():
     assert est_lien_fiche_site('  https://www.1001pieces.com/porte/7196-crochet.html\n')
     assert est_lien_fiche_site('http://1001pieces.com/7285-fiche.html')
@@ -132,8 +150,8 @@ def test_fiche_en_vrac_a_refaire_puis_refaite_par_un_import(qapp, qtbot, tmp_pat
     service = _service(db, fenetre)
     description = (FIXTURES / 'description_7196.html').read_text(encoding='utf-8')
     saisie = SaisieFicheSite(fenetre, service=service)
-    saisie.champ_description.setPlainText(description)
-    saisie.lire_description()
+    saisie.champ.setPlainText(description)
+    saisie.lire()                       # un texte, pas un lien : lu comme description
     dialogue = _dialogue_import(qapp)
     dialogue._load_data_deferred()
     assert dialogue.bandeau_fiche.isVisible() or not dialogue.isVisible()
