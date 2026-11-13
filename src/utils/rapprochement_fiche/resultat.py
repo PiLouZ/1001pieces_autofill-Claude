@@ -17,7 +17,7 @@ NIVEAUX = {
     'exact_multiple': "même réf. portée par plusieurs appareils",
     'normalise': "un seul candidat à la ponctuation près",
     'normalise_ambigu': "plusieurs écritures en base pour la même forme normalisée",
-    'a_valider': "autre marque du groupe, autre type ou nom commercial seul",
+    'a_valider': "autre marque du groupe ou nom commercial seul",
     'absent': "aucun candidat, ni exact ni normalisé : création",
 }
 # Lien pièce → appareil, indépendamment du niveau
@@ -29,7 +29,6 @@ LIENS = {
 }
 # Motif d'une ligne qui demande un avis (moteur de questions, refonte étape 2)
 MOTIFS = {
-    'autre_type': "même appareil, classé sous un autre type sur le site",
     'meme_ref_groupe': "même réf. sous une autre marque du groupe",
     'nom_meme_ref': "retrouvé par le nom commercial, même réf. (autre marque du groupe)",
     'nom_ref_differente': "même nom commercial, réf. différente",
@@ -93,7 +92,7 @@ class Identite:
     ref_interne_precedente: str = ''    # même id_product, autre réf. interne (changée sur le site)
     libelle: str = ''                   # titre de la fiche, nettoyé
     libelle_outil: str = ''
-    statut_libelle: str = ''            # 'a_remplir', 'identique', 'different', ''
+    statut_libelle: str = ''            # 'a_remplir', 'identique', 'different', 'ancienne_regle', ''
 
 
 @dataclass
@@ -120,6 +119,36 @@ class AppareilRapproche:
     motif: str = ''
     # Absent : même réf. exacte sous des marques HORS du groupe (Ikea, Elica…)
     hors_groupe: List[str] = field(default_factory=list)
+    type_site: str = ''                 # type donné par la fiche (table du site ou ligne)
+    # Appareil connu (ou proposé) dont un champ diffère sur la fiche (type, marque,
+    # écriture de la réf., nom commercial) : un écart par champ
+    ecarts: List['Ecart'] = field(default_factory=list)
+
+
+# Champ d'un appareil connu où l'outil et le site diffèrent → (libellé, colonne
+# d'`appareils`). La marque n'est comparée que dans un même groupe de marques.
+CHAMPS_ECARTS = {
+    'type': ("Type", 'type'),
+    'marque': ("Marque", 'manufacturer'),
+    'ref': ("Réf. modèle", 'ref_modele'),
+    'nom': ("Nom commercial", 'commercial_ref'),
+}
+
+
+@dataclass
+class Ecart:
+    """Champ d'un appareil connu de l'outil qui diffère sur la fiche : l'utilisateur
+    garde la valeur de l'outil (par défaut) ou prend celle du site, d'un clic.
+    Outil vide (nom commercial) : la valeur du site est prise sans question."""
+    champ: str                          # clé de CHAMPS_ECARTS
+    outil: str
+    site: str
+    appareil_id: int
+    tranche: bool = False               # « garder l'outil » déjà choisi pour cette valeur du site
+
+    @property
+    def a_completer(self) -> bool:
+        return not self.outil
 
 
 @dataclass
@@ -132,6 +161,9 @@ class Remplacement:
     successeur_actuel: Optional[str] = None
     fantome_a_creer: bool = False
     raison: str = ''
+    # Position dans la ligne « Remplace les références » de la fiche (1, 2…) :
+    # mémorisée pour que la Fiche complète réécrive la ligne dans cet ordre
+    rang: Optional[int] = None
 
 
 STATUTS_REMPLACEMENT = {

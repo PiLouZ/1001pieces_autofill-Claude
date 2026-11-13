@@ -38,7 +38,7 @@ from src.utils.rapprochement_fiche.configuration import (
     ConfigurationRapprochement, charger_configuration,
 )
 from src.utils.rapprochement_fiche.resultat import (
-    AppareilRapproche, Doute, Equivalence, Identite, Rapprochement, Remplacement,
+    AppareilRapproche, Doute, Ecart, Equivalence, Identite, Rapprochement, Remplacement,
 )
 
 # Décision mémorisée sur une paire d'écritures (§ 9) : (clé de marque, {A, B}) → 'meme'/'distinct'
@@ -49,9 +49,40 @@ _DOUTES_DE_CHOIX = ('normalise_ambigu', 'exact_multiple', 'a_valider', 'marque_a
 _MENTIONS_TITRE = re.compile(r"\(\s*photos?\s+non\s+contractuelles?\s*\)", re.I)
 
 
-def libelle_depuis_titre(titre: str) -> str:
-    """Titre de la fiche sans « (photos non contractuelles) », pour le libellé de la pièce."""
+_CODE_LONG = re.compile(r"\d{9,}")
+
+
+def _noms_differents(outil: str, site: str) -> bool:
+    """Nom commercial du site à proposer à la place de celui de l'outil ?
+
+    Non quand ils ne diffèrent que par la ponctuation, ou par un ou deux caractères
+    en fin (indice de version : « AZB 82001 » sur le site, « AZB8200 » dans
+    l'outil), ni quand le nom lu contient un code de 9 chiffres ou plus (liste
+    d'appareils lue comme un nom : erreur de lecture). Mesure sur le 1ᵉʳ lot réel
+    (2026-11-13) : 749 écarts → 166."""
+    fo, fs = forme_normalisee(outil), forme_normalisee(site)
+    if fo == fs or _CODE_LONG.search(site):
+        return False
+    if fo and (fs.startswith(fo) or fo.startswith(fs)) and abs(len(fs) - len(fo)) <= 2:
+        return False
+    return True
+
+
+def libelle_titre_complet(titre: str) -> str:
+    """Titre de la fiche sans « (photos non contractuelles) » : le libellé écrit
+    avant la coupe au type d'appareil (reconnu à la relecture pour être remplacé)."""
     return re.sub(r"\s+", " ", _MENTIONS_TITRE.sub(' ', titre or '')).strip(' -–')
+
+
+def libelle_depuis_titre(titre: str, appellations=None) -> str:
+    """Libellé de la pièce tiré du titre de la fiche : ce qui précède « pour <type
+    d'appareil> » (types et appellations de l'onglet Appareils). Ce qui suit le
+    type est retiré (« (pièce générique) », « et cuisinière »), sauf une
+    caractéristique chiffrée hors parenthèses, gardée à la suite (« Résistance
+    pour sèche linge 1900W » → « Résistance 1900W »). Sans type reconnu : le
+    titre entier. Le type n'est ainsi plus répété dans les exports."""
+    from src.utils.rapprochement_fiche.coupe_titre import couper_au_type
+    return couper_au_type(libelle_titre_complet(titre), appellations)
 
 
 def rapprocher(lecture: LectureFiche, acces: AccesBaseLecture,
@@ -179,13 +210,18 @@ class _Rapprochement:
                 self._doute('ean_different',
                             f"EAN {i.ean_outil} dans l'outil, {self.ean} sur le site", 'identite')
         # Libellé de la pièce : titre de la fiche
-        i.libelle = libelle_depuis_titre(self.l.titre)
+        i.libelle = libelle_depuis_titre(self.l.titre,
+                                         getattr(self.config, 'appellations_appareils', None))
         i.libelle_outil = self.acces.libelle(i.ref_piece) if i.statut != 'absente' else ''
         if i.libelle:
             if not i.libelle_outil:
                 i.statut_libelle = 'a_remplir'
             elif i.libelle_outil.strip() == i.libelle:
                 i.statut_libelle = 'identique'
+            elif i.libelle_outil.strip() == libelle_titre_complet(self.l.titre):
+                # Écrit par une reprise antérieure, avant la coupe au type :
+                # remplacé sans question (c'est le même titre)
+                i.statut_libelle = 'ancienne_regle'
             else:
                 i.statut_libelle = 'different'
                 self._doute('libelle_different',
@@ -265,6 +301,7 @@ class _Rapprochement:
     def _remplacements(self, principale: str) -> List[Remplacement]:
         couples: List[Tuple[str, str, str, str]] = []
         cibles = self._cibles_par_origine()
+        rangs = {ref: n for n, ref in enumerate(dict.fromkeys(self.l.remplace), 1)}
         for ancienne in dict.fromkeys(self.l.remplace):
             if len(self.l.code_produit) <= 1:
                 couples.append((ancienne, principale, 'remplace', 'unique'))
@@ -284,8 +321,12 @@ class _Rapprochement:
         anciennes = [a for a, *_ in couples]
         successeurs = self.acces.successeurs(anciennes)
         pieces = self.acces.pieces(anciennes)
-        return [self._remplacement(a, n, sens, app, successeurs, pieces)
-                for a, n, sens, app in couples]
+        resultat = [self._remplacement(a, n, sens, app, successeurs, pieces)
+                    for a, n, sens, app in couples]
+        for r in resultat:
+            if r.sens == 'remplace':
+                r.rang = rangs.get(r.ancienne)
+        return resultat
 
     def _cibles_par_origine(self) -> Dict[str, str]:
         """Origine → réf. du code produit, pour les origines portées par une seule réf."""
@@ -439,7 +480,56 @@ class _Rapprochement:
             for categorie in a.doutes:
                 self._doute(categorie, f"{a.marque or '?'} {a.ref_modele} : {a.raison}",
                             f"appareil:{a.numero}" if a.numero else f"table:{a.ref_modele}")
+        self._ecarts(lignes)
         return lignes
+
+    # --- Champs qui diffèrent d'un appareil connu ------------------------------
+    @staticmethod
+    def cible(a: AppareilRapproche) -> Optional[AppareilBase]:
+        """Appareil de l'outil que la ligne désigne (retenu, proposé, ou seul candidat
+        de même réf. sous une autre marque du groupe) ; None sinon."""
+        ident = a.appareil_id if a.appareil_id is not None else a.proposition
+        if ident is not None:
+            return next((c for c in a.candidats if c.id == ident), None)
+        if a.motif in ('meme_ref_groupe', 'nom_meme_ref'):
+            memes = [c for c in a.candidats
+                     if forme_normalisee(c.ref_modele) == forme_normalisee(a.ref_modele)]
+            return memes[0] if len(memes) == 1 else None
+        return None
+
+    def _ecarts(self, lignes: List[AppareilRapproche]):
+        """Type, marque (dans le groupe), écriture de la réf. et nom commercial d'un
+        appareil connu qui diffèrent sur la fiche (rien n'est écrit sans choix, sauf
+        un nom commercial vide dans l'outil, complété)."""
+        cibles = {id(a): c for a in lignes if a.niveau != 'absent'
+                  for c in [self.cible(a)] if c is not None}
+        if not cibles:
+            return
+        ids = {c.id for c in cibles.values()}
+        noms = self.acces.noms_commerciaux(ids) if any(a.nom for a in lignes) else {}
+        tranches = self.acces.decisions_champs(ids) if self.memoires else {}
+        for a in lignes:
+            c = cibles.get(id(a))
+            if c is None:
+                continue
+            ecarts = []
+            if a.type_site and c.type and cle_marque(a.type_site) != cle_marque(c.type):
+                ecarts.append(Ecart('type', c.type, a.type_site, c.id))
+            if (a.marque and c.marque and cle_marque(a.marque) != cle_marque(c.marque)
+                    and a.source_marque in ('entete', 'table')
+                    and self.config.groupe_de.get(cle_marque(a.marque))
+                    and self.config.groupe_de.get(cle_marque(a.marque))
+                    == self.config.groupe_de.get(cle_marque(c.marque))):
+                ecarts.append(Ecart('marque', c.marque, a.marque, c.id))
+            if a.ref_modele and c.ref_modele != a.ref_modele \
+                    and forme_normalisee(c.ref_modele) == forme_normalisee(a.ref_modele):
+                ecarts.append(Ecart('ref', c.ref_modele, a.ref_modele, c.id))
+            nom_outil = noms.get(c.id, '')
+            if a.nom and _noms_differents(nom_outil, a.nom):
+                ecarts.append(Ecart('nom', nom_outil, a.nom, c.id))
+            for e in ecarts:
+                e.tranche = bool(e.outil) and tranches.get((c.id, e.champ)) == e.site
+            a.ecarts = ecarts
 
     def _reference_suspecte(self, ref: str) -> str:
         """Pourquoi une réf. lue ne ressemble pas à une réf. d'appareil ('' = normale) :
@@ -656,14 +746,13 @@ class _Rapprochement:
                 a.doutes.append('exact_multiple')
         if explicite[0]:
             a.type, a.source_type = explicite
+            a.type_site = explicite[0]
             choisi = self._choisi(a)
-            if choisi is not None and choisi.type and cle_marque(choisi.type) != cle_marque(a.type) \
-                    and a.niveau in ('exact', 'normalise'):
-                a.niveau = 'a_valider'
-                a.raison = (a.raison + ', ' if a.raison else '') + \
-                    f"type {choisi.type} en base, {a.type} sur la fiche"
-                a.doutes.append('a_valider')
-                a.motif = a.motif or 'autre_type'
+            if choisi is not None and choisi.type and cle_marque(choisi.type) != cle_marque(a.type):
+                # Même appareil, classé sous un autre type sur le site : il est relié
+                # (même marque, même réf.) et le type de l'outil est gardé par défaut ;
+                # l'écart est proposé à l'utilisateur (`ecarts`)
+                a.type, a.source_type = choisi.type, 'base'
             return
         choisi = self._choisi(a)
         if choisi is not None and choisi.type:

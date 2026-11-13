@@ -71,6 +71,9 @@ class ResultatLot:
     taille_avant: int = 0
     taille_apres: int = 0
     marques_touchees: List[str] = field(default_factory=list)
+    # Champs d'appareils pris sur le site, écrits par `apres_lot` (thread principal)
+    maj_appareils: Dict[int, Dict[str, str]] = field(default_factory=dict)
+    champs_modifies: int = 0
 
     def resume(self) -> str:
         croissance = (self.taille_apres - self.taille_avant) / 1e6
@@ -311,6 +314,8 @@ class RepriseSiteService(BaseService):
             res.liens_completes += r.liens_completes
             res.remplacements += r.relations.get('successions', 0)
             res.equivalences += r.relations.get('equivalences', 0)
+            for ident, colonnes in r.maj_appareils.items():
+                res.maj_appareils.setdefault(ident, {}).update(colonnes)
         if progression is not None:
             progression(len(plan.plans), len(plan.plans), "Fiches enregistrées")
 
@@ -367,8 +372,12 @@ class RepriseSiteService(BaseService):
             return
         bilan = ResultatEnregistrement(appareils_crees=res.appareils_crees,
                                        liens_crees=res.liens_crees,
-                                       liens_completes=res.liens_completes)
+                                       liens_completes=res.liens_completes,
+                                       maj_appareils=res.maj_appareils)
         self.fiche_service._apres_ecriture(bilan, source="reprise_site")
+        res.champs_modifies = bilan.champs_modifies
+        if res.maj_appareils and self._acces is not None:
+            self._acces.oublier()       # écritures ou marques changées : index à relire
 
     def fermer(self):
         if self._acces is not None:

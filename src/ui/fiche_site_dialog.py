@@ -489,6 +489,9 @@ class FicheSiteDialog(QDialog):
                           + (f", {etat}" if etat else '') + ")")
         if i.libelle and i.statut_libelle == 'different':
             lignes.append(f"Nom actuel dans l'outil : « {i.libelle_outil} »")
+        elif i.libelle and i.statut_libelle == 'ancienne_regle':
+            lignes.append(f"Nom raccourci (sans le type d'appareil) : « {i.libelle_outil} » "
+                          f"devient « {i.libelle} »")
         if r.liste_tronquee:
             lignes.append("<i>Liste d'appareils probablement réduite : rien n'en est déduit sur les "
                           "appareils absents.</i>")
@@ -575,11 +578,35 @@ class FicheSiteDialog(QDialog):
     def _repondre(self, cle: str, valeur: Optional[str]):
         if self.questionnaire is None:
             return
+        if cle.startswith('E:'):
+            self._choisir_ecart(cle, valeur)
+            return
         with self.db._query_lock:
             self.questionnaire.repondre(cle, valeur)
         if self.questionnaire.relire:
             self.etat.setText("Groupe de marques enregistré : relisez la fiche pour en tenir compte.")
             self.etat.setStyleSheet(StyleManager.TEXTE_AVERTISSEMENT)
+        self._mettre_a_jour()
+
+    def _choisir_ecart(self, cle: str, valeur: Optional[str]):
+        """Valeur gardée pour un champ qui diffère (une fiche : choix ligne par ligne,
+        qui reviennent au lot avec « Garder ces choix pour le lot »). Le bouton du
+        groupe vaut pour tous ses cas de la fiche."""
+        q = self.questionnaire
+        groupe, _, ligne = cle.partition('@')
+        g = q.ecarts.get(groupe)
+        if g is None:
+            return
+        cas = [(k, e.champ) for i, k, e in g.cas
+               if not ligne or f"{i}:{k}" == ligne]
+        for k, champ in cas:
+            if valeur is None:
+                self.individuels.champs.pop((k, champ), None)
+            else:
+                self.individuels.champs[(k, champ)] = valeur
+        if not ligne and valeur is None:
+            q.reponses.pop(groupe, None)        # « Modifier » : réponse du lot retirée aussi
+        q.construire()
         self._mettre_a_jour()
 
     def _tout_valider(self):
@@ -712,6 +739,9 @@ class FicheSiteDialog(QDialog):
                      f"{s['remplacements']} ancienne(s) référence(s), {s['equivalences']} équivalente(s)."
                      if not self.plan.vide else
                      "Prêt : rien de nouveau à ajouter ; la fiche confirme ce que l'outil sait déjà.")
+            champs = sum(len(c) for c in self.plan.maj_appareils.values())
+            if champs:
+                texte += f" {champs} valeur(s) d'appareils connus prise(s) sur le site."
             if revoir:
                 texte += f" {revoir} appareil(s) restent à choisir : ils ne sont pas enregistrés."
             self.etat.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)

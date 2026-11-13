@@ -143,6 +143,20 @@ class EventDrivenSaveService(BaseService):
 
 
     @handle_save_service_errors()
+    def enregistrer_champs_appareils(self, updates_by_db_id) -> bool:
+        """Champs d'appareils pris sur une fiche du site (type, marque, écriture de
+        la réf., nom commercial) : {id: {colonne: valeur}}, une transaction."""
+        if not updates_by_db_id or not self._validate_save_requirements():
+            return False
+        self._update_save_indicator_pending()
+        success = self.database_operations_service.save_cells_batch(updates_by_db_id)
+        if success:
+            self._update_save_indicator_success()
+        else:
+            app_logger.warning(f"Échec sauvegarde des champs de {len(updates_by_db_id)} appareil(s)")
+        return success
+
+    @handle_save_service_errors()
     def save_after_import(self, event_type: str = "import_completed") -> bool:
         """
         Sauvegarde événementielle après opération d'import

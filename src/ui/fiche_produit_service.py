@@ -166,7 +166,9 @@ class FicheProduitService:
           références rejoignent « Remplace » ;
         - les autres lignées sont regroupées par marque d'origine, puis par
           ligne mémorisée (`lignes_par_origine`) ;
-        - les références écartées à la reprise disparaissent.
+        - les références écartées à la reprise disparaissent ;
+        - « Remplace » suit l'ordre de la ligne de la fiche (`rang_fiche`), les
+          références sans position mémorisée à la suite, dans l'ordre actuel.
         Sans mémoire (pièce saisie dans l'outil, base non migrée) : comme avant,
         une seule ligne d'équivalentes et la seule référence en code produit.
         """
@@ -177,10 +179,11 @@ class FicheProduitService:
             principales = db.pieces_avec_produit_site([reference] + [l[0] for l in lignees])
             ecartees = db.references_ecartees(
                 [reference, *remplace, *(r for l in lignees for r in l)])
+            rangs = db.rangs_remplace([*remplace, *(r for l in lignees for r in l[1:])])
         except Exception as e:
             # Base sans les tables de la reprise, ou fenêtre de test sans ces lectures
             app_logger.debug(f"Fiche: mémoire de la reprise de {reference} non lue : {e}")
-            memoire, principales, ecartees = {}, set(), set()
+            memoire, principales, ecartees, rangs = {}, set(), set(), {}
 
         code, autres = [reference], []
         remplace = list(remplace)
@@ -197,8 +200,19 @@ class FicheProduitService:
             return [r for r in refs if r not in ecartees]
         autres = [l for l in (garder(l) for l in autres) if l]
         lignes = [l for l in (garder(l) for l in self.lignes_par_origine(autres, memoire)) if l]
+        remplace = self.ordre_de_la_fiche(remplace, rangs)
         return {'code_produit': [reference] + garder(code[1:]), 'remplace': garder(remplace),
                 'equivalentes': autres, 'lignes_equivalentes': lignes}
+
+    @staticmethod
+    def ordre_de_la_fiche(refs: List[str], rangs: Dict[str, int]) -> List[str]:
+        """« Remplace » dans l'ordre de la fiche du site (position mémorisée à la
+        reprise), puis les références sans position dans l'ordre actuel (chaîne
+        de la pièce, puis de ses équivalentes du code produit)."""
+        if not rangs:
+            return refs
+        avec = sorted((r for r in refs if r in rangs), key=lambda r: rangs[r])
+        return avec + [r for r in refs if r not in rangs]
 
     @staticmethod
     def lignes_par_origine(lignees: List[List[str]],

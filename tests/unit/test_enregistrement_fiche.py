@@ -238,7 +238,7 @@ class TestFichesExemple:
         assert res.piece == 'creee'
         assert db.conn.execute("SELECT is_phantom, description FROM pieces WHERE ref_piece = ?",
                                ['481073071153']).fetchone() == \
-            (0, 'Pompe de vidange R2.5Y pour machine à laver (pièce générique)')
+            (0, 'Pompe de vidange R2.5Y')      # coupé avant « pour machine à laver »
         succ = dict(db.conn.execute("SELECT ref_old, ref_new FROM piece_supersessions"))
         assert succ['C00535957'] == 'C00319033' and succ['488000535957'] == '481073071153'
         origines = dict(db.conn.execute(
@@ -370,6 +370,20 @@ class TestMemoires:
         d.identite['libelle_different'] = 'prendre'
         _enregistrer(b.db, r, d)
         assert b.db.conn.execute("SELECT description FROM pieces").fetchone() == ('Nouveau libellé',)
+
+    def test_libelle_ecrit_avant_la_coupe_remplace_sans_question(self, tmp_path):
+        # Reprise antérieure : le titre entier était devenu le libellé
+        b = Construite(tmp_path)
+        b.piece('REFP', libelle='Pompe pour lave-vaisselle (pièce générique)')
+        r = _rapprocher(b.db, _fiche(titre='Pompe pour lave-vaisselle (pièce générique)'))
+        assert r.identite.libelle == 'Pompe'
+        assert r.identite.statut_libelle == 'ancienne_regle'
+        assert 'libelle_different' not in r.doutes_par_categorie()
+        _enregistrer(b.db, r)
+        assert b.db.conn.execute("SELECT description FROM pieces").fetchone() == ('Pompe',)
+        # Relecture : identique, plus rien à écrire
+        r = _rapprocher(b.db, _fiche(titre='Pompe pour lave-vaisselle (pièce générique)'))
+        assert r.identite.statut_libelle == 'identique'
 
     def test_base_non_migree_rend_du_vide(self):
         cnx = sqlite3.connect(':memory:')

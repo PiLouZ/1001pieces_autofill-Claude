@@ -9,7 +9,8 @@ déjà couverts, relations sans doute).
 - Règles (posées une fois, mémorisées dans `regles_reprise` de
   data/reprise_fiches.json, révocables) :
   R1  même réf. sous une autre marque du groupe = même appareil ?
-  R2  appareil classé sous un autre type sur le site : le relier (type de l'outil gardé) ?
+  (R2 « autre type sur le site » n'existe plus depuis le 2026-11-12 : même marque et
+  même réf., c'est le même appareil, il est relié ; le type devient un écart.)
   R3  même nom commercial, réf. différente : nouvel appareil ?
   R4:<marque>|<marque>  même réf. sous une marque hors du groupe : même groupe ?
       (« oui » enrichit `groupes_marques` et demande de relire le lot)
@@ -23,6 +24,12 @@ déjà couverts, relations sans doute).
   Q4:<forme>    équivalentes sans marque d'origine (étiquette, écarter, garder sans)
   Q5  remplacements en conflit avec l'existant
   Q6  EAN du site différent de l'outil ; Q7 réf. produit rattachée à une autre pièce
+- Écarts (`ecarts`, clés « E:… ») : appareil connu dont un champ diffère sur la
+  fiche (type, marque du groupe, écriture de la réf., nom commercial). Groupés
+  par cas identiques (« type Lave-linge → Sèche-linge ») ; une réponse vaut pour
+  tout le groupe, un choix sur une ligne l'emporte. Sans réponse, l'outil est
+  gardé : un écart ne bloque jamais le lot. Un nom commercial vide dans l'outil
+  est complété sans question.
 - Sans question (« à revoir ») : appareil à choisir parmi plusieurs sans
   candidat de même réf., réf. illisible : ces lignes sont laissées de côté,
   leur fiche est signalée à revoir.
@@ -45,6 +52,7 @@ from src.utils.rapprochement_fiche.acces_base import forme_normalisee
 from src.utils.rapprochement_fiche.decisions import (
     ChoixAppareil, DecisionsFiche, VALIDEE, categorie_appareil, categorie_equivalence,
 )
+from src.utils.rapprochement_fiche.resultat import CHAMPS_ECARTS, Ecart
 
 REGLE, LOT = 'regle', 'lot'
 A_REVOIR = 'a_revoir'                   # ligne sans question, laissée de côté
@@ -55,10 +63,6 @@ TEXTES_REGLES = {
     'R1': ("Même référence sous une autre marque du même groupe : est-ce le même appareil ?",
            [('oui', "Oui, c'est le même appareil"), ('non', "Non, laisser ces appareils de côté")],
            'oui'),
-    'R2': ("L'appareil existe dans l'outil sous un autre type que sur le site : le relier en "
-           "gardant le type de l'outil ?",
-           [('oui', "Oui, le relier (le type de l'outil ne change pas)"),
-            ('non', "Non, laisser ces appareils de côté")], 'oui'),
     'R3': ("Même nom commercial qu'un appareil de l'outil, mais référence différente : "
            "est-ce un nouvel appareil ?",
            [('creer', "Oui, créer l'appareil"), ('non', "Non, laisser ces appareils de côté")],
@@ -114,6 +118,39 @@ class Question:
             self.exemples.append(texte)
 
 
+@dataclass
+class GroupeEcart:
+    """Écarts identiques d'un lot (même champ ; même valeur outil → site pour le
+    type et la marque) : une réponse ('outil' / 'site') vaut pour tous les cas."""
+    cle: str
+    champ: str
+    outil: str = ''                     # '' : valeurs propres à chaque cas (réf., nom)
+    site: str = ''
+    cas: List[Tuple[int, int, Ecart]] = field(default_factory=list)   # (fiche, ligne, écart)
+    reponse: Optional[str] = None
+    choix: Dict[Tuple[int, int], str] = field(default_factory=dict)   # choix par ligne
+
+    @property
+    def titre(self) -> str:
+        libelle = CHAMPS_ECARTS[self.champ][0]
+        if self.outil or self.site:
+            return f"{libelle} : {self.outil} dans l'outil, {self.site} sur le site"
+        return f"{libelle} différent"
+
+    def decision(self, i: int, k: int) -> Optional[str]:
+        return self.choix.get((i, k), self.reponse)
+
+    @property
+    def fiches(self) -> int:
+        return len({i for i, _, _ in self.cas})
+
+
+def cle_ecart(e: Ecart) -> str:
+    if e.champ in ('type', 'marque'):
+        return f"E:{e.champ}:{e.outil}→{e.site}"
+    return f"E:{e.champ}"
+
+
 def _valeur(reponse: Optional[str], prefixe: str) -> str:
     """'type:Hotte' → 'Hotte' (réponse libre)."""
     if reponse and reponse.startswith(prefixe + ':'):
@@ -138,6 +175,9 @@ class QuestionnaireLot:
         # décisions partielles) : ils l'emportent sur les réponses et sortent les
         # éléments concernés des questions
         self.individuels: Dict[int, DecisionsFiche] = {}
+        # Écarts : réponses par groupe (`reponses`, clés « E:… ») et choix par ligne
+        self.choix_ecarts: Dict[Tuple[int, int, str], str] = {}
+        self.ecarts: Dict[str, GroupeEcart] = {}
         self.questions: Dict[str, Question] = {}
         self.lignes: Dict[Tuple[int, int], str] = {}     # (fiche, ligne) → question ou A_REVOIR
         self.a_revoir: Dict[int, List[str]] = defaultdict(list)
@@ -203,7 +243,7 @@ class QuestionnaireLot:
         return q
 
     def construire(self):
-        self.questions, self.lignes = {}, {}
+        self.questions, self.lignes, self.ecarts = {}, {}, {}
         self.a_revoir = defaultdict(list)
         recap: Counter = Counter()
         for i, f in self.lot.fiches_actives():
@@ -213,6 +253,7 @@ class QuestionnaireLot:
             ident = f'{f.id_produit}'
             ind = self.individuels.get(i)
             for k, a in enumerate(r.appareils):
+                self._ecarts_ligne(i, k, a, ind, recap)
                 if ind is not None and k in ind.appareils:
                     continue                # choisi dans l'aperçu de la fiche
                 cle = self._cle_ligne(i, f, k, a, recap)
@@ -259,6 +300,52 @@ class QuestionnaireLot:
         self._titres()
         self.recapitulatif = dict(recap)
 
+    def _ecarts_ligne(self, i: int, k: int, a, ind: Optional[DecisionsFiche], recap: Counter):
+        """Écarts d'une ligne qui désigne un appareil connu : seulement si la ligne
+        sera reliée à CET appareil (exacte, normalisée, déjà liée ou couverte ; R1
+        « oui » ; choix dans l'aperçu)."""
+        if not a.ecarts:
+            return
+        choix = ind.appareils.get(k) if ind is not None else None
+        if choix is not None:
+            if choix.ignorer or choix.creer:
+                return
+            cible = choix.appareil_id
+        elif categorie_appareil(a) in ('exacts', 'normalises', 'deja_couverts'):
+            cible = a.appareil_id
+        elif a.motif in ('meme_ref_groupe', 'nom_meme_ref') and self.reponse('R1') == 'oui':
+            c = self._meme_ref(a)
+            cible = c.id if c is not None else None
+        else:
+            cible = None
+        if cible is None:
+            return
+        for e in a.ecarts:
+            if e.appareil_id != cible:
+                continue
+            if e.tranche:
+                recap['ecarts_tranches'] += 1
+                continue
+            if e.a_completer:
+                recap['noms_completes'] += 1
+                continue
+            cle = cle_ecart(e)
+            g = self.ecarts.get(cle)
+            if g is None:
+                outil, site = (e.outil, e.site) if e.champ in ('type', 'marque') else ('', '')
+                g = self.ecarts[cle] = GroupeEcart(cle, e.champ, outil, site,
+                                                   reponse=self.reponses.get(cle))
+            g.cas.append((i, k, e))
+            individuel = (ind.champs.get((k, e.champ)) if ind is not None else None) \
+                or self.choix_ecarts.get((i, k, e.champ))
+            if individuel:
+                g.choix[(i, k)] = individuel
+
+    def liste_ecarts(self) -> List[GroupeEcart]:
+        """Type et marque d'abord (les plus lourds de conséquences), puis par cas décroissants."""
+        ordre = {'type': 0, 'marque': 1, 'ref': 2, 'nom': 3}
+        return sorted(self.ecarts.values(), key=lambda g: (ordre[g.champ], -len(g.cas), g.cle))
+
     def _titres(self):
         """Titres lisibles des questions d'une fiche (nom de la fiche, références)."""
         for cle, q in self.questions.items():
@@ -297,8 +384,6 @@ class QuestionnaireLot:
             return None
         if cat == 'a_valider' and a.niveau != 'absent':   # absent à marque à choisir : création
             m = a.motif
-            if m == 'autre_type':
-                return 'R2'
             if m in ('meme_ref_groupe', 'nom_meme_ref'):
                 return 'R1' if self._meme_ref(a) is not None else A_REVOIR
             if m == 'nom_ref_differente':
@@ -337,10 +422,6 @@ class QuestionnaireLot:
             c = self._meme_ref(a)
             if c is not None:
                 texte += f" → trouvé sous {c.marque}"
-        elif cle == 'R2':
-            c = next((c for c in a.candidats if c.id in (a.appareil_id, a.proposition)), None)
-            if c is not None:
-                texte += f" : {c.type} dans l'outil, {a.type} sur le site"
         elif cle == 'R3' and a.candidats:
             c = a.candidats[0]
             texte += f" ≠ {c.marque} {c.ref_modele} de l'outil"
@@ -442,7 +523,14 @@ class QuestionnaireLot:
         return [q for q in self.liste() if not q.repondue]
 
     def repondre(self, cle: str, reponse: Optional[str], memoriser: bool = True):
-        """Réponse à une question (None = la retirer). Une règle est mémorisée."""
+        """Réponse à une question (None = la retirer). Une règle est mémorisée.
+
+        Écarts : « E:… » répond pour tout le groupe (et efface ses choix par ligne) ;
+        « E:…@fiche:ligne » choisit pour une seule ligne. Jamais mémorisé comme règle."""
+        if cle.startswith('E:'):
+            self._repondre_ecart(cle, reponse)
+            self.construire()
+            return
         if reponse is None:
             self.reponses.pop(cle, None)
             if cle in self.memorisees:
@@ -456,6 +544,25 @@ class QuestionnaireLot:
             if cle.startswith('R4:') and reponse == 'oui':
                 self.relire = True
         self.construire()
+
+    def _repondre_ecart(self, cle: str, reponse: Optional[str]):
+        groupe, _, ligne = cle.partition('@')
+        g = self.ecarts.get(groupe)
+        if ligne:
+            i, k = (int(x) for x in ligne.split(':'))
+            champ = groupe.split(':')[1]
+            if reponse is None:
+                self.choix_ecarts.pop((i, k, champ), None)
+            else:
+                self.choix_ecarts[(i, k, champ)] = reponse
+            return
+        if reponse is None:
+            self.reponses.pop(groupe, None)
+        else:
+            self.reponses[groupe] = reponse
+        if g is not None:
+            for i, k, e in g.cas:
+                self.choix_ecarts.pop((i, k, e.champ), None)
 
     def accepter_propositions(self) -> int:
         """Répond par sa proposition à chaque question qui en a une (jamais aux autres)."""
@@ -498,6 +605,10 @@ class QuestionnaireLot:
                 if cle is not None:
                     self._ligne(i, f, k, a, cle, d)
             self._decisions_identite(i, f, r, d)
+            for g in self.ecarts.values():
+                for i_, k, e in g.cas:
+                    if i_ == i and g.decision(i, k):
+                        d.champs[(k, e.champ)] = g.decision(i, k)
             for rp in r.remplacements:
                 if rp.statut == 'conflit':
                     d.remplacements[rp.ancienne] = self.reponse('Q5') or 'garder'
@@ -521,6 +632,7 @@ class QuestionnaireLot:
                 d.origines.update(ind.origines)
                 d.ecartees |= ind.ecartees
                 d.identite.update(ind.identite)
+                d.champs.update(ind.champs)
 
     def _ligne(self, i, f, k, a, cle, d: DecisionsFiche):
         def de_cote(raison):
@@ -547,13 +659,6 @@ class QuestionnaireLot:
                 d.appareils[k] = ChoixAppareil(appareil_id=self._meme_ref(a).id)
             else:
                 de_cote(f"{a.ref_modele} : même réf. sous une marque du groupe, non reliée")
-            return
-        if cle == 'R2':
-            ident = a.appareil_id if a.appareil_id is not None else a.proposition
-            if rep == 'oui' and ident is not None:
-                d.appareils[k] = ChoixAppareil(appareil_id=ident)
-            else:
-                de_cote(f"{a.ref_modele} : autre type sur le site, non relié")
             return
         if cle == 'R3':
             if rep == 'creer':

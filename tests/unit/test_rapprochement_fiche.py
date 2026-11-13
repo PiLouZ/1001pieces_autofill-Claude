@@ -381,10 +381,12 @@ class TestType:
         r = _r(b, fiche, categorie='Pompe - Lave-vaisselle', table_site=table)
         assert [(a.type, a.source_type) for a in r.appareils] == [
             ('Lave-linge', 'base'), ('Lave-vaisselle', 'categorie'), ('Four', 'ligne'),
-            ('Lave-vaisselle', 'categorie'), ('Sèche-linge', 'table')]
-        # Type explicite contraire à la base : à valider
-        assert r.appareils[4].niveau == 'a_valider'
-        assert r.appareils[4].provenance == 'les_deux'
+            ('Lave-vaisselle', 'categorie'), ('Lave-linge', 'base')]
+        # Type explicite contraire à la base : relié, type de l'outil gardé, écart proposé
+        a = r.appareils[4]
+        assert a.niveau == 'exact' and not a.doutes and a.type_site == 'Sèche-linge'
+        assert [(e.champ, e.outil, e.site) for e in a.ecarts] == [('type', 'Lave-linge', 'Sèche-linge')]
+        assert a.provenance == 'les_deux'
 
     def test_type_manquant_et_categorie_non_mono_type(self):
         b = Base()

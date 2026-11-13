@@ -183,6 +183,22 @@ def test_lignes_par_origine_puis_par_ligne_memorisee():
     assert lignes == [['X2', 'X0', 'X1'], ['Y'], ['Z'], ['W']]
 
 
+def test_remplace_dans_l_ordre_de_la_fiche_puis_le_reste():
+    ordre = FicheProduitService.ordre_de_la_fiche
+    assert ordre(['A', 'B', 'C', 'D'], {}) == ['A', 'B', 'C', 'D']         # sans mémoire
+    assert ordre(['A', 'B', 'C', 'D'], {'C': 1, 'A': 2}) == ['C', 'A', 'B', 'D']
+
+
+def test_sans_memoire_remplace_dans_l_ordre_de_la_chaine(tmp_path):
+    """Pièce de l'outil (aucune position mémorisée) : ordre actuel inchangé."""
+    db = _db_extrait(tmp_path)
+    db.add_supersession('ANC2', 'ANC1')
+    db.add_supersession('ANC1', '481073071153')
+    svc = _fiche_service(db)
+    attendu = list(db.get_all_predecessors('481073071153'))
+    assert svc.references_fiche('481073071153')['remplace'] == attendu
+
+
 def test_sans_memoire_une_seule_ligne_dans_l_ordre():
     lignes = FicheProduitService.lignes_par_origine([['B', 'B0'], ['A']], {})
     assert lignes == [['B', 'B0', 'A']]
@@ -198,9 +214,25 @@ class TestFichesExemple:
         _enregistrer_exemples(db)
         refs = _fiche_service(db).references_fiche('481073071153')
         assert refs['code_produit'] == ['481073071153', 'C00319033']
-        assert set(refs['remplace']) == {'488000535957', '482000032568', 'C00535957', 'C00309416'}
+        # Ordre de la ligne « Remplace » de la fiche (paires Indesit / Whirlpool)
+        assert refs['remplace'] == ['C00535957', '488000535957', 'C00309416', '482000032568']
         assert refs['lignes_equivalentes'] == [['00145522']]
         assert '481949' not in str(refs)
+
+    def test_relecture_complete_la_position_des_remplace(self, tmp_path):
+        """Fiche reprise avant la mémoire de position : la relecture la complète,
+        sans rien ajouter d'autre."""
+        db = _db_extrait(tmp_path)
+        _enregistrer_exemples(db)
+        db.conn.execute("UPDATE piece_supersessions SET rang_fiche = NULL")
+        db.conn.commit()
+        page = (FIXTURES / 'produit_7285.html').read_text(encoding='utf-8')
+        _, r = _enregistreur(db).analyser_page(page, 'https://www.1001pieces.com/7285-fiche.html')
+        plan = planifier(r, _tout_valider(r))
+        assert plan.vide and plan.rangs_remplace
+        assert _enregistreur(db).enregistrer(plan).ok
+        assert db.rangs_remplace(['C00535957', '488000535957', 'C00309416', '482000032568']) == \
+            {'C00535957': 1, '488000535957': 2, 'C00309416': 3, '482000032568': 4}
 
     def test_ecartee_presente_dans_le_groupe_retiree(self, tmp_path):
         db = _db_extrait(tmp_path)

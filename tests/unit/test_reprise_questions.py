@@ -132,9 +132,12 @@ def test_une_question_par_genre_et_propositions(tmp_path):
     m = Monde(tmp_path)
     lot, q = m.lot(m.service())
     cles = {x.cle: x for x in q.liste()}
-    assert {'R1', 'R2', 'R3', 'R4:Bosch|Elica', 'R5', 'Q1', 'Q2:102', 'Q3:103'} <= set(cles)
+    assert {'R1', 'R3', 'R4:Bosch|Elica', 'R5', 'Q1', 'Q2:102', 'Q3:103'} <= set(cles)
+    assert 'R2' not in cles                     # autre type : relié, écart à la place
     assert cles['R1'].genre == REGLE and cles['R1'].proposition == 'oui'
-    assert cles['R2'].proposition == 'oui' and cles['R3'].proposition == 'creer'
+    assert cles['R3'].proposition == 'creer'
+    assert list(q.ecarts) == ['E:type:Sèche-linge→Lave-linge']
+    assert q.ecarts['E:type:Sèche-linge→Lave-linge'].reponse is None
     assert cles['R4:Bosch|Elica'].proposition is None
     assert cles['Q2:102'].proposition == 'type:Machine à café' and cles['Q2:102'].cas == 2
     assert cles['Q3:103'].proposition is None
@@ -167,7 +170,9 @@ def test_reponses_ecrites_relance_sans_ajout(tmp_path):
     res = s.enregistrer_lot(lot, plan)
     assert res.ok, res.erreur
     liens = lambda app: m.compte('piece_associations', 'WHERE appareil_id = ?', [app])  # noqa: E731
-    assert liens(m.siemens) == 1 and liens(m.seche) == 1               # R1, R2 reliés
+    assert liens(m.siemens) == 1 and liens(m.seche) == 1               # R1, autre type reliés
+    assert m.db.conn.execute("SELECT type FROM appareils WHERE id = ?", [m.seche]).fetchone()[0] \
+        == 'Sèche-linge'                                               # écart sans réponse : outil gardé
     assert m.compte('appareils', "WHERE ref_modele = 'WAQ9'") == 1     # R3 créé
     assert m.compte('appareils', "WHERE ref_modele = 'ZZE123'") == 2   # R4 « non » : créé sous Bosch
     assert m.db.conn.execute("SELECT type FROM appareils WHERE ref_modele = 'HD7801'").fetchone()[0] \
@@ -187,7 +192,7 @@ def test_reponses_ecrites_relance_sans_ajout(tmp_path):
     lot, q = m.lot(s2, depart=False)
     # (R1 et R3 ne se posent plus : leurs lignes sont maintenant reliées / créées)
     memorisees = {x.cle for x in q.liste() if x.memorisee}
-    assert {'R2', 'R5'} <= memorisees and 'R1' not in q.questions and 'R3' not in q.questions
+    assert {'R5'} <= memorisees and 'R1' not in q.questions and 'R3' not in q.questions
     assert all(x.repondue for x in q.liste() if x.genre == REGLE and x.cle != 'R4:Bosch|Elica')
     _repondre_tout(q)
     res = s2.enregistrer_lot(lot, lot.planifier())
@@ -256,3 +261,39 @@ def test_fiche_partielle_a_revoir_puis_complete(tmp_path):
     res = s.enregistrer_lot(lot, lot.planifier())
     assert res.ok and res.partielles == 0 and res.liens_crees == 1
     assert m.db.fiches_de_cote_reprise_site() == []
+
+
+def test_ecarts_en_bloc_dans_le_lot_puis_relance_sans_ajout(tmp_path):
+    """Appareil connu sous un autre type : une réponse pour tout le groupe, écrite
+    après le lot (sauvegarde événementielle), puis la relance ne propose plus rien."""
+    m = Monde(tmp_path)
+    s = m.service()
+    lot, q = m.lot(s)
+    cle = 'E:type:Sèche-linge→Lave-linge'
+    g = q.ecarts[cle]
+    assert (g.champ, g.outil, g.site, len(g.cas)) == ('type', 'Sèche-linge', 'Lave-linge', 1)
+    # Choix sur la ligne, puis réponse du groupe : la réponse du groupe efface les choix par ligne
+    i, k, _ = g.cas[0]
+    q.repondre(f"{cle}@{i}:{k}", 'outil')
+    assert q.ecarts[cle].decision(i, k) == 'outil'
+    q.repondre(cle, 'site')
+    assert q.ecarts[cle].decision(i, k) == 'site' and not q.choix_ecarts
+    _repondre_tout(q)
+    assert q.ecarts[cle].reponse == 'site'          # « accepter les propositions » n'y touche pas
+    plan = lot.planifier()
+    res = s.enregistrer_lot(lot, plan)
+    assert res.ok, res.erreur
+    assert res.maj_appareils[m.seche]['type'] == 'Lave-linge'
+    s.apres_lot(res)
+    assert m.db.conn.execute("SELECT type FROM appareils WHERE id = ?", [m.seche]).fetchone()[0] \
+        == 'Lave-linge'
+    complet = m.instantane()
+    m.db.conn.execute("UPDATE reprise_site_etat SET dernier_id = 0")
+    m.db.conn.commit()
+    s2 = m.service()
+    lot, q = m.lot(s2, depart=False)
+    assert cle not in q.ecarts and not any(k.startswith('E:type') for k in q.ecarts)
+    _repondre_tout(q)
+    res = s2.enregistrer_lot(lot, lot.planifier())
+    assert res.ok and (res.appareils_crees, res.liens_crees) == (0, 0) and not res.maj_appareils
+    assert m.instantane() == complet

@@ -16,8 +16,14 @@ sur les 5 millions de liens) :
 - `piece_equivalence_groups.origine` et `.ligne_fiche` : étiquette d'origine
   et n° de la ligne « Références équivalentes » de la fiche. La fusion de
   groupes (`add_equivalence`) passe par un UPDATE de group_id : elles suivent.
+- `piece_supersessions.rang_fiche` : position de l'ancienne référence dans la
+  ligne « Remplace les références » de la fiche, pour la réécrire dans le même
+  ordre (paires Whirlpool / Indesit, Beko). Vide = ordre de la chaîne.
 - `decisions_ecritures` : « même appareil » / « appareils distincts » pour une
   paire d'écritures d'une marque (§ 5.2).
+- `decisions_champs` : « garder l'outil » choisi pour un champ d'un appareil
+  connu que la fiche donne autrement (type, marque, écriture, nom commercial),
+  avec la valeur du site : la relecture ne le repropose pas.
 - `decisions_references` : références écartées et étiquettes d'origine
   choisies, avec la forme de la référence pour l'apprentissage (§ 5.3, 5.5).
 - Reprise en masse (§ 7.3, étape 4) : `reprise_site_etat` (une ligne : dernier
@@ -93,10 +99,21 @@ class DatabaseFichesSiteMixin:
             """)
             self.cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_decisions_ref_forme ON decisions_references(forme)")
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS decisions_champs (
+                    appareil_id INTEGER NOT NULL,
+                    champ       TEXT NOT NULL,
+                    valeur_site TEXT,
+                    decide_le   TEXT,
+                    PRIMARY KEY (appareil_id, champ),
+                    FOREIGN KEY (appareil_id) REFERENCES appareils(id) ON DELETE CASCADE
+                )
+            """)
             self._setup_reprise_site_tables()
             self._ajouter_colonne_si_absente('piece_associations', 'provenance', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'origine', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'ligne_fiche', 'INTEGER')
+            self._ajouter_colonne_si_absente('piece_supersessions', 'rang_fiche', 'INTEGER')
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
 
@@ -348,6 +365,31 @@ class DatabaseFichesSiteMixin:
             n += cur.rowcount
         return n
 
+    def _definir_rangs_remplace(self, rangs: Iterable[Tuple[str, int]]) -> int:
+        """Position de chaque ancienne référence dans « Remplace les références » de
+        la fiche (la fiche fait foi pour l'ordre ; rien n'est créé : seules les
+        successions présentes sont complétées)."""
+        n = 0
+        for ref_old, rang in rangs:
+            cur = self.cursor.execute(
+                "UPDATE piece_supersessions SET rang_fiche = ? WHERE ref_old = ? "
+                "AND rang_fiche IS NOT ?", [rang, ref_old, rang])
+            n += cur.rowcount
+        return n
+
+    @with_query_lock
+    def rangs_remplace(self, refs: Iterable[str]) -> Dict[str, int]:
+        """Ancienne référence → position mémorisée dans « Remplace » (absente = aucune)."""
+        refs = [r for r in dict.fromkeys(refs) if r]
+        resultat: Dict[str, int] = {}
+        for i in range(0, len(refs), 500):
+            tranche = refs[i:i + 500]
+            resultat.update(self.cursor.execute(
+                f"SELECT ref_old, rang_fiche FROM piece_supersessions WHERE rang_fiche "
+                f"IS NOT NULL AND ref_old IN ({','.join('?' * len(tranche))})",
+                tranche).fetchall())
+        return resultat
+
     def _enregistrer_produit_site(self, ref_interne: str, id_product: Optional[int],
                                   ref_piece: str, ean: Optional[str], lu_le: str):
         """Produit du site : le site fait foi (id_product, EAN). Un EAN absent de
@@ -380,6 +422,22 @@ class DatabaseFichesSiteMixin:
         self.cursor.executemany(
             "INSERT OR REPLACE INTO decisions_references VALUES (?, ?, ?, ?, ?, ?)", lignes)
         return len(lignes)
+
+    def _enregistrer_decisions_champs(self, decisions: Iterable[Tuple[int, str, str]],
+                                      le: Optional[str]) -> int:
+        """(appareil_id, champ, valeur du site) : « garder l'outil » mémorisé."""
+        lignes = [(i, c, v, le) for i, c, v in decisions]
+        self.cursor.executemany(
+            "INSERT OR REPLACE INTO decisions_champs VALUES (?, ?, ?, ?)", lignes)
+        return len(lignes)
+
+    def _oublier_decisions_champs(self, cles: Iterable[Tuple[int, str]]) -> int:
+        """Champs pris sur le site : la décision « garder l'outil » ne vaut plus."""
+        n = 0
+        for i, c in cles:
+            n += self.cursor.execute(
+                "DELETE FROM decisions_champs WHERE appareil_id = ? AND champ = ?", [i, c]).rowcount
+        return n
 
 
 def decisions_ecritures_en_memoire(rows: Iterable[Tuple[str, str, str, str]]

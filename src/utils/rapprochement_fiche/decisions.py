@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from src.utils.lecteur_fiche.lecteur import cle_marque
 from src.utils.rapprochement_fiche.acces_base import forme_normalisee
 from src.utils.rapprochement_fiche.resultat import (
-    AppareilRapproche, Equivalence, Rapprochement, Remplacement,
+    CHAMPS_ECARTS, AppareilRapproche, Equivalence, Rapprochement, Remplacement,
 )
 
 VALIDEE, DE_COTE, ATTENTE = 'validee', 'de_cote', 'attente'
@@ -136,6 +136,9 @@ class DecisionsFiche:
     origines: Dict[str, str] = field(default_factory=dict)          # réf. → étiquette saisie
     ecartees: Set[str] = field(default_factory=set)                 # réf. écartées
     identite: Dict[str, str] = field(default_factory=dict)          # doute d'identité → choix
+    # Champ d'un appareil connu qui diffère sur la fiche : (ligne, champ) → 'outil' / 'site'.
+    # Sans choix : l'outil est gardé (rien n'est écrit), sauf un champ vide dans l'outil
+    champs: Dict[Tuple[int, str], str] = field(default_factory=dict)
 
     def etat(self, categorie: str) -> str:
         return self.etats.get(categorie, ATTENTE)
@@ -173,7 +176,15 @@ class PlanEnregistrement:
     remplacements: List[Tuple[str, str]] = field(default_factory=list)
     equivalences: List[str] = field(default_factory=list)           # à relier à la pièce
     origines: List[Tuple[str, Optional[str], Optional[int]]] = field(default_factory=list)
+    # (ancienne référence, position dans « Remplace » de la fiche) : complétée à
+    # chaque lecture, comme les origines ; ne compte pas dans `vide`
+    rangs_remplace: List[Tuple[str, int]] = field(default_factory=list)
     produit: Optional[Dict[str, object]] = None
+    # Champs d'appareils connus pris sur le site : id → {colonne d'appareils: valeur}
+    # (écrits par la sauvegarde événementielle, sur le thread principal)
+    maj_appareils: Dict[int, Dict[str, str]] = field(default_factory=dict)
+    # « Garder l'outil » choisi : (appareil_id, champ, valeur du site), mémorisé
+    decisions_champs: List[Tuple[int, str, str]] = field(default_factory=list)
     decisions_ecritures: List[Tuple[str, str, str, str]] = field(default_factory=list)
     decisions_references: List[Tuple[str, str, str, Optional[str], str]] = field(default_factory=list)
     informations: List[str] = field(default_factory=list)
@@ -190,6 +201,7 @@ class PlanEnregistrement:
         """Rien de nouveau à écrire (relecture d'une fiche déjà reprise)."""
         return not (self.appareils_a_creer or self.remplacements or self.equivalences
                     or self.decisions_ecritures or self.decisions_references
+                    or self.maj_appareils or self.decisions_champs
                     or self.statut_piece != 'reelle' or self.libelle)
 
     def resume(self) -> Dict[str, int]:
@@ -231,6 +243,7 @@ class _Planificateur:
         for i, a in enumerate(self.r.appareils):
             self._appareil(i, a)
         self._resoudre_par_la_fiche()
+        self._ecarts()
         for rp in self.r.remplacements:
             self._remplacement(rp)
         for e in self.r.equivalences:
@@ -253,6 +266,8 @@ class _Planificateur:
         if i.libelle:
             if i.statut_libelle == 'a_remplir' or i.statut == 'absente':
                 p.libelle = i.libelle
+            elif i.statut_libelle == 'ancienne_regle':
+                p.libelle, p.remplacer_libelle = i.libelle, True
             elif 'libelle_different' in doutes and self._choix_identite('libelle_different') == 'prendre':
                 p.libelle, p.remplacer_libelle = i.libelle, True
         if not i.ref_interne:
@@ -309,6 +324,33 @@ class _Planificateur:
             return
         p.liens.append((ident, a.provenance))
 
+    def _ecarts(self):
+        """Champs d'appareils connus : valeur du site prise (choix « site », ou champ
+        vide dans l'outil), ou « garder l'outil » mémorisé (choix explicite). Seulement
+        pour une ligne qui désigne bien cet appareil (reliée ou déjà couverte)."""
+        p = self.plan
+        lies = {c for c, _ in p.liens if not isinstance(c, tuple)}
+        lies |= {a.appareil_id for a in self._couverts if a.appareil_id is not None}
+        vus = set()
+        for i, a in enumerate(self.r.appareils):
+            choix = self.d.appareils.get(i)
+            if choix is not None and (choix.ignorer or choix.creer):
+                continue
+            for e in a.ecarts:
+                if e.tranche or e.appareil_id not in lies or (e.appareil_id, e.champ) in vus:
+                    continue
+                if choix is not None and choix.appareil_id is not None \
+                        and choix.appareil_id != e.appareil_id:
+                    continue
+                decision = self.d.champs.get((i, e.champ)) or ('site' if e.a_completer else None)
+                if decision == 'site':
+                    vus.add((e.appareil_id, e.champ))
+                    colonne = CHAMPS_ECARTS[e.champ][1]
+                    p.maj_appareils.setdefault(e.appareil_id, {})[colonne] = e.site
+                elif decision == 'outil':
+                    vus.add((e.appareil_id, e.champ))
+                    p.decisions_champs.append((e.appareil_id, e.champ, e.site))
+
     def _resoudre_par_la_fiche(self):
         """Appareil à choisir parmi plusieurs : si un seul candidat est lié par une
         AUTRE ligne de la fiche (souvent la table du site, sous la bonne marque), c'est
@@ -360,7 +402,10 @@ class _Planificateur:
 
     # --- Relations (§ 5.3, 5.4) --------------------------------------------------
     def _remplacement(self, rp: Remplacement):
-        if rp.statut in ('deja_present', 'confirme_par_chaine', 'identique', 'cycle'):
+        if rp.statut in ('deja_present', 'confirme_par_chaine'):
+            self._rang(rp)
+            return
+        if rp.statut in ('identique', 'cycle'):
             return
         choix = self.d.remplacements.get(rp.ancienne)
         if choix == 'ignorer':
@@ -375,6 +420,11 @@ class _Planificateur:
         elif choix not in (None, 'garder', 'prendre'):
             nouvelle = choix            # appariement : autre réf. du code produit
         self.plan.remplacements.append((rp.ancienne, nouvelle))
+        self._rang(rp)
+
+    def _rang(self, rp: Remplacement):
+        if rp.rang is not None and rp.sens == 'remplace':
+            self.plan.rangs_remplace.append((rp.ancienne, rp.rang))
 
     def _equivalence(self, e: Equivalence):
         # n° de ligne gardé tel quel : 0 = 2ᵉ réf. du code produit, que la Fiche
