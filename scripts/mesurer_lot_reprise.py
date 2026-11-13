@@ -13,6 +13,9 @@ Sur une COPIE de la base (faite avec l'API backup de sqlite3, jamais cp) :
 Les décisions « tout valider » donnent la borne haute de la croissance : un
 utilisateur laisse en général des doutes de côté.
 
+Modes de décision : « tout valider » (défaut), `--questions` (moteur de questions,
+§ 10.6), `--regles-import` (règles de l'import, sans question, § 10.12).
+
 Usage :
     python3.13 scripts/mesurer_lot_reprise.py copie.db produits.csv compatibilites.csv \\
         --config data/export_config.json [--taille 100] [--lots 1] [--rapport rapport.json]
@@ -78,13 +81,25 @@ def par_questions(service, lot):
     return lot, plan, stats
 
 
-def un_lot(service, db, taille, journal, questions=False):
+def par_regles(lot):
+    """Règles de l'import (§ 10.12) : aucune question, lignes non tranchées non importées."""
+    plan = lot.planifier_par_regles()
+    stats = {'non_importees': {'fiches': len(plan.non_importees),
+                               'lignes': sum(len(v) for v in plan.non_importees.values())},
+             'de_cote': [lot.fiches[i].raison_de_cote for i in plan.de_cote]}
+    return plan, stats
+
+
+def un_lot(service, db, taille, journal, questions=False, regles_import=False):
     t = time.time()
     lot = service.analyser_lot_suivant(taille)
     if lot is None:
         return None
     analyse = time.time() - t
-    if questions:
+    if regles_import:
+        plan, stats_q = par_regles(lot)
+        lignes_de_cote = stats_q['non_importees']['lignes']
+    elif questions:
         lot, plan, stats_q = par_questions(service, lot)
         lignes_de_cote = stats_q['a_revoir']['lignes']
     else:
@@ -107,6 +122,10 @@ def un_lot(service, db, taille, journal, questions=False):
         'resultat': res.resume(),
         'champs_pris_sur_le_site': res.champs_modifies,
         'questions': stats_q,
+        'import': {k: (res.resultats_import or {}).get(k) for k in (
+            'new_entries', 'matches_found', 'associations_created', 'associations_existing',
+            'duplicates_in_file', 'autocompletes_a_verifier')},
+        'suggestions_appareils': len((res.resultats_import or {}).get('similarity_suggestions') or {}),
     })
     journal.append(m)
     print(json.dumps(m, ensure_ascii=False, indent=1))
@@ -126,6 +145,8 @@ def main():
     ap.add_argument('--questions', action='store_true',
                     help="décider par le moteur de questions (règles écrites dans --regles)")
     ap.add_argument('--regles', default='', help="fichier de configuration où écrire les règles")
+    ap.add_argument('--regles-import', action='store_true',
+                    help="décider par les règles de l'import, sans question (§ 10.12)")
     args = ap.parse_args()
 
     t = time.time()
@@ -142,7 +163,7 @@ def main():
     journal = []
     premier = None
     for _ in range(args.lots):
-        lot = un_lot(service, db, args.taille, journal, args.questions)
+        lot = un_lot(service, db, args.taille, journal, args.questions, args.regles_import)
         if lot is None:
             break
         premier = premier or lot
@@ -156,7 +177,9 @@ def main():
         print("\n=== Relance du 1er lot ===")
         avant = compter(db)
         lot = service.analyser_lot_suivant(args.taille)
-        if args.questions:
+        if args.regles_import:
+            plan, _ = par_regles(lot)
+        elif args.questions:
             lot, plan, _ = par_questions(service, lot)
         else:
             plan, _ = tout_decider(lot)

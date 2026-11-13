@@ -139,6 +139,9 @@ class DecisionsFiche:
     # Champ d'un appareil connu qui diffère sur la fiche : (ligne, champ) → 'outil' / 'site'.
     # Sans choix : l'outil est gardé (rien n'est écrit), sauf un champ vide dans l'outil
     champs: Dict[Tuple[int, str], str] = field(default_factory=dict)
+    # Règle de l'import (§ 10.12) : un appareil à créer sans marque ou sans type est
+    # créé quand même ; l'auto-complétion puis « Suggestions à valider » s'en chargent
+    creer_incomplets: bool = False
 
     def etat(self, categorie: str) -> str:
         return self.etats.get(categorie, ATTENTE)
@@ -190,6 +193,9 @@ class PlanEnregistrement:
     informations: List[str] = field(default_factory=list)
     a_completer: List[str] = field(default_factory=list)
     lignes_a_completer: List[int] = field(default_factory=list)      # index des appareils à compléter
+    # Règles de l'import (§ 10.12) : lignes que l'import ne peut pas trancher, non
+    # importées et comptées dans l'historique (appareil parmi plusieurs, réf. illisible)
+    non_importees: List[str] = field(default_factory=list)
     en_attente: List[str] = field(default_factory=list)              # catégories en attente
 
     @property
@@ -387,7 +393,7 @@ class _Planificateur:
             p.lignes_a_completer.append(index)
             return
         manque = [n for n, v in (('marque', marque), ('type', type_)) if not v]
-        if manque:
+        if manque and not self.d.creer_incomplets:
             p.a_completer.append(f"ligne {a.numero or 'table'} {a.ref_modele} : "
                                  f"{' et '.join(manque)} à choisir pour la création")
             p.lignes_a_completer.append(index)

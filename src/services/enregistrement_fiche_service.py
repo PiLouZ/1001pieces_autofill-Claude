@@ -2,17 +2,19 @@
 Enregistrement d'une fiche du site après validation de l'aperçu
 (CDC docs/cdc_import_fiches_site.md, § 7.5, étape 3)
 
-Le service écrit un `PlanEnregistrement` (src/utils/rapprochement_fiche/decisions.py)
-par les briques du tronc commun d'import, jamais par un chemin parallèle :
-- appareils créés par `ImportManager._batch_insert_devices` (même requête,
-  même verrou, même invalidation du cache de comptage que l'import PDF/CSV) ;
-- remplacements et équivalences par `import_relations.apply_relations`
-  (fantômes, obsolescence des anciennes, propagation du libellé) ;
-- caches invalidés comme après un import, puis `EventDrivenSaveService`.
+Une fiche du site est un import comme les autres (§ 10.12) : son
+`PlanEnregistrement` (src/utils/rapprochement_fiche/decisions.py) devient un fichier
+d'import (`FileType.FICHE_SITE`, une ligne par appareil, déjà identifiée par la
+marque et la réf.) que `ImportManager._run_import_files` écrit comme un PDF ou un
+CSV : orthographe alignée, auto-complétion du type et de la marque, appareils
+créés, liens, suggestions à valider, auto-complétés à vérifier. Un lot de fiches
+est un import de plusieurs fichiers.
 
-Ce qui est propre à la reprise (pièce fantôme → réelle, liens avec provenance,
-étiquettes d'origine, produit du site, décisions consignées) passe par les
-primitives de `DatabaseFichesSiteMixin`, sous le verrou de la base.
+Ce qui est propre à la reprise s'écrit dans le crochet `apres_ecriture` de
+l'import, fiche par fiche : provenance des liens, remplacements et équivalences
+(`import_relations.apply_relations`), marques d'origine, ordre des « Remplace »,
+produit du site, décisions consignées. La pièce (fantôme → réelle, libellé) est
+posée avant l'import, pour que les relations propagent son libellé.
 
 Ajout seul (§ 6.2) : rien n'est supprimé. Relire une fiche ne crée aucun
 doublon : un appareil créé ressort « exact » à la relecture, un lien présent ne
@@ -44,6 +46,39 @@ from .base_service import BaseService
 from .import_relations import CardData, Group, KIND_EQUIVALENCE, apply_relations
 
 
+def cle_identite_creation(a) -> str:
+    """Clé d'identité d'un appareil à créer, pour l'import : même marque et même
+    forme normalisée = un seul appareil, partagé par les lignes et les fiches
+    (règle du § 5.2, celle de `cle_creation` du lot)."""
+    from ..utils.lecteur_fiche.lecteur import cle_marque
+    from ..utils.rapprochement_fiche.acces_base import forme_normalisee
+    return f"fiche:{cle_marque(a.marque)}|{forme_normalisee(a.ref_modele)}"
+
+
+def lignes_import(plan: PlanEnregistrement) -> List[Dict[str, object]]:
+    """Lignes du fichier d'import d'une fiche : un appareil reconnu (son id), ou à
+    créer (marque, réf., nom, type, et sa clé d'identité). Un appareil cité par
+    plusieurs lignes n'y figure qu'une fois (sa provenance réunie est écrite après)."""
+    from ..core.import_manager import ImportManager
+    creations = {a.index: a for a in plan.appareils_a_creer}
+    lignes, vus = [], set()
+    for cible, _provenance in plan.liens:
+        if isinstance(cible, tuple):
+            a = creations.get(cible[1])
+            if a is None:
+                continue
+            cle = cle_identite_creation(a)
+            ligne = {'type': a.type, 'manufacturer': a.marque, 'ref_modele': a.ref_modele,
+                     'commercial_ref': a.nom, ImportManager.CLE_IDENTITE: cle}
+        else:
+            cle = f"id:{cible}"
+            ligne = {ImportManager.CLE_APPAREIL: cible, ImportManager.CLE_IDENTITE: cle}
+        if cle not in vus:
+            vus.add(cle)
+            lignes.append(ligne)
+    return lignes
+
+
 @dataclass
 class ResultatEnregistrement:
     ok: bool = True
@@ -59,6 +94,10 @@ class ResultatEnregistrement:
     # après coup, sur le thread principal, par la sauvegarde événementielle
     maj_appareils: Dict[int, Dict[str, str]] = field(default_factory=dict)
     champs_modifies: int = 0
+    non_importees: List[str] = field(default_factory=list)
+    # Résultats de l'import (même forme qu'un import PDF/CSV : historique,
+    # suggestions à valider, auto-complétés à vérifier)
+    resultats_import: Dict[str, object] = field(default_factory=dict)
 
     def resume(self) -> str:
         r = self.relations
@@ -151,61 +190,88 @@ class EnregistrementFicheService(BaseService):
     # Enregistrement
     # -------------------------------------------------------------------------
 
+    def planifier_par_regles(self, r) -> PlanEnregistrement:
+        """Plan d'une fiche par les règles de l'import, sans question (§ 10.12)."""
+        from ..utils.rapprochement_fiche.regles_import import planifier_import
+        return planifier_import(r)
+
     def enregistrer(self, plan: PlanEnregistrement) -> ResultatEnregistrement:
-        res = ResultatEnregistrement()
         if not plan.pret:
-            res.ok = False
+            res = ResultatEnregistrement(ok=False)
             res.erreur = "aperçu non validé : " + "; ".join(plan.en_attente + plan.a_completer)
             return res
         try:
-            self._ecrire(plan, res)
+            res = self.ecrire_par_import([plan])[0]
         except Exception as e:      # le plan reste rejouable : tout y est idempotent
             app_logger.error(f"[Fiche site] Enregistrement de {plan.ref_piece} interrompu : {e}")
-            res.ok, res.erreur = False, str(e)
+            res = ResultatEnregistrement(ok=False, erreur=str(e))
         self._apres_ecriture(res)
         app_logger.info(f"[Fiche site] {plan.ref_piece} : {res.resume()}")
         return res
 
     # -------------------------------------------------------------------------
-    def _ecrire(self, plan: PlanEnregistrement, res: ResultatEnregistrement,
-                nouveaux: Optional[Dict[int, int]] = None):
-        """Écrit le plan d'une fiche. `nouveaux` (import en masse) : appareils du plan
-        déjà créés pour tout le lot (index de la ligne → id) ; sinon ils sont créés ici."""
+    def ecrire_par_import(self, plans: List[PlanEnregistrement], noms: Optional[List[str]] = None,
+                          progression=None, annule=None) -> List[ResultatEnregistrement]:
+        """Écrit des fiches par l'import (une fiche = un fichier). Retourne un résultat
+        par fiche ; `resultats_import` (le même pour toutes) est celui de l'import.
+        Une fiche que l'import n'a pas traitée (annulation, erreur) a `ok` faux, rien
+        de propre à la reprise n'est écrit pour elle. Hors du thread principal."""
+        from ..core.import_manager import (FileType, ImportConfiguration, ImportFile,
+                                           ImportManager, ImportType)
         db = self.db
-        # 1. La pièce : créée réelle, ou fantôme → réelle (liens hérités inchangés)
+        resultats = [ResultatEnregistrement(non_importees=list(p.non_importees)) for p in plans]
+        # 1. Pièces avant l'import : fantôme → réelle, libellé (propagé par les relations)
+        pieces = []
         with db._query_lock:
-            piece_id, res.piece = db._creer_ou_promouvoir_piece(
-                plan.ref_piece, plan.libelle, plan.remplacer_libelle)
+            for p, res in zip(plans, resultats):
+                piece_id, res.piece = db._creer_ou_promouvoir_piece(
+                    p.ref_piece, p.libelle, p.remplacer_libelle)
+                pieces.append(piece_id)
             db.conn.commit()
 
-        # 2. Appareils à créer : brique d'insertion du tronc d'import
-        if nouveaux is None:
-            nouveaux = self.creer_appareils(plan.appareils_a_creer, res)
-        # 3 à 5. Liens, relations, origines, produit, décisions
-        self._ecrire_suite(plan, res, piece_id, nouveaux)
+        # 2. Un fichier d'import par fiche (chemin unique : deux fiches peuvent citer
+        # la même pièce, par exemple une pièce d'origine et un générique)
+        fichiers = []
+        for k, p in enumerate(plans):
+            nom = noms[k] if noms else f"fiche {p.ref_piece}"
+            fichiers.append(ImportFile(path=f"{nom} #{k + 1}" if len(plans) > 1 else nom,
+                                       type=FileType.FICHE_SITE, suggested_reference=p.ref_piece,
+                                       data=lignes_import(p)))
 
-    def creer_appareils(self, appareils, res: Optional[ResultatEnregistrement] = None
-                        ) -> Dict[int, int]:
-        """Crée les appareils (AppareilACreer) par la brique d'insertion du tronc
-        d'import ; retourne index de la ligne → id."""
-        nouveaux: Dict[int, int] = {}
-        if appareils:
-            from ..core.import_manager import ImportManager
-            lot = [{'type': a.type, 'manufacturer': a.marque, 'ref_modele': a.ref_modele,
-                    'commercial_ref': a.nom, 'other_ref': '', 'notes': '', 'category': ''}
-                   for a in appareils]
-            ids = ImportManager(self.db)._batch_insert_devices(lot)
-            if len(ids) != len(lot):
-                raise RuntimeError(f"{len(lot)} appareils à créer, {len(ids)} créés")
-            nouveaux = {a.index: i for a, i in zip(appareils, ids)}
-            if res is not None:
-                res.appareils_crees = len(ids)
-        return nouveaux
+        def apres_ecriture(im, results):
+            # 3. Propre à la reprise, fiche par fiche, pour les fichiers traités
+            for k, (p, res) in enumerate(zip(plans, resultats)):
+                traite = im._resultats_par_fichier.get(fichiers[k].path)
+                if traite is None:
+                    res.ok, res.erreur = False, "fiche non importée (annulation ou erreur)"
+                    continue
+                nouveaux = {}
+                for a in p.appareils_a_creer:
+                    # Créé par cette fiche ou par une précédente du même import
+                    ident = im._ids_session.get(cle_identite_creation(a))
+                    if ident is not None:
+                        nouveaux[a.index] = ident
+                res.appareils_crees = traite.get('new_entries', 0)
+                self._ecrire_suite(p, res, pieces[k], nouveaux,
+                                   liens_import=traite.get('associations_created', 0))
+
+        config = ImportConfiguration(
+            files=fichiers,
+            import_type=ImportType.SINGLE_FILE if len(fichiers) == 1 else ImportType.MULTI_FILE,
+            individual_references={f.path: p.ref_piece for f, p in zip(fichiers, plans)},
+            apres_ecriture=apres_ecriture)
+        results = ImportManager(db)._run_import_files(config, progress_cb=progression,
+                                                       cancel_check=annule)
+        for res in resultats:
+            res.resultats_import = results
+        return resultats
 
     def _ecrire_suite(self, plan: PlanEnregistrement, res: ResultatEnregistrement,
-                      piece_id: int, nouveaux: Dict[int, int]):
+                      piece_id: int, nouveaux: Dict[int, int], liens_import: int = 0):
+        """Propre à la reprise, après l'import de la fiche. `liens_import` : liens que
+        l'import vient de créer (sans provenance) ; la provenance les complète."""
         db = self.db
-        # 3. Liens avec provenance (§ 5.7)
+        # 3. Provenance des liens (§ 5.7)
         liens = []
         for cible, provenance in plan.liens:
             ident = nouveaux.get(cible[1]) if isinstance(cible, tuple) else cible
@@ -214,8 +280,9 @@ class EnregistrementFicheService(BaseService):
         with db._query_lock:
             compte = db._ajouter_liens_provenance(piece_id, liens)
             db.conn.commit()
-        res.liens_crees, res.liens_completes, res.liens_inchanges = (
-            compte['crees'], compte['completes'], compte['inchanges'])
+        res.liens_crees = liens_import + compte['crees']
+        res.liens_completes = max(0, compte['completes'] - liens_import)
+        res.liens_inchanges = compte['inchanges']
 
         # 4. Remplacements et équivalences : tronc des relations d'import
         cartes = [CardData(ref=a, replaced_by=n) for a, n in plan.remplacements]
@@ -288,3 +355,14 @@ class EnregistrementFicheService(BaseService):
         sauvegarde = getattr(self.parent_window, 'event_driven_save_service', None)
         if sauvegarde is not None:
             sauvegarde.save_after_import(source)
+        self.signaler_import(res.resultats_import)
+
+    def signaler_import(self, resultats_import) -> None:
+        """Comme après un import PDF/CSV : récapitulatif dans l'historique, boutons
+        « Suggestions à valider » et « Auto-complétés à vérifier » (thread principal)."""
+        fin = getattr(self.parent_window, '_on_import_complete', None)
+        if resultats_import and callable(fin):
+            try:
+                fin(resultats_import)
+            except Exception as e:
+                app_logger.warning(f"[Fiche site] récapitulatif d'import non affiché : {e}")

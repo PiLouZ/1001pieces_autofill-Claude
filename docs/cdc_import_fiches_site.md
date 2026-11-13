@@ -743,7 +743,8 @@ Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_r
 | R1 même réf. sous une marque du groupe | relié (l'import le fait déjà, sans trace) |
 | R3 même nom, autre réf. ; Q1 créer les inconnus | créé |
 | R4 marque hors du groupe | créé sous la marque de la fiche |
-| Q2 / Q3 type, marque à créer | auto-complétion, sinon vide → « Suggestions à valider » |
+| Q2 type d'un appareil à créer | auto-complétion, sinon vide → « Suggestions à valider » |
+| Q3 marque d'un appareil à créer | ligne non importée, comptée (§ 10.13) |
 | R5, Q6, Q7 réf. interne, EAN | le site fait foi, écrit, noté dans l'historique |
 | R6 libellé | champ libellé de la carte : celui de l'outil, ou le titre coupé s'il est vide |
 | R7 sans code produit | carte à réf. vide, à saisir ou à décocher |
@@ -756,10 +757,54 @@ Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_r
 
 **Plan proposé** (en attente de l'accord de l'utilisateur) :
 1. Moteur : une fiche → des lignes d'import déjà résolues + relations des cartes ; écriture par l'import, puis le propre de la reprise. Règles du tableau ci-dessus. Anciennes fenêtres inchangées.
-2. « Lire une fiche du site » ouvre `ImportDialog` en fichier seul.
+2. « Lire une fiche du site » ouvre `ImportDialog` en fichier seul. Un lien de 1001pieces.com collé dans le tableau (Cmd+V) ouvre le même import d'une fiche (demande du 2026-11-13).
 3. « Importer les fiches du site » ouvre `ImportDialog` en cartes (une par fiche), avec la barre d'avancement du massif.
 4. Réf. associée Whirlpool / Indesit / Beko, pour tous les imports.
 5. Retrait du moteur de questions, des écarts et des anciennes fenêtres.
+
+### 10.13 Moteur : une fiche est écrite par l'import — refonte, PR 1 (2026-11-13)
+
+**`ImportManager`** (ajouts génériques, sans effet sur les imports PDF, CSV et collage) :
+- `FileType.FICHE_SITE` : des lignes déjà lues, un dict par ligne. Une ligne porte soit l'id d'un appareil reconnu (`CLE_APPAREIL`), soit un appareil à créer avec sa clé d'identité (`CLE_IDENTITE` = marque + forme normalisée, la règle du § 5.2, à la place de « réf. modèle | nom commercial »). Elles passent par le chemin batch : orthographe alignée, auto-complétion, appareils créés, liens, suggestions.
+- Un appareil reconnu garde ses champs ; la ligne ne complète qu'un type ou une marque vides.
+- `ImportConfiguration.apres_ecriture(import_manager, results)` : un crochet appelé après les appareils, les liens et les relations, dans le thread de l'import. Il n'est jamais appelé en simulation.
+- **Correctif de l'import de plusieurs fichiers** : un appareil créé par un fichier entre dans le cache partagé (`_retenir_appareils_crees`). Un fichier suivant qui le cite y est relié dès le 1ᵉʳ passage. Sur le 1ᵉʳ lot réel, c'étaient 418 liens posés seulement par une relance (§ 10.12).
+
+**Écriture d'une fiche** (`EnregistrementFicheService.ecrire_par_import`) :
+1. la pièce (fantôme → réelle, libellé), avant l'import, pour que les relations propagent le libellé ;
+2. un fichier `FICHE_SITE` par fiche (lignes : `lignes_import(plan)`), puis `_run_import_files` ;
+3. dans le crochet, fiche par fiche : provenance des liens, remplacements et équivalences, origines, ordre des « Remplace », produit du site, décisions.
+
+Un lot est un import de plusieurs fichiers (`RepriseSiteService._ecrire_lot`). Une fiche que l'import n'a pas traitée (annulation) n'a rien de propre écrit, et l'état du lot n'avance pas. Les anciennes fenêtres écrivent déjà par ce chemin. Après l'écriture, `signaler_import` appelle `MainWindow._on_import_complete` : récapitulatif dans l'historique, « Suggestions à valider », « Auto-complétés à vérifier ».
+
+**Règles de l'import** (`src/utils/rapprochement_fiche/regles_import.py`, `planifier_import`, `LotReprise.planifier_par_regles`, `EnregistrementFicheService.planifier_par_regles`) : le tableau du § 10.12, sans question. Les écrans des PR 2 et 3 s'en serviront ; d'ici là, les fenêtres gardent leurs questions.
+
+Écart au tableau du § 10.12, trouvé par la relance : **un appareil à créer dont la marque est inconnue n'est pas importé.** Créé sans marque, il n'était jamais retrouvé par la marque et la réf. : la relance le recréait (+42 appareils sur le 1ᵉʳ lot). L'auto-complétion lui donnait en plus la marque d'un autre appareil de même réf. (36 doublons Ikea).
+
+**1ᵉʳ lot réel par les règles** (`scripts/mesurer_lot_reprise.py --regles-import`, copie de la base par l'API backup) :
+
+| | Questions (§ 10.11) | Règles de l'import |
+|---|---|---|
+| Appareils créés | 1 262 | 1 357 |
+| dont même marque et même réf. qu'un appareil existant | 0 | 0 |
+| dont même réf. sous une marque hors du groupe | 0 (R4 « oui » simulé) | 95 (Beko / Altus, Bluesky, Far ; Ikea / Elica) |
+| Créés sans type | 0 | 17 (16 avec une suggestion) |
+| Liens créés | 25 343 | 25 343 |
+| Lignes non écrites | 84 « à revoir » | 84 non importées (12 fiches), dont 46 de marque inconnue |
+| Fiches sans code produit | reprises sous la réf. produit (R7 « reprendre » simulé) | 4 mises de côté |
+| Écriture | 0,5 s | 12 s (une association à la fois, comme un PDF) |
+| Croissance | +9,9 Mo | +10,4 Mo |
+| Relance du même lot | 0 ajout | **0 ajout** |
+
+**Points à trancher par l'utilisateur :**
+- les 95 appareils de même réf. sous une marque hors du groupe. Ce sont les anciennes questions R4 ; la réponse est de compléter les groupes de marques (`groupes_marques`, `data/reprise_fiches.json`) ;
+- les 46 lignes de marque inconnue ;
+- la durée d'écriture : 12 s par lot, soit environ 27 min pour la reprise entière.
+
+**Vérification :**
+- `tests/unit/test_reprise_import.py` : doublon entre fichiers relié au 1ᵉʳ passage (le test échoue sans le correctif) ; fiche seule écrite par l'import puis relue sans ajout, récapitulatif transmis à la fenêtre ; lot des 3 fiches d'exemple par les règles puis relance sans ajout ; même réf. sous une marque du groupe reliée ; création hors du groupe au type auto-complété ; fiche sans code produit mise de côté ; appareil reconnu non modifié ; marque inconnue non importée.
+- Les tests existants des deux fenêtres passent par le nouveau chemin d'écriture.
+- Suite complète (2 036 tests), `compileall`, lancement de `run.py`.
 
 ## 11. Fiches d'exemple
 

@@ -43,6 +43,7 @@ Sous <b>Windows</b>, utilisez <b>Ctrl</b> à la place : <b>Cmd+S</b> devient <b>
   <li><b>Référence de pièce</b> : elle est remplie d'après le nom du fichier ; vous pouvez la modifier et lui donner un libellé avant d'importer.</li>
   <li><b>Aperçu</b> : avant de valider, la fenêtre montre ce qui sera créé. Un encadré « Orthographe alignée sur la base » annonce les marques et types réécrits (ex. <code>MIDEA</code> → <code>Midea</code>, déjà présent en base).</li>
   <li><b>Progression</b> : une ligne par étape (extraction, finalisation, suggestions…) avec sa durée.</li>
+  <li><b>Plusieurs fichiers</b> : un appareil créé par un fichier et cité par un fichier suivant du même import est relié aux deux pièces dès le premier import.</li>
 </ol>
 <div class="note">Pour essayer sans risque : le dossier <code>fichiers_test_import</code>, livré avec
 l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
@@ -179,6 +180,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h2>Reprendre les fiches du site</h2>
 <p>Deux fenêtres, dans le menu <b>Données</b>, qui posent les mêmes questions : <b>Lire une fiche du site…</b> pour une fiche, et <b>Importer les fiches du site…</b> pour toutes les fiches, lot par lot. <b>Rien n'est écrit avant « Enregistrer ».</b></p>
+<p>Une fiche enregistrée passe par l'import, comme un PDF ou un CSV : orthographe des marques et des types alignée sur la base, type complété d'après les appareils de même référence, puis récapitulatif dans l'historique et boutons <b>Suggestions à valider</b> et <b>Auto-complétés à vérifier</b> (voir <b>Éditer le tableau</b>). Un lot est un import de plusieurs fichiers, une fiche par fichier.</p>
 
 <h3>Ce que l'outil fait sans vous, et ce qu'il vous demande</h3>
 <ul>
@@ -273,6 +275,8 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li>Reprise des fiches du site : un appareil connu de l'outil dont la fiche donne un autre type, une autre écriture de la référence, un autre nom commercial ou une autre marque du même groupe s'affiche sur deux lignes (outil, site), la valeur qui diffère en couleur ; un clic garde celle que vous voulez, pour un cas ou pour tous les cas identiques du lot. La question « relier un appareil classé sous un autre type ? » disparaît : l'appareil est relié, seul son type reste à trancher.</li>
   <li>Fiche complète : « Remplace les références » suit l'ordre de la fiche du site pour une pièce reprise (les paires Whirlpool / Indesit restent côte à côte) ; une pièce sans reprise garde l'ordre actuel.</li>
   <li>Retour vers le site : la <b>Fiche complète</b> d'une pièce reprise du site reprend sa paire dans le code produit (« 481073071153 C00319033 ») et une ligne « Références équivalentes » par marque d'origine ; les références écartées disparaissent. Relue, une fiche ainsi régénérée n'apporte rien de nouveau. <b>Exporter CSV</b> (EveryParts) propose la référence interne du produit du site (« EL1113161010 »), y compris depuis une ancienne référence, avec un choix si la pièce a plusieurs produits ; variables <code>{ref_interne}</code> et <code>{id_product}</code> pour les colonnes et le nom du fichier.</li>
+  <li>Reprise des fiches du site : une fiche enregistrée (seule ou par lot) passe désormais par l'import, comme un PDF ou un CSV. Elle profite de l'orthographe alignée, de l'auto-complétion du type, des <b>Suggestions à valider</b> et des <b>Auto-complétés à vérifier</b>, avec son récapitulatif dans l'historique. L'appareil reste reconnu par sa marque et sa référence : pas de doublon quand le nom commercial diffère.</li>
+  <li>Import de plusieurs fichiers : un appareil créé par un fichier et cité par un fichier suivant est relié aux deux pièces dès le premier import (il fallait jusqu'ici importer une seconde fois).</li>
 </ul>
 <h3>Versions livrées</h3>
 <ul>
