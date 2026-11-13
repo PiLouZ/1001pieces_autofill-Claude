@@ -4,6 +4,17 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.101.1] - 2026-11-13 (PR #148)
+
+Correctif : des références Beko de 10 chiffres étaient lues Electrolux.
+
+### Formats de références Beko (PR #148)
+- Débuts Beko ajoutés à la table des formats (CDC § 5.5) : `151`, `190-191`,
+  `244-249` (dont `2466300203`), `270-271`, `917-919`, `29`, `42-49`, `57-59`, `61`.
+  Ce sont les débuts où la base ne compte que des pièces Beko (129 pièces). Les
+  débuts mélangés restent Electrolux. Le champ « Réf. associée » apparaît pour ces
+  références à l'import.
+
 ## [3.101.0] - 2026-11-13 (PR #125 à #146)
 
 Reprise des fiches produit du site 1001pieces.com : une fiche s'importe comme un PDF
