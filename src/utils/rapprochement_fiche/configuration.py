@@ -39,8 +39,11 @@ CONFIGURATION_PAR_DEFAUT: Dict[str, Any] = {
         {'motif': r'(?:41|43|49|70|91|92|93)\d{6}', 'origine': 'Candy'},
         {'motif': r'42\d{6}', 'origine': '', 'doute': 'Candy ou Sharp'},
         {'motif': r'32\d{6}', 'origine': '', 'doute': 'Sharp ?'},
+        # Beko (10 chiffres) : débuts où la base ne compte que des pièces Beko ;
+        # avant le doute « 15 » et la règle générale Electrolux
+        {'motif': r'(?:151|19[01]|24[4-9]|27[01]|91[7-9])\d{7}', 'origine': 'Beko'},
+        {'motif': r'(?:17|18|28|29|4[2-9]|5[7-9]|61)\d{8}', 'origine': 'Beko'},
         {'motif': r'15\d{8}', 'origine': '', 'doute': 'Electrolux ou Beko'},
-        {'motif': r'(?:17|18|28)\d{8}', 'origine': 'Beko'},
         {'motif': r'\d{10}', 'origine': 'Electrolux'},
         {'motif': r'50\d{9}', 'origine': 'Electrolux'},
         {'motif': r'14\d{10}', 'origine': 'Electrolux'},
