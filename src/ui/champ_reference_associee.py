@@ -11,7 +11,7 @@ produit d'une fiche en cours d'import. Laissée vide, rien n'est retenu.
 
 from typing import Callable, Optional, Tuple
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
 
 from src.utils.rapprochement_fiche.associee import autres_origines, origine_associable
 from .ref_chips_input import RefChipsInput
@@ -41,6 +41,8 @@ class ChampReferenceAssociee(QWidget):
         self.champ = RefChipsInput("Réf. jumelle", max_refs=1)
         self.champ.setFixedWidth(largeur)
         disposition.addWidget(self.champ)
+        # Juste après la référence de la pièce : le champ ne prend que sa place
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
         self.setVisible(False)
 
     # --- Référence de la pièce ------------------------------------------------------

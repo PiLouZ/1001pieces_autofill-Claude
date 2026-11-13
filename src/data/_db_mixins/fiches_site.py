@@ -184,6 +184,18 @@ class DatabaseFichesSiteMixin:
                 "ORDER BY e.ref_piece LIMIT 1", [ref_piece, ref_piece]).fetchone()
         return False, (row[0] if row else None)
 
+    def references_associees_de(self, ref_piece: str) -> Set[str]:
+        """Références associées retenues pour la pièce, dans les deux sens
+        (C00138863 ↔ 482000029398) : elles vont à la suite dans le code produit."""
+        if not ref_piece:
+            return set()
+        with self._query_lock:
+            rows = self.cursor.execute(
+                "SELECT associee FROM references_associees WHERE ref_piece = ? AND associee IS NOT NULL "
+                "UNION SELECT ref_piece FROM references_associees WHERE associee = ?",
+                [ref_piece, ref_piece]).fetchall()
+        return {r[0] for r in rows if r[0] and r[0] != ref_piece}
+
     def definir_references_associees(self, reponses: Iterable[Tuple[str, Optional[str]]],
                                      le: str, origines: Optional[Dict[str, str]] = None) -> int:
         """Mémorise chaque réponse (référence associée, ou None = « aucune »). Une

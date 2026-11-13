@@ -164,6 +164,8 @@ class FicheProduitService:
         - une équivalente mémorisée comme 2ᵉ réf. du code produit (ligne 0)
           d'une pièce vendue sur le site rejoint le code produit ; ses anciennes
           références rejoignent « Remplace » ;
+        - la référence associée Whirlpool / Indesit / Beko retenue à l'import
+          (§ 10.17) rejoint aussi le code produit, à la suite, dans les deux sens ;
         - les autres lignées sont regroupées par marque d'origine, puis par
           ligne mémorisée (`lignes_par_origine`) ;
         - les références écartées à la reprise disparaissent ;
@@ -184,12 +186,18 @@ class FicheProduitService:
             # Base sans les tables de la reprise, ou fenêtre de test sans ces lectures
             app_logger.debug(f"Fiche: mémoire de la reprise de {reference} non lue : {e}")
             memoire, principales, ecartees, rangs = {}, set(), set(), {}
+        try:
+            associees = db.references_associees_de(reference)
+        except Exception as e:
+            app_logger.debug(f"Fiche: références associées de {reference} non lues : {e}")
+            associees = set()
 
         code, autres = [reference], []
         remplace = list(remplace)
         for lignee in lignees:
             tete = lignee[0]
-            if (reference in principales and tete not in principales
+            if tete in associees or (
+                    reference in principales and tete not in principales
                     and (memoire.get(tete) or (None, None))[1] == 0):
                 code.append(tete)
                 remplace += [r for r in lignee[1:] if r not in remplace]
