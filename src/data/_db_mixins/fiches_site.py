@@ -135,8 +135,34 @@ class DatabaseFichesSiteMixin:
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'origine', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'ligne_fiche', 'INTEGER')
             self._ajouter_colonne_si_absente('piece_supersessions', 'rang_fiche', 'INTEGER')
+            # Export EveryParts des fiches reprises (§ 10.19) : date du dernier export
+            self._ajouter_colonne_si_absente('produits_site', 'exporte_le', 'TEXT')
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
+
+    # --- Export EveryParts des fiches reprises (§ 10.19) ---------------------------
+    def produits_site_reprises(self, non_exportes: bool = False) -> List[Dict]:
+        """Produits du site repris, par n° de produit. `non_exportes` : jamais
+        exportés, ou relus (lu_le) depuis leur dernier export."""
+        condition = ("WHERE exporte_le IS NULL OR (lu_le IS NOT NULL AND lu_le > exporte_le)"
+                     if non_exportes else "")
+        with self._query_lock:
+            rows = self.cursor.execute(
+                f"SELECT ref_interne, id_product, ref_piece, ean, lu_le, exporte_le "
+                f"FROM produits_site {condition} ORDER BY id_product, ref_interne").fetchall()
+        cles = ('ref_interne', 'id_product', 'ref_piece', 'ean', 'lu_le', 'exporte_le')
+        return [dict(zip(cles, r)) for r in rows]
+
+    def marquer_produits_exportes(self, refs_internes: Iterable[str], le: str) -> int:
+        refs = [r for r in dict.fromkeys(refs_internes) if r]
+        with self._query_lock:
+            for i in range(0, len(refs), 500):
+                lot = refs[i:i + 500]
+                self.cursor.execute(
+                    f"UPDATE produits_site SET exporte_le = ? WHERE ref_interne IN "
+                    f"({','.join('?' * len(lot))})", [le] + lot)
+            self.conn.commit()
+        return len(refs)
 
     # --- Référence associée Whirlpool / Indesit / Beko (§ 10.17) ---------------------
     def reference_associee(self, ref_piece: str) -> Tuple[bool, Optional[str]]:

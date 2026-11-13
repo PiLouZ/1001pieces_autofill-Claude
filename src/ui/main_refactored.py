@@ -2618,6 +2618,11 @@ class MainWindow(QMainWindow):
         self._reprise_site_dialog = dialog
         dialog.show()
 
+    def _open_export_fiches_reprises(self):
+        """Export EveryParts des fiches reprises du site (§ 10.19)."""
+        from .export_fiches_reprises_dialog import ExportFichesReprisesDialog
+        ExportFichesReprisesDialog(self.db_manager, main_window=self).show()
+
     def _open_fiches_a_refaire(self):
         """Fiches du site à refaire depuis les PDF (données en vrac, § 10.14)."""
         from .fiches_a_refaire_dialog import FichesARefaireDialog

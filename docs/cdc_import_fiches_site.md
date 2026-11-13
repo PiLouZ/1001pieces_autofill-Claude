@@ -953,7 +953,7 @@ Fermer la fenêtre d'import sans importer n'écrit rien et ne fait pas avancer l
   - rendu hors écran.
 - Suite complète (2 048 tests), `compileall`, lancement de `run.py`.
 
-### 10.18 Export EveryParts des fiches reprises — pistes (2026-11-13, à décider)
+### 10.18 Export EveryParts des fiches reprises — pistes (2026-11-13)
 
 **Demande de l'utilisateur** : les fiches récupérées du site, seules ou par lot, doivent pouvoir donner un export EveryParts. La 1ʳᵉ colonne (`product`) porte la référence produit du site (`.product-reference`). C'est l'objectif secondaire de la reprise, en plus de consolider le catalogue. Il faut une petite fenêtre d'export des fiches récupérées.
 
@@ -969,10 +969,33 @@ Fermer la fenêtre d'import sans importer n'écrit rien et ne fait pas avancer l
 3. **Mémoire de l'export** : une colonne `exporte_le` sur `produits_site`, pour ne réexporter que les nouveautés, ou une fiche dont des appareils ont été ajoutés depuis (date du dernier lien de la pièce).
 4. **Raccourci en fin de lot** : « Exporter ce lot vers EveryParts » à la fin de l'import d'un lot (piste 1, filtrée sur le lot).
 
-**Questions à trancher avec l'utilisateur** :
-- les appareils exportés : ceux de la pièce seule, ou aussi ceux de ses anciennes références (lignée) ? Sur le site, la fiche 20744 liste les 450 appareils de ses 4 prédécesseurs ;
-- un fichier par fiche, ou un seul fichier ;
-- une pièce vendue par plusieurs produits (origine et générique) : une ligne par produit.
+**Tranché (2026-11-13)** :
+- appareils de la pièce **et de ses anciennes références** (décision de l'utilisateur) ;
+- un fichier par fiche, ou un seul : au choix dans la fenêtre ;
+- une pièce vendue par plusieurs produits : un jeu de lignes par produit.
+
+Pistes 1 à 3 faites au § 10.19 ; la piste 4 (raccourci en fin de lot) reste possible.
+
+### 10.19 Export EveryParts des fiches reprises — fait (2026-11-13)
+
+- **Service** `src/services/export_fiches_reprises_service.py` (`ExportFichesReprisesService`) :
+  - `produits(non_exportes)` lit `produits_site_reprises` : les produits par n° ; « à exporter » = jamais exportés, ou relus (`lu_le`) depuis le dernier export ;
+  - `lignes(ref_piece)` : les appareils de la pièce et de ses anciennes références (`get_all_predecessors`), une fois chacun ;
+  - `exporter(produits, dossier, un_seul_fichier)` : le format CSV de la configuration (`get_csv_settings`, `render_csv_row_with`, assainissement des formules), avec `{export_ref}` = la référence produit du site et `{ref_interne}` / `{id_product}` disponibles. Le nom vient du modèle de la configuration (`fiches_reprises` pour un seul fichier). Un produit sans appareil n'est pas exporté, mais il est compté. La date d'export est gardée : nouvelle colonne nullable `produits_site.exporte_le`, `marquer_produits_exportes`.
+- **Fenêtre** `src/ui/export_fiches_reprises_dialog.py` (`ExportFichesReprisesDialog`) :
+  - filtre « à exporter » ou « tous », recherche ;
+  - la sélection est exportée (sans sélection, toute la liste) ;
+  - case « un seul fichier », dossier des exports (« Changer… », « Ouvrir le dossier ») ;
+  - export dans un thread, avec progression ;
+  - récapitulatif dans l'historique.
+- **Accès** : menu « Données → Exporter les fiches reprises (EveryParts)… » et bouton « Exporter vers EveryParts… » de la fenêtre « Importer les fiches du site ».
+- **Vérification** (`tests/unit/test_export_fiches_reprises.py`, extrait de la vraie base, les 3 fiches d'exemple reprises) :
+  - 20744 : 450 lignes, qui viennent toutes de ses 4 anciennes références, en-tête de la configuration, `GAU11051894` en 1ʳᵉ colonne ;
+  - 20746 : 831 lignes ;
+  - un seul fichier ;
+  - plus rien « à exporter » après l'export ;
+  - fenêtre rendue hors écran, export d'une sélection dans le thread.
+- Suite complète, `compileall`, lancement de `run.py`.
 
 ## 11. Fiches d'exemple
 

@@ -160,6 +160,12 @@ class RepriseSiteDialog(QDialog):
         self.bouton_a_refaire.setToolTip("Fiches aux données en vrac : leurs appareils bancals n'ont "
                                          "pas été créés. Cherchez leurs PDF et importez-les.")
         self.bouton_a_refaire.clicked.connect(self._ouvrir_a_refaire)
+        self.bouton_everyparts = QPushButton(qta.icon('fa5s.file-csv', color='#555555'),
+                                             "Exporter vers EveryParts…")
+        self.bouton_everyparts.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
+        self.bouton_everyparts.setToolTip("Compatibilités des produits repris, au format EveryParts "
+                                          "(référence produit du site en 1re colonne).")
+        self.bouton_everyparts.clicked.connect(self._ouvrir_everyparts)
         self.bouton_annuler = QPushButton(qta.icon('fa5s.stop', color='#555555'), "Arrêter")
         self.bouton_annuler.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         self.bouton_annuler.clicked.connect(self._annuler)
@@ -169,7 +175,7 @@ class RepriseSiteDialog(QDialog):
         self.progression.setTextVisible(False)
         self.progression.setFixedHeight(8)
         for w in (self.bouton_analyser, self.bouton_de_cote, self.bouton_a_refaire,
-                  self.bouton_annuler):
+                  self.bouton_everyparts, self.bouton_annuler):
             lot.addWidget(w)
         lot.addWidget(self.progression, 1)
         racine.addLayout(lot)
@@ -376,6 +382,10 @@ class RepriseSiteDialog(QDialog):
             if self.on_lot_enregistre is not None:
                 self.on_lot_enregistre(res)
         self._rafraichir_etat()
+
+    def _ouvrir_everyparts(self):
+        from .export_fiches_reprises_dialog import ExportFichesReprisesDialog
+        ExportFichesReprisesDialog(self.db, main_window=self.main_window).show()
 
     def _ouvrir_a_refaire(self):
         from .fiches_a_refaire_dialog import FichesARefaireDialog
