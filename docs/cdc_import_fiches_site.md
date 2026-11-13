@@ -934,20 +934,20 @@ Fermer la fenêtre d'import sans importer n'écrit rien et ne fait pas avancer l
 
 **Pour tous les imports** (PDF, CSV, collage, fiche seule, lot de fiches) :
 - `src/utils/rapprochement_fiche/associee.py` : `origine_associable(ref)` rend Whirlpool, Indesit ou Beko d'après la table des formats (§ 5.5, configuration lue sans jamais être écrite), sinon `''`.
-- `src/ui/champ_reference_associee.py` (`ChampReferenceAssociee`) : la ligne « Réf. associée » avec une référence et une case « aucune ». Elle n'apparaît que pour une pièce de l'un des trois groupes. Elle se place dans la Succession du fichier seul, sur chaque carte de plusieurs fichiers et sur chaque carte de fiche. Elle suit la référence saisie (collage, fiche sans code produit) et se préremplit ainsi :
+- `src/ui/champ_reference_associee.py` (`ChampReferenceAssociee`) : le champ « Réf. associée », une référence facultative, **à droite de la référence de la pièce** (demande de l'utilisateur, 2026-11-13 : le rapprocher de la référence incite à le compléter). Il se place sur la ligne « Réf. » du fichier seul, et à côté de la référence de chaque carte de plusieurs fichiers ou de fiche. Il n'apparaît que pour une pièce de l'un des trois groupes. Il suit la référence saisie (collage, fiche sans code produit) et se préremplit ainsi :
   - la réponse mémorisée ;
   - sinon l'équivalente de ligne 0 de la pièce ;
   - sinon, pour une fiche du site, la 2ᵉ réf. de son code produit (`FicheAImporter.reference_associee`).
-- `ImportConfiguration.references_associees` (réf. de la pièce → référence associée, ou None pour « aucune »), recueillie seulement pour la référence que la pièce aura vraiment. L'import l'applique en fin de finalisation, après les écritures propres aux fiches (`ImportManager._appliquer_references_associees`) ; le récapitulatif porte `references_associees`.
-- **Mémoire** : table `references_associees(ref_piece, associee, decide_le)`, où `associee` NULL signifie « aucune ». Elle suit le renommage et la suppression de la pièce. Une référence associée devient une équivalente de la pièce, marquée ligne 0 (code produit de la Fiche complète, § 8.1) avec sa marque d'origine. **Écart au § 10.12** : « aucune » ne va pas dans `decisions_references`, dont la contrainte `CHECK (nature IN ('ecartee', 'origine'))` ne s'étend pas sans recréer la table ; une petite table dédiée est plus simple et plus claire.
-- Sans réponse (champ vide), rien n'est retenu et la question revient au prochain import.
+- **Pas de case « aucune »** (décision de l'utilisateur, 2026-11-13) : le champ ne bloque rien, et laissé vide il n'écrit rien. La table garde la possibilité d'une réponse « aucune » (NULL), que l'interface n'écrit pas.
+- `ImportConfiguration.references_associees` (réf. de la pièce → référence associée), recueillie seulement pour la référence que la pièce aura vraiment. L'import l'applique en fin de finalisation, après les écritures propres aux fiches (`ImportManager._appliquer_references_associees`) ; le récapitulatif porte `references_associees`.
+- **Mémoire** : table `references_associees(ref_piece, associee, decide_le)`. Elle suit le renommage et la suppression de la pièce. Une référence associée devient une équivalente de la pièce, marquée ligne 0 (code produit de la Fiche complète, § 8.1) avec sa marque d'origine. **Écart au § 10.12** : « aucune » ne va pas dans `decisions_references`, dont la contrainte `CHECK (nature IN ('ecartee', 'origine'))` ne s'étend pas sans recréer la table ; une petite table dédiée est plus simple et plus claire.
 - Retouche : les libellés de la section Succession passent de 220 à 240 px (« Cette réf. est remplacée par » n'est plus coupé) ; `RefChipsInput.definir_aide`.
 
 **Vérification** :
 - `tests/unit/test_reference_associee.py` :
   - formes des trois groupes ;
   - mémoire (équivalente de ligne 0, « aucune », renommage) ;
-  - collage avec réponse retenue puis reproposée, « aucune », pièce BSH sans ligne ;
+  - collage avec réponse retenue puis reproposée, champ laissé vide (rien de retenu), pièce BSH sans champ ;
   - cartes de plusieurs fichiers ;
   - fiche 7285 préremplie avec `C00319033` et mémorisée après l'import ;
   - rendu hors écran.

@@ -96,15 +96,13 @@ def test_fichier_seul_reponse_memorisee_puis_reproposee(qapp, tmp_path, rendus):
     # Réimport de la même pièce : la réponse revient
     dialogue = _collage('481010595117', qapp, b.db, [['WAE24/01', 'Maxx']])
     assert dialogue.champ_associee.champ.refs() == ['C00999888']
-    # Autre pièce : « aucune », retenue ; une pièce BSH n'a pas de champ
+    # Autre pièce, champ laissé vide : rien n'est retenu ; une pièce BSH n'a pas de champ
     dialogue = _collage('C00123456', qapp, b.db, [['WAE24/01', 'Maxx']])
     assert "Whirlpool ou Beko" in dialogue.champ_associee.libelle.toolTip()
-    dialogue.champ_associee.aucune.setChecked(True)
     dialogue._validate_and_accept()
+    assert dialogue.get_configuration().references_associees is None
     ImportManager(b.db)._run_import_files(dialogue.get_configuration())
-    assert b.db.reference_associee('C00123456') == (True, None)
-    dialogue = _collage('C00123456', qapp, b.db, [['WAE24/01', 'Maxx']])
-    assert dialogue.champ_associee.aucune.isChecked()
+    assert b.db.reference_associee('C00123456') == (False, None)
     dialogue = _collage('11051894', qapp, b.db, [['WAE24/01', 'Maxx']])
     assert dialogue.champ_associee.isHidden()
     dialogue._validate_and_accept()

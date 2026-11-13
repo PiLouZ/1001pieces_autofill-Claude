@@ -579,6 +579,17 @@ class ImportDialog(QDialog):
                 )
                 ref_display.setObjectName(f"ref_display_{file.path}")
                 ref_row.addWidget(ref_display)
+            # Référence associée Whirlpool / Indesit / Beko, à droite de la référence (§ 10.17)
+            self.champ_associee = ChampReferenceAssociee(
+                self._memoire_associee(), proposee=(self._fiche.reference_associee()
+                                                    if self._fiche is not None else ''))
+            ref_row.addWidget(self.champ_associee)
+            self._champs_associes.append((file, self.champ_associee))
+            ref_saisie = getattr(self, '_ref_saisie_unique', None)
+            if ref_saisie is not None:
+                ref_saisie.textChanged.connect(self.champ_associee.definir_reference)
+            else:
+                self.champ_associee.definir_reference(file.suggested_reference)
             ref_group_layout.addLayout(ref_row)
 
             # Ligne : Libellé
@@ -692,19 +703,6 @@ class ImportDialog(QDialog):
             row3.addWidget(self.equiv_input)
             succ_layout.addLayout(row3)
 
-            # Référence associée Whirlpool / Indesit / Beko (§ 10.17)
-            self.champ_associee = ChampReferenceAssociee(
-                self._memoire_associee(), proposee=(self._fiche.reference_associee()
-                                                    if self._fiche is not None else ''),
-                largeur_libelle=240)
-            succ_layout.addWidget(self.champ_associee)
-            self._champs_associes.append((file, self.champ_associee))
-            # (le champ de saisie n'est pas encore rattaché à la fenêtre : pas de findChild)
-            ref_saisie = getattr(self, '_ref_saisie_unique', None)
-            if ref_saisie is not None:
-                ref_saisie.textChanged.connect(self.champ_associee.definir_reference)
-            else:
-                self.champ_associee.definir_reference(file.suggested_reference)
             if self._fiche is not None:
                 # Relations de la fiche : retirer une référence ne l'écrit pas (une
                 # équivalente retirée est écartée), en ajouter une l'écrit
@@ -921,6 +919,7 @@ class ImportDialog(QDialog):
                     "padding: 3px 6px; border: 2px solid #0066cc; border-radius: 4px; background: white;"
                 )
                 row1.addWidget(ref_input_edit)
+                row1.addWidget(self._champ_associee_carte(file, ref_input_edit))
             else:
                 ref_display = QLabel(f"→ Réf. : {file.suggested_reference}")
                 ref_display.setStyleSheet(
@@ -929,6 +928,7 @@ class ImportDialog(QDialog):
                 )
                 ref_display.setObjectName(f"ref_display_{file.path}")
                 row1.addWidget(ref_display)
+                row1.addWidget(self._champ_associee_carte(file))
 
             file_label = QLabel(file.filename)
             file_label.setStyleSheet(
@@ -978,7 +978,6 @@ class ImportDialog(QDialog):
             card_layout.addLayout(row2)
             if self.import_config.import_type == ImportType.MULTI_FILE:
                 card_layout.addLayout(self._ligne_remplacee_par(file, obs_check))
-            card_layout.addWidget(self._champ_associee_carte(file))
             self.individual_refs_widget.addWidget(file_container)
 
         # Initialiser l'affichage des références selon l'état par défaut de la case à cocher
@@ -1522,6 +1521,7 @@ class ImportDialog(QDialog):
             ref_edit.textChanged.connect(lambda t, c=importer: c.setChecked(bool(t.strip())))
             ligne1.addWidget(ref_edit)
             importer.setChecked(False)
+        ligne1.addWidget(self._champ_associee_carte(file, ref_edit, fiche.reference_associee()))
         titre = fiche.apercu()['titre'] or ''
         nom = QLabel(f"{titre}" if titre else "")
         nom.setStyleSheet("font-weight: bold; font-size: 12px; background: transparent;")
@@ -1569,7 +1569,6 @@ class ImportDialog(QDialog):
             ligne.addWidget(chips, etirement)
             champs[cle] = chips
         boite.addLayout(ligne)
-        boite.addWidget(self._champ_associee_carte(file, ref_edit, fiche.reference_associee()))
         self._cartes_fiches.append({'file': file, 'importer': importer, 'ref': ref_edit,
                                     'libelle': libelle, 'obsolete': obsolete, **champs})
         return carte
@@ -1581,10 +1580,12 @@ class ImportDialog(QDialog):
 
     def _champ_associee_carte(self, file, ref_edit=None, proposee: str = '') -> QWidget:
         """Réf. associée d'une carte : suit la référence de la carte."""
-        champ = ChampReferenceAssociee(self._memoire_associee(), proposee=proposee)
+        champ = ChampReferenceAssociee(self._memoire_associee(), proposee=proposee, largeur=200,
+                                       petit=True)
         self._champs_associes.append((file, champ))
-        saisie = ref_edit or self.findChild(QLineEdit, f"ref_input_{file.path}")
-        if saisie is not None:
+        # (le champ de saisie n'est pas encore rattaché à la fenêtre : pas de findChild)
+        if ref_edit is not None:
+            saisie = ref_edit
             saisie.textChanged.connect(champ.definir_reference)
         else:
             champ.definir_reference(file.suggested_reference)
