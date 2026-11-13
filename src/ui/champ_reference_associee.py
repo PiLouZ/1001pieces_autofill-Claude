@@ -11,7 +11,8 @@ produit d'une fiche en cours d'import. Laissée vide, rien n'est retenu.
 
 from typing import Callable, Optional, Tuple
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+import qtawesome as qta
 
 from src.utils.rapprochement_fiche.associee import autres_origines, origine_associable
 from .ref_chips_input import RefChipsInput
@@ -19,6 +20,8 @@ from .style_manager import StyleManager
 
 # (réponse connue, référence associée ou None) pour une réf. de pièce
 Memoire = Callable[[str], Tuple[bool, Optional[str]]]
+# Inversion des rôles : (nouvelle référence de la pièce, nouvelle référence associée)
+Inversion = Callable[[str, str], None]
 
 
 class ChampReferenceAssociee(QWidget):
@@ -26,20 +29,32 @@ class ChampReferenceAssociee(QWidget):
     bloque rien ; laissée vide, rien n'est retenu."""
 
     def __init__(self, memoire: Optional[Memoire] = None, proposee: str = '',
-                 largeur: int = 260, petit: bool = False, parent=None):
+                 largeur: int = 260, petit: bool = False, parent=None,
+                 inversion: Optional[Inversion] = None):
         super().__init__(parent)
         self._memoire = memoire
         self._proposee = proposee or ''
         self._reference = ''
+        self._inversion = inversion
         disposition = QHBoxLayout(self)
         disposition.setContentsMargins(0, 0, 0, 0)
         disposition.setSpacing(6)
+        # ⇄ : la réf. associée devient la pièce (appareils, libellé), et inversement
+        self.bouton_inverser = QPushButton(qta.icon('fa5s.exchange-alt', color='#0066cc'), '')
+        self.bouton_inverser.setStyleSheet(StyleManager.ICON_BUTTON)
+        self.bouton_inverser.setToolTip("Inverser : la référence associée devient la référence "
+                                        "principale (elle reçoit les appareils et le libellé)")
+        self.bouton_inverser.setFixedWidth(24)
+        self.bouton_inverser.clicked.connect(self.inverser)
+        self.bouton_inverser.setVisible(False)
+        disposition.addWidget(self.bouton_inverser)
         self.libelle = QLabel("Réf. associée :")
         self.libelle.setStyleSheet(StyleManager.LIBELLE_PETIT_TRANSPARENT if petit
                                    else StyleManager.TEXTE_GRAS_TRANSPARENT)
         disposition.addWidget(self.libelle)
         self.champ = RefChipsInput("Réf. jumelle", max_refs=1)
         self.champ.setFixedWidth(largeur)
+        self.champ.changed.connect(self._maj_bouton)
         disposition.addWidget(self.champ)
         # Juste après la référence de la pièce : le champ ne prend que sa place
         self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
@@ -63,6 +78,21 @@ class ChampReferenceAssociee(QWidget):
         _, associee = (self._memoire(reference) if self._memoire is not None else (False, None))
         valeur = associee or self._proposee
         self.champ.set_refs([valeur] if valeur else [])
+        self._maj_bouton()
+
+    def _maj_bouton(self):
+        self.bouton_inverser.setVisible(self._inversion is not None and bool(self.champ.refs()))
+
+    def inverser(self):
+        """La référence associée devient la principale ; la principale, l'associée."""
+        refs = self.champ.refs()
+        if not refs or self._inversion is None or refs[0] == self._reference:
+            return
+        nouvelle, ancienne = refs[0], self._reference
+        self._inversion(nouvelle, ancienne)     # la fenêtre change la réf. de la pièce
+        self._reference = nouvelle
+        self.champ.set_refs([ancienne])
+        self._maj_bouton()
 
     # --- Réponse --------------------------------------------------------------------
     @property

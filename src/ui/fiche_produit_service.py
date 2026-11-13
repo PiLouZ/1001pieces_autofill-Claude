@@ -165,7 +165,8 @@ class FicheProduitService:
           d'une pièce vendue sur le site rejoint le code produit ; ses anciennes
           références rejoignent « Remplace » ;
         - la référence associée Whirlpool / Indesit / Beko retenue à l'import
-          (§ 10.17) rejoint aussi le code produit, à la suite, dans les deux sens ;
+          (§ 10.17) rejoint aussi le code produit ; la référence **principale**
+          vient toujours en premier, quelle que soit la référence recherchée ;
         - les autres lignées sont regroupées par marque d'origine, puis par
           ligne mémorisée (`lignes_par_origine`) ;
         - les références écartées à la reprise disparaissent ;
@@ -188,9 +189,10 @@ class FicheProduitService:
             memoire, principales, ecartees, rangs = {}, set(), set(), {}
         try:
             associees = db.references_associees_de(reference)
+            principale = db.reference_principale_de(reference)
         except Exception as e:
             app_logger.debug(f"Fiche: références associées de {reference} non lues : {e}")
-            associees = set()
+            associees, principale = set(), None
 
         code, autres = [reference], []
         remplace = list(remplace)
@@ -209,7 +211,10 @@ class FicheProduitService:
         autres = [l for l in (garder(l) for l in autres) if l]
         lignes = [l for l in (garder(l) for l in self.lignes_par_origine(autres, memoire)) if l]
         remplace = self.ordre_de_la_fiche(remplace, rangs)
-        return {'code_produit': [reference] + garder(code[1:]), 'remplace': garder(remplace),
+        if principale and principale in code[1:]:
+            # Ordre fixe : la principale d'abord, puis la référence recherchée
+            code = [principale] + [r for r in code if r != principale]
+        return {'code_produit': [code[0]] + garder(code[1:]), 'remplace': garder(remplace),
                 'equivalentes': autres, 'lignes_equivalentes': lignes}
 
     @staticmethod

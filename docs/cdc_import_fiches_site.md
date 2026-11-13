@@ -1015,6 +1015,24 @@ La refonte du § 10.12 est complète. L'interface n'appelait plus le moteur de q
 - **1ᵉʳ lot réel** (copie de la base) : mêmes chiffres qu'avant les retraits (1 323 appareils, 25 309 liens, 91 remplacements, 198 membres d'équivalence, 96 produits, 2 fiches à refaire) ; **relance sans ajout**.
 - Aller-retour des 3 fiches d'exemple ; suite complète (2 040 tests), `compileall`, lancement de `run.py`.
 
+### 10.21 Référence principale : « ⇄ » à l'import, ordre fixe dans la Fiche complète (2026-11-13)
+
+**Demande de l'utilisateur** : de temps en temps, la référence importée (nom du PDF, code produit) n'est pas la référence principale de la paire Whirlpool / Indesit / Beko. Il faut pouvoir définir la principale facilement. Décision : un bouton « ⇄ » à l'import, et l'ordre fixe dans la Fiche complète.
+
+- **« ⇄ »** (`ChampReferenceAssociee.inverser`, `ImportDialog._inversion`). Le bouton se place entre la référence de la pièce et la réf. associée, et n'apparaît qu'avec une réf. associée saisie. Il est présent dans le fichier seul, les cartes de plusieurs fichiers et les cartes de fiches. Un clic échange les rôles :
+  - la réf. associée devient la référence de la pièce : elle reçoit les appareils, le libellé, Obsolète et, pour une fiche du site, le produit du site ;
+  - la référence d'origine devient l'associée ;
+  - pour un champ de saisie (collage, fiche sans code produit), son texte change ; pour une référence fixe (nom du fichier, code produit), elle est remplacée pour cet import (`_refs_inversees`, lu par `_ref_du_fichier` et `_collecter_fiches`) et l'étiquette l'indique ;
+  - un second clic revient au point de départ ;
+  - pour une fiche du site, la nouvelle principale sort de ses propres équivalentes.
+- **Mémoire** : `references_associees(principale → associée)`, dans le sens choisi.
+- **Ordre fixe** (`reference_principale_de`, `FicheProduitService.references_fiche`) : la principale vient toujours en premier dans le code produit, que l'on recherche la principale ou l'associée.
+- **Limite** : dans l'import de plusieurs fichiers, les tuiles de la zone « Relations entre références » gardent la référence du nom de fichier ; l'inversion vaut pour la pièce, les appareils et la paire.
+
+**Vérification** :
+- `test_reference_associee.py` : inversion dans un collage et dans un fichier (appareils sur la principale, code produit identique quelle que soit la référence recherchée, double clic qui revient au départ, rendu hors écran), fiche 7285 inversée (pièce `C00319033`, produit du site et liens dessus, `481073071153` équivalente).
+- Suite complète (2 045 tests), `compileall`, lancement de `run.py`.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

@@ -196,6 +196,18 @@ class DatabaseFichesSiteMixin:
                 [ref_piece, ref_piece]).fetchall()
         return {r[0] for r in rows if r[0] and r[0] != ref_piece}
 
+    def reference_principale_de(self, ref: str) -> Optional[str]:
+        """Référence principale d'une référence associée (« ⇄ » ou réponse de
+        l'import) : elle vient en premier dans le code produit. None : `ref` n'est
+        l'associée d'aucune pièce."""
+        if not ref:
+            return None
+        with self._query_lock:
+            row = self.cursor.execute(
+                "SELECT ref_piece FROM references_associees WHERE associee = ? "
+                "ORDER BY decide_le DESC LIMIT 1", [ref]).fetchone()
+        return row[0] if row else None
+
     def definir_references_associees(self, reponses: Iterable[Tuple[str, Optional[str]]],
                                      le: str, origines: Optional[Dict[str, str]] = None) -> int:
         """Mémorise chaque réponse (référence associée, ou None = « aucune »). Une
