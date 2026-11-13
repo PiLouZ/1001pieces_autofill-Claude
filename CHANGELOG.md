@@ -4,6 +4,20 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.102.0] - 2026-11-13 (PR #150)
+
+Aller aux appareils auto-complétés à vérifier depuis le tableau.
+
+### Flèches vers les auto-complétés à vérifier (PR #150)
+- Flèches ▲ ▼ autour de « Auto-complétés à vérifier (N) | Tout valider » dans la
+  barre d'état : ligne auto-complétée précédente ou suivante, même sur une autre
+  page, curseur sur la case à contrôler (Type, sinon Fabricant). Raccourcis
+  ⇧⌥⌘↑ / ⇧⌥⌘↓. Recherche, filtres et tri respectés ; flèche grisée quand une
+  direction est épuisée.
+- La navigation des lignes incomplètes est rendue paramétrable par critère
+  (`TableController._sauter_vers`) : même recherche page affichée → position SQL →
+  parcours des pages ; comportement de « Lignes à traiter » inchangé.
+
 ## [3.101.1] - 2026-11-13 (PR #148)
 
 Correctif : des références Beko de 10 chiffres étaient lues Electrolux.
