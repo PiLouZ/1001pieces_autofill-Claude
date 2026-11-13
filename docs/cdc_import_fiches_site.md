@@ -806,6 +806,84 @@ Un lot est un import de plusieurs fichiers (`RepriseSiteService._ecrire_lot`). U
 - Les tests existants des deux fenêtres passent par le nouveau chemin d'écriture.
 - Suite complète (2 036 tests), `compileall`, lancement de `run.py`.
 
+### 10.14 Fiches « en vrac » : à refaire depuis les PDF (2026-11-13)
+
+**Demande de l'utilisateur** : une fiche aux données en vrac est difficile à exploiter. L'outil relève la référence de la pièce et invite à chercher les PDF pour refaire la fiche proprement. Il ne doit jamais créer d'appareils aux références bancales, qui demanderaient une reprise quasi intégrale des données.
+
+**Exemple donné** : fiche 7196, crochet portillon freezer `480131100599`. Le lecteur la croit propre (profil « Fiche standard », aucun passage incompris), mais chaque ligne colle le 12NC, le nom et une description :
+- le nom devient « ARG18470A+ Réfrigérateur 1 » et le type de la ligne devient « Porte » (239 lignes sur 381) ;
+- les modèles Ikea sont collés et coupés : « 902.537.43CF94A++RÉFRIGÉRAT » ;
+- toute la liste prend la marque Whirlpool.
+
+Par les règles du § 10.13, la fiche donnerait 360 liens sans risque, car l'appareil est retrouvé par son 12NC et l'outil garde son nom propre. Elle donnerait aussi **21 créations, toutes bancales**.
+
+**Constat** : le danger d'une fiche en vrac vient des **créations**, pas des liens.
+
+**Décisions de l'utilisateur (2026-11-13)** :
+- fiche en vrac : les liens vers les appareils connus et les relations sont écrits ; **aucun appareil n'est créé** ; la fiche est notée « à refaire depuis les PDF » ;
+- elle sort de la liste quand un import PDF ou CSV porte sur sa référence de pièce, ou par un bouton « Fait ».
+
+**Mesures** :
+- **Syntaxe, export complet** (lecteur seul) : 1 510 fiches ont au moins la moitié de leurs lignes illisibles. Ce sont des CSV collés tels quels (fiche 13306, « 34342020000,BAAN34VP,,,,Combi posable / Froid statique »), la marque prise pour la réf. (fiche 19025, « Liebherr » sur 1 817 lignes) et des paragraphes de codes. Ces lignes ne sont déjà jamais créées (réf. illisible). Certaines formes signalées sont saines, et un critère de syntaxe seul ratisse trop large : Liebherr « B 2756-20 001 », V-Zug « 00.206.005.02 », Rowenta « 460900 - ASPIRATEUR ».
+- **Créations, 13 lots réels** (1 292 fiches, règles du § 10.13, rien d'écrit) : sur 37 886 créations, **767 douteuses (2 %)**, réparties dans **41 fiches** sur les 468 qui créent des appareils. Les critères, comptés sur la ligne à créer :
+
+| Critère | Créations | Fiches | Exemple |
+|---|---|---|---|
+| nom mêlé d'une description d'appareil | 419 | 17 | `ARC5453 Combiné 1 groupe`, `WW1400/A Réfrigérateur 1` |
+| n° d'article Ikea collé | 370 | 27 | `001.515.55HDDW00S`, `101.825.75MWN210SMICROWAVE-858779115771` |
+| type de ligne qui n'est pas un appareil | 89 | 6 | `Porte` |
+| mot collé ou coupé | 47 | 7 | `CF94A++RÉFRIGÉRAT` |
+
+- Part des créations douteuses dans ces 41 fiches : **15 fiches à 50 % ou plus** (7409 : 180 sur 180 ; 7196 : 21 sur 21), 4 fiches entre 20 et 50 %, et 22 fiches sous 20 %. Ces dernières sont souvent de grandes listes propres avec quelques Ikea : 8161, 30 sur 4 042 ; 7876, 66 sur 880.
+- Vu aussi : des marques bancales tirées d'un en-tête (« PROFESSIONNELS HOTTE », fiche 8143). Ce critère est à ajouter : une marque inconnue de l'outil.
+
+**Décidé (seuil de 20 % accepté le 2026-11-13), fait dans la PR 2 (§ 10.15)** :
+- une fiche est **en vrac** quand au moins 20 % de ses créations sont douteuses. Elle n'a alors aucune création et passe « à refaire depuis les PDF » ;
+- sous ce seuil, seules les lignes douteuses ne sont pas créées. La fiche est aussi notée « à refaire », avec le nombre de lignes concernées ;
+- la liste « Fiches à refaire depuis les PDF » donne, pour chaque fiche : la réf. de la pièce, le n° du produit, le lien vers la page du site, la raison, des exemples, et un export CSV ;
+- les critères vivent avec le lecteur et le rapprochement. La fiche seule (PR 2) les affiche dans un bandeau, le lot (PR 3) dans sa liste.
+
+### 10.15 Fiche seule par la fenêtre d'import, fiches à refaire — refonte, PR 2 (2026-11-13)
+
+**« Lire une fiche du site »** (`src/ui/fiche_site_import.py`) :
+- `SaisieFicheSite` demande le lien ou la description. La fiche est lue puis planifiée par les règles (`EnregistrementFicheService.fiche_a_importer`), sans question.
+- `ouvrir_import_fiche` ouvre ensuite la fenêtre d'import habituelle (`ImportDialog`) sur un fichier `FICHE_SITE` qui porte la fiche (`ImportFile.fiche`, `FicheAImporter`).
+- Dans la fenêtre d'import, la fiche ne demande pas de choix de colonnes. L'aperçu est en langage métier (déjà liés, connus, à créer, non créés « à refaire », couverts, non importés), et un bandeau orange signale une fiche à refaire. La référence de la pièce se saisit s'il n'y a pas de code produit. Le libellé proposé est celui de l'outil, ou le titre coupé. La Succession est préremplie avec les anciennes références, la remplaçante et les équivalentes de la fiche.
+- **Importer** passe par `ImportManager.importer_avec_dialogue` :
+  - `preparer` remet les saisies dans le plan (`FicheAImporter.appliquer_saisie`). Une relation retirée n'est pas écrite ; une équivalente retirée est **écartée** (`decisions_references`) ; une relation ajoutée est écrite ;
+  - l'import réel est ensuite celui d'un PDF (`_launch_real_import`, progression, sauvegarde du jour) ;
+  - en fin d'import : noms commerciaux vides complétés, `MainWindow._on_import_complete` (historique, suggestions, auto-complétés), puis la pièce dans la recherche.
+- **Lien collé dans le tableau** (Cmd+V) : un lien de 1001pieces.com (`est_lien_fiche_site`) ouvre cette saisie et lit la fiche aussitôt.
+- `FicheSiteDialog` ne sert plus qu'à « Ouvrir la fiche… » dans l'import par lots (PR 3).
+
+**Fiches en vrac** (`regles_import.retenir_creations_douteuses`, `motifs_douteux`) :
+- Cinq critères sur la ligne à créer :
+  - le nom mêlé d'une description (types et appellations de l'onglet Appareils, plus « armoire », « encastrable », « statique », « combiné », « 1 porte »…) ;
+  - un n° d'article collé (`999.999.99` suivi d'autre chose) ;
+  - un mot collé ou coupé (« …A++RÉFRIGÉRAT ») ;
+  - un type écrit sur la ligne qui n'est pas un appareil (« Porte ») ;
+  - une marque inconnue de l'outil (`AppareilRapproche.marque_inconnue`, posé par le rapprochement).
+- À partir de 20 % de créations douteuses (`SEUIL_VRAC`), la fiche est en vrac : aucune création. Sous ce seuil, seules les créations douteuses sont retenues.
+- Dans un lot, une ligne retenue dont l'appareil est créé proprement par une autre fiche partage cette création ; sans cela, la relance ajouterait un lien.
+- **Mémoire** : table `fiches_a_refaire` (réf. de la pièce, n° du produit, raison, en vrac, créations, retenues, exemples, date). Elle suit le renommage et la suppression de la pièce. Le récapitulatif de l'import liste les fiches à refaire (« [!] Fiche … à refaire depuis les PDF »).
+- **Sortie de la liste** : `ImportManager._solder_fiches_a_refaire`. Tout import PDF, CSV ou collage d'une référence notée la retire de la liste, et le récapitulatif l'annonce. Le bouton « Fait » et l'écran de la liste viennent avec la PR 3.
+
+**Mesures** (copies de la base, API backup) :
+- 13 lots (1 292 fiches), plan par les règles : **93 fiches à refaire, dont 69 en vrac**, et 16 251 créations retenues.
+  - Le critère « marque inconnue » en retient 9 043. Ce sont surtout des **en-têtes de série pris pour des marques** : « ALPINETRK » (fiche 7294, 4 113 appareils qui auraient été créés sous cette fausse marque), « AWZCLASSICCT », « GSFEXWS », « GSFSYMPHONY », qui sont des séries Bauknecht.
+  - Il retient aussi quelques vraies petites marques (« Chromex », « Dilem ») : leurs fiches passent « à refaire ».
+- Lots 1 à 3 écrits : 1 323, 510 et 267 appareils créés ; aucun doublon de même marque et même réf. ; 14 fiches à refaire (11 en vrac) ; relance du lot 1 seul **sans ajout**.
+- Fiche 7196 : 0 appareil créé (21 auparavant, tous bancals), 360 liens vers les appareils connus.
+
+**Vérification** :
+- `tests/unit/test_fiche_import_ecran.py`, rendus hors écran :
+  - 7285 par la fenêtre d'import (aperçu, Succession préremplie, équivalente retirée puis écartée, import réel, relue sans ajout) ;
+  - 7196 en vrac (bandeau, aucune création, fiche notée, puis retirée par un collage de sa référence) ;
+  - lien reconnu ;
+  - Cmd+V d'un lien.
+- `test_reprise_import.py` adapté (base construite avec Bauknecht).
+- Suite complète (2 040 tests), `compileall`, lancement de `run.py`.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

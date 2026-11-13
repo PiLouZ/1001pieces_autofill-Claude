@@ -1192,6 +1192,11 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 self.cursor.execute(
                     "UPDATE decisions_references SET ref_piece = ? WHERE ref_piece = ?",
                     (new_ref_piece, old_ref_piece))
+                self.cursor.execute(
+                    "UPDATE OR IGNORE fiches_a_refaire SET ref_piece = ? WHERE ref_piece = ?",
+                    (new_ref_piece, old_ref_piece))
+                self.cursor.execute("DELETE FROM fiches_a_refaire WHERE ref_piece = ?",
+                                    (old_ref_piece,))
                 # Une succession devenue réflexive (X → X) n'a aucun sens : elle
                 # apparaît si l'on renomme une pièce vers sa propre remplaçante.
                 self.cursor.execute(
@@ -1267,6 +1272,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute("DELETE FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_piece])
         self.cursor.execute("DELETE FROM produits_site WHERE ref_piece = ?", [ref_piece])
         self.cursor.execute("DELETE FROM decisions_references WHERE ref_piece = ?", [ref_piece])
+        self.cursor.execute("DELETE FROM fiches_a_refaire WHERE ref_piece = ?", [ref_piece])
         self.cursor.execute("DELETE FROM pieces WHERE ref_piece = ?", [ref_piece])
         if commit:
             self.conn.commit()

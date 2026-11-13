@@ -191,6 +191,11 @@ class StyleManager:
     BANDEAU_INFO = (
         'font-size: 11px; padding: 6px 10px; color: #495057; background-color: #e7f3ff; border-radius: 4px;'
     )
+    # Bandeau d'avertissement ambre (fiche du site à refaire depuis les PDF)
+    BANDEAU_AVERTISSEMENT = (
+        'font-size: 12px; padding: 8px 12px; color: #7c2d12; background-color: #fff4e5;'
+        ' border: 1px solid #f5c88a; border-radius: 4px;'
+    )
 
     # Idem mais ciblé sur QPushButton
     FLAT_TRANSPARENT_BUTTON = "QPushButton { border: none; background: transparent; }"

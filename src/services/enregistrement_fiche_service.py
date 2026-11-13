@@ -22,7 +22,7 @@ fait que compléter sa provenance, une équivalence présente est ignorée.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ..core.logger import app_logger
 from ..utils.rapprochement_fiche.decisions import PlanEnregistrement
@@ -193,7 +193,7 @@ class EnregistrementFicheService(BaseService):
     def planifier_par_regles(self, r) -> PlanEnregistrement:
         """Plan d'une fiche par les règles de l'import, sans question (§ 10.12)."""
         from ..utils.rapprochement_fiche.regles_import import planifier_import
-        return planifier_import(r)
+        return planifier_import(r, appellations=self.configuration().appellations_appareils)
 
     def enregistrer(self, plan: PlanEnregistrement) -> ResultatEnregistrement:
         if not plan.pret:
@@ -216,8 +216,21 @@ class EnregistrementFicheService(BaseService):
         par fiche ; `resultats_import` (le même pour toutes) est celui de l'import.
         Une fiche que l'import n'a pas traitée (annulation, erreur) a `ok` faux, rien
         de propre à la reprise n'est écrit pour elle. Hors du thread principal."""
+        from ..core.import_manager import ImportManager
+        config, resultats = self.configuration_import(plans, noms)
+        results = ImportManager(self.db)._run_import_files(config, progress_cb=progression,
+                                                            cancel_check=annule)
+        for res in resultats:
+            res.resultats_import = results
+        return resultats
+
+    def configuration_import(self, plans: List[PlanEnregistrement],
+                             noms: Optional[List[str]] = None):
+        """(ImportConfiguration, résultats par fiche) : les pièces sont posées, l'import
+        reste à lancer (`_run_import_files`, ou l'import réel de la fenêtre d'import).
+        Les résultats se remplissent dans le crochet `apres_ecriture`."""
         from ..core.import_manager import (FileType, ImportConfiguration, ImportFile,
-                                           ImportManager, ImportType)
+                                           ImportType)
         db = self.db
         resultats = [ResultatEnregistrement(non_importees=list(p.non_importees)) for p in plans]
         # 1. Pièces avant l'import : fantôme → réelle, libellé (propagé par les relations)
@@ -254,17 +267,54 @@ class EnregistrementFicheService(BaseService):
                 res.appareils_crees = traite.get('new_entries', 0)
                 self._ecrire_suite(p, res, pieces[k], nouveaux,
                                    liens_import=traite.get('associations_created', 0))
+                if p.a_refaire is not None:
+                    self._noter_a_refaire(p)
+                    results.setdefault('fiches_a_refaire', []).append(
+                        (p.ref_piece, p.a_refaire.raison))
+
+            for res in resultats:
+                res.resultats_import = results
 
         config = ImportConfiguration(
             files=fichiers,
             import_type=ImportType.SINGLE_FILE if len(fichiers) == 1 else ImportType.MULTI_FILE,
             individual_references={f.path: p.ref_piece for f, p in zip(fichiers, plans)},
             apres_ecriture=apres_ecriture)
-        results = ImportManager(db)._run_import_files(config, progress_cb=progression,
-                                                       cancel_check=annule)
-        for res in resultats:
-            res.resultats_import = results
-        return resultats
+        return config, resultats
+
+    # -------------------------------------------------------------------------
+    # Fiche seule dans la fenêtre d'import (§ 10.12, PR 2)
+    # -------------------------------------------------------------------------
+    def fiche_a_importer(self, r, url: str = '') -> 'FicheAImporter':
+        """Fiche lue, planifiée par les règles de l'import, prête pour la fenêtre d'import."""
+        return FicheAImporter(r, self.planifier_par_regles(r), url)
+
+    def preparer_import(self, fiche: 'FicheAImporter', saisie) -> Tuple[object, ResultatEnregistrement]:
+        """La fenêtre d'import est validée : ses saisies (réf., libellé, Succession,
+        Obsolète) reviennent dans le plan, puis la configuration de l'import réel est
+        faite. Retourne (configuration, résultat de la fiche). Thread principal."""
+        plan = fiche.appliquer_saisie(saisie)
+        config, resultats = self.configuration_import([plan], noms=[fiche.nom_fichier])
+        config.obsolete_refs = list(saisie.obsolete_refs or [])
+        return config, resultats[0]
+
+    def apres_import(self, res: ResultatEnregistrement):
+        """Fin de l'import réel d'une fiche (thread principal) : noms commerciaux vides
+        complétés, caches. La fenêtre principale fait le reste comme après tout import."""
+        if res.maj_appareils:
+            res.champs_modifies = self.ecrire_champs_appareils(res.maj_appareils)
+        try:
+            self.db.invalidate_search_cache(invalidate_total_count=True)
+        except Exception as e:
+            app_logger.warning(f"[Fiche site] cache de recherche non invalidé : {e}")
+
+    def _noter_a_refaire(self, plan: PlanEnregistrement):
+        """Fiche aux créations retenues : notée « à refaire depuis les PDF » (§ 10.14)."""
+        id_product = (plan.produit or {}).get('id_product')
+        with self.db._query_lock:
+            self.db._noter_fiche_a_refaire(plan.ref_piece, id_product, plan.a_refaire,
+                                           self._maintenant())
+            self.db.conn.commit()
 
     def _ecrire_suite(self, plan: PlanEnregistrement, res: ResultatEnregistrement,
                       piece_id: int, nouveaux: Dict[int, int], liens_import: int = 0):
@@ -366,3 +416,126 @@ class EnregistrementFicheService(BaseService):
                 fin(resultats_import)
             except Exception as e:
                 app_logger.warning(f"[Fiche site] récapitulatif d'import non affiché : {e}")
+
+
+# =============================================================================
+# Fiche à importer (fenêtre d'import)
+# =============================================================================
+
+@dataclass
+class FicheAImporter:
+    """Une fiche du site lue et planifiée, portée par son fichier d'import
+    (`ImportFile.fiche`) jusqu'à la validation de la fenêtre d'import."""
+    rapprochement: object
+    plan: PlanEnregistrement
+    url: str = ''
+
+    @property
+    def id_product(self) -> Optional[int]:
+        return getattr(self.rapprochement.identite, 'id_product', None)
+
+    @property
+    def nom_fichier(self) -> str:
+        return f"fiche {self.id_product}" if self.id_product else "fiche du site"
+
+    @property
+    def libelle(self) -> str:
+        """Libellé proposé : celui de l'outil, sinon le titre coupé (§ 10.11)."""
+        i, p = self.rapprochement.identite, self.plan
+        if p.libelle and p.remplacer_libelle:       # titre entier d'une reprise antérieure
+            return p.libelle
+        return i.libelle_outil or p.libelle or i.libelle or ''
+
+    # --- Relations de la fiche, pour la section « Succession » -------------------
+    def remplace(self) -> List[str]:
+        return list(dict.fromkeys(
+            rp.ancienne for rp in self.rapprochement.remplacements
+            if rp.sens == 'remplace' and rp.statut not in ('identique', 'cycle')))
+
+    def remplacee_par(self) -> List[str]:
+        return list(dict.fromkeys(
+            rp.nouvelle for rp in self.rapprochement.remplacements
+            if rp.sens == 'remplacee_par' and rp.statut not in ('identique', 'cycle')))[:1]
+
+    def equivalentes(self) -> List[str]:
+        return list(dict.fromkeys(
+            e.reference for e in self.rapprochement.equivalences
+            if e.statut != 'ecartee' and e.reference != self.plan.ref_piece))
+
+    def apercu(self) -> Dict[str, object]:
+        """Ce que la fenêtre d'import montre : comptes et premières lignes."""
+        p, r = self.plan, self.rapprochement
+        creations = {a.index for a in p.appareils_a_creer}
+        retenues = set(p.a_refaire.indices) if p.a_refaire is not None else set()
+        lies = {c for c, _ in p.liens if not isinstance(c, tuple)}
+        lignes = []
+        for i, a in enumerate(r.appareils):
+            if i in creations:
+                etat = "à créer"
+            elif i in retenues:
+                etat = "à refaire"
+            elif a.appareil_id in lies or (a.appareil_id is None and a.proposition in lies):
+                etat = "déjà lié" if a.lien == 'deja_lie' else "connu"
+            elif a.lien == 'deja_couvert':
+                etat = "couvert"
+            else:
+                etat = "non importé"
+            lignes.append((etat, a.marque or a.marque_fiche or '?', a.ref_modele, a.nom, a.type))
+        compte = {}
+        for etat, *_ in lignes:
+            compte[etat] = compte.get(etat, 0) + 1
+        return {'titre': r.identite.libelle or '', 'id_product': self.id_product,
+                'lignes': lignes, 'compte': compte, 'a_refaire': p.a_refaire,
+                'non_importees': list(p.non_importees),
+                'sans_code_produit': not p.ref_piece or p.a_completer}
+
+    # --- Saisies de la fenêtre → plan ---------------------------------------------
+    def appliquer_saisie(self, saisie) -> PlanEnregistrement:
+        """`saisie` : la configuration rendue par la fenêtre d'import (réf. et libellé
+        du fichier, Succession). Les relations retirées ne sont pas écrites (une
+        équivalente retirée est écartée et n'est plus proposée) ; celles ajoutées le sont."""
+        from ..utils.rapprochement_fiche.decisions import forme_reference
+        from ..utils.text_utils import decouper_refs
+        p = self.plan
+        chemin = self.nom_fichier
+        ref = (saisie.individual_references.get(chemin) or p.ref_piece or '').strip()
+        if ref and ref != p.ref_piece:
+            ancienne = p.ref_piece
+            p.ref_piece = ref
+            if p.produit:
+                p.produit['ref_piece'] = ref
+            p.decisions_references = [(ref if d[0] == ancienne else d[0],) + tuple(d[1:])
+                                      for d in p.decisions_references]
+        if ref:
+            from ..utils.rapprochement_fiche.regles_import import SANS_CODE_PRODUIT
+            p.a_completer = [m for m in p.a_completer if m != SANS_CODE_PRODUIT]
+        libelle = (saisie.individual_labels.get(chemin) or '').strip()
+        outil = self.rapprochement.identite.libelle_outil or ''
+        if not libelle or libelle == outil:
+            p.libelle, p.remplacer_libelle = '', False          # libellé de l'outil gardé
+        else:
+            p.libelle, p.remplacer_libelle = libelle, bool(outil)
+
+        remplace = set(decouper_refs(saisie.succession_replaces))
+        remplacee_par = set(decouper_refs(saisie.succession_replaced_by))
+        equivalentes = set(decouper_refs(saisie.equivalence_ref))
+        de_la_fiche_r = set(self.remplace())
+        de_la_fiche_rp = set(self.remplacee_par())
+        p.remplacements = [(a, n) for a, n in p.remplacements
+                           if (a in remplace) or (a == ref and n in remplacee_par)
+                           or (a not in de_la_fiche_r and a != ref)]
+        p.remplacements += [(a, ref) for a in sorted(remplace - de_la_fiche_r) if a != ref]
+        p.remplacements += [(ref, n) for n in sorted(remplacee_par - de_la_fiche_rp) if n != ref]
+        gardees = {a for a, _ in p.remplacements}
+        p.rangs_remplace = [(a, k) for a, k in p.rangs_remplace if a in gardees]
+        fiche_eq = set(self.equivalentes())
+        retirees = fiche_eq - equivalentes
+        p.equivalences = [e for e in p.equivalences if e not in retirees]
+        p.equivalences += [e for e in sorted(equivalentes - fiche_eq) if e != ref]
+        p.origines = [o for o in p.origines if o[0] not in retirees]
+        p.decisions_references += [(ref, e, 'ecartee', None, forme_reference(e))
+                                   for e in sorted(retirees)]
+        # Les relations sont écrites avec la fiche (origines, ordre) : pas en double
+        saisie.succession_replaces = saisie.succession_replaced_by = None
+        saisie.equivalence_ref = None
+        return p

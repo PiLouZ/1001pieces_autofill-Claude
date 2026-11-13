@@ -476,6 +476,9 @@ class _Rapprochement:
         self._decisions_distinct(lignes)
         self._doublons_par_le_nom(lignes)
         for a in lignes:
+            # Marque que l'outil ne connaît pas (« PROFESSIONNELS HOTTE ») : une
+            # création sous cette marque serait bancale (§ 10.14)
+            a.marque_inconnue = bool(a.marque) and cle_marque(a.marque) not in self.marques_outil
             self._lier(a, principale)
             for categorie in a.doutes:
                 self._doute(categorie, f"{a.marque or '?'} {a.ref_modele} : {a.raison}",

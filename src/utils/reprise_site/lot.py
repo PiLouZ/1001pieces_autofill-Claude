@@ -189,6 +189,8 @@ class PlanLot:
     a_revoir: Dict[int, List[str]] = field(default_factory=dict)     # mode questions : fiche → lignes de côté
     # Règles de l'import (§ 10.12) : fiche → lignes non importées (historique)
     non_importees: Dict[int, List[str]] = field(default_factory=dict)
+    # Fiches à refaire depuis les PDF (§ 10.14) : fiche → regles_import.ARefaire
+    a_refaire: Dict[int, object] = field(default_factory=dict)
 
     @property
     def pret(self) -> bool:
@@ -434,13 +436,14 @@ class LotReprise:
             plan.a_revoir = {i: list(v) for i, v in q.a_revoir.items() if v}
         return plan
 
-    def planifier_par_regles(self) -> PlanLot:
+    def planifier_par_regles(self, appellations=None) -> PlanLot:
         """Plan du lot par les règles de l'import (CDC § 10.12) : aucune question,
         aucune catégorie en attente. Une fiche sans code produit est mise de côté
         (référence de pièce à saisir) ; ce que l'import ne sait pas trancher n'est
         pas importé et compté. Les créations restent partagées entre les fiches."""
+        from src.utils.rapprochement_fiche.coupe_titre import termes_appareils
         from src.utils.rapprochement_fiche.regles_import import (
-            SANS_CODE_PRODUIT, decisions_import, sans_code_produit)
+            SANS_CODE_PRODUIT, decisions_import, retenir_creations_douteuses, sans_code_produit)
         self.questionnaire = None
         regles: Dict[int, List[str]] = {}
         for i, f in self.fiches_actives():
@@ -462,10 +465,47 @@ class LotReprise:
                     f.decisions.appareils[index] = ChoixAppareil(ignorer=True)
                 regles.setdefault(i, []).extend(p.a_completer)
             plan = self._planifier()
+        # Créations bancales retenues (§ 10.14) ; une ligne retenue dont l'appareil est
+        # créé proprement par une autre fiche du lot partage cette création (sinon la
+        # relance la trouverait « exacte » et ajouterait un lien)
+        termes = termes_appareils(appellations)
+        a_refaire = {}
+        for i, p in plan.plans:
+            f = self.fiches[i]
+            if not f.personnalisee:
+                retenue = retenir_creations_douteuses(f.rapprochement, f.decisions, p, termes)
+                if retenue is not None:
+                    a_refaire[i] = retenue
+        if a_refaire:
+            plan = self._planifier()
+            self._partager_creations_saines(plan, a_refaire)
+            plan = self._planifier()
         plan.non_importees = {i: v for i, v in regles.items() if v}
+        plan.a_refaire = a_refaire
         for i, p in plan.plans:
             p.non_importees = list(plan.non_importees.get(i, []))
+            p.a_refaire = a_refaire.get(i)
         return plan
+
+    def _partager_creations_saines(self, plan: PlanLot, a_refaire: Dict[int, object]):
+        """Ligne retenue d'une fiche à refaire, dont la même marque et la même forme
+        sont créées par une autre fiche : elle partage cette création."""
+        if not plan.creations:
+            return
+        for i in a_refaire:
+            f = self.fiches[i]
+            for index, choix in list(f.decisions.appareils.items()):
+                if not choix.ignorer:
+                    continue
+                a = f.rapprochement.appareils[index]
+                if a.niveau not in ('absent', 'a_valider') or a.suspecte:
+                    continue
+                occurrences = plan.creations.get(
+                    (cle_marque(a.marque or a.marque_fiche), forme_normalisee(a.ref_modele)))
+                if occurrences:
+                    modele = occurrences[0][1]
+                    f.decisions.appareils[index] = ChoixAppareil(
+                        creer=True, marque=modele.marque, type=modele.type)
 
     def _planifier(self) -> PlanLot:
         plans, de_cote, attente, a_completer = [], [], set(), []

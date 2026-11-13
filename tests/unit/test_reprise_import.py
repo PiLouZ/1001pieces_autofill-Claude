@@ -124,11 +124,12 @@ def test_regles_groupe_creation_sans_type_et_sans_code_produit(tmp_path):
     b = Construite(tmp_path)
     whirlpool = b.appareil('Whirlpool', '859205612010')
     b.appareil('Ikea', 'ZZFOUR 01', type_='Four')           # même réf., marque hors du groupe
+    b.appareil('Bauknecht', 'WAK1234', type_='Lave-linge')  # marque connue de l'outil
     sans_code = ('<div class="class_perso4">Appareils compatibles :</div>'
                  '<div class="class_perso5"><div id="Bosch"><b><u>Bosch</u></b></div>'
                  '<div>WAE99/01 - Maxx</div></div>')
     fiche = _produit(201, '481010595117', 'Bauknecht',
-                     [('859205612010', 'PRIMO1407UM'), ('ZZFOUR 01', 'Four Z')])
+                     [('859205612010', 'PRIMO1407UM'), ('ZZFOUR 01', 'Z900')])
     fiche[5] = ''                       # sans catégorie : aucun type tiré de la fiche
     produits = [
         fiche,

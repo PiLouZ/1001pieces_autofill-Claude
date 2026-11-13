@@ -120,6 +120,7 @@ class AppareilRapproche:
     # Absent : même réf. exacte sous des marques HORS du groupe (Ikea, Elica…)
     hors_groupe: List[str] = field(default_factory=list)
     type_site: str = ''                 # type donné par la fiche (table du site ou ligne)
+    marque_inconnue: bool = False       # marque retenue absente de l'outil (§ 10.14)
     # Appareil connu (ou proposé) dont un champ diffère sur la fiche (type, marque,
     # écriture de la réf., nom commercial) : un écart par champ
     ecarts: List['Ecart'] = field(default_factory=list)
